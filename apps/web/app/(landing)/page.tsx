@@ -1,29 +1,20 @@
 import type { Metadata } from "next";
-import { MulticaLanding } from "@/features/landing/components/multica-landing";
-import { RedirectIfAuthenticated } from "@/features/landing/components/redirect-if-authenticated";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Multica — Project Management for Human + Agent Teams",
+    absolute: "BayClaw —— 复星医药大湾区虚拟员工平台",
   },
   description:
-    "Open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
-  openGraph: {
-    title: "Multica — Project Management for Human + Agent Teams",
-    description:
-      "Manage your human + agent workforce in one place.",
-    url: "/",
-  },
+    "BayClaw 是复星医药大湾区虚拟员工平台:把 AI 智能体作为数字员工纳入团队,在云端共享算力上分派任务、跟踪进度、沉淀技能。",
   alternates: {
     canonical: "/",
   },
 };
 
+// BayClaw is an internal, server-centric deployment — there is no public
+// marketing site. The root goes straight to login; authenticated users are
+// bounced onward to their workspace by the login page itself.
 export default function LandingPage() {
-  return (
-    <>
-      <RedirectIfAuthenticated />
-      <MulticaLanding />
-    </>
-  );
+  redirect("/login");
 }

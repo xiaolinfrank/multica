@@ -62,24 +62,19 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.multica.ai"),
   title: {
-    default: "Multica — Project Management for Human + Agent Teams",
-    template: "%s | Multica",
+    default: "BayClaw —— 复星医药大湾区虚拟员工平台",
+    template: "%s | BayClaw",
   },
   description:
-    "Open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
+    "BayClaw 是复星医药大湾区虚拟员工平台:把 AI 智能体作为数字员工纳入团队,在云端共享算力上分派任务、跟踪进度、沉淀技能。",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: ["/favicon.svg"],
   },
   openGraph: {
     type: "website",
-    siteName: "Multica",
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    site: "@multica_hq",
-    creator: "@multica_hq",
+    siteName: "BayClaw",
+    locale: "zh_CN",
   },
   alternates: {
     canonical: "/",
