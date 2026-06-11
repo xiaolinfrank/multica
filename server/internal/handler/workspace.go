@@ -214,6 +214,31 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-enroll platform-operated runner accounts (SHARED_RUNNER_EMAILS)
+	// so the shared server-side daemon serves this workspace from day one.
+	// A missing runner user is skipped, not an error: the operator may not
+	// have provisioned the account yet, and workspace creation must not
+	// depend on it.
+	for _, email := range h.cfg.SharedRunnerEmails {
+		runner, err := qtx.GetUserByEmail(r.Context(), strings.ToLower(email))
+		if err != nil {
+			slog.Warn("shared runner account not found, skipping auto-enroll",
+				"email", email, "workspace_id", uuidToString(ws.ID))
+			continue
+		}
+		if uuidToString(runner.ID) == userID {
+			continue // creator already added as owner
+		}
+		if _, err := qtx.CreateMember(r.Context(), db.CreateMemberParams{
+			WorkspaceID: ws.ID,
+			UserID:      runner.ID,
+			Role:        "member",
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to add shared runner: "+err.Error())
+			return
+		}
+	}
+
 	// NOTE: CreateWorkspace deliberately does NOT mark the user as
 	// onboarded. The `onboarded_at` flag is owned by CompleteOnboarding
 	// (Step 3 of the flow) and by AcceptInvitation (invitee joining an

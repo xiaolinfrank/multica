@@ -84,6 +84,13 @@ type Config struct {
 	CloudRuntimeFleetTimeout time.Duration
 	AttachmentDownloadMode   string
 	AttachmentDownloadURLTTL time.Duration
+	// SharedRunnerEmails lists platform-operated runner accounts
+	// (comma-separated via SHARED_RUNNER_EMAILS, matched lowercase).
+	// Every newly created workspace automatically adds these users as
+	// members so the shared server-side daemon picks the workspace up,
+	// and runtimes registered by them are forced to "public" visibility
+	// so every workspace member can bind agents to them.
+	SharedRunnerEmails []string
 }
 
 type cloudRuntimeProxy interface {

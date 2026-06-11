@@ -249,6 +249,27 @@ func workspaceReposResponse(workspaceID string, raw []byte, settingsRaw []byte) 
 	return resp
 }
 
+// isSharedRunner reports whether the user is one of the platform-operated
+// runner accounts configured via SHARED_RUNNER_EMAILS (see
+// Config.SharedRunnerEmails). A zero/invalid UUID or lookup failure is
+// simply "no" — callers use this to grant extra openness, never to deny.
+func (h *Handler) isSharedRunner(ctx context.Context, userID pgtype.UUID) bool {
+	if len(h.cfg.SharedRunnerEmails) == 0 || !userID.Valid {
+		return false
+	}
+	u, err := h.Queries.GetUser(ctx, userID)
+	if err != nil {
+		return false
+	}
+	email := strings.ToLower(u.Email)
+	for _, candidate := range h.cfg.SharedRunnerEmails {
+		if strings.ToLower(candidate) == email {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	var req DaemonRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -357,6 +378,24 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Platform-operated runner accounts (SHARED_RUNNER_EMAILS) always
+		// expose their runtimes to the whole workspace. Re-applied on every
+		// registration so the shared-compute guarantee can't drift even if
+		// someone flips the runtime back to private.
+		visibility := row.Visibility
+		if visibility != "public" && h.isSharedRunner(r.Context(), row.OwnerID) {
+			updated, err := h.Queries.UpdateAgentRuntimeVisibility(r.Context(), db.UpdateAgentRuntimeVisibilityParams{
+				ID:         row.ID,
+				Visibility: "public",
+			})
+			if err != nil {
+				slog.Warn("failed to auto-publish shared runner runtime",
+					"runtime_id", uuidToString(row.ID), "error", err)
+			} else {
+				visibility = updated.Visibility
+			}
+		}
+
 		registered := db.AgentRuntime{
 			ID:             row.ID,
 			WorkspaceID:    row.WorkspaceID,
@@ -372,6 +411,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt:      row.UpdatedAt,
 			OwnerID:        row.OwnerID,
 			LegacyDaemonID: row.LegacyDaemonID,
+			Visibility:     visibility,
 		}
 
 		// Inserted is false for normal daemon reconnects/upserts, so
