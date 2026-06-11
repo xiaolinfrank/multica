@@ -1,9 +1,9 @@
 import { HELPER_DESCRIPTION, HELPER_INSTRUCTIONS } from "./helper-instructions";
 
-const HELPER_AGENT_NAME = "Multica Helper";
+const HELPER_AGENT_NAME = "BayClaw Helper";
 
 /**
- * Skip path, issue 2/2: "Create your first Multica Agent".
+ * Skip path, issue 2/2: "Create your first BayClaw Agent".
  *
  * Companion to install-runtime-issue.ts. The body is a FUNCTION (not a
  * static const) because it needs to embed:
@@ -20,10 +20,10 @@ const HELPER_AGENT_NAME = "Multica Helper";
  * Step 2 of the skip-path bundle. Localized title for supported locales.
  */
 export const CREATE_AGENT_GUIDE_ISSUE_TITLE = {
-  en: "Step 2 — Create your first Multica Agent",
-  zh: "第 2 步 —— 创建你的第一个 Multica Agent",
-  ko: "2단계 — 첫 Multica Agent 만들기",
-  ja: "ステップ2 — 最初の Multica Agent を作成する",
+  en: "Step 2 — Create your first BayClaw Agent",
+  zh: "第 2 步 —— 创建你的第一个 BayClaw Agent",
+  ko: "2단계 — 첫 BayClaw Agent 만들기",
+  ja: "ステップ2 — 最初の BayClaw Agent を作成する",
 } as const;
 
 interface BodyOpts {
@@ -47,15 +47,15 @@ export function getCreateAgentGuideBody(opts: BodyOpts): string {
 }
 
 function enBody(installRuntimeMention: string): string {
-  return `Once your runtime is online (see ${installRuntimeMention}), build your first agent — Multica Helper. The prompt below is pre-written; just copy.
+  return `Once your workspace's cloud runtime is online (see ${installRuntimeMention}), build your first agent — BayClaw Helper. The prompt below is pre-written; just copy.
 
 ## 1. Open the new-agent screen
 
 Go to **Agents** in the sidebar → click **New Agent**.
 
-## 2. Pick the runtime you just installed
+## 2. Pick the shared cloud runtime
 
-Select the runtime under "Runtime". If nothing shows up, the runtime isn't online yet — finish the install steps in ${installRuntimeMention}.
+Select the runtime under "Runtime". If nothing shows up, no cloud runtime is available for your workspace yet — see ${installRuntimeMention} and ask your platform administrator to provision one.
 
 ## 3. Copy each block into the matching field
 
@@ -78,7 +78,7 @@ ${HELPER_INSTRUCTIONS.en}
 
 Hit **Create**. The new agent shows up in the workspace agent list.
 
-Now create an issue (or reassign an existing one) → set assignee = Multica Helper → set status to **todo**. The runtime picks the task up within a few seconds and starts working. Watch progress in the issue's task panel.
+Now create an issue (or reassign an existing one) → set assignee = BayClaw Helper → set status to **todo**. The runtime picks the task up within a few seconds and starts working. Watch progress in the issue's task panel.
 
 ## Where to go next
 
@@ -89,15 +89,15 @@ Now create an issue (or reassign an existing one) → set assignee = Multica Hel
 }
 
 function zhBody(installRuntimeMention: string): string {
-  return `等运行时上线（见 ${installRuntimeMention}）之后，把第一个 agent —— Multica Helper —— 建出来。下面的提示词已经写好，直接复制即可。
+  return `等工作区的云端运行时上线（见 ${installRuntimeMention}）之后，把第一个 agent —— BayClaw Helper —— 建出来。下面的提示词已经写好，直接复制即可。
 
 ## 1. 打开新建 agent 页
 
 在侧边栏点 **Agents** → 点 **New Agent**。
 
-## 2. 选你刚装好的运行时
+## 2. 选工作区的共享云端运行时
 
-在 "Runtime" 下选它。如果什么都没有，说明运行时还没上线 —— 先按 ${installRuntimeMention} 把安装步骤走完。
+在 "Runtime" 下选它。如果什么都没有，说明工作区还没有可用的云端运行时 —— 先看 ${installRuntimeMention}，并联系平台管理员开通。
 
 ## 3. 把下面三段分别复制到对应字段
 
@@ -120,7 +120,7 @@ ${HELPER_INSTRUCTIONS.zh}
 
 点 **Create**。新 agent 会出现在 workspace 的 agent 列表里。
 
-接着创建一个 issue（或把已有 issue 重新分派）→ 把 assignee 设成 Multica Helper → 状态切到 **todo**。运行时会在几秒内接走任务并开始工作。在 issue 的任务面板里看进度。
+接着创建一个 issue（或把已有 issue 重新分派）→ 把 assignee 设成 BayClaw Helper → 状态切到 **todo**。运行时会在几秒内接走任务并开始工作。在 issue 的任务面板里看进度。
 
 ## 接下来去哪
 
@@ -131,15 +131,15 @@ ${HELPER_INSTRUCTIONS.zh}
 }
 
 function koBody(installRuntimeMention: string): string {
-  return `runtime이 online 상태가 되면(${installRuntimeMention} 참고), 첫 agent인 Multica Helper를 만드세요. 아래 prompt는 미리 작성되어 있으니 그대로 복사하면 됩니다.
+  return `워크스페이스의 클라우드 runtime이 online 상태가 되면(${installRuntimeMention} 참고), 첫 agent인 BayClaw Helper를 만드세요. 아래 prompt는 미리 작성되어 있으니 그대로 복사하면 됩니다.
 
 ## 1. 새 agent 화면 열기
 
 사이드바에서 **Agents**를 열고 **New Agent**를 클릭합니다.
 
-## 2. 방금 설치한 runtime 선택
+## 2. 공유 클라우드 runtime 선택
 
-"Runtime"에서 해당 runtime을 선택합니다. 아무것도 보이지 않는다면 runtime이 아직 online이 아닙니다. ${installRuntimeMention}의 설치 단계를 먼저 끝내세요.
+"Runtime"에서 해당 runtime을 선택합니다. 아무것도 보이지 않는다면 아직 워크스페이스에 사용 가능한 클라우드 runtime이 없는 것입니다. ${installRuntimeMention}을 참고해 플랫폼 관리자에게 개설을 요청하세요.
 
 ## 3. 각 블록을 맞는 필드에 복사
 
@@ -162,7 +162,7 @@ ${HELPER_INSTRUCTIONS.ko}
 
 **Create**를 누릅니다. 새 agent가 워크스페이스 agent 목록에 표시됩니다.
 
-이제 issue를 만들거나 기존 issue를 다시 배정한 뒤 assignee를 Multica Helper로 설정하고 status를 **todo**로 바꾸세요. runtime이 몇 초 안에 작업을 가져가 실행을 시작합니다. 진행 상황은 issue의 task panel에서 볼 수 있습니다.
+이제 issue를 만들거나 기존 issue를 다시 배정한 뒤 assignee를 BayClaw Helper로 설정하고 status를 **todo**로 바꾸세요. runtime이 몇 초 안에 작업을 가져가 실행을 시작합니다. 진행 상황은 issue의 task panel에서 볼 수 있습니다.
 
 ## 다음에 볼 곳
 
@@ -173,15 +173,15 @@ ${HELPER_INSTRUCTIONS.ko}
 }
 
 function jaBody(installRuntimeMention: string): string {
-  return `runtime が online になったら(${installRuntimeMention} を参照)、最初の agent である Multica Helper を作りましょう。下の prompt はあらかじめ書いてあるので、そのままコピーするだけです。
+  return `ワークスペースのクラウド runtime が online になったら(${installRuntimeMention} を参照)、最初の agent である BayClaw Helper を作りましょう。下の prompt はあらかじめ書いてあるので、そのままコピーするだけです。
 
 ## 1. 新しい agent の画面を開く
 
 サイドバーの **Agents** を開き、**New Agent** をクリックします。
 
-## 2. さっきインストールした runtime を選ぶ
+## 2. 共有クラウド runtime を選ぶ
 
-"Runtime" でその runtime を選びます。何も表示されない場合は runtime がまだ online ではありません。${installRuntimeMention} のインストール手順を先に終わらせてください。
+"Runtime" でその runtime を選びます。何も表示されない場合は、ワークスペースにまだ利用可能なクラウド runtime がありません。${installRuntimeMention} を参照し、プラットフォーム管理者に開設を依頼してください。
 
 ## 3. 各ブロックを対応するフィールドにコピーする
 
@@ -204,7 +204,7 @@ ${HELPER_INSTRUCTIONS.ja}
 
 **Create** を押します。新しい agent がワークスペースの agent 一覧に表示されます。
 
-次に issue を作る(または既存の issue を割り当て直す)→ assignee を Multica Helper にする → status を **todo** にします。runtime が数秒以内にタスクを受け取って作業を始めます。進捗は issue の task panel で確認できます。
+次に issue を作る(または既存の issue を割り当て直す)→ assignee を BayClaw Helper にする → status を **todo** にします。runtime が数秒以内にタスクを受け取って作業を始めます。進捗は issue の task panel で確認できます。
 
 ## 次に見る場所
 

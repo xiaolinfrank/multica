@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentRuntime } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -38,6 +38,7 @@ function makeRuntime(overrides: Partial<AgentRuntime> = {}): AgentRuntime {
     device_info: "",
     metadata: {},
     daemon_id: null,
+    visibility: "public",
     last_seen_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -51,12 +52,7 @@ function renderFork(
   const onNext = vi.fn();
   render(
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
-      <StepPlatformFork
-        wsId="ws_test"
-        onNext={onNext}
-        cliInstructions={<div data-testid="cli-instructions">install me</div>}
-        {...overrides}
-      />
+      <StepPlatformFork wsId="ws_test" onNext={onNext} {...overrides} />
     </I18nProvider>,
   );
   return { onNext };
@@ -70,39 +66,30 @@ function resetPicker(patch: Partial<typeof mocks.pickerState> = {}) {
   mocks.pickerState.setSelectedId = vi.fn();
 }
 
-describe("StepPlatformFork", () => {
+describe("StepPlatformFork (cloud-direct)", () => {
   beforeEach(() => {
     resetPicker();
     vi.restoreAllMocks();
   });
 
-  it("renders the three fork options at rest", () => {
-    renderFork();
-    expect(screen.getByText(/^use this computer$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^connect from the terminal$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^use a cloud computer$/i)).toBeInTheDocument();
-    // Cloud option is a "Coming soon" preview — not yet wired up.
-    expect(screen.getByText(/^coming soon$/i)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^coming soon$/i }),
-    ).not.toBeInTheDocument();
-    // CLI dialog closed at rest → no CLI instructions.
-    expect(screen.queryByTestId("cli-instructions")).not.toBeInTheDocument();
-  });
-
-  it("footer: Skip only + explanatory hint (no Continue)", () => {
+  it("with no shared runtime: shows the waiting state, no install guidance", () => {
     renderFork();
     expect(
-      screen.getByRole("button", { name: /skip for now/i }),
-    ).toBeEnabled();
-    // Continue is gone — it lived in the footer before; now advancement
-    // for the CLI path is owned by the CLI dialog's own button.
-    expect(
-      screen.queryByRole("button", { name: /^continue$/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/pick a way to connect — or skip and connect a computer later/i),
+      screen.getByText(/setting up your cloud computer/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/waiting for a shared runtime to come online/i),
+    ).toBeInTheDocument();
+    // The old install paths must be gone entirely.
+    expect(screen.queryByText(/use this computer/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/connect from the terminal/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    // Continue is disabled until a shared runtime exists.
+    expect(
+      screen.getByRole("button", { name: /start exploring/i }),
+    ).toBeDisabled();
   });
 
   it("Skip is always enabled and calls onNext(null)", async () => {
@@ -113,43 +100,7 @@ describe("StepPlatformFork", () => {
     expect(onNext).toHaveBeenCalledWith(null);
   });
 
-  it("opens the download page and flips the card to a post-click state", async () => {
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
-    const user = userEvent.setup();
-    renderFork();
-
-    await user.click(screen.getByText(/^use this computer$/i));
-
-    // Routes to the new /download page (not GitHub releases) so the
-    // user lands on the OS auto-detect surface.
-    expect(openSpy).toHaveBeenCalledWith(
-      "/download",
-      "_blank",
-      "noopener,noreferrer",
-    );
-    expect(
-      screen.getByText(/opening the download page/i),
-    ).toBeInTheDocument();
-  });
-
-  it("CLI dialog: opens with instructions + 'waiting' and a disabled Connect button", async () => {
-    const user = userEvent.setup();
-    renderFork();
-
-    await user.click(screen.getByRole("button", { name: /show steps/i }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByTestId("cli-instructions")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/waiting for your computer/i),
-    ).toBeInTheDocument();
-    // Start exploring stays disabled while no runtime is selected.
-    expect(
-      within(dialog).getByRole("button", { name: /start exploring/i }),
-    ).toBeDisabled();
-  });
-
-  it("CLI dialog with a selected runtime: Connect enables and fires onNext(runtime)", async () => {
+  it("lists public runtimes and continues with the selected one", async () => {
     const rt = makeRuntime({ id: "rt_claude", name: "Claude Code" });
     resetPicker({
       runtimes: [rt],
@@ -160,21 +111,39 @@ describe("StepPlatformFork", () => {
     const user = userEvent.setup();
     const { onNext } = renderFork();
 
-    await user.click(screen.getByRole("button", { name: /show steps/i }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/1 computer connected/i)).toBeInTheDocument();
     expect(
-      within(dialog).getByText(/selected: claude code/i),
+      screen.getByText(/your cloud computer is ready/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/1 computer connected/i)).toBeInTheDocument();
+    expect(screen.getByText(/selected: claude code/i)).toBeInTheDocument();
 
-    const connect = within(dialog).getByRole("button", {
-      name: /start exploring/i,
-    });
+    const connect = screen.getByRole("button", { name: /start exploring/i });
     expect(connect).toBeEnabled();
     await user.click(connect);
     expect(onNext).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledWith(rt);
   });
 
+  it("private runtimes are filtered out of the shared list", () => {
+    const priv = makeRuntime({
+      id: "rt_private",
+      name: "Someone's laptop",
+      visibility: "private",
+    });
+    resetPicker({
+      runtimes: [priv],
+      selected: priv,
+      selectedId: priv.id,
+      hasRuntimes: true,
+    });
+    renderFork();
+    // Only private runtimes exist → behaves like the empty state.
+    expect(
+      screen.getByText(/setting up your cloud computer/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/someone's laptop/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /start exploring/i }),
+    ).toBeDisabled();
+  });
 });

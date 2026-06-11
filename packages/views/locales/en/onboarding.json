@@ -3,12 +3,12 @@
     "step_of": "Step {{current}} of {{total}}"
   },
   "welcome": {
-    "wordmark": "Welcome to Multica",
+    "wordmark": "Welcome to BayClaw",
     "headline_line1": "Your AI teammates,",
     "headline_line2": "in",
     "headline_emphasis": "one workspace.",
     "lede": "Assign them work like you'd assign a colleague — they pick it up, update status, and comment when done.",
-    "lede_web": "Desktop bundles the runtime — nothing to install. Continue on web to connect your own CLI.",
+    "lede_web": "Agents run on the platform's shared cloud servers — nothing to install on your machine.",
     "lede_desktop": "By the end, a real agent will be replying to your first issue.",
     "download_desktop": "Download Desktop",
     "continue_on_web": "Continue on web",
@@ -45,14 +45,14 @@
   },
   "source_backfill": {
     "eyebrow": "Quick question",
-    "lede": "We noticed you didn't pick this during signup — it helps us understand who finds Multica useful. One question, then you're back to your work.",
+    "lede": "We noticed you didn't pick this during signup — it helps us understand who finds BayClaw useful. One question, then you're back to your work.",
     "submit": "Submit",
     "hint_ready": "Looks good. Hit Submit when you're ready."
   },
   "questions": {
     "eyebrow_about_you": "About you",
     "source": {
-      "question": "How did you hear about Multica?",
+      "question": "How did you hear about BayClaw?",
       "friends_colleagues": "Friends or colleagues",
       "search": "Google / search",
       "social_x": "X / Twitter",
@@ -83,7 +83,7 @@
       "other_placeholder": "e.g. teacher, support lead"
     },
     "use_case": {
-      "question": "What do you want to use Multica for?",
+      "question": "What do you want to use BayClaw for?",
       "ship_code": "Ship code with AI agents",
       "manage_team": "Manage tasks for my team",
       "personal_tasks": "Organize my own tasks",
@@ -107,18 +107,18 @@
     "what_eyebrow": "What's an agent runtime?",
     "what_prefix": "The \"computer\" you connect is what we internally call an ",
     "what_term": "agent runtime",
-    "what_suffix": ": a small background process on the computer paired with one AI coding tool — Claude Code, Codex, and so on. One tool, one agent runtime. The agent runtime is what actually executes the tasks your agent picks up.",
+    "what_suffix": ": a compute node operated by the platform team, paired with one AI coding tool (Claude Code, Codex, …). It executes whatever your agents are assigned — your browser stays a thin client.",
     "good_eyebrow": "Good to know",
     "swap_title": "Swap anytime",
     "swap_body": "Each agent's runtime is just a setting. Change it whenever you want.",
     "add_more_title": "Add more later",
-    "add_more_body": "You can connect another computer for a teammate, or a dedicated one per agent.",
+    "add_more_body": "The platform team can provision more cloud runtimes as your team's workload grows.",
     "learn_more": "Learn about agent runtimes →"
   },
   "cli_install": {
     "copy_aria": "Copy",
     "intro": "You'll need an agent runtime on this computer (Claude Code, Codex, Cursor, …) for it to run your agent. Also works on servers and remote dev boxes.",
-    "step1_label": "Install the Multica CLI",
+    "step1_label": "Install the BayClaw CLI",
     "step2_label": "Start the daemon"
   },
   "cloud_waitlist": {
@@ -196,18 +196,18 @@
     "error_close": "Close",
     "user_context_heading": "About me",
     "user_context_role_label": "Role",
-    "user_context_use_case_label": "What I want to do with Multica",
+    "user_context_use_case_label": "What I want to do with BayClaw",
     "runtime": {
-      "greeting": "Hi, welcome to Multica",
+      "greeting": "Hi, welcome to BayClaw",
       "subtitle": "I'm your first Agent assistant.",
-      "capabilities": "Ask me anything about how to use Multica. You can also have me get things done in your workspace — create issues, set up cron tasks, build new agents…",
+      "capabilities": "Ask me anything about how to use BayClaw. You can also have me get things done in your workspace — create issues, set up cron tasks, build new agents…",
       "section_label": "Pick one or more tasks to start with:",
       "assign_empty": "Pick one or more",
       "assign_count": "Assign {{count}} task to me →",
       "assign_count_plural": "Assign {{count}} tasks to me →",
       "cards": {
         "intro": {
-          "subtitle": "Let me explain in 1–2 paragraphs what Multica is and what it can do."
+          "subtitle": "Let me explain in 1–2 paragraphs what BayClaw is and what it can do."
         },
         "tour": {
           "subtitle": "I'll walk you through how issue, agent, squad, autopilot fit together."
@@ -226,7 +226,7 @@
     },
     "skip": {
       "loading": "Setting up your workspace…",
-      "title": "Welcome to Multica!",
+      "title": "Welcome to BayClaw!",
       "subtitle": "We've added two tasks to help you with the next step.",
       "got_it": "Got it",
       "status_in_progress": "In progress",
@@ -234,11 +234,11 @@
       "cards": {
         "install_runtime": {
           "title": "Connect a runtime",
-          "subtitle": "Install Codex or Kimi to bring agents online."
+          "subtitle": "Pick a shared cloud runtime to bring agents online."
         },
         "create_agent": {
           "title": "Create your first agent",
-          "subtitle": "Once a runtime is online, build your first Multica agent."
+          "subtitle": "Once a runtime is online, build your first BayClaw agent."
         }
       }
     }
@@ -285,7 +285,7 @@
     "perk_invite": "Invite teammates — they see only this workspace",
     "perk_switch": "Switch to other workspaces anytime from the top-left",
     "next_runtime": "Connect a computer so your agents have somewhere to run",
-    "next_agent": "Create Multica Helper from your connected runtime",
+    "next_agent": "Create BayClaw Helper from your connected runtime",
     "next_starter": "Open one onboarding issue for your next step",
     "preview": {
       "inbox_label": "Inbox",
@@ -307,7 +307,7 @@
     },
     "creation_disabled_eyebrow": "Workspace creation is disabled",
     "creation_disabled_headline": "Ask your administrator for an invitation.",
-    "creation_disabled_lede": "This Multica instance does not allow new workspaces to be created. Once an administrator invites you to a workspace, accept the invitation and refresh to continue.",
+    "creation_disabled_lede": "This BayClaw instance does not allow new workspaces to be created. Once an administrator invites you to a workspace, accept the invitation and refresh to continue.",
     "creation_disabled_logout": "Log out",
     "creation_disabled_eyebrow_resume": "Your workspace",
     "creation_disabled_headline_resume": "Continue with {{name}}.",
@@ -347,7 +347,7 @@
   "step_platform": {
     "eyebrow": "Connect a computer",
     "headline": "Connect a computer to run your agent.",
-    "lede": "Your agent runs on a real computer that you connect to Multica. Pick how you want to connect one.",
+    "lede": "Your agent runs on a real computer that you connect to BayClaw. Pick how you want to connect one.",
     "hint_default": "Pick a way to connect — or skip and connect a computer later.",
     "hint_downloaded": "Finish setup on the download page, then come back to this tab.",
     "download_title": "Use this computer",
@@ -376,7 +376,14 @@
     "stage_slow_suffix": " for errors.",
     "stage_stalled_prefix": "Nothing coming through yet. If you're not comfortable with the terminal, ",
     "stage_stalled_term": "Desktop",
-    "stage_stalled_suffix": " is the smoother path — one click and this computer is connected. Close this dialog and pick Desktop, or hit Skip to continue."
+    "stage_stalled_suffix": " is the smoother path — one click and this computer is connected. Close this dialog and pick Desktop, or hit Skip to continue.",
+    "cloud_ready_eyebrow": "Cloud workforce",
+    "cloud_ready_headline": "Your cloud computer is ready.",
+    "cloud_ready_lede": "BayClaw runs agents on the platform's shared servers — nothing to install. Pick a runtime to continue.",
+    "cloud_waiting_headline": "Setting up your cloud computer…",
+    "cloud_waiting_lede": "The platform team provisions a shared server runtime for every workspace. Yours isn't online yet.",
+    "cloud_waiting_hint": "Waiting for a shared runtime to come online — this page updates automatically.",
+    "cloud_waiting_footer": "You can skip and bind a runtime later in Settings."
   },
   "errors": {
     "skip_failed": "Failed to finish onboarding"

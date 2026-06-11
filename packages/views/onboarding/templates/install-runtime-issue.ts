@@ -1,116 +1,87 @@
 /**
- * Skip path, issue 1/2: "Connect a runtime to start using agents".
+ * Skip path, issue 1/2: "Your cloud runtime, and what to do while you wait".
  *
  * Written to a new issue (assigned to the user themselves) by the welcome
- * hook when the user took the Skip exit on Step 3. Content is the
- * install-runtime tutorial; each supported locale can recommend the
- * quickest runtime path that best fits that audience.
- *
- * Title is stable — kept identical to the v2 server-side
- * `NoRuntimeIssueTitle` so any existing dedupe code elsewhere keeps
- * matching by title.
+ * hook when the user took the Skip exit on Step 3. Content explains the
+ * server-centric deployment model: agents run on shared cloud runtimes
+ * provisioned by the platform team, so the user never installs anything
+ * locally. While waiting for a runtime, the issue walks them through
+ * using BayClaw as a lightweight project-management workspace.
  */
 
 /**
  * Step 1 of the skip-path bundle. Localized so users see the title in
  * their current supported locale on the board.
  *
- * Note: server's deprecation shim (`onboarding_shim.go:noRuntimeIssueTitle`)
- * still uses the bare English string for its title-based dedupe — that
- * codepath only runs for pre-v3 desktop builds and never overlaps with
- * the v3 frontend population, so the two title-spaces drifting is fine.
+ * Note: since v3 this title is fully decoupled from the server-side
+ * deprecation shim (`onboarding_shim.go:noRuntimeIssueTitle`). That shim
+ * keeps its own bare English string for title-based dedupe and only runs
+ * for pre-v3 desktop builds, which never overlap with the v3 frontend
+ * population — so the title here can change freely without breaking
+ * any dedupe.
  */
 export const INSTALL_RUNTIME_ISSUE_TITLE = {
-  en: "Step 1 — Connect a runtime to start using agents",
-  zh: "第 1 步 —— 连接运行时,开始使用 agent",
-  ko: "1단계 — agent를 사용하려면 runtime 연결하기",
-  ja: "ステップ1 — agent を使うために runtime を接続する",
+  en: "Step 1 — Your cloud runtime, and what to do while you wait",
+  zh: "第 1 步 —— 了解云端运行时，等待开通时先用起来",
+  ko: "1단계 — 클라우드 runtime 안내, 준비되는 동안 할 수 있는 일",
+  ja: "ステップ1 — クラウド runtime の案内と、待っている間にできること",
 } as const;
 
-const en = `Welcome to Multica.
+const en = `Welcome to BayClaw.
 
-Agents need a runtime before they can execute work. You can still use Multica as a lightweight project-management workspace while you install one.
+BayClaw's agents run on shared cloud runtimes that the platform team provisions and maintains — there is nothing to download or install. While your workspace's runtime is being set up, you can already use BayClaw as a lightweight project-management workspace.
 
-## Try Multica first
+## Try BayClaw first
 
-Before the runtime is ready, you can:
+Before a runtime is available, you can:
 
 1. Create a project for your current work.
 2. Create a few issues and move them across backlog, todo, in_progress, and done.
 3. Add priorities, labels, comments, and subscriptions.
 4. Use Inbox to track assignments and mentions.
 
-That gives you the project-management layer first. Once a runtime is connected, agents can start working from the same issues.
+That gives you the project-management layer first. Once a cloud runtime is available, agents can start working from the same issues.
 
-## Install your first agent runtime
+## About your cloud runtime
 
-Full guide: https://multica.ai/docs/install-agent-runtime
+You never need to install a CLI, run a daemon, or download a desktop app — agents execute on the platform's shared cloud servers.
 
-For English users, the fastest first path is Codex:
+1. Open the Runtimes page in your workspace to see what's available.
+2. If the list is empty, no shared runtime has been enabled for your workspace yet — contact your platform administrator to get one provisioned.
+3. Once a runtime shows up as online, simply bind it when creating an agent. No further setup is needed.
 
-1. Make sure Node.js is installed.
-2. Install Codex:
-   npm i -g @openai/codex
-3. Sign in:
-   codex
-4. Confirm your terminal can find it:
-   which codex
-   codex --version
-5. Restart the Multica daemon:
-   multica daemon restart
-   If you use the desktop app, restarting the app is enough.
-6. Return to Runtimes and refresh. You should see a Codex runtime online.
-7. Create your first agent from that runtime, then assign an issue to the agent and set status to todo.
+When the runtime is online, you can create BayClaw Helper for a guided first run.`;
 
-Codex reference: https://developers.openai.com/codex/cli
+const zh = `欢迎来到 BayClaw。
 
-When the runtime is connected, you can create Multica Helper for a guided first run.`;
-
-const zh = `欢迎来到 Multica。
-
-智能体需要先连上运行时才能执行工作。运行时还没准备好时,你也可以先把 Multica 当作轻量项目管理工具体验起来。
+BayClaw 的智能体运行在平台团队统一配置和维护的共享云端服务器上——你不需要下载或安装任何软件。在工作区的运行时开通之前，你可以先把 BayClaw 当作轻量项目管理工具用起来。
 
 ## 先体验项目管理功能
 
-运行时安装前,你可以先做这些事:
+运行时开通前，你可以先做这些事：
 
 1. 为当前工作创建一个项目。
-2. 新建几个 issue,并在 backlog、todo、in_progress、done 之间流转。
+2. 新建几个 issue，并在 backlog、todo、in_progress、done 之间流转。
 3. 给 issue 加优先级、标签、评论和订阅。
 4. 用收件箱追踪分配给你的事项和 @mention。
 
-这样你先熟悉项目管理层。连上运行时后,智能体会直接在这些 issue 上开始工作。
+这样你先熟悉项目管理层。云端运行时开通后，智能体会直接在这些 issue 上开始工作。
 
-## 安装第一个 Agent 运行时
+## 关于云端运行时
 
-完整文档:https://multica.ai/docs/install-agent-runtime
+你完全不需要安装 CLI、运行守护进程或下载桌面应用——智能体都在平台的共享云端服务器上执行。
 
-中文用户建议先装 Kimi CLI:
+1. 打开工作区的 Runtimes 页面，查看当前可用的运行时。
+2. 如果列表是空的，说明工作区还没有开通共享运行时——请联系平台管理员为你开通。
+3. 运行时显示在线后，创建 agent 时直接绑定它即可，无需任何额外配置。
 
-1. 在 macOS / Linux 终端安装 Kimi CLI:
-   curl -LsSf https://code.kimi.com/install.sh | bash
-   Windows PowerShell:
-   Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression
-2. 确认终端能找到 Kimi:
-   kimi --version
-3. 在你想让 Kimi 工作的项目目录里启动一次:
-   kimi
-4. 首次启动后输入 /login,按提示完成 Kimi Code 或 API key 配置。
-5. 重启 Multica 守护进程:
-   multica daemon restart
-   如果你用桌面端,重启 app 即可。
-6. 回到 Runtimes 页面刷新。你应该能看到一个在线的 Kimi 运行时。
-7. 用这个运行时创建第一个智能体,再把一个 issue 分配给它,并把状态切到 todo。
+运行时上线后，你就可以创建 BayClaw Helper，开始一次有智能体参与的上手引导。`;
 
-Kimi CLI 官方文档:https://moonshotai.github.io/kimi-cli/zh/guides/getting-started.html
+const ko = `BayClaw에 오신 것을 환영합니다.
 
-运行时连上后,你就可以创建 Multica Helper,开始一次有智能体参与的上手引导。`;
+BayClaw의 agent는 플랫폼 팀이 미리 구성하고 운영하는 공유 클라우드 runtime에서 실행됩니다. 다운로드하거나 설치할 것은 아무것도 없습니다. 워크스페이스의 runtime이 준비되는 동안에도 BayClaw를 가벼운 프로젝트 관리 워크스페이스로 먼저 사용할 수 있습니다.
 
-const ko = `Multica에 오신 것을 환영합니다.
-
-agent가 작업을 실행하려면 먼저 runtime이 필요합니다. runtime을 설치하는 동안에도 Multica를 가벼운 프로젝트 관리 워크스페이스로 먼저 사용할 수 있습니다.
-
-## 먼저 Multica를 사용해 보기
+## 먼저 BayClaw를 사용해 보기
 
 runtime이 준비되기 전에는 다음을 해볼 수 있습니다:
 
@@ -119,37 +90,23 @@ runtime이 준비되기 전에는 다음을 해볼 수 있습니다:
 3. priority, label, comment, subscription을 추가합니다.
 4. Inbox에서 나에게 배정된 작업과 mention을 확인합니다.
 
-이렇게 프로젝트 관리 계층을 먼저 익힐 수 있습니다. runtime이 연결되면 agent가 같은 issue에서 바로 작업을 시작합니다.
+이렇게 프로젝트 관리 계층을 먼저 익힐 수 있습니다. 클라우드 runtime이 준비되면 agent가 같은 issue에서 바로 작업을 시작합니다.
 
-## 첫 agent runtime 설치하기
+## 클라우드 runtime 안내
 
-전체 가이드: https://multica.ai/docs/install-agent-runtime
+CLI 설치, daemon 실행, 데스크톱 앱 다운로드는 전혀 필요 없습니다. agent는 플랫폼의 공유 클라우드 서버에서 실행됩니다.
 
-한국어 사용자는 Codex로 시작하는 것이 가장 빠릅니다:
+1. 워크스페이스의 Runtimes 페이지를 열어 사용 가능한 runtime을 확인합니다.
+2. 목록이 비어 있다면 아직 워크스페이스에 공유 runtime이 개설되지 않은 것입니다. 플랫폼 관리자에게 개설을 요청하세요.
+3. runtime이 online으로 표시되면 agent를 만들 때 바로 연결하면 됩니다. 추가 설정은 필요 없습니다.
 
-1. Node.js가 설치되어 있는지 확인합니다.
-2. Codex를 설치합니다:
-   npm i -g @openai/codex
-3. 로그인합니다:
-   codex
-4. 터미널에서 찾을 수 있는지 확인합니다:
-   which codex
-   codex --version
-5. Multica daemon을 재시작합니다:
-   multica daemon restart
-   데스크톱 앱을 사용한다면 앱을 재시작해도 됩니다.
-6. Runtimes로 돌아가 새로고침합니다. Codex runtime이 online으로 보여야 합니다.
-7. 해당 runtime으로 첫 agent를 만든 뒤 issue를 agent에게 배정하고 status를 todo로 바꿉니다.
+runtime이 online이 되면 BayClaw Helper를 만들어 안내를 받으며 첫 실행을 시작할 수 있습니다.`;
 
-Codex 참고 문서: https://developers.openai.com/codex/cli
+const ja = `BayClaw へようこそ。
 
-runtime이 연결되면 Multica Helper를 만들어 안내를 받으며 첫 실행을 시작할 수 있습니다.`;
+BayClaw の agent は、プラットフォームチームがあらかじめ構成・運用している共有クラウド runtime 上で動作します。ダウンロードやインストールは一切不要です。ワークスペースの runtime が準備される間も、BayClaw を軽量なプロジェクト管理ワークスペースとして先に使うことができます。
 
-const ja = `Multica へようこそ。
-
-agent が作業を実行するには、まず runtime が必要です。runtime をインストールしている間も、Multica を軽量なプロジェクト管理ワークスペースとして先に使うことができます。
-
-## まず Multica を使ってみる
+## まず BayClaw を使ってみる
 
 runtime が準備できる前に、次のことを試せます:
 
@@ -158,31 +115,17 @@ runtime が準備できる前に、次のことを試せます:
 3. priority、label、comment、subscription を追加する。
 4. Inbox で自分への割り当てや mention を確認する。
 
-これでまずプロジェクト管理のレイヤーに慣れることができます。runtime を接続すると、agent が同じ issue から作業を始められます。
+これでまずプロジェクト管理のレイヤーに慣れることができます。クラウド runtime が利用可能になると、agent が同じ issue から作業を始められます。
 
-## 最初の agent runtime をインストールする
+## クラウド runtime について
 
-詳しいガイド: https://multica.ai/docs/install-agent-runtime
+CLI のインストール、daemon の起動、デスクトップアプリのダウンロードは一切必要ありません。agent はプラットフォームの共有クラウドサーバー上で実行されます。
 
-日本語ユーザーには、Codex で始めるのが最も速い経路です:
+1. ワークスペースの Runtimes ページを開き、利用可能な runtime を確認します。
+2. 一覧が空の場合、ワークスペースにはまだ共有 runtime が開設されていません。プラットフォーム管理者に開設を依頼してください。
+3. runtime が online と表示されたら、agent を作成するときにそのまま紐づけられます。追加の設定は不要です。
 
-1. Node.js がインストールされていることを確認します。
-2. Codex をインストールします:
-   npm i -g @openai/codex
-3. サインインします:
-   codex
-4. ターミナルから見つけられるか確認します:
-   which codex
-   codex --version
-5. Multica daemon を再起動します:
-   multica daemon restart
-   デスクトップアプリを使っている場合は、アプリを再起動するだけで十分です。
-6. Runtimes に戻って再読み込みします。Codex runtime が online と表示されるはずです。
-7. その runtime から最初の agent を作り、issue を agent に割り当てて status を todo にします。
-
-Codex のリファレンス: https://developers.openai.com/codex/cli
-
-runtime が接続されたら、Multica Helper を作成して、案内付きの最初の実行を始められます。`;
+runtime が online になったら、BayClaw Helper を作成して、案内付きの最初の実行を始められます。`;
 
 export const INSTALL_RUNTIME_ISSUE_BODY = { en, zh, ko, ja } as const;
 

@@ -20,8 +20,16 @@ import type { AgentRuntime } from "@multica/core/types";
  *   - Auto-selects online first, falls back to the first runtime.
  *     Only runs when the user hasn't picked anything, so a manual
  *     selection survives subsequent refetches.
+ *
+ * `scope` controls whose runtimes are listed: "me" (default) keeps the
+ * desktop behavior of only the user's own daemons; "all" lists every
+ * workspace runtime so shared (public) server-side runtimes show up —
+ * the web onboarding uses this for the server-centric deployment model.
  */
-export function useRuntimePicker(wsId: string): {
+export function useRuntimePicker(
+  wsId: string,
+  scope: "me" | "all" = "me",
+): {
   runtimes: AgentRuntime[];
   selected: AgentRuntime | null;
   selectedId: string | null;
@@ -31,7 +39,7 @@ export function useRuntimePicker(wsId: string): {
   const qc = useQueryClient();
 
   const { data: runtimes = [] } = useQuery({
-    ...runtimeListOptions(wsId, "me"),
+    ...runtimeListOptions(wsId, scope === "me" ? "me" : undefined),
     refetchInterval: (q) => (q.state.data?.length ? false : 2000),
   });
 
