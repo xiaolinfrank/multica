@@ -133,6 +133,18 @@ func isDevVerificationCode(code string) bool {
 	return subtle.ConstantTimeCompare([]byte(code), []byte(devCode)) == 1
 }
 
+// devVerificationCodeActive reports whether the fixed dev verification
+// code is in effect (non-production + a valid 6-digit
+// MULTICA_DEV_VERIFICATION_CODE). In that mode SendCode delivers no
+// email, so email-protection measures like the resend cooldown are
+// pointless friction and get skipped.
+func devVerificationCodeActive() bool {
+	if isProductionEnv() {
+		return false
+	}
+	return isSixDigitCode(strings.TrimSpace(os.Getenv(devVerificationCodeEnv)))
+}
+
 func isProductionEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
 }
@@ -312,11 +324,17 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Rate limit: max 1 code per 60 seconds per email
-	latest, err := h.Queries.GetLatestCodeByEmail(r.Context(), email)
-	if err == nil && time.Since(latest.CreatedAt.Time) < 60*time.Second {
-		writeError(w, http.StatusTooManyRequests, "please wait before requesting another code")
-		return
+	// Rate limit: max 1 code per 60 seconds per email. The cooldown exists
+	// to stop email spam, so it is skipped while the fixed dev verification
+	// code is active — that mode sends no email at all, and the cooldown
+	// would only block users from re-logging-in within a minute (logout
+	// marks the previous code used, forcing a fresh send on next login).
+	if !devVerificationCodeActive() {
+		latest, err := h.Queries.GetLatestCodeByEmail(r.Context(), email)
+		if err == nil && time.Since(latest.CreatedAt.Time) < 60*time.Second {
+			writeError(w, http.StatusTooManyRequests, "please wait before requesting another code")
+			return
+		}
 	}
 
 	code, err := generateCode()
@@ -362,22 +380,26 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbCode, err := h.Queries.GetLatestVerificationCode(r.Context(), email)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid or expired code")
-		return
-	}
-
-	isDevCode := isDevVerificationCode(code)
-	if !isDevCode && subtle.ConstantTimeCompare([]byte(code), []byte(dbCode.Code)) != 1 {
-		_ = h.Queries.IncrementVerificationCodeAttempts(r.Context(), dbCode.ID)
-		writeError(w, http.StatusBadRequest, "invalid or expired code")
-		return
-	}
-
-	if err := h.Queries.MarkVerificationCodeUsed(r.Context(), dbCode.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to verify code")
-		return
+	// The fixed dev verification code authenticates without a stored code
+	// row. Tying it to the row's lifecycle (unused, 10-minute TTL, attempt
+	// cap) produced spurious "invalid or expired code" failures on re-login
+	// — e.g. after the previous login consumed the row, or after sitting on
+	// the code step past the TTL. Production never reaches this branch.
+	if !isDevVerificationCode(code) {
+		dbCode, err := h.Queries.GetLatestVerificationCode(r.Context(), email)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid or expired code")
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(code), []byte(dbCode.Code)) != 1 {
+			_ = h.Queries.IncrementVerificationCodeAttempts(r.Context(), dbCode.ID)
+			writeError(w, http.StatusBadRequest, "invalid or expired code")
+			return
+		}
+		if err := h.Queries.MarkVerificationCodeUsed(r.Context(), dbCode.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to verify code")
+			return
+		}
 	}
 
 	user, isNew, err := h.findOrCreateUser(r.Context(), email)
