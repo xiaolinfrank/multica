@@ -301,7 +301,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
           "Comment boxes now show which agents or squads will start work before you send, with controls to avoid accidental runs",
           "Run transcripts now include timestamps, making agent progress and handoffs easier to review",
           "Autopilot detail pages now show who created each autopilot",
-          "Claude Fable 5 is now available in Multica's supported model and pricing list",
+          "Claude Fable 5 is now available in BayClaw's supported model and pricing list",
           "Issue conversations can now resolve a specific reply, making long threads easier to close while keeping the final answer visible",
           "Lark and Feishu conversations now show a typing reaction while BayClaw is preparing a reply, then clear it before the answer is sent",
           "Agent runs now know who started each task, making handoffs, audit trails, and privacy-aware behavior more accurate",
@@ -309,7 +309,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
         ],
         improvements: [
           "Comment trigger indicators are quieter, clearer, and less likely to crowd long agent names",
-          "Desktop now disables daemon start and stop controls when the daemon is managed outside Multica, such as in WSL2",
+          "Desktop now disables daemon start and stop controls when the daemon is managed outside BayClaw, such as in WSL2",
           "The active agent indicator in an Issue header is easier to read, with motion only while work is running and clearer queued wording otherwise",
           "The CLI now gives clearer guidance around common errors, sign-in problems, and project setup values",
         ],

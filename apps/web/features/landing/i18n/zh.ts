@@ -301,7 +301,7 @@ export function createZhDict(allowSignup: boolean): LandingDict {
           "评论输入框现在会在发送前显示哪些智能体或小队会开始工作，也可以避免误触发运行",
           "智能体运行记录现在会显示时间点，回看进度和交接信息更清楚",
           "自动任务详情页现在会显示创建人",
-          "Claude Fable 5 现在已加入 Multica 支持的模型和价格列表",
+          "Claude Fable 5 现在已加入 BayClaw 支持的模型和价格列表",
           "Issue 讨论可以把某一条回复设为解决结论，长讨论收起后也能直接看到最终答案",
           "在 Lark 和飞书里和 BayClaw 对话时，会显示等待中的输入状态，回复发出后自动清除",
           "每次智能体任务都会带上真实发起人信息，交接、审计和权限判断更准确",
@@ -309,7 +309,7 @@ export function createZhDict(allowSignup: boolean): LandingDict {
         ],
         improvements: [
           "评论触发提示更安静、更清楚，遇到较长的智能体名称时也不容易拥挤",
-          "桌面端在守护进程由 Multica 之外的环境管理时，会禁用启动和停止控制，例如 WSL2 场景",
+          "桌面端在守护进程由 BayClaw 之外的环境管理时，会禁用启动和停止控制，例如 WSL2 场景",
           "Issue 顶部的智能体状态更容易区分：运行中才显示动效，等待中会明确显示排队状态",
           "命令行会直接说明常见错误、登录问题和项目配置问题的处理方式",
         ],
