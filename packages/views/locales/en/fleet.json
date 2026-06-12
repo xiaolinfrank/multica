@@ -1,0 +1,33 @@
+{
+  "title": "Fleet",
+  "subtitle": "Live system status across the BayClaw compute pool — coordinator and worker nodes.",
+  "live": "Live",
+  "coordinator": "Coordinator",
+  "empty": "No devices configured.",
+  "summary": {
+    "devices": "Devices",
+    "online": "Online",
+    "avg_cpu": "Avg CPU",
+    "avg_mem": "Avg Memory",
+    "containers": "Containers"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "metric": {
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "load": "Load",
+    "uptime": "Uptime",
+    "cores": "Cores"
+  },
+  "docker": {
+    "label": "Docker",
+    "running": "Running",
+    "stopped": "Stopped",
+    "absent": "Not installed",
+    "unknown": "Unknown"
+  }
+}

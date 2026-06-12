@@ -1,0 +1,33 @@
+{
+  "title": "플릿",
+  "subtitle": "BayClaw 컴퓨트 풀의 실시간 시스템 상태 —— 코디네이터 및 워커 노드.",
+  "live": "실시간",
+  "coordinator": "코디네이터",
+  "empty": "구성된 장치가 없습니다.",
+  "summary": {
+    "devices": "장치",
+    "online": "온라인",
+    "avg_cpu": "평균 CPU",
+    "avg_mem": "평균 메모리",
+    "containers": "컨테이너"
+  },
+  "status": {
+    "online": "온라인",
+    "offline": "오프라인"
+  },
+  "metric": {
+    "cpu": "CPU",
+    "memory": "메모리",
+    "disk": "디스크",
+    "load": "부하",
+    "uptime": "가동 시간",
+    "cores": "코어"
+  },
+  "docker": {
+    "label": "Docker",
+    "running": "실행 중",
+    "stopped": "중지됨",
+    "absent": "미설치",
+    "unknown": "알 수 없음"
+  }
+}

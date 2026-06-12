@@ -1,0 +1,33 @@
+{
+  "title": "算力池",
+  "subtitle": "BayClaw 算力池实时系统状态 —— 协调节点与工作节点。",
+  "live": "实时",
+  "coordinator": "协调节点",
+  "empty": "尚未配置设备。",
+  "summary": {
+    "devices": "设备数",
+    "online": "在线",
+    "avg_cpu": "平均 CPU",
+    "avg_mem": "平均内存",
+    "containers": "容器数"
+  },
+  "status": {
+    "online": "在线",
+    "offline": "离线"
+  },
+  "metric": {
+    "cpu": "CPU",
+    "memory": "内存",
+    "disk": "磁盘",
+    "load": "负载",
+    "uptime": "运行时长",
+    "cores": "核心数"
+  },
+  "docker": {
+    "label": "Docker",
+    "running": "运行中",
+    "stopped": "已停止",
+    "absent": "未安装",
+    "unknown": "未知"
+  }
+}

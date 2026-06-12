@@ -1,0 +1,33 @@
+{
+  "title": "フリート",
+  "subtitle": "BayClaw コンピュートプールのシステム状態をリアルタイム表示 —— コーディネーターとワーカーノード。",
+  "live": "リアルタイム",
+  "coordinator": "コーディネーター",
+  "empty": "デバイスが設定されていません。",
+  "summary": {
+    "devices": "デバイス",
+    "online": "オンライン",
+    "avg_cpu": "平均 CPU",
+    "avg_mem": "平均メモリ",
+    "containers": "コンテナ"
+  },
+  "status": {
+    "online": "オンライン",
+    "offline": "オフライン"
+  },
+  "metric": {
+    "cpu": "CPU",
+    "memory": "メモリ",
+    "disk": "ディスク",
+    "load": "負荷",
+    "uptime": "稼働時間",
+    "cores": "コア"
+  },
+  "docker": {
+    "label": "Docker",
+    "running": "実行中",
+    "stopped": "停止",
+    "absent": "未インストール",
+    "unknown": "不明"
+  }
+}
