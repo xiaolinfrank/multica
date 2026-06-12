@@ -21,6 +21,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/cloudruntime"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/fleet"
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/integrations/lark"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
@@ -156,6 +157,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		SharedRunnerEmails:       splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
 	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, store, cfSigner, analyticsClient, signupConfig, daemonHub)
+	h.Fleet = fleet.New(fleet.LoadDevices())
 	h.Metrics = opts.BusinessMetrics
 	h.TaskService.Metrics = opts.BusinessMetrics
 	h.IssueService.Metrics = opts.BusinessMetrics
@@ -689,6 +691,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
+
+			// Compute pool (fleet) live status — global infra data, any member may view
+			r.Get("/api/fleet/status", h.GetFleetStatus)
 
 			// Issues
 			r.Route("/api/issues", func(r chi.Router) {

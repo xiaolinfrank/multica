@@ -20,6 +20,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/cloudruntime"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/fleet"
 	"github.com/multica-ai/multica/server/internal/integrations/lark"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
@@ -162,7 +163,11 @@ type Handler struct {
 	// process exit indefinitely if the pool is frozen — at worst the
 	// next replica waits the full TTL.
 	LarkHub *lark.Hub
-	cfg     Config
+	// Fleet collects live system status for the compute pool dashboard
+	// (GET /api/fleet/status). Wired in cmd/server/router.go after
+	// handler.New from the device inventory; nil-safe in the handler.
+	Fleet *fleet.Collector
+	cfg   Config
 }
 
 func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *events.Bus, emailService *service.EmailService, store storage.Storage, cfSigner *auth.CloudFrontSigner, analyticsClient analytics.Client, cfg Config, daemonHubs ...*daemonws.Hub) *Handler {
