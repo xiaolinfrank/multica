@@ -472,6 +472,49 @@ describe("ReadonlyContent file-card → AttachmentBlock HTML routing", () => {
   });
 });
 
+describe("ReadonlyContent attachment-download link routing", () => {
+  // Regression pin: a plain markdown link to an attachment download URL —
+  // `[file.csv](/api/attachments/<id>/download)` — must render through the
+  // <Attachment> card (which downloads via the authenticated dispatcher),
+  // NOT the regular-link branch. The regular-link branch routes any
+  // "/"-prefixed href through openLink → in-app navigation, so the click
+  // would silently do nothing. This is how an agent surfaces a produced CSV
+  // into a comment; reverting the routing breaks every such download.
+  function renderWithQuery(ui: ReactElement) {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  }
+
+  it("renders a markdown link to /api/attachments/<id>/download as a download card", () => {
+    // Real attachment ids are UUIDs — attachmentIdFromDownloadURL validates
+    // the shape, so the fixture must use one or routing won't trigger.
+    const attId = "019eb78d-fb7c-7c5c-98e5-c3a2a8e48da4";
+    const attachment = {
+      id: attId,
+      url: "/uploads/deseq2_results.csv",
+      filename: "deseq2_results.csv",
+      content_type: "text/csv",
+      size_bytes: 1234,
+    } as any;
+    const { container, getByText } = renderWithQuery(
+      <ReadonlyContent
+        content={`[deseq2_results.csv](/api/attachments/${attId}/download)`}
+        attachments={[attachment]}
+      />,
+    );
+    // The AttachmentCard surfaces the filename as visible text — proof we
+    // routed to the card, not a bare <a> (whose text would be the link label
+    // but with no card chrome).
+    expect(getByText("deseq2_results.csv")).toBeInTheDocument();
+    // And crucially NOT a plain navigational anchor pointing at the API path.
+    expect(
+      container.querySelector(`a[href="/api/attachments/${attId}/download"]`),
+    ).toBeNull();
+  });
+});
+
 describe("ReadonlyContent slash command rendering", () => {
   it("renders slash skill links as slash command pills", () => {
     const { container } = render(

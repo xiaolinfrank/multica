@@ -32,6 +32,7 @@ import { toHtml } from "hast-util-to-html";
 import { cn } from "@multica/ui/lib/utils";
 import { useWorkspacePaths, useWorkspaceSlug } from "@multica/core/paths";
 import type { Attachment } from "@multica/core/types";
+import { attachmentIdFromDownloadURL } from "@multica/core/types";
 import { useNavigation } from "../navigation";
 import { IssueMentionCard } from "../issues/components/issue-mention-card";
 import { ProjectChip } from "../projects/components/project-chip";
@@ -194,6 +195,27 @@ function ReadonlyLink({
     }
     // Member / agent / all mentions
     return <span className="mention">{children}</span>;
+  }
+
+  // Attachment download links — `[file.csv](/api/attachments/<id>/download)`.
+  // A plain markdown link here would hit the regular-link branch below and
+  // get dispatched as in-app navigation (openLink treats any "/"-prefixed
+  // href as a route), so clicking does nothing. Route it through the
+  // <Attachment> renderer instead, which resolves the id via the surrounding
+  // AttachmentDownloadProvider and renders a real download/preview card.
+  // This is how agents surface produced files (CSVs, reports) into a comment.
+  if (href && attachmentIdFromDownloadURL(href)) {
+    const filename =
+      typeof children === "string"
+        ? children
+        : Array.isArray(children)
+          ? children.join("")
+          : "";
+    return (
+      <AttachmentRenderer
+        attachment={{ kind: "url", url: href, filename }}
+      />
+    );
   }
 
   // Regular links — open directly on click
