@@ -1,4 +1,5 @@
 import type {
+  FleetStatus,
   Issue,
   CreateIssueRequest,
   UpdateIssueRequest,
@@ -190,6 +191,8 @@ import {
   EMPTY_CREATE_BILLING_CHECKOUT_SESSION_RESPONSE,
   EMPTY_BILLING_CHECKOUT_SESSION_STATUS,
   EMPTY_CREATE_BILLING_PORTAL_SESSION_RESPONSE,
+  FleetStatusSchema,
+  EMPTY_FLEET_STATUS,
 } from "./schemas";
 
 /** Identifies the calling client to the server.
@@ -415,6 +418,14 @@ export class ApiClient {
     const raw = await this.fetch<unknown>("/api/me");
     return parseWithFallback(raw, UserSchema, EMPTY_USER, {
       endpoint: "GET /api/me",
+    });
+  }
+
+  // Compute pool (fleet) live status — coordinator host + LAN Mac workers.
+  async getFleetStatus(): Promise<FleetStatus> {
+    const raw = await this.fetch<unknown>("/api/fleet/status");
+    return parseWithFallback(raw, FleetStatusSchema, EMPTY_FLEET_STATUS, {
+      endpoint: "GET /api/fleet/status",
     });
   }
 

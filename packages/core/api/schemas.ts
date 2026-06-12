@@ -13,6 +13,7 @@ import type {
   CreateAgentFromTemplateResponse,
   CreateBillingCheckoutSessionResponse,
   CreateBillingPortalSessionResponse,
+  FleetStatus,
   GroupedIssuesResponse,
   ListIssuesResponse,
   ListWebhookDeliveriesResponse,
@@ -897,4 +898,40 @@ export const CreateBillingPortalSessionResponseSchema = z.object({
 
 export const EMPTY_CREATE_BILLING_PORTAL_SESSION_RESPONSE: CreateBillingPortalSessionResponse = {
   url: "",
+};
+
+// ---------------------------------------------------------------------------
+// Compute pool (fleet) status — GET /api/fleet/status. Every field is optional
+// with a default so an unreachable node, a partial probe, or a backend field
+// rename degrades to a rendered card instead of a white screen.
+// ---------------------------------------------------------------------------
+
+const FleetDeviceSchema = z.object({
+  id: z.string(),
+  name: z.string().default(""),
+  host: z.string().default(""),
+  labels: z.array(z.string()).default([]),
+  local: z.boolean().default(false),
+  online: z.boolean().default(false),
+  hostname: z.string().default(""),
+  os: z.string().default(""),
+  cpu_percent: z.number().default(0),
+  mem_used_percent: z.number().default(0),
+  disk_used_percent: z.number().default(0),
+  load1: z.number().default(0),
+  ncpu: z.number().default(0),
+  uptime_seconds: z.number().default(0),
+  docker: z.string().default("unknown"),
+  containers: z.number().default(0),
+  error: z.string().optional(),
+}).loose();
+
+export const FleetStatusSchema = z.object({
+  devices: z.array(FleetDeviceSchema).default([]),
+  collected_at: z.string().default(""),
+}).loose();
+
+export const EMPTY_FLEET_STATUS: FleetStatus = {
+  devices: [],
+  collected_at: "",
 };
