@@ -1,0 +1,29 @@
+# BayClaw bioinformatics sandbox — Python scientific stack.
+# Covers single-cell (scanpy/anndata), bulk DE (pydeseq2), survival
+# (lifelines), general stats/ML and plotting, plus light NGS CLIs for QC and
+# format wrangling. Kept to conda-forge/bioconda wheels that resolve on arm64.
+name: base
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.11
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - statsmodels
+  - matplotlib
+  - seaborn
+  - lifelines
+  - scanpy
+  - anndata
+  - leidenalg
+  - python-igraph
+  - pydeseq2
+  - openpyxl
+  - samtools
+  - bcftools
+  - seqkit
+  - fastqc
+  - multiqc
