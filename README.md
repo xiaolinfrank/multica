@@ -175,6 +175,17 @@ See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference
 | Database | PostgreSQL 17 with pgvector |
 | Agent Runtime | Local daemon executing Claude Code, Codex, GitHub Copilot CLI, OpenClaw, OpenCode, Hermes, Gemini, Pi, Cursor Agent, Kimi, or Kiro CLI |
 
+## Compute Pool (Fleet)
+
+The BayClaw 大湾区 deployment runs a compute pool: the coordinator host plus LAN
+Mac workers (`fosun_agent_1..6`). Live system status (CPU / memory / disk / load /
+Docker / uptime) is shown in-app under the **算力池 / Fleet** sidebar entry, backed
+by `GET /api/fleet/status`, which SSH-probes each node from the server host.
+
+Inventory, the idempotent provisioning script (Homebrew + Colima + Docker), the
+health-check script, and the operator skill live in
+[`deploy/fleet/`](deploy/fleet/README.md).
+
 ## Development
 
 For contributors working on the Multica codebase, see the [Contributing Guide](CONTRIBUTING.md).

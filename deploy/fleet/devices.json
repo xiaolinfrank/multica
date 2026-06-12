@@ -1,0 +1,9 @@
+[
+  { "id": "local", "name": "本机 · Coordinator", "host": "localhost", "local": true, "labels": ["coordinator"] },
+  { "id": "fosun_agent_1", "name": "fosun_agent_1", "host": "10.35.182.4",  "user": "fosun_agent_1", "port": 22, "labels": ["worker"] },
+  { "id": "fosun_agent_2", "name": "fosun_agent_2", "host": "10.35.182.31", "user": "fosun_agent_2", "port": 22, "labels": ["worker"] },
+  { "id": "fosun_agent_3", "name": "fosun_agent_3", "host": "10.35.182.39", "user": "fosun_agent_3", "port": 22, "labels": ["worker"] },
+  { "id": "fosun_agent_4", "name": "fosun_agent_4", "host": "10.35.182.34", "user": "fosun_agent_4", "port": 22, "labels": ["worker"] },
+  { "id": "fosun_agent_5", "name": "fosun_agent_5", "host": "10.35.182.25", "user": "fosun_agent_5", "port": 22, "labels": ["worker"] },
+  { "id": "fosun_agent_6", "name": "fosun_agent_6", "host": "10.35.182.29", "user": "fosun_agent_6", "port": 22, "labels": ["worker"] }
+]
