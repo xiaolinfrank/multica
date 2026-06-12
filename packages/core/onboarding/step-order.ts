@@ -18,9 +18,14 @@ import type { OnboardingStep } from "./types";
  * part of the in-flow sequence. Helper agent creation now happens after
  * onboarding exits, via the workspace OnboardingHelperModal — see
  * `packages/views/workspace/onboarding-helper-modal.tsx`.
+ *
+ * Note: "source" ("How did you hear about us?") is disabled for this
+ * deployment — an internal platform has no acquisition channels worth
+ * surveying. The step component stays in the tree; re-enabling is just
+ * re-adding "source" here (and remounting SourceBackfillModal in
+ * `packages/views/layout/dashboard-layout.tsx`).
  */
 export const ONBOARDING_STEP_ORDER: readonly OnboardingStep[] = [
-  "source",
   "role",
   "use_case",
   "workspace",
