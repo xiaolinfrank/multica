@@ -398,6 +398,7 @@ type AttachmentResponse struct {
 	ID          string `json:"id"`
 	URL         string `json:"url"`
 	DownloadURL string `json:"download_url"`
+	MarkdownURL string `json:"markdown_url"`
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
 	SizeBytes   int64  `json:"size_bytes"`
@@ -456,6 +457,65 @@ func (c *APIClient) UploadFile(ctx context.Context, fileData []byte, filename st
 		return "", fmt.Errorf("upload response missing attachment id")
 	}
 	return id, nil
+}
+
+// UploadFileToIssue uploads a file via multipart form to /api/upload-file and
+// associates it with the given issue (UUID), returning the full attachment
+// response (id, url, markdown_url). Used by `multica attachment upload` so an
+// agent can attach a produced artifact to its issue and embed the markdown URL
+// inline in its comment. A longer context deadline is honoured for big plots.
+func (c *APIClient) UploadFileToIssue(ctx context.Context, fileData []byte, filename, issueID string) (*AttachmentResponse, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	part, err := writer.CreateFormFile("file", filepath.Base(filename))
+	if err != nil {
+		return nil, fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := part.Write(fileData); err != nil {
+		return nil, fmt.Errorf("write file data: %w", err)
+	}
+	if issueID != "" {
+		if err := writer.WriteField("issue_id", issueID); err != nil {
+			return nil, fmt.Errorf("write issue_id field: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/upload-file", &body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.setHeaders(req)
+
+	httpClient := c.HTTPClient
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > httpClient.Timeout {
+			clientCopy := *httpClient
+			clientCopy.Timeout = remaining
+			httpClient = &clientCopy
+		}
+	}
+
+	resp, err := httpClient.Do(req)
+	err = wrapTransport(req, err)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, newHTTPError(http.MethodPost, "/api/upload-file", resp)
+	}
+
+	var result AttachmentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode upload response: %w", err)
+	}
+	return &result, nil
 }
 
 // UploadFileWithURL uploads a file via multipart form to /api/upload-file
