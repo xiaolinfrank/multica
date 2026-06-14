@@ -273,7 +273,7 @@ export function createKoDict(allowSignup: boolean): LandingDict {
           title: "CodeBuddy Runtime",
           changes: [],
           features: [
-            "CodeBuddy로 로컬 Multica 에이전트를 실행할 수 있으며, 사용할 수 있는 모델과 실행 강도 선택지가 자동으로 표시됩니다.",
+            "CodeBuddy로 로컬 BayClaw 에이전트를 실행할 수 있으며, 사용할 수 있는 모델과 실행 강도 선택지가 자동으로 표시됩니다.",
             "빠르게 만든 Issue에서도 초안에서 올린 파일이 최종 Issue까지 함께 유지됩니다.",
           ],
           improvements: [

@@ -298,7 +298,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
         title: "CodeBuddy Runtime",
         changes: [],
         features: [
-          "CodeBuddy can now run local Multica agents, with its available model and effort choices shown automatically",
+          "CodeBuddy can now run local BayClaw agents, with its available model and effort choices shown automatically",
           "Quick-created Issues now keep uploaded files attached from the first draft through the final Issue",
         ],
         improvements: [

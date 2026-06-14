@@ -274,7 +274,7 @@ export function createJaDict(allowSignup: boolean): LandingDict {
           title: "CodeBuddy Runtime",
           changes: [],
           features: [
-            "CodeBuddy でローカルの Multica エージェントを動かせるようになり、利用できるモデルと実行の強さが自動で表示されます。",
+            "CodeBuddy でローカルの BayClaw エージェントを動かせるようになり、利用できるモデルと実行の強さが自動で表示されます。",
             "クイック作成した Issue では、下書きでアップロードしたファイルが最終的な Issue まで保持されます。",
           ],
           improvements: [

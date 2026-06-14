@@ -298,7 +298,7 @@ export function createZhDict(allowSignup: boolean): LandingDict {
         title: "CodeBuddy Runtime",
         changes: [],
         features: [
-          "CodeBuddy 现在可以驱动本地 Multica 智能体，并会自动显示可用的模型和投入强度选项",
+          "CodeBuddy 现在可以驱动本地 BayClaw 智能体，并会自动显示可用的模型和投入强度选项",
           "快速创建 Issue 时上传的文件现在会从草稿一直带到最终创建的 Issue 里",
         ],
         improvements: [
