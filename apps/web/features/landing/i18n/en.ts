@@ -293,6 +293,45 @@ export function createEnDict(allowSignup: boolean): LandingDict {
     },
     entries: [
       {
+        version: "0.3.21",
+        date: "2026-06-12",
+        title: "CodeBuddy Runtime",
+        changes: [],
+        features: [
+          "CodeBuddy can now run local Multica agents, with its available model and effort choices shown automatically",
+          "Quick-created Issues now keep uploaded files attached from the first draft through the final Issue",
+        ],
+        improvements: [
+          "Skill import conflicts are clearer: locked skills show a person's name instead of an internal ID, and a single overwrite now completes in one click",
+          "Desktop recovery prompts now explain what happened first and give clearer details to include when reporting a stuck window",
+          "Views that sort or filter people by signup time can now load faster",
+        ],
+        fixes: [
+          "Chat now keeps messages and drafts in sync when sending, stopping, or recovering from a failed send",
+          "Lark account binding now works reliably for users who are already signed in, and sign-in returns to the binding page",
+          "Local agent runs no longer announce that work has started before the task folder is ready",
+        ],
+      },
+      {
+        version: "0.3.20",
+        date: "2026-06-11",
+        title: "Skill Imports, Cleaner Run History, and Resilient Agents",
+        changes: [],
+        features: [
+          "Skill imports now let you choose what happens when a skill already exists: stop, replace it, save a renamed copy, or skip it",
+          "Import results now clearly show which skills were added, updated, skipped, blocked by a conflict, or could not be imported",
+        ],
+        improvements: [
+          "Execution logs now show the newest past runs first on web and mobile, so recent progress is easier to scan",
+          "Changelog content was cleaned up so the latest release notes stay grouped under the right release",
+        ],
+        fixes: [
+          "Issue thread replies now stay in the order they arrived, even when a slower agent reply lands later",
+          "Agents can recover when a saved session disappears, starting fresh instead of failing again on every mention",
+          "Reviving an Issue from a new workspace folder now starts a fresh session instead of retrying one that only existed in the old folder",
+        ],
+      },
+      {
         version: "0.3.19",
         date: "2026-06-10",
         title: "Safer Comment Triggers, Reliable Agents, and Attachments",
