@@ -26,6 +26,30 @@ export interface FleetDevice {
   uptime_seconds: number;
   docker: FleetDockerState;
   containers: number;
+  /** Apple Silicon chip, e.g. "Apple M4". */
+  chip: string;
+  /** GPU active-residency percentage (0 when idle or unavailable). */
+  gpu_percent: number;
+  /** SoC total power draw (CPU+GPU+ANE) in watts. */
+  system_power_w: number;
+  /** Thermal pressure: "Nominal" | "Fair" | "Serious" | "Critical" | "". */
+  thermal_pressure: string;
+  /** en0 receive throughput, bytes/sec. */
+  net_rx_bytes_sec: number;
+  /** en0 transmit throughput, bytes/sec. */
+  net_tx_bytes_sec: number;
+  /** Whether this device's agent daemon/runtime is online for the current
+   *  workspace. Distinct from `online` (SSH reachability) — a box can be
+   *  reachable while its daemon is down. */
+  runtime_online: boolean;
+  /** Agent providers the device's daemon serves (e.g. ["hermes"]). */
+  providers: string[];
+  /** Tasks the device is actively running right now. */
+  running_tasks: number;
+  /** Tasks queued for this device's runtime, waiting to be claimed. */
+  queued_tasks: number;
+  /** multica daemon/CLI version reported by the runtime. */
+  daemon_version: string;
   error?: string;
 }
 

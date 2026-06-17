@@ -985,6 +985,17 @@ const FleetDeviceSchema = z.object({
   uptime_seconds: z.number().default(0),
   docker: z.string().default("unknown"),
   containers: z.number().default(0),
+  chip: z.string().default(""),
+  gpu_percent: z.number().default(0),
+  system_power_w: z.number().default(0),
+  thermal_pressure: z.string().default(""),
+  net_rx_bytes_sec: z.number().default(0),
+  net_tx_bytes_sec: z.number().default(0),
+  runtime_online: z.boolean().default(false),
+  providers: z.array(z.string()).default([]),
+  running_tasks: z.number().default(0),
+  queued_tasks: z.number().default(0),
+  daemon_version: z.string().default(""),
   error: z.string().optional(),
 }).loose();
 
