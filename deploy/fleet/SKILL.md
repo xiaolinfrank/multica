@@ -2,7 +2,7 @@
 name: bayclaw-fleet-management
 description: "Use when operating the BayClaw 大湾区 compute pool — the coordinator host plus the fosun_agent_1..6 LAN Macs. Covers inventory, live status (dashboard + /api/fleet/status + health-check.sh), provisioning a clean Docker/Colima baseline (pilot one node first), dispatching containerized jobs via docker create/cp/start, and adding/removing nodes."
 user-invocable: false
-allowed-tools: Bash(ssh *), Bash(scp *), Bash(docker *), Bash(./provision.sh *), Bash(./health-check.sh *)
+allowed-tools: Bash(ssh *), Bash(scp *), Bash(docker *), Bash(./provision.sh *), Bash(./health-check.sh *), Bash(./enroll-daemon.sh *), Bash(launchctl *)
 ---
 
 # BayClaw Fleet Management
@@ -41,6 +41,47 @@ curl -s "$API/api/fleet/status" -H "Authorization: Bearer $JWT" -H "X-Workspace-
 The Fleet page (left sidebar → 算力池 / Fleet) renders this live, 5s refresh.
 A node that fails its probe stays visible as **offline** with the SSH error —
 do not assume "missing card = healthy".
+
+## Enroll a node as an agent worker (daemon + Hermes/Kimi)
+
+This is what makes a node actually *do work*: it runs a `multica daemon` that
+registers an **agent runtime** and executes tasks with the **Hermes** agent
+backed by the Fosun OpenAI gateway (model `Kimi-K2.6`). Idempotent:
+
+```bash
+deploy/fleet/enroll-daemon.sh fosun_agent_2     # one node
+deploy/fleet/enroll-daemon.sh all               # every worker
+deploy/fleet/enroll-daemon.sh restart fosun_agent_2
+```
+
+Per node it ships the `multica` binary, rsyncs the Hermes repo to
+`~/var/hermes-agent`, installs uv + `uv sync --extra acp` (via `FLEET_PROXY`),
+writes `~/.hermes/config.yaml` (named custom provider `fosun` → gateway, key from
+`$OPENAI_API_KEY`) and `~/.multica/config.json` (server_url → coordinator
+`10.35.182.19:18080`, token copied from the `bayclaw-bio` runner profile), then
+installs a **system LaunchDaemon running as root**.
+
+- **Why root LaunchDaemon, not a user LaunchAgent**: macOS Local Network privacy
+  blocks a user-agent daemon from reaching the LAN → `no route to host`. A root
+  system daemon is exempt. Needs NOPASSWD sudo (already set on the nodes).
+- The gateway **bearer token never lands on the node** — it lives only in the
+  multica agent's `custom_env` (`OPENAI_API_KEY`) and is injected per task.
+- Each node's daemon registers with `--device-name=fosun_agent_N`, which the
+  Fleet control plane uses to correlate the runtime back to the device card.
+
+After enrolling, bind an agent: create one Hermes agent per node bound to that
+node's `hermes` runtime (`multica agent create --runtime-id <id> --custom-env-stdin`
+with `{"OPENAI_API_KEY":"…"}`, no `--model` → uses config.yaml default).
+
+The Fleet page now overlays per-device **runtime status** (`runtime_online`,
+distinct from SSH `online`), the agent **providers**, and live
+**running/queued** task counts.
+
+> **Pool limitation (current):** each agent is pinned to exactly one runtime —
+> tasks for it run only on that node. There is no automatic cross-node load
+> balancing yet; spread work by assigning to different per-node agents (or a
+> squad). True pool binding (dynamic claim across idle nodes) is a planned
+> backend change.
 
 ## Provision a clean, uniform baseline
 
@@ -111,6 +152,13 @@ ssh $NODE 'docker rm -f job1'                 # always clean up
   that file (default path / `FLEET_DEVICES_FILE`). Otherwise it uses the built-in
   list in `config.go` — keep both in sync.
 - **"Offline = removed."** Offline nodes still render (greyed, with the error).
+- **"SSH offline means the node can't run agents."** No — `runtime_online` is
+  separate from SSH `online`. A node whose metrics probe fails can still have a
+  healthy daemon executing tasks (e.g. fosun_agent_1's flaky SSH).
+- **"Enrolling daemons load-balances a busy agent across the pool."** Not yet —
+  an agent is pinned to one runtime. See the pool-limitation note above.
+- **"A user LaunchAgent will keep the daemon alive."** It starts but can't reach
+  the LAN (Local Network privacy) — use the root system LaunchDaemon.
 
 ## References
 
