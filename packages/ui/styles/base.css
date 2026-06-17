@@ -212,6 +212,257 @@
   }
 }
 
+/* =============================================================================
+ * Fleet / compute-cluster control plane — HUD flourishes
+ * All effects are token-driven (color-mix on semantic vars) so they theme
+ * correctly in light + dark and degrade gracefully under reduced motion.
+ * ========================================================================== */
+
+/* Animated technical grid backdrop for the cluster header. A faint blueprint
+ * grid drifts slowly to give the "live console" a sense of motion without
+ * pulling focus. Built from two repeating linear-gradients tinted with the
+ * foreground token at very low alpha so it reads on both themes. */
+@keyframes fleet-grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 40px 40px, 40px 40px; }
+}
+
+.fleet-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 40px 40px, 40px 40px;
+  animation: fleet-grid-drift 12s linear infinite;
+}
+
+/* Cluster heartbeat: a thin brand-tinted scan line sweeps horizontally across
+ * the summary header, conveying "telemetry streaming" energy. */
+@keyframes fleet-scanline {
+  0% { transform: translateX(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.fleet-scanline {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--brand) 60%, transparent),
+    transparent
+  );
+  animation: fleet-scanline 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Active-node glow: a soft breathing halo around nodes that are running tasks,
+ * so a busy cluster visibly "pulses" while idle nodes stay calm. */
+@keyframes fleet-node-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--success) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 16px -2px color-mix(in oklab, var(--success) 35%, transparent);
+  }
+}
+
+.fleet-node-active {
+  animation: fleet-node-glow 2.8s ease-in-out infinite;
+}
+
+/* Linear meter fill: the gradient track used for cluster-vitals and per-node
+ * usage bars. A thin moving highlight glides across the filled portion so an
+ * active meter feels "live" without a separate spinner. Token-driven; the
+ * caller sets the hue via `color` (currentColor) on the host. */
+@keyframes fleet-meter-flow {
+  0% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+
+.fleet-meter-fill {
+  position: relative;
+  overflow: hidden;
+  background: currentColor;
+}
+
+.fleet-meter-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--background) 55%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  animation: fleet-meter-flow 2.6s linear infinite;
+}
+
+/* Thermal segment: the active band in the segmented thermal meter breathes so
+ * a "Serious"/"Critical" reading draws the eye. Alpha-only pulse on the host's
+ * currentColor — no color swap, so it stays token-correct. */
+@keyframes fleet-thermal-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.fleet-thermal-pulse {
+  animation: fleet-thermal-pulse 1.8s ease-in-out infinite;
+}
+
+/* Heat-strip cell: each node's activity cell fades up on mount so the strip
+ * "loads in" across the cluster. One-shot, cheap. */
+@keyframes fleet-cell-in {
+  from { opacity: 0; transform: scaleY(0.4); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+
+.fleet-cell-in {
+  transform-origin: bottom;
+  animation: fleet-cell-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Per-metric identity colour utilities. Each sets `color` to the metric's
+ * dedicated token, so every existing currentColor-driven widget (gauge arc via
+ * stroke="currentColor", meter fill via `background: currentColor`, heat-strip
+ * cell via `bg-current`, sparkline via stroke/fill currentColor) inherits the
+ * right hue with no per-component colour literals. Identity ≠ health: status
+ * tones (success/warning/destructive) are applied separately where a reading
+ * crosses a threshold. */
+.fleet-metric-cpu { color: var(--fleet-cpu); }
+.fleet-metric-gpu { color: var(--fleet-gpu); }
+.fleet-metric-mem { color: var(--fleet-mem); }
+.fleet-metric-disk { color: var(--fleet-disk); }
+.fleet-metric-net { color: var(--fleet-net); }
+
+/* Sparkline: a hand-rolled SVG area+line trend chart for the live rolling
+ * history. The host element carries the metric identity colour (currentColor);
+ * the area fill fades that hue to transparent and the stroke uses it solid.
+ * The faint sweep keeps a live series feeling "streaming" without per-frame JS.
+ * `.fleet-spark-area` is referenced by the component's <path fill>. */
+@keyframes fleet-spark-sweep {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.35; }
+}
+
+.fleet-spark-live {
+  animation: fleet-spark-sweep 3s ease-in-out infinite;
+}
+
+/* ==========================================================================
+ * FLEET MISSION-CONTROL atmosphere. These classes are scoped under
+ * `.fleet-console` so they only paint the cinematic surface (see tokens.css).
+ * They build layered depth — a deep void canvas, drifting nebula glows, a fine
+ * scan grid, film grain, and glowing panel rings — entirely from the console
+ * tokens, so there are no colour literals in the TSX.
+ * ========================================================================== */
+
+/* The page void: a near-black canvas with two off-centre radial nebulae (cyan
+ * + violet) that slowly breathe, giving the console its sense of depth. */
+@keyframes fleet-nebula-drift {
+  0%, 100% { background-position: 12% 8%, 88% 78%, 50% 50%; }
+  50% { background-position: 18% 14%, 80% 70%, 50% 50%; }
+}
+
+.fleet-console-bg {
+  background-color: var(--fleet-void);
+  background-image:
+    radial-gradient(60rem 48rem at 12% 8%, var(--fleet-glow-cyan), transparent 60%),
+    radial-gradient(52rem 44rem at 88% 78%, var(--fleet-glow-violet), transparent 62%),
+    radial-gradient(120rem 90rem at 50% 50%, var(--fleet-void-2), transparent 70%);
+  animation: fleet-nebula-drift 24s ease-in-out infinite;
+}
+
+/* Fine instrument scan grid laid over the whole console, masked to fade at the
+ * edges so it reads as a panel surface, not a hard table. */
+.fleet-console-scan {
+  background-image:
+    linear-gradient(to right, var(--fleet-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fleet-grid-line) 1px, transparent 1px);
+  background-size: 56px 56px, 56px 56px;
+  -webkit-mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 100%);
+}
+
+/* Film grain — a tiny repeating noise stipple via layered conic micro-dots,
+ * kept extremely subtle so it adds texture without banding. */
+.fleet-console-grain {
+  background-image:
+    radial-gradient(var(--fleet-grain) 0.5px, transparent 0.5px),
+    radial-gradient(var(--fleet-grain) 0.5px, transparent 0.5px);
+  background-size: 3px 3px, 3px 3px;
+  background-position: 0 0, 1.5px 1.5px;
+}
+
+/* Glowing panel ring: a hairline that catches an inner cyan rim-light + a soft
+ * outer bloom, used on the command bar and node cards for HUD depth. */
+.fleet-panel {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 6%),
+    inset 0 0 0 1px var(--border),
+    0 8px 40px -16px oklch(0 0 0 / 80%);
+}
+
+.fleet-panel-glow {
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 7%),
+    inset 0 0 0 1px var(--fleet-glow-edge),
+    0 0 28px -6px var(--fleet-glow-cyan),
+    0 12px 48px -18px oklch(0 0 0 / 85%);
+}
+
+/* Command-bar sweep: a slow horizontal light bloom that crosses the top
+ * command bar, like a radar wash over the readouts. */
+@keyframes fleet-command-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+.fleet-command-sweep {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--brand) 28%, transparent),
+    transparent
+  );
+  animation: fleet-command-sweep 7s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+/* Display typeface utility — the instrument-panel face for headings + big
+ * numerals. Falls back to mono so the desktop app (which doesn't load
+ * --font-display) still renders a technical readout, never a serif/system slip.
+ * CJK is unaffected: the big readouts are Latin/digits; localized headings fall
+ * through --font-display's mono fallback into the normal CJK chain. */
+.fleet-display {
+  font-family: var(--font-display), var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-feature-settings: "ss01", "tnum";
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-grid,
+  .fleet-scanline,
+  .fleet-node-active,
+  .fleet-meter-fill::after,
+  .fleet-thermal-pulse,
+  .fleet-cell-in,
+  .fleet-spark-live,
+  .fleet-console-bg,
+  .fleet-command-sweep {
+    animation: none;
+  }
+}
+
 /* Sidebar: open triggers (dropdown/popover) get active background */
 [data-sidebar="menu-button"][data-popup-open] {
   background-color: var(--sidebar-accent);

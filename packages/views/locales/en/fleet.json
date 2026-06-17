@@ -4,12 +4,50 @@
   "live": "Live",
   "coordinator": "Coordinator",
   "empty": "No devices configured.",
+  "console_tag": "Mission Control",
+  "nodes_title": "Nodes",
   "summary": {
     "devices": "Devices",
     "online": "Online",
     "avg_cpu": "Avg CPU",
     "avg_mem": "Avg Memory",
-    "containers": "Containers"
+    "avg_gpu": "Avg GPU",
+    "containers": "Containers",
+    "tasks": "Tasks"
+  },
+  "vitals": {
+    "title": "Cluster Vitals",
+    "activity": "Node Activity",
+    "gpu_power": "GPU Draw"
+  },
+  "trend": {
+    "title": "Trend",
+    "collecting": "Collecting…"
+  },
+  "net": {
+    "down": "Down",
+    "up": "Up",
+    "idle": "Idle"
+  },
+  "runtime": {
+    "label": "Agent",
+    "running": "Running tasks",
+    "queued": "Queued tasks"
+  },
+  "hw": {
+    "gpu": "GPU",
+    "gpu_power": "GPU Power",
+    "thermal": "Thermal",
+    "network": "Network",
+    "chip": "Chip",
+    "power": "System Power"
+  },
+  "thermal_level": {
+    "nominal": "Nominal",
+    "fair": "Fair",
+    "serious": "Serious",
+    "critical": "Critical",
+    "unknown": "—"
   },
   "status": {
     "online": "Online",

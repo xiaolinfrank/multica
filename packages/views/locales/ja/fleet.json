@@ -4,12 +4,50 @@
   "live": "リアルタイム",
   "coordinator": "コーディネーター",
   "empty": "デバイスが設定されていません。",
+  "console_tag": "ミッションコントロール",
+  "nodes_title": "ノード",
   "summary": {
     "devices": "デバイス",
     "online": "オンライン",
     "avg_cpu": "平均 CPU",
     "avg_mem": "平均メモリ",
-    "containers": "コンテナ"
+    "avg_gpu": "平均 GPU",
+    "containers": "コンテナ",
+    "tasks": "タスク"
+  },
+  "vitals": {
+    "title": "クラスター状態",
+    "activity": "ノードアクティビティ",
+    "gpu_power": "GPU 消費電力"
+  },
+  "trend": {
+    "title": "トレンド",
+    "collecting": "収集中…"
+  },
+  "net": {
+    "down": "受信",
+    "up": "送信",
+    "idle": "アイドル"
+  },
+  "runtime": {
+    "label": "エージェント",
+    "running": "実行中タスク",
+    "queued": "待機タスク"
+  },
+  "hw": {
+    "gpu": "GPU",
+    "gpu_power": "GPU 電力",
+    "thermal": "温度",
+    "network": "ネットワーク",
+    "chip": "チップ",
+    "power": "システム電力"
+  },
+  "thermal_level": {
+    "nominal": "正常",
+    "fair": "やや高",
+    "serious": "高",
+    "critical": "危険",
+    "unknown": "—"
   },
   "status": {
     "online": "オンライン",

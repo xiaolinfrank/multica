@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist_Mono, Source_Serif_4 } from "next/font/google";
+import { Inter, Geist_Mono, Source_Serif_4, Chakra_Petch } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@multica/ui/components/ui/sonner";
 import { cn } from "@multica/ui/lib/utils";
@@ -48,6 +48,19 @@ const sourceSerif = Source_Serif_4({
     "Times New Roman",
     "serif",
   ],
+});
+// Chakra Petch — a Thai/Latin techno-industrial display face with clipped
+// corners and mechanical geometry that reads like a real instrument-panel
+// readout. Used ONLY by the Fleet "Mission Control" console (headings + big
+// numerals) — deliberately distinct from the rest of the product (Inter) and
+// from the overused Orbitron / Space Grotesk sci-fi defaults. Exposed as
+// `--font-display`; the Fleet page references it with a graceful mono fallback
+// so the desktop app (which doesn't load this font) degrades cleanly.
+const chakraPetch = Chakra_Petch({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
 });
 
 export const viewport: Viewport = {
@@ -108,7 +121,13 @@ export default async function RootLayout({
     <html
       lang={HTML_LANG[locale]}
       suppressHydrationWarning
-      className={cn("antialiased font-sans h-full", inter.variable, geistMono.variable, sourceSerif.variable)}
+      className={cn(
+        "antialiased font-sans h-full",
+        inter.variable,
+        geistMono.variable,
+        sourceSerif.variable,
+        chakraPetch.variable,
+      )}
     >
       <body className="h-full overflow-hidden">
         <ThemeProvider>

@@ -4,12 +4,50 @@
   "live": "실시간",
   "coordinator": "코디네이터",
   "empty": "구성된 장치가 없습니다.",
+  "console_tag": "미션 컨트롤",
+  "nodes_title": "노드",
   "summary": {
     "devices": "장치",
     "online": "온라인",
     "avg_cpu": "평균 CPU",
     "avg_mem": "평균 메모리",
-    "containers": "컨테이너"
+    "avg_gpu": "평균 GPU",
+    "containers": "컨테이너",
+    "tasks": "작업"
+  },
+  "vitals": {
+    "title": "클러스터 상태",
+    "activity": "노드 활동",
+    "gpu_power": "GPU 소비 전력"
+  },
+  "trend": {
+    "title": "추세",
+    "collecting": "수집 중…"
+  },
+  "net": {
+    "down": "수신",
+    "up": "송신",
+    "idle": "유휴"
+  },
+  "runtime": {
+    "label": "에이전트",
+    "running": "실행 중 작업",
+    "queued": "대기 작업"
+  },
+  "hw": {
+    "gpu": "GPU",
+    "gpu_power": "GPU 전력",
+    "thermal": "발열",
+    "network": "네트워크",
+    "chip": "칩",
+    "power": "시스템 전력"
+  },
+  "thermal_level": {
+    "nominal": "정상",
+    "fair": "보통",
+    "serious": "높음",
+    "critical": "위험",
+    "unknown": "—"
   },
   "status": {
     "online": "온라인",

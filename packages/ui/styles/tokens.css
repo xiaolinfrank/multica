@@ -79,6 +79,21 @@
     --chart-3: oklch(0.76 0.10 255);
     --chart-4: oklch(0.85 0.06 255);
     --chart-5: oklch(0.92 0.03 255);
+    /* Fleet per-metric identity hues. The shared --chart-* ramp is an
+       intentional monochrome brand gradient (used by the runtimes cost/token
+       stacks) and cannot encode "which metric"; the fleet board needs each
+       metric to own a distinct, harmonious hue so its gauge ring, sparkline,
+       vitals meter and heat-strip cell are all recognisably the same metric.
+       Hues are spaced around the wheel (blue → violet → teal → amber →
+       magenta) at a shared lightness/chroma so they read as one restrained
+       family, not five competing alerts. Health tones (success/warning/
+       destructive) stay reserved for status; these are identity only.
+       Light mode: ~0.58 L to sit confidently on white. */
+    --fleet-cpu: oklch(0.55 0.16 255);
+    --fleet-gpu: oklch(0.55 0.18 305);
+    --fleet-mem: oklch(0.58 0.13 195);
+    --fleet-disk: oklch(0.62 0.14 70);
+    --fleet-net: oklch(0.58 0.17 345);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -126,6 +141,14 @@
     --chart-3: oklch(0.52 0.10 255);
     --chart-4: oklch(0.42 0.06 255);
     --chart-5: oklch(0.32 0.03 255);
+    /* Dark mode mirrors the light-mode metric family but lifts lightness to
+       ~0.72 so each hue pops on the dark card, matching how --brand brightens
+       in dark. Same hue assignments → metric identity is stable across themes. */
+    --fleet-cpu: oklch(0.72 0.16 255);
+    --fleet-gpu: oklch(0.72 0.17 305);
+    --fleet-mem: oklch(0.74 0.13 195);
+    --fleet-disk: oklch(0.78 0.14 70);
+    --fleet-net: oklch(0.72 0.16 345);
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -142,4 +165,65 @@
     --scrollbar-thumb: oklch(1 0 0 / 8%);
     --scrollbar-thumb-hover: oklch(1 0 0 / 18%);
     --scrollbar-track: transparent;
+}
+
+/* ==========================================================================
+ * FLEET "MISSION CONTROL" CONSOLE — a fixed cinematic dark surface.
+ *
+ * This is the one page in the product that does NOT follow the global
+ * light/dark theme: it is an instrument-panel command console with a
+ * committed observatory aesthetic. We redefine the standard semantic tokens
+ * (--background, --card, --foreground, --border, --muted*, --brand) AND the
+ * --fleet-* metric hues on the `.fleet-console` scope, so every Tailwind
+ * utility (bg-background, text-muted-foreground, …) and every existing
+ * currentColor-driven fleet widget (gauge arc, meter fill, sparkline,
+ * heat-strip) renders against the deep void regardless of whether `.dark` is
+ * present on <html>. Values live here, in the styles layer — the TSX carries
+ * zero colour literals, matching the existing --fleet-* token pattern.
+ *
+ * Palette: a dominant near-black canvas (very low L, faint cool hue) with a
+ * tight cyan→violet accent pair and the metric family lifted to high chroma
+ * so it glows on black. Cinematic atmosphere (radial nebula, scan grid,
+ * grain, glows) is built from the --fleet-void/glow/grid vars below.
+ * ========================================================================== */
+.fleet-console {
+    /* Core surface — deep void canvas, layered card panels, hairline borders. */
+    --background: oklch(0.13 0.018 264);
+    --foreground: oklch(0.96 0.012 250);
+    --card: oklch(0.165 0.022 264);
+    --card-foreground: oklch(0.96 0.012 250);
+    --popover: oklch(0.165 0.022 264);
+    --popover-foreground: oklch(0.96 0.012 250);
+    --muted: oklch(0.26 0.02 264);
+    --muted-foreground: oklch(0.66 0.03 258);
+    --border: oklch(0.86 0.05 250 / 12%);
+    --secondary: oklch(0.24 0.02 264);
+    --secondary-foreground: oklch(0.96 0.012 250);
+
+    /* Accent system — a cyan command hue + a violet co-accent. */
+    --brand: oklch(0.78 0.16 200);
+    --brand-foreground: oklch(0.13 0.018 264);
+    --success: oklch(0.78 0.18 160);
+    --warning: oklch(0.82 0.16 80);
+    --destructive: oklch(0.70 0.21 22);
+
+    /* Metric family, lifted to glow on the void (same hue assignments so the
+       per-metric identity stays stable with the rest of the product). */
+    --fleet-cpu: oklch(0.78 0.16 232);
+    --fleet-gpu: oklch(0.74 0.20 305);
+    --fleet-mem: oklch(0.80 0.15 185);
+    --fleet-disk: oklch(0.83 0.15 70);
+    --fleet-net: oklch(0.76 0.19 340);
+
+    /* Cinematic atmosphere vars (console-only — no global analogue). */
+    --fleet-void: oklch(0.085 0.016 264);
+    --fleet-void-2: oklch(0.11 0.02 280);
+    --fleet-glow-cyan: oklch(0.72 0.17 200 / 18%);
+    --fleet-glow-violet: oklch(0.62 0.2 300 / 16%);
+    --fleet-glow-edge: oklch(0.8 0.12 200 / 35%);
+    --fleet-grid-line: oklch(0.8 0.08 220 / 7%);
+    --fleet-grain: oklch(1 0 0 / 2.5%);
+
+    --scrollbar-thumb: oklch(0.8 0.08 220 / 14%);
+    --scrollbar-thumb-hover: oklch(0.8 0.1 220 / 26%);
 }
