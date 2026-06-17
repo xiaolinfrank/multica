@@ -3,6 +3,28 @@ SELECT * FROM agent_runtime
 WHERE workspace_id = $1
 ORDER BY created_at ASC;
 
+-- name: ListAgentRuntimesWithLoadByWorkspace :many
+-- Runtimes for a workspace plus their current task load, used by the Fleet
+-- control-plane view to overlay live execution state onto each device card.
+-- running = tasks the runtime is actively handling (dispatched/running/waiting);
+-- queued = tasks waiting for this runtime to claim. LEFT JOIN keeps idle
+-- runtimes (zero counts) in the result.
+SELECT
+    r.*,
+    COALESCE(t.running_tasks, 0)::bigint AS running_tasks,
+    COALESCE(t.queued_tasks, 0)::bigint AS queued_tasks
+FROM agent_runtime r
+LEFT JOIN (
+    SELECT runtime_id,
+           count(*) FILTER (WHERE status IN ('dispatched', 'running', 'waiting_local_directory')) AS running_tasks,
+           count(*) FILTER (WHERE status = 'queued') AS queued_tasks
+    FROM agent_task_queue
+    WHERE runtime_id IS NOT NULL
+    GROUP BY runtime_id
+) t ON t.runtime_id = r.id
+WHERE r.workspace_id = $1
+ORDER BY r.created_at ASC;
+
 -- name: GetAgentRuntime :one
 SELECT * FROM agent_runtime
 WHERE id = $1;

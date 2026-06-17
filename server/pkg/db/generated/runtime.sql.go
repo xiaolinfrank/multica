@@ -509,6 +509,87 @@ func (q *Queries) ListAgentRuntimesByOwner(ctx context.Context, arg ListAgentRun
 	return items, nil
 }
 
+const listAgentRuntimesWithLoadByWorkspace = `-- name: ListAgentRuntimesWithLoadByWorkspace :many
+SELECT
+    r.id, r.workspace_id, r.daemon_id, r.name, r.runtime_mode, r.provider, r.status, r.device_info, r.metadata, r.last_seen_at, r.created_at, r.updated_at, r.owner_id, r.legacy_daemon_id, r.visibility,
+    COALESCE(t.running_tasks, 0)::bigint AS running_tasks,
+    COALESCE(t.queued_tasks, 0)::bigint AS queued_tasks
+FROM agent_runtime r
+LEFT JOIN (
+    SELECT runtime_id,
+           count(*) FILTER (WHERE status IN ('dispatched', 'running', 'waiting_local_directory')) AS running_tasks,
+           count(*) FILTER (WHERE status = 'queued') AS queued_tasks
+    FROM agent_task_queue
+    WHERE runtime_id IS NOT NULL
+    GROUP BY runtime_id
+) t ON t.runtime_id = r.id
+WHERE r.workspace_id = $1
+ORDER BY r.created_at ASC
+`
+
+type ListAgentRuntimesWithLoadByWorkspaceRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	DaemonID       pgtype.Text        `json:"daemon_id"`
+	Name           string             `json:"name"`
+	RuntimeMode    string             `json:"runtime_mode"`
+	Provider       string             `json:"provider"`
+	Status         string             `json:"status"`
+	DeviceInfo     string             `json:"device_info"`
+	Metadata       []byte             `json:"metadata"`
+	LastSeenAt     pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	OwnerID        pgtype.UUID        `json:"owner_id"`
+	LegacyDaemonID pgtype.Text        `json:"legacy_daemon_id"`
+	Visibility     string             `json:"visibility"`
+	RunningTasks   int64              `json:"running_tasks"`
+	QueuedTasks    int64              `json:"queued_tasks"`
+}
+
+// Runtimes for a workspace plus their current task load, used by the Fleet
+// control-plane view to overlay live execution state onto each device card.
+// running = tasks the runtime is actively handling (dispatched/running/waiting);
+// queued = tasks waiting for this runtime to claim. LEFT JOIN keeps idle
+// runtimes (zero counts) in the result.
+func (q *Queries) ListAgentRuntimesWithLoadByWorkspace(ctx context.Context, workspaceID pgtype.UUID) ([]ListAgentRuntimesWithLoadByWorkspaceRow, error) {
+	rows, err := q.db.Query(ctx, listAgentRuntimesWithLoadByWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentRuntimesWithLoadByWorkspaceRow{}
+	for rows.Next() {
+		var i ListAgentRuntimesWithLoadByWorkspaceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.DaemonID,
+			&i.Name,
+			&i.RuntimeMode,
+			&i.Provider,
+			&i.Status,
+			&i.DeviceInfo,
+			&i.Metadata,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.LegacyDaemonID,
+			&i.Visibility,
+			&i.RunningTasks,
+			&i.QueuedTasks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listArchivedAgentIDsByRuntime = `-- name: ListArchivedAgentIDsByRuntime :many
 SELECT id FROM agent WHERE runtime_id = $1 AND archived_at IS NOT NULL
 `

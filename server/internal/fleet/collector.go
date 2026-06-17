@@ -36,6 +36,27 @@ type DeviceStatus struct {
 	Docker     string `json:"docker"` // running | stopped | absent | unknown
 	Containers int    `json:"containers"`
 
+	// Hardware / thermal telemetry. GPU + thermal come from `powermetrics`
+	// (root-only; fleet nodes have NOPASSWD sudo), network from a netstat
+	// delta. All best-effort: where a sensor or sudo is unavailable the field
+	// stays zero / empty (e.g. the coordinator without NOPASSWD powermetrics).
+	Chip            string  `json:"chip"`              // e.g. "Apple M4"
+	GPUPercent      float64 `json:"gpu_percent"`       // GPU active residency
+	SystemPowerW    float64 `json:"system_power_w"`    // SoC total power (CPU+GPU+ANE), watts
+	ThermalPressure string  `json:"thermal_pressure"`  // Nominal|Fair|Serious|Critical|""
+	NetRxBytesSec   float64 `json:"net_rx_bytes_sec"`  // en0 receive throughput
+	NetTxBytesSec   float64 `json:"net_tx_bytes_sec"`  // en0 transmit throughput
+
+	// Cluster control-plane overlay. These are populated by the handler from
+	// the agent_runtime table (correlated to this device by daemon device
+	// name), not by the SSH probe — a node can be SSH-reachable while its
+	// daemon is offline, so RuntimeOnline is tracked separately from Online.
+	RuntimeOnline bool     `json:"runtime_online"`
+	Providers     []string `json:"providers"`
+	RunningTasks  int      `json:"running_tasks"`
+	QueuedTasks   int      `json:"queued_tasks"`
+	DaemonVersion string   `json:"daemon_version"`
+
 	Error string `json:"error,omitempty"`
 }
 
@@ -73,6 +94,29 @@ if command -v docker >/dev/null 2>&1; then
   fi
 else
   echo "docker=absent"
+fi
+echo "chip=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
+# GPU utilisation, system power and thermal pressure come from powermetrics,
+# which is root-only. Fleet worker nodes have NOPASSWD sudo; where that's not
+# granted (e.g. the coordinator) the call fails and these fields stay zero/empty.
+# System power = CPU + GPU + ANE component power (Apple Silicon has no single
+# package/wall-power line; this sum is the SoC total, same as asitop reports).
+pm=$(sudo -n powermetrics -n 1 -i 200 --samplers cpu_power,gpu_power,thermal 2>/dev/null)
+if [ -n "$pm" ]; then
+  echo "gpu_pct=$(printf '%s\n' "$pm" | grep 'GPU HW active residency' | grep -oE '[0-9]+\.[0-9]+%' | head -1 | tr -d '%')"
+  cpu_mw=$(printf '%s\n' "$pm" | grep -m1 'CPU Power:' | grep -oE '[0-9]+' | head -1)
+  gpu_mw=$(printf '%s\n' "$pm" | grep -m1 'GPU Power:' | grep -oE '[0-9]+' | head -1)
+  ane_mw=$(printf '%s\n' "$pm" | grep -m1 'ANE Power:' | grep -oE '[0-9]+' | head -1)
+  echo "sys_mw=$(awk -v a="${cpu_mw:-0}" -v b="${gpu_mw:-0}" -v c="${ane_mw:-0}" 'BEGIN{print a+b+c}')"
+  echo "thermal=$(printf '%s\n' "$pm" | awk -F': ' '/pressure level/{print $2; exit}')"
+fi
+# Network throughput: sample the en0 byte counters twice and take the delta.
+ns1=$(netstat -ibn 2>/dev/null | awk '$1=="en0"{print $7, $10; exit}')
+sleep 0.6
+ns2=$(netstat -ibn 2>/dev/null | awk '$1=="en0"{print $7, $10; exit}')
+if [ -n "$ns1" ] && [ -n "$ns2" ]; then
+  echo "net_rx_bps=$(awk -v a="${ns1% *}" -v b="${ns2% *}" 'BEGIN{d=(b-a)/0.6; if(d<0)d=0; print int(d)}')"
+  echo "net_tx_bps=$(awk -v a="${ns1#* }" -v b="${ns2#* }" 'BEGIN{d=(b-a)/0.6; if(d<0)d=0; print int(d)}')"
 fi
 `
 
@@ -210,6 +254,21 @@ func applyMetrics(st *DeviceStatus, out string) {
 		st.Docker = v
 	}
 	st.Containers = atoi(m["containers"])
+
+	if v, ok := m["chip"]; ok && v != "" {
+		st.Chip = v
+	}
+	if v, ok := m["gpu_pct"]; ok && v != "" {
+		st.GPUPercent = clampPct(atof(v))
+	}
+	if v, ok := m["sys_mw"]; ok && v != "" {
+		st.SystemPowerW = float64(int(atof(v)/1000*100+0.5)) / 100 // mW → W, 2dp
+	}
+	if v, ok := m["thermal"]; ok && v != "" {
+		st.ThermalPressure = v
+	}
+	st.NetRxBytesSec = atof(m["net_rx_bps"])
+	st.NetTxBytesSec = atof(m["net_tx_bps"])
 }
 
 func parseKV(out string) map[string]string {
