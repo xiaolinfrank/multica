@@ -123,13 +123,16 @@ def main():
             aid = agent_id[a["name"]]
             print(f"  agent = {a['name']} (reuse)")
         else:
-            st, resp = call("POST", "/api/agents", {
+            body = {
                 "name": a["name"], "description": a["description"],
                 "instructions": a["instructions"], "runtime_id": runtime_id,
                 "mcp_config": a.get("mcp_config") or {},
                 "visibility": "workspace",
                 "max_concurrent_tasks": a.get("max_concurrent_tasks", 1),
-            })
+            }
+            if a.get("avatar_url"):
+                body["avatar_url"] = a["avatar_url"]
+            st, resp = call("POST", "/api/agents", body)
             if st not in (200, 201) or not resp:
                 print(f"  agent ! {a['name']} FAILED {st} {resp}")
                 continue

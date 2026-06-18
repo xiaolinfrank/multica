@@ -150,7 +150,8 @@
         "PubMed 文献检索",
         "reporting-guideline-compliance-checker",
         "scientific-visualization"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/literature-scout.png"
     },
     {
       "name": "临床试验分析师",
@@ -184,7 +185,8 @@
         "endpoint-definition-designer",
         "univariate-multivariable-cox-regression",
         "xlsx"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/clinical-trials.png"
     },
     {
       "name": "靶点与药物研究员",
@@ -217,7 +219,8 @@
         "PubMed 文献检索",
         "rdkit",
         "scientific-visualization"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/target-discovery.png"
     },
     {
       "name": "法规事务专员",
@@ -250,7 +253,8 @@
         "faers-pharmacovigilance-disproportionality-research-planner",
         "openFDA 监管信息检索",
         "pptx"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/regulatory-affairs.png"
     },
     {
       "name": "生信数据分析师",
@@ -276,7 +280,8 @@
         "scientific-visualization",
         "single-cell-rna-qc",
         "xlsx"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/data-analyst.png"
     },
     {
       "name": "研究主管",
@@ -310,7 +315,8 @@
         "pptx",
         "PubMed 文献检索",
         "scientific-visualization"
-      ]
+      ],
+      "avatar_url": "/uploads/agent-avatars/research-lead.png"
     }
   ],
   "squads": [
@@ -324,6 +330,25 @@
         "靶点与药物研究员",
         "法规事务专员",
         "生信数据分析师"
+      ]
+    },
+    {
+      "name": "科学情报组",
+      "description": "聚焦科学发现:文献综述、靶点机制与组学数据分析,支撑前期立项与靶点评估",
+      "leader_name": "研究主管",
+      "member_names": [
+        "文献调研员",
+        "靶点与药物研究员",
+        "生信数据分析师"
+      ]
+    },
+    {
+      "name": "临床转化组",
+      "description": "聚焦临床转化:临床试验进展与监管法规路径,支撑开发决策与获批策略",
+      "leader_name": "研究主管",
+      "member_names": [
+        "临床试验分析师",
+        "法规事务专员"
       ]
     }
   ]

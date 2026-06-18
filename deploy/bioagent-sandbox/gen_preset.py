@@ -61,6 +61,7 @@ for a in as_list(get("/api/agents"), "agents"):
         "name": d["name"],
         "description": d.get("description", ""),
         "instructions": d.get("instructions", ""),
+        "avatar_url": d.get("avatar_url") or "",
         "mcp_config": d.get("mcp_config") or {},
         "max_concurrent_tasks": d.get("max_concurrent_tasks", 1),
         "skill_names": [sk["name"] for sk in d.get("skills", [])],
