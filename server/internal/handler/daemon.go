@@ -331,6 +331,11 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := make([]AgentRuntimeResponse, 0, len(req.Runtimes))
+	// First runtime to come online in this register call. Used after the loop to
+	// seed the default team into a still-empty workspace and bind it to a live
+	// runtime (best-effort; gated on DEFAULT_WORKSPACE_SEED_TEMPLATE).
+	var seedRuntimeID pgtype.UUID
+	var seedRuntimeMode string
 	for _, runtime := range req.Runtimes {
 		provider := strings.TrimSpace(runtime.Type)
 		if provider == "" {
@@ -532,10 +537,24 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs)
 		}
 
+		if registered.Status == "online" && !seedRuntimeID.Valid {
+			seedRuntimeID = registered.ID
+			seedRuntimeMode = registered.RuntimeMode
+		}
+
 		resp = append(resp, runtimeToResponse(registered))
 	}
 
 	slog.Info("daemon registered", "workspace_id", req.WorkspaceID, "daemon_id", req.DaemonID, "runtimes_count", len(resp))
+
+	// Seed the curated default team the first time a workspace brings a runtime
+	// online. No-op unless an operator opted in via DEFAULT_WORKSPACE_SEED_TEMPLATE.
+	// Runs in its own goroutine (with a fresh context) because importing skills
+	// fetches from GitHub and must not block the daemon register response; the
+	// seeder is idempotent and skips a workspace that already has squads.
+	if h.cfg.DefaultWorkspaceSeedTemplate != "" && seedRuntimeID.Valid && ownerID.Valid {
+		go h.seedDefaultWorkspaceTeam(wsUUID, seedRuntimeID, seedRuntimeMode, ownerID)
+	}
 
 	h.publish(protocol.EventDaemonRegister, req.WorkspaceID, "system", "", map[string]any{
 		"runtimes": resp,
