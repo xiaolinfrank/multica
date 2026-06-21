@@ -518,6 +518,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Post("/runtimes/{runtimeId}/models/{requestId}/result", h.ReportModelListResult)
 		r.Post("/runtimes/{runtimeId}/local-skills/{requestId}/result", h.ReportLocalSkillListResult)
 		r.Post("/runtimes/{runtimeId}/local-skills/import/{requestId}/result", h.ReportLocalSkillImportResult)
+		r.Post("/runtimes/{runtimeId}/workspace-inventory", h.ReportWorkspaceInventory)
 
 		r.Get("/tasks/{taskId}/status", h.GetTaskStatus)
 		r.Post("/tasks/{taskId}/start", h.StartTask)
@@ -919,6 +920,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/agent-runtime", h.GetDashboardAgentRunTime)
 				r.Get("/runtime/daily", h.GetDashboardRunTimeDaily)
 			})
+
+			// Persistent agent workspaces (management UI). Read-only list of
+			// every (agent, issue) workspace on disk across the fleet, cached
+			// from daemon inventory reports.
+			r.Get("/api/workspaces/{workspaceId}/agent-workspaces", h.ListAgentWorkspaces)
 
 			// Runtimes
 			r.Route("/api/runtimes", func(r chi.Router) {
