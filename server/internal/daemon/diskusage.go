@@ -12,16 +12,26 @@ import (
 )
 
 // TaskDiskUsage describes one task workdir's footprint on disk.
+//
+// IssueID/AgentID identify the persistent workspace by its (agent, issue) pair
+// — what the workspace management UI lists and reasons about. RepoCheckoutBytes
+// is the working-tree footprint of git checkouts inside the workdir; together
+// with ArtifactSizeBytes it forms the "regenerable" total that a "clear repo
+// checkouts" action can reclaim without touching the agent's own files.
 type TaskDiskUsage struct {
 	WorkspaceID       string `json:"workspace_id"`
 	WorkspaceShort    string `json:"workspace_short"`
 	TaskShort         string `json:"task_short"`
 	Path              string `json:"path"`
 	Kind              string `json:"kind"`
+	IssueID           string `json:"issue_id,omitempty"`
+	AgentID           string `json:"agent_id,omitempty"`
 	ParentStatus      string `json:"parent_status"`
 	AgeSeconds        int64  `json:"age_seconds"`
 	SizeBytes         int64  `json:"size_bytes"`
 	ArtifactSizeBytes int64  `json:"artifact_size_bytes"`
+	RepoCheckoutBytes int64  `json:"repo_checkout_bytes"`
+	FileCount         int64  `json:"file_count"`
 }
 
 // WorkspaceDiskUsage aggregates per-workspace footprint across all tasks.
@@ -35,6 +45,7 @@ type WorkspaceDiskUsage struct {
 	TaskCount         int     `json:"task_count"`
 	SizeBytes         int64   `json:"size_bytes"`
 	ArtifactSizeBytes int64   `json:"artifact_size_bytes"`
+	RepoCheckoutBytes int64   `json:"repo_checkout_bytes"`
 	ArtifactRatio     float64 `json:"artifact_ratio"`
 	OldestAgeSeconds  int64   `json:"oldest_age_seconds"`
 }
@@ -52,6 +63,7 @@ type DiskUsageReport struct {
 	TotalWorkspaceCount    int                  `json:"total_workspace_count"`
 	TotalSizeBytes         int64                `json:"total_size_bytes"`
 	TotalArtifactSizeBytes int64                `json:"total_artifact_size_bytes"`
+	TotalRepoCheckoutBytes int64                `json:"total_repo_checkout_bytes"`
 	TotalArtifactRatio     float64              `json:"total_artifact_ratio"`
 }
 
@@ -113,6 +125,7 @@ func ScanDiskUsage(workspacesRoot string, artifactPatterns []string) (DiskUsageR
 			report.Tasks = append(report.Tasks, usage)
 			report.TotalSizeBytes += usage.SizeBytes
 			report.TotalArtifactSizeBytes += usage.ArtifactSizeBytes
+			report.TotalRepoCheckoutBytes += usage.RepoCheckoutBytes
 
 			ws, ok := wsAgg[wsID]
 			if !ok {
@@ -125,6 +138,7 @@ func ScanDiskUsage(workspacesRoot string, artifactPatterns []string) (DiskUsageR
 			ws.TaskCount++
 			ws.SizeBytes += usage.SizeBytes
 			ws.ArtifactSizeBytes += usage.ArtifactSizeBytes
+			ws.RepoCheckoutBytes += usage.RepoCheckoutBytes
 			if usage.AgeSeconds > ws.OldestAgeSeconds {
 				ws.OldestAgeSeconds = usage.AgeSeconds
 			}
@@ -193,6 +207,8 @@ func buildTaskUsage(taskDir, wsID, taskShort string, patternSet map[string]struc
 
 	if meta, err := execenv.ReadGCMeta(taskDir); err == nil && meta != nil {
 		usage.Kind = string(meta.Kind)
+		usage.IssueID = meta.IssueID
+		usage.AgentID = meta.AgentID
 		if !meta.CompletedAt.IsZero() {
 			usage.AgeSeconds = int64(time.Since(meta.CompletedAt).Seconds())
 		}
@@ -205,17 +221,25 @@ func buildTaskUsage(taskDir, wsID, taskShort string, patternSet map[string]struc
 		}
 	}
 
-	usage.SizeBytes, usage.ArtifactSizeBytes = taskSize(taskDir, patternSet)
+	usage.SizeBytes, usage.ArtifactSizeBytes, usage.RepoCheckoutBytes, usage.FileCount = taskSize(taskDir, patternSet)
 	return usage
 }
 
-// taskSize walks taskDir and returns (totalBytes, artifactBytes). Both honor
-// the GC safety contract: never descends into .git, never follows symlinks,
-// counts only regular files. A directory whose basename matches patternSet
-// is treated as an artifact subtree — its size is added to both totals and
-// the walk does not descend further so the size matches what os.RemoveAll
-// would reclaim if the GC ran cleanTaskArtifacts on it.
-func taskSize(taskDir string, patternSet map[string]struct{}) (totalBytes int64, artifactBytes int64) {
+// taskSize walks taskDir and returns (totalBytes, artifactBytes,
+// repoCheckoutBytes, fileCount). All honor the GC safety contract: never
+// descends into .git, never follows symlinks, counts only regular files.
+//
+//   - A directory whose basename matches patternSet is treated as an artifact
+//     subtree — its size is added to both totalBytes and artifactBytes and the
+//     walk does not descend further, so the size matches what os.RemoveAll would
+//     reclaim if the GC ran cleanTaskArtifacts on it.
+//   - A directory that contains a .git entry is a git checkout (worktree). Its
+//     working-tree files still count toward totalBytes, and are additionally
+//     attributed to repoCheckoutBytes so the UI can show how much is reclaimable
+//     by re-checking-out the repo rather than deleting agent work. The .git
+//     subtree itself is skipped, so repoCheckoutBytes tracks the working tree,
+//     not the (worktree-local, tiny) git metadata.
+func taskSize(taskDir string, patternSet map[string]struct{}) (totalBytes, artifactBytes, repoCheckoutBytes, fileCount int64) {
 	if taskDir == "" {
 		return
 	}
@@ -223,6 +247,8 @@ func taskSize(taskDir string, patternSet map[string]struct{}) (totalBytes int64,
 	if err != nil {
 		return
 	}
+
+	var repoRoots []string // prefixes of detected git-checkout directories
 
 	_ = filepath.WalkDir(absRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -250,7 +276,19 @@ func taskSize(taskDir string, patternSet map[string]struct{}) (totalBytes int64,
 				size := dirSize(path)
 				totalBytes += size
 				artifactBytes += size
+				// An artifact subtree sitting inside a checkout is reclaimed
+				// when the checkout is cleared, so attribute it to the repo
+				// total too (the two lenses intentionally overlap here).
+				if hasPrefixAny(path+string(filepath.Separator), repoRoots) {
+					repoCheckoutBytes += size
+				}
 				return filepath.SkipDir
+			}
+			// A dir holding a .git entry is a checkout root. WalkDir visits a
+			// dir before its children, so recording the prefix here means every
+			// file below is attributed correctly on the same pass.
+			if isGitCheckoutDir(path) {
+				repoRoots = append(repoRoots, path+string(filepath.Separator))
 			}
 			return nil
 		}
@@ -260,10 +298,31 @@ func taskSize(taskDir string, patternSet map[string]struct{}) (totalBytes int64,
 		}
 		if info.Mode().IsRegular() {
 			totalBytes += info.Size()
+			fileCount++
+			if hasPrefixAny(path, repoRoots) {
+				repoCheckoutBytes += info.Size()
+			}
 		}
 		return nil
 	})
 	return
+}
+
+// hasPrefixAny reports whether s starts with any of prefixes.
+func hasPrefixAny(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// isGitCheckoutDir reports whether dir is the root of a git working tree (it
+// holds a .git entry — a real repo dir or a worktree's gitdir-pointer file).
+func isGitCheckoutDir(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 // ShortID returns the first 8 chars (dashes stripped) of a UUID, falling back

@@ -343,6 +343,68 @@ func TestScanDiskUsage_RejectsPatternsWithSeparators(t *testing.T) {
 	}
 }
 
+// TestScanDiskUsage_RepoCheckoutAndIdentity verifies the persistent-workspace
+// enrichment: issue_id/agent_id surface from gc meta, a git checkout's working
+// tree is attributed to repo_checkout_bytes (but its .git metadata is not), and
+// loose agent files are counted but not treated as regenerable.
+func TestScanDiskUsage_RepoCheckoutAndIdentity(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	wsID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	taskDir := filepath.Join(root, wsID, "tttttttt")
+	mustWriteMeta(t, taskDir, execenv.GCMeta{
+		Kind:        execenv.GCKindIssue,
+		IssueID:     "issue-123",
+		AgentID:     "agent-9",
+		WorkspaceID: wsID,
+		CompletedAt: time.Now(),
+	})
+	// A git checkout: .git metadata (skipped) + working-tree files (counted as
+	// repo checkout) + a node_modules artifact inside the checkout.
+	writeFile(t, filepath.Join(taskDir, "workdir/repo/.git/HEAD"), 50)
+	writeFile(t, filepath.Join(taskDir, "workdir/repo/main.go"), 2000)
+	writeFile(t, filepath.Join(taskDir, "workdir/repo/node_modules/dep/index.js"), 4000)
+	// A loose agent deliverable outside any checkout — durable, not regenerable.
+	writeFile(t, filepath.Join(taskDir, "workdir/report.md"), 300)
+
+	report, err := ScanDiskUsage(root, []string{"node_modules"})
+	if err != nil {
+		t.Fatalf("ScanDiskUsage: %v", err)
+	}
+	if len(report.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(report.Tasks))
+	}
+	task := report.Tasks[0]
+	if task.IssueID != "issue-123" || task.AgentID != "agent-9" {
+		t.Errorf("identity: got issue=%q agent=%q", task.IssueID, task.AgentID)
+	}
+	// Clearing the checkout frees its whole working tree: main.go (2000) +
+	// node_modules (4000). .git metadata is skipped; report.md is outside.
+	if task.RepoCheckoutBytes != 6000 {
+		t.Errorf("repo_checkout_bytes = %d, want 6000", task.RepoCheckoutBytes)
+	}
+	// Artifact lens (what the GC auto-prunes) is just node_modules — a subset
+	// of the repo total, by design.
+	if task.ArtifactSizeBytes != 4000 {
+		t.Errorf("artifact_size_bytes = %d, want 4000", task.ArtifactSizeBytes)
+	}
+	// total = main.go (2000) + node_modules (4000) + report.md (300) +
+	// .gc_meta.json (variable); .git skipped. Assert a floor to stay robust to
+	// the meta file's exact size.
+	if task.SizeBytes < 6300 {
+		t.Errorf("size_bytes = %d, want >= 6300", task.SizeBytes)
+	}
+	// file_count: main.go + report.md + .gc_meta.json (node_modules subtree and
+	// .git are not file-walked). >= 2 loose files is the stable assertion.
+	if task.FileCount < 2 {
+		t.Errorf("file_count = %d, want >= 2", task.FileCount)
+	}
+	if report.TotalRepoCheckoutBytes != 6000 {
+		t.Errorf("total_repo_checkout_bytes = %d, want 6000", report.TotalRepoCheckoutBytes)
+	}
+}
+
 func mustWriteMeta(t *testing.T, taskDir string, meta execenv.GCMeta) {
 	t.Helper()
 	data, err := json.Marshal(meta)
