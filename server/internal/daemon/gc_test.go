@@ -56,7 +56,11 @@ func createTaskDir(t *testing.T, root, wsID, dirName string, meta *execenv.GCMet
 	return taskDir
 }
 
-func TestShouldCleanTaskDir_DoneIssueOverTTL(t *testing.T) {
+// Persistent workspace policy: a done/cancelled issue's workspace is NOT
+// reclaimed by age. It lives as long as the issue exists, no matter how long
+// ago the issue closed. (Old behavior reclaimed after GCTTL; the NAS migration
+// removed the disk-scarcity pressure that drove that.)
+func TestShouldCleanTaskDir_DoneIssuePersists(t *testing.T) {
 	t.Parallel()
 	issueID := "11111111-1111-1111-1111-111111111111"
 
@@ -65,7 +69,7 @@ func TestShouldCleanTaskDir_DoneIssueOverTTL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"status":     "done",
-			"updated_at": time.Now().Add(-10 * 24 * time.Hour), // 10 days ago
+			"updated_at": time.Now().Add(-100 * 24 * time.Hour), // closed 100 days ago
 		})
 	})
 
@@ -73,16 +77,16 @@ func TestShouldCleanTaskDir_DoneIssueOverTTL(t *testing.T) {
 	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "task1", &execenv.GCMeta{
 		IssueID:     issueID,
 		WorkspaceID: "ws1",
-		CompletedAt: time.Now().Add(-10 * 24 * time.Hour),
+		CompletedAt: time.Now(), // recent → no artifact prune either; clean skip
 	})
 
 	action := d.shouldCleanTaskDir(context.Background(), taskDir)
-	if action != gcActionClean {
-		t.Fatalf("expected gcActionClean, got %d", action)
+	if action != gcActionSkip {
+		t.Fatalf("expected gcActionSkip (workspace persists with its issue), got %d", action)
 	}
 }
 
-func TestShouldCleanTaskDir_CancelledIssueOverTTL(t *testing.T) {
+func TestShouldCleanTaskDir_CancelledIssuePersists(t *testing.T) {
 	t.Parallel()
 	issueID := "22222222-2222-2222-2222-222222222222"
 
@@ -103,8 +107,8 @@ func TestShouldCleanTaskDir_CancelledIssueOverTTL(t *testing.T) {
 	})
 
 	action := d.shouldCleanTaskDir(context.Background(), taskDir)
-	if action != gcActionClean {
-		t.Fatalf("expected gcActionClean, got %d", action)
+	if action != gcActionSkip {
+		t.Fatalf("expected gcActionSkip (workspace persists with its issue), got %d", action)
 	}
 }
 
@@ -278,23 +282,23 @@ func TestCleanTaskDir_RemovesDirectory(t *testing.T) {
 
 func TestGcWorkspace_CleansEmptyWorkspaceDir(t *testing.T) {
 	t.Parallel()
-	issueID := "77777777-7777-7777-7777-777777777777"
+	// Use a hard-deleted chat session (404) to trigger a real clean — issue
+	// workspaces no longer reclaim by age, so this exercises the empty-dir
+	// removal via a kind whose gc-check still produces gcActionClean.
+	chatID := "77777777-7777-7777-7777-777777777777"
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/api/daemon/issues/%s/gc-check", issueID), func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"status":     "done",
-			"updated_at": time.Now().Add(-10 * 24 * time.Hour),
-		})
+	mux.HandleFunc(fmt.Sprintf("/api/daemon/chat-sessions/%s/gc-check", chatID), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // session hard-deleted → immediate clean
 	})
 
 	d := newGCTestDaemon(t, mux)
 	wsDir := filepath.Join(d.cfg.WorkspacesRoot, "ws-empty")
 	createTaskDir(t, d.cfg.WorkspacesRoot, "ws-empty", "only-task", &execenv.GCMeta{
-		IssueID:     issueID,
-		WorkspaceID: "ws-empty",
-		CompletedAt: time.Now(),
+		Kind:          execenv.GCKindChat,
+		ChatSessionID: chatID,
+		WorkspaceID:   "ws-empty",
+		CompletedAt:   time.Now(),
 	})
 
 	d.gcWorkspace(context.Background(), wsDir, &gcStats{byPattern: map[string]int{}})
@@ -385,33 +389,29 @@ func TestShouldCleanTaskDir_ActiveEnvRootSkipsArtifactCleanup(t *testing.T) {
 
 func TestShouldCleanTaskDir_ActiveEnvRootSkipsFullCleanup(t *testing.T) {
 	t.Parallel()
-	issueID := "99999999-9999-9999-9999-999999999999"
+	// A hard-deleted chat session (404) would normally return gcActionClean.
+	// But the env root is in use, so the active-root guard must override any
+	// downstream decision and return gcActionSkip.
+	chatID := "99999999-9999-9999-9999-999999999999"
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/api/daemon/issues/%s/gc-check", issueID), func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// Done long enough ago to satisfy GCTTL — this would normally return
-		// gcActionClean. But the env root is in use (e.g. follow-up comment
-		// dispatched a task that reuses the prior workdir), and CreateComment
-		// does not bump issue.updated_at. Active-root guard must override.
-		json.NewEncoder(w).Encode(map[string]any{
-			"status":     "done",
-			"updated_at": time.Now().Add(-30 * 24 * time.Hour),
-		})
+	mux.HandleFunc(fmt.Sprintf("/api/daemon/chat-sessions/%s/gc-check", chatID), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
 	})
 
 	d := newGCTestDaemon(t, mux)
-	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "active-done", &execenv.GCMeta{
-		IssueID:     issueID,
-		WorkspaceID: "ws1",
-		CompletedAt: time.Now().Add(-30 * 24 * time.Hour),
+	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "active-deleted", &execenv.GCMeta{
+		Kind:          execenv.GCKindChat,
+		ChatSessionID: chatID,
+		WorkspaceID:   "ws1",
+		CompletedAt:   time.Now().Add(-30 * 24 * time.Hour),
 	})
 
 	d.markActiveEnvRoot(taskDir)
 	defer d.unmarkActiveEnvRoot(taskDir)
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
-		t.Fatalf("expected gcActionSkip on active env root with done+stale issue, got %d", action)
+		t.Fatalf("expected gcActionSkip on active env root with a would-clean signal, got %d", action)
 	}
 }
 
@@ -1008,13 +1008,13 @@ func TestShouldCleanTaskDir_KindDispatch(t *testing.T) {
 
 		// ---- legacy meta (no kind) → issue path ---------------------------
 		{
-			name: "legacy meta with no kind defaults to issue path — done over TTL = clean",
+			name: "legacy meta with no kind defaults to issue path — alive issue persists",
 			meta: &execenv.GCMeta{IssueID: legacyMeta, WorkspaceID: "ws"},
 			servers: []serverResp{{
 				path: "/api/daemon/issues/" + legacyMeta + "/gc-check",
 				body: map[string]any{"status": "done", "updated_at": overTTL},
 			}},
-			want: gcActionClean,
+			want: gcActionSkip,
 		},
 	}
 
@@ -1248,10 +1248,10 @@ func TestGCMetaForTask(t *testing.T) {
 			idOK: func(m execenv.GCMeta) bool { return m.AutopilotRunID == "r1" },
 		},
 		{
-			name: "issue task",
-			task: Task{ID: "t3", WorkspaceID: "ws", IssueID: "i1"},
+			name: "issue task — records agent_id for (agent, issue) workspace identity",
+			task: Task{ID: "t3", WorkspaceID: "ws", IssueID: "i1", AgentID: "a1"},
 			want: execenv.GCKindIssue,
-			idOK: func(m execenv.GCMeta) bool { return m.IssueID == "i1" },
+			idOK: func(m execenv.GCMeta) bool { return m.IssueID == "i1" && m.AgentID == "a1" },
 		},
 		{
 			name: "quick-create task — issue_id always empty at WriteGCMeta time",
@@ -1359,32 +1359,32 @@ func TestShouldCleanTaskDir_LocalDirectoryNeverOrphan(t *testing.T) {
 	}
 }
 
-// TestShouldCleanTaskDir_LocalDirectoryFalsePreservesNormalClean is the
-// negative control: a regular (non-local_directory) task whose parent issue
-// is done + over TTL must still be reclaimed via gcActionClean.
-func TestShouldCleanTaskDir_LocalDirectoryFalsePreservesNormalClean(t *testing.T) {
+// TestShouldCleanTaskDir_LocalDirectoryFalsePreservesNormalReclaim is the
+// negative control for the local_directory override: a regular
+// (non-local_directory) task whose parent issue was deleted (404) must still be
+// reclaimed via the orphan path, whereas the local_directory companion above is
+// skipped. (Under the persistent-workspace policy, issue workspaces reclaim
+// only on deletion/orphan, never by age — so the negative control uses a
+// deleted issue rather than a done+stale one.)
+func TestShouldCleanTaskDir_LocalDirectoryFalsePreservesNormalReclaim(t *testing.T) {
 	t.Parallel()
 	issueID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3"
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(fmt.Sprintf("/api/daemon/issues/%s/gc-check", issueID), func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"status":     "done",
-			"updated_at": time.Now().Add(-30 * 24 * time.Hour),
-		})
+		http.NotFound(w, r) // issue deleted → 404 → orphan path
 	})
 
 	d := newGCTestDaemon(t, mux)
-	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "normal-task", &execenv.GCMeta{
+	d.cfg.GCOrphanTTL = 0 // any age is "stale" enough to orphan
+	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "normal-deleted", &execenv.GCMeta{
 		Kind:        execenv.GCKindIssue,
 		IssueID:     issueID,
 		WorkspaceID: "ws1",
-		CompletedAt: time.Now().Add(-30 * 24 * time.Hour),
 		// LocalDirectory unset (false).
 	})
 
-	if got := d.shouldCleanTaskDir(context.Background(), taskDir); got != gcActionClean {
-		t.Fatalf("expected gcActionClean for normal task, got %d", got)
+	if got := d.shouldCleanTaskDir(context.Background(), taskDir); got != gcActionOrphan {
+		t.Fatalf("expected gcActionOrphan for normal deleted-issue task, got %d", got)
 	}
 }

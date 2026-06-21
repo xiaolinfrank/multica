@@ -500,6 +500,10 @@ const (
 type GCMeta struct {
 	Kind           GCMetaKind `json:"kind,omitempty"`
 	IssueID        string     `json:"issue_id,omitempty"`
+	// AgentID identifies the dispatched agent. Together with IssueID it keys
+	// the persistent workspace to an (agent, issue) pair — the unit the
+	// workspace management UI lists and the user reasons about.
+	AgentID        string     `json:"agent_id,omitempty"`
 	ChatSessionID  string     `json:"chat_session_id,omitempty"`
 	AutopilotRunID string     `json:"autopilot_run_id,omitempty"`
 	TaskID         string     `json:"task_id,omitempty"`
