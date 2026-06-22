@@ -246,51 +246,52 @@ func workspaceTree(envRoot string, patternSet map[string]struct{}) (wsTreeResult
 	return result, nil
 }
 
-// resolveFileWithin turns a workspace-relative path into an absolute path inside
-// envRoot, neutralizing any ".." that tries to climb above the root. It does not
-// touch the filesystem; symlink containment is checked by the caller.
-func resolveFileWithin(envRoot, rel string) (string, error) {
+// cleanWorkspaceRelPath normalizes a workspace-relative path: rejects NUL and
+// empties, and collapses any ".." so the name is a tidy relative path. The
+// final escape/symlink containment is enforced atomically by os.Root in the
+// caller — this is just input hygiene + the echoed Path.
+func cleanWorkspaceRelPath(rel string) (string, error) {
 	if strings.IndexByte(rel, 0) != -1 {
 		return "", errors.New("path contains NUL")
 	}
-	// Force-root then clean so "/a/../../etc" collapses to "/etc" (still inside
-	// the forced root) rather than climbing past it.
 	cleaned := filepath.Clean("/" + filepath.ToSlash(rel))
 	cleaned = strings.TrimPrefix(cleaned, "/")
 	if cleaned == "" || cleaned == "." {
 		return "", errors.New("empty path")
 	}
-	abs := filepath.Join(envRoot, filepath.FromSlash(cleaned))
-	relCheck, err := filepath.Rel(envRoot, abs)
-	if err != nil || relCheck == "." || strings.HasPrefix(relCheck, "..") {
-		return "", errors.New("path escapes workspace")
-	}
-	return abs, nil
+	return filepath.FromSlash(cleaned), nil
 }
 
-// readWorkspaceFile returns one file's contents, size-capped and sandboxed. The
-// load-bearing guard is the EvalSymlinks containment re-check: an agent can
-// write an arbitrary symlink into its own workspace, so the real resolved path
-// must still sit inside the real envRoot before a single byte is read.
+// readWorkspaceFile returns one file's contents, size-capped and sandboxed.
+//
+// The open goes through os.Root, which resolves every path component with
+// openat beneath a held directory fd: a component that references anything
+// outside envRoot — via "..", an absolute symlink, or a symlink whose target
+// escapes — is refused. Crucially this is immune to the symlink-swap TOCTOU a
+// plain EvalSymlinks+os.Open would have had (an agent racing the read can't
+// redirect a component out of the workspace between check and open), since the
+// resolution and open are one operation against the pinned root.
 func readWorkspaceFile(envRoot, rel string) (wsReadResult, error) {
-	abs, err := resolveFileWithin(envRoot, rel)
+	cleaned, err := cleanWorkspaceRelPath(rel)
 	if err != nil {
 		return wsReadResult{}, err
 	}
 
-	realEnv, err := filepath.EvalSymlinks(envRoot)
+	root, err := os.OpenRoot(envRoot)
 	if err != nil {
-		return wsReadResult{}, fmt.Errorf("resolve workspace root: %w", err)
+		return wsReadResult{}, fmt.Errorf("open workspace root: %w", err)
 	}
-	realFile, err := filepath.EvalSymlinks(abs)
+	defer root.Close()
+
+	f, err := root.Open(cleaned)
 	if err != nil {
+		// Covers not-found and any path that escaped the root (".." / escaping
+		// symlink) — both are reported to the user as an unreadable file.
 		return wsReadResult{}, errors.New("file not found")
 	}
-	if rc, relErr := filepath.Rel(realEnv, realFile); relErr != nil || rc == "." || strings.HasPrefix(rc, "..") {
-		return wsReadResult{}, errors.New("path escapes workspace")
-	}
+	defer f.Close()
 
-	info, err := os.Lstat(realFile)
+	info, err := f.Stat()
 	if err != nil {
 		return wsReadResult{}, err
 	}
@@ -298,19 +299,13 @@ func readWorkspaceFile(envRoot, rel string) (wsReadResult, error) {
 		return wsReadResult{}, errors.New("not a regular file")
 	}
 
-	f, err := os.Open(realFile)
-	if err != nil {
-		return wsReadResult{}, err
-	}
-	defer f.Close()
-
 	// Read one byte past the cap so truncation is detected without trusting the
 	// stat size (which can lie for special files).
 	data, err := io.ReadAll(io.LimitReader(f, workspaceOpMaxReadBytes+1))
 	if err != nil {
 		return wsReadResult{}, err
 	}
-	result := wsReadResult{Path: filepath.ToSlash(rel), Size: info.Size()}
+	result := wsReadResult{Path: filepath.ToSlash(cleaned), Size: info.Size()}
 	if len(data) > workspaceOpMaxReadBytes {
 		data = data[:workspaceOpMaxReadBytes]
 		result.Truncated = true

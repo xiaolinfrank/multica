@@ -154,6 +154,25 @@ func TestReadWorkspaceFile_TextAndSandbox(t *testing.T) {
 	}
 }
 
+func TestReadWorkspaceFile_SymlinkDirEscape(t *testing.T) {
+	_, _, _, envRoot := envRootFixture(t)
+
+	// A secret outside the workspace, reachable only by escaping it.
+	outside := t.TempDir()
+	mustWrite(t, filepath.Join(outside, "secret.txt"), "TOP SECRET")
+
+	// Plant a symlinked *directory* inside the workspace pointing outside. This
+	// is the harder escape (and the TOCTOU-class case): os.Root must refuse to
+	// traverse a component whose symlink target leaves the root.
+	link := filepath.Join(envRoot, "workdir", "out")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+	if _, err := readWorkspaceFile(envRoot, "workdir/out/secret.txt"); err == nil {
+		t.Fatal("read escaped the workspace through a symlinked directory")
+	}
+}
+
 func TestReadWorkspaceFile_BinaryAndTruncation(t *testing.T) {
 	_, _, _, envRoot := envRootFixture(t)
 
