@@ -1,6 +1,9 @@
 import type {
   FleetStatus,
   AgentWorkspacesResponse,
+  WorkspaceOpRequest,
+  WorkspaceTreeResult,
+  WorkspaceReadResult,
   Issue,
   CreateIssueRequest,
   UpdateIssueRequest,
@@ -203,6 +206,12 @@ import {
   EMPTY_FLEET_STATUS,
   AgentWorkspacesResponseSchema,
   EMPTY_AGENT_WORKSPACES,
+  WorkspaceOpRequestSchema,
+  EMPTY_WORKSPACE_OP,
+  WorkspaceTreeResultSchema,
+  EMPTY_WORKSPACE_TREE,
+  WorkspaceReadResultSchema,
+  EMPTY_WORKSPACE_READ,
   EMPTY_CANCEL_TASK_RESPONSE,
 } from "./schemas";
 
@@ -267,6 +276,17 @@ export class PreviewUnsupportedError extends Error {
     super("attachment type not supported for inline preview");
     this.name = "PreviewUnsupportedError";
   }
+}
+
+/**
+ * The terminal result of a workspace file op. `status` is "completed" on
+ * success; "failed" / "timeout" carry an `error` and a fallback-empty `data`
+ * so callers can branch on status without null-checking the payload.
+ */
+export interface WorkspaceOpOutcome<T> {
+  status: string;
+  data: T;
+  error?: string;
 }
 
 export class ApiClient {
@@ -1527,6 +1547,121 @@ export class ApiClient {
     return parseWithFallback(raw, AgentWorkspacesResponseSchema, EMPTY_AGENT_WORKSPACES, {
       endpoint: "GET /api/workspaces/:id/agent-workspaces",
     });
+  }
+
+  // --- Workspace file ops (async RPC: initiate → poll until terminal) -------
+
+  private async initiateWorkspaceOp(
+    workspaceId: string,
+    taskShort: string,
+    op: "tree" | "read" | "reclaim",
+    params?: { path?: string; mode?: string },
+  ): Promise<WorkspaceOpRequest> {
+    const raw = await this.fetch<unknown>(
+      `/api/workspaces/${workspaceId}/agent-workspaces/${encodeURIComponent(taskShort)}/ops/${op}`,
+      { method: "POST", body: JSON.stringify(params ?? {}) },
+    );
+    return parseWithFallback(raw, WorkspaceOpRequestSchema, EMPTY_WORKSPACE_OP, {
+      endpoint: "POST /api/workspaces/:id/agent-workspaces/:task/ops/:op",
+    });
+  }
+
+  private async getWorkspaceOp(
+    workspaceId: string,
+    requestId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceOpRequest> {
+    const raw = await this.fetch<unknown>(
+      `/api/workspaces/${workspaceId}/workspace-ops/${requestId}`,
+      { signal },
+    );
+    return parseWithFallback(raw, WorkspaceOpRequestSchema, EMPTY_WORKSPACE_OP, {
+      endpoint: "GET /api/workspaces/:id/workspace-ops/:requestId",
+    });
+  }
+
+  /**
+   * Runs one workspace file op end to end: initiate, then poll the request_id
+   * until it reaches a terminal state (or the client deadline / abort fires).
+   * The daemon picks the op off its next heartbeat, so first-byte latency is a
+   * heartbeat interval, not instant — the poll cadence accounts for that.
+   */
+  private async runWorkspaceOp(
+    workspaceId: string,
+    taskShort: string,
+    op: "tree" | "read" | "reclaim",
+    params?: { path?: string; mode?: string },
+    opts?: { signal?: AbortSignal; pollMs?: number; timeoutMs?: number },
+  ): Promise<WorkspaceOpRequest> {
+    let req = await this.initiateWorkspaceOp(workspaceId, taskShort, op, params);
+    if (!req.id) return req;
+    const pollMs = opts?.pollMs ?? 700;
+    const deadline = Date.now() + (opts?.timeoutMs ?? 60_000);
+    while (req.status === "pending" || req.status === "running") {
+      if (opts?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+      if (Date.now() >= deadline) break;
+      await new Promise<void>((resolve, reject) => {
+        const id = setTimeout(resolve, pollMs);
+        opts?.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(id);
+            reject(new DOMException("aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+      req = await this.getWorkspaceOp(workspaceId, req.id, opts?.signal);
+    }
+    return req;
+  }
+
+  /** Browse a workspace's file tree (repo checkouts + artifacts collapsed). */
+  async fetchWorkspaceTree(
+    workspaceId: string,
+    taskShort: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WorkspaceOpOutcome<WorkspaceTreeResult>> {
+    const req = await this.runWorkspaceOp(workspaceId, taskShort, "tree", undefined, opts);
+    return {
+      status: req.status,
+      error: req.error,
+      data:
+        req.status === "completed"
+          ? parseWithFallback(req.result, WorkspaceTreeResultSchema, EMPTY_WORKSPACE_TREE, {
+              endpoint: "workspace tree result",
+            })
+          : EMPTY_WORKSPACE_TREE,
+    };
+  }
+
+  /** Read one file's contents from a workspace (2 MiB cap, text only). */
+  async readWorkspaceFile(
+    workspaceId: string,
+    taskShort: string,
+    path: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WorkspaceOpOutcome<WorkspaceReadResult>> {
+    const req = await this.runWorkspaceOp(workspaceId, taskShort, "read", { path }, opts);
+    return {
+      status: req.status,
+      error: req.error,
+      data:
+        req.status === "completed"
+          ? parseWithFallback(req.result, WorkspaceReadResultSchema, EMPTY_WORKSPACE_READ, {
+              endpoint: "workspace read result",
+            })
+          : EMPTY_WORKSPACE_READ,
+    };
+  }
+
+  /** Reclaim disk: mode "artifacts" (regenerable subtrees) or "full". */
+  async reclaimWorkspace(
+    workspaceId: string,
+    taskShort: string,
+    mode: "artifacts" | "full",
+  ): Promise<WorkspaceOpRequest> {
+    return this.runWorkspaceOp(workspaceId, taskShort, "reclaim", { mode });
   }
 
   async createMember(workspaceId: string, data: CreateMemberRequest): Promise<Invitation> {

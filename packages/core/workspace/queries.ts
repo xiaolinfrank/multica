@@ -18,6 +18,13 @@ export const workspaceKeys = {
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,
   agentWorkspaces: (wsId: string) => ["workspaces", wsId, "agent-workspaces"] as const,
+  // On-demand file ops keyed by the workspace's on-disk task dir. Not WS-driven
+  // (file ops are user-initiated RPCs), so these rely on staleTime + manual
+  // invalidation after a reclaim.
+  workspaceTree: (wsId: string, taskShort: string) =>
+    ["workspaces", wsId, "workspace-tree", taskShort] as const,
+  workspaceFile: (wsId: string, taskShort: string, path: string) =>
+    ["workspaces", wsId, "workspace-file", taskShort, path] as const,
 };
 
 export function workspaceListOptions() {
@@ -36,6 +43,43 @@ export function agentWorkspacesOptions(wsId: string) {
     // stale window keeps the page fresh without hammering on every focus.
     staleTime: 30_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * One workspace's file tree, fetched on demand via the daemon RPC. Disabled
+ * until the caller opts in (e.g. the issue-detail section is expanded) so we
+ * don't pay the round trip for collapsed sections. retry:false — a failed RPC
+ * is shown as-is rather than hammered.
+ */
+export function workspaceTreeOptions(
+  wsId: string,
+  taskShort: string,
+  enabled: boolean,
+) {
+  return queryOptions({
+    queryKey: workspaceKeys.workspaceTree(wsId, taskShort),
+    queryFn: ({ signal }) => api.fetchWorkspaceTree(wsId, taskShort, { signal }),
+    enabled: enabled && !!wsId && !!taskShort,
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** One file's contents, fetched on demand when a file is selected. */
+export function workspaceFileOptions(
+  wsId: string,
+  taskShort: string,
+  path: string,
+) {
+  return queryOptions({
+    queryKey: workspaceKeys.workspaceFile(wsId, taskShort, path),
+    queryFn: ({ signal }) => api.readWorkspaceFile(wsId, taskShort, path, { signal }),
+    enabled: !!wsId && !!taskShort && !!path,
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -4,6 +4,9 @@ import type {
   AgentTemplate,
   AgentTemplateSummary,
   AgentWorkspacesResponse,
+  WorkspaceOpRequest,
+  WorkspaceTreeResult,
+  WorkspaceReadResult,
   Attachment,
   BillingBalance,
   BillingBatchesPage,
@@ -1083,4 +1086,55 @@ export const EMPTY_AGENT_WORKSPACES: AgentWorkspacesResponse = {
   workspaces: [],
   total_size_bytes: 0,
   total_repo_checkout_bytes: 0,
+};
+
+// On-demand workspace file ops (tree / read / reclaim). The polled request
+// envelope is lenient: status is a free string (enum drift downgrades to a
+// generic state rather than crashing), and `result` is the op-specific payload
+// validated separately once the request completes.
+export const WorkspaceOpRequestSchema = z.object({
+  id: z.string().default(""),
+  status: z.string().default("pending"),
+  op: z.string().default(""),
+  error: z.string().optional(),
+  result: z.unknown().optional(),
+}).loose();
+
+export const EMPTY_WORKSPACE_OP: WorkspaceOpRequest = {
+  id: "",
+  status: "failed",
+  op: "",
+};
+
+const WorkspaceFileEntrySchema = z.object({
+  path: z.string().default(""),
+  size: z.number().default(0),
+  is_dir: z.boolean().default(false),
+  kind: z.string().default(""),
+}).loose();
+
+export const WorkspaceTreeResultSchema = z.object({
+  entries: z.array(WorkspaceFileEntrySchema).default([]),
+  truncated: z.boolean().default(false),
+}).loose();
+
+export const EMPTY_WORKSPACE_TREE: WorkspaceTreeResult = {
+  entries: [],
+  truncated: false,
+};
+
+export const WorkspaceReadResultSchema = z.object({
+  path: z.string().default(""),
+  size: z.number().default(0),
+  is_text: z.boolean().default(false),
+  content: z.string().default(""),
+  truncated: z.boolean().default(false),
+}).loose();
+
+export const EMPTY_WORKSPACE_READ: WorkspaceReadResult = {
+  path: "",
+  size: 0,
+  is_text: false,
+  content: "",
+  truncated: false,
 };
