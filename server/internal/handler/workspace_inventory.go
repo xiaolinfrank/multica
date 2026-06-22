@@ -39,16 +39,20 @@ type inventoryTask struct {
 
 type inventorySnapshot struct {
 	deviceName string
+	runtimeID  string
 	receivedAt time.Time
 	tasks      []inventoryTask
 }
 
 // daemonTask is an inventoryTask annotated with the daemon that reported it, so
-// the management UI can show which device holds each workspace.
+// the management UI can show which device holds each workspace. RuntimeID is the
+// runtime the daemon reported under — a live runtime on the very daemon that
+// holds these files, which is exactly where an on-demand file op must be routed.
 type daemonTask struct {
 	inventoryTask
 	DaemonID   string
 	DeviceName string
+	RuntimeID  string
 }
 
 // workspaceInventoryStaleAfter drops snapshots from daemons that stopped
@@ -59,7 +63,7 @@ const workspaceInventoryStaleAfter = 15 * time.Minute
 
 // WorkspaceInventoryStore caches the latest per-(workspace, daemon) snapshot.
 type WorkspaceInventoryStore interface {
-	Put(workspaceID, daemonID, deviceName string, tasks []inventoryTask)
+	Put(workspaceID, daemonID, runtimeID, deviceName string, tasks []inventoryTask)
 	TasksForWorkspace(workspaceID string) []daemonTask
 }
 
@@ -76,7 +80,7 @@ func NewInMemoryWorkspaceInventoryStore() *InMemoryWorkspaceInventoryStore {
 	return &InMemoryWorkspaceInventoryStore{byWorkspace: map[string]map[string]inventorySnapshot{}}
 }
 
-func (s *InMemoryWorkspaceInventoryStore) Put(workspaceID, daemonID, deviceName string, tasks []inventoryTask) {
+func (s *InMemoryWorkspaceInventoryStore) Put(workspaceID, daemonID, runtimeID, deviceName string, tasks []inventoryTask) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	daemons := s.byWorkspace[workspaceID]
@@ -84,7 +88,7 @@ func (s *InMemoryWorkspaceInventoryStore) Put(workspaceID, daemonID, deviceName 
 		daemons = map[string]inventorySnapshot{}
 		s.byWorkspace[workspaceID] = daemons
 	}
-	daemons[daemonID] = inventorySnapshot{deviceName: deviceName, receivedAt: time.Now(), tasks: tasks}
+	daemons[daemonID] = inventorySnapshot{deviceName: deviceName, runtimeID: runtimeID, receivedAt: time.Now(), tasks: tasks}
 }
 
 func (s *InMemoryWorkspaceInventoryStore) TasksForWorkspace(workspaceID string) []daemonTask {
@@ -97,7 +101,7 @@ func (s *InMemoryWorkspaceInventoryStore) TasksForWorkspace(workspaceID string) 
 			continue // daemon went quiet; treat its snapshot as gone
 		}
 		for _, t := range snap.tasks {
-			out = append(out, daemonTask{inventoryTask: t, DaemonID: daemonID, DeviceName: snap.deviceName})
+			out = append(out, daemonTask{inventoryTask: t, DaemonID: daemonID, DeviceName: snap.deviceName, RuntimeID: snap.runtimeID})
 		}
 	}
 	return out
@@ -138,7 +142,7 @@ func (h *Handler) ReportWorkspaceInventory(w http.ResponseWriter, r *http.Reques
 	if daemonID == "" {
 		daemonID = rt.LegacyDaemonID.String
 	}
-	h.WorkspaceInventoryStore.Put(wsID, daemonID, rt.Name, tasks)
+	h.WorkspaceInventoryStore.Put(wsID, daemonID, uuidToString(rt.ID), rt.Name, tasks)
 	w.WriteHeader(http.StatusNoContent)
 }
 

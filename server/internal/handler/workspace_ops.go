@@ -3,8 +3,15 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/multica-ai/multica/server/internal/util"
 )
 
 // ---------------------------------------------------------------------------
@@ -226,4 +233,154 @@ func (s *InMemoryWorkspaceOpStore) Fail(_ context.Context, id string, errMsg str
 	req.Error = errMsg
 	req.UpdatedAt = time.Now()
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// HTTP handlers
+// ---------------------------------------------------------------------------
+
+// resolveWorkspaceOpRuntime finds a live runtime ID to route an op for
+// (wsID, taskShort) to. The inventory snapshot records the runtime a daemon
+// reported its footprint under — that runtime is, by construction, on the exact
+// daemon that holds these files, so an op enqueued under it reaches the right
+// disk. Returns ("", false) when no daemon currently reports this workspace.
+func (h *Handler) resolveWorkspaceOpRuntime(wsID, taskShort string) (string, bool) {
+	for _, t := range h.WorkspaceInventoryStore.TasksForWorkspace(wsID) {
+		if t.TaskShort == taskShort && t.RuntimeID != "" {
+			return t.RuntimeID, true
+		}
+	}
+	return "", false
+}
+
+// InitiateWorkspaceOp enqueues a tree/read/reclaim op against one persistent
+// agent workspace and returns the request the client polls.
+// POST /api/workspaces/{workspaceId}/agent-workspaces/{taskShort}/ops/{op}
+func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "workspaceId")
+	if _, ok := h.requireWorkspaceMember(w, r, wsID, "workspace not found"); !ok {
+		return
+	}
+	taskShort := chi.URLParam(r, "taskShort")
+	op := WorkspaceOpKind(chi.URLParam(r, "op"))
+	switch op {
+	case WorkspaceOpTree, WorkspaceOpRead, WorkspaceOpReclaim:
+	default:
+		writeError(w, http.StatusBadRequest, "unknown workspace op")
+		return
+	}
+
+	// Body is optional (tree takes none); decode leniently.
+	var body struct {
+		Path string `json:"path"`
+		Mode string `json:"mode"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	if op == WorkspaceOpRead && strings.TrimSpace(body.Path) == "" {
+		writeError(w, http.StatusBadRequest, "path is required for a read op")
+		return
+	}
+
+	runtimeID, ok := h.resolveWorkspaceOpRuntime(wsID, taskShort)
+	if !ok {
+		writeError(w, http.StatusNotFound, "workspace not found on any reporting daemon")
+		return
+	}
+	// The routed runtime must be online or the daemon never picks up the op and
+	// the client just waits out the timeout. Fail fast instead.
+	if ru, err := util.ParseUUID(runtimeID); err == nil {
+		if rt, err := h.Queries.GetAgentRuntime(r.Context(), ru); err == nil && rt.Status != "online" {
+			writeError(w, http.StatusServiceUnavailable, "the daemon holding this workspace is offline")
+			return
+		}
+	}
+
+	req, err := h.WorkspaceOpStore.Create(r.Context(), runtimeID, op, WorkspaceOpTarget{
+		WorkspaceID: wsID,
+		TaskShort:   taskShort,
+		Path:        body.Path,
+		Mode:        body.Mode,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to enqueue workspace op: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, req)
+}
+
+// GetWorkspaceOpRequest returns the current state of a workspace op so the
+// client can poll for the daemon's result.
+// GET /api/workspaces/{workspaceId}/workspace-ops/{requestId}
+func (h *Handler) GetWorkspaceOpRequest(w http.ResponseWriter, r *http.Request) {
+	wsID := chi.URLParam(r, "workspaceId")
+	if _, ok := h.requireWorkspaceMember(w, r, wsID, "workspace not found"); !ok {
+		return
+	}
+	requestID := chi.URLParam(r, "requestId")
+	req, err := h.WorkspaceOpStore.Get(r.Context(), requestID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load request: "+err.Error())
+		return
+	}
+	// Bind to the caller's workspace so a request_id can't be polled cross-tenant.
+	if req == nil || req.Target.WorkspaceID != wsID {
+		writeError(w, http.StatusNotFound, "request not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, req)
+}
+
+// ReportWorkspaceOpResult ingests the daemon's result for a workspace op.
+// POST /api/daemon/runtimes/{runtimeId}/workspace-ops/{requestId}/result
+func (h *Handler) ReportWorkspaceOpResult(w http.ResponseWriter, r *http.Request) {
+	runtimeID := chi.URLParam(r, "runtimeId")
+	if _, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID); !ok {
+		return
+	}
+	requestID := chi.URLParam(r, "requestId")
+
+	// Fetch first so a retried report for an already-terminal request is a
+	// harmless no-op rather than clobbering the stored result.
+	existing, err := h.WorkspaceOpStore.Get(r.Context(), requestID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load request: "+err.Error())
+		return
+	}
+	if existing == nil || existing.RuntimeID != runtimeID {
+		writeError(w, http.StatusNotFound, "request not found")
+		return
+	}
+	if workspaceOpTerminal(existing.Status) {
+		slog.Debug("ignoring stale workspace op report", "runtime_id", runtimeID, "request_id", requestID, "status", existing.Status)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
+	var body struct {
+		Status  string          `json:"status"` // "completed" or "failed"
+		Error   string          `json:"error"`
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if body.Status == "completed" {
+		if err := h.WorkspaceOpStore.Complete(r.Context(), requestID, body.Payload); err != nil {
+			slog.Error("WorkspaceOpStore Complete failed", "error", err, "request_id", requestID)
+			writeError(w, http.StatusInternalServerError, "failed to persist completion")
+			return
+		}
+	} else {
+		if err := h.WorkspaceOpStore.Fail(r.Context(), requestID, body.Error); err != nil {
+			slog.Error("WorkspaceOpStore Fail failed", "error", err, "request_id", requestID)
+			writeError(w, http.StatusInternalServerError, "failed to persist failure")
+			return
+		}
+	}
+	slog.Debug("workspace op report", "runtime_id", runtimeID, "request_id", requestID, "status", body.Status)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

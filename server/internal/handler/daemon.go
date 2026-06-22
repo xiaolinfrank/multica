@@ -899,6 +899,9 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if len(ack.PendingLocalSkillImports) > 0 {
 		resp["pending_local_skill_imports"] = ack.PendingLocalSkillImports
 	}
+	if ack.PendingWorkspaceOp != nil {
+		resp["pending_workspace_op"] = ack.PendingWorkspaceOp
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1061,6 +1064,35 @@ func (h *Handler) processHeartbeat(ctx context.Context, rt db.AgentRuntime, supp
 			slog.Warn("model list HasPending timed out", "runtime_id", runtimeID, "elapsed_ms", m.ProbeModelMs)
 		} else {
 			slog.Warn("model list HasPending failed", "error", probeModelErr, "runtime_id", runtimeID)
+		}
+	}
+
+	// Probe then claim the workspace file-op queue (browse / read / reclaim a
+	// persistent agent workspace). Same bounded-probe / unbounded-claim shape
+	// as the queues around it.
+	probeWsOpCtx, cancelProbeWsOp := context.WithTimeout(ctx, heartbeatHasPendingTimeout)
+	hasWsOp, probeWsOpErr := h.WorkspaceOpStore.HasPending(probeWsOpCtx, runtimeID)
+	cancelProbeWsOp()
+	switch {
+	case probeWsOpErr == nil && hasWsOp:
+		pendingWsOp, popErr := h.WorkspaceOpStore.PopPending(ctx, runtimeID)
+		if popErr != nil {
+			slog.Warn("workspace op PopPending failed", "error", popErr, "runtime_id", runtimeID)
+		} else if pendingWsOp != nil {
+			ack.PendingWorkspaceOp = &protocol.DaemonHeartbeatPendingWorkspaceOp{
+				ID:          pendingWsOp.ID,
+				Op:          string(pendingWsOp.Op),
+				WorkspaceID: pendingWsOp.Target.WorkspaceID,
+				TaskShort:   pendingWsOp.Target.TaskShort,
+				Path:        pendingWsOp.Target.Path,
+				Mode:        pendingWsOp.Target.Mode,
+			}
+		}
+	case probeWsOpErr != nil:
+		if errors.Is(probeWsOpErr, context.DeadlineExceeded) || errors.Is(probeWsOpErr, context.Canceled) {
+			slog.Warn("workspace op HasPending timed out", "runtime_id", runtimeID)
+		} else {
+			slog.Warn("workspace op HasPending failed", "error", probeWsOpErr, "runtime_id", runtimeID)
 		}
 	}
 

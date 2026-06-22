@@ -9,14 +9,14 @@ func TestWorkspaceInventoryStore_PutAndList(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryWorkspaceInventoryStore()
 
-	s.Put("ws1", "daemonA", "agent_2", []inventoryTask{
+	s.Put("ws1", "daemonA", "rt-A2", "agent_2",[]inventoryTask{
 		{WorkspaceID: "ws1", TaskShort: "t1", Kind: "issue", IssueID: "i1", SizeBytes: 100},
 		{WorkspaceID: "ws1", TaskShort: "t2", Kind: "issue", IssueID: "i2", SizeBytes: 200},
 	})
-	s.Put("ws1", "daemonB", "agent_5", []inventoryTask{
+	s.Put("ws1", "daemonB", "rt-B5", "agent_5", []inventoryTask{
 		{WorkspaceID: "ws1", TaskShort: "t3", Kind: "issue", IssueID: "i3", SizeBytes: 50},
 	})
-	s.Put("ws2", "daemonA", "agent_2", []inventoryTask{
+	s.Put("ws2", "daemonA", "rt-A2-ws2", "agent_2", []inventoryTask{
 		{WorkspaceID: "ws2", TaskShort: "t9", Kind: "issue", IssueID: "i9", SizeBytes: 999},
 	})
 
@@ -38,6 +38,16 @@ func TestWorkspaceInventoryStore_PutAndList(t *testing.T) {
 	if !devices["agent_2"] || !devices["agent_5"] {
 		t.Fatalf("expected both device names, got %v", devices)
 	}
+	// The reporting runtime is carried through so an on-demand op can be routed
+	// back to the daemon that holds the files.
+	for _, dt := range got {
+		if dt.TaskShort == "t1" && dt.RuntimeID != "rt-A2" {
+			t.Fatalf("t1 should route to rt-A2, got %q", dt.RuntimeID)
+		}
+		if dt.TaskShort == "t3" && dt.RuntimeID != "rt-B5" {
+			t.Fatalf("t3 should route to rt-B5, got %q", dt.RuntimeID)
+		}
+	}
 
 	if got := s.TasksForWorkspace("ws2"); len(got) != 1 {
 		t.Fatalf("ws2: expected 1 task, got %d", len(got))
@@ -48,12 +58,12 @@ func TestWorkspaceInventoryStore_LatestSnapshotWins(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryWorkspaceInventoryStore()
 
-	s.Put("ws1", "daemonA", "agent_2", []inventoryTask{
+	s.Put("ws1", "daemonA", "rt-A2", "agent_2",[]inventoryTask{
 		{WorkspaceID: "ws1", TaskShort: "old", Kind: "issue", SizeBytes: 100},
 	})
 	// Same daemon re-reports after a workspace was deleted on disk: empty slice
 	// must replace the prior snapshot, not merge with it.
-	s.Put("ws1", "daemonA", "agent_2", nil)
+	s.Put("ws1", "daemonA", "rt-A2", "agent_2",nil)
 
 	if got := s.TasksForWorkspace("ws1"); len(got) != 0 {
 		t.Fatalf("expected stale tasks cleared by empty re-report, got %d", len(got))
@@ -63,7 +73,7 @@ func TestWorkspaceInventoryStore_LatestSnapshotWins(t *testing.T) {
 func TestWorkspaceInventoryStore_StaleSnapshotDropped(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryWorkspaceInventoryStore()
-	s.Put("ws1", "daemonA", "agent_2", []inventoryTask{
+	s.Put("ws1", "daemonA", "rt-A2", "agent_2",[]inventoryTask{
 		{WorkspaceID: "ws1", TaskShort: "t1", Kind: "issue", SizeBytes: 100},
 	})
 
