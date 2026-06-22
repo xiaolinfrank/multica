@@ -1,5 +1,6 @@
 import type {
   FleetStatus,
+  AgentWorkspacesResponse,
   Issue,
   CreateIssueRequest,
   UpdateIssueRequest,
@@ -200,6 +201,8 @@ import {
   EMPTY_CREATE_BILLING_PORTAL_SESSION_RESPONSE,
   FleetStatusSchema,
   EMPTY_FLEET_STATUS,
+  AgentWorkspacesResponseSchema,
+  EMPTY_AGENT_WORKSPACES,
   EMPTY_CANCEL_TASK_RESPONSE,
 } from "./schemas";
 
@@ -1517,6 +1520,13 @@ export class ApiClient {
   // Members
   async listMembers(workspaceId: string): Promise<MemberWithUser[]> {
     return this.fetch(`/api/workspaces/${workspaceId}/members`);
+  }
+
+  async listAgentWorkspaces(workspaceId: string): Promise<AgentWorkspacesResponse> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/agent-workspaces`);
+    return parseWithFallback(raw, AgentWorkspacesResponseSchema, EMPTY_AGENT_WORKSPACES, {
+      endpoint: "GET /api/workspaces/:id/agent-workspaces",
+    });
   }
 
   async createMember(workspaceId: string, data: CreateMemberRequest): Promise<Invitation> {

@@ -1,0 +1,20 @@
+{
+  "title": "ワークスペース",
+  "subtitle": "エージェントと課題ごとにフリートが保持する永続的な作業ディレクトリ。課題が存在する限り保持されます。",
+  "summary": {
+    "used": "NAS 使用量",
+    "reclaimable": "回収可能",
+    "count": "{{count}} 個のワークスペース"
+  },
+  "empty": {
+    "title": "ワークスペースはまだありません",
+    "hint": "エージェントが課題で作業を開始すると、ここに表示されます。"
+  },
+  "row": {
+    "on_device": "{{device}} 上",
+    "files": "{{count}} ファイル",
+    "reclaimable": "{{size}} 回収可能",
+    "open_issue": "課題を開く"
+  },
+  "loading": "読み込み中…"
+}

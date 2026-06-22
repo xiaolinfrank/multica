@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentTemplate,
   AgentTemplateSummary,
+  AgentWorkspacesResponse,
   Attachment,
   BillingBalance,
   BillingBatchesPage,
@@ -1055,4 +1056,31 @@ export const FleetStatusSchema = z.object({
 export const EMPTY_FLEET_STATUS: FleetStatus = {
   devices: [],
   collected_at: "",
+};
+
+const AgentWorkspaceSchema = z.object({
+  issue_id: z.string().default(""),
+  issue_identifier: z.string().default(""),
+  issue_title: z.string().default(""),
+  issue_status: z.string().default(""),
+  agent_id: z.string().default(""),
+  agent_name: z.string().default(""),
+  device_name: z.string().default(""),
+  task_short: z.string().default(""),
+  size_bytes: z.number().default(0),
+  repo_checkout_bytes: z.number().default(0),
+  file_count: z.number().default(0),
+  age_seconds: z.number().default(0),
+}).loose();
+
+export const AgentWorkspacesResponseSchema = z.object({
+  workspaces: z.array(AgentWorkspaceSchema).default([]),
+  total_size_bytes: z.number().default(0),
+  total_repo_checkout_bytes: z.number().default(0),
+}).loose();
+
+export const EMPTY_AGENT_WORKSPACES: AgentWorkspacesResponse = {
+  workspaces: [],
+  total_size_bytes: 0,
+  total_repo_checkout_bytes: 0,
 };

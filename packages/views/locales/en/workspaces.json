@@ -1,0 +1,20 @@
+{
+  "title": "Workspaces",
+  "subtitle": "Persistent working directories the fleet keeps per agent and issue — they live as long as their issue does.",
+  "summary": {
+    "used": "Used on NAS",
+    "reclaimable": "Reclaimable",
+    "count": "{{count}} workspaces"
+  },
+  "empty": {
+    "title": "No workspaces yet",
+    "hint": "A workspace appears here once an agent runs on an issue."
+  },
+  "row": {
+    "on_device": "on {{device}}",
+    "files": "{{count}} files",
+    "reclaimable": "{{size}} reclaimable",
+    "open_issue": "Open issue"
+  },
+  "loading": "Loading…"
+}

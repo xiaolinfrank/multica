@@ -17,12 +17,25 @@ export const workspaceKeys = {
     ["workspaces", wsId, "squads", squadId, "members-status"] as const,
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,
+  agentWorkspaces: (wsId: string) => ["workspaces", wsId, "agent-workspaces"] as const,
 };
 
 export function workspaceListOptions() {
   return queryOptions({
     queryKey: workspaceKeys.list(),
     queryFn: () => api.listWorkspaces(),
+  });
+}
+
+/** Persistent agent workspaces (per agent×issue) for the management page. */
+export function agentWorkspacesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.agentWorkspaces(wsId),
+    queryFn: () => api.listAgentWorkspaces(wsId),
+    // Footprint shifts slowly and is daemon-reported on a ~3m cadence; a short
+    // stale window keeps the page fresh without hammering on every focus.
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 

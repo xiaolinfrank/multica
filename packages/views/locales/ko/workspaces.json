@@ -1,0 +1,20 @@
+{
+  "title": "워크스페이스",
+  "subtitle": "에이전트와 이슈별로 플릿이 유지하는 영속 작업 디렉터리입니다. 이슈가 존재하는 한 유지됩니다.",
+  "summary": {
+    "used": "NAS 사용량",
+    "reclaimable": "회수 가능",
+    "count": "워크스페이스 {{count}}개"
+  },
+  "empty": {
+    "title": "아직 워크스페이스가 없습니다",
+    "hint": "에이전트가 이슈에서 작업을 시작하면 여기에 표시됩니다."
+  },
+  "row": {
+    "on_device": "{{device}}에 있음",
+    "files": "파일 {{count}}개",
+    "reclaimable": "{{size}} 회수 가능",
+    "open_issue": "이슈 열기"
+  },
+  "loading": "불러오는 중…"
+}

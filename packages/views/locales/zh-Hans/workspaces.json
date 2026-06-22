@@ -1,0 +1,20 @@
+{
+  "title": "工作区",
+  "subtitle": "算力池为每个「智能体 × issue」保留的持久工作目录,只要 issue 还在,工作区就在。",
+  "summary": {
+    "used": "NAS 已用",
+    "reclaimable": "可回收",
+    "count": "{{count}} 个工作区"
+  },
+  "empty": {
+    "title": "还没有工作区",
+    "hint": "当智能体在某个 issue 上开始工作后,工作区会出现在这里。"
+  },
+  "row": {
+    "on_device": "位于 {{device}}",
+    "files": "{{count}} 个文件",
+    "reclaimable": "可回收 {{size}}",
+    "open_issue": "打开 issue"
+  },
+  "loading": "加载中…"
+}

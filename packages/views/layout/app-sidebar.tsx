@@ -35,6 +35,7 @@ import {
   Zap,
   Users,
   Server,
+  FolderGit2,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -117,6 +118,7 @@ type NavKey =
   | "fleet"
   | "runtimes"
   | "skills"
+  | "workspaces"
   | "settings";
 
 // Static schema (key + icon) — labels resolved at render via useT("layout").
@@ -132,6 +134,7 @@ type NavLabelKey =
   | "fleet"
   | "runtimes"
   | "skills"
+  | "workspaces"
   | "settings";
 
 const personalNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[] = [
@@ -152,6 +155,7 @@ const workspaceNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[]
 const configureNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[] = [
   { key: "runtimes", labelKey: "runtimes", icon: Monitor },
   { key: "skills", labelKey: "skills", icon: BookOpenText },
+  { key: "workspaces", labelKey: "workspaces", icon: FolderGit2 },
   { key: "settings", labelKey: "settings", icon: Settings },
 ];
 
