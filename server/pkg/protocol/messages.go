@@ -153,6 +153,11 @@ type DaemonHeartbeatAckPayload struct {
 	// that don't know this field silently ignore it (standard JSON behavior)
 	// and fall back to the singular PendingLocalSkillImport above.
 	PendingLocalSkillImports []DaemonHeartbeatPendingLocalSkillImport `json:"pending_local_skill_imports,omitempty"`
+	// PendingWorkspaceOp asks the daemon to browse/read/reclaim a persistent
+	// agent workspace on its (NAS-backed) disk — the server can't reach it
+	// directly. Carries the op kind plus the target envRoot coordinates the
+	// daemon sandboxes against. Old daemons ignore the unknown field.
+	PendingWorkspaceOp *DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_op,omitempty"`
 }
 
 // HeartbeatStatusRuntimeGone is the ack Status used when the runtime row no
@@ -183,4 +188,21 @@ type DaemonHeartbeatPendingLocalSkills struct {
 type DaemonHeartbeatPendingLocalSkillImport struct {
 	ID       string `json:"id"`
 	SkillKey string `json:"skill_key"`
+}
+
+// DaemonHeartbeatPendingWorkspaceOp describes a file operation the daemon
+// should run against one persistent agent workspace. Op is "tree" (list the
+// file tree, repo checkouts collapsed), "read" (return one file's contents,
+// size-capped) or "reclaim" (free space). WorkspaceID + TaskShort locate the
+// envRoot ({WorkspacesRoot}/{WorkspaceID}/{TaskShort}); the daemon treats both
+// as untrusted path components and refuses anything that escapes the root.
+// Path is the read target (relative to the workspace); Mode is "artifacts" or
+// "full" for reclaim.
+type DaemonHeartbeatPendingWorkspaceOp struct {
+	ID          string `json:"id"`
+	Op          string `json:"op"`
+	WorkspaceID string `json:"workspace_id"`
+	TaskShort   string `json:"task_short"`
+	Path        string `json:"path,omitempty"`
+	Mode        string `json:"mode,omitempty"`
 }

@@ -288,6 +288,7 @@ type (
 	PendingModelList        = protocol.DaemonHeartbeatPendingModelList
 	PendingLocalSkills      = protocol.DaemonHeartbeatPendingLocalSkills
 	PendingLocalSkillImport = protocol.DaemonHeartbeatPendingLocalSkillImport
+	PendingWorkspaceOp      = protocol.DaemonHeartbeatPendingWorkspaceOp
 )
 
 func (c *Client) SendHeartbeat(ctx context.Context, runtimeID string) (*HeartbeatResponse, error) {
@@ -319,6 +320,13 @@ func (c *Client) ReportLocalSkillListResult(ctx context.Context, runtimeID, requ
 // ReportLocalSkillImportResult sends a runtime-local-skill bundle back to the server.
 func (c *Client) ReportLocalSkillImportResult(ctx context.Context, runtimeID, requestID string, result map[string]any) error {
 	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/runtimes/%s/local-skills/import/%s/result", runtimeID, requestID), result, nil)
+}
+
+// ReportWorkspaceOpResult sends the result of a workspace file op (tree / read
+// / reclaim) back to the server. The body is {status, error?, payload}; the
+// server stores payload as the op-specific result the UI polls for.
+func (c *Client) ReportWorkspaceOpResult(ctx context.Context, runtimeID, requestID string, result map[string]any) error {
+	return c.postJSON(ctx, fmt.Sprintf("/api/daemon/runtimes/%s/workspace-ops/%s/result", runtimeID, requestID), result, nil)
 }
 
 // ReportWorkspaceInventory pushes a per-workspace footprint snapshot to the

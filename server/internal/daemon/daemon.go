@@ -1888,13 +1888,14 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 	if resp == nil {
 		return
 	}
-	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil {
+	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil || resp.PendingWorkspaceOp != nil {
 		d.logger.Debug("heartbeat: pending actions",
 			"runtime_id", runtimeID,
 			"update", resp.PendingUpdate != nil,
 			"model_list", resp.PendingModelList != nil,
 			"local_skills", resp.PendingLocalSkills != nil,
 			"local_skill_import", resp.PendingLocalSkillImport != nil,
+			"workspace_op", resp.PendingWorkspaceOp != nil,
 		)
 	}
 	if resp.PendingUpdate != nil {
@@ -1921,6 +1922,12 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 		if rt := d.findRuntime(runtimeID); rt != nil {
 			go d.handleLocalSkillImport(ctx, *rt, *resp.PendingLocalSkillImport)
 		}
+	}
+	// Workspace file ops run against an envRoot path, not a Runtime, so they
+	// don't go through findRuntime — the op still works while the runtime
+	// index is momentarily out of sync.
+	if resp.PendingWorkspaceOp != nil {
+		go d.handleWorkspaceOp(ctx, runtimeID, resp.PendingWorkspaceOp)
 	}
 }
 
