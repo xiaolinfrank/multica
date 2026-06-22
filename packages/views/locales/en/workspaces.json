@@ -14,7 +14,27 @@
     "on_device": "on {{device}}",
     "files": "{{count}} files",
     "reclaimable": "{{size}} reclaimable",
-    "open_issue": "Open issue"
+    "open_issue": "Open issue",
+    "browse": "Browse",
+    "clear_repo": "Clear repo checkouts",
+    "delete_issue": "Delete issue"
   },
+  "browser": {
+    "empty": "This workspace is empty.",
+    "unreachable": "Couldn't reach the daemon holding this workspace.",
+    "read_failed": "Couldn't read this file.",
+    "binary": "Binary file ({{size}}) — not previewable.",
+    "truncated": "Listing truncated — too many files to show.",
+    "file_truncated": "File truncated to the first 2 MB.",
+    "repo": "repo",
+    "artifact": "cache"
+  },
+  "delete": {
+    "title": "Delete this issue?",
+    "body": "Deleting {{issue}} permanently removes the issue and its agent workspaces ({{size}}) from disk. This can't be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete issue"
+  },
+  "issue_section": "Workspace files",
   "loading": "Loading…"
 }

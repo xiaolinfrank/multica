@@ -12,10 +12,19 @@ vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
     "@tanstack/react-query",
   );
-  return { ...actual, useQuery: () => queryRef.current };
+  return {
+    ...actual,
+    useQuery: () => queryRef.current,
+    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
 });
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+
+vi.mock("@multica/core/issues/mutations", () => ({
+  useDeleteIssue: () => ({ mutate: vi.fn() }),
+}));
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({ issueDetail: (id: string) => `/acme/issues/${id}` }),
@@ -25,6 +34,12 @@ vi.mock("../../navigation", () => ({
   AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => (
     <a href={href}>{children}</a>
   ),
+}));
+
+// The file browser pulls in lowlight (heavy) and its own RPC query options;
+// this page test only cares about grouping + row actions, so stub it.
+vi.mock("./workspace-file-browser", () => ({
+  WorkspaceFileBrowser: () => null,
 }));
 
 import { WorkspacesPage } from "./workspaces-page";
@@ -74,8 +89,11 @@ describe("WorkspacesPage", () => {
     // NAS total surfaces in the summary.
     expect(screen.getByText("3.0 MB")).toBeTruthy();
     // Open-issue link points at the grouped issue.
-    const link = screen.getAllByText("Open issue")[0].closest("a");
+    const link = screen.getAllByText("Open issue")[0]?.closest("a");
     expect(link?.getAttribute("href")).toContain("/issues/i1");
+    // Per-workspace actions are present (Browse on every row, Delete per issue).
+    expect(screen.getAllByText("Browse").length).toBe(3);
+    expect(screen.getAllByLabelText("Delete issue").length).toBe(2);
   });
 
   it("renders the empty state when there are no workspaces", () => {

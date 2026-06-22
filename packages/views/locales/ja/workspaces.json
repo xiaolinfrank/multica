@@ -14,7 +14,27 @@
     "on_device": "{{device}} 上",
     "files": "{{count}} ファイル",
     "reclaimable": "{{size}} 回収可能",
-    "open_issue": "課題を開く"
+    "open_issue": "課題を開く",
+    "browse": "閲覧",
+    "clear_repo": "リポジトリチェックアウトを削除",
+    "delete_issue": "課題を削除"
   },
+  "browser": {
+    "empty": "このワークスペースは空です。",
+    "unreachable": "このワークスペースを保持するデーモンに接続できませんでした。",
+    "read_failed": "このファイルを読み込めませんでした。",
+    "binary": "バイナリファイル({{size}})— プレビューできません。",
+    "truncated": "ファイルが多すぎるため、一覧を省略しました。",
+    "file_truncated": "ファイルは先頭 2 MB に切り詰められました。",
+    "repo": "リポジトリ",
+    "artifact": "キャッシュ"
+  },
+  "delete": {
+    "title": "この課題を削除しますか?",
+    "body": "{{issue}} を削除すると、課題とそのエージェントワークスペース({{size}})がディスクから完全に削除されます。元に戻せません。",
+    "cancel": "キャンセル",
+    "confirm": "課題を削除"
+  },
+  "issue_section": "ワークスペースファイル",
   "loading": "読み込み中…"
 }

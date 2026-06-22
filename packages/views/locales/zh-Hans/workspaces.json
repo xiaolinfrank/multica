@@ -14,7 +14,27 @@
     "on_device": "位于 {{device}}",
     "files": "{{count}} 个文件",
     "reclaimable": "可回收 {{size}}",
-    "open_issue": "打开 issue"
+    "open_issue": "打开 issue",
+    "browse": "浏览",
+    "clear_repo": "清理仓库检出",
+    "delete_issue": "删除 issue"
   },
+  "browser": {
+    "empty": "该工作区为空。",
+    "unreachable": "无法连接持有该工作区的节点。",
+    "read_failed": "无法读取此文件。",
+    "binary": "二进制文件({{size}})——无法预览。",
+    "truncated": "文件过多,列表已截断。",
+    "file_truncated": "文件已截断为前 2 MB。",
+    "repo": "仓库",
+    "artifact": "缓存"
+  },
+  "delete": {
+    "title": "删除这个 issue?",
+    "body": "删除 {{issue}} 会永久移除该 issue 及其智能体工作区({{size}}),且无法撤销。",
+    "cancel": "取消",
+    "confirm": "删除 issue"
+  },
+  "issue_section": "工作区文件",
   "loading": "加载中…"
 }
