@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { agentWorkspacesOptions } from "@multica/core/workspace";
-import { ChevronRight } from "lucide-react";
-import { WorkspaceFileBrowser } from "../../workspaces/components/workspace-file-browser";
+import type { AgentWorkspace } from "@multica/core/types";
+import { ChevronRight, FolderOpen } from "lucide-react";
+import { WorkspaceExplorerDialog } from "../../workspaces/components/workspace-file-browser";
 import { useT } from "../../i18n";
 
 /** Human-readable byte size (binary units). */
@@ -24,8 +25,9 @@ function formatBytes(bytes: number): string {
 /**
  * Workspace files — the persistent agent workspace(s) for this issue. Mirrors
  * ExecutionLogSection: self-contained collapse state, hides itself when the
- * issue has no agent workspace on disk. The file tree RPC only fires once the
- * section is expanded, so a collapsed section costs nothing.
+ * issue has no agent workspace on disk. Each workspace opens the shared
+ * two-pane file explorer in a dialog (same UX as the management page) rather
+ * than embedding a tree inline, so multiple workspaces don't bloat the page.
  */
 export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
   const { t } = useT("workspaces");
@@ -60,25 +62,47 @@ export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
         </span>
       </button>
       {open ? (
-        <div className="space-y-3 pl-2">
+        <div className="space-y-1.5 pl-2">
           {workspaces.map((ws) => (
-            <div key={ws.task_short} className="rounded-md border border-border">
-              <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5 text-xs">
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {ws.agent_name || ws.agent_id || "—"}
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {ws.device_name}
-                </span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {formatBytes(ws.size_bytes)}
-                </span>
-              </div>
-              <WorkspaceFileBrowser wsId={wsId} taskShort={ws.task_short} />
-            </div>
+            <WorkspaceFileRow key={ws.task_short} wsId={wsId} ws={ws} />
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
+  const { t } = useT("workspaces");
+  const [browsing, setBrowsing] = useState(false);
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs">
+      <span className="min-w-0 flex-1 truncate font-medium">
+        {ws.agent_name || ws.agent_id || "—"}
+      </span>
+      <span className="shrink-0 text-muted-foreground">{ws.device_name}</span>
+      <span className="shrink-0 tabular-nums text-muted-foreground">
+        {formatBytes(ws.size_bytes)}
+      </span>
+      <button
+        type="button"
+        onClick={() => setBrowsing(true)}
+        className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+      >
+        <FolderOpen className="size-3.5" />
+        {t(($) => $.row.browse)}
+      </button>
+      <WorkspaceExplorerDialog
+        wsId={wsId}
+        taskShort={ws.task_short}
+        label={
+          (ws.agent_name || ws.agent_id || "—") +
+          (ws.issue_identifier ? ` · ${ws.issue_identifier}` : "")
+        }
+        open={browsing}
+        onOpenChange={setBrowsing}
+      />
     </div>
   );
 }

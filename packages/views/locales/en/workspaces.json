@@ -27,7 +27,15 @@
     "truncated": "Listing truncated — too many files to show.",
     "file_truncated": "File truncated to the first 2 MB.",
     "repo": "repo",
-    "artifact": "cache"
+    "artifact": "cache",
+    "select_hint": "Select a file to preview its contents",
+    "copy": "Copy",
+    "download": "Download",
+    "wrap": "Wrap lines",
+    "nowrap": "Unwrap lines",
+    "image_too_large": "Image too large ({{size}}) — download to view.",
+    "download_failed": "Download failed.",
+    "download_too_large": "File too large to download (10 MB limit)."
   },
   "delete": {
     "title": "Delete this issue?",

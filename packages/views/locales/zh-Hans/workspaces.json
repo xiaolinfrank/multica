@@ -27,7 +27,15 @@
     "truncated": "文件过多,列表已截断。",
     "file_truncated": "文件已截断为前 2 MB。",
     "repo": "仓库",
-    "artifact": "缓存"
+    "artifact": "缓存",
+    "select_hint": "选择左侧文件查看内容",
+    "copy": "复制",
+    "download": "下载",
+    "wrap": "自动换行",
+    "nowrap": "取消换行",
+    "image_too_large": "图片过大({{size}}),请下载查看。",
+    "download_failed": "下载失败。",
+    "download_too_large": "文件过大,无法下载(上限 10 MB)。"
   },
   "delete": {
     "title": "删除这个 issue?",

@@ -27,7 +27,15 @@
     "truncated": "파일이 너무 많아 목록이 잘렸습니다.",
     "file_truncated": "파일이 처음 2 MB로 잘렸습니다.",
     "repo": "리포지토리",
-    "artifact": "캐시"
+    "artifact": "캐시",
+    "select_hint": "왼쪽에서 파일을 선택해 내용을 확인하세요",
+    "copy": "복사",
+    "download": "다운로드",
+    "wrap": "줄 바꿈",
+    "nowrap": "줄 바꿈 해제",
+    "image_too_large": "이미지가 너무 큽니다({{size}}) — 다운로드하여 확인하세요.",
+    "download_failed": "다운로드에 실패했습니다.",
+    "download_too_large": "파일이 너무 커서 다운로드할 수 없습니다(최대 10 MB)."
   },
   "delete": {
     "title": "이 이슈를 삭제할까요?",

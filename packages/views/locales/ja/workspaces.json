@@ -27,7 +27,15 @@
     "truncated": "ファイルが多すぎるため、一覧を省略しました。",
     "file_truncated": "ファイルは先頭 2 MB に切り詰められました。",
     "repo": "リポジトリ",
-    "artifact": "キャッシュ"
+    "artifact": "キャッシュ",
+    "select_hint": "左のファイルを選択して内容を表示",
+    "copy": "コピー",
+    "download": "ダウンロード",
+    "wrap": "折り返す",
+    "nowrap": "折り返しを解除",
+    "image_too_large": "画像が大きすぎます({{size}})— ダウンロードして表示してください。",
+    "download_failed": "ダウンロードに失敗しました。",
+    "download_too_large": "ファイルが大きすぎてダウンロードできません(上限 10 MB)。"
   },
   "delete": {
     "title": "この課題を削除しますか?",

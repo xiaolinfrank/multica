@@ -36,10 +36,11 @@ vi.mock("../../navigation", () => ({
   ),
 }));
 
-// The file browser pulls in lowlight (heavy) and its own RPC query options;
+// The file explorer pulls in lowlight (heavy) and its own RPC query options;
 // this page test only cares about grouping + row actions, so stub it.
 vi.mock("./workspace-file-browser", () => ({
-  WorkspaceFileBrowser: () => null,
+  WorkspaceExplorerDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="explorer" /> : null,
 }));
 
 import { WorkspacesPage } from "./workspaces-page";

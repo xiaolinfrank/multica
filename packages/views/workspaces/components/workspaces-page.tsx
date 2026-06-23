@@ -11,12 +11,6 @@ import type { AgentWorkspace } from "@multica/core/types";
 import { Badge } from "@multica/ui/components/ui/badge";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@multica/ui/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -29,7 +23,7 @@ import {
 import { FolderGit2, FolderOpen, HardDrive, Recycle, Trash2 } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
-import { WorkspaceFileBrowser } from "./workspace-file-browser";
+import { WorkspaceExplorerDialog } from "./workspace-file-browser";
 
 /** Human-readable byte size (binary units, NAS is reported in raw bytes). */
 function formatBytes(bytes: number): string {
@@ -240,19 +234,16 @@ function AgentRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
           </button>
         ) : null}
       </div>
-      {browsing ? (
-        <Dialog open onOpenChange={(o) => !o && setBrowsing(false)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="truncate text-sm">
-                {(ws.agent_name || ws.agent_id || "—") +
-                  (ws.issue_identifier ? ` · ${ws.issue_identifier}` : "")}
-              </DialogTitle>
-            </DialogHeader>
-            <WorkspaceFileBrowser wsId={wsId} taskShort={ws.task_short} />
-          </DialogContent>
-        </Dialog>
-      ) : null}
+      <WorkspaceExplorerDialog
+        wsId={wsId}
+        taskShort={ws.task_short}
+        label={
+          (ws.agent_name || ws.agent_id || "—") +
+          (ws.issue_identifier ? ` · ${ws.issue_identifier}` : "")
+        }
+        open={browsing}
+        onOpenChange={setBrowsing}
+      />
     </li>
   );
 }

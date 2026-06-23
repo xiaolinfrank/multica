@@ -5,16 +5,32 @@ import { useQuery } from "@tanstack/react-query";
 import {
   workspaceTreeOptions,
   workspaceFileOptions,
+  workspaceDownloadOptions,
 } from "@multica/core/workspace";
-import type { WorkspaceFileEntry } from "@multica/core/types";
+import type {
+  WorkspaceFileEntry,
+  WorkspaceReadResult,
+  WorkspaceDownloadResult,
+} from "@multica/core/types";
 import {
   ChevronRight,
   File as FileIcon,
+  FileCode,
+  FileImage,
+  FileJson,
+  FileText,
   Folder,
   FolderGit2,
   Package,
+  Download,
+  Copy,
+  Check,
+  WrapText,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
+import { copyText } from "@multica/ui/lib/clipboard";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import {
@@ -23,9 +39,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
-import { ScrollArea } from "@multica/ui/components/ui/scroll-area";
-import { CodeBlockStatic } from "../../editor/code-block-static";
+import { getPreviewKind, extensionToLanguage } from "../../editor/utils/preview";
 import { useT } from "../../i18n";
+import { WorkspaceCodeView } from "./workspace-code-view";
+import { useWorkspaceFileDownload, type DownloadOutcome } from "./workspace-download";
 
 /** Human-readable byte size (binary units). */
 function formatBytes(bytes: number): string {
@@ -40,33 +57,24 @@ function formatBytes(bytes: number): string {
   return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
-// Minimal extension → lowlight language hint. Unknowns fall back to auto-detect
-// (CodeBlockStatic passes undefined through to highlightAuto).
-const EXT_LANG: Record<string, string> = {
-  ts: "typescript",
-  tsx: "typescript",
-  js: "javascript",
-  jsx: "javascript",
-  py: "python",
-  go: "go",
-  rs: "rust",
-  java: "java",
-  rb: "ruby",
-  sh: "bash",
-  bash: "bash",
-  json: "json",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "ini",
-  md: "markdown",
-  html: "xml",
-  css: "css",
-  sql: "sql",
-};
+const CODE_EXTS = new Set([
+  "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "py", "rb", "rs", "java",
+  "c", "cc", "cpp", "h", "hpp", "cs", "php", "lua", "sh", "bash", "zsh",
+  "sql", "css", "scss", "less", "html", "htm", "xml", "yaml", "yml", "toml",
+]);
 
-function langForPath(path: string): string | undefined {
+/** Pick a lucide icon for a file by preview kind + extension. */
+function FileTypeIcon({ path, className }: { path: string; className?: string }) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return EXT_LANG[ext];
+  const kind = getPreviewKind("", path);
+  let Icon = FileIcon;
+  if (kind === "image") Icon = FileImage;
+  else if (ext === "json") Icon = FileJson;
+  else if (CODE_EXTS.has(ext)) Icon = FileCode;
+  else if (kind === "markdown" || ext === "txt" || ext === "log" || ext === "csv") {
+    Icon = FileText;
+  }
+  return <Icon className={className} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,10 +136,10 @@ function buildNodes(entries: WorkspaceFileEntry[]): TreeNode[] {
 }
 
 // ---------------------------------------------------------------------------
-// Browser
+// Explorer — two panes: tree (left) + preview (right)
 // ---------------------------------------------------------------------------
 
-export function WorkspaceFileBrowser({
+export function WorkspaceFileExplorer({
   wsId,
   taskShort,
 }: {
@@ -140,6 +148,7 @@ export function WorkspaceFileBrowser({
 }) {
   const { t } = useT("workspaces");
   const [selected, setSelected] = useState<TreeNode | null>(null);
+  const { download, downloadingPath } = useWorkspaceFileDownload(wsId, taskShort);
 
   const { data, isLoading, isError } = useQuery(
     workspaceTreeOptions(wsId, taskShort, true),
@@ -147,33 +156,36 @@ export function WorkspaceFileBrowser({
 
   const nodes = useMemo(() => buildNodes(data?.data.entries ?? []), [data]);
 
+  const handleDownload = async (path: string) => {
+    const outcome: DownloadOutcome = await download(path);
+    if (outcome === "too_large") toast.error(t(($) => $.browser.download_too_large));
+    else if (outcome === "error") toast.error(t(($) => $.browser.download_failed));
+  };
+
+  let tree: React.ReactNode;
   if (isLoading) {
-    return (
-      <div className="space-y-1.5 py-1">
-        {[0, 1, 2].map((i) => (
+    tree = (
+      <div className="space-y-1.5 p-2">
+        {[0, 1, 2, 3, 4].map((i) => (
           <Skeleton key={i} className="h-5 w-full" />
         ))}
       </div>
     );
-  }
-  if (isError || (data && data.status !== "completed")) {
-    return (
-      <p className="px-2 py-3 text-xs text-muted-foreground">
+  } else if (isError || (data && data.status !== "completed")) {
+    tree = (
+      <p className="px-3 py-4 text-xs text-muted-foreground">
         {data?.error || t(($) => $.browser.unreachable)}
       </p>
     );
-  }
-  if (nodes.length === 0) {
-    return (
-      <p className="px-2 py-3 text-xs text-muted-foreground">
+  } else if (nodes.length === 0) {
+    tree = (
+      <p className="px-3 py-4 text-xs text-muted-foreground">
         {t(($) => $.browser.empty)}
       </p>
     );
-  }
-
-  return (
-    <>
-      <div className="max-h-80 overflow-y-auto py-1">
+  } else {
+    tree = (
+      <div className="w-max min-w-full py-1">
         {nodes.map((node) => (
           <TreeRow
             key={node.path}
@@ -181,23 +193,40 @@ export function WorkspaceFileBrowser({
             depth={0}
             selectedPath={selected?.path ?? ""}
             onSelectFile={setSelected}
+            onDownload={handleDownload}
+            downloadingPath={downloadingPath}
           />
         ))}
         {data?.data.truncated ? (
-          <p className="px-2 pt-2 text-[11px] text-muted-foreground">
+          <p className="px-3 pt-2 text-[11px] text-muted-foreground">
             {t(($) => $.browser.truncated)}
           </p>
         ) : null}
       </div>
-      {selected && !selected.isDir ? (
-        <FileViewerDialog
-          wsId={wsId}
-          taskShort={taskShort}
-          node={selected}
-          onClose={() => setSelected(null)}
-        />
-      ) : null}
-    </>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="w-64 shrink-0 overflow-auto border-r border-border bg-muted/20">
+        {tree}
+      </div>
+      <div className="min-w-0 flex-1">
+        {selected ? (
+          <PreviewPane
+            wsId={wsId}
+            taskShort={taskShort}
+            node={selected}
+            onDownload={handleDownload}
+            downloading={downloadingPath === selected.path}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+            {t(($) => $.browser.select_hint)}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -206,11 +235,15 @@ function TreeRow({
   depth,
   selectedPath,
   onSelectFile,
+  onDownload,
+  downloadingPath,
 }: {
   node: TreeNode;
   depth: number;
   selectedPath: string;
   onSelectFile: (n: TreeNode) => void;
+  onDownload: (path: string) => void;
+  downloadingPath: string | null;
 }) {
   const { t } = useT("workspaces");
   const [open, setOpen] = useState(true);
@@ -224,7 +257,7 @@ function TreeRow({
           type="button"
           onClick={() => !collapsed && setOpen(!open)}
           className={cn(
-            "flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-accent/60",
+            "flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1 text-left text-xs hover:bg-accent/60",
             collapsed && "cursor-default hover:bg-transparent",
           )}
           style={pad}
@@ -246,7 +279,7 @@ function TreeRow({
               <Folder className="size-3.5 shrink-0 text-muted-foreground" />
             </>
           )}
-          <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
+          <span className="font-mono">{node.name}</span>
           {collapsed ? (
             <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
               {t(($) =>
@@ -255,7 +288,7 @@ function TreeRow({
             </span>
           ) : null}
           {node.size > 0 ? (
-            <span className="shrink-0 tabular-nums text-muted-foreground">
+            <span className="ml-2 shrink-0 tabular-nums text-muted-foreground">
               {formatBytes(node.size)}
             </span>
           ) : null}
@@ -269,6 +302,8 @@ function TreeRow({
                 depth={depth + 1}
                 selectedPath={selectedPath}
                 onSelectFile={onSelectFile}
+                onDownload={onDownload}
+                downloadingPath={downloadingPath}
               />
             ))}
           </div>
@@ -277,77 +312,348 @@ function TreeRow({
     );
   }
 
+  const downloading = downloadingPath === node.path;
   return (
-    <button
-      type="button"
-      onClick={() => onSelectFile(node)}
+    <div
       className={cn(
-        "flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-accent/60",
+        "group flex w-full items-center gap-1.5 whitespace-nowrap px-2 py-1 text-xs hover:bg-accent/60",
         node.path === selectedPath && "bg-accent",
       )}
       style={pad}
     >
-      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
+      <button
+        type="button"
+        onClick={() => onSelectFile(node)}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      >
+        <FileTypeIcon path={node.path} className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-mono">{node.name}</span>
+      </button>
       {node.size > 0 ? (
-        <span className="shrink-0 tabular-nums text-muted-foreground">
+        <span className="ml-2 shrink-0 tabular-nums text-muted-foreground">
           {formatBytes(node.size)}
         </span>
       ) : null}
-    </button>
+      <button
+        type="button"
+        onClick={() => onDownload(node.path)}
+        disabled={downloading}
+        aria-label={t(($) => $.browser.download)}
+        title={t(($) => $.browser.download)}
+        className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+      >
+        {downloading ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <Download className="size-3" />
+        )}
+      </button>
+    </div>
   );
 }
 
-function FileViewerDialog({
+// ---------------------------------------------------------------------------
+// Preview pane
+// ---------------------------------------------------------------------------
+
+type ReadOutcome = { status: string; error?: string; data: WorkspaceReadResult };
+type DownloadResultOutcome = { status: string; error?: string; data: WorkspaceDownloadResult };
+
+function PreviewPane({
   wsId,
   taskShort,
   node,
-  onClose,
+  onDownload,
+  downloading,
 }: {
   wsId: string;
   taskShort: string;
   node: TreeNode;
-  onClose: () => void;
+  onDownload: (path: string) => void;
+  downloading: boolean;
 }) {
   const { t } = useT("workspaces");
-  const { data, isLoading, isError } = useQuery(
-    workspaceFileOptions(wsId, taskShort, node.path),
+  const [wrap, setWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const isImage = getPreviewKind("", node.path) === "image";
+
+  // Exactly one of these queries is enabled (the other gets an empty path,
+  // which disables it) so both hooks run unconditionally per the rules of hooks.
+  const fileQuery = useQuery(
+    workspaceFileOptions(wsId, taskShort, isImage ? "" : node.path),
+  );
+  const imageQuery = useQuery(
+    workspaceDownloadOptions(wsId, taskShort, node.path, isImage),
   );
 
+  const isText = !isImage && fileQuery.data?.data.is_text === true;
+
+  const handleCopy = async () => {
+    const ok = await copyText(fileQuery.data?.data.content ?? "");
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="truncate font-mono text-sm">{node.path}</DialogTitle>
-        </DialogHeader>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-10">
-            <Spinner />
-          </div>
-        ) : isError || (data && data.status !== "completed") ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            {data?.error || t(($) => $.browser.read_failed)}
-          </p>
-        ) : !data?.data.is_text ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            {t(($) => $.browser.binary, { size: formatBytes(data?.data.size ?? 0) })}
-          </p>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+        <FileTypeIcon path={node.path} className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate font-mono text-xs" title={node.path}>
+          {node.path}
+        </span>
+        {node.size > 0 ? (
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {formatBytes(node.size)}
+          </span>
+        ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          {isText ? (
+            <>
+              <PaneAction
+                label={wrap ? t(($) => $.browser.nowrap) : t(($) => $.browser.wrap)}
+                active={wrap}
+                onClick={() => setWrap((w) => !w)}
+              >
+                <WrapText className="size-3.5" />
+              </PaneAction>
+              <PaneAction label={t(($) => $.browser.copy)} onClick={handleCopy}>
+                {copied ? (
+                  <Check className="size-3.5 text-success" />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+              </PaneAction>
+            </>
+          ) : null}
+          <PaneAction
+            label={t(($) => $.browser.download)}
+            disabled={downloading}
+            onClick={() => onDownload(node.path)}
+          >
+            {downloading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+          </PaneAction>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1">
+        {isImage ? (
+          <ImagePreview
+            loading={imageQuery.isLoading}
+            isError={imageQuery.isError}
+            outcome={imageQuery.data}
+            node={node}
+            onDownload={onDownload}
+          />
         ) : (
-          <div className="space-y-2">
-            {data.data.truncated ? (
-              <p className="text-[11px] text-warning">
-                {t(($) => $.browser.file_truncated)}
-              </p>
-            ) : null}
-            <ScrollArea className="max-h-[60vh] rounded-md border border-border">
-              <CodeBlockStatic
-                language={langForPath(node.path)}
-                body={data.data.content}
-                className="p-3"
-              />
-            </ScrollArea>
-          </div>
+          <TextPreview
+            loading={fileQuery.isLoading}
+            isError={fileQuery.isError}
+            outcome={fileQuery.data}
+            node={node}
+            wrap={wrap}
+            onDownload={onDownload}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+function PaneAction({
+  label,
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50",
+        active && "bg-accent text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CenteredMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function BinaryFallback({
+  message,
+  onDownload,
+  path,
+}: {
+  message: string;
+  onDownload: (path: string) => void;
+  path: string;
+}) {
+  const { t } = useT("workspaces");
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <FileIcon className="size-8 text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <button
+        type="button"
+        onClick={() => onDownload(path)}
+        className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:bg-accent"
+      >
+        <Download className="size-4" />
+        {t(($) => $.browser.download)}
+      </button>
+    </div>
+  );
+}
+
+function TextPreview({
+  loading,
+  isError,
+  outcome,
+  node,
+  wrap,
+  onDownload,
+}: {
+  loading: boolean;
+  isError: boolean;
+  outcome: ReadOutcome | undefined;
+  node: TreeNode;
+  wrap: boolean;
+  onDownload: (path: string) => void;
+}) {
+  const { t } = useT("workspaces");
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+  if (isError || !outcome || outcome.status !== "completed") {
+    return <CenteredMessage>{outcome?.error || t(($) => $.browser.read_failed)}</CenteredMessage>;
+  }
+  if (!outcome.data.is_text) {
+    return (
+      <BinaryFallback
+        message={t(($) => $.browser.binary, { size: formatBytes(outcome.data.size) })}
+        onDownload={onDownload}
+        path={node.path}
+      />
+    );
+  }
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {outcome.data.truncated ? (
+        <p className="shrink-0 border-b border-border bg-warning/10 px-3 py-1 text-[11px] text-warning">
+          {t(($) => $.browser.file_truncated)}
+        </p>
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <WorkspaceCodeView
+          content={outcome.data.content}
+          language={extensionToLanguage(node.path)}
+          wrap={wrap}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ImagePreview({
+  loading,
+  isError,
+  outcome,
+  node,
+  onDownload,
+}: {
+  loading: boolean;
+  isError: boolean;
+  outcome: DownloadResultOutcome | undefined;
+  node: TreeNode;
+  onDownload: (path: string) => void;
+}) {
+  const { t } = useT("workspaces");
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+  if (isError || !outcome || outcome.status !== "completed") {
+    return <CenteredMessage>{outcome?.error || t(($) => $.browser.read_failed)}</CenteredMessage>;
+  }
+  if (outcome.data.too_large || !outcome.data.content) {
+    return (
+      <BinaryFallback
+        message={t(($) => $.browser.image_too_large, { size: formatBytes(outcome.data.size) })}
+        onDownload={onDownload}
+        path={node.path}
+      />
+    );
+  }
+  return (
+    <div className="flex h-full items-center justify-center overflow-auto bg-muted/20 p-4">
+      <img
+        src={`data:${outcome.data.mime};base64,${outcome.data.content}`}
+        alt={node.name}
+        className="max-h-full max-w-full object-contain"
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dialog wrapper — used by the management page and the issue files section
+// ---------------------------------------------------------------------------
+
+export function WorkspaceExplorerDialog({
+  wsId,
+  taskShort,
+  label,
+  open,
+  onOpenChange,
+}: {
+  wsId: string;
+  taskShort: string;
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[min(82vh,720px)] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12">
+          <DialogTitle className="truncate text-sm">{label}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1">
+          <WorkspaceFileExplorer wsId={wsId} taskShort={taskShort} />
+        </div>
       </DialogContent>
     </Dialog>
   );
