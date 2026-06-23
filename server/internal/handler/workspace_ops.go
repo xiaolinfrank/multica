@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -37,6 +38,9 @@ const (
 	WorkspaceOpTree WorkspaceOpKind = "tree"
 	// WorkspaceOpRead returns one file's contents (size-capped).
 	WorkspaceOpRead WorkspaceOpKind = "read"
+	// WorkspaceOpDownload returns one file's full bytes (base64) for download
+	// or inline image preview. Larger cap than read; binary-capable.
+	WorkspaceOpDownload WorkspaceOpKind = "download"
 	// WorkspaceOpReclaim frees space: mode=artifacts (repo checkouts /
 	// node_modules) or mode=full (the whole workspace).
 	WorkspaceOpReclaim WorkspaceOpKind = "reclaim"
@@ -88,7 +92,18 @@ const (
 	workspaceOpPendingTimeout = 30 * time.Second
 	workspaceOpRunningTimeout = 90 * time.Second
 	workspaceOpStoreRetention = 3 * time.Minute
+	// workspaceOpMaxInFlightPerRuntime caps concurrent non-terminal ops per
+	// runtime so the in-memory store's memory is explicitly bounded, not just by
+	// the retention sweep. A completed download holds its full base64 payload
+	// (~13 MiB for a 10 MiB file) until the sweep, so an authenticated member
+	// can't balloon server memory by spamming download ops; legitimate browsing
+	// never has more than a couple in flight at once.
+	workspaceOpMaxInFlightPerRuntime = 16
 )
+
+// errWorkspaceOpBacklog is returned by Create when a runtime already has the
+// maximum number of in-flight ops; the handler maps it to 429.
+var errWorkspaceOpBacklog = errors.New("too many in-flight workspace ops for this runtime")
 
 // applyWorkspaceOpTimeout transitions a request to Timeout when it has overstayed
 // its pending/running budget. Mirrors applyModelListTimeout.
@@ -140,12 +155,22 @@ func (s *InMemoryWorkspaceOpStore) Create(_ context.Context, runtimeID string, o
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Opportunistic retention sweep so the map can't grow without bound.
+	now := time.Now()
+	inFlight := 0
 	for id, req := range s.requests {
 		if time.Since(req.CreatedAt) > workspaceOpStoreRetention {
 			delete(s.requests, id)
+			continue
+		}
+		applyWorkspaceOpTimeout(req, now)
+		if req.RuntimeID == runtimeID && !workspaceOpTerminal(req.Status) {
+			inFlight++
 		}
 	}
-	now := time.Now()
+	// Bound concurrent ops per runtime so a download backlog can't balloon memory.
+	if inFlight >= workspaceOpMaxInFlightPerRuntime {
+		return nil, errWorkspaceOpBacklog
+	}
 	req := &WorkspaceOpRequest{
 		ID:        randomID(),
 		RuntimeID: runtimeID,
@@ -264,7 +289,7 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 	taskShort := chi.URLParam(r, "taskShort")
 	op := WorkspaceOpKind(chi.URLParam(r, "op"))
 	switch op {
-	case WorkspaceOpTree, WorkspaceOpRead, WorkspaceOpReclaim:
+	case WorkspaceOpTree, WorkspaceOpRead, WorkspaceOpDownload, WorkspaceOpReclaim:
 	default:
 		writeError(w, http.StatusBadRequest, "unknown workspace op")
 		return
@@ -278,8 +303,8 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
-	if op == WorkspaceOpRead && strings.TrimSpace(body.Path) == "" {
-		writeError(w, http.StatusBadRequest, "path is required for a read op")
+	if (op == WorkspaceOpRead || op == WorkspaceOpDownload) && strings.TrimSpace(body.Path) == "" {
+		writeError(w, http.StatusBadRequest, "path is required for a "+string(op)+" op")
 		return
 	}
 
@@ -304,6 +329,10 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 		Mode:        body.Mode,
 	})
 	if err != nil {
+		if errors.Is(err, errWorkspaceOpBacklog) {
+			writeError(w, http.StatusTooManyRequests, "too many in-flight workspace ops; retry shortly")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to enqueue workspace op: "+err.Error())
 		return
 	}

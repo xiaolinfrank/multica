@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,6 +196,73 @@ func TestReadWorkspaceFile_BinaryAndTruncation(t *testing.T) {
 	}
 	if !res.Truncated || len(res.Content) != workspaceOpMaxReadBytes {
 		t.Fatalf("expected truncation to cap, got truncated=%v len=%d", res.Truncated, len(res.Content))
+	}
+}
+
+func TestDownloadWorkspaceFile(t *testing.T) {
+	_, _, _, envRoot := envRootFixture(t)
+
+	// Text file: round-trips through base64 with a text MIME and IsImage=false.
+	res, err := downloadWorkspaceFile(envRoot, "workdir/report.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Encoding != "base64" || res.TooLarge || res.IsImage {
+		t.Fatalf("unexpected text download flags: %+v", res)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(res.Content)
+	if err != nil || string(decoded) != "# deliverable\nhello" {
+		t.Fatalf("base64 round-trip wrong: decoded=%q err=%v", decoded, err)
+	}
+
+	// PNG: the 8-byte signature is enough for http.DetectContentType to type it
+	// as image/png, so IsImage is set and the UI can render it inline.
+	png := []byte("\x89PNG\r\n\x1a\nrest-of-file")
+	mustWrite(t, filepath.Join(envRoot, "output", "chart.png"), string(png))
+	res, err = downloadWorkspaceFile(envRoot, "output/chart.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Mime != "image/png" || !res.IsImage {
+		t.Fatalf("png not detected as image: %+v", res)
+	}
+
+	// SVG sniffs as text/xml; the extension override must still mark it an image.
+	mustWrite(t, filepath.Join(envRoot, "output", "plot.svg"), "<svg xmlns='http://www.w3.org/2000/svg'></svg>")
+	res, err = downloadWorkspaceFile(envRoot, "output/plot.svg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Mime != "image/svg+xml" || !res.IsImage {
+		t.Fatalf("svg not marked image: %+v", res)
+	}
+
+	// Oversized: refused with TooLarge and no content (a partial binary is junk).
+	big := strings.Repeat("x", workspaceOpMaxDownloadBytes+1)
+	mustWrite(t, filepath.Join(envRoot, "output", "huge.bin"), big)
+	res, err = downloadWorkspaceFile(envRoot, "output/huge.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.TooLarge || res.Content != "" {
+		t.Fatalf("oversized file not refused: too_large=%v len=%d", res.TooLarge, len(res.Content))
+	}
+
+	// Sandbox: traversal and a missing file are both errors, never reads.
+	for _, bad := range []string{"../../../etc/passwd", "/etc/passwd", "workdir/nope.txt"} {
+		if _, err := downloadWorkspaceFile(envRoot, bad); err == nil {
+			t.Fatalf("expected rejection downloading %q", bad)
+		}
+	}
+
+	// A symlinked directory escaping the workspace must not be traversed.
+	outside := t.TempDir()
+	mustWrite(t, filepath.Join(outside, "secret.txt"), "TOP SECRET")
+	if err := os.Symlink(outside, filepath.Join(envRoot, "workdir", "out")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+	if _, err := downloadWorkspaceFile(envRoot, "workdir/out/secret.txt"); err == nil {
+		t.Fatal("download escaped the workspace through a symlinked directory")
 	}
 }
 

@@ -47,6 +47,38 @@ func TestWorkspaceOpStore_Lifecycle(t *testing.T) {
 	}
 }
 
+func TestWorkspaceOpStore_InFlightCap(t *testing.T) {
+	t.Parallel()
+	s := NewInMemoryWorkspaceOpStore()
+	ctx := context.Background()
+
+	// Fill the per-runtime in-flight quota with pending ops.
+	for i := 0; i < workspaceOpMaxInFlightPerRuntime; i++ {
+		if _, err := s.Create(ctx, "rt-1", WorkspaceOpDownload, WorkspaceOpTarget{Path: "f"}); err != nil {
+			t.Fatalf("create %d failed: %v", i, err)
+		}
+	}
+	// The next one for the same runtime is rejected with the backlog sentinel.
+	if _, err := s.Create(ctx, "rt-1", WorkspaceOpDownload, WorkspaceOpTarget{Path: "f"}); err != errWorkspaceOpBacklog {
+		t.Fatalf("expected errWorkspaceOpBacklog, got %v", err)
+	}
+	// A different runtime is unaffected (the cap is per-runtime).
+	if _, err := s.Create(ctx, "rt-2", WorkspaceOpDownload, WorkspaceOpTarget{Path: "f"}); err != nil {
+		t.Fatalf("other runtime should not be capped: %v", err)
+	}
+	// Draining one to a terminal state frees a slot for rt-1.
+	popped, _ := s.PopPending(ctx, "rt-1")
+	if popped == nil {
+		t.Fatal("expected a pending op to pop")
+	}
+	if err := s.Complete(ctx, popped.ID, json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, "rt-1", WorkspaceOpDownload, WorkspaceOpTarget{Path: "f"}); err != nil {
+		t.Fatalf("slot should have freed after completion: %v", err)
+	}
+}
+
 func TestWorkspaceOpStore_PopOldestFirst(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryWorkspaceOpStore()

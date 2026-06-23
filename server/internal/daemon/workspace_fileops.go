@@ -3,9 +3,11 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -33,6 +35,12 @@ const (
 	// workspace can't produce a multi-megabyte listing. Repo checkouts are
 	// already collapsed, so this only bites on genuinely huge agent output.
 	workspaceOpMaxTreeEntries = 5000
+	// workspaceOpMaxDownloadBytes caps a download / image-preview payload.
+	// Larger than the text preview cap (binaries like charts need the whole
+	// file), but bounded so the base64 result stays manageable through the
+	// in-memory op store and the heartbeat-relayed report. A file above this is
+	// reported TooLarge with no content — a truncated binary is worthless.
+	workspaceOpMaxDownloadBytes = 10 << 20 // 10 MiB
 )
 
 // wsFileEntry is one node in a workspace file tree. Kind is "repo" (a collapsed
@@ -66,6 +74,21 @@ type wsReclaimResult struct {
 	Removed        []string `json:"removed"`
 }
 
+// wsDownloadResult carries a file's full bytes (base64) for download or inline
+// image preview. Unlike read (text-only, 2 MiB preview cap), download returns
+// the raw bytes up to workspaceOpMaxDownloadBytes and a sniffed MIME type, so
+// binaries — images especially — can be rendered or saved. A file larger than
+// the cap comes back with TooLarge=true and no content.
+type wsDownloadResult struct {
+	Path     string `json:"path"`
+	Size     int64  `json:"size"`
+	Mime     string `json:"mime"`
+	Encoding string `json:"encoding,omitempty"` // "base64" when Content is set
+	Content  string `json:"content,omitempty"`  // base64 of the file bytes
+	IsImage  bool   `json:"is_image"`
+	TooLarge bool   `json:"too_large"`
+}
+
 // handleWorkspaceOp runs one workspace file op against the local disk and
 // reports the result. It deliberately does not depend on the Runtime registry —
 // a file op only needs the envRoot path and the runtimeID to authenticate the
@@ -94,6 +117,10 @@ func (d *Daemon) handleWorkspaceOp(ctx context.Context, runtimeID string, pendin
 	case "read":
 		var res wsReadResult
 		res, err = readWorkspaceFile(envRoot, pending.Path)
+		payload = res
+	case "download":
+		var res wsDownloadResult
+		res, err = downloadWorkspaceFile(envRoot, pending.Path)
 		payload = res
 	case "reclaim":
 		mode := pending.Mode
@@ -317,6 +344,99 @@ func readWorkspaceFile(envRoot, rel string) (wsReadResult, error) {
 		result.Content = string(data)
 	}
 	return result, nil
+}
+
+// downloadWorkspaceFile returns a file's full bytes, base64-encoded and
+// MIME-typed, sandboxed to envRoot via os.Root exactly like readWorkspaceFile
+// (every component resolved with openat beneath the pinned root, so "..",
+// absolute symlinks and escaping symlinks are refused, TOCTOU-immune). Used for
+// binary download and inline image preview; capped at workspaceOpMaxDownloadBytes
+// — an oversized file is refused (TooLarge) rather than truncated, since a
+// partial binary is worthless.
+func downloadWorkspaceFile(envRoot, rel string) (wsDownloadResult, error) {
+	cleaned, err := cleanWorkspaceRelPath(rel)
+	if err != nil {
+		return wsDownloadResult{}, err
+	}
+
+	root, err := os.OpenRoot(envRoot)
+	if err != nil {
+		return wsDownloadResult{}, fmt.Errorf("open workspace root: %w", err)
+	}
+	defer root.Close()
+
+	f, err := root.Open(cleaned)
+	if err != nil {
+		return wsDownloadResult{}, errors.New("file not found")
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return wsDownloadResult{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return wsDownloadResult{}, errors.New("not a regular file")
+	}
+
+	result := wsDownloadResult{Path: filepath.ToSlash(cleaned), Size: info.Size()}
+	// Read one byte past the cap so oversize is detected without trusting the
+	// stat size (which can lie for special files).
+	data, err := io.ReadAll(io.LimitReader(f, workspaceOpMaxDownloadBytes+1))
+	if err != nil {
+		return wsDownloadResult{}, err
+	}
+	if len(data) > workspaceOpMaxDownloadBytes {
+		result.TooLarge = true
+		result.Mime = mimeForFile(cleaned, nil)
+		result.IsImage = strings.HasPrefix(result.Mime, "image/")
+		return result, nil
+	}
+	result.Mime = mimeForFile(cleaned, data)
+	result.IsImage = strings.HasPrefix(result.Mime, "image/")
+	result.Encoding = "base64"
+	result.Content = base64.StdEncoding.EncodeToString(data)
+	return result, nil
+}
+
+// mimeForFile picks a MIME type for a workspace file. It sniffs the content
+// (http.DetectContentType over the first 512 bytes) and refines it with a few
+// extension overrides where sniffing is unreliable: SVG sniffs as text/xml, and
+// some image types sniff as the generic octet-stream. data may be nil (the
+// size-only TooLarge path), in which case the extension alone decides.
+func mimeForFile(name string, data []byte) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	// SVG is text under the hood; the sniffer never returns an image type for it.
+	if ext == ".svg" {
+		return "image/svg+xml"
+	}
+	if len(data) > 0 {
+		ct := http.DetectContentType(data)
+		if i := strings.IndexByte(ct, ';'); i >= 0 {
+			ct = strings.TrimSpace(ct[:i])
+		}
+		if ct != "" && ct != "application/octet-stream" {
+			return ct
+		}
+	}
+	// Sniffing inconclusive (or no bytes): fall back to common extensions.
+	switch ext {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".ico":
+		return "image/x-icon"
+	case ".pdf":
+		return "application/pdf"
+	}
+	return "application/octet-stream"
 }
 
 // reclaimWorkspace frees disk. mode="full" removes the whole envRoot;
