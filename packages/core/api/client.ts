@@ -4,6 +4,7 @@ import type {
   WorkspaceOpRequest,
   WorkspaceTreeResult,
   WorkspaceReadResult,
+  WorkspaceDownloadResult,
   Issue,
   CreateIssueRequest,
   UpdateIssueRequest,
@@ -212,6 +213,8 @@ import {
   EMPTY_WORKSPACE_TREE,
   WorkspaceReadResultSchema,
   EMPTY_WORKSPACE_READ,
+  WorkspaceDownloadResultSchema,
+  EMPTY_WORKSPACE_DOWNLOAD,
   EMPTY_CANCEL_TASK_RESPONSE,
 } from "./schemas";
 
@@ -1554,7 +1557,7 @@ export class ApiClient {
   private async initiateWorkspaceOp(
     workspaceId: string,
     taskShort: string,
-    op: "tree" | "read" | "reclaim",
+    op: "tree" | "read" | "download" | "reclaim",
     params?: { path?: string; mode?: string },
   ): Promise<WorkspaceOpRequest> {
     const raw = await this.fetch<unknown>(
@@ -1589,7 +1592,7 @@ export class ApiClient {
   private async runWorkspaceOp(
     workspaceId: string,
     taskShort: string,
-    op: "tree" | "read" | "reclaim",
+    op: "tree" | "read" | "download" | "reclaim",
     params?: { path?: string; mode?: string },
     opts?: { signal?: AbortSignal; pollMs?: number; timeoutMs?: number },
   ): Promise<WorkspaceOpRequest> {
@@ -1652,6 +1655,30 @@ export class ApiClient {
               endpoint: "workspace read result",
             })
           : EMPTY_WORKSPACE_READ,
+    };
+  }
+
+  /**
+   * Download one file's full bytes (base64) for saving or inline image preview.
+   * Larger cap than read and binary-capable; `too_large` comes back set (with no
+   * content) for files above the cap.
+   */
+  async downloadWorkspaceFile(
+    workspaceId: string,
+    taskShort: string,
+    path: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<WorkspaceOpOutcome<WorkspaceDownloadResult>> {
+    const req = await this.runWorkspaceOp(workspaceId, taskShort, "download", { path }, opts);
+    return {
+      status: req.status,
+      error: req.error,
+      data:
+        req.status === "completed"
+          ? parseWithFallback(req.result, WorkspaceDownloadResultSchema, EMPTY_WORKSPACE_DOWNLOAD, {
+              endpoint: "workspace download result",
+            })
+          : EMPTY_WORKSPACE_DOWNLOAD,
     };
   }
 

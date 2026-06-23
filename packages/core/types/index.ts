@@ -69,6 +69,7 @@ export type {
   WorkspaceTreeResult,
   WorkspaceReadResult,
   WorkspaceReclaimResult,
+  WorkspaceDownloadResult,
   WorkspaceOpRequest,
 } from "./workspace-op";
 export type { InboxItem, InboxSeverity, InboxItemType } from "./inbox";

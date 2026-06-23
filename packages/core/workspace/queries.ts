@@ -25,6 +25,8 @@ export const workspaceKeys = {
     ["workspaces", wsId, "workspace-tree", taskShort] as const,
   workspaceFile: (wsId: string, taskShort: string, path: string) =>
     ["workspaces", wsId, "workspace-file", taskShort, path] as const,
+  workspaceDownload: (wsId: string, taskShort: string, path: string) =>
+    ["workspaces", wsId, "workspace-download", taskShort, path] as const,
 };
 
 export function workspaceListOptions() {
@@ -77,6 +79,27 @@ export function workspaceFileOptions(
     queryKey: workspaceKeys.workspaceFile(wsId, taskShort, path),
     queryFn: ({ signal }) => api.readWorkspaceFile(wsId, taskShort, path, { signal }),
     enabled: !!wsId && !!taskShort && !!path,
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * One file's raw bytes (base64) for inline image preview, fetched on demand
+ * when an image file is selected. Only enable for images — text files use
+ * workspaceFileOptions, which is cheaper and renders highlighted source.
+ */
+export function workspaceDownloadOptions(
+  wsId: string,
+  taskShort: string,
+  path: string,
+  enabled: boolean,
+) {
+  return queryOptions({
+    queryKey: workspaceKeys.workspaceDownload(wsId, taskShort, path),
+    queryFn: ({ signal }) => api.downloadWorkspaceFile(wsId, taskShort, path, { signal }),
+    enabled: enabled && !!wsId && !!taskShort && !!path,
     staleTime: 60_000,
     retry: false,
     refetchOnWindowFocus: false,

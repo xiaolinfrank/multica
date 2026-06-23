@@ -46,6 +46,25 @@ export interface WorkspaceReclaimResult {
   removed: string[];
 }
 
+/**
+ * A file's full bytes for download or inline image preview. Unlike a read
+ * (text-only, 2 MiB preview cap), this returns the raw bytes base64-encoded up
+ * to a larger cap plus a sniffed MIME type, so binaries — images especially —
+ * can be rendered or saved. `too_large` is set (with no `content`) when the
+ * file exceeds the cap; a truncated binary would be useless.
+ */
+export interface WorkspaceDownloadResult {
+  path: string;
+  size: number;
+  mime: string;
+  /** "base64" when `content` is populated. */
+  encoding: string;
+  /** base64 of the file bytes, empty when `too_large`. */
+  content: string;
+  is_image: boolean;
+  too_large: boolean;
+}
+
 /** The polled request envelope. `result` is the op-specific payload above. */
 export interface WorkspaceOpRequest {
   id: string;

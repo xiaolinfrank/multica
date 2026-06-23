@@ -7,6 +7,7 @@ import type {
   WorkspaceOpRequest,
   WorkspaceTreeResult,
   WorkspaceReadResult,
+  WorkspaceDownloadResult,
   Attachment,
   BillingBalance,
   BillingBatchesPage,
@@ -1137,4 +1138,24 @@ export const EMPTY_WORKSPACE_READ: WorkspaceReadResult = {
   is_text: false,
   content: "",
   truncated: false,
+};
+
+export const WorkspaceDownloadResultSchema = z.object({
+  path: z.string().default(""),
+  size: z.number().default(0),
+  mime: z.string().default(""),
+  encoding: z.string().default(""),
+  content: z.string().default(""),
+  is_image: z.boolean().default(false),
+  too_large: z.boolean().default(false),
+}).loose();
+
+export const EMPTY_WORKSPACE_DOWNLOAD: WorkspaceDownloadResult = {
+  path: "",
+  size: 0,
+  mime: "",
+  encoding: "",
+  content: "",
+  is_image: false,
+  too_large: false,
 };
