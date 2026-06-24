@@ -1075,18 +1075,25 @@ func (h *Handler) processHeartbeat(ctx context.Context, rt db.AgentRuntime, supp
 	cancelProbeWsOp()
 	switch {
 	case probeWsOpErr == nil && hasWsOp:
-		pendingWsOp, popErr := h.WorkspaceOpStore.PopPending(ctx, runtimeID)
+		pendingWsOps, popErr := h.WorkspaceOpStore.PopPendingBatch(ctx, runtimeID)
 		if popErr != nil {
-			slog.Warn("workspace op PopPending failed", "error", popErr, "runtime_id", runtimeID)
-		} else if pendingWsOp != nil {
-			ack.PendingWorkspaceOp = &protocol.DaemonHeartbeatPendingWorkspaceOp{
-				ID:          pendingWsOp.ID,
-				Op:          string(pendingWsOp.Op),
-				WorkspaceID: pendingWsOp.Target.WorkspaceID,
-				TaskShort:   pendingWsOp.Target.TaskShort,
-				Path:        pendingWsOp.Target.Path,
-				Mode:        pendingWsOp.Target.Mode,
+			slog.Warn("workspace op PopPendingBatch failed", "error", popErr, "runtime_id", runtimeID)
+		} else if len(pendingWsOps) > 0 {
+			ops := make([]protocol.DaemonHeartbeatPendingWorkspaceOp, 0, len(pendingWsOps))
+			for _, p := range pendingWsOps {
+				ops = append(ops, protocol.DaemonHeartbeatPendingWorkspaceOp{
+					ID:          p.ID,
+					Op:          string(p.Op),
+					WorkspaceID: p.Target.WorkspaceID,
+					TaskShort:   p.Target.TaskShort,
+					Path:        p.Target.Path,
+					Mode:        p.Target.Mode,
+				})
 			}
+			ack.PendingWorkspaceOps = ops
+			// Back-compat: singular field carries the first item so old daemons
+			// that don't know the plural field still process one op per beat.
+			ack.PendingWorkspaceOp = &ops[0]
 		}
 	case probeWsOpErr != nil:
 		if errors.Is(probeWsOpErr, context.DeadlineExceeded) || errors.Is(probeWsOpErr, context.Canceled) {

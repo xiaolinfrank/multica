@@ -32,6 +32,15 @@ type RuntimeProfilesChangedPayload struct {
 	RuntimeProfileID string `json:"runtime_profile_id,omitempty"`
 }
 
+// WorkspaceOpAvailablePayload is sent from server to daemon as a best-effort
+// wakeup hint the moment a workspace file op (browse/read/download/reclaim) is
+// enqueued, so the daemon pulls it on an immediate forced heartbeat instead of
+// waiting up to one heartbeat interval. The heartbeat pull stays the reliable
+// backstop if this hint is missed; the hint only expedites first-byte latency.
+type WorkspaceOpAvailablePayload struct {
+	RuntimeID string `json:"runtime_id"`
+}
+
 // TaskProgressPayload is sent from daemon to server during task execution.
 type TaskProgressPayload struct {
 	TaskID  string `json:"task_id"`
@@ -158,6 +167,11 @@ type DaemonHeartbeatAckPayload struct {
 	// directly. Carries the op kind plus the target envRoot coordinates the
 	// daemon sandboxes against. Old daemons ignore the unknown field.
 	PendingWorkspaceOp *DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_op,omitempty"`
+	// PendingWorkspaceOps drains the runtime's whole pending-op backlog in one
+	// heartbeat so a burst of file clicks doesn't serialize one op per beat.
+	// Old daemons that don't know this field fall back to the singular
+	// PendingWorkspaceOp above (which carries the first item).
+	PendingWorkspaceOps []DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_ops,omitempty"`
 }
 
 // HeartbeatStatusRuntimeGone is the ack Status used when the runtime row no

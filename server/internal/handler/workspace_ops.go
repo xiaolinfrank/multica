@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -137,6 +138,9 @@ type WorkspaceOpStore interface {
 	Get(ctx context.Context, id string) (*WorkspaceOpRequest, error)
 	HasPending(ctx context.Context, runtimeID string) (bool, error)
 	PopPending(ctx context.Context, runtimeID string) (*WorkspaceOpRequest, error)
+	// PopPendingBatch claims every pending op for the runtime in one shot so a
+	// burst of file clicks drains in a single heartbeat, not one op per beat.
+	PopPendingBatch(ctx context.Context, runtimeID string) ([]*WorkspaceOpRequest, error)
 	Complete(ctx context.Context, id string, result json.RawMessage) error
 	Fail(ctx context.Context, id string, errMsg string) error
 }
@@ -232,6 +236,39 @@ func (s *InMemoryWorkspaceOpStore) PopPending(_ context.Context, runtimeID strin
 	oldest.UpdatedAt = now
 	cp := *oldest
 	return &cp, nil
+}
+
+// PopPendingBatch atomically claims every pending op for runtimeID (oldest
+// first) and transitions them to running. Returning the whole backlog in one
+// heartbeat lets the daemon dispatch them concurrently instead of draining one
+// op per beat — the difference between a snappy browse and a 15s-per-click wait.
+func (s *InMemoryWorkspaceOpStore) PopPendingBatch(_ context.Context, runtimeID string) ([]*WorkspaceOpRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	var pending []*WorkspaceOpRequest
+	for _, req := range s.requests {
+		applyWorkspaceOpTimeout(req, now)
+		if req.RuntimeID == runtimeID && req.Status == WorkspaceOpPending {
+			pending = append(pending, req)
+		}
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	sort.Slice(pending, func(i, j int) bool {
+		return pending[i].CreatedAt.Before(pending[j].CreatedAt)
+	})
+	out := make([]*WorkspaceOpRequest, 0, len(pending))
+	for _, req := range pending {
+		req.Status = WorkspaceOpRunning
+		started := now
+		req.RunStartedAt = &started
+		req.UpdatedAt = now
+		cp := *req
+		out = append(out, &cp)
+	}
+	return out, nil
 }
 
 func (s *InMemoryWorkspaceOpStore) Complete(_ context.Context, id string, result json.RawMessage) error {
@@ -335,6 +372,12 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "failed to enqueue workspace op: "+err.Error())
 		return
+	}
+	// Best-effort nudge: wake the daemon now so it pulls this op on an immediate
+	// forced heartbeat instead of waiting up to one heartbeat interval (~15s).
+	// The heartbeat pull stays the reliable backstop if the hint is dropped.
+	if h.DaemonHub != nil {
+		h.DaemonHub.NotifyWorkspaceOpAvailable(runtimeID)
 	}
 	writeJSON(w, http.StatusOK, req)
 }

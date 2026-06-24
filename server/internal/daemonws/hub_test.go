@@ -67,6 +67,61 @@ func TestNotifyTaskAvailable(t *testing.T) {
 	}
 }
 
+func TestNotifyWorkspaceOpAvailable(t *testing.T) {
+	M.Reset()
+	defer M.Reset()
+
+	hub := NewHub()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.HandleWebSocket(w, r, ClientIdentity{RuntimeIDs: []string{"runtime-1"}})
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+
+	deadline := time.Now().Add(time.Second)
+	for hub.RuntimeConnectionCount("runtime-1") == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("runtime connection was not registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	hub.NotifyWorkspaceOpAvailable("runtime-1")
+
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline: %v", err)
+	}
+	_, raw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+
+	var msg protocol.Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("unmarshal message: %v", err)
+	}
+	if msg.Type != protocol.EventDaemonWorkspaceOpAvailable {
+		t.Fatalf("message type = %q, want %q", msg.Type, protocol.EventDaemonWorkspaceOpAvailable)
+	}
+
+	var payload protocol.WorkspaceOpAvailablePayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.RuntimeID != "runtime-1" {
+		t.Fatalf("payload = %+v, want runtime-1", payload)
+	}
+	if M.WakeupDeliveredHit.Load() != 1 {
+		t.Fatalf("delivered hit = %d, want 1", M.WakeupDeliveredHit.Load())
+	}
+}
+
 func TestNotifyRuntimeProfilesChanged(t *testing.T) {
 	M.Reset()
 	defer M.Reset()

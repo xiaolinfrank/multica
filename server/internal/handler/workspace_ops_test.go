@@ -97,6 +97,54 @@ func TestWorkspaceOpStore_PopOldestFirst(t *testing.T) {
 	}
 }
 
+func TestWorkspaceOpStore_PopPendingBatch(t *testing.T) {
+	t.Parallel()
+	s := NewInMemoryWorkspaceOpStore()
+	ctx := context.Background()
+
+	// Three pending ops for rt-1, plus one for another runtime that must not leak.
+	a, _ := s.Create(ctx, "rt-1", WorkspaceOpRead, WorkspaceOpTarget{Path: "a"})
+	b, _ := s.Create(ctx, "rt-1", WorkspaceOpRead, WorkspaceOpTarget{Path: "b"})
+	c, _ := s.Create(ctx, "rt-1", WorkspaceOpDownload, WorkspaceOpTarget{Path: "c"})
+	_, _ = s.Create(ctx, "rt-2", WorkspaceOpRead, WorkspaceOpTarget{Path: "z"})
+
+	// Stagger CreatedAt so the batch is returned oldest-first deterministically.
+	s.mu.Lock()
+	s.requests[a.ID].CreatedAt = time.Now().Add(-3 * time.Second)
+	s.requests[b.ID].CreatedAt = time.Now().Add(-2 * time.Second)
+	s.requests[c.ID].CreatedAt = time.Now().Add(-1 * time.Second)
+	s.mu.Unlock()
+
+	batch, err := s.PopPendingBatch(ctx, "rt-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch) != 3 {
+		t.Fatalf("expected 3 ops drained, got %d", len(batch))
+	}
+	gotOrder := []string{batch[0].Target.Path, batch[1].Target.Path, batch[2].Target.Path}
+	if gotOrder[0] != "a" || gotOrder[1] != "b" || gotOrder[2] != "c" {
+		t.Fatalf("expected oldest-first [a b c], got %v", gotOrder)
+	}
+	for _, op := range batch {
+		if op.Status != WorkspaceOpRunning || op.RunStartedAt == nil {
+			t.Fatalf("op %s not claimed: status=%s started=%v", op.Target.Path, op.Status, op.RunStartedAt)
+		}
+	}
+
+	// All of rt-1's ops are now running, so nothing is left pending.
+	if has, _ := s.HasPending(ctx, "rt-1"); has {
+		t.Fatal("rt-1 should have no pending ops after a batch drain")
+	}
+	if again, _ := s.PopPendingBatch(ctx, "rt-1"); len(again) != 0 {
+		t.Fatalf("second drain should be empty, got %d", len(again))
+	}
+	// rt-2's op was untouched by the rt-1 drain.
+	if has, _ := s.HasPending(ctx, "rt-2"); !has {
+		t.Fatal("rt-2's pending op must survive an rt-1 batch drain")
+	}
+}
+
 func TestWorkspaceOpStore_PendingTimeout(t *testing.T) {
 	t.Parallel()
 	s := NewInMemoryWorkspaceOpStore()
