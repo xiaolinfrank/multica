@@ -1586,8 +1586,9 @@ export class ApiClient {
   /**
    * Runs one workspace file op end to end: initiate, then poll the request_id
    * until it reaches a terminal state (or the client deadline / abort fires).
-   * The daemon picks the op off its next heartbeat, so first-byte latency is a
-   * heartbeat interval, not instant — the poll cadence accounts for that.
+   * Enqueuing the op nudges the daemon to pull it on an immediate forced
+   * heartbeat, so the result lands in well under a second; the poll cadence is
+   * tuned to surface it promptly without hammering the server.
    */
   private async runWorkspaceOp(
     workspaceId: string,
@@ -1598,7 +1599,7 @@ export class ApiClient {
   ): Promise<WorkspaceOpRequest> {
     let req = await this.initiateWorkspaceOp(workspaceId, taskShort, op, params);
     if (!req.id) return req;
-    const pollMs = opts?.pollMs ?? 700;
+    const pollMs = opts?.pollMs ?? 300;
     const deadline = Date.now() + (opts?.timeoutMs ?? 60_000);
     while (req.status === "pending" || req.status === "running") {
       if (opts?.signal?.aborted) throw new DOMException("aborted", "AbortError");
