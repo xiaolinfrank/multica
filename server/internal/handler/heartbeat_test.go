@@ -9,7 +9,40 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
+
+// TestDaemonHeartbeatHTTPResponse_MirrorsPendingActions pins the HTTP heartbeat
+// response shape: every pending-action field on the ack — especially the plural
+// pending_workspace_ops — must be copied into the hand-built response map.
+// Dropping the plural field is what made nudged forced heartbeats deliver only
+// one workspace op per burst (the rest stranded until the next 15s WS beat).
+func TestDaemonHeartbeatHTTPResponse_MirrorsPendingActions(t *testing.T) {
+	t.Parallel()
+	ack := &protocol.DaemonHeartbeatAckPayload{
+		Status:             "ok",
+		PendingWorkspaceOp: &protocol.DaemonHeartbeatPendingWorkspaceOp{ID: "a", Op: "read"},
+		PendingWorkspaceOps: []protocol.DaemonHeartbeatPendingWorkspaceOp{
+			{ID: "a", Op: "read"}, {ID: "b", Op: "download"}, {ID: "c", Op: "tree"},
+		},
+	}
+	resp := daemonHeartbeatHTTPResponse(ack)
+
+	ops, ok := resp["pending_workspace_ops"].([]protocol.DaemonHeartbeatPendingWorkspaceOp)
+	if !ok {
+		t.Fatalf("pending_workspace_ops missing/wrong type in HTTP response: %#v", resp["pending_workspace_ops"])
+	}
+	if len(ops) != 3 {
+		t.Fatalf("expected 3 ops in HTTP response, got %d", len(ops))
+	}
+	if resp["pending_workspace_op"] == nil {
+		t.Fatal("singular pending_workspace_op must still be present for old daemons")
+	}
+	// Absent fields must not appear (omitempty parity with the struct).
+	if _, present := resp["pending_update"]; present {
+		t.Fatal("pending_update must be omitted when nil")
+	}
+}
 
 // fakeLivenessStore lets tests drive every Available / Touch / IsAliveBatch
 // branch of recordHeartbeat without spinning up Redis. It records call counts

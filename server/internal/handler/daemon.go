@@ -880,9 +880,17 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outcome = "ok"
-	// Preserve the existing HTTP response shape: the runtime_id field is new
-	// in the WS path and would be redundant noise on the HTTP path where the
-	// caller already knows which runtime it asked about.
+	writeJSON(w, http.StatusOK, daemonHeartbeatHTTPResponse(ack))
+}
+
+// daemonHeartbeatHTTPResponse projects the ack onto the HTTP heartbeat response
+// shape. The HTTP path hand-copies fields (rather than serializing the struct)
+// to omit the WS-only runtime_id; every pending-action field MUST be mirrored
+// here or that action silently never reaches daemons on the HTTP heartbeat.
+// Forgetting the plural pending_workspace_ops here is exactly what made nudged
+// forced heartbeats deliver only one op per burst — keep this in lockstep with
+// DaemonHeartbeatAckPayload and its test.
+func daemonHeartbeatHTTPResponse(ack *protocol.DaemonHeartbeatAckPayload) map[string]any {
 	resp := map[string]any{"status": ack.Status}
 	if ack.PendingUpdate != nil {
 		resp["pending_update"] = ack.PendingUpdate
@@ -902,7 +910,10 @@ func (h *Handler) DaemonHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if ack.PendingWorkspaceOp != nil {
 		resp["pending_workspace_op"] = ack.PendingWorkspaceOp
 	}
-	writeJSON(w, http.StatusOK, resp)
+	if len(ack.PendingWorkspaceOps) > 0 {
+		resp["pending_workspace_ops"] = ack.PendingWorkspaceOps
+	}
+	return resp
 }
 
 // HandleDaemonWSHeartbeat is the daemonws.HeartbeatHandler entry point: it
