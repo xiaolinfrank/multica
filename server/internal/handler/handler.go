@@ -92,6 +92,14 @@ type Config struct {
 	// and runtimes registered by them are forced to "public" visibility
 	// so every workspace member can bind agents to them.
 	SharedRunnerEmails []string
+	// DefaultWorkspaceSeedTemplate, when non-empty, names an embedded seed
+	// template (internal/seed/templates/<key>.json) that is materialized into a
+	// workspace the first time it brings a runtime online: a curated roster of
+	// agents and squads, each agent bound to that runtime. Empty (the default)
+	// disables seeding entirely so the generic product ships no opinionated team.
+	// Set via DEFAULT_WORKSPACE_SEED_TEMPLATE (e.g. "biomedical-intel" for the
+	// BayClaw deployment).
+	DefaultWorkspaceSeedTemplate string
 }
 
 type cloudRuntimeProxy interface {

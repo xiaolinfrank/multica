@@ -27,6 +27,7 @@ import (
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/seed"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -144,17 +145,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
 
 	signupConfig := handler.Config{
-		AllowSignup:              os.Getenv("ALLOW_SIGNUP") != "false",
-		AllowedEmails:            splitAndTrim(os.Getenv("ALLOWED_EMAILS")),
-		AllowedEmailDomains:      splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
-		DisableWorkspaceCreation: os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
-		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
-		TrustedProxies:           parseTrustedProxies(os.Getenv("MULTICA_TRUSTED_PROXIES")),
-		CloudRuntimeFleetURL:     cloudRuntimeFleetURLFromEnv(),
-		CloudRuntimeFleetTimeout: envDuration("MULTICA_CLOUD_FLEET_TIMEOUT", 35*time.Second),
-		AttachmentDownloadMode:   os.Getenv("ATTACHMENT_DOWNLOAD_MODE"),
-		AttachmentDownloadURLTTL: envDuration("ATTACHMENT_DOWNLOAD_URL_TTL", 30*time.Minute),
-		SharedRunnerEmails:       splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
+		AllowSignup:                  os.Getenv("ALLOW_SIGNUP") != "false",
+		AllowedEmails:                splitAndTrim(os.Getenv("ALLOWED_EMAILS")),
+		AllowedEmailDomains:          splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
+		DisableWorkspaceCreation:     os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
+		PublicURL:                    strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
+		TrustedProxies:               parseTrustedProxies(os.Getenv("MULTICA_TRUSTED_PROXIES")),
+		CloudRuntimeFleetURL:         cloudRuntimeFleetURLFromEnv(),
+		CloudRuntimeFleetTimeout:     envDuration("MULTICA_CLOUD_FLEET_TIMEOUT", 35*time.Second),
+		AttachmentDownloadMode:       os.Getenv("ATTACHMENT_DOWNLOAD_MODE"),
+		AttachmentDownloadURLTTL:     envDuration("ATTACHMENT_DOWNLOAD_URL_TTL", 30*time.Minute),
+		SharedRunnerEmails:           splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
+		DefaultWorkspaceSeedTemplate: strings.TrimSpace(os.Getenv("DEFAULT_WORKSPACE_SEED_TEMPLATE")),
 	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, store, cfSigner, analyticsClient, signupConfig, daemonHub)
 	h.Fleet = fleet.New(fleet.LoadDevices())
@@ -454,6 +456,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.Get("/ws", func(w http.ResponseWriter, r *http.Request) {
 		realtime.HandleWebSocket(hub, mc, pr, slugResolver, w, r)
 	})
+
+	// Default agent avatars (embedded). Registered unconditionally and ahead of
+	// the generic LocalStorage handler so the curated team portraits resolve on
+	// every storage backend; the more specific chi pattern wins automatically.
+	r.Get(seed.AvatarRoutePrefix+"*", seed.ServeAvatar)
 
 	// Local file serving (when using local storage)
 	if local, ok := store.(*storage.LocalStorage); ok {
