@@ -2,6 +2,10 @@ package protocol
 
 import "encoding/json"
 
+const (
+	DaemonCapabilitySkillBundlesV1 = "skill-bundles-v1"
+)
+
 // Message is the envelope for all WebSocket messages.
 type Message struct {
 	Type    string          `json:"type"`
@@ -157,6 +161,7 @@ type DaemonHeartbeatAckPayload struct {
 	PendingModelList        *DaemonHeartbeatPendingModelList        `json:"pending_model_list,omitempty"`
 	PendingLocalSkills      *DaemonHeartbeatPendingLocalSkills      `json:"pending_local_skills,omitempty"`
 	PendingLocalSkillImport *DaemonHeartbeatPendingLocalSkillImport `json:"pending_local_skill_import,omitempty"`
+	FeatureFlags            *DaemonFeatureFlagSnapshot              `json:"feature_flags,omitempty"`
 	// PendingLocalSkillImports carries multiple import requests in a single
 	// heartbeat so the daemon can process them concurrently. Old daemons
 	// that don't know this field silently ignore it (standard JSON behavior)
@@ -172,6 +177,14 @@ type DaemonHeartbeatAckPayload struct {
 	// Old daemons that don't know this field fall back to the singular
 	// PendingWorkspaceOp above (which carries the first item).
 	PendingWorkspaceOps []DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_ops,omitempty"`
+}
+
+// DaemonFeatureFlagSnapshot carries the full server-evaluated decision set for
+// daemon-bound feature flags. It is sent on every heartbeat ack so the daemon
+// can atomically replace its local server snapshot without negotiating deltas.
+type DaemonFeatureFlagSnapshot struct {
+	Version uint64            `json:"version"`
+	Flags   map[string]string `json:"flags"`
 }
 
 // HeartbeatStatusRuntimeGone is the ack Status used when the runtime row no

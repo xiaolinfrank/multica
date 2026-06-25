@@ -112,6 +112,7 @@
     "visibility_toast_failed": "Failed to update visibility",
     "delete_dialog": {
       "self_heal_notice": "This runtime is managed by a running local daemon. Deleting it will succeed, but the daemon will re-register a fresh runtime within seconds — stop the daemon process first to remove it permanently.",
+      "profile_backed_notice": "This runtime was registered from a custom runtime profile. Deleting it removes only the current runtime instance; a running daemon can register it again while the profile remains. Delete the custom runtime profile from Custom runtimes to remove it permanently.",
       "light": {
         "title": "Delete Runtime?",
         "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
@@ -270,12 +271,13 @@
     "badge_registering": "Registering",
     "pending_health": "Registering with daemon",
     "pending_health_warning": "Waiting for daemon sync",
+    "pending_health_error": "Registration error",
     "pending_cli_unknown": "waiting"
   },
   "profiles": {
     "cta": "Add runtime",
     "dialog_title": "Custom runtimes",
-    "dialog_description": "Create and manage custom runtime backends based on supported protocol families.",
+    "dialog_description": "Workspace-specific commands built on the supported protocol families below.",
     "close": "Close",
     "add_new": "New custom runtime",
     "list_title": "Runtime backends",
@@ -302,9 +304,8 @@
       "no_description": "No description",
       "edit": "Edit",
       "delete": "Delete",
-      "default_title": "Manage custom runtimes",
-      "default_description": "Custom runtimes let your agents use a workspace-specific command while keeping the same supported protocol family.",
-      "default_builtin_hint": "Need a base protocol? Expand the supported protocols section on the left."
+      "default_title": "Select a runtime",
+      "default_description": "Pick one from the list to see its details."
     },
     "form": {
       "create_title": "New custom runtime",
@@ -317,11 +318,17 @@
       "display_name_label": "Display name",
       "display_name_placeholder": "My custom Claude",
       "command_name_label": "Command",
-      "command_name_placeholder": "claude",
+      "command_name_placeholder": "agent --model composer-2.5",
       "description_label": "Description",
       "description_placeholder": "Optional — what this runtime is for",
       "error_display_name_required": "Display name is required.",
       "error_command_required": "Command is required.",
+      "error_command_unclosed_quote": "Close the quote before saving.",
+      "error_command_trailing_escape": "Complete or remove the trailing backslash before saving.",
+      "error_command_shell_syntax": "Shell pipelines, redirects, and control operators are not supported. Use a wrapper script for that.",
+      "error_command_shell_expansion": "Shell variable and command expansion is not supported. Use an absolute path or wrapper script.",
+      "command_preview_executable": "Executable:",
+      "command_preview_args": "Args:",
       "back": "Back",
       "cancel": "Cancel",
       "next": "Next",

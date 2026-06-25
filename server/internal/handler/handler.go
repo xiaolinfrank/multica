@@ -20,7 +20,9 @@ import (
 	"github.com/multica-ai/multica/server/internal/cloudruntime"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/featureflagdispatch"
 	"github.com/multica-ai/multica/server/internal/fleet"
+	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
 	"github.com/multica-ai/multica/server/internal/integrations/lark"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
@@ -112,28 +114,29 @@ type RuntimeProfileRefreshNotifier interface {
 }
 
 type Handler struct {
-	Queries               *db.Queries
-	DB                    dbExecutor
-	TxStarter             txStarter
-	Hub                   *realtime.Hub
-	DaemonHub             *daemonws.Hub
-	DaemonProfileRefresh  RuntimeProfileRefreshNotifier
-	Bus                   *events.Bus
-	TaskService           *service.TaskService
-	IssueService          *service.IssueService
-	AutopilotService      *service.AutopilotService
-	EmailService          *service.EmailService
-	UpdateStore              UpdateStore
-	ModelListStore           ModelListStore
-	LocalSkillListStore      LocalSkillListStore
-	LocalSkillImportStore    LocalSkillImportStore
-	WorkspaceInventoryStore  WorkspaceInventoryStore
-	WorkspaceOpStore         WorkspaceOpStore
-	LivenessStore         LivenessStore
-	HeartbeatScheduler    HeartbeatScheduler
-	Storage               storage.Storage
-	CFSigner              *auth.CloudFrontSigner
-	Analytics             analytics.Client
+	Queries                 *db.Queries
+	DB                      dbExecutor
+	TxStarter               txStarter
+	Hub                     *realtime.Hub
+	DaemonHub               *daemonws.Hub
+	DaemonProfileRefresh    RuntimeProfileRefreshNotifier
+	Bus                     *events.Bus
+	TaskService             *service.TaskService
+	IssueService            *service.IssueService
+	AutopilotService        *service.AutopilotService
+	EmailService            *service.EmailService
+	UpdateStore             UpdateStore
+	ModelListStore          ModelListStore
+	LocalSkillListStore     LocalSkillListStore
+	LocalSkillImportStore   LocalSkillImportStore
+	WorkspaceInventoryStore WorkspaceInventoryStore
+	WorkspaceOpStore        WorkspaceOpStore
+	DaemonFeatureFlags      *featureflagdispatch.Evaluator
+	LivenessStore           LivenessStore
+	HeartbeatScheduler      HeartbeatScheduler
+	Storage                 storage.Storage
+	CFSigner                *auth.CloudFrontSigner
+	Analytics               analytics.Client
 	// Metrics is the shared business-metrics collector built by main.go.
 	// May be nil in tests / self-hosted with the metrics listener disabled;
 	// every Record* method is nil-safe and obsmetrics.RecordEvent treats a
@@ -167,17 +170,25 @@ type Handler struct {
 	// UI consults IsConfigured() to decide whether to surface install
 	// entry points.
 	LarkAPIClient lark.APIClient
-	// LarkHub owns the per-installation supervisor goroutines that
-	// hold the §4.4 WS lease and run the EventConnector. Nil only
-	// when the master at-rest key (MULTICA_LARK_SECRET_KEY) is unset.
-	// The router constructs the Hub but does NOT call Run on it; the
-	// process owner (main.go) starts it under a long-running context
-	// and joins via WaitWithTimeout (bounded wait, fenced by
-	// ShutdownTimeout) during graceful shutdown so the lease renewer
-	// can yield cleanly when the DB is healthy without blocking
-	// process exit indefinitely if the pool is frozen — at worst the
-	// next replica waits the full TTL.
-	LarkHub *lark.Hub
+	// ChannelSupervisor owns the per-installation supervisor goroutines
+	// that hold the §4.4 WS lease and drive each channel.Channel
+	// (MUL-3620 generalized the Feishu-only Hub into this channel-agnostic
+	// engine). The router constructs it UNCONDITIONALLY — it drives any
+	// channel type, not just Feishu, so it does not depend on the Lark
+	// master key; each platform registers its Factory only when configured
+	// (Feishu when MULTICA_LARK_SECRET_KEY is set). The router does NOT
+	// call Run; the process owner (main.go) starts it under a long-running
+	// context and joins via WaitWithTimeout (bounded, fenced by
+	// ShutdownTimeout) during graceful shutdown so the lease renewer yields
+	// cleanly when the DB is healthy without blocking process exit if the
+	// pool is frozen — at worst the next replica waits the full TTL.
+	ChannelSupervisor *engine.Supervisor
+	// ChannelRouter is the channel-agnostic inbound pipeline (the shared
+	// handler the Supervisor injects into every Channel). main.go calls
+	// Drain on it during shutdown, after the Supervisor has stopped
+	// delivering events, to flush debounced run triggers and join in-flight
+	// reply goroutines. Built unconditionally (even without Lark).
+	ChannelRouter *engine.Router
 	// Fleet collects live system status for the compute pool dashboard
 	// (GET /api/fleet/status). Wired in cmd/server/router.go after
 	// handler.New from the device inventory; nil-safe in the handler.
@@ -216,30 +227,30 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	taskSvc := service.NewTaskService(queries, txStarter, hub, bus, daemonHub)
 	taskSvc.Analytics = analyticsClient
 	return &Handler{
-		Queries:               queries,
-		DB:                    executor,
-		TxStarter:             txStarter,
-		Hub:                   hub,
-		DaemonHub:             daemonHub,
-		DaemonProfileRefresh:  daemonProfileRefresh,
-		Bus:                   bus,
-		TaskService:           taskSvc,
-		IssueService:          service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc),
-		AutopilotService:      service.NewAutopilotService(queries, txStarter, bus, taskSvc),
-		EmailService:          emailService,
+		Queries:                 queries,
+		DB:                      executor,
+		TxStarter:               txStarter,
+		Hub:                     hub,
+		DaemonHub:               daemonHub,
+		DaemonProfileRefresh:    daemonProfileRefresh,
+		Bus:                     bus,
+		TaskService:             taskSvc,
+		IssueService:            service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc),
+		AutopilotService:        service.NewAutopilotService(queries, txStarter, bus, taskSvc),
+		EmailService:            emailService,
 		UpdateStore:             NewInMemoryUpdateStore(),
 		ModelListStore:          NewInMemoryModelListStore(),
 		LocalSkillListStore:     NewInMemoryLocalSkillListStore(),
 		LocalSkillImportStore:   NewInMemoryLocalSkillImportStore(),
 		WorkspaceInventoryStore: NewInMemoryWorkspaceInventoryStore(),
 		WorkspaceOpStore:        NewInMemoryWorkspaceOpStore(),
-		LivenessStore:         NewNoopLivenessStore(),
-		HeartbeatScheduler:    NewPassthroughHeartbeatScheduler(queries),
-		Storage:               store,
-		CFSigner:              cfSigner,
-		Analytics:             analyticsClient,
-		WebhookRateLimiter:    NewMemoryWebhookRateLimiter(DefaultWebhookRateLimit()),
-		WebhookIPRateLimiter:  NewMemoryWebhookIPRateLimiter(DefaultWebhookIPRateLimit()),
+		LivenessStore:           NewNoopLivenessStore(),
+		HeartbeatScheduler:      NewPassthroughHeartbeatScheduler(queries),
+		Storage:                 store,
+		CFSigner:                cfSigner,
+		Analytics:               analyticsClient,
+		WebhookRateLimiter:      NewMemoryWebhookRateLimiter(DefaultWebhookRateLimit()),
+		WebhookIPRateLimiter:    NewMemoryWebhookIPRateLimiter(DefaultWebhookIPRateLimit()),
 		CloudRuntime: cloudruntime.NewClient(cloudruntime.Config{
 			BaseURL: cfg.CloudRuntimeFleetURL,
 			Timeout: cfg.CloudRuntimeFleetTimeout,
@@ -252,6 +263,24 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// writeMeasuredJSON behaves like writeJSON but returns the encoded body size so
+// callers can record payload bytes in slow-endpoint diagnostics. It measures the
+// uncompressed JSON length and is unrelated to transport compression.
+func writeMeasuredJSON(w http.ResponseWriter, status int, v any) (int, error) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to encode response")
+		return 0, err
+	}
+	body = append(body, '\n')
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		return len(body), err
+	}
+	return len(body), nil
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -280,6 +309,8 @@ func timestampToPtr(t pgtype.Timestamptz) *string   { return util.TimestampToPtr
 func dateToPtr(d pgtype.Date) *string               { return util.DateToPtr(d) }
 func uuidToPtr(u pgtype.UUID) *string               { return util.UUIDToPtr(u) }
 func int8ToPtr(v pgtype.Int8) *int64                { return util.Int8ToPtr(v) }
+func int4ToPtr(v pgtype.Int4) *int32                { return util.Int4ToPtr(v) }
+func ptrToInt4(v *int32) pgtype.Int4                { return util.PtrToInt4(v) }
 
 // parseUUIDOrBadRequest validates a UUID string sourced from user input
 // (URL params, request body, headers). On invalid input it writes a 400
