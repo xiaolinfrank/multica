@@ -107,7 +107,7 @@ describe("RuntimeProfilesDialog", () => {
       screen.getByText("Create your first custom runtime"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Pick a base protocol family/),
+      screen.getByText(/supported protocol family/),
     ).toBeInTheDocument();
 
     const builtinsToggle = screen.getByRole("button", {
