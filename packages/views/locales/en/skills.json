@@ -4,6 +4,10 @@
     "tagline": "Instructions any agent in this workspace can use.",
     "learn_more": "Learn more →",
     "new_skill": "New skill",
+    "tabs": {
+      "workspace": "Workspace",
+      "runtime": "Runtime skills"
+    },
     "search_placeholder": "Search skills…",
     "scopes": {
       "all": { "label": "All", "description": "All skills in this workspace" },
@@ -293,6 +297,10 @@
     "conflict_apply_button": "Apply decisions",
     "conflict_missing_resolution": "Choose how to resolve this conflict.",
     "conflict_name_still_exists": "That name already exists. Choose another name or skip."
+  },
+  "runtime_browse": {
+    "hint": "Skills installed on each connected runtime's own machine (e.g. ~/.claude/skills, ~/.codex/skills). Read-only — to add one to this workspace, use New skill → From runtime.",
+    "refresh": "Refresh"
   },
   "file_tree": {
     "no_files": "No files"

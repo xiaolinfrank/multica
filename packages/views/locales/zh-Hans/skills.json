@@ -4,6 +4,10 @@
     "tagline": "工作区里任何智能体都能使用的指令。",
     "learn_more": "了解更多 →",
     "new_skill": "新建 skill",
+    "tabs": {
+      "workspace": "工作区",
+      "runtime": "运行时 skill"
+    },
     "search_placeholder": "搜索 skill...",
     "scopes": {
       "all": {
@@ -305,6 +309,10 @@
     "conflict_apply_button": "应用决策",
     "conflict_missing_resolution": "请选择如何处理这个冲突。",
     "conflict_name_still_exists": "这个名称仍然已存在。请换一个名称或跳过。"
+  },
+  "runtime_browse": {
+    "hint": "每个已连接运行时本机上安装的 skill（例如 ~/.claude/skills、~/.codex/skills）。仅供浏览——如需添加到本工作区，请用「新建 skill → 从运行时」。",
+    "refresh": "刷新"
   },
   "file_tree": {
     "no_files": "无文件"

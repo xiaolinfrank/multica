@@ -49,12 +49,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@multica/ui/components/ui/tooltip";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@multica/ui/components/ui/tabs";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { useNavigation, useRowLink } from "../../navigation";
 import { PageHeader } from "../../layout/page-header";
 import { canEditSkill } from "../hooks/use-can-edit-skill";
 import { readOrigin, type OriginInfo } from "../lib/origin";
 import { CreateSkillDialog } from "./create-skill-dialog";
+import { RuntimeSkillsBrowsePanel } from "./runtime-skills-browse-panel";
 import {
   useSkillsViewStore,
   DEFAULT_HIDDEN_COLUMNS,
@@ -602,6 +609,10 @@ export default function SkillsPage() {
     new Set(),
   );
   const [search, setSearch] = useState("");
+  // "workspace" = the workspace skill list (default view); "runtime" =
+  // read-only browse of each connected runtime's native skills. Ephemeral
+  // UI selection — intentionally not persisted to the view store.
+  const [tab, setTab] = useState<"workspace" | "runtime">("workspace");
 
   // Persisted view preferences (per workspace, per user/device). Header sort
   // buttons and the toolbar's display panel mutate the SAME store, so both
@@ -759,35 +770,32 @@ export default function SkillsPage() {
     );
   };
 
-  // --- List request error ---
-  if (listError) {
-    return (
-      <div className="flex flex-1 min-h-0 flex-col">
-        <PageHeaderBar totalCount={0} onCreate={() => setCreateOpen(true)} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-          <AlertCircle className="h-8 w-8 text-destructive" />
-          <div>
-            <p className="text-sm font-medium">
-              {t(($) => $.page.list_error.title)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {listError instanceof Error
-                ? listError.message
-                : t(($) => $.page.list_error.fallback)}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => refetchList()}
-          >
-            {t(($) => $.page.list_error.retry)}
-          </Button>
-        </div>
+  // List request error — rendered inside the Workspace tab body (the page
+  // header and tab strip stay visible so the Runtime tab is still reachable
+  // even when the workspace skill list fails to load).
+  const listErrorView = (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+      <AlertCircle className="h-8 w-8 text-destructive" />
+      <div>
+        <p className="text-sm font-medium">
+          {t(($) => $.page.list_error.title)}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {listError instanceof Error
+            ? listError.message
+            : t(($) => $.page.list_error.fallback)}
+        </p>
       </div>
-    );
-  }
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => refetchList()}
+      >
+        {t(($) => $.page.list_error.retry)}
+      </Button>
+    </div>
+  );
 
   const totalCount = skills.length;
   const showEmpty = !isLoading && totalCount === 0;
@@ -811,10 +819,32 @@ export default function SkillsPage() {
     // not viewport-centered).
     <div className="relative flex flex-1 min-h-0 flex-col">
       <PageHeaderBar
-        totalCount={totalCount}
+        totalCount={tab === "workspace" ? totalCount : 0}
         onCreate={() => setCreateOpen(true)}
       />
 
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as "workspace" | "runtime")}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
+        <div className="flex h-11 shrink-0 items-center border-b px-5">
+          <TabsList variant="line">
+            <TabsTrigger value="workspace">
+              <BookOpen className="h-4 w-4" />
+              {t(($) => $.page.tabs.workspace)}
+            </TabsTrigger>
+            <TabsTrigger value="runtime">
+              <HardDrive className="h-4 w-4" />
+              {t(($) => $.page.tabs.runtime)}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent
+          value="workspace"
+          className="flex min-h-0 flex-1 flex-col outline-none"
+        >
       {supportingQueryDown && (
         <div
           role="status"
@@ -825,7 +855,9 @@ export default function SkillsPage() {
         </div>
       )}
 
-      {isLoading ? (
+      {listError ? (
+        listErrorView
+      ) : isLoading ? (
         <div className="flex-1 overflow-y-auto @container">
           <LoadingSkeleton />
         </div>
@@ -935,12 +967,25 @@ export default function SkillsPage() {
           </div>
         </>
       )}
+        </TabsContent>
 
-      <SkillBatchToolbar
-        rows={selectedRows}
-        ctx={actionsCtx}
-        onClear={() => setSelectedIds(new Set())}
-      />
+        <TabsContent
+          value="runtime"
+          className="flex min-h-0 flex-1 flex-col outline-none"
+        >
+          {/* Mount only when active so the daemon discovery poll never fires
+              while the user is on the Workspace tab. */}
+          {tab === "runtime" && <RuntimeSkillsBrowsePanel />}
+        </TabsContent>
+      </Tabs>
+
+      {tab === "workspace" && (
+        <SkillBatchToolbar
+          rows={selectedRows}
+          ctx={actionsCtx}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
 
       {createOpen && (
         <CreateSkillDialog

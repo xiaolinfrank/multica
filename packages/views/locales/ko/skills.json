@@ -4,6 +4,10 @@
     "tagline": "이 워크스페이스의 모든 에이전트가 사용할 수 있는 지침입니다.",
     "learn_more": "자세히 보기 →",
     "new_skill": "새 스킬",
+    "tabs": {
+      "workspace": "워크스페이스",
+      "runtime": "런타임 스킬"
+    },
     "search_placeholder": "스킬 검색...",
     "scopes": {
       "all": { "label": "전체", "description": "이 워크스페이스의 모든 스킬" },
@@ -293,6 +297,10 @@
     "conflict_apply_button": "결정 적용",
     "conflict_missing_resolution": "이 충돌을 처리할 방법을 선택하세요.",
     "conflict_name_still_exists": "해당 이름이 이미 있습니다. 다른 이름을 선택하거나 건너뛰세요."
+  },
+  "runtime_browse": {
+    "hint": "각 연결된 런타임의 컴퓨터에 설치된 스킬입니다(예: ~/.claude/skills, ~/.codex/skills). 읽기 전용 — 이 워크스페이스에 추가하려면 새 스킬 → 런타임에서를 사용하세요.",
+    "refresh": "새로고침"
   },
   "file_tree": {
     "no_files": "파일 없음"
