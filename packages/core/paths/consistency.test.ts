@@ -27,8 +27,9 @@ describe("paths.workspace() shape", () => {
         "myIssues",
         "runtimes",
         "skills",
-        "squads",
         "settings",
+        "fleet",
+        "workspaces",
       ]),
     );
   });
@@ -48,8 +49,9 @@ describe("paths.workspace() shape", () => {
       ["myIssues", "my-issues"],
       ["runtimes", "runtimes"],
       ["skills", "skills"],
-      ["squads", "squads"],
       ["settings", "settings"],
+      ["fleet", "fleet"],
+      ["workspaces", "workspaces"],
     ];
     const wsAsAny = ws as unknown as Record<string, () => string>;
     for (const [method, segment] of expectedSegments) {
