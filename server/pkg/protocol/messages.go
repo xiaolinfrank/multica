@@ -32,6 +32,15 @@ type RuntimeProfilesChangedPayload struct {
 	RuntimeProfileID string `json:"runtime_profile_id,omitempty"`
 }
 
+// WorkspaceOpAvailablePayload is sent from server to daemon as a best-effort
+// wakeup hint the moment a workspace file op (browse/read/download/reclaim) is
+// enqueued, so the daemon pulls it on an immediate forced heartbeat instead of
+// waiting up to one heartbeat interval. The heartbeat pull stays the reliable
+// backstop if this hint is missed; the hint only expedites first-byte latency.
+type WorkspaceOpAvailablePayload struct {
+	RuntimeID string `json:"runtime_id"`
+}
+
 // TaskProgressPayload is sent from daemon to server during task execution.
 type TaskProgressPayload struct {
 	TaskID  string `json:"task_id"`
@@ -153,6 +162,16 @@ type DaemonHeartbeatAckPayload struct {
 	// that don't know this field silently ignore it (standard JSON behavior)
 	// and fall back to the singular PendingLocalSkillImport above.
 	PendingLocalSkillImports []DaemonHeartbeatPendingLocalSkillImport `json:"pending_local_skill_imports,omitempty"`
+	// PendingWorkspaceOp asks the daemon to browse/read/reclaim a persistent
+	// agent workspace on its (NAS-backed) disk — the server can't reach it
+	// directly. Carries the op kind plus the target envRoot coordinates the
+	// daemon sandboxes against. Old daemons ignore the unknown field.
+	PendingWorkspaceOp *DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_op,omitempty"`
+	// PendingWorkspaceOps drains the runtime's whole pending-op backlog in one
+	// heartbeat so a burst of file clicks doesn't serialize one op per beat.
+	// Old daemons that don't know this field fall back to the singular
+	// PendingWorkspaceOp above (which carries the first item).
+	PendingWorkspaceOps []DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_ops,omitempty"`
 }
 
 // HeartbeatStatusRuntimeGone is the ack Status used when the runtime row no
@@ -183,4 +202,21 @@ type DaemonHeartbeatPendingLocalSkills struct {
 type DaemonHeartbeatPendingLocalSkillImport struct {
 	ID       string `json:"id"`
 	SkillKey string `json:"skill_key"`
+}
+
+// DaemonHeartbeatPendingWorkspaceOp describes a file operation the daemon
+// should run against one persistent agent workspace. Op is "tree" (list the
+// file tree, repo checkouts collapsed), "read" (return one file's contents,
+// size-capped) or "reclaim" (free space). WorkspaceID + TaskShort locate the
+// envRoot ({WorkspacesRoot}/{WorkspaceID}/{TaskShort}); the daemon treats both
+// as untrusted path components and refuses anything that escapes the root.
+// Path is the read target (relative to the workspace); Mode is "artifacts" or
+// "full" for reclaim.
+type DaemonHeartbeatPendingWorkspaceOp struct {
+	ID          string `json:"id"`
+	Op          string `json:"op"`
+	WorkspaceID string `json:"workspace_id"`
+	TaskShort   string `json:"task_short"`
+	Path        string `json:"path,omitempty"`
+	Mode        string `json:"mode,omitempty"`
 }

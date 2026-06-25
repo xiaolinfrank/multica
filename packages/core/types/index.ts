@@ -62,6 +62,16 @@ export type {
 export { RUNTIME_PROFILE_PROTOCOL_FAMILIES } from "./agent";
 export type { Workspace, WorkspaceRepo, Member, MemberRole, User, MemberWithUser, Invitation } from "./workspace";
 export type { FleetDevice, FleetStatus, FleetDockerState } from "./fleet";
+export type { AgentWorkspace, AgentWorkspacesResponse } from "./agent-workspace";
+export type {
+  WorkspaceOpStatus,
+  WorkspaceFileEntry,
+  WorkspaceTreeResult,
+  WorkspaceReadResult,
+  WorkspaceReclaimResult,
+  WorkspaceDownloadResult,
+  WorkspaceOpRequest,
+} from "./workspace-op";
 export type { InboxItem, InboxSeverity, InboxItemType } from "./inbox";
 export type { NotificationGroupKey, NotificationGroupValue, NotificationPreferences, NotificationPreferenceResponse } from "./notification-preference";
 export type { Comment, CommentType, CommentAuthorType, CommentTriggerPreview, CommentTriggerPreviewAgent, CommentTriggerSource, Reaction } from "./comment";

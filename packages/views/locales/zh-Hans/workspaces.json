@@ -1,0 +1,48 @@
+{
+  "title": "工作区",
+  "subtitle": "算力池为每个「智能体 × issue」保留的持久工作目录,只要 issue 还在,工作区就在。",
+  "summary": {
+    "used": "NAS 已用",
+    "reclaimable": "可回收",
+    "count": "{{count}} 个工作区"
+  },
+  "empty": {
+    "title": "还没有工作区",
+    "hint": "当智能体在某个 issue 上开始工作后,工作区会出现在这里。"
+  },
+  "row": {
+    "on_device": "位于 {{device}}",
+    "files": "{{count}} 个文件",
+    "reclaimable": "可回收 {{size}}",
+    "open_issue": "打开 issue",
+    "browse": "浏览",
+    "clear_repo": "清理仓库检出",
+    "delete_issue": "删除 issue"
+  },
+  "browser": {
+    "empty": "该工作区为空。",
+    "unreachable": "无法连接持有该工作区的节点。",
+    "read_failed": "无法读取此文件。",
+    "binary": "二进制文件({{size}})——无法预览。",
+    "truncated": "文件过多,列表已截断。",
+    "file_truncated": "文件已截断为前 2 MB。",
+    "repo": "仓库",
+    "artifact": "缓存",
+    "select_hint": "选择左侧文件查看内容",
+    "copy": "复制",
+    "download": "下载",
+    "wrap": "自动换行",
+    "nowrap": "取消换行",
+    "image_too_large": "图片过大({{size}}),请下载查看。",
+    "download_failed": "下载失败。",
+    "download_too_large": "文件过大,无法下载(上限 10 MB)。"
+  },
+  "delete": {
+    "title": "删除这个 issue?",
+    "body": "删除 {{issue}} 会永久移除该 issue 及其智能体工作区({{size}}),且无法撤销。",
+    "cancel": "取消",
+    "confirm": "删除 issue"
+  },
+  "issue_section": "工作区文件",
+  "loading": "加载中…"
+}

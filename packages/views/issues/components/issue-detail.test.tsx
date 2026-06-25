@@ -78,6 +78,10 @@ vi.mock("@multica/core/workspace/queries", () => ({
     queryKey: ["workspaces"],
     queryFn: () => Promise.resolve([{ id: "ws-1", name: "Test WS", slug: "test" }]),
   }),
+  agentWorkspacesOptions: () => ({
+    queryKey: ["workspaces", "ws-1", "agent-workspaces"],
+    queryFn: () => Promise.resolve({ workspaces: [] }),
+  }),
 }));
 
 // Mock @multica/core/paths — after the URL-driven workspace refactor,

@@ -123,10 +123,12 @@ type Handler struct {
 	IssueService          *service.IssueService
 	AutopilotService      *service.AutopilotService
 	EmailService          *service.EmailService
-	UpdateStore           UpdateStore
-	ModelListStore        ModelListStore
-	LocalSkillListStore   LocalSkillListStore
-	LocalSkillImportStore LocalSkillImportStore
+	UpdateStore              UpdateStore
+	ModelListStore           ModelListStore
+	LocalSkillListStore      LocalSkillListStore
+	LocalSkillImportStore    LocalSkillImportStore
+	WorkspaceInventoryStore  WorkspaceInventoryStore
+	WorkspaceOpStore         WorkspaceOpStore
 	LivenessStore         LivenessStore
 	HeartbeatScheduler    HeartbeatScheduler
 	Storage               storage.Storage
@@ -225,10 +227,12 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		IssueService:          service.NewIssueService(queries, txStarter, bus, analyticsClient, taskSvc),
 		AutopilotService:      service.NewAutopilotService(queries, txStarter, bus, taskSvc),
 		EmailService:          emailService,
-		UpdateStore:           NewInMemoryUpdateStore(),
-		ModelListStore:        NewInMemoryModelListStore(),
-		LocalSkillListStore:   NewInMemoryLocalSkillListStore(),
-		LocalSkillImportStore: NewInMemoryLocalSkillImportStore(),
+		UpdateStore:             NewInMemoryUpdateStore(),
+		ModelListStore:          NewInMemoryModelListStore(),
+		LocalSkillListStore:     NewInMemoryLocalSkillListStore(),
+		LocalSkillImportStore:   NewInMemoryLocalSkillImportStore(),
+		WorkspaceInventoryStore: NewInMemoryWorkspaceInventoryStore(),
+		WorkspaceOpStore:        NewInMemoryWorkspaceOpStore(),
 		LivenessStore:         NewNoopLivenessStore(),
 		HeartbeatScheduler:    NewPassthroughHeartbeatScheduler(queries),
 		Storage:               store,

@@ -767,6 +767,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go d.taskWakeupLoop(ctx, taskWakeups)
 	go d.heartbeatLoop(ctx)
 	go d.gcLoop(ctx)
+	go d.workspaceInventoryLoop(ctx)
 	go d.autoUpdateLoop(ctx)
 	go d.tokenRenewalLoop(ctx)
 
@@ -1827,7 +1828,7 @@ func (d *Daemon) runRuntimeHeartbeat(ctx context.Context, rid string) {
 		}
 	}
 
-	d.runHeartbeatTick(ctx, rid)
+	d.runHeartbeatTick(ctx, rid, false)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -1836,19 +1837,23 @@ func (d *Daemon) runRuntimeHeartbeat(ctx context.Context, rid string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			d.runHeartbeatTick(ctx, rid)
+			d.runHeartbeatTick(ctx, rid, false)
 		}
 	}
 }
 
-func (d *Daemon) runHeartbeatTick(ctx context.Context, rid string) {
+func (d *Daemon) runHeartbeatTick(ctx context.Context, rid string, force bool) {
 	// Skip HTTP heartbeat for runtimes that successfully acked a recent
 	// WebSocket heartbeat. The WS path keeps last_seen_at fresh and delivers
 	// actions, so the HTTP write would be a duplicate DB update. If the WS
 	// heartbeat goes silent the freshness window expires and HTTP resumes
 	// automatically on the next tick — that is the fallback the WS path
 	// relies on.
-	if d.wsHeartbeatRecentlyAcked(rid) {
+	//
+	// A forced tick (a workspace-op wakeup) ignores this skip: the whole point
+	// of the nudge is to pull the just-enqueued op now rather than wait out the
+	// next 15s beat, so one extra heartbeat write is the intended cost.
+	if !force && d.wsHeartbeatRecentlyAcked(rid) {
 		d.logger.Debug("heartbeat: skipping HTTP tick, WS recently acked", "runtime_id", rid)
 		return
 	}
@@ -1887,13 +1892,14 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 	if resp == nil {
 		return
 	}
-	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil {
+	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil || resp.PendingWorkspaceOp != nil {
 		d.logger.Debug("heartbeat: pending actions",
 			"runtime_id", runtimeID,
 			"update", resp.PendingUpdate != nil,
 			"model_list", resp.PendingModelList != nil,
 			"local_skills", resp.PendingLocalSkills != nil,
 			"local_skill_import", resp.PendingLocalSkillImport != nil,
+			"workspace_op", resp.PendingWorkspaceOp != nil,
 		)
 	}
 	if resp.PendingUpdate != nil {
@@ -1920,6 +1926,18 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 		if rt := d.findRuntime(runtimeID); rt != nil {
 			go d.handleLocalSkillImport(ctx, *rt, *resp.PendingLocalSkillImport)
 		}
+	}
+	// Workspace file ops run against an envRoot path, not a Runtime, so they
+	// don't go through findRuntime — the op still works while the runtime
+	// index is momentarily out of sync. Prefer the batch field (new backend)
+	// so a click burst dispatches concurrently; fall back to singular (old
+	// backend) which delivers one op per beat.
+	if len(resp.PendingWorkspaceOps) > 0 {
+		for i := range resp.PendingWorkspaceOps {
+			go d.handleWorkspaceOp(ctx, runtimeID, &resp.PendingWorkspaceOps[i])
+		}
+	} else if resp.PendingWorkspaceOp != nil {
+		go d.handleWorkspaceOp(ctx, runtimeID, resp.PendingWorkspaceOp)
 	}
 }
 
@@ -3044,7 +3062,7 @@ func (d *Daemon) reportTaskResult(ctx context.Context, taskID string, result Tas
 // internal task with no IDs at all). The caller skips writing a meta file
 // in that case so the directory falls back to mtime-based orphan cleanup.
 func gcMetaForTask(task Task) (execenv.GCMeta, bool) {
-	meta := execenv.GCMeta{WorkspaceID: task.WorkspaceID}
+	meta := execenv.GCMeta{WorkspaceID: task.WorkspaceID, AgentID: task.AgentID}
 	switch {
 	case task.ChatSessionID != "":
 		meta.Kind = execenv.GCKindChat

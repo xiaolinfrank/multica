@@ -118,6 +118,7 @@ const (
 	EventDaemonRegister               = "daemon:register"
 	EventDaemonTaskAvailable          = "daemon:task_available"
 	EventDaemonRuntimeProfilesChanged = "daemon:runtime_profiles_changed"
+	EventDaemonWorkspaceOpAvailable   = "daemon:workspace_op_available"
 
 	// GitHub integration events
 	EventGitHubInstallationCreated = "github_installation:created"

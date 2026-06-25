@@ -269,17 +269,15 @@ func (d *Daemon) gcDecisionIssue(ctx context.Context, taskDir string, meta *exec
 		return gcActionSkip
 	}
 
-	if (status.Status == "done" || status.Status == "cancelled") &&
-		time.Since(status.UpdatedAt) > d.cfg.GCTTL {
-		d.logger.Info("gc: eligible for cleanup",
-			"dir", filepath.Base(taskDir),
-			"kind", "issue",
-			"issue", meta.IssueID,
-			"status", status.Status,
-			"updated_at", status.UpdatedAt.Format(time.RFC3339),
-		)
-		return gcActionClean
-	}
+	// Persistent workspace policy: an issue's workspace lives as long as the
+	// issue exists. We intentionally do NOT reclaim on done/cancelled — the
+	// workspace is a durable artifact keyed to (agent, issue), browsable and
+	// manually managed by the user via the workspace management UI. The NAS
+	// migration removed the local-disk-scarcity pressure the old 24h GCTTL was
+	// built for. A deleted issue surfaces as a 404 on the gc-check above and is
+	// reclaimed via the orphan path; explicit teardown is a user action.
+	// Regenerable artifacts (node_modules, etc.) are still pruned below so a
+	// long-lived workspace can't accumulate unbounded reinstallable bloat.
 
 	if d.cfg.GCArtifactTTL > 0 && len(d.cfg.GCArtifactPatterns) > 0 &&
 		!meta.CompletedAt.IsZero() && time.Since(meta.CompletedAt) > d.cfg.GCArtifactTTL {

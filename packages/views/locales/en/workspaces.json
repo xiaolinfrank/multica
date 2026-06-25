@@ -1,0 +1,48 @@
+{
+  "title": "Workspaces",
+  "subtitle": "Persistent working directories the fleet keeps per agent and issue — they live as long as their issue does.",
+  "summary": {
+    "used": "Used on NAS",
+    "reclaimable": "Reclaimable",
+    "count": "{{count}} workspaces"
+  },
+  "empty": {
+    "title": "No workspaces yet",
+    "hint": "A workspace appears here once an agent runs on an issue."
+  },
+  "row": {
+    "on_device": "on {{device}}",
+    "files": "{{count}} files",
+    "reclaimable": "{{size}} reclaimable",
+    "open_issue": "Open issue",
+    "browse": "Browse",
+    "clear_repo": "Clear repo checkouts",
+    "delete_issue": "Delete issue"
+  },
+  "browser": {
+    "empty": "This workspace is empty.",
+    "unreachable": "Couldn't reach the daemon holding this workspace.",
+    "read_failed": "Couldn't read this file.",
+    "binary": "Binary file ({{size}}) — not previewable.",
+    "truncated": "Listing truncated — too many files to show.",
+    "file_truncated": "File truncated to the first 2 MB.",
+    "repo": "repo",
+    "artifact": "cache",
+    "select_hint": "Select a file to preview its contents",
+    "copy": "Copy",
+    "download": "Download",
+    "wrap": "Wrap lines",
+    "nowrap": "Unwrap lines",
+    "image_too_large": "Image too large ({{size}}) — download to view.",
+    "download_failed": "Download failed.",
+    "download_too_large": "File too large to download (10 MB limit)."
+  },
+  "delete": {
+    "title": "Delete this issue?",
+    "body": "Deleting {{issue}} permanently removes the issue and its agent workspaces ({{size}}) from disk. This can't be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete issue"
+  },
+  "issue_section": "Workspace files",
+  "loading": "Loading…"
+}

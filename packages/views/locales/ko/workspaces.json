@@ -1,0 +1,48 @@
+{
+  "title": "워크스페이스",
+  "subtitle": "에이전트와 이슈별로 플릿이 유지하는 영속 작업 디렉터리입니다. 이슈가 존재하는 한 유지됩니다.",
+  "summary": {
+    "used": "NAS 사용량",
+    "reclaimable": "회수 가능",
+    "count": "워크스페이스 {{count}}개"
+  },
+  "empty": {
+    "title": "아직 워크스페이스가 없습니다",
+    "hint": "에이전트가 이슈에서 작업을 시작하면 여기에 표시됩니다."
+  },
+  "row": {
+    "on_device": "{{device}}에 있음",
+    "files": "파일 {{count}}개",
+    "reclaimable": "{{size}} 회수 가능",
+    "open_issue": "이슈 열기",
+    "browse": "둘러보기",
+    "clear_repo": "리포지토리 체크아웃 정리",
+    "delete_issue": "이슈 삭제"
+  },
+  "browser": {
+    "empty": "이 워크스페이스는 비어 있습니다.",
+    "unreachable": "이 워크스페이스를 보유한 데몬에 연결할 수 없습니다.",
+    "read_failed": "이 파일을 읽을 수 없습니다.",
+    "binary": "바이너리 파일({{size}}) — 미리 볼 수 없습니다.",
+    "truncated": "파일이 너무 많아 목록이 잘렸습니다.",
+    "file_truncated": "파일이 처음 2 MB로 잘렸습니다.",
+    "repo": "리포지토리",
+    "artifact": "캐시",
+    "select_hint": "왼쪽에서 파일을 선택해 내용을 확인하세요",
+    "copy": "복사",
+    "download": "다운로드",
+    "wrap": "줄 바꿈",
+    "nowrap": "줄 바꿈 해제",
+    "image_too_large": "이미지가 너무 큽니다({{size}}) — 다운로드하여 확인하세요.",
+    "download_failed": "다운로드에 실패했습니다.",
+    "download_too_large": "파일이 너무 커서 다운로드할 수 없습니다(최대 10 MB)."
+  },
+  "delete": {
+    "title": "이 이슈를 삭제할까요?",
+    "body": "{{issue}}을(를) 삭제하면 이슈와 해당 에이전트 워크스페이스({{size}})가 디스크에서 영구적으로 제거됩니다. 되돌릴 수 없습니다.",
+    "cancel": "취소",
+    "confirm": "이슈 삭제"
+  },
+  "issue_section": "워크스페이스 파일",
+  "loading": "불러오는 중…"
+}

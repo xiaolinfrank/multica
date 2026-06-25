@@ -58,6 +58,7 @@ import { ResolvedThreadBar } from "./resolved-thread-bar";
 import { collectThreadReplies, deriveThreadResolution } from "./thread-utils";
 import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 import { ExecutionLogSection } from "./execution-log-section";
+import { WorkspaceFilesSection } from "./workspace-files-section";
 import { PullRequestList } from "./pull-request-list";
 import { useGitHubSettings } from "@multica/core/github";
 import { useQuery } from "@tanstack/react-query";
@@ -1563,6 +1564,10 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           owns its own collapse state and WS subscriptions. Hides itself
           when there are no runs to show. */}
       <ExecutionLogSection issueId={id} />
+
+      {/* Workspace files — the persistent agent workspace(s) for this issue.
+          Self-contained collapse; hides itself when there's nothing on disk. */}
+      <WorkspaceFilesSection issueId={id} />
 
       {/* Token usage */}
       {usage && usage.task_count > 0 && (
