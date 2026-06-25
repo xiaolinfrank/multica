@@ -286,7 +286,7 @@
     "builtin_section_aria": "Supported built-in protocol families",
     "builtin_reference": "Reference",
     "empty_title": "Create your first custom runtime",
-    "empty_description": "Start from a supported protocol family such as Claude or Codex, then point Multica at the command your daemon should run.",
+    "empty_description": "Start from a supported protocol family such as Claude or Codex, then point BayClaw at the command your daemon should run.",
     "badge_builtin": "Built-in",
     "badge_custom": "Custom",
     "badge_disabled": "Disabled",

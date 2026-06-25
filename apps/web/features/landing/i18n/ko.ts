@@ -298,7 +298,7 @@ export function createKoDict(allowSignup: boolean): LandingDict {
           features: [
             "에이전트, 오토파일럿, 프로젝트, 런타임, 스킬, 스쿼드의 목록이 더 빠르고 일관된 경험으로 바뀌어 행, 필터, 선택, 작업이 더 명확해졌습니다.",
             "명령줄에서 워크스페이스 저장소를 관리할 수 있어 로컬 에이전트가 프로젝트 저장소 정보를 더 쉽게 가져올 수 있습니다.",
-            "Cursor와 OpenClaw 설정이 더 쉬워졌습니다. Cursor 연결 설정은 Multica가 관리할 수 있고, OpenClaw는 기존 게이트웨이에 연결할 수 있습니다.",
+            "Cursor와 OpenClaw 설정이 더 쉬워졌습니다. Cursor 연결 설정은 BayClaw가 관리할 수 있고, OpenClaw는 기존 게이트웨이에 연결할 수 있습니다.",
             "댓글을 편집할 때 저장하기 전에 어떤 에이전트나 스쿼드가 실행될지 미리 보고 제어할 수 있습니다.",
           ],
           improvements: [
