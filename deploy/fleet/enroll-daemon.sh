@@ -10,9 +10,15 @@
 #   3. install uv (if missing) and `uv sync --extra acp`  (via FLEET_PROXY)
 #   4. write ~/.hermes/config.yaml  (named custom provider "fosun" -> gateway)
 #   5. write ~/.multica/config.json (server_url -> coordinator, token, workspace)
-#   6. install a system LaunchDaemon (runs as root) so the daemon survives reboot
-#      AND can reach the LAN -- a user LaunchAgent is blocked by macOS Local
-#      Network privacy and gets "no route to host"; only a root daemon is exempt.
+#   6. deploy the root LaunchDaemon via nas-fda-setup.sh `refresh`: on a migrated
+#      node it refreshes the signed BayClawFleet.app from the pushed binary,
+#      re-signs (FDA grant survives), and writes the NAS plist; on an unmigrated
+#      node it installs a legacy local-workdir daemon. Root LaunchDaemon (not a
+#      user LaunchAgent) is required: a user agent is blocked by macOS Local
+#      Network privacy and gets "no route to host". See: nas-workspace-migration.
+#      NOTE: the daemon runs the binary INSIDE the .app, not ~/bin/multica, so a
+#      plain `make build` without re-running enroll/refresh leaves it on the old
+#      binary. Brand-new nodes still need: nas-fda-setup.sh prep + GUI FDA grant.
 #
 # The gateway bearer token is NOT stored on the node: the node's config.yaml
 # reads it from $OPENAI_API_KEY, which the daemon injects per-task from the
@@ -133,48 +139,17 @@ REMOTE
   printf '{"server_url":"%s","workspace_id":"%s","token":"%s"}\n' "$COORD_URL" "$WORKSPACE_ID" "$RUNNER_TOKEN" \
     | ssh "${SSH_OPTS[@]}" -p "$port" "$target" 'cat > ~/.multica/config.json && chmod 600 ~/.multica/config.json && echo "    config.json written"'
 
-  echo "  [6/6] install + (re)start system LaunchDaemon (root)"
-  ssh "${SSH_OPTS[@]}" -p "$port" "$target" "DEVICE_ID='$id' bash -s" <<'REMOTE'
-set -e
-H="$HOME"
-PL=/tmp/com.bayclaw.fleet.daemon.plist
-cat > "$PL" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.bayclaw.fleet.daemon</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>$H/bin/multica</string>
-    <string>daemon</string><string>start</string>
-    <string>--foreground</string>
-    <string>--device-name</string><string>$DEVICE_ID</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/bayclaw-fleet-daemon.log</string>
-  <key>StandardErrorPath</key><string>/tmp/bayclaw-fleet-daemon.log</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key><string>$H</string>
-    <key>PATH</key><string>$H/.local/bin:$H/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    <key>MULTICA_HERMES_PATH</key><string>$H/var/hermes-agent/.venv/bin/hermes</string>
-  </dict>
-</dict>
-</plist>
-PLIST
-# Stop any prior daemon (in-session / user agent) to avoid daemon.id/port clash.
-pkill -f "multica daemon start" 2>/dev/null || true
-launchctl bootout "gui/$(id -u)/com.bayclaw.fleet.daemon" 2>/dev/null || true
-sudo -n launchctl bootout system/com.bayclaw.fleet.daemon 2>/dev/null || true
-sleep 2
-sudo -n cp "$PL" /Library/LaunchDaemons/com.bayclaw.fleet.daemon.plist
-sudo -n chown root:wheel /Library/LaunchDaemons/com.bayclaw.fleet.daemon.plist
-sudo -n chmod 644 /Library/LaunchDaemons/com.bayclaw.fleet.daemon.plist
-sudo -n launchctl bootstrap system /Library/LaunchDaemons/com.bayclaw.fleet.daemon.plist
-echo "    LaunchDaemon bootstrapped"
-REMOTE
+  # [6/6] Deploy the daemon via nas-fda-setup.sh `refresh`: on a migrated node it
+  # refreshes the signed BayClawFleet.app from the just-pushed ~/bin/multica,
+  # re-signs with the node's stable cert (FDA grant survives), and writes the NAS
+  # plist (wrapper + MULTICA_WORKSPACES_ROOT). On a not-yet-migrated node it falls
+  # back to a legacy local-workdir daemon. This is what keeps `make build` +
+  # re-enroll from silently reverting the NAS setup or running a stale .app binary.
+  echo "  [6/6] deploy daemon (refresh signed .app + NAS plist; legacy local if unmigrated)"
+  scp "${SSH_OPTS[@]}" -P "$port" "$ROOT/deploy/fleet/nas-fda-setup.sh" "$target:/tmp/nas-fda-setup.sh" >/dev/null 2>&1 \
+    || { echo "  scp nas-fda-setup.sh failed"; return 1; }
+  ssh "${SSH_OPTS[@]}" -p "$port" "$target" "bash /tmp/nas-fda-setup.sh refresh '$id'" \
+    || echo "  WARN: refresh reported an issue -- check the node"
 
   # Verify the runtime registered (give the daemon a few seconds).
   sleep 6
