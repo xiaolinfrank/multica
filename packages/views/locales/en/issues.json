@@ -482,6 +482,7 @@
   "backlog_hint": {
     "title": "Agent is paused in Backlog",
     "description": "This issue is parked, so the assigned agent will wait. Move it to Todo when you want the agent to start.",
+    "column_note": "Issues here aren't dispatched to agents automatically — move one to Todo to start it.",
     "row_backlog_label": "Backlog",
     "row_backlog_hint": "keeps the agent paused",
     "row_todo_label": "Todo",
