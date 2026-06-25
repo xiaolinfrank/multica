@@ -3,7 +3,14 @@
 # bayclaw-serve.sh -- start/stop/restart the BayClaw dev deployment as detached
 # background processes (so they survive the launching shell / SSH session):
 #   - Go API server  (server/bin/server)            on $PORT          (.env: 18080)
-#   - Next.js web dev (pnpm dev:web)                 on $FRONTEND_PORT (.env: 13000)
+#   - Next.js web (production build + next start)    on $FRONTEND_PORT (.env: 13000)
+#
+# Web is served as a PRODUCTION build, not `next dev`. Dev mode blocks
+# cross-origin requests to /_next/* dev resources for any host not in
+# `allowedDevOrigins`, which silently breaks login (the controlled email input
+# never hydrates) for every LAN device other than the one bound to the server.
+# Production has no such gate. URLs stay origin-relative because NEXT_PUBLIC_*
+# are empty in .env, so the bundle is LAN-safe.
 #
 # Postgres (docker) and the agent daemon are left untouched -- the daemon
 # reconnects automatically after the server restarts.
@@ -15,8 +22,9 @@
 #   scripts/bayclaw-serve.sh status       # show listeners, health, recent logs
 #
 # Flags:
-#   --no-build      skip the `make build` step on start/restart (faster; use when
-#                   only frontend changed -- next dev hot-reloads on its own)
+#   --no-build      skip BOTH the Go (`make build`) and web (`next build`) build
+#                   steps on start/restart; restart the existing binaries/bundle
+#                   as-is (faster; use when neither backend nor frontend changed)
 #   ENV_FILE=path   use an alternate env file (default: <repo>/.env)
 #
 # Logs: <repo>/logs/server.log and <repo>/logs/web.log
@@ -60,9 +68,10 @@ kill_port() {
 }
 
 stop_all() {
-  say "stopping web dev (:$FRONTEND_PORT)"
+  say "stopping web (:$FRONTEND_PORT)"
   pkill -f "turbo dev --filter=@multica/web" 2>/dev/null
   pkill -f "pnpm dev:web" 2>/dev/null
+  pkill -f "next start --port $FRONTEND_PORT" 2>/dev/null
   kill_port "$FRONTEND_PORT"
   say "stopping API server (:$PORT)"
   kill_port "$PORT"
@@ -83,9 +92,19 @@ start_server() {
   ( cd "$ROOT" && nohup ./server/bin/server >> "$LOG_DIR/server.log" 2>&1 & disown )
 }
 
+build_web() {
+  if [ "$NO_BUILD" = 1 ]; then
+    say "skipping web build (--no-build)"
+    return 0
+  fi
+  say "building web (production: pnpm --filter @multica/web build)"
+  ( cd "$ROOT" && pnpm --filter @multica/web build ) || { echo "ERROR: web build failed" >&2; exit 1; }
+}
+
 start_web() {
-  say "starting web dev (:$FRONTEND_PORT) -> logs/web.log"
-  ( cd "$ROOT" && nohup pnpm dev:web >> "$LOG_DIR/web.log" 2>&1 & disown )
+  [ -d "$ROOT/apps/web/.next" ] || { echo "ERROR: apps/web/.next missing -- run a build first" >&2; exit 1; }
+  say "starting web (prod, :$FRONTEND_PORT) -> logs/web.log"
+  ( cd "$ROOT" && nohup pnpm --filter @multica/web exec next start --port "$FRONTEND_PORT" >> "$LOG_DIR/web.log" 2>&1 & disown )
 }
 
 wait_port() {
@@ -118,6 +137,7 @@ mkdir -p "$LOG_DIR"
 case "$cmd" in
   start)
     build_go
+    build_web
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"
     echo; status
@@ -128,6 +148,7 @@ case "$cmd" in
     ;;
   restart)
     build_go
+    build_web
     stop_all
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"

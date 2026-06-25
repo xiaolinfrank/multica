@@ -287,7 +287,9 @@ export function ManualCreatePanel({
       setLastMode("manual");
       clearDraft();
       const shouldShowBacklogHint =
-        status === "backlog" && assigneeType === "agent" && assigneeId &&
+        status === "backlog" &&
+        (assigneeType === "agent" || assigneeType === "squad") &&
+        assigneeId &&
         localStorage.getItem("multica:backlog-agent-hint-dismissed") !== "true";
 
       if (shouldShowBacklogHint) {

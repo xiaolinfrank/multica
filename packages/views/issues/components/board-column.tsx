@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useMemo, type ReactNode } from "react";
-import { EyeOff, MoreHorizontal, Plus, UserMinus } from "lucide-react";
+import { EyeOff, Info, MoreHorizontal, Plus, UserMinus } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -123,6 +123,12 @@ export const BoardColumn = memo(function BoardColumn({
           </Tooltip>
         </div>
       </div>
+      {status === "backlog" && (
+        <div className="mb-2 flex items-start gap-1.5 rounded-md border border-dashed border-border/70 bg-background/50 px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          <Info className="mt-px size-3 shrink-0" />
+          <span>{t(($) => $.backlog_hint.column_note)}</span>
+        </div>
+      )}
       <div className="relative min-h-[200px] flex-1 rounded-lg">
         {isOver && sortLabel && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/40">

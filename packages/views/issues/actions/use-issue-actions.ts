@@ -75,10 +75,10 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
             ),
         },
       );
-      // Hint: assigning an agent to a backlog issue won't trigger execution
-      // until the issue is moved to an active status.
+      // Hint: assigning an agent or squad to a backlog issue won't trigger
+      // execution until the issue is moved to an active status.
       if (
-        updates.assignee_type === "agent" &&
+        (updates.assignee_type === "agent" || updates.assignee_type === "squad") &&
         updates.assignee_id &&
         issueStatus === "backlog" &&
         typeof window !== "undefined" &&

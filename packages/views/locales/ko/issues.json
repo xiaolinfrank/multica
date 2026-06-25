@@ -481,6 +481,7 @@
   "backlog_hint": {
     "title": "백로그에서는 에이전트가 대기합니다",
     "description": "이 이슈는 보류 상태이므로 할당된 에이전트가 기다립니다. 에이전트를 시작하려면 할 일로 이동하세요.",
+    "column_note": "여기 있는 이슈는 에이전트에 자동으로 배정되지 않습니다. 시작하려면 할 일로 옮기세요.",
     "row_backlog_label": "백로그",
     "row_backlog_hint": "에이전트를 대기 상태로 유지",
     "row_todo_label": "할 일",
