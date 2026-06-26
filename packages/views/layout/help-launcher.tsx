@@ -8,7 +8,6 @@ import {
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useModalStore } from "@multica/core/modals";
-import { DISCORD_URL, DiscordIcon } from "./discord";
 import { useT } from "../i18n";
 
 const DOCS_URL = "https://multica.ai/docs";
@@ -53,15 +52,11 @@ export function HelpLauncher() {
           {t(($) => $.help.changelog)}
           <ArrowUpRight className="size-3 translate-y-px text-muted-foreground/50" />
         </DropdownMenuItem>
-        <DropdownMenuItem
-          render={
-            <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" />
-          }
-        >
-          <DiscordIcon className="h-3.5 w-3.5" />
-          {t(($) => $.help.discord)}
-          <ArrowUpRight className="size-3 translate-y-px text-muted-foreground/50" />
-        </DropdownMenuItem>
+        {/*
+          Discord help entry intentionally removed. Do NOT re-add it (and do not
+          restore the ./discord import or the help.discord i18n key) when merging
+          upstream changes — this product has no public Discord community.
+        */}
         <DropdownMenuItem
           onClick={() => useModalStore.getState().open("feedback")}
         >

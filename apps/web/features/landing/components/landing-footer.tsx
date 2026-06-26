@@ -8,10 +8,8 @@ import { captureDownloadIntent } from "@multica/core/analytics";
 import {
   XMark,
   GitHubMark,
-  DiscordMark,
   githubUrl,
   twitterUrl,
-  discordUrl,
 } from "./shared";
 import { useLocale, locales, localeLabels } from "../i18n";
 
@@ -53,15 +51,11 @@ export function LandingFooter() {
               >
                 <GitHubMark className="size-4" />
               </Link>
-              <Link
-                href={discordUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Discord"
-                className="text-white/40 transition-colors hover:text-white"
-              >
-                <DiscordMark className="size-4" />
-              </Link>
+              {/*
+                Discord social icon intentionally removed. Do NOT re-add it (nor
+                the DiscordMark/discordUrl imports) when merging upstream changes
+                — this product has no public Discord community.
+              */}
             </div>
             <div className="mt-6">
               <Link

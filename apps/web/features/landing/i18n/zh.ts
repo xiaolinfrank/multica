@@ -1,4 +1,6 @@
-import { githubUrl, discordUrl } from "../components/shared";
+// Discord intentionally removed from the landing page; do NOT re-import
+// discordUrl or re-add Discord footer links / changelog copy on upstream merge.
+import { githubUrl } from "../components/shared";
 import type { LandingDict } from "./types";
 
 export function createZhDict(allowSignup: boolean): LandingDict {
@@ -244,7 +246,6 @@ export function createZhDict(allowSignup: boolean): LandingDict {
           { label: "\u6587\u6863", href: "/docs/zh" },
           { label: "API", href: githubUrl },
           { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
-          { label: "Discord", href: discordUrl },
         ],
       },
       company: {
@@ -351,7 +352,6 @@ export function createZhDict(allowSignup: boolean): LandingDict {
         features: [
           "Lark 里的话题消息现在会回到原话题中，团队讨论更容易保持上下文",
           "小队负责人现在可以在成员列表里看到成员技能，分配任务时更容易选对人",
-          "Discord 入口已加入官网页脚、帮助菜单、README，以及可关闭的应用侧边栏卡片",
         ],
         improvements: [
           "Issue 顶部的智能体活动状态现在悬停即可展开，更方便快速查看当前进展",
