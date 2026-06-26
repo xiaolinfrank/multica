@@ -811,19 +811,18 @@ func parseClawHubSlug(raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %w", err)
 	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	// /{owner}/{slug} — take the last segment as the slug
-	if len(parts) == 2 {
-		return parts[1], nil
+	// Supported path shapes: /{owner}/{slug} and /{owner}/skills/{slug}.
+	// The skill slug is always the last non-empty path segment.
+	var parts []string
+	for _, part := range strings.Split(parsed.Path, "/") {
+		if part != "" {
+			parts = append(parts, part)
+		}
 	}
-	if len(parts) == 1 && parts[0] != "" {
-		return parts[0], nil
-	}
-	// Bare slug (no path)
-	if raw == parsed.Host || parsed.Path == "" || parsed.Path == "/" {
+	if len(parts) == 0 {
 		return "", fmt.Errorf("missing skill slug in URL")
 	}
-	return "", fmt.Errorf("could not extract skill slug from URL: %s", raw)
+	return parts[len(parts)-1], nil
 }
 
 func searchClawHubSkills(httpClient *http.Client, query string) ([]SkillSearchCandidateResponse, error) {

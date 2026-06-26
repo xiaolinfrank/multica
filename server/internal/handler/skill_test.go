@@ -1280,3 +1280,36 @@ func containsString(values []string, want string) bool {
 	}
 	return false
 }
+
+func TestParseClawHubSlug(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{name: "owner and slug", raw: "https://clawhub.ai/ivangdavila/react", want: "react"},
+		{name: "owner skills slug", raw: "https://clawhub.ai/ivangdavila/skills/self-improving", want: "self-improving"},
+		{name: "bare slug", raw: "react", want: "react"},
+		{name: "trailing slash", raw: "https://clawhub.ai/ivangdavila/react/", want: "react"},
+		{name: "no path", raw: "https://clawhub.ai", wantErr: true},
+		{name: "root path", raw: "https://clawhub.ai/", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseClawHubSlug(tc.raw)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got slug %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got slug %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
