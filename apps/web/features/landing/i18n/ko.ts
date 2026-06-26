@@ -1,4 +1,6 @@
-import { githubUrl, discordUrl } from "../components/shared";
+// Discord intentionally removed from the landing page; do NOT re-import
+// discordUrl or re-add Discord footer links / changelog copy on upstream merge.
+import { githubUrl } from "../components/shared";
 import { createEnDict } from "./en";
 import type { LandingDict } from "./types";
 
@@ -243,7 +245,6 @@ export function createKoDict(allowSignup: boolean): LandingDict {
             { label: "문서", href: "/docs/ko" },
             { label: "API", href: githubUrl },
             { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
-            { label: "Discord", href: discordUrl },
           ],
         },
         company: {
@@ -326,7 +327,6 @@ export function createKoDict(allowSignup: boolean): LandingDict {
           features: [
             "Lark 토픽에서 시작된 대화는 이제 원래 토픽 안에 답장되어 팀 논의를 더 쉽게 따라갈 수 있습니다.",
             "스쿼드 리더가 멤버의 스킬을 명단에서 바로 확인할 수 있어 작업 위임이 더 정확해졌습니다.",
-            "Discord 진입점이 웹사이트 푸터, 도움말 메뉴, README, 닫을 수 있는 앱 사이드바 카드에 추가되었습니다.",
           ],
           improvements: [
             "Issue 헤더의 에이전트 활동 상태가 hover로 열려 진행 중인 작업을 더 빠르게 확인할 수 있습니다.",

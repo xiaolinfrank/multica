@@ -1,4 +1,6 @@
-import { githubUrl, discordUrl } from "../components/shared";
+// Discord intentionally removed from the landing page; do NOT re-import
+// discordUrl or re-add Discord footer links / changelog copy on upstream merge.
+import { githubUrl } from "../components/shared";
 import type { LandingDict } from "./types";
 
 export function createEnDict(allowSignup: boolean): LandingDict {
@@ -244,7 +246,6 @@ export function createEnDict(allowSignup: boolean): LandingDict {
           { label: "Documentation", href: "/docs" },
           { label: "API", href: githubUrl },
           { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
-          { label: "Discord", href: discordUrl },
         ],
       },
       company: {
@@ -351,7 +352,6 @@ export function createEnDict(allowSignup: boolean): LandingDict {
         features: [
           "Lark conversations now reply inside the original topic when a message starts from a topic, keeping team discussions easier to follow",
           "Squad leaders can see member skills in the roster, making delegation more precise",
-          "Discord is now available from the website footer, help menu, README, and a dismissible in-app sidebar card",
         ],
         improvements: [
           "Agent activity in Issue headers opens on hover, so live work is easier to check at a glance",

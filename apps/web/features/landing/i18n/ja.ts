@@ -1,4 +1,6 @@
-import { githubUrl, discordUrl } from "../components/shared";
+// Discord intentionally removed from the landing page; do NOT re-import
+// discordUrl or re-add Discord footer links / changelog copy on upstream merge.
+import { githubUrl } from "../components/shared";
 import { createEnDict } from "./en";
 import type { LandingDict } from "./types";
 
@@ -244,7 +246,6 @@ export function createJaDict(allowSignup: boolean): LandingDict {
             { label: "ドキュメント", href: "/docs/ja" },
             { label: "API", href: githubUrl },
             { label: "X (Twitter)", href: "https://x.com/MulticaAI" },
-            { label: "Discord", href: discordUrl },
           ],
         },
         company: {
@@ -327,7 +328,6 @@ export function createJaDict(allowSignup: boolean): LandingDict {
           features: [
             "Lark のトピックから始まった会話は元のトピック内に返信され、議論の流れを追いやすくなりました。",
             "小隊リーダーはメンバーのスキルを一覧で確認でき、より適切に作業を任せられます。",
-            "Discord への入口がウェブサイトのフッター、ヘルプメニュー、README、閉じられるアプリ内サイドバーカードに追加されました。",
           ],
           improvements: [
             "Issue ヘッダーのエージェント活動はホバーで開けるようになり、進行中の作業をすばやく確認できます。",
