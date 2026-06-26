@@ -405,3 +405,31 @@ describe("parseWithFallback", () => {
     expect(out).toBe(fallback);
   });
 });
+
+// The "Environment variables" page calls listWorkspaceEnv() on mount. A
+// malformed body must degrade to an empty overview, never throw into the
+// page. Also proves the shape carries key NAMES only — there is no value
+// field for a malformed response to leak.
+describe("listWorkspaceEnv", () => {
+  it("falls back to an empty overview when the body is null", async () => {
+    stubFetchJson(null);
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res).toEqual({ agents: [] });
+  });
+
+  it("falls back when `agents` is not an array", async () => {
+    stubFetchJson({ agents: "nope" });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res).toEqual({ agents: [] });
+  });
+
+  it("defaults a group's missing `keys` to an empty array", async () => {
+    stubFetchJson({ agents: [{ agent_id: "a-1", agent_name: "Bot" }] });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res.agents).toHaveLength(1);
+    expect(res.agents[0]).toEqual({ agent_id: "a-1", agent_name: "Bot", keys: [] });
+  });
+});

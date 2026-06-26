@@ -36,6 +36,7 @@ import {
   Users,
   Server,
   FolderGit2,
+  KeyRound,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -68,7 +69,7 @@ import {
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useAuthStore } from "@multica/core/auth";
 import { useCurrentWorkspace, useWorkspacePaths, paths } from "@multica/core/paths";
-import { workspaceListOptions, myInvitationListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import { workspaceListOptions, myInvitationListOptions, memberListOptions, workspaceKeys } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inboxKeys, deduplicateInboxItems } from "@multica/core/inbox/queries";
@@ -102,6 +103,7 @@ const EMPTY_PINS: PinnedItem[] = [];
 const EMPTY_WORKSPACES: Awaited<ReturnType<typeof api.listWorkspaces>> = [];
 const EMPTY_INVITATIONS: Awaited<ReturnType<typeof api.listMyInvitations>> = [];
 const EMPTY_INBOX: Awaited<ReturnType<typeof api.listInbox>> = [];
+const EMPTY_MEMBERS: Awaited<ReturnType<typeof api.listMembers>> = [];
 
 // Nav items reference WorkspacePaths method names so they can be resolved
 // against the current workspace slug at render time (see AppSidebar body).
@@ -118,6 +120,7 @@ type NavKey =
   | "fleet"
   | "runtimes"
   | "skills"
+  | "env"
   | "workspaces"
   | "settings";
 
@@ -134,6 +137,7 @@ type NavLabelKey =
   | "fleet"
   | "runtimes"
   | "skills"
+  | "environment"
   | "workspaces"
   | "settings";
 
@@ -155,9 +159,15 @@ const workspaceNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[]
 const configureNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[] = [
   { key: "runtimes", labelKey: "runtimes", icon: Monitor },
   { key: "skills", labelKey: "skills", icon: BookOpenText },
+  { key: "env", labelKey: "environment", icon: KeyRound },
   { key: "workspaces", labelKey: "workspaces", icon: FolderGit2 },
   { key: "settings", labelKey: "settings", icon: Settings },
 ];
+
+// The env page reveals which secret keys each agent holds, so it's gated to
+// workspace owner/admin server-side. Mirror that gate in the nav: a non-admin
+// member never sees the entry (the page would only 403 for them anyway).
+const ADMIN_ONLY_NAV_KEYS = new Set<NavKey>(["env"]);
 
 function DraftDot() {
   const hasDraft = useIssueDraftStore((s) => !!(s.draft.title || s.draft.description));
@@ -370,6 +380,29 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   const unreadCount = React.useMemo(
     () => deduplicateInboxItems(inboxItems).filter((i) => !i.read).length,
     [inboxItems],
+  );
+  // Viewer's role drives admin-only nav visibility (env page). Cached and
+  // shared with the members page, so this adds no real fetch cost.
+  const { data: members = EMPTY_MEMBERS } = useQuery({
+    ...memberListOptions(wsId ?? ""),
+    enabled: !!wsId,
+  });
+  const isWorkspaceAdmin = React.useMemo(() => {
+    const role = members.find((m) => m.user_id === userId)?.role;
+    return role === "owner" || role === "admin";
+  }, [members, userId]);
+  // While members is still loading, isWorkspaceAdmin is false, so admin-only
+  // entries stay hidden until the role is confirmed. This is deliberate: we
+  // never flash a secrets-page entry (env) to a viewer whose admin status is
+  // unknown. Showing-then-hiding would tease the non-admin majority; the
+  // members query is cached (staleTime: Infinity), so the only cost is a
+  // one-time late-appear for admins on a cold load, which is the safer trade.
+  const visibleConfigureNav = React.useMemo(
+    () =>
+      isWorkspaceAdmin
+        ? configureNav
+        : configureNav.filter((item) => !ADMIN_ONLY_NAV_KEYS.has(item.key)),
+    [isWorkspaceAdmin],
   );
   const hasRuntimeUpdates = useMyRuntimesNeedUpdate(wsId);
   const { data: pinnedItems = EMPTY_PINS } = useQuery({
@@ -720,7 +753,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupLabel>{t(($) => $.sidebar.configure_group)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {configureNav.map((item) => {
+                {visibleConfigureNav.map((item) => {
                   const href = p[item.key]();
                   const isActive = isNavActive(pathname, href);
                   return (

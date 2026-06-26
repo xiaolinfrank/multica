@@ -27,6 +27,7 @@ import type {
   TimelineEntry,
   User,
   WebhookDelivery,
+  WorkspaceEnvListResponse,
 } from "../types";
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 
@@ -1183,3 +1184,23 @@ export const EMPTY_WORKSPACE_DOWNLOAD: WorkspaceDownloadResult = {
   is_image: false,
   too_large: false,
 };
+
+// ---------------------------------------------------------------------------
+// Workspace env overview (`GET /api/env`). Lenient like the rest: a malformed
+// row or a missing field degrades to an empty list rather than white-screening
+// the "Environment variables" page. Values are never present in this shape by
+// design — the server sends key NAMES only — so there is nothing secret to
+// guard here, only a structure to keep stable.
+// ---------------------------------------------------------------------------
+
+export const WorkspaceEnvAgentGroupSchema = z.object({
+  agent_id: z.string(),
+  agent_name: z.string().default(""),
+  keys: z.array(z.string()).default([]),
+}).loose();
+
+export const WorkspaceEnvListResponseSchema = z.object({
+  agents: z.array(WorkspaceEnvAgentGroupSchema).default([]),
+}).loose();
+
+export const EMPTY_WORKSPACE_ENV: WorkspaceEnvListResponse = { agents: [] };

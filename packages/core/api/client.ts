@@ -26,6 +26,7 @@ import type {
   UpdateAgentRequest,
   AgentEnvResponse,
   UpdateAgentEnvRequest,
+  WorkspaceEnvListResponse,
   AgentTask,
   AgentActivityBucket,
   AgentRunCount,
@@ -219,6 +220,8 @@ import {
   WorkspaceDownloadResultSchema,
   EMPTY_WORKSPACE_DOWNLOAD,
   EMPTY_CANCEL_TASK_RESPONSE,
+  WorkspaceEnvListResponseSchema,
+  EMPTY_WORKSPACE_ENV,
 } from "./schemas";
 
 /** Identifies the calling client to the server.
@@ -940,6 +943,20 @@ export class ApiClient {
 
   async restoreAgent(id: string): Promise<Agent> {
     return this.fetch(`/api/agents/${id}/restore`, { method: "POST" });
+  }
+
+  /**
+   * Workspace-wide, read-only env-var overview: every non-archived agent
+   * grouped with its configured env var NAMES (never values). Drives the
+   * "Environment variables" sidebar page. Owner/admin only — a non-admin
+   * or agent-actor session gets a 403, which the caller surfaces as a
+   * permission state. MUL-2600.
+   */
+  async listWorkspaceEnv(): Promise<WorkspaceEnvListResponse> {
+    const raw = await this.fetch<unknown>("/api/env");
+    return parseWithFallback(raw, WorkspaceEnvListResponseSchema, EMPTY_WORKSPACE_ENV, {
+      endpoint: "GET /api/env",
+    });
   }
 
   // Bulk-cancel every active task (queued/dispatched/running) for the agent.
