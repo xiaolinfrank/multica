@@ -95,14 +95,38 @@ func (s *InMemoryWorkspaceInventoryStore) TasksForWorkspace(workspaceID string) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cutoff := time.Now().Add(-workspaceInventoryStaleAfter)
-	var out []daemonTask
+
+	// Dedup by task_short across daemons. The same physical workspace directory
+	// can be reported by more than one daemonID within the staleness window —
+	// e.g. a runtime re-registers with a fresh daemon_id while the prior
+	// daemon's snapshot hasn't aged out yet, or two runtimes share a workspaces
+	// root on the same NAS subtree. Without dedup the same directory renders
+	// twice in the management page and issue sidebar (looking like a duplicate
+	// bug). Keep the copy from the most recently received snapshot so
+	// size/file_count reflect the latest scan and the row routes to the live
+	// daemon/runtime.
+	type pick struct {
+		task daemonTask
+		at   time.Time
+	}
+	picks := make(map[string]pick)
 	for daemonID, snap := range s.byWorkspace[workspaceID] {
 		if snap.receivedAt.Before(cutoff) {
 			continue // daemon went quiet; treat its snapshot as gone
 		}
 		for _, t := range snap.tasks {
-			out = append(out, daemonTask{inventoryTask: t, DaemonID: daemonID, DeviceName: snap.deviceName, RuntimeID: snap.runtimeID})
+			if cur, ok := picks[t.TaskShort]; ok && !snap.receivedAt.After(cur.at) {
+				continue // an equal-or-newer snapshot already claimed this dir
+			}
+			picks[t.TaskShort] = pick{
+				task: daemonTask{inventoryTask: t, DaemonID: daemonID, DeviceName: snap.deviceName, RuntimeID: snap.runtimeID},
+				at:   snap.receivedAt,
+			}
 		}
+	}
+	out := make([]daemonTask, 0, len(picks))
+	for _, p := range picks {
+		out = append(out, p.task)
 	}
 	return out
 }
