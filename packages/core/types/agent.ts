@@ -469,6 +469,28 @@ export interface UpdateAgentEnvRequest {
   custom_env: Record<string, string>;
 }
 
+/**
+ * One agent's slice of the workspace env overview (`GET /api/env`): the
+ * agent's identity plus the SORTED NAMES of its configured env vars.
+ * Values are intentionally never carried here — the overview is
+ * read-only and never serves plaintext. To reveal a value, call the
+ * audited per-agent `GET /api/agents/{id}/env`. MUL-2600.
+ */
+export interface WorkspaceEnvAgentGroup {
+  agent_id: string;
+  agent_name: string;
+  keys: string[];
+}
+
+/**
+ * Response for `GET /api/env`: every non-archived agent in the workspace
+ * grouped with its env var names. Drives the "Environment variables"
+ * sidebar page. Owner/admin only.
+ */
+export interface WorkspaceEnvListResponse {
+  agents: WorkspaceEnvAgentGroup[];
+}
+
 // Skills
 
 /**

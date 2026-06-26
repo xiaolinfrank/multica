@@ -16,6 +16,7 @@ export const workspaceKeys = {
   squadMemberStatus: (wsId: string, squadId: string) =>
     ["workspaces", wsId, "squads", squadId, "members-status"] as const,
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
+  env: (wsId: string) => ["workspaces", wsId, "env"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,
   agentWorkspaces: (wsId: string) => ["workspaces", wsId, "agent-workspaces"] as const,
   // On-demand file ops keyed by the workspace's on-disk task dir. Not WS-driven
@@ -155,6 +156,19 @@ export function skillListOptions(wsId: string) {
   return queryOptions({
     queryKey: workspaceKeys.skills(wsId),
     queryFn: () => api.listSkills(),
+  });
+}
+
+/**
+ * Workspace-wide env-var overview for the "Environment variables" page.
+ * Read-only, key-names-only. Owner/admin only server-side; callers should
+ * gate `enabled` on the viewer's role so a non-admin never fires a 403.
+ */
+export function workspaceEnvOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.env(wsId),
+    queryFn: () => api.listWorkspaceEnv(),
+    enabled: !!wsId,
   });
 }
 

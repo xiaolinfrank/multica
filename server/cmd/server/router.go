@@ -980,6 +980,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
+			// Workspace-wide env-var overview for the "/{slug}/env" page.
+			// Read-only, key-names-only (no values, no audit). Owner/admin
+			// only; agent actors denied. See internal/handler/agent_env.go.
+			r.Route("/api/env", func(r chi.Router) {
+				r.Get("/", h.ListWorkspaceEnv)
+			})
+
 			// Dashboard — workspace-wide token + run-time rollups for the
 			// "/{slug}/dashboard" page. Optional ?project_id filter scopes
 			// the rollup to a single project.

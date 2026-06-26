@@ -11,6 +11,7 @@
     "fleet": "플릿",
     "runtimes": "런타임",
     "skills": "스킬",
+    "environment": "환경 변수",
     "workspaces": "워크스페이스",
     "settings": "설정"
   },

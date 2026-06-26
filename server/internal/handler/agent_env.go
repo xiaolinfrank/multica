@@ -50,6 +50,27 @@ type UpdateAgentEnvRequest struct {
 	CustomEnv map[string]string `json:"custom_env"`
 }
 
+// WorkspaceEnvAgentGroup is one agent's slice of the workspace env
+// overview: the agent's identity plus the SORTED NAMES of the env vars
+// configured on it. Values are deliberately absent from the wire shape
+// — this is the read-only overview surface, so a reviewer can confirm
+// at a glance that no plaintext can ever leave here. To see a value,
+// clients must call the per-agent `GET /api/agents/{id}/env`, which is
+// audited.
+type WorkspaceEnvAgentGroup struct {
+	AgentID   string   `json:"agent_id"`
+	AgentName string   `json:"agent_name"`
+	Keys      []string `json:"keys"`
+}
+
+// WorkspaceEnvListResponse is the wire shape for `GET /api/env`: every
+// non-archived agent in the workspace grouped with its configured env
+// var names. Agents with no env vars are included with an empty `keys`
+// list so the editable phase 2 surface can target them too.
+type WorkspaceEnvListResponse struct {
+	Agents []WorkspaceEnvAgentGroup `json:"agents"`
+}
+
 // authorizeAgentEnv enforces the per-request auth contract for the env
 // endpoints:
 //
@@ -244,6 +265,61 @@ func (h *Handler) UpdateAgentEnv(w http.ResponseWriter, r *http.Request) {
 		AgentID:   uuidToString(updated.ID),
 		CustomEnv: merged,
 	})
+}
+
+// ListWorkspaceEnv returns a workspace-wide, read-only overview of the
+// env vars configured across every (non-archived) agent — the data
+// behind the "Environment variables" sidebar page. It returns key NAMES
+// only, never values, so it needs no audit row: nothing secret is
+// served. To reveal a value the client still goes through the audited
+// per-agent `GET /api/agents/{id}/env`.
+//
+// Auth mirrors the per-agent env endpoints (MUL-2600): owner/admin only,
+// and agent-token actors are rejected outright so an agent running in
+// the workspace cannot enumerate which secrets its peers hold.
+func (h *Handler) ListWorkspaceEnv(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+
+	// Reject agent actors before the role check: an agent token's backing
+	// member may itself be an owner/admin, so requireWorkspaceRole alone
+	// would let it through. Same precise guard authorizeAgentEnv uses.
+	userID := requestUserID(r)
+	if actorType, _ := h.resolveActor(r, userID, workspaceID); actorType == "agent" {
+		writeError(w, http.StatusForbidden, "agents may not access env management endpoints")
+		return
+	}
+
+	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+		return
+	}
+
+	agents, err := h.Queries.ListAgents(r.Context(), parseUUID(workspaceID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list agents")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, WorkspaceEnvListResponse{Agents: buildWorkspaceEnvGroups(agents)})
+}
+
+// buildWorkspaceEnvGroups projects a list of agents into the env
+// overview wire shape: one group per non-archived agent, carrying its
+// sorted env var key names and never the values. Pure (no DB, no
+// request) so the value-omission and archived-skip invariants are unit
+// testable without a fixture.
+func buildWorkspaceEnvGroups(agents []db.Agent) []WorkspaceEnvAgentGroup {
+	groups := make([]WorkspaceEnvAgentGroup, 0, len(agents))
+	for _, a := range agents {
+		if a.ArchivedAt.Valid {
+			continue
+		}
+		groups = append(groups, WorkspaceEnvAgentGroup{
+			AgentID:   uuidToString(a.ID),
+			AgentName: a.Name,
+			Keys:      sortedKeys(unmarshalCustomEnv(a)),
+		})
+	}
+	return groups
 }
 
 // envAudit summarises the diff between an agent's existing env and the

@@ -11,6 +11,7 @@
     "fleet": "フリート",
     "runtimes": "ランタイム",
     "skills": "スキル",
+    "environment": "環境変数",
     "workspaces": "ワークスペース",
     "settings": "設定"
   },

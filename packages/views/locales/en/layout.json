@@ -11,6 +11,7 @@
     "fleet": "Fleet",
     "runtimes": "Runtimes",
     "skills": "Skills",
+    "environment": "Environment",
     "workspaces": "Workspaces",
     "settings": "Settings"
   },
