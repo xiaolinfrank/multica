@@ -50,17 +50,35 @@ type UpdateAgentEnvRequest struct {
 	CustomEnv map[string]string `json:"custom_env"`
 }
 
+// WorkspaceEnvMcpServer is one MCP server configured on an agent, plus
+// the SORTED NAMES of the env vars declared in that server's mcp_config
+// `env` / `environment` block (e.g. TAVILY_API_KEY for a tavily-mcp
+// server). Values are never carried — names only — so this stays a safe
+// overview surface. MCP server env does NOT inherit agent.custom_env; it
+// is a distinct secret location, which is exactly why it's surfaced here
+// so it isn't a black box.
+type WorkspaceEnvMcpServer struct {
+	Name string   `json:"name"`
+	Keys []string `json:"keys"`
+}
+
 // WorkspaceEnvAgentGroup is one agent's slice of the workspace env
-// overview: the agent's identity plus the SORTED NAMES of the env vars
-// configured on it. Values are deliberately absent from the wire shape
-// — this is the read-only overview surface, so a reviewer can confirm
-// at a glance that no plaintext can ever leave here. To see a value,
-// clients must call the per-agent `GET /api/agents/{id}/env`, which is
-// audited.
+// overview: the agent's identity plus the SORTED NAMES of every secret
+// it carries, across the THREE distinct locations a key can live in:
+//   - Keys:        agent.custom_env (process env; inherited by skills)
+//   - McpServers:  agent.mcp_config[*].env / .environment (per MCP server)
+//   - GatewayToken: whether agent.runtime_config.gateway.token is set
+//
+// Values are deliberately absent from the wire shape — this is the
+// read-only overview surface, so a reviewer can confirm at a glance that
+// no plaintext can ever leave here. To see a value, clients use the
+// per-agent (audited) endpoints / agent settings tabs.
 type WorkspaceEnvAgentGroup struct {
-	AgentID   string   `json:"agent_id"`
-	AgentName string   `json:"agent_name"`
-	Keys      []string `json:"keys"`
+	AgentID      string                  `json:"agent_id"`
+	AgentName    string                  `json:"agent_name"`
+	Keys         []string                `json:"keys"`
+	McpServers   []WorkspaceEnvMcpServer `json:"mcp_servers"`
+	GatewayToken bool                    `json:"gateway_token"`
 }
 
 // WorkspaceEnvListResponse is the wire shape for `GET /api/env`: every
@@ -314,12 +332,91 @@ func buildWorkspaceEnvGroups(agents []db.Agent) []WorkspaceEnvAgentGroup {
 			continue
 		}
 		groups = append(groups, WorkspaceEnvAgentGroup{
-			AgentID:   uuidToString(a.ID),
-			AgentName: a.Name,
-			Keys:      sortedKeys(unmarshalCustomEnv(a)),
+			AgentID:      uuidToString(a.ID),
+			AgentName:    a.Name,
+			Keys:         sortedKeys(unmarshalCustomEnv(a)),
+			McpServers:   mcpServerEnvKeys(a.McpConfig),
+			GatewayToken: hasGatewayToken(a.RuntimeConfig),
 		})
 	}
 	return groups
+}
+
+// mcpServerEnvKeys parses an agent's mcp_config and returns, per MCP
+// server, the SORTED NAMES of the env vars declared in that server's
+// secret block. It handles both accepted shapes:
+//   - Claude-style:   {"mcpServers": {name: {..., "env": {KEY: ...}}}}
+//   - OpenCode-native:{"mcp":        {name: {..., "environment": {KEY: ...}}}}
+//
+// Values are read as `any` and discarded — only key names are kept, so a
+// non-string value can't break parsing and no secret value is ever
+// surfaced. Servers with no env keys are omitted. Malformed config
+// degrades to an empty result rather than failing the whole overview.
+func mcpServerEnvKeys(mcpConfig []byte) []WorkspaceEnvMcpServer {
+	if len(mcpConfig) == 0 {
+		return nil
+	}
+	var root struct {
+		McpServers map[string]struct {
+			Env map[string]any `json:"env"`
+		} `json:"mcpServers"`
+		Mcp map[string]struct {
+			Environment map[string]any `json:"environment"`
+		} `json:"mcp"`
+	}
+	if err := json.Unmarshal(mcpConfig, &root); err != nil {
+		slog.Warn("failed to unmarshal agent mcp_config for env overview", "error", err)
+		return nil
+	}
+
+	out := make([]WorkspaceEnvMcpServer, 0, len(root.McpServers)+len(root.Mcp))
+	for name, s := range root.McpServers {
+		if len(s.Env) > 0 {
+			out = append(out, WorkspaceEnvMcpServer{Name: name, Keys: sortedAnyKeys(s.Env)})
+		}
+	}
+	for name, s := range root.Mcp {
+		if len(s.Environment) > 0 {
+			out = append(out, WorkspaceEnvMcpServer{Name: name, Keys: sortedAnyKeys(s.Environment)})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// hasGatewayToken reports whether an agent's runtime_config carries a
+// non-empty OpenClaw gateway token. Only the presence boolean is
+// surfaced; the token value is never read out. Mirrors the field
+// maskGatewayToken guards on agent responses.
+func hasGatewayToken(runtimeConfig []byte) bool {
+	if len(runtimeConfig) == 0 {
+		return false
+	}
+	var root struct {
+		Gateway struct {
+			Token string `json:"token"`
+		} `json:"gateway"`
+	}
+	if err := json.Unmarshal(runtimeConfig, &root); err != nil {
+		slog.Warn("failed to unmarshal agent runtime_config for env overview", "error", err)
+		return false
+	}
+	return root.Gateway.Token != ""
+}
+
+// sortedAnyKeys returns the sorted key names of a map whose values are of
+// unknown type — used so MCP env blocks with non-string values still
+// yield clean, value-free key lists.
+func sortedAnyKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // envAudit summarises the diff between an agent's existing env and the

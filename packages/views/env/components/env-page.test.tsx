@@ -105,28 +105,41 @@ describe("EnvPage", () => {
               agent_id: "agent-1",
               agent_name: "Bio Researcher",
               keys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
+              mcp_servers: [{ name: "tavily", keys: ["TAVILY_API_KEY"] }],
+              gateway_token: true,
             },
-            { agent_id: "agent-2", agent_name: "Empty Bot", keys: [] },
+            {
+              agent_id: "agent-2",
+              agent_name: "Empty Bot",
+              keys: [],
+              mcp_servers: [],
+              gateway_token: false,
+            },
           ],
         }),
     });
   });
 
-  it("lists agents grouped with their env var names, values masked", async () => {
+  it("lists agents grouped with secrets across all three locations, values masked", async () => {
     asOwner();
     renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("Bio Researcher")).toBeTruthy();
     });
-    // Key names are shown…
+    // custom_env key names…
     expect(screen.getByText("ANTHROPIC_API_KEY")).toBeTruthy();
     expect(screen.getByText("OPENAI_API_KEY")).toBeTruthy();
-    // …and a masked placeholder stands in for every value.
-    expect(screen.getAllByText("••••••••").length).toBeGreaterThanOrEqual(2);
-    // Count badge reflects the agent's variable total.
-    expect(screen.getByText("2 variables")).toBeTruthy();
-    // Agents with no variables are not noise on a read-only overview.
+    // …MCP server section (name + its env key)…
+    expect(screen.getByText("MCP · tavily")).toBeTruthy();
+    expect(screen.getByText("TAVILY_API_KEY")).toBeTruthy();
+    // …and the gateway-token presence badge.
+    expect(screen.getByText("Gateway token")).toBeTruthy();
+    // A masked placeholder stands in for every value (2 custom + 1 mcp).
+    expect(screen.getAllByText("••••••••").length).toBeGreaterThanOrEqual(3);
+    // Count badge sums custom_env + MCP keys (2 + 1).
+    expect(screen.getByText("3 variables")).toBeTruthy();
+    // Agents with no secrets at all are not noise on a read-only overview.
     expect(screen.queryByText("Empty Bot")).toBeNull();
   });
 

@@ -425,11 +425,37 @@ describe("listWorkspaceEnv", () => {
     expect(res).toEqual({ agents: [] });
   });
 
-  it("defaults a group's missing `keys` to an empty array", async () => {
+  it("defaults a group's missing fields (keys, mcp_servers, gateway_token)", async () => {
     stubFetchJson({ agents: [{ agent_id: "a-1", agent_name: "Bot" }] });
     const client = new ApiClient("https://api.example.test");
     const res = await client.listWorkspaceEnv();
     expect(res.agents).toHaveLength(1);
-    expect(res.agents[0]).toEqual({ agent_id: "a-1", agent_name: "Bot", keys: [] });
+    expect(res.agents[0]).toEqual({
+      agent_id: "a-1",
+      agent_name: "Bot",
+      keys: [],
+      mcp_servers: [],
+      gateway_token: false,
+    });
+  });
+
+  it("parses mcp_servers (names only) and gateway_token", async () => {
+    stubFetchJson({
+      agents: [
+        {
+          agent_id: "a-1",
+          agent_name: "Bot",
+          keys: ["OPENAI_API_KEY"],
+          mcp_servers: [{ name: "tavily", keys: ["TAVILY_API_KEY"] }],
+          gateway_token: true,
+        },
+      ],
+    });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res.agents[0]?.mcp_servers).toEqual([
+      { name: "tavily", keys: ["TAVILY_API_KEY"] },
+    ]);
+    expect(res.agents[0]?.gateway_token).toBe(true);
   });
 });

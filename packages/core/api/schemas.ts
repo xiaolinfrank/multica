@@ -1193,10 +1193,17 @@ export const EMPTY_WORKSPACE_DOWNLOAD: WorkspaceDownloadResult = {
 // guard here, only a structure to keep stable.
 // ---------------------------------------------------------------------------
 
+export const WorkspaceEnvMcpServerSchema = z.object({
+  name: z.string().default(""),
+  keys: z.array(z.string()).default([]),
+}).loose();
+
 export const WorkspaceEnvAgentGroupSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string().default(""),
   keys: z.array(z.string()).default([]),
+  mcp_servers: z.array(WorkspaceEnvMcpServerSchema).default([]),
+  gateway_token: z.boolean().default(false),
 }).loose();
 
 export const WorkspaceEnvListResponseSchema = z.object({

@@ -8,7 +8,9 @@ import {
   Search,
   RefreshCw,
   ShieldAlert,
+  ShieldCheck,
   AlertCircle,
+  Plug,
 } from "lucide-react";
 import type { WorkspaceEnvAgentGroup } from "@multica/core/types";
 import { useAuthStore } from "@multica/core/auth";
@@ -30,46 +32,120 @@ import { useT } from "../../i18n";
 // here — revealing an actual value is a per-agent, audited action elsewhere.
 const MASK = "••••••••";
 
-// One agent's card: header (name + variable count) plus a row per configured
-// env var. `matchedKeys` is the post-search subset to render — when the agent
-// matched by name we pass all its keys, when it matched by a key we pass only
-// the keys that matched.
-function AgentEnvCard({
-  group,
-  matchedKeys,
+// Total named secret keys an agent carries, across custom_env and every MCP
+// server's env block. The gateway token is a presence flag, not a named key,
+// so it's surfaced as its own badge rather than counted here.
+function keyCount(g: WorkspaceEnvAgentGroup): number {
+  return (
+    g.keys.length + g.mcp_servers.reduce((sum, m) => sum + m.keys.length, 0)
+  );
+}
+
+function hasSecrets(g: WorkspaceEnvAgentGroup): boolean {
+  return keyCount(g) > 0 || g.gateway_token;
+}
+
+function matchesQuery(g: WorkspaceEnvAgentGroup, q: string): boolean {
+  if (g.agent_name.toLowerCase().includes(q)) return true;
+  if (g.keys.some((k) => k.toLowerCase().includes(q))) return true;
+  return g.mcp_servers.some(
+    (m) =>
+      m.name.toLowerCase().includes(q) ||
+      m.keys.some((k) => k.toLowerCase().includes(q)),
+  );
+}
+
+// A single secret key row: name in mono + a fixed mask standing in for the
+// (never-transmitted) value.
+function KeyRow({ name, hidden }: { name: string; hidden: string }) {
+  return (
+    <li className="flex items-center gap-3 px-4 py-2 text-sm">
+      <KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+      <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
+      <span
+        className="shrink-0 font-mono text-xs tracking-widest text-muted-foreground/60 select-none"
+        aria-label={hidden}
+      >
+        {MASK}
+      </span>
+    </li>
+  );
+}
+
+// A labelled group of keys within an agent card (the custom_env block, or one
+// MCP server's env block). `icon` + `label` head the section.
+function SecretSection({
+  icon,
+  label,
+  keys,
+  hidden,
 }: {
-  group: WorkspaceEnvAgentGroup;
-  matchedKeys: string[];
+  icon: React.ReactNode;
+  label: React.ReactNode;
+  keys: string[];
+  hidden: string;
 }) {
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-xs font-medium text-muted-foreground">
+        {icon}
+        <span className="min-w-0 truncate">{label}</span>
+      </div>
+      <ul className="divide-y border-t">
+        {keys.map((k) => (
+          <KeyRow key={k} name={k} hidden={hidden} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// One agent's card: header (name, optional gateway badge, key count) followed
+// by a section for the agent's process env (custom_env) and a section per MCP
+// server that declares env vars.
+function AgentEnvCard({ group }: { group: WorkspaceEnvAgentGroup }) {
   const { t } = useT("env");
+  const hidden = t(($) => $.page.value_hidden);
   return (
     <div className="rounded-lg border">
-      <div className="flex items-center gap-2 border-b px-4 py-2.5">
+      <div className="flex items-center gap-2 px-4 py-2.5">
         <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {group.agent_name}
         </span>
+        {group.gateway_token && (
+          <Badge variant="outline" className="shrink-0 gap-1">
+            <ShieldCheck className="h-3 w-3" />
+            {t(($) => $.page.gateway_configured)}
+          </Badge>
+        )}
         <Badge variant="secondary" className="shrink-0 font-mono">
-          {t(($) => $.page.variable_count, { count: group.keys.length })}
+          {t(($) => $.page.variable_count, { count: keyCount(group) })}
         </Badge>
       </div>
-      <ul className="divide-y">
-        {matchedKeys.map((key) => (
-          <li
-            key={key}
-            className="flex items-center gap-3 px-4 py-2 text-sm"
-          >
-            <KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-            <span className="min-w-0 flex-1 truncate font-mono">{key}</span>
-            <span
-              className="shrink-0 font-mono text-xs tracking-widest text-muted-foreground/60 select-none"
-              aria-label={t(($) => $.page.value_hidden)}
-            >
-              {MASK}
+
+      {group.keys.length > 0 && (
+        <SecretSection
+          icon={<KeyRound className="h-3 w-3" />}
+          label={t(($) => $.page.section_process)}
+          keys={group.keys}
+          hidden={hidden}
+        />
+      )}
+
+      {group.mcp_servers.map((server) => (
+        <SecretSection
+          key={server.name}
+          icon={<Plug className="h-3 w-3" />}
+          label={
+            <span className="font-mono">
+              {t(($) => $.page.section_mcp, { name: server.name })}
             </span>
-          </li>
-        ))}
-      </ul>
+          }
+          keys={server.keys}
+          hidden={hidden}
+        />
+      ))}
     </div>
   );
 }
@@ -117,13 +193,17 @@ function ListSkeleton() {
 }
 
 /**
- * Read-only "Environment variables" page. Surfaces the env vars configured on
- * each agent across the workspace (API keys, proxy/base-URL overrides, etc.)
- * grouped by agent, with values masked — the server only ever sends key names.
+ * Read-only "Environment variables" page. Surfaces every secret configured on
+ * each agent across the workspace — grouped by agent, values masked (the
+ * server sends key names only) — across the three distinct places a key can
+ * live:
+ *   - the agent's process env (custom_env; inherited by skill scripts),
+ *   - each MCP server's own env block (e.g. TAVILY_API_KEY for tavily-mcp),
+ *   - whether an OpenClaw runtime gateway token is configured.
  *
- * Phase 1 is browse-only: there is no add/edit/delete here. Variables are
- * configured per agent from the agent's settings; this page is the workspace
- * overview so the supported-config picture isn't a black box.
+ * Browse-only: there is no add/edit/delete here. Keys are configured per agent
+ * from the agent's settings tabs (Environment / MCP Config / Runtime Config);
+ * this page is the workspace overview so the secret picture isn't a black box.
  *
  * Owner/admin only, matching the backend (`GET /api/env`). The viewer's role
  * is checked client-side too so non-admins see a clear permission state and
@@ -136,8 +216,7 @@ export function EnvPage() {
 
   const membersQuery = useQuery(memberListOptions(wsId));
   const myRole = useMemo(
-    () =>
-      membersQuery.data?.find((m) => m.user_id === userId)?.role ?? null,
+    () => membersQuery.data?.find((m) => m.user_id === userId)?.role ?? null,
     [membersQuery.data, userId],
   );
   const isAdmin = myRole === "owner" || myRole === "admin";
@@ -149,35 +228,24 @@ export function EnvPage() {
 
   const [search, setSearch] = useState("");
 
-  // Only agents that actually have variables configured are worth showing in a
-  // read-only overview; agents with none are noise here (they become relevant
-  // in the editable phase). Then apply the search across agent name + keys.
+  // Only agents that actually carry secrets are worth showing in a read-only
+  // overview; the rest are noise here. Then filter by search (whole-card match
+  // across agent name, custom_env keys, MCP server names, and MCP keys).
   const visibleGroups = useMemo(() => {
-    const populated = (envQuery.data?.agents ?? []).filter(
-      (g) => g.keys.length > 0,
-    );
+    const populated = (envQuery.data?.agents ?? []).filter(hasSecrets);
     const q = search.trim().toLowerCase();
-    if (!q) {
-      return populated.map((g) => ({ group: g, matchedKeys: g.keys }));
-    }
-    const out: { group: WorkspaceEnvAgentGroup; matchedKeys: string[] }[] = [];
-    for (const g of populated) {
-      const nameMatch = g.agent_name.toLowerCase().includes(q);
-      const keyMatches = g.keys.filter((k) => k.toLowerCase().includes(q));
-      if (nameMatch) out.push({ group: g, matchedKeys: g.keys });
-      else if (keyMatches.length > 0)
-        out.push({ group: g, matchedKeys: keyMatches });
-    }
-    return out;
+    if (!q) return populated;
+    return populated.filter((g) => matchesQuery(g, q));
   }, [envQuery.data, search]);
 
-  const totalVars = useMemo(
+  // Header count: total named secret keys across every agent and location.
+  const totalKeys = useMemo(
     () =>
-      (envQuery.data?.agents ?? []).reduce((sum, g) => sum + g.keys.length, 0),
+      (envQuery.data?.agents ?? []).reduce((sum, g) => sum + keyCount(g), 0),
     [envQuery.data],
   );
 
-  const hasData = totalVars > 0;
+  const hasData = (envQuery.data?.agents ?? []).some(hasSecrets);
   const forbidden =
     (!membersQuery.isLoading && !isAdmin) ||
     (envQuery.error instanceof ApiError && envQuery.error.status === 403);
@@ -222,12 +290,8 @@ export function EnvPage() {
     }
     return (
       <div className="space-y-3">
-        {visibleGroups.map(({ group, matchedKeys }) => (
-          <AgentEnvCard
-            key={group.agent_id}
-            group={group}
-            matchedKeys={matchedKeys}
-          />
+        {visibleGroups.map((group) => (
+          <AgentEnvCard key={group.agent_id} group={group} />
         ))}
       </div>
     );
@@ -241,9 +305,9 @@ export function EnvPage() {
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-sm font-medium">{t(($) => $.page.title)}</h1>
-          {totalVars > 0 && (
+          {totalKeys > 0 && (
             <span className="font-mono text-xs tabular-nums text-muted-foreground/70">
-              {totalVars}
+              {totalKeys}
             </span>
           )}
           <p className="ml-2 hidden text-xs text-muted-foreground md:block">
