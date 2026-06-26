@@ -25,6 +25,7 @@ export type {
   UpdateAgentRequest,
   AgentEnvResponse,
   UpdateAgentEnvRequest,
+  WorkspaceEnvMcpServer,
   WorkspaceEnvAgentGroup,
   WorkspaceEnvListResponse,
   Skill,

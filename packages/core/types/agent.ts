@@ -470,16 +470,31 @@ export interface UpdateAgentEnvRequest {
 }
 
 /**
+ * One MCP server configured on an agent, with the SORTED NAMES of the env
+ * vars declared in that server's mcp_config `env` / `environment` block
+ * (e.g. TAVILY_API_KEY). Names only — values are never carried. MCP server
+ * env does not inherit `custom_env`, so it's a distinct secret location.
+ */
+export interface WorkspaceEnvMcpServer {
+  name: string;
+  keys: string[];
+}
+
+/**
  * One agent's slice of the workspace env overview (`GET /api/env`): the
- * agent's identity plus the SORTED NAMES of its configured env vars.
- * Values are intentionally never carried here — the overview is
- * read-only and never serves plaintext. To reveal a value, call the
- * audited per-agent `GET /api/agents/{id}/env`. MUL-2600.
+ * agent's identity plus the SORTED NAMES of every secret it carries, across
+ * the three distinct locations a key can live in — `custom_env` (process
+ * env, inherited by skills), each MCP server's env block, and whether an
+ * OpenClaw runtime gateway token is set. Values are intentionally never
+ * carried here — the overview is read-only and never serves plaintext. To
+ * reveal a value, use the audited per-agent endpoints / agent settings tabs.
  */
 export interface WorkspaceEnvAgentGroup {
   agent_id: string;
   agent_name: string;
   keys: string[];
+  mcp_servers: WorkspaceEnvMcpServer[];
+  gateway_token: boolean;
 }
 
 /**

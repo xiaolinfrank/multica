@@ -53,20 +53,42 @@ func insertWorkspaceMemberForTest(t *testing.T, email, role string) string {
 	return userID
 }
 
+// setAgentJSONBForTest overwrites an agent's mcp_config / runtime_config
+// JSONB column directly, so the overview tests can stage all three secret
+// locations without going through their respective write handlers.
+func setAgentJSONBForTest(t *testing.T, agentID, column, raw string) {
+	t.Helper()
+	// column is a fixed test-controlled literal (mcp_config / runtime_config),
+	// never user input — safe to interpolate.
+	if _, err := testPool.Exec(context.Background(),
+		"UPDATE agent SET "+column+" = $1 WHERE id = $2", []byte(raw), agentID); err != nil {
+		t.Fatalf("set agent %s: %v", column, err)
+	}
+}
+
 // TestListWorkspaceEnv_ReturnsKeyNamesWithoutValues is the core contract:
-// the overview lists configured env var NAMES per agent, sorted, and the
-// plaintext value never appears on the wire.
+// the overview lists configured secret NAMES per agent across all three
+// locations (custom_env, mcp_config[*].env, runtime gateway token), and a
+// plaintext value from ANY of them never appears on the wire.
 func TestListWorkspaceEnv_ReturnsKeyNamesWithoutValues(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
 	}
 
 	agentID := createHandlerTestAgent(t, "Env Overview Agent", nil)
-	const secret = "sk-super-secret-value-xyz"
+	const (
+		customSecret = "sk-super-secret-value-xyz"
+		mcpSecret    = "tvly-mcp-secret-value-abc"
+		gwSecret     = "gateway-token-secret-def"
+	)
 	setAgentCustomEnvForTest(t, agentID, map[string]string{
-		"OPENAI_API_KEY":    secret,
+		"OPENAI_API_KEY":    customSecret,
 		"ANTHROPIC_API_KEY": "sk-anthropic-zzz",
 	})
+	setAgentJSONBForTest(t, agentID, "mcp_config",
+		`{"mcpServers":{"tavily":{"command":"tavily-mcp","env":{"TAVILY_API_KEY":"`+mcpSecret+`"}}}}`)
+	setAgentJSONBForTest(t, agentID, "runtime_config",
+		`{"gateway":{"host":"gw.internal","token":"`+gwSecret+`"}}`)
 
 	w := httptest.NewRecorder()
 	testHandler.ListWorkspaceEnv(w, newRequest("GET", "/api/env", nil))
@@ -74,9 +96,11 @@ func TestListWorkspaceEnv_ReturnsKeyNamesWithoutValues(t *testing.T) {
 		t.Fatalf("ListWorkspaceEnv: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// No plaintext value may ever reach the client through this endpoint.
-	if strings.Contains(w.Body.String(), secret) {
-		t.Fatalf("ListWorkspaceEnv leaked a plaintext value into the response body")
+	// No plaintext value from ANY secret location may reach the client.
+	for _, secret := range []string{customSecret, mcpSecret, gwSecret} {
+		if strings.Contains(w.Body.String(), secret) {
+			t.Fatalf("ListWorkspaceEnv leaked a plaintext value (%q) into the response body", secret)
+		}
 	}
 
 	var resp WorkspaceEnvListResponse
@@ -90,9 +114,15 @@ func TestListWorkspaceEnv_ReturnsKeyNamesWithoutValues(t *testing.T) {
 			continue
 		}
 		found = true
-		want := []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
-		if !reflect.DeepEqual(g.Keys, want) {
-			t.Fatalf("keys: got %v, want %v (sorted, names only)", g.Keys, want)
+		if want := []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}; !reflect.DeepEqual(g.Keys, want) {
+			t.Fatalf("custom_env keys: got %v, want %v (sorted, names only)", g.Keys, want)
+		}
+		if len(g.McpServers) != 1 || g.McpServers[0].Name != "tavily" ||
+			!reflect.DeepEqual(g.McpServers[0].Keys, []string{"TAVILY_API_KEY"}) {
+			t.Fatalf("mcp_servers: got %+v, want one 'tavily' server with [TAVILY_API_KEY]", g.McpServers)
+		}
+		if !g.GatewayToken {
+			t.Fatalf("gateway_token: expected true when runtime_config.gateway.token is set")
 		}
 	}
 	if !found {
@@ -162,5 +192,101 @@ func TestBuildWorkspaceEnvGroups_SkipsArchivedAndSortsKeys(t *testing.T) {
 	}
 	if groups[1].Keys == nil || len(groups[1].Keys) != 0 {
 		t.Fatalf("empty agent must yield a non-nil empty key slice, got %#v", groups[1].Keys)
+	}
+}
+
+// TestMcpServerEnvKeys covers both accepted mcp_config shapes, the
+// value-omission invariant, and graceful handling of malformed/empty
+// input. No DB.
+func TestMcpServerEnvKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("claude-style env block, names only, sorted", func(t *testing.T) {
+		out := mcpServerEnvKeys([]byte(
+			`{"mcpServers":{"tavily":{"command":"tavily-mcp","env":{"Z_KEY":"secret-z","A_KEY":"secret-a"}}}}`))
+		if len(out) != 1 || out[0].Name != "tavily" {
+			t.Fatalf("got %+v, want one 'tavily' server", out)
+		}
+		if want := []string{"A_KEY", "Z_KEY"}; !reflect.DeepEqual(out[0].Keys, want) {
+			t.Fatalf("keys: got %v, want %v (sorted names)", out[0].Keys, want)
+		}
+	})
+
+	t.Run("opencode-native environment block", func(t *testing.T) {
+		out := mcpServerEnvKeys([]byte(
+			`{"mcp":{"brave":{"type":"local","command":["brave-mcp"],"environment":{"BRAVE_API_KEY":"x"}}}}`))
+		if len(out) != 1 || out[0].Name != "brave" ||
+			!reflect.DeepEqual(out[0].Keys, []string{"BRAVE_API_KEY"}) {
+			t.Fatalf("got %+v, want one 'brave' server with [BRAVE_API_KEY]", out)
+		}
+	})
+
+	t.Run("servers without env are omitted; multiple sorted by name", func(t *testing.T) {
+		out := mcpServerEnvKeys([]byte(
+			`{"mcpServers":{"no-secrets":{"command":"x"},"zeta":{"command":"z","env":{"K":"1"}},"alpha":{"command":"a","env":{"K":"1"}}}}`))
+		if len(out) != 2 || out[0].Name != "alpha" || out[1].Name != "zeta" {
+			t.Fatalf("got %+v, want [alpha, zeta] (env-less server omitted, sorted)", out)
+		}
+	})
+
+	t.Run("non-string env values still yield clean key names", func(t *testing.T) {
+		out := mcpServerEnvKeys([]byte(`{"mcpServers":{"s":{"env":{"PORT":8080,"FLAG":true}}}}`))
+		if len(out) != 1 || !reflect.DeepEqual(out[0].Keys, []string{"FLAG", "PORT"}) {
+			t.Fatalf("got %+v, want one server with [FLAG, PORT]", out)
+		}
+	})
+
+	t.Run("null and empty env blocks are omitted; only configured server appears", func(t *testing.T) {
+		// `env: null` and `env: {}` both unmarshal to a zero-length map and
+		// must be skipped, while a sibling server with real keys still shows.
+		out := mcpServerEnvKeys([]byte(
+			`{"mcpServers":{"nullenv":{"env":null},"emptyenv":{"env":{}},"real":{"env":{"K":"v"}}}}`))
+		if len(out) != 1 || out[0].Name != "real" {
+			t.Fatalf("got %+v, want only the 'real' server", out)
+		}
+		// Same for the OpenCode `environment: null` shape.
+		if out := mcpServerEnvKeys([]byte(`{"mcp":{"s":{"type":"local","environment":null}}}`)); out != nil {
+			t.Fatalf("environment:null: got %+v, want nil", out)
+		}
+	})
+
+	t.Run("empty and malformed degrade to nil", func(t *testing.T) {
+		if out := mcpServerEnvKeys(nil); out != nil {
+			t.Fatalf("nil config: got %+v, want nil", out)
+		}
+		if out := mcpServerEnvKeys([]byte(`{}`)); out != nil {
+			t.Fatalf("empty config: got %+v, want nil", out)
+		}
+		if out := mcpServerEnvKeys([]byte(`not json`)); out != nil {
+			t.Fatalf("malformed config: got %+v, want nil", out)
+		}
+	})
+}
+
+// TestHasGatewayToken checks presence detection without ever reading the
+// token value.
+func TestHasGatewayToken(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{"token set", `{"gateway":{"host":"h","token":"real-secret"}}`, true},
+		{"empty token", `{"gateway":{"host":"h","token":""}}`, false},
+		{"no token key", `{"gateway":{"host":"h"}}`, false},
+		{"no gateway", `{"mode":"direct"}`, false},
+		{"empty config", `{}`, false},
+		{"malformed", `nope`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasGatewayToken([]byte(tc.raw)); got != tc.want {
+				t.Fatalf("hasGatewayToken(%s): got %v, want %v", tc.raw, got, tc.want)
+			}
+		})
+	}
+	if hasGatewayToken(nil) {
+		t.Fatalf("hasGatewayToken(nil): got true, want false")
 	}
 }
