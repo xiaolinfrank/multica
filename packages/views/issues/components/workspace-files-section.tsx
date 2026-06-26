@@ -76,12 +76,25 @@ function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
   const { t } = useT("workspaces");
   const [browsing, setBrowsing] = useState(false);
 
+  const agentLabel = ws.agent_name || ws.agent_id || "—";
+
   return (
     <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs">
-      <span className="min-w-0 flex-1 truncate font-medium">
-        {ws.agent_name || ws.agent_id || "—"}
-      </span>
-      <span className="shrink-0 text-muted-foreground">{ws.device_name}</span>
+      {/* Agent name is the primary identifier — it's what distinguishes the
+          rows of a multi-agent squad. Give it the flexible space and drop the
+          device name to a secondary line: within one issue the device name is
+          usually the same runtime across rows, so it carries no signal and must
+          not crowd out the Browse button on a narrow sidebar. */}
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium" title={agentLabel}>
+          {agentLabel}
+        </div>
+        {ws.device_name ? (
+          <div className="truncate text-[11px] text-muted-foreground" title={ws.device_name}>
+            {ws.device_name}
+          </div>
+        ) : null}
+      </div>
       <span className="shrink-0 tabular-nums text-muted-foreground">
         {formatBytes(ws.size_bytes)}
       </span>
