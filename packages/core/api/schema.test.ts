@@ -458,4 +458,20 @@ describe("listWorkspaceEnv", () => {
     ]);
     expect(res.agents[0]?.gateway_token).toBe(true);
   });
+
+  // Regression: a Go nil slice serializes to `mcp_servers: null`. The schema
+  // must coerce that to [] rather than failing the agent (which would
+  // collapse the WHOLE overview to its empty fallback and blank the page).
+  it("coerces a null mcp_servers to [] without dropping the agent", async () => {
+    stubFetchJson({
+      agents: [
+        { agent_id: "a-1", agent_name: "Bot", keys: ["OPENAI_API_KEY"], mcp_servers: null },
+      ],
+    });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res.agents).toHaveLength(1);
+    expect(res.agents[0]?.keys).toEqual(["OPENAI_API_KEY"]);
+    expect(res.agents[0]?.mcp_servers).toEqual([]);
+  });
 });

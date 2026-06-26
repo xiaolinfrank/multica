@@ -331,11 +331,19 @@ func buildWorkspaceEnvGroups(agents []db.Agent) []WorkspaceEnvAgentGroup {
 		if a.ArchivedAt.Valid {
 			continue
 		}
+		// Coerce nil → empty slice so the wire shape is always `[]`, never
+		// JSON `null`. A null here would fail a strict client array schema
+		// (zod's `.default([])` only fills `undefined`, not `null`), which
+		// would degrade the whole overview to its empty fallback.
+		mcpServers := mcpServerEnvKeys(a.McpConfig)
+		if mcpServers == nil {
+			mcpServers = []WorkspaceEnvMcpServer{}
+		}
 		groups = append(groups, WorkspaceEnvAgentGroup{
 			AgentID:      uuidToString(a.ID),
 			AgentName:    a.Name,
 			Keys:         sortedKeys(unmarshalCustomEnv(a)),
-			McpServers:   mcpServerEnvKeys(a.McpConfig),
+			McpServers:   mcpServers,
 			GatewayToken: hasGatewayToken(a.RuntimeConfig),
 		})
 	}

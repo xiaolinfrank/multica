@@ -193,6 +193,14 @@ func TestBuildWorkspaceEnvGroups_SkipsArchivedAndSortsKeys(t *testing.T) {
 	if groups[1].Keys == nil || len(groups[1].Keys) != 0 {
 		t.Fatalf("empty agent must yield a non-nil empty key slice, got %#v", groups[1].Keys)
 	}
+	// McpServers must be a non-nil empty slice (→ JSON `[]`, never `null`)
+	// for agents with no mcp_config, so a strict client array schema doesn't
+	// reject the whole overview.
+	for i, g := range groups {
+		if g.McpServers == nil {
+			t.Fatalf("group %d (%s): McpServers must be non-nil []; got nil (would marshal to JSON null)", i, g.AgentName)
+		}
+	}
 }
 
 // TestMcpServerEnvKeys covers both accepted mcp_config shapes, the

@@ -1202,7 +1202,14 @@ export const WorkspaceEnvAgentGroupSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string().default(""),
   keys: z.array(z.string()).default([]),
-  mcp_servers: z.array(WorkspaceEnvMcpServerSchema).default([]),
+  // Coerce null/undefined → [] BEFORE array validation. A Go nil slice
+  // serializes to JSON `null`, and zod's `.default([])` only fills
+  // `undefined` — a raw `null` would fail the array and collapse the whole
+  // overview to its empty fallback (the bug this guards against).
+  mcp_servers: z.preprocess(
+    (v) => (v == null ? [] : v),
+    z.array(WorkspaceEnvMcpServerSchema),
+  ),
   gateway_token: z.boolean().default(false),
 }).loose();
 
