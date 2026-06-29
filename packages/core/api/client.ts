@@ -27,6 +27,8 @@ import type {
   AgentEnvResponse,
   UpdateAgentEnvRequest,
   WorkspaceEnvListResponse,
+  WorkspaceSharedEnvResponse,
+  UpdateWorkspaceSharedEnvRequest,
   AgentTask,
   AgentActivityBucket,
   AgentRunCount,
@@ -222,6 +224,8 @@ import {
   EMPTY_CANCEL_TASK_RESPONSE,
   WorkspaceEnvListResponseSchema,
   EMPTY_WORKSPACE_ENV,
+  WorkspaceSharedEnvResponseSchema,
+  EMPTY_WORKSPACE_SHARED_ENV,
 } from "./schemas";
 
 /** Identifies the calling client to the server.
@@ -956,6 +960,35 @@ export class ApiClient {
     const raw = await this.fetch<unknown>("/api/env");
     return parseWithFallback(raw, WorkspaceEnvListResponseSchema, EMPTY_WORKSPACE_ENV, {
       endpoint: "GET /api/env",
+    });
+  }
+
+  /**
+   * Reveals the workspace-level shared env map (plaintext values). Audited
+   * and owner/admin only — agent actors get a 403. The shared env is injected
+   * into every agent's task process beneath its own custom_env.
+   */
+  async getWorkspaceSharedEnv(): Promise<WorkspaceSharedEnvResponse> {
+    const raw = await this.fetch<unknown>("/api/env/shared");
+    return parseWithFallback(raw, WorkspaceSharedEnvResponseSchema, EMPTY_WORKSPACE_SHARED_ENV, {
+      endpoint: "GET /api/env/shared",
+    });
+  }
+
+  /**
+   * Replaces the workspace shared env wholesale. Values equal to `"****"` are
+   * preserved server-side (the **** guard). Owner/admin only; agent actors
+   * get a 403. Every successful call writes a `workspace_env_updated` row.
+   */
+  async updateWorkspaceSharedEnv(
+    data: UpdateWorkspaceSharedEnvRequest,
+  ): Promise<WorkspaceSharedEnvResponse> {
+    const raw = await this.fetch<unknown>("/api/env/shared", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, WorkspaceSharedEnvResponseSchema, EMPTY_WORKSPACE_SHARED_ENV, {
+      endpoint: "PUT /api/env/shared",
     });
   }
 

@@ -499,11 +499,31 @@ export interface WorkspaceEnvAgentGroup {
 
 /**
  * Response for `GET /api/env`: every non-archived agent in the workspace
- * grouped with its env var names. Drives the "Environment variables"
- * sidebar page. Owner/admin only.
+ * grouped with its env var names, plus the workspace-level shared env var
+ * NAMES (never values). Drives the "Environment variables" sidebar page.
+ * Owner/admin only.
  */
 export interface WorkspaceEnvListResponse {
   agents: WorkspaceEnvAgentGroup[];
+  shared_env: string[];
+}
+
+/**
+ * Response for `GET /api/env/shared`: the workspace-level shared env map.
+ * Unlike the overview, this DOES carry plaintext values — it is the audited
+ * reveal path, owner/admin only. The same map shape is returned by the PUT.
+ */
+export interface WorkspaceSharedEnvResponse {
+  shared_env: Record<string, string>;
+}
+
+/**
+ * Body for `PUT /api/env/shared`. Same `"****"` sentinel semantics as
+ * UpdateAgentEnvRequest: a value of `"****"` preserves the existing value
+ * for that key; omitted keys are removed.
+ */
+export interface UpdateWorkspaceSharedEnvRequest {
+  shared_env: Record<string, string>;
 }
 
 // Skills

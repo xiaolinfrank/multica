@@ -128,12 +128,16 @@ type ChatAttachmentMeta struct {
 
 // AgentData holds agent details returned by the claim endpoint.
 type AgentData struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Instructions  string            `json:"instructions"`
-	Skills        []SkillData       `json:"skills,omitempty"`
-	SkillRefs     []SkillRefData    `json:"skill_refs,omitempty"`
-	CustomEnv     map[string]string `json:"custom_env,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Instructions string            `json:"instructions"`
+	Skills       []SkillData       `json:"skills,omitempty"`
+	SkillRefs    []SkillRefData    `json:"skill_refs,omitempty"`
+	CustomEnv    map[string]string `json:"custom_env,omitempty"`
+	// WorkspaceEnv is the workspace-level shared_env, injected as a base
+	// layer beneath CustomEnv at task launch (CustomEnv overrides shared
+	// keys with the same name). See runTask's env-merge block.
+	WorkspaceEnv  map[string]string `json:"workspace_env,omitempty"`
 	CustomArgs    []string          `json:"custom_args,omitempty"`
 	McpConfig     json.RawMessage   `json:"mcp_config,omitempty"`
 	Model         string            `json:"model,omitempty"`

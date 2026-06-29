@@ -1,7 +1,7 @@
 -- name: ListWorkspaces :many
 SELECT w.id, w.name, w.slug, w.description, w.settings,
        w.created_at, w.updated_at, w.context, w.repos,
-       w.issue_prefix, w.issue_counter, w.avatar_url
+       w.issue_prefix, w.issue_counter, w.avatar_url, w.shared_env
 FROM member m
 JOIN workspace w ON w.id = m.workspace_id
 WHERE m.user_id = $1
@@ -30,6 +30,14 @@ UPDATE workspace SET
     issue_prefix = COALESCE(sqlc.narg('issue_prefix'), issue_prefix),
     avatar_url = COALESCE(sqlc.narg('avatar_url'), avatar_url),
     updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateWorkspaceSharedEnv :one
+-- Replaces a workspace's shared_env map wholesale. Used by the dedicated
+-- env-management endpoint (PUT /api/env/shared), the only write path for it.
+UPDATE workspace
+SET shared_env = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

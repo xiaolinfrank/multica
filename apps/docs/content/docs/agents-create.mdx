@@ -77,6 +77,8 @@ System-critical variables cannot be overridden: `PATH`, `HOME`, `USER`, `SHELL`,
 - **Gateway token** — whether an OpenClaw runtime gateway token is configured (shown as a badge, not a named key).
 
 So an agent with an empty `custom_env` but an MCP server that sets env looks "empty" on its Environment tab yet still appears on the overview under **MCP · `<server>`** — they read different sources, by design. Each section on the overview names where to edit that key.
+
+The overview's **Workspace shared** card (at the top) is the one editable surface here: set a key once — e.g. a shared `TAVILY_API_KEY` — and every agent inherits it at task launch, layered *beneath* each agent's own `custom_env`. An agent's own key of the same name still wins (the overview flags such a row as "overrides shared"). Shared vars are injected into the agent's main process only, not into MCP server subprocesses. Owner/admin only, and revealing values is audited just like the per-agent endpoint.
 </Callout>
 
 ## Custom CLI arguments (custom_args)

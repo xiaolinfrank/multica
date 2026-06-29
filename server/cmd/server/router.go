@@ -985,6 +985,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// only; agent actors denied. See internal/handler/agent_env.go.
 			r.Route("/api/env", func(r chi.Router) {
 				r.Get("/", h.ListWorkspaceEnv)
+				// Workspace-level shared env vars, injected as a base layer
+				// beneath every agent's custom_env. GET reveals plaintext
+				// (audited); PUT replaces it. Owner/admin only; agent actors
+				// denied. See internal/handler/workspace_env.go.
+				r.Get("/shared", h.GetWorkspaceSharedEnv)
+				r.Put("/shared", h.UpdateWorkspaceSharedEnv)
 			})
 
 			// Dashboard — workspace-wide token + run-time rollups for the

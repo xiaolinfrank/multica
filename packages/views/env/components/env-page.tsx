@@ -26,6 +26,7 @@ import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { PageHeader } from "../../layout/page-header";
 import { useT } from "../../i18n";
+import { SharedEnvCard } from "./shared-env-card";
 
 // Values never travel to this page (the server sends key names only), so the
 // "value" column is a fixed cosmetic mask. There is nothing real to reveal
@@ -56,12 +57,29 @@ function matchesQuery(g: WorkspaceEnvAgentGroup, q: string): boolean {
 }
 
 // A single secret key row: name in mono + a fixed mask standing in for the
-// (never-transmitted) value.
-function KeyRow({ name, hidden }: { name: string; hidden: string }) {
+// (never-transmitted) value. `overridesShared` marks a process-env key that
+// shadows a workspace shared var of the same name, so the relationship between
+// the two surfaces is legible at a glance.
+function KeyRow({
+  name,
+  hidden,
+  overridesShared,
+  overrideLabel,
+}: {
+  name: string;
+  hidden: string;
+  overridesShared?: boolean;
+  overrideLabel?: string;
+}) {
   return (
     <li className="flex items-center gap-3 px-4 py-2 text-sm">
       <KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
       <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
+      {overridesShared && (
+        <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+          {overrideLabel}
+        </Badge>
+      )}
       <span
         className="shrink-0 font-mono text-xs tracking-widest text-muted-foreground/60 select-none"
         aria-label={hidden}
@@ -82,12 +100,19 @@ function SecretSection({
   hint,
   keys,
   hidden,
+  sharedKeys,
+  overrideLabel,
 }: {
   icon: React.ReactNode;
   label: React.ReactNode;
   hint: string;
   keys: string[];
   hidden: string;
+  // When provided, a key present in this set is flagged as overriding the
+  // workspace shared var of the same name. Only passed for the process-env
+  // section (custom_env is the layer that shadows shared_env).
+  sharedKeys?: Set<string>;
+  overrideLabel?: string;
 }) {
   return (
     <div>
@@ -100,7 +125,13 @@ function SecretSection({
       </div>
       <ul className="divide-y border-t">
         {keys.map((k) => (
-          <KeyRow key={k} name={k} hidden={hidden} />
+          <KeyRow
+            key={k}
+            name={k}
+            hidden={hidden}
+            overridesShared={sharedKeys?.has(k)}
+            overrideLabel={overrideLabel}
+          />
         ))}
       </ul>
     </div>
@@ -110,7 +141,13 @@ function SecretSection({
 // One agent's card: header (name, optional gateway badge, key count) followed
 // by a section for the agent's process env (custom_env) and a section per MCP
 // server that declares env vars.
-function AgentEnvCard({ group }: { group: WorkspaceEnvAgentGroup }) {
+function AgentEnvCard({
+  group,
+  sharedKeys,
+}: {
+  group: WorkspaceEnvAgentGroup;
+  sharedKeys: Set<string>;
+}) {
   const { t } = useT("env");
   const hidden = t(($) => $.page.value_hidden);
   return (
@@ -138,6 +175,8 @@ function AgentEnvCard({ group }: { group: WorkspaceEnvAgentGroup }) {
           hint={t(($) => $.page.section_process_hint)}
           keys={group.keys}
           hidden={hidden}
+          sharedKeys={sharedKeys}
+          overrideLabel={t(($) => $.page.override_badge)}
         />
       )}
 
@@ -210,9 +249,10 @@ function ListSkeleton() {
  *   - each MCP server's own env block (e.g. TAVILY_API_KEY for tavily-mcp),
  *   - whether an OpenClaw runtime gateway token is configured.
  *
- * Browse-only: there is no add/edit/delete here. Keys are configured per agent
- * from the agent's settings tabs (Environment / MCP Config / Runtime Config);
- * this page is the workspace overview so the secret picture isn't a black box.
+ * Per-agent keys are read-only here (configured from the agent's settings tabs:
+ * Environment / MCP Config / Runtime Config) so the secret picture isn't a
+ * black box. The workspace shared env at the top IS editable in place — set a
+ * key once and every agent inherits it (its own custom_env still overrides).
  *
  * Owner/admin only, matching the backend (`GET /api/env`). The viewer's role
  * is checked client-side too so non-admins see a clear permission state and
@@ -247,14 +287,27 @@ export function EnvPage() {
     return populated.filter((g) => matchesQuery(g, q));
   }, [envQuery.data, search]);
 
-  // Header count: total named secret keys across every agent and location.
-  const totalKeys = useMemo(
-    () =>
-      (envQuery.data?.agents ?? []).reduce((sum, g) => sum + keyCount(g), 0),
+  // Workspace shared env key names + a lookup set for the per-agent "overrides
+  // shared" badge (a custom_env key shadows the shared var of the same name).
+  const sharedKeyNames = useMemo(
+    () => envQuery.data?.shared_env ?? [],
     [envQuery.data],
   );
+  const sharedKeySet = useMemo(
+    () => new Set(sharedKeyNames),
+    [sharedKeyNames],
+  );
 
-  const hasData = (envQuery.data?.agents ?? []).some(hasSecrets);
+  // Header count: total named secret keys across every agent and location,
+  // plus the workspace shared vars.
+  const totalKeys = useMemo(
+    () =>
+      (envQuery.data?.agents ?? []).reduce((sum, g) => sum + keyCount(g), 0) +
+      sharedKeyNames.length,
+    [envQuery.data, sharedKeyNames],
+  );
+
+  const hasAgentData = (envQuery.data?.agents ?? []).some(hasSecrets);
   const forbidden =
     (!membersQuery.isLoading && !isAdmin) ||
     (envQuery.error instanceof ApiError && envQuery.error.status === 403);
@@ -280,33 +333,42 @@ export function EnvPage() {
         </div>
       );
     }
-    if (!hasData) {
-      return (
-        <CenteredState
-          icon={<KeyRound className="h-4 w-4" />}
-          title={t(($) => $.page.empty_title)}
-          hint={t(($) => $.page.empty_hint)}
-        />
-      );
-    }
-    if (visibleGroups.length === 0) {
-      return (
-        <CenteredState
-          icon={<Search className="h-4 w-4" />}
-          title={t(($) => $.page.no_matches)}
-        />
-      );
-    }
+    // The workspace shared card is always present for admins — it's the one
+    // editable surface and must be reachable even when no agent carries
+    // secrets yet (so a first shared var can be added). The agent overview
+    // renders beneath it.
+    const agentSection = (() => {
+      if (!hasAgentData) {
+        return (
+          <CenteredState
+            icon={<KeyRound className="h-4 w-4" />}
+            title={t(($) => $.page.empty_title)}
+            hint={t(($) => $.page.empty_hint)}
+          />
+        );
+      }
+      if (visibleGroups.length === 0) {
+        return (
+          <CenteredState
+            icon={<Search className="h-4 w-4" />}
+            title={t(($) => $.page.no_matches)}
+          />
+        );
+      }
+      return visibleGroups.map((group) => (
+        <AgentEnvCard key={group.agent_id} group={group} sharedKeys={sharedKeySet} />
+      ));
+    })();
+
     return (
       <div className="space-y-3">
-        {visibleGroups.map((group) => (
-          <AgentEnvCard key={group.agent_id} group={group} />
-        ))}
+        <SharedEnvCard wsId={wsId} keyNames={sharedKeyNames} />
+        {agentSection}
       </div>
     );
   })();
 
-  const showToolbar = isAdmin && !forbidden && hasData;
+  const showToolbar = isAdmin && !forbidden && hasAgentData;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
