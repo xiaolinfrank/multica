@@ -73,23 +73,30 @@ function KeyRow({ name, hidden }: { name: string; hidden: string }) {
 }
 
 // A labelled group of keys within an agent card (the custom_env block, or one
-// MCP server's env block). `icon` + `label` head the section.
+// MCP server's env block). `icon` + `label` head the section; `hint` says where
+// the keys are actually edited (Environment tab vs MCP Config) so the overview
+// doesn't read as the place to change them.
 function SecretSection({
   icon,
   label,
+  hint,
   keys,
   hidden,
 }: {
   icon: React.ReactNode;
   label: React.ReactNode;
+  hint: string;
   keys: string[];
   hidden: string;
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-xs font-medium text-muted-foreground">
-        {icon}
-        <span className="min-w-0 truncate">{label}</span>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 pt-2.5 pb-1">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {icon}
+          <span className="min-w-0 truncate">{label}</span>
+        </span>
+        <span className="text-[11px] text-muted-foreground/70">{hint}</span>
       </div>
       <ul className="divide-y border-t">
         {keys.map((k) => (
@@ -128,6 +135,7 @@ function AgentEnvCard({ group }: { group: WorkspaceEnvAgentGroup }) {
         <SecretSection
           icon={<KeyRound className="h-3 w-3" />}
           label={t(($) => $.page.section_process)}
+          hint={t(($) => $.page.section_process_hint)}
           keys={group.keys}
           hidden={hidden}
         />
@@ -142,6 +150,7 @@ function AgentEnvCard({ group }: { group: WorkspaceEnvAgentGroup }) {
               {t(($) => $.page.section_mcp, { name: server.name })}
             </span>
           }
+          hint={t(($) => $.page.section_mcp_hint)}
           keys={server.keys}
           hidden={hidden}
         />

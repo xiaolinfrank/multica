@@ -135,6 +135,14 @@ describe("EnvPage", () => {
     expect(screen.getByText("TAVILY_API_KEY")).toBeTruthy();
     // …and the gateway-token presence badge.
     expect(screen.getByText("Gateway token")).toBeTruthy();
+    // Each section names where its keys are actually edited, so the overview
+    // doesn't read as the place to change them.
+    expect(
+      screen.getByText("Editable in this agent's Environment tab"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Set in this agent's MCP Config/),
+    ).toBeTruthy();
     // A masked placeholder stands in for every value (2 custom + 1 mcp).
     expect(screen.getAllByText("••••••••").length).toBeGreaterThanOrEqual(3);
     // Count badge sums custom_env + MCP keys (2 + 1).
