@@ -415,14 +415,14 @@ describe("listWorkspaceEnv", () => {
     stubFetchJson(null);
     const client = new ApiClient("https://api.example.test");
     const res = await client.listWorkspaceEnv();
-    expect(res).toEqual({ agents: [] });
+    expect(res).toEqual({ agents: [], shared_env: [] });
   });
 
   it("falls back when `agents` is not an array", async () => {
     stubFetchJson({ agents: "nope" });
     const client = new ApiClient("https://api.example.test");
     const res = await client.listWorkspaceEnv();
-    expect(res).toEqual({ agents: [] });
+    expect(res).toEqual({ agents: [], shared_env: [] });
   });
 
   it("defaults a group's missing fields (keys, mcp_servers, gateway_token)", async () => {
@@ -473,5 +473,50 @@ describe("listWorkspaceEnv", () => {
     expect(res.agents).toHaveLength(1);
     expect(res.agents[0]?.keys).toEqual(["OPENAI_API_KEY"]);
     expect(res.agents[0]?.mcp_servers).toEqual([]);
+  });
+
+  it("parses shared_env names and coerces a null shared_env to []", async () => {
+    stubFetchJson({ agents: [], shared_env: ["A_SHARED", "Z_SHARED"] });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.listWorkspaceEnv();
+    expect(res.shared_env).toEqual(["A_SHARED", "Z_SHARED"]);
+
+    // A Go nil slice → `shared_env: null`; must not fail the whole response.
+    stubFetchJson({ agents: [], shared_env: null });
+    expect((await client.listWorkspaceEnv()).shared_env).toEqual([]);
+
+    // An old server omits the field entirely → defaults to [].
+    stubFetchJson({ agents: [] });
+    expect((await client.listWorkspaceEnv()).shared_env).toEqual([]);
+  });
+});
+
+// GET/PUT /api/env/shared carry plaintext values (the audited reveal path).
+// A malformed body must degrade to an empty map, never throw into the editor.
+describe("workspace shared env", () => {
+  it("reveals the shared_env map", async () => {
+    stubFetchJson({ shared_env: { TAVILY_API_KEY: "tvly-x", FLAG: "on" } });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.getWorkspaceSharedEnv();
+    expect(res.shared_env).toEqual({ TAVILY_API_KEY: "tvly-x", FLAG: "on" });
+  });
+
+  it("falls back to an empty map when the body is null", async () => {
+    stubFetchJson(null);
+    const client = new ApiClient("https://api.example.test");
+    expect((await client.getWorkspaceSharedEnv()).shared_env).toEqual({});
+  });
+
+  it("coerces a null shared_env to {}", async () => {
+    stubFetchJson({ shared_env: null });
+    const client = new ApiClient("https://api.example.test");
+    expect((await client.getWorkspaceSharedEnv()).shared_env).toEqual({});
+  });
+
+  it("updateWorkspaceSharedEnv parses the returned map", async () => {
+    stubFetchJson({ shared_env: { KEEP: "v", ADD: "new" } });
+    const client = new ApiClient("https://api.example.test");
+    const res = await client.updateWorkspaceSharedEnv({ shared_env: { ADD: "new" } });
+    expect(res.shared_env).toEqual({ KEEP: "v", ADD: "new" });
   });
 });

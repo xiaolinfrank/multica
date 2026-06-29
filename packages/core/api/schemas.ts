@@ -28,6 +28,7 @@ import type {
   User,
   WebhookDelivery,
   WorkspaceEnvListResponse,
+  WorkspaceSharedEnvResponse,
 } from "../types";
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 
@@ -1215,6 +1216,34 @@ export const WorkspaceEnvAgentGroupSchema = z.object({
 
 export const WorkspaceEnvListResponseSchema = z.object({
   agents: z.array(WorkspaceEnvAgentGroupSchema).default([]),
+  // Workspace-level shared env key names (names only, never values). Same
+  // null→[] guard as mcp_servers: an old server omits the field (→ undefined,
+  // filled by default) and a Go nil slice sends `null`, both coerced to [].
+  shared_env: z.preprocess(
+    (v) => (v == null ? [] : v),
+    z.array(z.string()),
+  ),
 }).loose();
 
-export const EMPTY_WORKSPACE_ENV: WorkspaceEnvListResponse = { agents: [] };
+export const EMPTY_WORKSPACE_ENV: WorkspaceEnvListResponse = {
+  agents: [],
+  shared_env: [],
+};
+
+// ---------------------------------------------------------------------------
+// Workspace shared env reveal/update (GET/PUT /api/env/shared). Unlike the
+// overview, this DOES carry plaintext values — it is the audited reveal path
+// gated to owner/admin. parseWithFallback degrades a malformed response to an
+// empty map rather than throwing in the editor.
+// ---------------------------------------------------------------------------
+
+export const WorkspaceSharedEnvResponseSchema = z.object({
+  shared_env: z.preprocess(
+    (v) => (v == null ? {} : v),
+    z.record(z.string(), z.string()),
+  ),
+}).loose();
+
+export const EMPTY_WORKSPACE_SHARED_ENV: WorkspaceSharedEnvResponse = {
+  shared_env: {},
+};

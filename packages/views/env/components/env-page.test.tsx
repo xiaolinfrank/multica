@@ -116,6 +116,9 @@ describe("EnvPage", () => {
               gateway_token: false,
             },
           ],
+          // OPENAI_API_KEY also lives on agent-1 → that row should show the
+          // "overrides shared" badge; TAVILY_SHARED is shared-only.
+          shared_env: ["OPENAI_API_KEY", "TAVILY_SHARED"],
         }),
     });
   });
@@ -129,7 +132,9 @@ describe("EnvPage", () => {
     });
     // custom_env key names…
     expect(screen.getByText("ANTHROPIC_API_KEY")).toBeTruthy();
-    expect(screen.getByText("OPENAI_API_KEY")).toBeTruthy();
+    // OPENAI_API_KEY appears on agent-1 AND in the shared card (it's shared),
+    // so assert presence without uniqueness.
+    expect(screen.getAllByText("OPENAI_API_KEY").length).toBeGreaterThan(0);
     // …MCP server section (name + its env key)…
     expect(screen.getByText("MCP · tavily")).toBeTruthy();
     expect(screen.getByText("TAVILY_API_KEY")).toBeTruthy();
@@ -151,17 +156,41 @@ describe("EnvPage", () => {
     expect(screen.queryByText("Empty Bot")).toBeNull();
   });
 
-  it("offers no edit affordances (read-only)", async () => {
+  it("renders the editable workspace shared card with its key names", async () => {
+    asOwner();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Workspace shared")).toBeTruthy();
+    });
+    // Shared key names show (masked) pre-reveal, with the reveal/edit entry.
+    expect(screen.getByText("TAVILY_SHARED")).toBeTruthy();
+    expect(screen.getByText("Reveal & edit")).toBeTruthy();
+  });
+
+  it("flags an agent key that overrides a workspace shared var", async () => {
+    asOwner();
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Bio Researcher")).toBeTruthy();
+    });
+    // agent-1 carries OPENAI_API_KEY which also exists in shared_env.
+    expect(screen.getByText("overrides shared")).toBeTruthy();
+  });
+
+  it("keeps the per-agent overview rows read-only (no inline edit)", async () => {
     asOwner();
     renderPage();
 
     await waitFor(() => {
       expect(screen.getByText("ANTHROPIC_API_KEY")).toBeTruthy();
     });
-    // No add/save/delete controls on the browse-only page.
+    // Agent rows have no add/save controls; the shared card is the only
+    // editable surface and is collapsed (pre-reveal) until clicked, so no
+    // Save/Add is in the DOM yet.
     expect(screen.queryByText(/Add variable/i)).toBeNull();
     expect(screen.queryByText(/^Save$/)).toBeNull();
-    expect(screen.queryByRole("textbox")).not.toBeNull(); // only the search box
   });
 
   it("falls back to the admins-only state if the env query 403s for an admin", async () => {

@@ -28,6 +28,8 @@ export type {
   WorkspaceEnvMcpServer,
   WorkspaceEnvAgentGroup,
   WorkspaceEnvListResponse,
+  WorkspaceSharedEnvResponse,
+  UpdateWorkspaceSharedEnvRequest,
   Skill,
   SkillSummary,
   AgentSkillSummary,
