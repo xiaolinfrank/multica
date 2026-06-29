@@ -77,6 +77,8 @@ ANTHROPIC_BASE_URL = https://my-proxy.example.com
 - **网关 token**——是否配置了 OpenClaw 运行时网关 token（以徽章显示，不是具名 key）。
 
 所以一个 `custom_env` 为空、但某个 MCP server 设置了 env 的智能体，在它的「环境变量」标签页里看起来是"空的"，却仍会出现在总览页的 **MCP · `<server>`** 分区下——这是有意为之，两者读取的是不同来源。总览页每个分区都会标注该 key 应去哪里编辑。
+
+总览页顶部的**「工作区共享」**卡片是这里唯一可编辑的入口：为整个工作区设一次 key（例如共享的 `TAVILY_API_KEY`），所有智能体在任务启动时都会继承它，层级位于各智能体自己的 `custom_env` **之下**。同名时智能体自己的 key 仍然优先（总览会把这种行标注为"覆盖共享"）。共享变量只注入到智能体主进程，不注入 MCP server 子进程。仅 owner/admin 可用，且揭示明文值与单智能体端点一样会被审计。
 </Callout>
 
 ## 自定义命令行参数（custom_args）
