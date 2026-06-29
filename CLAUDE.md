@@ -78,6 +78,7 @@ make stop             # stop app processes for this checkout
 make server           # run Go server only
 make daemon           # run local daemon
 make test             # Go tests
+make check            # full pipeline: typecheck + TS tests + Go tests + Playwright E2E
 make sqlc             # regenerate sqlc code after SQL changes
 pnpm install
 pnpm dev:web
@@ -93,6 +94,10 @@ pnpm ui:add badge     # shadcn/Base UI component into packages/ui
 Worktrees share one PostgreSQL container and get isolated DB names/ports via `.env.worktree`. `make dev` auto-detects this. For manual setup use `make worktree-env`, `make setup-worktree`, and `make start-worktree`.
 
 CI runs Node 22, Go 1.26.1, and a `pgvector/pgvector:pg17` PostgreSQL service.
+
+The CLI and local agent daemon run from the Go source tree: `make cli ARGS="..."` (or `make multica`) for the CLI, `make daemon` to restart the daemon with stored auth. See `CLI_AND_DAEMON.md` for the architecture.
+
+Self-hosting runs through Docker Compose: `make selfhost` pulls and starts the official images; `make selfhost-build` builds backend/web from the current checkout. See the `SELF_HOSTING*.md` docs and `docker-compose.selfhost*.yml`.
 
 ## Coding Rules
 
