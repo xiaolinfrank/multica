@@ -83,10 +83,16 @@ type WorkspaceEnvAgentGroup struct {
 
 // WorkspaceEnvListResponse is the wire shape for `GET /api/env`: every
 // non-archived agent in the workspace grouped with its configured env
-// var names. Agents with no env vars are included with an empty `keys`
-// list so the editable phase 2 surface can target them too.
+// var names, plus the workspace-level shared env var names. Agents with no
+// env vars are included with an empty `keys` list so the editable phase 2
+// surface can target them too.
+//
+// SharedEnv carries the SORTED NAMES of the workspace shared_env keys only
+// (never values) — the same value-omission invariant as the per-agent keys.
+// To reveal a shared value, clients use the audited GET /api/env/shared.
 type WorkspaceEnvListResponse struct {
-	Agents []WorkspaceEnvAgentGroup `json:"agents"`
+	Agents    []WorkspaceEnvAgentGroup `json:"agents"`
+	SharedEnv []string                 `json:"shared_env"`
 }
 
 // authorizeAgentEnv enforces the per-request auth contract for the env
@@ -317,7 +323,20 @@ func (h *Handler) ListWorkspaceEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, WorkspaceEnvListResponse{Agents: buildWorkspaceEnvGroups(agents)})
+	// Workspace-level shared env key names (no values). A missing/malformed
+	// shared_env degrades to an empty list rather than failing the overview.
+	sharedEnv := []string{}
+	if ws, err := h.Queries.GetWorkspace(r.Context(), parseUUID(workspaceID)); err == nil {
+		sharedEnv = sortedKeys(unmarshalSharedEnv(ws))
+	} else {
+		slog.Warn("failed to load workspace for shared env overview",
+			append(logger.RequestAttrs(r), "error", err, "workspace_id", workspaceID)...)
+	}
+
+	writeJSON(w, http.StatusOK, WorkspaceEnvListResponse{
+		Agents:    buildWorkspaceEnvGroups(agents),
+		SharedEnv: sharedEnv,
+	})
 }
 
 // buildWorkspaceEnvGroups projects a list of agents into the env
