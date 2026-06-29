@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
@@ -72,8 +71,11 @@ describe("SharedEnvCard", () => {
     fireEvent.click(screen.getByText("Add"));
     const keyInputs = screen.getAllByPlaceholderText("KEY");
     const valueInputs = screen.getAllByPlaceholderText("value");
-    fireEvent.change(keyInputs[keyInputs.length - 1], { target: { value: "NEW_KEY" } });
-    fireEvent.change(valueInputs[valueInputs.length - 1], { target: { value: "v" } });
+    const newKey = keyInputs[keyInputs.length - 1];
+    const newValue = valueInputs[valueInputs.length - 1];
+    if (!newKey || !newValue) throw new Error("expected a new editable row");
+    fireEvent.change(newKey, { target: { value: "NEW_KEY" } });
+    fireEvent.change(newValue, { target: { value: "v" } });
 
     fireEvent.click(screen.getByText("Save"));
 
