@@ -69,6 +69,16 @@ System-critical variables cannot be overridden: `PATH`, `HOME`, `USER`, `SHELL`,
 **Don't put high-value secrets in `custom_env`** (production database passwords, root-level tokens, etc.). Use **dedicated, limited-scope credentials** for agents (read-only API keys, single-scope PATs), and rotate them regularly. Database backups and DB audits remain a meaningful exposure surface.
 </Callout>
 
+<Callout type="info">
+**Seeing every key at a glance — the workspace Environment variables page.** The left-sidebar **Environment variables** page (owner/admin only, read-only, values masked) is a workspace-wide overview of every secret each agent carries, grouped by agent. It aggregates the **three** distinct places a key can live, which is why it can show keys the agent's own **Environment** tab does not:
+
+- **Process env** — the `custom_env` above. This is the only source the per-agent **Environment** tab reads and edits.
+- **MCP · `<server>`** — a key declared in an MCP server's own `env` block (e.g. `TAVILY_API_KEY` for a tavily MCP). These are edited in the agent's **MCP Config**, not the Environment tab.
+- **Gateway token** — whether an OpenClaw runtime gateway token is configured (shown as a badge, not a named key).
+
+So an agent with an empty `custom_env` but an MCP server that sets env looks "empty" on its Environment tab yet still appears on the overview under **MCP · `<server>`** — they read different sources, by design. Each section on the overview names where to edit that key.
+</Callout>
+
 ## Custom CLI arguments (custom_args)
 
 **Custom CLI arguments** (`custom_args`) is a string array appended one-by-one to the AI coding tool's command line:

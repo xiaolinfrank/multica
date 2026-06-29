@@ -69,6 +69,16 @@ ANTHROPIC_BASE_URL = https://my-proxy.example.com
 **不要把高价值 secret 放进 `custom_env`**（生产数据库密码、root 级 token 等）。给智能体用**独立的、有限权限的凭证**（只读 API key、单 scope 的 PAT），定期轮换。
 </Callout>
 
+<Callout type="info">
+**一眼看全所有 key——工作区「环境变量」总览页。** 左侧栏的**「环境变量」**页（仅 owner/admin 可见、只读、值打码）是整个工作区的密钥总览，按智能体分组。它会聚合一个 key 可能存在的**三处**位置，所以能显示出智能体自己的**「环境变量」标签页**里看不到的 key：
+
+- **进程环境变量**——即上面的 `custom_env`。这是单智能体**「环境变量」标签页**唯一读取和编辑的来源。
+- **MCP · `<server>`**——某个 MCP server 自己 `env` 块里声明的 key（例如 tavily MCP 的 `TAVILY_API_KEY`）。这些在该智能体的 **MCP Config** 里编辑，不在「环境变量」标签页。
+- **网关 token**——是否配置了 OpenClaw 运行时网关 token（以徽章显示，不是具名 key）。
+
+所以一个 `custom_env` 为空、但某个 MCP server 设置了 env 的智能体，在它的「环境变量」标签页里看起来是"空的"，却仍会出现在总览页的 **MCP · `<server>`** 分区下——这是有意为之，两者读取的是不同来源。总览页每个分区都会标注该 key 应去哪里编辑。
+</Callout>
+
 ## 自定义命令行参数（custom_args）
 
 **自定义命令行参数**（`custom_args`）是一串字符串数组，会被逐个追加到 AI 编程工具的命令行尾部：
