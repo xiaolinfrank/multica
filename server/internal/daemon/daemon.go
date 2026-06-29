@@ -3704,19 +3704,18 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if rootsValue, ok := composeOpenclawIncludeRoots(env.OpenclawIncludeRoot, os.Getenv("OPENCLAW_INCLUDE_ROOTS")); ok {
 		agentEnv["OPENCLAW_INCLUDE_ROOTS"] = rootsValue
 	}
-	// Inject user-configured custom environment variables (e.g. ANTHROPIC_API_KEY,
-	// ANTHROPIC_BASE_URL for router/proxy mode, or CLAUDE_CODE_USE_BEDROCK for
-	// Bedrock). These are set per-agent via the agent settings UI.
-	// Critical internal variables are blocklisted to prevent accidental or
-	// malicious override of daemon-set values.
+	// Inject user-configured environment variables in two layers, lowest
+	// precedence first so later writes win:
+	//  1. workspace_env — the workspace-level shared_env, set once for every
+	//     agent in the workspace (e.g. a shared TAVILY_API_KEY).
+	//  2. custom_env    — the agent's own vars (e.g. ANTHROPIC_API_KEY /
+	//     ANTHROPIC_BASE_URL for router/proxy, CLAUDE_CODE_USE_BEDROCK).
+	// custom_env therefore overrides workspace_env for same-named keys. Both
+	// layers pass the same blocklist so neither can override daemon-set
+	// critical variables. These cover the main agent process only; MCP
+	// servers get their env from their own mcp_config block.
 	if task.Agent != nil {
-		for k, v := range task.Agent.CustomEnv {
-			if isBlockedEnvKey(k) {
-				d.logger.Warn("custom_env: blocked key skipped", "key", k)
-				continue
-			}
-			agentEnv[k] = v
-		}
+		applyUserEnv(agentEnv, task.Agent.WorkspaceEnv, task.Agent.CustomEnv, d.logger)
 	}
 	backend, err := agent.New(provider, agent.Config{
 		ExecutablePath: entry.Path,
@@ -4586,6 +4585,34 @@ func isBlockedEnvKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+// applyUserEnv layers user-configured environment variables onto agentEnv in
+// two passes, lowest precedence first so later writes win:
+//  1. workspaceEnv — the workspace-level shared_env (set once for all agents).
+//  2. customEnv    — the agent's own custom_env.
+// customEnv therefore overrides workspaceEnv for same-named keys. Both layers
+// pass isBlockedEnvKey, so neither can override daemon-set critical variables.
+// Covers the main agent process only; MCP servers get their env from their own
+// mcp_config block.
+func applyUserEnv(agentEnv, workspaceEnv, customEnv map[string]string, logger *slog.Logger) {
+	for _, layer := range []struct {
+		name string
+		env  map[string]string
+	}{
+		{"workspace_env", workspaceEnv},
+		{"custom_env", customEnv},
+	} {
+		for k, v := range layer.env {
+			if isBlockedEnvKey(k) {
+				if logger != nil {
+					logger.Warn(layer.name+": blocked key skipped", "key", k)
+				}
+				continue
+			}
+			agentEnv[k] = v
+		}
+	}
 }
 
 func defaultArgsForProvider(cfg Config, provider string) []string {

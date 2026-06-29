@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -109,6 +110,52 @@ func TestIsBlockedEnvKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyUserEnv(t *testing.T) {
+	t.Parallel()
+
+	t.Run("custom_env overrides workspace_env; both layer onto base", func(t *testing.T) {
+		t.Parallel()
+		agentEnv := map[string]string{"MULTICA_TOKEN": "daemon-set"}
+		applyUserEnv(agentEnv,
+			map[string]string{"SHARED": "ws", "OVERRIDE": "ws-value"},
+			map[string]string{"OVERRIDE": "agent-value", "AGENT_ONLY": "a"},
+			nil)
+
+		want := map[string]string{
+			"MULTICA_TOKEN": "daemon-set",  // untouched daemon var
+			"SHARED":        "ws",          // workspace-only key
+			"OVERRIDE":      "agent-value", // custom_env wins over workspace_env
+			"AGENT_ONLY":    "a",           // custom_env-only key
+		}
+		if !reflect.DeepEqual(agentEnv, want) {
+			t.Fatalf("applyUserEnv: got %+v, want %+v", agentEnv, want)
+		}
+	})
+
+	t.Run("blocked keys are skipped in both layers", func(t *testing.T) {
+		t.Parallel()
+		agentEnv := map[string]string{"PATH": "/usr/bin"}
+		applyUserEnv(agentEnv,
+			map[string]string{"PATH": "/evil", "MULTICA_X": "1", "OK_WS": "v"},
+			map[string]string{"HOME": "/tmp", "OK_AGENT": "v"},
+			nil)
+
+		want := map[string]string{"PATH": "/usr/bin", "OK_WS": "v", "OK_AGENT": "v"}
+		if !reflect.DeepEqual(agentEnv, want) {
+			t.Fatalf("applyUserEnv blocklist: got %+v, want %+v", agentEnv, want)
+		}
+	})
+
+	t.Run("nil maps are a no-op", func(t *testing.T) {
+		t.Parallel()
+		agentEnv := map[string]string{"A": "1"}
+		applyUserEnv(agentEnv, nil, nil, nil)
+		if !reflect.DeepEqual(agentEnv, map[string]string{"A": "1"}) {
+			t.Fatalf("applyUserEnv nil: mutated env to %+v", agentEnv)
+		}
+	})
 }
 
 func TestTaskScopedAuthToken(t *testing.T) {

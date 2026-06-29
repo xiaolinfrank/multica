@@ -1416,6 +1416,19 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		if agent.McpConfig != nil {
 			mcpConfig = json.RawMessage(agent.McpConfig)
 		}
+		// Workspace-level shared env, forwarded so the daemon injects it as a
+		// base layer beneath the agent's custom_env. A missing/malformed
+		// shared_env degrades to none rather than failing the claim.
+		var workspaceEnv map[string]string
+		if ws, err := h.Queries.GetWorkspace(r.Context(), agent.WorkspaceID); err == nil {
+			if len(ws.SharedEnv) > 0 {
+				if err := json.Unmarshal(ws.SharedEnv, &workspaceEnv); err != nil {
+					slog.Warn("failed to unmarshal workspace shared_env", "workspace_id", uuidToString(agent.WorkspaceID), "error", err)
+				}
+			}
+		} else {
+			slog.Warn("failed to load workspace for shared env injection", "workspace_id", uuidToString(agent.WorkspaceID), "error", err)
+		}
 		// runtime_config is stored as JSONB and may legitimately be the
 		// empty object `{}` for agents that haven't opted into any
 		// provider-specific tuning. Forward only non-empty payloads so the
@@ -1429,6 +1442,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 			Name:          agent.Name,
 			Instructions:  agent.Instructions,
 			CustomEnv:     customEnv,
+			WorkspaceEnv:  workspaceEnv,
 			CustomArgs:    customArgs,
 			McpConfig:     mcpConfig,
 			Model:         agent.Model.String,
