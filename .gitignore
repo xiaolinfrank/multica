@@ -70,3 +70,6 @@ data/
 .idea
 
 .playwright-mcp
+
+# Next.js auto-generated, regenerated on every dev/build
+next-env.d.ts
