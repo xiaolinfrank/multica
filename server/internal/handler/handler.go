@@ -24,6 +24,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/fleet"
 	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
 	"github.com/multica-ai/multica/server/internal/integrations/lark"
+	"github.com/multica-ai/multica/server/internal/integrations/slack"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/realtime"
@@ -102,6 +103,11 @@ type Config struct {
 	// Set via DEFAULT_WORKSPACE_SEED_TEMPLATE (e.g. "biomedical-intel" for the
 	// BayClaw deployment).
 	DefaultWorkspaceSeedTemplate string
+	// AttachmentFrameAncestors are trusted browser origins allowed to embed
+	// attachment preview responses. In production this should mirror the
+	// frontend/CORS origin allowlist so split app/api self-hosted deployments
+	// can frame API-hosted PDFs without allowing arbitrary third-party frames.
+	AttachmentFrameAncestors []string
 }
 
 type cloudRuntimeProxy interface {
@@ -111,6 +117,10 @@ type cloudRuntimeProxy interface {
 
 type RuntimeProfileRefreshNotifier interface {
 	NotifyRuntimeProfilesChanged(workspaceID, profileID string)
+}
+
+type SourceChannelReporter interface {
+	ReportSelfHostSourceChannel(userID, channel, sourceOther, apiBaseURL string, includeDomain bool)
 }
 
 type Handler struct {
@@ -137,6 +147,7 @@ type Handler struct {
 	Storage                 storage.Storage
 	CFSigner                *auth.CloudFrontSigner
 	Analytics               analytics.Client
+	SourceChannelReporter   SourceChannelReporter
 	// Metrics is the shared business-metrics collector built by main.go.
 	// May be nil in tests / self-hosted with the metrics listener disabled;
 	// every Record* method is nil-safe and obsmetrics.RecordEvent treats a
@@ -193,7 +204,20 @@ type Handler struct {
 	// (GET /api/fleet/status). Wired in cmd/server/router.go after
 	// handler.New from the device inventory; nil-safe in the handler.
 	Fleet *fleet.Collector
-	cfg   Config
+	// SlackInstall owns the bring-your-own-app Slack install lifecycle (register
+	// pasted tokens / list / revoke) and the at-rest encryption of each app's bot
+	// + app tokens (MUL-3666). Nil unless MULTICA_SLACK_SECRET_KEY is set.
+	SlackInstall *slack.InstallService
+	// SlackBindingTokens mints/redeems the user-binding tokens behind the
+	// "link your Slack account" prompt (MUL-3666). Nil unless Slack is
+	// configured (MULTICA_SLACK_SECRET_KEY set).
+	SlackBindingTokens *slack.BindingTokenService
+	// SlackHistory backs the agent-facing `multica chat history` command: it
+	// reads a chat session's bound Slack conversation on demand (MUL-3871). Nil
+	// unless Slack is configured; GetChatChannelHistory then reports "no channel
+	// integration". A future platform satisfies the same reader interface.
+	SlackHistory ChatChannelHistoryReader
+	cfg          Config
 }
 
 func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *events.Bus, emailService *service.EmailService, store storage.Storage, cfSigner *auth.CloudFrontSigner, analyticsClient analytics.Client, cfg Config, daemonHubs ...*daemonws.Hub) *Handler {

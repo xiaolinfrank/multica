@@ -101,6 +101,9 @@ type AgentTaskQueue struct {
 	InitiatorUserID       pgtype.UUID        `json:"initiator_user_id"`
 	HandoffNote           pgtype.Text        `json:"handoff_note"`
 	PrepareLeaseExpiresAt pgtype.Timestamptz `json:"prepare_lease_expires_at"`
+	SquadID               pgtype.UUID        `json:"squad_id"`
+	EscalationForTaskID   pgtype.UUID        `json:"escalation_for_task_id"`
+	FireAt                pgtype.Timestamptz `json:"fire_at"`
 }
 
 type Attachment struct {
@@ -135,6 +138,14 @@ type Autopilot struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	AssigneeType       string             `json:"assignee_type"`
 	ProjectID          pgtype.UUID        `json:"project_id"`
+}
+
+type AutopilotCollaborator struct {
+	AutopilotID pgtype.UUID        `json:"autopilot_id"`
+	UserType    string             `json:"user_type"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	GrantedBy   pgtype.UUID        `json:"granted_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type AutopilotRun struct {
@@ -686,6 +697,19 @@ type RuntimeProfile struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type SelfHostSourceChannel struct {
+	InstanceHash    string             `json:"instance_hash"`
+	SubjectHash     string             `json:"subject_hash"`
+	Channel         string             `json:"channel"`
+	SchemaVersion   int32              `json:"schema_version"`
+	FirstReceivedAt pgtype.Timestamptz `json:"first_received_at"`
+	LastReceivedAt  pgtype.Timestamptz `json:"last_received_at"`
+	ReportCount     int32              `json:"report_count"`
+	SourceOther     pgtype.Text        `json:"source_other"`
+	Domain          pgtype.Text        `json:"domain"`
+	DomainMd5       pgtype.Text        `json:"domain_md5"`
+}
+
 type Skill struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -754,6 +778,13 @@ type SysCronExecution struct {
 	ErrorMsg     pgtype.Text        `json:"error_msg"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SystemSetting struct {
+	Key       string             `json:"key"`
+	Value     string             `json:"value"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type TaskMessage struct {
