@@ -16,7 +16,28 @@ import (
 const (
 	seedHTTPTimeout    = 30 * time.Second
 	seedOverallTimeout = 8 * time.Minute
+
+	// seedPreferredProvider is the provider preset agents bind to when the
+	// registering daemon offers it. The daemon builds its registration batch by
+	// iterating a Go map, so batch order is random; without a preference the
+	// first online entry wins and preset agents end up bound to an arbitrary
+	// provider (hermes, openclaw, …) instead of Claude Code.
+	seedPreferredProvider = "claude"
 )
+
+// preferSeedRuntime decides whether the runtime row being registered should
+// become the seed binding: any online runtime fills an empty slot, but only
+// the preferred provider displaces an already-picked non-preferred one. Once
+// the preferred provider is picked, nothing else displaces it.
+func preferSeedRuntime(currentProvider string, currentValid bool, candidateOnline bool, candidateProvider string) bool {
+	if !candidateOnline {
+		return false
+	}
+	if !currentValid {
+		return true
+	}
+	return currentProvider != seedPreferredProvider && candidateProvider == seedPreferredProvider
+}
 
 // seedDefaultWorkspaceTeam imports the embedded preset (skills + agents + MCP +
 // avatars + squads) into a freshly-bootstrapped workspace, binding every agent

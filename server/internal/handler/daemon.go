@@ -344,11 +344,13 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := make([]AgentRuntimeResponse, 0, len(req.Runtimes))
-	// First runtime to come online in this register call. Used after the loop to
-	// seed the default team into a still-empty workspace and bind it to a live
-	// runtime (best-effort; gated on DEFAULT_WORKSPACE_SEED_TEMPLATE).
+	// Runtime the default-team seeder binds preset agents to. Claude Code is
+	// preferred (see seedPreferredProvider); the first online runtime is the
+	// fallback for hosts without a claude binary. Best-effort; gated on
+	// DEFAULT_WORKSPACE_SEED_TEMPLATE.
 	var seedRuntimeID pgtype.UUID
 	var seedRuntimeMode string
+	var seedRuntimeProvider string
 	for _, runtime := range req.Runtimes {
 		provider := normalizeProvider(runtime.Type)
 		if provider == "" {
@@ -550,9 +552,10 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			h.mergeLegacyRuntimes(r, registered, provider, req.LegacyDaemonIDs)
 		}
 
-		if registered.Status == "online" && !seedRuntimeID.Valid {
+		if preferSeedRuntime(seedRuntimeProvider, seedRuntimeID.Valid, registered.Status == "online", registered.Provider) {
 			seedRuntimeID = registered.ID
 			seedRuntimeMode = registered.RuntimeMode
+			seedRuntimeProvider = registered.Provider
 		}
 
 		resp = append(resp, runtimeToResponse(registered))
