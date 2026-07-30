@@ -1,6 +1,39 @@
 package handler
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/seed"
+)
+
+// TestSeedAgentParams_GrantsWorkspaceInvocationPermission pins the invocation
+// permission of preset agents. Since MUL-3963 authorization reads
+// permission_mode + agent_invocation_target, not visibility; a params literal
+// that omits PermissionMode still compiles and still stores visibility
+// 'workspace', but CreateAgent COALESCEs the mode to 'private' and every seeded
+// agent silently becomes owner-only — other members @ or assign it and get no
+// response and no error, while the UI keeps showing "workspace". Nothing else
+// in the suite catches that, so this test is the guard.
+func TestSeedAgentParams_GrantsWorkspaceInvocationPermission(t *testing.T) {
+	t.Parallel()
+	params := seedAgentParams(
+		pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
+		pgtype.UUID{Bytes: [16]byte{2}, Valid: true},
+		"managed",
+		pgtype.UUID{Bytes: [16]byte{3}, Valid: true},
+		&seed.PresetAgent{Name: "analyst"},
+	)
+	if params.PermissionMode != "public_to" {
+		t.Fatalf("PermissionMode = %v, want \"public_to\" (private makes seeded agents owner-only)", params.PermissionMode)
+	}
+	// visibility is the derived legacy field and must stay consistent with the
+	// permission mode, or old clients render the wrong sharing state.
+	if params.Visibility != "workspace" {
+		t.Fatalf("Visibility = %q, want \"workspace\"", params.Visibility)
+	}
+}
 
 // The daemon builds its registration batch by iterating a Go map, so batch
 // order is random. The seeder must still deterministically bind preset agents

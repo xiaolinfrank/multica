@@ -130,6 +130,17 @@ func (h *Handler) seedDefaultWorkspaceTeam(wsID, runtimeID pgtype.UUID, runtimeM
 			}
 			id = created.ID
 			agentIDByName[a.Name] = id
+			// permission_mode='public_to' only grants anything once a matching
+			// target row exists — canInvokeAgent OR-matches the allow-list and
+			// admits nobody on an empty one. target_id must be the workspace id,
+			// not NULL, or the UNIQUE(agent_id, target_type, target_id) dedup
+			// stops working (Postgres treats NULLs as distinct).
+			if err := replaceInvocationTargetsWithQueries(ctx, h.Queries, id, ownerID, []targetSpec{
+				{targetType: "workspace", targetID: wsID},
+			}); err != nil {
+				slog.Warn("seed: grant workspace invocation target failed", "agent", a.Name, "error", err)
+				complete = false
+			}
 		}
 		for _, sn := range a.SkillNames {
 			sid, ok := skillIDByName[sn]
@@ -170,15 +181,22 @@ func seedAgentParams(wsID, runtimeID pgtype.UUID, runtimeMode string, ownerID pg
 		mc = []byte(a.McpConfig)
 	}
 	return db.CreateAgentParams{
-		WorkspaceID:        wsID,
-		Name:               a.Name,
-		Description:        a.Description,
-		Instructions:       a.Instructions,
-		AvatarUrl:          pgtype.Text{String: a.AvatarURL, Valid: a.AvatarURL != ""},
-		RuntimeMode:        runtimeMode,
-		RuntimeConfig:      []byte("{}"),
-		RuntimeID:          runtimeID,
-		Visibility:         "workspace",
+		WorkspaceID:   wsID,
+		Name:          a.Name,
+		Description:   a.Description,
+		Instructions:  a.Instructions,
+		AvatarUrl:     pgtype.Text{String: a.AvatarURL, Valid: a.AvatarURL != ""},
+		RuntimeMode:   runtimeMode,
+		RuntimeConfig: []byte("{}"),
+		RuntimeID:     runtimeID,
+		Visibility:    "workspace",
+		// Invocation permission is authorized by permission_mode + targets since
+		// MUL-3963; visibility above is only the derived legacy field. Omitting
+		// this compiles and stores fine but COALESCEs to 'private', which would
+		// make every seeded agent owner-only — other members could @ or assign
+		// them and get silence, with the UI still showing "workspace". The
+		// matching workspace target row is inserted by seedAgent.
+		PermissionMode:     "public_to",
 		MaxConcurrentTasks: maxTasks,
 		OwnerID:            ownerID,
 		CustomEnv:          []byte("{}"),
@@ -234,11 +252,11 @@ func (h *Handler) seedImportedSkill(ctx context.Context, httpClient *http.Client
 	for attempt := 0; attempt < 2; attempt++ {
 		switch source {
 		case sourceClawHub:
-			imported, err = fetchFromClawHub(httpClient, normalized)
+			imported, err = fetchFromClawHub(ctx, httpClient, normalized)
 		case sourceSkillsSh:
-			imported, err = fetchFromSkillsSh(httpClient, normalized)
+			imported, err = fetchFromSkillsSh(ctx, httpClient, normalized)
 		case sourceGitHub:
-			imported, err = fetchFromGitHub(httpClient, normalized)
+			imported, err = fetchFromGitHub(ctx, httpClient, normalized)
 		}
 		if err == nil {
 			break

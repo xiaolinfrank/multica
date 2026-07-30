@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Download } from "lucide-react";
 import { useAuthStore } from "@multica/core/auth";
-import { captureDownloadIntent } from "@multica/core/analytics";
 import { useLocale } from "../i18n";
+import { useDashboardCtaHref } from "../utils/use-dashboard-cta";
 import {
   ClaudeCodeLogo,
   CodexLogo,
@@ -18,6 +18,7 @@ import {
 export function LandingHero() {
   const { t } = useLocale();
   const user = useAuthStore((s) => s.user);
+  const ctaHref = useDashboardCtaHref();
 
   return (
     <div className="relative min-h-full overflow-hidden bg-[#05070b] text-white">
@@ -29,7 +30,7 @@ export function LandingHero() {
           className="mx-auto max-w-[1320px] px-4 pb-16 pt-28 sm:px-6 sm:pt-32 lg:px-8 lg:pb-24 lg:pt-36"
         >
           <div className="mx-auto max-w-[1120px] text-center">
-            <h1 className="font-[family-name:var(--font-serif)] text-[3.65rem] leading-[0.93] tracking-[-0.038em] text-white drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4.85rem] lg:text-[6.4rem]">
+            <h1 className="landing-serif text-[3.65rem] leading-[0.93] tracking-[-0.038em] text-white drop-shadow-[0_10px_34px_rgba(0,0,0,0.32)] sm:text-[4.85rem] lg:text-[6.4rem]">
               {t.hero.headlineLine1}
               <br />
               {t.hero.headlineLine2}
@@ -40,13 +41,12 @@ export function LandingHero() {
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link href={user ? "/" : "/login"} className={heroButtonClassName("solid")}>
+              <Link href={ctaHref} className={heroButtonClassName("solid")}>
                 {user ? t.header.dashboard : t.hero.cta}
               </Link>
               <Link
                 href="/download"
                 className={heroButtonClassName("ghost")}
-                onClick={() => captureDownloadIntent("landing_hero")}
               >
                 <Download className="size-4" aria-hidden />
                 {t.hero.downloadDesktop}

@@ -21,7 +21,7 @@ Turn coding agents into real teammates — assign tasks, track progress, compoun
 [![GitHub stars](https://img.shields.io/github/stars/multica-ai/multica?style=flat)](https://github.com/multica-ai/multica/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/W8gYBn226t)
 
-[Website](https://multica.ai) · [Cloud](https://multica.ai) · [Discord](https://discord.gg/W8gYBn226t) · [X](https://x.com/MulticaAI) · [Self-Hosting](SELF_HOSTING.md) · [Contributing](CONTRIBUTING.md)
+[Website](https://multica.ai) · [Docs](https://multica.ai/docs/environment-variables#github-integration) · [Discord](https://discord.gg/W8gYBn226t) · [X](https://x.com/MulticaAI) · [Self-Hosting](SELF_HOSTING.md) · [Contributing](CONTRIBUTING.md)
 
 **English | [简体中文](README.zh-CN.md)**
 
@@ -31,7 +31,7 @@ Turn coding agents into real teammates — assign tasks, track progress, compoun
 
 Multica turns coding agents into real teammates. Assign issues to an agent like you'd assign to a colleague — they'll pick up the work, write code, report blockers, and update statuses autonomously.
 
-No more copy-pasting prompts. No more babysitting runs. Your agents show up on the board, participate in conversations, and compound reusable skills over time. Think of it as open-source infrastructure for managed agents — vendor-neutral, self-hosted, and designed for human + AI teams. Works with **Claude Code**, **Codex**, **GitHub Copilot CLI**, **OpenClaw**, **OpenCode**, **Hermes**, **Gemini**, **Pi**, **Cursor Agent**, **Kimi**, **Kiro CLI**, **Qoder CLI**, and **Trae**.
+No more copy-pasting prompts. No more babysitting runs. Your agents show up on the board, participate in conversations, and compound reusable skills over time. Think of it as open-source infrastructure for managed agents — vendor-neutral, self-hosted, and designed for human + AI teams. Works with **Claude Code**, **Codex**, **CodeBuddy**, **GitHub Copilot CLI**, **OpenCode**, **OpenClaw**, **Hermes**, **Pi**, **Cursor Agent**, **Kimi**, **Kiro CLI**, **Antigravity**, **Qoder CLI**, and **Trae CLI**.
 
 For larger teams, Squads add a stable routing layer: assign work to a group led by an agent, and the leader delegates to the right member.
 
@@ -67,7 +67,12 @@ Multica manages the full agent lifecycle: from task assignment to execution moni
 
 ## Quick Install
 
-### macOS / Linux (Homebrew - recommended)
+<details open>
+<summary><b>macOS / Linux</b></summary>
+
+<br/>
+
+### Homebrew (recommended)
 
 ```bash
 brew install multica-ai/tap/multica
@@ -75,19 +80,13 @@ brew install multica-ai/tap/multica
 
 Use `brew upgrade multica-ai/tap/multica` to keep the CLI current.
 
-### macOS / Linux (install script)
+### Install script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.sh | bash
 ```
 
 Use this if Homebrew is not available. The script installs the Multica CLI on macOS and Linux by using Homebrew when it is on `PATH`, otherwise it downloads the binary directly.
-
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex
-```
 
 Then configure, authenticate, and start the daemon in one command:
 
@@ -105,6 +104,36 @@ multica setup          # Connect to Multica Cloud, log in, start daemon
 > This pulls the official Multica images from GHCR (latest stable by default). Requires Docker. See the [Self-Hosting Guide](SELF_HOSTING.md) for details.
 > If the selected GHCR tag has not been published yet, fall back to `make selfhost-build` from a checkout.
 
+</details>
+
+<details>
+<summary><b>Windows (PowerShell)</b></summary>
+
+<br/>
+
+### PowerShell
+
+```powershell
+irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex
+```
+
+Then configure, authenticate, and start the daemon in one command:
+
+```powershell
+multica setup          # Connect to Multica Cloud, log in, start daemon
+```
+
+> **Self-hosting?** Set the `MULTICA_MODE` environment variable to `with-server` before running the installer to deploy a full Multica server on your machine:
+>
+> ```powershell
+> $env:MULTICA_MODE="with-server"; irm https://raw.githubusercontent.com/multica-ai/multica/main/scripts/install.ps1 | iex
+> multica setup self-host
+> ```
+>
+> This pulls the official Multica images from GHCR (latest stable by default). Requires Docker. See the [Self-Hosting Guide](SELF_HOSTING.md) for details.
+
+</details>
+
 ---
 
 ## Getting Started
@@ -115,7 +144,7 @@ multica setup          # Connect to Multica Cloud, log in, start daemon
 multica setup           # Configure, authenticate, and start the daemon
 ```
 
-The daemon runs in the background and auto-detects agent CLIs (`claude`, `codex`, `copilot`, `openclaw`, `opencode`, `hermes`, `gemini`, `pi`, `cursor-agent`, `kimi`, `kiro-cli`, `agy`, `qodercli`, `traecli`) on your PATH.
+The daemon runs in the background and auto-detects agent CLIs (`claude`, `codex`, `codebuddy`, `copilot`, `opencode`, `openclaw`, `hermes`, `pi`, `cursor-agent`, `kimi`, `kiro-cli`, `agy`, `qodercli`, `traecli`) on your PATH.
 
 ### 2. Verify your runtime
 
@@ -125,7 +154,7 @@ Open your workspace in the Multica web app. Navigate to **Settings → Runtimes*
 
 ### 3. Create an agent
 
-Go to **Settings → Agents** and click **New Agent**. Pick the runtime you just connected and choose a provider (Claude Code, Codex, GitHub Copilot CLI, OpenClaw, OpenCode, Hermes, Gemini, Pi, Cursor Agent, Kimi, Kiro CLI, Antigravity, Qoder CLI, or Trae). Give your agent a name — this is how it will appear on the board, in comments, and in assignments.
+Go to **Settings → Agents** and click **New Agent**. Pick the runtime you just connected and choose a provider (Claude Code, Codex, CodeBuddy, GitHub Copilot CLI, OpenCode, OpenClaw, Hermes, Pi, Cursor Agent, Kimi, Kiro CLI, Antigravity, Qoder CLI, or Trae CLI). Give your agent a name — this is how it will appear on the board, in comments, and in assignments.
 
 ### 4. Assign your first task
 
@@ -164,9 +193,9 @@ See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference
                             │
                      ┌──────┴───────┐
                      │ Agent Daemon │  runs on your machine
-                     └──────────────┘  (Claude Code, Codex, GitHub Copilot CLI,
-                                        OpenCode, OpenClaw, Hermes, Gemini, Pi,
-                                        Cursor Agent, Kimi, Kiro CLI, Qoder CLI, Trae CLI)
+                     └──────────────┘  (Claude Code, Codex, CodeBuddy, GitHub Copilot CLI,
+                                        OpenCode, OpenClaw, Hermes, Pi, Cursor Agent,
+                                        Kimi, Kiro CLI, Antigravity, Qoder CLI, Trae CLI)
 ```
 
 | Layer | Stack |
@@ -174,7 +203,7 @@ See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference
 | Frontend | Next.js 16 (App Router) |
 | Backend | Go (Chi router, sqlc, gorilla/websocket) |
 | Database | PostgreSQL 17 with pgvector |
-| Agent Runtime | Local daemon executing Claude Code, Codex, GitHub Copilot CLI, OpenClaw, OpenCode, Hermes, Gemini, Pi, Cursor Agent, Kimi, Kiro CLI, Qoder CLI, or Trae CLI |
+| Agent Runtime | Local daemon executing Claude Code, Codex, CodeBuddy, GitHub Copilot CLI, OpenCode, OpenClaw, Hermes, Pi, Cursor Agent, Kimi, Kiro CLI, Antigravity, Qoder CLI, or Trae CLI |
 
 ## Compute Pool (Fleet)
 
@@ -202,3 +231,4 @@ make dev
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow, worktree support, testing, and troubleshooting.
 
 An iOS mobile client lives in [`apps/mobile/`](apps/mobile/) — see its [README](apps/mobile/README.md) for how to build it onto your own iPhone.
+

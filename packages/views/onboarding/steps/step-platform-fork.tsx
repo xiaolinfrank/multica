@@ -6,6 +6,7 @@ import { captureEvent } from "@multica/core/analytics";
 import { Button } from "@multica/ui/components/ui/button";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import type { AgentRuntime } from "@multica/core/types";
+import { runtimeDisplayLabel } from "@multica/core/runtimes";
 import { DragStrip } from "@multica/views/platform";
 import { StepHeader } from "../components/step-header";
 import { RuntimeAsidePanel } from "../components/runtime-aside-panel";
@@ -152,7 +153,10 @@ export function StepPlatformFork({
               <span aria-live="polite" className="text-xs text-muted-foreground">
                 {hasShared && selected
                   ? t(($) => $.step_runtime.hint_selected, {
-                      name: selected.name,
+                      // Not selected.name: a user-set custom_name alias would
+                      // otherwise be ignored here while every other runtime
+                      // surface shows it (MUL-4217).
+                      name: runtimeDisplayLabel(selected),
                     })
                   : t(($) => $.step_platform.cloud_waiting_footer)}
               </span>

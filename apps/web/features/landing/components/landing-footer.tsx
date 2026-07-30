@@ -4,7 +4,6 @@ import Link from "next/link";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import { cn } from "@multica/ui/lib/utils";
 import { useAuthStore } from "@multica/core/auth";
-import { captureDownloadIntent } from "@multica/core/analytics";
 import {
   XMark,
   GitHubMark,
@@ -12,10 +11,12 @@ import {
   twitterUrl,
 } from "./shared";
 import { useLocale, locales, localeLabels } from "../i18n";
+import { useDashboardCtaHref } from "../utils/use-dashboard-cta";
 
 export function LandingFooter() {
   const { t, locale, setLocale } = useLocale();
   const user = useAuthStore((s) => s.user);
+  const ctaHref = useDashboardCtaHref();
   const groups = Object.values(t.footer.groups);
 
   return (
@@ -59,7 +60,7 @@ export function LandingFooter() {
             </div>
             <div className="mt-6">
               <Link
-                href={user ? "/" : "/login"}
+                href={ctaHref}
                 className="inline-flex items-center justify-center rounded-[11px] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#0a0d12] transition-colors hover:bg-white/88"
               >
                 {user ? t.header.dashboard : t.footer.cta}
@@ -82,11 +83,6 @@ export function LandingFooter() {
                         {...(link.href.startsWith("http")
                           ? { target: "_blank", rel: "noreferrer" }
                           : {})}
-                        onClick={
-                          link.href === "/download"
-                            ? () => captureDownloadIntent("landing_footer")
-                            : undefined
-                        }
                         className="text-[14px] text-white/50 transition-colors hover:text-white"
                       >
                         {link.label}
@@ -134,7 +130,7 @@ export function LandingFooter() {
               className="size-[clamp(4rem,12vw,10rem)] shrink-0 text-white"
               noSpin
             />
-            <span className="font-[family-name:var(--font-serif)] text-[clamp(6rem,22vw,16rem)] font-normal leading-[0.82] tracking-[-0.04em] text-white lowercase">
+            <span className="landing-serif text-[clamp(6rem,22vw,16rem)] font-normal leading-[0.82] tracking-[-0.04em] text-white lowercase">
               multica
             </span>
           </div>

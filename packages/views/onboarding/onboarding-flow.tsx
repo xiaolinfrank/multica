@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { captureEvent } from "@multica/core/analytics";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import { useAuthStore } from "@multica/core/auth";
 import {
@@ -17,8 +16,7 @@ import {
 import { workspaceListOptions } from "@multica/core/workspace/queries";
 import type { AgentRuntime, Workspace } from "@multica/core/types";
 import { StepWelcome } from "./steps/step-welcome";
-import { StepRole } from "./steps/step-role";
-import { StepUseCase } from "./steps/step-use-case";
+import { StepAboutYou } from "./steps/step-about-you";
 import { StepWorkspace } from "./steps/step-workspace";
 import { StepRuntimeConnect } from "./steps/step-runtime-connect";
 import { StepPlatformFork } from "./steps/step-platform-fork";
@@ -106,6 +104,7 @@ export function OnboardingFlow({
   onComplete,
   runtimeInstructions,
   onRuntimeRefresh,
+  runtimesPending,
 }: {
   onComplete: (workspace?: Workspace, issueId?: string) => void;
   runtimeInstructions?: React.ReactNode;
@@ -114,6 +113,10 @@ export function OnboardingFlow({
    *  it — its CLI install flow already runs on the user's machine and
    *  the embedded picker reacts to daemon:register events. */
   onRuntimeRefresh?: () => void | Promise<void>;
+  /** Desktop wires this to the local daemon's live status so the runtime
+   *  step doesn't flash "no runtime found" while the daemon is still booting
+   *  or probing CLI versions (MUL-5119). Web omits it. */
+  runtimesPending?: boolean;
 }) {
   const { t } = useT("onboarding");
   const user = useAuthStore((s) => s.user);
@@ -144,15 +147,6 @@ export function OnboardingFlow({
   });
   const existingWorkspace = workspace ?? workspaces[0] ?? null;
   const canSkipWelcome = workspacesFetched && workspaces.length > 0;
-  const startedEmittedRef = useRef(false);
-  useEffect(() => {
-    if (startedEmittedRef.current || !workspacesFetched) return;
-    startedEmittedRef.current = true;
-    captureEvent("onboarding_started", {
-      source: "onboarding",
-      ...(existingWorkspace ? { workspace_id: existingWorkspace.id } : {}),
-    });
-  }, [existingWorkspace, workspacesFetched]);
 
   // The `runtimeInstructions` slot is only plumbed by the web shell
   // (desktop bundles a daemon, so a CLI install card would be noise
@@ -264,7 +258,7 @@ export function OnboardingFlow({
   const handleBack = useCallback((from: OnboardingStep) => {
     const idx = ONBOARDING_STEP_ORDER.indexOf(from);
     if (idx <= 0) {
-      // The first persisted step returns to Welcome.
+      // About you (the first persisted step) returns to Welcome.
       setStep("welcome");
       return;
     }
@@ -285,26 +279,14 @@ export function OnboardingFlow({
     );
   }
 
-  if (step === "role") {
+  if (step === "about_you") {
     return (
-      <StepRole
+      <StepAboutYou
         answers={answers}
         onChange={applyAnswers}
-        onAdvance={() => advanceFrom("role")}
-        onSkip={() => advanceFrom("role")}
-        onBack={() => handleBack("role")}
-      />
-    );
-  }
-
-  if (step === "use_case") {
-    return (
-      <StepUseCase
-        answers={answers}
-        onChange={applyAnswers}
-        onAdvance={() => advanceFrom("use_case")}
-        onSkip={() => advanceFrom("use_case")}
-        onBack={() => handleBack("use_case")}
+        onAdvance={() => advanceFrom("about_you")}
+        onSkip={() => advanceFrom("about_you")}
+        onBack={() => handleBack("about_you")}
       />
     );
   }
@@ -322,8 +304,9 @@ export function OnboardingFlow({
   // Step 3. Both paths own full-bleed two-column layouts.
   //   - Desktop (no cliInstructions slot) → StepRuntimeConnect drives
   //     the local daemon's runtime list directly.
-  //   - Web → StepPlatformFork lists the workspace's shared (public)
-  //     server-side runtimes — nothing to install in the browser.
+  //   - Web → StepPlatformFork offers Download / CLI / Cloud paths.
+  //     Under the CLI path it embeds StepRuntimeConnect for the live
+  //     probe; the Cloud path is a soft exit via the waitlist.
   if (step === "runtime" && workspace) {
     if (!runtimeInstructions) {
       return (
@@ -332,9 +315,13 @@ export function OnboardingFlow({
           onNext={handleRuntimeNext}
           onBack={() => handleBack("runtime")}
           onRefresh={onRuntimeRefresh}
+          runtimesPending={runtimesPending}
         />
       );
     }
+    // No cliInstructions slot: BayClaw's web runtime step lists the
+    // platform-operated shared runtimes instead of walking the user through a
+    // local CLI install, so there is nothing to inject.
     return (
       <StepPlatformFork
         wsId={workspace.id}

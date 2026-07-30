@@ -97,11 +97,19 @@ is a no-op; a malformed UUID is rejected at the request boundary.
     [@all](mention://all/all)
 
 It addresses everyone on the issue. It does NOT make any specific agent run.
-And it is special at trigger time: in `commentMentionsOthersButNotAssignee`
-(`server/internal/handler/comment.go`), a comment that carries an `@all`
-mention is treated as a broadcast that SUPPRESSES the issue assignee's
-automatic on-comment trigger. Use `@all` to announce, not to request work from
-the assignee.
+And it is special at trigger time: a comment that carries an `@all` mention is
+treated as a broadcast that SUPPRESSES the issue assignee's automatic
+on-comment trigger (and the other implicit routing fallbacks — thread parent /
+conversation owner). Use `@all` to announce, not to request work from the
+assignee.
+
+`@all` only suppresses those IMPLICIT routes. An EXPLICIT `@agent` / `@squad`
+mention in the same comment still fires normally (MUL-5411): a comment reading
+`[@all](mention://all/all) heads up — [@Preflight](mention://agent/<uuid>)
+please take this` enqueues Preflight and nobody else. Explicit mentions win over
+the broadcast; see `computeCommentAgentTriggers` in
+`server/internal/handler/comment.go`, where the explicit-mention branch is
+evaluated BEFORE the `@all` short-circuit.
 
 ## What does NOT happen (so the result doesn't surprise you)
 
@@ -113,7 +121,10 @@ These are all silent no-ops — no error, no run:
 - **A hex-ish but wrong UUID.** A well-formed-looking UUID that no entity owns
   DOES parse, then no-ops at lookup: the workspace-scoped query finds no agent
   and the loop `continue`s. Same agent-visible result (nothing fires), but the
-  mechanism is the lookup miss, not a parse failure.
+  mechanism is the lookup miss, not a parse failure. An id that matches the
+  pattern but is NOT a valid UUID at all (`mention://agent/-`) is rejected by
+  the id parser itself and reported as a blocked mention with the same
+  enumeration-safe reason code — never an error response.
 - **An already-pending task.** Even a correct `@agent`/`@squad` is skipped when
   the target already has a pending task on this issue
   (`HasPendingTaskForIssueAndAgent` → `continue`). Edit preview is the only
@@ -124,8 +135,32 @@ These are all silent no-ops — no error, no run:
   (`RuntimeID` invalid or `ArchivedAt` set).
 - **A private agent you cannot access:** skipped — the mention path gates on
   `canAccessPrivateAgent` directly for both `@agent` and `@squad` (the
-  `canEnqueueSquadLeader` wrapper is the assignment/child-done path, not this
-  one).
+  `canEnqueueSquadLeader` wrapper is the squad assignment/promote path, not this
+  one; the child-done wake is ungated — see the multica-squads skill).
+
+One nuance for automation (MUL-4857): when an UNATTRIBUTED autopilot run (a
+schedule/webhook dispatch has no human originator, so the A2A gate has no human
+to key on) delegates by `@mention` while working on the issue that autopilot
+created, the invoke gate falls back to the **autopilot creator** as the effective
+invoking user — the same principal that admitted the first dispatch. So a mid-run
+`@agent` / `@squad` delegation fires exactly when the autopilot creator could
+invoke that target (owner / `public_to` match), and stays skipped otherwise. It
+is authorization only — the enqueued run's originator/attribution is unchanged.
+This fallback is bound to verified task lineage: it applies only when the
+delegating run's own task is the one working on that autopilot issue (author ==
+task agent, `task.issue_id` == this issue), so a run doing work elsewhere can
+never borrow another autopilot creator's authority by commenting on its issue.
+The same authority carries the plain assigned-squad-leader wake (a worker's
+result comment on the autopilot issue can still wake the leader), and it survives
+a busy target: if the mentioned agent is already running, the delegation is
+replayed at that run's completion under the same authority, so it is never lost.
+An edit is treated as a fresh action — it re-derives the comment's lineage from
+the editing action. Only the agent author editing its OWN comment re-stamps the
+lineage to the editing task; any other editor — including a workspace owner/admin
+editing an agent's comment — CLEARS it. So editing an old autopilot comment from
+an unrelated issue, or an admin editing an agent's comment (manage rights, not
+invoke rights), fails closed at the deferred completion-reconcile instead of
+reusing the original run's authority.
 
 ## Incorrect → Correct
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -21,11 +22,12 @@ import (
 	"github.com/multica-ai/multica/server/internal/cloudruntime"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/events"
-	"github.com/multica-ai/multica/server/internal/featureflagdispatch"
+	"github.com/multica-ai/multica/server/internal/featureflags"
 	"github.com/multica-ai/multica/server/internal/fleet"
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/integrations/channel"
 	"github.com/multica-ai/multica/server/internal/integrations/channel/engine"
+	composiointeg "github.com/multica-ai/multica/server/internal/integrations/composio"
 	"github.com/multica-ai/multica/server/internal/integrations/lark"
 	"github.com/multica-ai/multica/server/internal/integrations/slack"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
@@ -36,6 +38,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/internal/util/secretbox"
+	composiosdk "github.com/multica-ai/multica/server/pkg/composio"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/featureflag"
 )
@@ -44,6 +47,28 @@ var defaultOrigins = []string{
 	"http://localhost:3000", // Next.js dev
 	"http://localhost:5173", // electron-vite dev
 	"http://localhost:5174", // electron-vite dev (fallback port)
+}
+
+// corsAllowedHeaders must list every header the browser clients send. A header
+// missing here fails the preflight, so the request never reaches the handler at
+// all — the failure looks nothing like "the server ignored my header".
+// X-Client-Capabilities in particular was daemon-only (a Go client, never
+// preflighted) until the web app started advertising chat-draft-restore-v1 on
+// cancel.
+var corsAllowedHeaders = []string{
+	"Accept",
+	"Authorization",
+	"Content-Type",
+	"X-Workspace-ID",
+	"X-Workspace-Slug",
+	"X-Request-ID",
+	"X-Agent-ID",
+	"X-Task-ID",
+	"X-CSRF-Token",
+	"X-Client-Platform",
+	"X-Client-Version",
+	"X-Client-OS",
+	"X-Client-Capabilities",
 }
 
 func allowedOrigins() []string {
@@ -107,6 +132,20 @@ func parseTrustedProxies(raw string) []netip.Prefix {
 	return out
 }
 
+// normalizeServerVersion maps the unstamped "dev" default (main.go's
+// `version` var, unchanged when the binary wasn't built with
+// -X main.version=<tag>) to an empty string. handler.Config.ServerVersion
+// feeds /api/config's server_version field with omitempty, so an empty
+// string hides the Help popover's version row instead of rendering
+// "Server version dev" for a local `go build`/`go run` or a self-hosted
+// `docker build` without --build-arg VERSION.
+func normalizeServerVersion(v string) string {
+	if v == "dev" {
+		return ""
+	}
+	return v
+}
+
 // NewRouter creates the fully-configured Chi router with all middleware and routes.
 // rdb is optional: when non-nil the runtime local-skill request stores are
 // swapped for Redis-backed implementations so multiple API nodes share the
@@ -167,6 +206,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AllowedEmails:                splitAndTrim(os.Getenv("ALLOWED_EMAILS")),
 		AllowedEmailDomains:          splitAndTrim(os.Getenv("ALLOWED_EMAIL_DOMAINS")),
 		DisableWorkspaceCreation:     os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
+		VCSIntegrationEnabled:        os.Getenv("MULTICA_VCS_INTEGRATION_ENABLED") == "true",
 		PublicURL:                    strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PUBLIC_URL")), "/"),
 		TrustedProxies:               parseTrustedProxies(os.Getenv("MULTICA_TRUSTED_PROXIES")),
 		CloudRuntimeFleetURL:         cloudRuntimeFleetURLFromEnv(),
@@ -176,13 +216,16 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		SharedRunnerEmails:           splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
 		DefaultWorkspaceSeedTemplate: strings.TrimSpace(os.Getenv("DEFAULT_WORKSPACE_SEED_TEMPLATE")),
 		AttachmentFrameAncestors:     origins,
+		LLMAPIKey:                    strings.TrimSpace(os.Getenv("MULTICA_LLM_API_KEY")),
+		LLMBaseURL:                   strings.TrimSpace(os.Getenv("MULTICA_LLM_BASE_URL")),
+		LLMDefaultModel:              strings.TrimSpace(os.Getenv("MULTICA_LLM_DEFAULT_MODEL")),
+		ServerVersion:                normalizeServerVersion(version),
 	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, store, cfSigner, analyticsClient, signupConfig, daemonHub)
 	h.Fleet = fleet.New(fleet.LoadDevices())
 	h.Metrics = opts.BusinessMetrics
-	if opts.FeatureFlags != nil {
-		h.DaemonFeatureFlags = featureflagdispatch.NewEvaluator(opts.FeatureFlags)
-	}
+	h.FeatureFlags = opts.FeatureFlags
+	h.TaskService.FeatureFlags = opts.FeatureFlags
 	h.TaskService.Metrics = opts.BusinessMetrics
 	h.IssueService.Metrics = opts.BusinessMetrics
 	if opts.BusinessMetrics != nil {
@@ -198,15 +241,23 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		if notifier, ok := opts.DaemonWakeup.(handler.RuntimeProfileRefreshNotifier); ok {
 			h.DaemonProfileRefresh = notifier
 		}
+		if notifier, ok := opts.DaemonWakeup.(handler.WorkspaceSetRefreshNotifier); ok {
+			h.DaemonWorkspaceRefresh = notifier
+		}
+		if notifier, ok := opts.DaemonWakeup.(handler.DaemonPendingWorkNotifier); ok {
+			h.DaemonPendingWork = notifier
+		}
 	}
 	if rdb != nil {
 		h.UpdateStore = handler.NewRedisUpdateStore(rdb)
 		h.ModelListStore = handler.NewRedisModelListStore(rdb)
+		h.ModelCatalogCache = handler.NewRedisModelCatalogCache(rdb)
 		h.LocalSkillListStore = handler.NewRedisLocalSkillListStore(rdb)
 		h.LocalSkillImportStore = handler.NewRedisLocalSkillImportStore(rdb)
 		h.LivenessStore = handler.NewRedisLivenessStore(rdb)
 		h.WebhookRateLimiter = handler.NewRedisWebhookRateLimiter(rdb, handler.DefaultWebhookRateLimit())
 		h.WebhookIPRateLimiter = handler.NewRedisWebhookIPRateLimiter(rdb, handler.DefaultWebhookIPRateLimit())
+		h.WebhookAbsoluteIPRateLimiter = handler.NewRedisWebhookAbsoluteIPRateLimiter(rdb, handler.DefaultWebhookAbsoluteIPRateLimit())
 	}
 
 	// Channel engine (MUL-3620): the platform-agnostic inbound runtime.
@@ -226,6 +277,21 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// into one agent run instead of one per message (MUL-2968).
 	channelRouter.EnableRunBatching(engine.DefaultChatRunBatchWindow)
 	h.ChannelRouter = channelRouter
+	// Media intent-ledger reconciler: settles uploaded-but-unbound objects.
+	// Built ONLY when a storage backend exists — store is nil when S3 is not
+	// configured and the local upload dir failed to initialize, and a
+	// reconciler with nil Storage would panic the worker goroutine on the
+	// first unreferenced row (ledger rows can pre-exist from a boot where
+	// storage WAS configured). Without storage the resolver skips every
+	// upload, so no new rows appear and the ledger simply waits for a boot
+	// with working storage. Started from main.go as its own worker.
+	if store != nil {
+		h.ChannelMediaReconciler = &service.ChannelMediaReconciler{
+			Queries: queries,
+			Storage: store,
+			Logger:  slog.Default(),
+		}
+	}
 	h.ChannelSupervisor = engine.NewSupervisor(
 		lark.NewChannelInstallationStore(queries),
 		channelRegistry,
@@ -350,8 +416,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					Credentials: installSvc,
 					Logger:      slog.Default(),
 				})
+				mediaResolver := lark.NewFeishuMediaResolver(larkClient, installSvc, store, engine.NewDBMediaIntentLedger(queries), slog.Default())
 				channelRouter.Register(channel.TypeFeishu, lark.NewFeishuResolverSet(
-					cs, feishuSession, auditLogger, resolverReplier, typingIndicator,
+					cs, feishuSession, auditLogger, resolverReplier, typingIndicator, mediaResolver,
 				))
 				slog.Info("lark inbound pipeline wired", "connector", connectorLabel)
 
@@ -510,6 +577,79 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		slog.Info("slack integration disabled (MULTICA_SLACK_SECRET_KEY not set)")
 	}
 
+	// Composio integration (MUL-3720). Gated by COMPOSIO_API_KEY plus the
+	// composio_mcp_apps feature flag. The env var is the project-scoped key the
+	// standalone SDK authenticates Composio with (sent as x-api-key; the project
+	// is resolved from the key, so NO project id is configured). When unset or
+	// flag-disabled the whole block is skipped and the composio HTTP handlers
+	// return 503; existing deployments are unaffected. An operator opts in by
+	// setting COMPOSIO_API_KEY plus a callback base
+	// (COMPOSIO_CALLBACK_BASE_URL, falling back to MULTICA_PUBLIC_URL). The
+	// toolkit→auth-config mapping is NOT configured here — it is resolved
+	// dynamically from the project's /auth_configs at request time, so enabling
+	// a toolkit is a dashboard action, not a redeploy. State signing uses
+	// COMPOSIO_STATE_SECRET, or a key derived from JWT_SECRET when that is unset.
+	if composioAPIKey := strings.TrimSpace(os.Getenv("COMPOSIO_API_KEY")); composioAPIKey != "" {
+		if !featureflags.ComposioMCPAppsEnabled(context.Background(), opts.FeatureFlags) {
+			slog.Info("composio integration disabled (feature flag off)")
+		} else {
+			sdkClient, err := composiosdk.NewClient(composiosdk.Options{APIKey: composioAPIKey})
+			if err != nil {
+				slog.Error("composio: SDK client init failed; composio integration disabled", "error", err)
+			} else {
+				stateSecret := composioStateSecret()
+				callbackBase := composioCallbackBaseURL(signupConfig.PublicURL)
+				switch {
+				case len(stateSecret) == 0:
+					slog.Error("composio: no state secret (set COMPOSIO_STATE_SECRET or JWT_SECRET); composio integration disabled")
+				case callbackBase == "":
+					slog.Error("composio: no callback base url (set COMPOSIO_CALLBACK_BASE_URL or MULTICA_PUBLIC_URL); composio integration disabled")
+				default:
+					svc, serr := composiointeg.NewService(sdkClient, queries, composiointeg.Config{
+						StateSecret:     stateSecret,
+						CallbackBaseURL: callbackBase,
+						FrontendBaseURL: appURLFromEnv(),
+					})
+					if serr != nil {
+						slog.Error("composio: service init failed; composio integration disabled", "error", serr)
+					} else {
+						h.Composio = svc
+						// Stage 3 (MUL-3721) hook: feed the per-task MCP
+						// overlay builder into TaskService so every Enqueue*
+						// path attaches the initiator user's Composio session
+						// URL to the task row before the daemon claims it.
+						// taskSvc already exists by this point — it was
+						// constructed inside NewHandler — and exposes its
+						// Composio field for exactly this kind of late wiring,
+						// so no Handler-level mutation is needed.
+						if h.TaskService != nil {
+							h.TaskService.Composio = svc
+						}
+						slog.Info("composio integration enabled")
+					}
+				}
+			}
+		}
+	} else {
+		slog.Info("composio integration disabled (COMPOSIO_API_KEY not set)")
+	}
+
+	// VCS at-rest encryption: the box encrypts per-workspace access tokens and
+	// webhook secrets for token-based providers (Forgejo / Gitea / GitLab).
+	// Without it, connect/webhook handlers return 503 (so a misconfigured
+	// self-host never stores plaintext secrets).
+	if vcsKey, err := secretbox.LoadKey("MULTICA_VCS_SECRET_KEY"); err == nil {
+		box, err := secretbox.New(vcsKey)
+		if err != nil {
+			slog.Error("vcs: secretbox.New failed; vcs integration disabled", "error", err)
+		} else {
+			h.VCSSecretBox = box
+			slog.Info("vcs integration enabled")
+		}
+	} else {
+		slog.Info("vcs integration disabled (MULTICA_VCS_SECRET_KEY not set)")
+	}
+
 	if opts.HeartbeatScheduler != nil {
 		h.HeartbeatScheduler = opts.HeartbeatScheduler
 	}
@@ -544,6 +684,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// Wire WS heartbeat after stores are finalized so the WS path uses the
 	// same (possibly Redis-backed) stores as the HTTP path.
 	daemonHub.SetHeartbeatHandler(h.HandleDaemonWSHeartbeat)
+	// WS-first claim (MUL-4257): route daemon:rpc_request frames (e.g.
+	// tasks.claim) through the same handlers as the HTTP endpoints.
+	daemonHub.SetRPCHandler(h.DaemonRPCHandler)
 	health := newServerHealth(pool)
 
 	r := chi.NewRouter()
@@ -569,7 +712,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Workspace-ID", "X-Workspace-Slug", "X-Request-ID", "X-Agent-ID", "X-Task-ID", "X-CSRF-Token", "X-Client-Platform", "X-Client-Version", "X-Client-OS"},
+		AllowedHeaders:   corsAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -619,6 +762,26 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Get("/uploads/*", h.ServeLocalUpload)
 	}
 
+	// Capability-authenticated attachment download (MUL-5292). Public by
+	// necessity: a native download (Electron's webContents.downloadURL, a
+	// cross-site webview <img>) carries neither Authorization nor a session
+	// cookie, so there is nothing here for middleware.Auth to read. The
+	// short-lived, single-attachment signature in the query is the credential,
+	// and it is only ever minted by the AUTHENTICATED GET
+	// /api/attachments/{id} after that request's membership check passed.
+	// The authenticated /api/attachments/{id}/download route below is
+	// unchanged — this one is purely additive.
+	r.Get("/api/attachments/{id}/signed-download", h.DownloadAttachmentWithCapability)
+
+	// Avatar serving. Public for the same reason as the capability download
+	// above: the auth cookie is SameSite=Strict, so an auth-gated URL cannot
+	// be a native <img src> from Desktop / mobile webview or a split-origin
+	// self-hosted web app. The HMAC signature in the path is the credential.
+	// It covers the storage key, only image keys resolve, and the object must
+	// be avatar-class — see server/internal/handler/avatar.go (MUL-5393 /
+	// #6024).
+	r.Get("/api/avatars/{sig}/*", h.ServeAvatar)
+
 	// Auth (public) — per-IP rate limiting.
 	if rdb == nil {
 		slog.Warn("rate limiting disabled: REDIS_URL not configured")
@@ -648,11 +811,28 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// browser redirect; the workspace/agent/initiator are recovered from the
 	// sealed state). It exchanges the code, upserts the install, then bounces
 	// the browser back to Settings → Integrations.
+	// VCS webhook for token-based providers (Forgejo / Gitea / GitLab). No Multica
+	// auth — authenticated per-connection by the provider's signature scheme;
+	// the connection id in the path selects the workspace, provider, and
+	// decryption secret.
+	r.Post("/api/webhooks/vcs/{connectionId}", h.HandleVCSWebhook)
 	// Stripe webhook (no Multica auth — Stripe signs the raw body
 	// with a shared secret, the multica-cloud upstream verifies. We
 	// only forward the bytes + the Stripe-Signature header; see
 	// HandleCloudBillingStripeWebhook for the rationale).
 	r.Post("/api/webhooks/stripe", h.HandleCloudBillingStripeWebhook)
+
+	// Composio OAuth callback (MUL-3843). NOT under the Auth group on purpose:
+	// Composio 302-redirects the user's browser here at the end of the OAuth
+	// flow, and the cookie session is frequently absent (expired session,
+	// SameSite=Strict / Safari ITP stripping cross-site cookies, private
+	// windows, self-hosted callbacks on a different subdomain). Identity is NOT
+	// taken from the session — it comes from the HMAC-signed `state` query
+	// param, which CompleteCallback verifies (signature, expiry, replay) before
+	// doing anything. h.Composio == nil still returns 503. Keeping it inside the
+	// Auth group made a missing cookie a hard 401, breaking the flow for exactly
+	// the browsers above; the other four composio endpoints stay session-gated.
+	r.Get("/api/integrations/composio/callback", h.ComposioCallback)
 
 	// Daemon API routes (require daemon token or valid user token)
 	r.Route("/api/daemon", func(r chi.Router) {
@@ -662,10 +842,16 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Post("/deregister", h.DaemonDeregister)
 		r.Post("/heartbeat", h.DaemonHeartbeat)
 		r.Get("/ws", h.DaemonWebSocket)
+		r.Get("/workspaces", h.ListDaemonWorkspaces)
 		r.Get("/workspaces/{workspaceId}/repos", h.GetDaemonWorkspaceRepos)
 		r.Get("/workspaces/{workspaceId}/runtime-profiles", h.DaemonListRuntimeProfiles)
 
 		r.Post("/runtimes/{runtimeId}/tasks/claim", h.ClaimTaskByRuntime)
+		// Canonical machine-level batch claim (MUL-4257). `/claim` is a
+		// transitional alias; the daemon coordinator targets the canonical
+		// path.
+		r.Post("/tasks/claim", h.ClaimTasksByRuntime)
+		r.Post("/claim", h.ClaimTasksByRuntime)
 		r.Post("/runtimes/{runtimeId}/tasks/{taskId}/prepare-lease", h.ExtendTaskPrepareLease)
 		r.Post("/runtimes/{runtimeId}/tasks/{taskId}/skill-bundles/resolve", h.ResolveTaskSkillBundles)
 		r.Get("/runtimes/{runtimeId}/tasks/pending", h.ListPendingTasksByRuntime)
@@ -685,7 +871,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Post("/tasks/{taskId}/usage", h.ReportTaskUsage)
 		r.Post("/tasks/{taskId}/messages", h.ReportTaskMessages)
 		r.Get("/tasks/{taskId}/messages", h.ListTaskMessages)
+		r.Post("/tasks/{taskId}/cancel-ack", h.AckTaskCancelled)
 
+		r.Post("/workspaces/{workspaceId}/issues/gc-check", h.BatchIssueGCCheck)
 		r.Get("/issues/{issueId}/gc-check", h.GetIssueGCCheck)
 		r.Get("/chat-sessions/{sessionId}/gc-check", h.GetChatSessionGCCheck)
 		r.Get("/autopilot-runs/{runId}/gc-check", h.GetAutopilotRunGCCheck)
@@ -717,6 +905,15 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Post("/api/cli-token", h.IssueCliToken)
 		r.Post("/api/upload-file", h.UploadFile)
 		r.Post("/api/feedback", h.CreateFeedback)
+		r.With(handler.RequireHumanActor).Post("/api/client-usage", h.UpsertClientUsage)
+
+		// Note (MUL-4309): the generic OpenAI-compatible passthrough endpoints
+		// (POST /api/llm/v1/chat/completions[/stream]) were intentionally
+		// removed. Exposing a general LLM proxy backed by the deployment's own
+		// key let any logged-in user run arbitrary completions on our dime.
+		// LLM access is now server-internal only (see pkg/llm); anything the
+		// web/client needs must go through a purpose-built business endpoint
+		// that fixes the prompt/model server-side (e.g. chat title generation).
 
 		// Attachment download — user-scoped (auth-only), NOT
 		// workspace-scoped. The handler self-resolves the workspace
@@ -746,6 +943,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					// the handler strips the management handle and adds a
 					// can_manage hint so the UI can gate connect/disconnect.
 					r.Get("/github/installations", h.ListGitHubInstallations)
+					// VCS connections (Forgejo / Gitea / GitLab) — member-visible
+					// for the same reason as GitHub installations; connect /
+					// disconnect are admin-gated in the group below.
+					r.Get("/vcs/connections", h.ListVCSConnections)
 					// Custom runtime profiles — listing/reading is member-visible
 					// (the Runtime page renders for everyone; create/edit/delete
 					// are admin-gated below).
@@ -778,21 +979,32 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
 					r.Get("/github/connect", h.GitHubConnect)
+					r.Get("/github/installations/{installationId}/repositories", h.ListGitHubInstallationRepositories)
 					r.Delete("/github/installations/{installationId}", h.DeleteGitHubInstallation)
+					// VCS connect / disconnect / webhook regeneration (admin-only).
+					r.Post("/vcs/connections", h.ConnectVCS)
+					r.Post("/vcs/connections/{connectionId}/rotate-webhook", h.RotateVCSConnectionWebhook)
+					r.Delete("/vcs/connections/{connectionId}", h.DeleteVCSConnection)
 				})
 
-				// Lark integration. Listing is member-visible (same
-				// rationale as GitHub: the Integrations tab must
-				// render for non-admins so they see "wired up by whom").
-				// Install / revoke require admin to prevent a non-admin
-				// from binding a Bot to a workspace agent or yanking
-				// an installation out from under one.
+				// Lark integration. Every endpoint here only requires
+				// workspace membership at the router; the real authorization
+				// is per-agent and enforced inside each handler via
+				// canManageAgent (agent owner OR workspace owner/admin), so an
+				// agent's owner can bind/manage their own agent's Bot without
+				// being a workspace admin (MUL-4213). The router can't make
+				// that call itself: begin identifies the agent by an
+				// `agent_id` query param and revoke by an installation id,
+				// neither of which is a URL param the role middleware sees.
+				//   - Listing stays member-visible (same rationale as GitHub:
+				//     the Integrations tab must render for non-admins so they
+				//     see "wired up by whom").
+				//   - Begin / status / revoke each load the target agent and
+				//     run canManageAgent (status gates on the session
+				//     initiator or an admin) before doing anything.
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
 					r.Get("/lark/installations", h.ListLarkInstallations)
-				})
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
 					r.Delete("/lark/installations/{installationId}", h.RevokeLarkInstallation)
 					// Device-flow scan-to-install. Begin opens a new
 					// registration session against Lark and returns
@@ -833,6 +1045,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		// logged-in user (from the session) is bound to the Slack id the token
 		// carries.
 		r.Post("/api/slack/binding/redeem", h.RedeemSlackBindingToken)
+
+		// Composio integration (MUL-3720). User-scoped (no workspace context):
+		// a connection belongs to a user. These four require a logged-in
+		// session; the OAuth callback is the outlier and lives outside the Auth
+		// group (registered above with the other public OAuth/webhook routes —
+		// see MUL-3843). All return 503 when COMPOSIO_API_KEY is unset.
+		r.Route("/api/integrations/composio", func(r chi.Router) {
+			r.Post("/connect/init", h.ComposioConnectInit)
+			r.Get("/toolkits", h.ListComposioToolkits)
+			r.Get("/connections", h.ListComposioConnections)
+			r.Delete("/connections/{id}", h.DeleteComposioConnection)
+		})
 
 		// User-scoped invitation routes (no workspace context required)
 		r.Get("/api/invitations", h.ListMyInvitations)
@@ -896,11 +1120,17 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 			// Issues
 			r.Route("/api/issues", func(r chi.Router) {
+				r.Post("/table/groups", h.ListIssueTableGroups)
+				r.Post("/table/rows", h.ListIssueTableRows)
+				r.Post("/table/facets", h.ListIssueTableFacets)
 				r.Get("/search", h.SearchIssues)
 				r.Get("/child-progress", h.ChildIssueProgress)
 				r.Get("/children", h.ListChildrenByParents)
 				r.Get("/grouped", h.ListGroupedIssues)
 				r.Get("/", h.ListIssues)
+				// POST twin of GET /api/issues for oversized filter sets
+				// (agents-working ids facet) — see QueryIssues.
+				r.Post("/query", h.QueryIssues)
 				r.Post("/", h.CreateIssue)
 				r.Post("/quick-create", h.QuickCreateIssue)
 				r.Post("/preview-trigger", h.PreviewIssueTrigger)
@@ -909,6 +1139,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetIssue)
 					r.Put("/", h.UpdateIssue)
+					r.Post("/move", h.MoveIssue)
 					r.Delete("/", h.DeleteIssue)
 					r.Post("/comments/trigger-preview", h.PreviewCommentTriggers)
 					r.Post("/comments", h.CreateComment)
@@ -932,12 +1163,24 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/metadata", h.ListIssueMetadata)
 					r.Put("/metadata/{key}", h.SetIssueMetadataKey)
 					r.Delete("/metadata/{key}", h.DeleteIssueMetadataKey)
+					r.Put("/properties/{propertyId}", h.SetIssueProperty)
+					r.Delete("/properties/{propertyId}", h.DeleteIssueProperty)
 					r.Get("/pull-requests", h.ListPullRequestsForIssue)
 				})
 			})
 
 			// Task messages (user-facing, not daemon auth)
 			r.Get("/api/tasks/{taskId}/messages", h.ListTaskMessagesByUser)
+
+			// Custom issue properties (definitions; values live under /api/issues/{id}/properties)
+			r.Route("/api/properties", func(r chi.Router) {
+				r.Get("/", h.ListProperties)
+				r.Post("/", h.CreateProperty)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetProperty)
+					r.Patch("/", h.UpdateProperty)
+				})
+			})
 
 			// Labels
 			r.Route("/api/labels", func(r chi.Router) {
@@ -989,6 +1232,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			r.Route("/api/autopilots", func(r chi.Router) {
 				r.Get("/", h.ListAutopilots)
 				r.Post("/", h.CreateAutopilot)
+				r.Get("/cron-preview", h.CronPreview)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetAutopilot)
 					r.Patch("/", h.UpdateAutopilot)
@@ -1058,9 +1302,16 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/skills", h.ListAgentSkills)
 					r.Put("/skills", h.SetAgentSkills)
 					r.Post("/skills/add", h.AddAgentSkills)
-					// Dedicated env-management endpoint. Owner/admin only;
-					// agent actors are denied. Every reveal / write is
-					// audited to activity_log. See MUL-2600 and
+					r.Get("/labels", h.ListLabelsForAgent)
+					r.Post("/labels", h.AttachLabelToAgent)
+					r.Delete("/labels/{labelId}", h.DetachLabelFromAgent)
+					r.Put("/skills/{skillId}/enabled", h.SetAgentSkillEnabled)
+					r.Put("/runtime-skills/enabled", h.SetAgentRuntimeSkillEnabled)
+					r.Delete("/skills/{skillId}", h.RemoveAgentSkill)
+					// Dedicated env-management endpoint. Admits the agent
+					// owner or a workspace owner/admin; agent actors are
+					// denied. Every reveal / write is audited to
+					// activity_log. See MUL-2600, MUL-5438 and
 					// internal/handler/agent_env.go.
 					r.Get("/env", h.GetAgentEnv)
 					r.Put("/env", h.UpdateAgentEnv)
@@ -1074,6 +1325,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.ListAgentTemplates)
 				r.Get("/{slug}", h.GetAgentTemplate)
 			})
+			r.Route("/api/agent-builder/sessions", func(r chi.Router) {
+				r.Post("/", h.CreateAgentBuilderSession)
+				r.Patch("/{sessionId}/runtime", h.SwitchAgentBuilderRuntime)
+			})
 
 			// Skills
 			r.Route("/api/skills", func(r chi.Router) {
@@ -1085,6 +1340,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/", h.GetSkill)
 					r.Put("/", h.UpdateSkill)
 					r.Delete("/", h.DeleteSkill)
+					r.Get("/labels", h.ListLabelsForSkill)
+					r.Post("/labels", h.AttachLabelToSkill)
+					r.Delete("/labels/{labelId}", h.DetachLabelFromSkill)
 					r.Get("/files", h.ListSkillFiles)
 					r.Put("/files", h.UpsertSkillFile)
 					r.Delete("/files/{fileId}", h.DeleteSkillFile)
@@ -1112,6 +1370,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/usage/by-agent", h.GetDashboardUsageByAgent)
 				r.Get("/agent-runtime", h.GetDashboardAgentRunTime)
 				r.Get("/runtime/daily", h.GetDashboardRunTimeDaily)
+				r.Get("/failures/daily", h.GetDashboardFailuresDaily)
+				r.Get("/failures/by-agent", h.GetDashboardFailuresByAgent)
 			})
 
 			// Persistent agent workspaces (management UI). Read-only list of
@@ -1175,6 +1435,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// every active task + each agent's most recent terminal task.
 			r.Get("/api/agent-task-snapshot", h.ListWorkspaceAgentTaskSnapshot)
 
+			// Independent workspace-level list backing the issues-header
+			// "agents working" chip and its assignee-id Table filter.
+			r.Get("/api/working-agents", h.ListWorkspaceWorkingAgents)
+
 			// Workspace-wide daily agent activity (last 30d, anchored on
 			// completed_at). Backs the Agents-list sparkline (trailing 7d
 			// slice) AND the agent detail "Last 30 days" panel.
@@ -1189,15 +1453,27 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Route("/{sessionId}", func(r chi.Router) {
 					r.Get("/", h.GetChatSession)
 					r.Patch("/", h.UpdateChatSession)
+					r.Patch("/pin", h.SetChatSessionPinned)
+					r.Patch("/archive", h.SetChatSessionArchived)
 					r.Delete("/", h.DeleteChatSession)
 					r.Post("/messages", h.SendChatMessage)
 					r.Get("/messages", h.ListChatMessages)
 					r.Get("/messages/page", h.ListChatMessagesPage)
 					r.Get("/pending-task", h.GetPendingChatTask)
 					r.Post("/read", h.MarkChatSessionRead)
+					// Deferred-cancellation draft restores (#5219):
+					// creator-only fetch + idempotent consume.
+					r.Get("/draft-restores", h.ListChatDraftRestores)
+					r.Delete("/draft-restores/{restoreId}", h.ConsumeChatDraftRestore)
 				})
 			})
 			r.Get("/api/chat/pending-tasks", h.ListPendingChatTasks)
+			r.Get("/api/chat/pending-tasks/has-any", h.HasPendingChatTasks)
+
+			// Quick-agent bar: per-user pinned agents for one-tap new chats.
+			r.Get("/api/chat/pinned-agents", h.ListChatPinnedAgents)
+			r.Post("/api/chat/pinned-agents", h.PinChatAgent)
+			r.Delete("/api/chat/pinned-agents/{agentId}", h.UnpinChatAgent)
 
 			// Agent-facing channel reads (MUL-3871). The caller's task-scoped token
 			// resolves to its own chat session; no session/channel id is passed, so
@@ -1210,6 +1486,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// Inbox
 			r.Route("/api/inbox", func(r chi.Router) {
 				r.Get("/", h.ListInbox)
+				// Archived notifications, for the inbox's "Archived" sub-view.
+				// Separate from "/" so the main list keeps its contract and
+				// never carries the unbounded archive.
+				r.Get("/archived", h.ListArchivedInbox)
 				r.Get("/unread-count", h.CountUnreadInbox)
 				// Cross-workspace unread summary: account-level, keyed on the
 				// user. Backs the workspace-switcher dot for OTHER workspaces.
@@ -1220,11 +1500,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/archive-completed", h.ArchiveCompletedInbox)
 				r.Post("/{id}/read", h.MarkInboxRead)
 				r.Post("/{id}/archive", h.ArchiveInboxItem)
+				r.Post("/{id}/unarchive", h.UnarchiveInboxItem)
 			})
 
 			// Notification preferences
 			r.Route("/api/notification-preferences", func(r chi.Router) {
 				r.Get("/", h.GetNotificationPreferences)
+				r.Patch("/", h.PatchNotificationPreferences)
 				r.Put("/", h.UpdateNotificationPreferences)
 			})
 		})
@@ -1391,4 +1673,32 @@ func cloudRuntimeFleetURLFromEnv() string {
 		return url
 	}
 	return strings.TrimSpace(os.Getenv("MULTICA_FLEET_URL"))
+}
+
+// composioStateSecret resolves the HMAC key for the connect-state. Prefers an
+// explicit COMPOSIO_STATE_SECRET; otherwise derives a composio-specific key
+// from JWT_SECRET via SHA-256 so the two signing domains never share an
+// identical key. Returns nil when neither is set (composio stays disabled).
+func composioStateSecret() []byte {
+	if v := strings.TrimSpace(os.Getenv("COMPOSIO_STATE_SECRET")); v != "" {
+		return []byte(v)
+	}
+	if v := strings.TrimSpace(os.Getenv("JWT_SECRET")); v != "" {
+		sum := sha256.Sum256([]byte("composio-state:" + v))
+		return sum[:]
+	}
+	return nil
+}
+
+// composioCallbackBaseURL resolves the public API base used to build the
+// Composio callback URL. Prefers COMPOSIO_CALLBACK_BASE_URL, then the
+// already-resolved MULTICA_PUBLIC_URL, then the app URL.
+func composioCallbackBaseURL(publicURL string) string {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("COMPOSIO_CALLBACK_BASE_URL")), "/"); v != "" {
+		return v
+	}
+	if publicURL != "" {
+		return publicURL
+	}
+	return appURLFromEnv()
 }

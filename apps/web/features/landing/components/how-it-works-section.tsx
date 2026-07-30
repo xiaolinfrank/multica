@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useAuthStore } from "@multica/core/auth";
 import { docsHrefForLocale, useLocale } from "../i18n";
+import { useDashboardCtaHref } from "../utils/use-dashboard-cta";
 import { GitHubMark, githubUrl, heroButtonClassName } from "./shared";
 
 export function HowItWorksSection() {
   const { t, locale } = useLocale();
   const user = useAuthStore((s) => s.user);
+  const ctaHref = useDashboardCtaHref();
 
   return (
     <section id="how-it-works" className="bg-[#05070b] text-white">
@@ -15,7 +17,7 @@ export function HowItWorksSection() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
           {t.howItWorks.label}
         </p>
-        <h2 className="mt-4 font-[family-name:var(--font-serif)] text-[2.6rem] leading-[1.05] tracking-[-0.03em] sm:text-[3.4rem] lg:text-[4.2rem]">
+        <h2 className="mt-4 landing-serif text-[2.6rem] leading-[1.05] tracking-[-0.03em] sm:text-[3.4rem] lg:text-[4.2rem]">
           {t.howItWorks.headlineMain}
           <br />
           <span className="text-white/40">{t.howItWorks.headlineFaded}</span>
@@ -41,7 +43,7 @@ export function HowItWorksSection() {
         </div>
 
         <div className="mt-14 flex flex-wrap items-center gap-4">
-          <Link href={user ? "/" : "/login"} className={heroButtonClassName("solid")}>
+          <Link href={ctaHref} className={heroButtonClassName("solid")}>
             {user ? t.header.dashboard : t.howItWorks.cta}
           </Link>
           <Link

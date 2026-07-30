@@ -87,16 +87,21 @@ a pointer.
 | already-pending dedup (agent) → shared pending-task helper → `continue` | `server/internal/handler/comment.go:1459-1463` |
 | already-pending dedup (squad leader) → shared pending-task helper → `continue` | `server/internal/handler/comment.go:1429-1433` |
 | `canAccessPrivateAgent` definition | `server/internal/handler/agent_access.go` (search `func (h *Handler) canAccessPrivateAgent`) |
-| `canEnqueueSquadLeader` (loads leader, delegates to `canAccessPrivateAgent`) | `server/internal/handler/agent_access.go:82-91` |
+| `canEnqueueSquadLeader` (loads leader, delegates to `canInvokeAgent`) | `server/internal/handler/agent_access.go:261-267` |
+| autopilot-delegation invoke authority: an unattributed autopilot run delegating on the issue it created falls back to the autopilot creator as the effective invoking user for the gate, bound to verified speaking-task lineage (author == task agent, `task.issue_id` == this issue) so no cross-issue borrow (MUL-4857) | gate application via `opts.effectiveInvoker()` in `server/internal/handler/comment.go` (search `func (o commentTriggerComputeOptions) effectiveInvoker`); lineage-verifying helper in `server/internal/handler/agent_access.go` (search `func (h *Handler) autopilotDelegationAuthority`); resolved from the trusted X-Task-ID / `comment.source_task_id` via `autopilotDelegationAuthorityFromRequest` / `autopilotDelegationAuthorityFromComment` |
+| autopilot-delegation authority on the DEFERRED path: a delegation to a busy target replays at the target's completion reconcile, which restores the same authority from `comment.source_task_id` (MUL-4857) | `server/internal/handler/daemon.go` (search `reconcileCommentsOnCompletion`, the `autopilotDelegationAuthorityFromComment` call) |
+| authority lineage is persisted per-action: only an agent editing its OWN comment re-stamps `source_task_id` to the current editing task (issue-scoped, like create); any other editor — including a workspace owner/admin editing an agent's comment (manage rights, not invoke rights) — CLEARS it, so a cross-issue edit or an admin edit makes every authority/originator read fail closed, including the deferred completion-reconcile — preview, save, and reconcile agree (MUL-4857) | `server/internal/handler/comment.go` (search `commentSourceTaskIDForIssue` and the `isAuthor` branch in `UpdateComment`) |
 
 ## @all broadcast and assignee-trigger suppression
 
 | Fact | Source |
 | --- | --- |
-| `commentMentionsOthersButNotAssignee` — decides whether to suppress the assignee's on-comment trigger | `server/internal/handler/comment.go:1246-1288` |
-| `@all` is treated as a broadcast → returns true → assignee auto-trigger suppressed | `server/internal/handler/comment.go:1257-1261` |
-| Comment-flow computation that consults it | `server/internal/handler/comment.go:1175-1177` |
-| `@all` never enqueues a specific agent: it is neither `squad` nor `agent`, so it is skipped in the mention trigger computation | `server/internal/handler/comment.go:1437-1439` |
+| `HasMentionAll` reports whether any parsed mention is `all` | `server/internal/util/mention.go` (search `func HasMentionAll`) |
+| `@all` with no explicit `@agent`/`@squad` suppresses every implicit route (assignee / thread parent / conversation) → no run | `server/internal/handler/comment.go` (search `if util.HasMentionAll(mentions)` inside `computeCommentAgentTriggers`) |
+| `@all` does NOT suppress an EXPLICIT `@agent`/`@squad` in the same comment — the explicit branch is evaluated first (MUL-5411) | `server/internal/handler/comment.go` (the `hasAgentOrSquadMention` branch immediately above the `HasMentionAll` short-circuit) |
+| `@all` never enqueues a specific agent: it is neither `squad` nor `agent`, so it is skipped in the mention trigger computation | `server/internal/handler/comment.go` (search `if m.Type != "agent"` in `resolveMentionedAgentCommentTriggers`) |
+| Tests: `@all` alone → 0 agents; `@all` + `@agent` → the mentioned agent only; `@all` + `@squad` → the leader; `@all` + `@member` → 0 agents | `server/internal/handler/comment_trigger_preview_test.go` (search `AllPlusExplicitAgentMentionStillTriggers`) |
+| A mention id that matches `MentionRe` but is not a valid UUID (`mention://agent/-`) is parsed with the error-returning `util.ParseUUID` and reported as a blocked mention — never a panic / 500 | `server/internal/handler/comment.go` (search `util.ParseUUID(m.ID)` in `resolveMentionedAgentCommentTriggers`); test `server/internal/handler/comment_trigger_preview_test.go` (search `MalformedMentionIDDoesNotPanic`) |
 
 ## CLI id sources (where the UUID comes from)
 

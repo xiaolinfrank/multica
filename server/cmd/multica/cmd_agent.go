@@ -97,14 +97,14 @@ var agentEnvCmd = &cobra.Command{
 
 var agentEnvGetCmd = &cobra.Command{
 	Use:   "get <agent-id>",
-	Short: "Print an agent's custom_env as a JSON map (workspace owner/admin only; every call is recorded)",
+	Short: "Print an agent's custom_env as a JSON map (agent owner or workspace owner/admin; every call is recorded)",
 	Args:  exactArgs(1),
 	RunE:  runAgentEnvGet,
 }
 
 var agentEnvSetCmd = &cobra.Command{
 	Use:   "set <agent-id>",
-	Short: "Replace an agent's custom_env (workspace owner/admin only; values equal to **** preserve the existing entry)",
+	Short: "Replace an agent's custom_env (agent owner or workspace owner/admin; values equal to **** preserve the existing entry)",
 	Args:  exactArgs(1),
 	RunE:  runAgentEnvSet,
 }
@@ -163,7 +163,8 @@ func init() {
 	agentCreateCmd.Flags().String("runtime-id", "", "Runtime ID (required)")
 	agentCreateCmd.Flags().String("runtime-config", "", "Runtime config as JSON string")
 	agentCreateCmd.Flags().String("model", "", "Model identifier (e.g. claude-sonnet-4-6, openai/gpt-4o). Prefer this over passing --model in --custom-args.")
-	agentCreateCmd.Flags().String("thinking-level", "", "Reasoning/effort level for the agent's runtime (e.g. Claude: low|medium|high|xhigh|max; Codex: none|minimal|low|medium|high|xhigh). The set is runtime/model-specific and validated server-side — an unknown value is rejected. Empty = runtime default.")
+	agentCreateCmd.Flags().String("thinking-level", "", "Reasoning/effort level for the agent's runtime (e.g. Claude: low|medium|high|xhigh|max; Codex values come from the runtime model catalog). The set is runtime/model-specific; malformed values are rejected server-side and the daemon validates the exact model/level pair. Empty = runtime default.")
+	agentCreateCmd.Flags().String("service-tier", "", "Codex execution service tier from the selected model's runtime catalog (e.g. priority, displayed as Fast). Empty = inherit local Codex configuration.")
 	agentCreateCmd.Flags().String("custom-args", "", "Custom CLI arguments as JSON array. For model selection prefer --model; some providers (codex app-server, openclaw) reject --model in custom_args.")
 	agentCreateCmd.Flags().String("custom-env", "", "Custom environment variables as JSON object, e.g. '{\"KEY\":\"value\"}'. Treated as secret material — never logged by the CLI, but values passed on the command line are visible to shell history and 'ps'; prefer --custom-env-stdin or --custom-env-file for real secrets. Pass '{}' to set an empty map.")
 	agentCreateCmd.Flags().Bool("custom-env-stdin", false, "Read the --custom-env JSON object from stdin. Keeps secrets out of shell history and 'ps'. Mutually exclusive with --custom-env and --custom-env-file.")
@@ -171,8 +172,11 @@ func init() {
 	agentCreateCmd.Flags().String("mcp-config", "", "MCP server configuration as a JSON object, e.g. '{\"mcpServers\":{\"shortcut\":{...}}}'. Treated as secret material (MCP entries often carry API tokens) — never logged by the CLI, but values passed on the command line are visible to shell history and 'ps'; prefer --mcp-config-stdin or --mcp-config-file for real secrets.")
 	agentCreateCmd.Flags().Bool("mcp-config-stdin", false, "Read the --mcp-config JSON object from stdin. Keeps secrets out of shell history and 'ps'. Mutually exclusive with --mcp-config and --mcp-config-file.")
 	agentCreateCmd.Flags().String("mcp-config-file", "", "Read the --mcp-config JSON object from a file path (suggested mode: 0600). Mutually exclusive with --mcp-config and --mcp-config-stdin.")
-	agentCreateCmd.Flags().String("visibility", "private", "Visibility: private or workspace")
-	agentCreateCmd.Flags().Int32("max-concurrent-tasks", 6, "Maximum concurrent tasks")
+	agentCreateCmd.Flags().String("visibility", "private", "Visibility: private or workspace (legacy; mapped to --permission-mode. private->private, workspace->public_to+workspace target)")
+	agentCreateCmd.Flags().String("permission-mode", "", "Invocation permission mode: private (owner only) or public_to (allow-list via --public-to-*). Authoritative over --visibility when set.")
+	agentCreateCmd.Flags().Bool("public-to-workspace", false, "public_to: allow every workspace member to invoke this agent.")
+	agentCreateCmd.Flags().StringSlice("public-to-member", nil, "public_to: allow the given member user id(s) to invoke this agent. Repeatable.")
+	agentCreateCmd.Flags().Int32("max-concurrent-tasks", 6, "Maximum concurrent tasks (1-50)")
 	agentCreateCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// agent update
@@ -182,11 +186,13 @@ func init() {
 	agentUpdateCmd.Flags().String("runtime-id", "", "New runtime ID")
 	agentUpdateCmd.Flags().String("runtime-config", "", "New runtime config as JSON string")
 	agentUpdateCmd.Flags().String("model", "", "New model identifier. Pass an empty string to clear and fall back to the runtime default.")
-	agentUpdateCmd.Flags().String("thinking-level", "", "New reasoning/effort level for the agent's runtime (e.g. Claude: low|medium|high|xhigh|max; Codex: none|minimal|low|medium|high|xhigh). The set is runtime/model-specific and validated server-side. Pass an empty string to clear and fall back to the runtime default.")
+	agentUpdateCmd.Flags().String("thinking-level", "", "New reasoning/effort level for the agent's runtime (e.g. Claude: low|medium|high|xhigh|max; Codex values come from the runtime model catalog). The set is runtime/model-specific; malformed values are rejected server-side and the daemon validates the exact model/level pair. Pass an empty string to clear and fall back to the runtime default.")
+	agentUpdateCmd.Flags().String("service-tier", "", "New Codex execution service tier from the selected model's runtime catalog. Pass an empty string to clear and inherit local Codex configuration.")
 	agentUpdateCmd.Flags().String("custom-args", "", "New custom CLI arguments as JSON array. For model selection prefer --model; some providers (codex app-server, openclaw) reject --model in custom_args.")
 	// custom_env is intentionally NOT part of `agent update`. Use
-	// `multica agent env set <id>` — that path is owner/admin-only,
-	// denies agent actors, and writes a persisted audit trail.
+	// `multica agent env set <id>` — that path admits the agent owner or a
+	// workspace owner/admin, denies agent actors, and writes a persisted
+	// audit trail.
 	//
 	// mcp_config, unlike custom_env, IS updatable here: it is persisted
 	// through the generic UpdateAgent endpoint (there is no dedicated
@@ -195,9 +201,12 @@ func init() {
 	agentUpdateCmd.Flags().String("mcp-config", "", "New MCP server configuration as a JSON object, e.g. '{\"mcpServers\":{...}}'. Pass 'null' to clear. Treated as secret material — never logged by the CLI, but values passed on the command line are visible to shell history and 'ps'; prefer --mcp-config-stdin or --mcp-config-file for real secrets.")
 	agentUpdateCmd.Flags().Bool("mcp-config-stdin", false, "Read the --mcp-config JSON from stdin. Keeps secrets out of shell history and 'ps'. Mutually exclusive with --mcp-config and --mcp-config-file.")
 	agentUpdateCmd.Flags().String("mcp-config-file", "", "Read the --mcp-config JSON from a file path (suggested mode: 0600). Mutually exclusive with --mcp-config and --mcp-config-stdin.")
-	agentUpdateCmd.Flags().String("visibility", "", "New visibility: private or workspace")
+	agentUpdateCmd.Flags().String("visibility", "", "New visibility: private or workspace (legacy; mapped to --permission-mode)")
+	agentUpdateCmd.Flags().String("permission-mode", "", "New invocation permission mode: private or public_to. Authoritative over --visibility. Owner-only.")
+	agentUpdateCmd.Flags().Bool("public-to-workspace", false, "public_to: allow every workspace member to invoke this agent.")
+	agentUpdateCmd.Flags().StringSlice("public-to-member", nil, "public_to: allow the given member user id(s) to invoke this agent. Repeatable.")
 	agentUpdateCmd.Flags().String("status", "", "New status")
-	agentUpdateCmd.Flags().Int32("max-concurrent-tasks", 0, "New max concurrent tasks")
+	agentUpdateCmd.Flags().Int32("max-concurrent-tasks", 0, "New max concurrent tasks (1-50)")
 	agentUpdateCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// agent archive
@@ -275,7 +284,12 @@ func newAPIClient(cmd *cobra.Command) (*cli.APIClient, error) {
 	return client, nil
 }
 
-func resolveServerURL(cmd *cobra.Command) string {
+const (
+	defaultCloudServerURL = "https://api.multica.ai"
+	defaultCloudAppURL    = "https://multica.ai"
+)
+
+func tryResolveServerURL(cmd *cobra.Command) string {
 	val := cli.FlagOrEnv(cmd, "server-url", "MULTICA_SERVER_URL", "")
 	if val != "" {
 		return normalizeAPIBaseURL(val)
@@ -285,9 +299,23 @@ func resolveServerURL(cmd *cobra.Command) string {
 	if err == nil && cfg.ServerURL != "" {
 		return normalizeAPIBaseURL(cfg.ServerURL)
 	}
+	return ""
+}
+
+func resolveServerURL(cmd *cobra.Command) string {
+	if val := tryResolveServerURL(cmd); val != "" {
+		return val
+	}
 	fmt.Fprintln(os.Stderr, "No server configured. Run 'multica setup' first.")
 	os.Exit(1)
 	return "" // unreachable
+}
+
+func resolveLoginTokenServerURL(cmd *cobra.Command) string {
+	if val := tryResolveServerURL(cmd); val != "" {
+		return val
+	}
+	return defaultCloudServerURL
 }
 
 func normalizeAPIBaseURL(raw string) string {
@@ -471,6 +499,38 @@ func runAgentGet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// applyAgentPermissionFlags translates the invocation-permission flags
+// (--permission-mode / --public-to-workspace / --public-to-member) into the
+// permission_mode + invocation_targets request fields (MUL-3963). When none of
+// the flags are set it is a no-op, so the legacy --visibility handling still
+// drives the request. When any public-to-* flag is present without an explicit
+// --permission-mode, the mode defaults to public_to.
+func applyAgentPermissionFlags(cmd *cobra.Command, body map[string]any) {
+	hasMode := cmd.Flags().Changed("permission-mode")
+	hasWorkspace := cmd.Flags().Changed("public-to-workspace")
+	hasMembers := cmd.Flags().Changed("public-to-member")
+	if !hasMode && !hasWorkspace && !hasMembers {
+		return
+	}
+
+	mode := "public_to"
+	if hasMode {
+		mode, _ = cmd.Flags().GetString("permission-mode")
+	}
+	body["permission_mode"] = mode
+
+	targets := []map[string]any{}
+	if on, _ := cmd.Flags().GetBool("public-to-workspace"); on {
+		targets = append(targets, map[string]any{"target_type": "workspace"})
+	}
+	if members, _ := cmd.Flags().GetStringSlice("public-to-member"); len(members) > 0 {
+		for _, m := range members {
+			targets = append(targets, map[string]any{"target_type": "member", "target_id": m})
+		}
+	}
+	body["invocation_targets"] = targets
+}
+
 func runAgentCreate(cmd *cobra.Command, _ []string) error {
 	client, err := newAPIClient(cmd)
 	if err != nil {
@@ -534,12 +594,20 @@ func runAgentCreate(cmd *cobra.Command, _ []string) error {
 		v, _ := cmd.Flags().GetString("thinking-level")
 		body["thinking_level"] = v
 	}
+	if cmd.Flags().Changed("service-tier") {
+		v, _ := cmd.Flags().GetString("service-tier")
+		body["service_tier"] = v
+	}
 	if cmd.Flags().Changed("visibility") {
 		v, _ := cmd.Flags().GetString("visibility")
 		body["visibility"] = v
 	}
+	applyAgentPermissionFlags(cmd, body)
 	if cmd.Flags().Changed("max-concurrent-tasks") {
 		v, _ := cmd.Flags().GetInt32("max-concurrent-tasks")
+		if err := validateAgentMaxConcurrentTasksFlag(v); err != nil {
+			return err
+		}
 		body["max_concurrent_tasks"] = v
 	}
 
@@ -610,16 +678,24 @@ func runAgentUpdate(cmd *cobra.Command, args []string) error {
 		v, _ := cmd.Flags().GetString("thinking-level")
 		body["thinking_level"] = v
 	}
+	if cmd.Flags().Changed("service-tier") {
+		v, _ := cmd.Flags().GetString("service-tier")
+		body["service_tier"] = v
+	}
 	if cmd.Flags().Changed("visibility") {
 		v, _ := cmd.Flags().GetString("visibility")
 		body["visibility"] = v
 	}
+	applyAgentPermissionFlags(cmd, body)
 	if cmd.Flags().Changed("status") {
 		v, _ := cmd.Flags().GetString("status")
 		body["status"] = v
 	}
 	if cmd.Flags().Changed("max-concurrent-tasks") {
 		v, _ := cmd.Flags().GetInt32("max-concurrent-tasks")
+		if err := validateAgentMaxConcurrentTasksFlag(v); err != nil {
+			return err
+		}
 		body["max_concurrent_tasks"] = v
 	}
 	if mc, ok, err := resolveMcpConfig(cmd); err != nil {
@@ -629,7 +705,7 @@ func runAgentUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(body) == 0 {
-		return fmt.Errorf("no fields to update; use --name, --description, --instructions, --runtime-id, --runtime-config, --model, --thinking-level, --custom-args, --mcp-config, --visibility, --status, or --max-concurrent-tasks (env vars now live behind `multica agent env set <id>`)")
+		return fmt.Errorf("no fields to update; use --name, --description, --instructions, --runtime-id, --runtime-config, --model, --thinking-level, --service-tier, --custom-args, --mcp-config, --visibility, --status, or --max-concurrent-tasks (env vars now live behind `multica agent env set <id>`)")
 	}
 
 	ctx, cancel := cli.APIContext(context.Background())

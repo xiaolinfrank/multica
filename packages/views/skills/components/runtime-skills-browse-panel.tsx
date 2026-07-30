@@ -198,6 +198,10 @@ export function RuntimeSkillsBrowsePanel() {
           </label>
           <div className="flex items-center gap-2">
             <Select
+              items={localRuntimes.map((r) => ({
+                value: r.id,
+                label: runtimeLabel(r),
+              }))}
               value={selectedRuntimeId}
               onValueChange={(v) => v && setSelectedRuntimeId(v)}
             >

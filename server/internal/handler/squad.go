@@ -58,14 +58,14 @@ type SquadMemberResponse struct {
 
 // ── Converters ──────────────────────────────────────────────────────────────
 
-func squadToResponse(s db.Squad) SquadResponse {
+func (h *Handler) squadToResponse(s db.Squad) SquadResponse {
 	return SquadResponse{
 		ID:            uuidToString(s.ID),
 		WorkspaceID:   uuidToString(s.WorkspaceID),
 		Name:          s.Name,
 		Description:   s.Description,
 		Instructions:  s.Instructions,
-		AvatarURL:     textToPtr(s.AvatarUrl),
+		AvatarURL:     h.resolveAvatarURLPtr(textToPtr(s.AvatarUrl)),
 		LeaderID:      uuidToString(s.LeaderID),
 		CreatorID:     uuidToString(s.CreatorID),
 		CreatedAt:     timestampToString(s.CreatedAt),
@@ -109,6 +109,36 @@ func applySquadMemberSummary(resp *SquadResponse, summary *squadMemberSummary) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+// canManageSquad reports whether the member may mutate the squad. Workspace
+// owner/admin manage every squad; a regular member manages only the squads
+// they created. Squads stay creator-scoped for management while remaining
+// visible workspace-wide (ListSquads is unfiltered). Mirrors the front-end
+// per-squad `canManage` gate so the UI and API agree on who can rename / add
+// members / archive (MUL-4223).
+func canManageSquad(member db.Member, squad db.Squad) bool {
+	if roleAllowed(member.Role, "owner", "admin") {
+		return true
+	}
+	return uuidToString(squad.CreatorID) == uuidToString(member.UserID)
+}
+
+// memberCanWireAgent reports whether the acting member may attach the given
+// agent to a squad (as leader or worker). Workspace owner/admin may wire any
+// workspace agent — their management surface is unchanged. A regular member
+// (a creator managing their own squad) may only wire agents they can
+// @-trigger: canInvokeAgent judged as the member themselves, so public_to
+// agents on their allow-list and their own private agents pass, while other
+// members' private / non-allow-listed agents are rejected. This stops a
+// creator from smuggling an agent they cannot invoke into a squad and reaching
+// it through squad routing (MUL-4223).
+func (h *Handler) memberCanWireAgent(ctx context.Context, member db.Member, agent db.Agent, workspaceID string) bool {
+	if roleAllowed(member.Role, "owner", "admin") {
+		return true
+	}
+	uid := uuidToString(member.UserID)
+	return h.canInvokeAgent(ctx, agent, "member", uid, uid, workspaceID)
+}
+
 // loadSquadInWorkspace loads a squad scoped to the current workspace.
 func (h *Handler) loadSquadInWorkspace(w http.ResponseWriter, r *http.Request) (db.Squad, string, bool) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
@@ -145,7 +175,7 @@ func (h *Handler) loadSquadMemberSummary(ctx context.Context, squadID pgtype.UUI
 }
 
 func (h *Handler) squadToResponseWithPreview(ctx context.Context, squad db.Squad) (SquadResponse, error) {
-	resp := squadToResponse(squad)
+	resp := h.squadToResponse(squad)
 	summary, err := h.loadSquadMemberSummary(ctx, squad.ID)
 	if err != nil {
 		return resp, err
@@ -186,7 +216,7 @@ func (h *Handler) ListSquads(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]SquadResponse, len(squads))
 	for i, s := range squads {
-		resp[i] = squadToResponse(s)
+		resp[i] = h.squadToResponse(s)
 		applySquadMemberSummary(&resp[i], summaries[uuidToString(s.ID)])
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -194,7 +224,10 @@ func (h *Handler) ListSquads(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateSquad(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	// Any workspace member can create a squad and becomes its creator
+	// (CreatorID below). This aligns squads with agents/projects, which are
+	// also member-creatable; management stays creator-scoped (MUL-4223).
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
 	if !ok {
 		return
 	}
@@ -228,7 +261,7 @@ func (h *Handler) CreateSquad(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate leader is an agent in this workspace.
-	_, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
+	leaderAgent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
 		ID:          leaderUUID,
 		WorkspaceID: wsUUID,
 	})
@@ -236,10 +269,20 @@ func (h *Handler) CreateSquad(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "leader must be a valid agent in this workspace")
 		return
 	}
+	// A non-admin creator may only lead their squad with an agent they can
+	// @-trigger; admins may wire any workspace agent (MUL-4223).
+	if !h.memberCanWireAgent(r.Context(), member, leaderAgent, workspaceID) {
+		writeError(w, http.StatusForbidden, "you can only use an agent you have access to as leader")
+		return
+	}
 
 	avatarURL := pgtype.Text{}
 	if req.AvatarURL != nil {
-		avatarURL = pgtype.Text{String: *req.AvatarURL, Valid: true}
+		accepted, ok := h.acceptAvatarURL(w, r, *req.AvatarURL, "")
+		if !ok {
+			return
+		}
+		avatarURL = pgtype.Text{String: accepted, Valid: true}
 	}
 
 	squad, err := h.Queries.CreateSquad(r.Context(), db.CreateSquadParams{
@@ -293,12 +336,17 @@ func (h *Handler) GetSquad(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
 		return
 	}
 
 	squad, _, ok := h.loadSquadInWorkspace(w, r)
 	if !ok {
+		return
+	}
+	if !canManageSquad(member, squad) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
@@ -329,7 +377,11 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 		params.Instructions = pgtype.Text{String: *req.Instructions, Valid: true}
 	}
 	if req.AvatarURL != nil {
-		params.AvatarUrl = pgtype.Text{String: *req.AvatarURL, Valid: true}
+		accepted, ok := h.acceptAvatarURL(w, r, *req.AvatarURL, squad.AvatarUrl.String)
+		if !ok {
+			return
+		}
+		params.AvatarUrl = pgtype.Text{String: accepted, Valid: true}
 	}
 	if req.LeaderID != nil {
 		lid, ok := parseUUIDOrBadRequest(w, *req.LeaderID, "leader_id")
@@ -337,10 +389,16 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Validate new leader is an agent in workspace.
-		if _, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
+		newLeader, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
 			ID: lid, WorkspaceID: wsUUID,
-		}); err != nil {
+		})
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "leader must be a valid agent in this workspace")
+			return
+		}
+		// A non-admin creator may only promote an agent they can @-trigger.
+		if !h.memberCanWireAgent(r.Context(), member, newLeader, workspaceID) {
+			writeError(w, http.StatusForbidden, "you can only use an agent you have access to as leader")
 			return
 		}
 		// Ensure new leader is a squad member; auto-add if not.
@@ -372,12 +430,17 @@ func (h *Handler) UpdateSquad(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteSquad(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
 		return
 	}
 
 	squad, _, ok := h.loadSquadInWorkspace(w, r)
 	if !ok {
+		return
+	}
+	if !canManageSquad(member, squad) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
 
@@ -634,12 +697,17 @@ func (h *Handler) ListSquadMemberStatus(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) AddSquadMember(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
 		return
 	}
 
 	squad, _, ok := h.loadSquadInWorkspace(w, r)
 	if !ok {
+		return
+	}
+	if !canManageSquad(member, squad) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
@@ -672,10 +740,18 @@ func (h *Handler) AddSquadMember(w http.ResponseWriter, r *http.Request) {
 
 	// Validate the member belongs to this workspace.
 	if req.MemberType == "agent" {
-		if _, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
+		agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
 			ID: memberUUID, WorkspaceID: wsUUID,
-		}); err != nil {
+		})
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "agent not found in this workspace")
+			return
+		}
+		// A non-admin creator may only add agents they can @-trigger (public
+		// or their own / allow-listed agents); admins may add any workspace
+		// agent (MUL-4223).
+		if !h.memberCanWireAgent(r.Context(), member, agent, workspaceID) {
+			writeError(w, http.StatusForbidden, "you can only add an agent you have access to")
 			return
 		}
 	} else {
@@ -710,12 +786,17 @@ func (h *Handler) AddSquadMember(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RemoveSquadMember(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
 		return
 	}
 
 	squad, _, ok := h.loadSquadInWorkspace(w, r)
 	if !ok {
+		return
+	}
+	if !canManageSquad(member, squad) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
 
@@ -761,12 +842,17 @@ func (h *Handler) RemoveSquadMember(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateSquadMemberRole(w http.ResponseWriter, r *http.Request) {
 	workspaceID := workspaceIDFromURL(r, "workspaceId")
-	if _, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin"); !ok {
+	member, ok := h.requireWorkspaceMember(w, r, workspaceID, "workspace not found")
+	if !ok {
 		return
 	}
 
 	squad, _, ok := h.loadSquadInWorkspace(w, r)
 	if !ok {
+		return
+	}
+	if !canManageSquad(member, squad) {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
 
@@ -904,22 +990,23 @@ func (h *Handler) RecordSquadLeaderEvaluation(w http.ResponseWriter, r *http.Req
 
 // ── Squad Trigger Logic ─────────────────────────────────────────────────────
 
-// lastTaskWasLeader returns true when the agent's most recent task on the
-// issue was enqueued in the squad-leader role. Used by the self-trigger
-// guards to tell apart a comment posted while the agent was acting as
-// leader (skip) from one posted while it was acting as a worker (do not
-// skip). When the agent has no prior task on this issue the role is
-// undetermined and we treat it as non-leader so a brand-new external
-// trigger can still reach the leader.
-func (h *Handler) lastTaskWasLeader(ctx context.Context, issueID, agentID pgtype.UUID) bool {
-	flag, err := h.Queries.GetLatestTaskIsLeaderForIssueAndAgent(ctx, db.GetLatestTaskIsLeaderForIssueAndAgentParams{
+// shouldSuppressSquadLeaderSelfTrigger reports whether a squad leader's own
+// comment should be blocked from re-enqueuing that same leader. The only
+// leader-authored non-leader task allowed to wake the assigned leader is a
+// same-squad worker task; generic agent tasks such as direct mentions and
+// thread-parent replies are not worker-role proof and must not self-trigger.
+func (h *Handler) shouldSuppressSquadLeaderSelfTrigger(ctx context.Context, issueID, leaderID, squadID pgtype.UUID) bool {
+	latest, err := h.Queries.GetLatestTaskRoleForIssueAndAgent(ctx, db.GetLatestTaskRoleForIssueAndAgentParams{
 		IssueID: issueID,
-		AgentID: agentID,
+		AgentID: leaderID,
 	})
 	if err != nil {
 		return false
 	}
-	return flag
+	if latest.IsLeaderTask {
+		return true
+	}
+	return !latest.SquadID.Valid || uuidToString(latest.SquadID) != uuidToString(squadID)
 }
 
 // commentMentionsAnyone returns true when the comment body contains at least
@@ -960,13 +1047,31 @@ func (h *Handler) enqueueSquadLeaderTask(ctx context.Context, issue db.Issue, tr
 		return false
 	}
 
-	if !h.canEnqueueSquadLeader(ctx, squad.LeaderID, authorType, authorID, uuidToString(issue.WorkspaceID)) {
+	// The gate must judge the SAME top-of-chain human the enqueue path will
+	// persist on the leader task row, or it drifts: an agent-created issue that
+	// correctly inherits its originator (MUL-4305) would still be denied here
+	// if the gate used an empty originator. Member authors are their own
+	// originator; for agent/system-triggered assigns we resolve the originator
+	// exactly like EnqueueTaskForSquadLeader* does (via the issue's origin
+	// link). triggerCommentID is always empty on the assign/promote path, so we
+	// pass an invalid UUID to match. A still-unresolved originator leaves
+	// leaderOriginator empty, which correctly fails closed for member/team
+	// targets while a workspace target still admits the agent principal.
+	leaderOriginator := ""
+	if authorType == "member" {
+		leaderOriginator = authorID
+	} else {
+		leaderOriginator = uuidToString(h.TaskService.OriginatorForIssueTask(ctx, issue, pgtype.UUID{}))
+	}
+	if !h.canEnqueueSquadLeader(ctx, squad.LeaderID, authorType, authorID, leaderOriginator, uuidToString(issue.WorkspaceID)) {
 		return false
 	}
 
 	hasPending, err := h.Queries.HasPendingTaskForIssueAndAgent(ctx, db.HasPendingTaskForIssueAndAgentParams{
 		IssueID: issue.ID,
 		AgentID: squad.LeaderID,
+		// Key dedup on the reviewed head (TEN-356).
+		HeadSha: h.TaskService.ResolveIssueReviewSHAParam(ctx, issue.ID),
 	})
 	if err != nil || hasPending {
 		return false
@@ -975,7 +1080,10 @@ func (h *Handler) enqueueSquadLeaderTask(ctx context.Context, issue db.Issue, tr
 	// triggerCommentID is always empty on the assign/promote path; the handoff
 	// note rides its own task column, never trigger_comment_id.
 	_ = triggerCommentID
-	if _, err := h.TaskService.EnqueueTaskForSquadLeaderWithHandoff(ctx, issue, squad.LeaderID, squad.ID, handoffNote); err != nil {
+	// The member who performed the assign/promote is the accountable human for the
+	// leader run (MUL-4302 §4) — the same principal the gate above judged. An agent
+	// author is not a human, so only a member actor is threaded.
+	if _, err := h.TaskService.EnqueueTaskForSquadLeaderWithHandoff(ctx, issue, squad.LeaderID, squad.ID, handoffNote, memberActorUserID(authorType, authorID)); err != nil {
 		slog.Warn("enqueue squad leader task failed",
 			"issue_id", uuidToString(issue.ID),
 			"squad_id", uuidToString(squad.ID),

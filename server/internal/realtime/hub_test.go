@@ -83,6 +83,55 @@ func connectWS(t *testing.T, server *httptest.Server) *websocket.Conn {
 	return conn
 }
 
+type failingScopeAuthorizer struct{}
+
+func (failingScopeAuthorizer) AuthorizeScope(context.Context, string, string, string, string) (bool, error) {
+	return false, errors.New("database unavailable")
+}
+
+func TestClientHandleSubscribeReportsLookupFailure(t *testing.T) {
+	hub := NewHub()
+	hub.SetAuthorizer(failingScopeAuthorizer{})
+	client := &Client{
+		hub:           hub,
+		send:          make(chan []byte, 1),
+		userID:        testUserID,
+		workspaceID:   testWorkspaceID,
+		subscriptions: make(map[scopeKey]bool),
+	}
+
+	client.handleSubscribe(ScopeTask, "task-id")
+
+	select {
+	case raw := <-client.send:
+		var frame struct {
+			Type    string            `json:"type"`
+			Payload map[string]string `json:"payload"`
+		}
+		if err := json.Unmarshal(raw, &frame); err != nil {
+			t.Fatalf("unmarshal subscribe error: %v", err)
+		}
+		if frame.Type != "subscribe_error" {
+			t.Fatalf("frame type = %q, want subscribe_error", frame.Type)
+		}
+		if got := frame.Payload["error"]; got != "lookup_failed" {
+			t.Fatalf("error = %q, want lookup_failed", got)
+		}
+		if got := frame.Payload["scope"]; got != ScopeTask {
+			t.Fatalf("scope = %q, want %q", got, ScopeTask)
+		}
+		if got := frame.Payload["id"]; got != "task-id" {
+			t.Fatalf("id = %q, want task-id", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for subscribe_error")
+	}
+
+	if len(client.subscriptions) != 0 {
+		t.Fatalf("lookup failure must not subscribe client, got %d subscriptions", len(client.subscriptions))
+	}
+}
+
 // totalClients counts all currently registered clients.
 func totalClients(hub *Hub) int {
 	hub.mu.RLock()
@@ -394,7 +443,7 @@ func TestCheckOrigin(t *testing.T) {
 		{"X-Forwarded-Host from trusted CIDR range matches origin", "internal.proxy", "https://multica.ai", "multica.ai", "10.5.6.7:5678", true},
 		{"X-Forwarded-Host from trusted IPv6 proxy matches origin", "internal.proxy", "https://multica.ai", "multica.ai", "[::1]:5678", true},
 		{"X-Forwarded-Host comma list uses first (client-facing) value", "internal.proxy", "https://multica.ai", "multica.ai, proxy.internal", "127.0.0.1:5678", true},
-		{"X-Forwarded-Host comma list ignores trailing values", "internal.proxy", "https://app.multica.ai", "proxy.internal, app.multica.ai", "127.0.0.1:5678", false},
+		{"X-Forwarded-Host comma list ignores trailing values", "internal.proxy", "https://staging.multica.ai", "proxy.internal, staging.multica.ai", "127.0.0.1:5678", false},
 	}
 
 	for _, tc := range cases {

@@ -43,6 +43,7 @@ import {
 } from "./mention-recency";
 import { matchesPinyin } from "./pinyin-match";
 import { createSuggestionPopupRender, isPickerAcceptKey } from "./suggestion-popup";
+import { isTriggerArmedAt } from "./suggestion-trigger-arming";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -352,9 +353,15 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
       <div
         className={cn(
           "flex flex-col overflow-y-auto overscroll-contain border bg-popover py-1",
+          // Height budget: clamp to whichever is smaller — the design max or the
+          // viewport-aware `--suggestion-available-height` published by the
+          // floating-ui `size` middleware (suggestion-popup.tsx). The var falls
+          // back to the design max when the popup renders outside that
+          // controller. This is the single height authority; do not add a second
+          // fixed max-height above it or the list can overflow the viewport.
           contextLayout
-            ? "max-h-[420px] w-96 rounded-lg shadow-xl"
-            : "max-h-[300px] w-72 rounded-md shadow-md",
+            ? "max-h-[min(420px,var(--suggestion-available-height,420px))] w-96 rounded-lg shadow-xl"
+            : "max-h-[min(300px,var(--suggestion-available-height,300px))] w-72 rounded-md shadow-md",
         )}
       >
         {groups.map((group) => (
@@ -463,7 +470,7 @@ function MentionRow({
       <ActorAvatar
         actorType={item.type === "all" ? "member" : item.type}
         actorId={item.id}
-        size={20}
+        size="sm"
         showStatusDot
       />
       <span className="truncate font-medium">
@@ -610,6 +617,11 @@ export function createMentionSuggestion(
 
   return {
     pluginKey,
+    allowSpaces: true,
+    // Only open over an `@` the user actually typed. Tiptap matches on document
+    // content alone, so without this a pasted, dropped, undone or server-loaded
+    // `@` opens the picker just as readily (MUL-5429).
+    shouldShow: ({ editor, range }) => isTriggerArmedAt(editor, range.from),
     items: ({ query }) => {
       if (options.mode === "context") {
         const normalizedQuery = query.trim();

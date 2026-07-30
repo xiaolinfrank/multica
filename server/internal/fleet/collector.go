@@ -40,12 +40,12 @@ type DeviceStatus struct {
 	// (root-only; fleet nodes have NOPASSWD sudo), network from a netstat
 	// delta. All best-effort: where a sensor or sudo is unavailable the field
 	// stays zero / empty (e.g. the coordinator without NOPASSWD powermetrics).
-	Chip            string  `json:"chip"`              // e.g. "Apple M4"
-	GPUPercent      float64 `json:"gpu_percent"`       // GPU active residency
-	SystemPowerW    float64 `json:"system_power_w"`    // SoC total power (CPU+GPU+ANE), watts
-	ThermalPressure string  `json:"thermal_pressure"`  // Nominal|Fair|Serious|Critical|""
-	NetRxBytesSec   float64 `json:"net_rx_bytes_sec"`  // en0 receive throughput
-	NetTxBytesSec   float64 `json:"net_tx_bytes_sec"`  // en0 transmit throughput
+	Chip            string  `json:"chip"`             // e.g. "Apple M4"
+	GPUPercent      float64 `json:"gpu_percent"`      // GPU active residency
+	SystemPowerW    float64 `json:"system_power_w"`   // SoC total power (CPU+GPU+ANE), watts
+	ThermalPressure string  `json:"thermal_pressure"` // Nominal|Fair|Serious|Critical|""
+	NetRxBytesSec   float64 `json:"net_rx_bytes_sec"` // en0 receive throughput
+	NetTxBytesSec   float64 `json:"net_tx_bytes_sec"` // en0 transmit throughput
 
 	// Cluster control-plane overlay. These are populated by the handler from
 	// the agent_runtime table (correlated to this device by daemon device
