@@ -45,7 +45,7 @@ import (
 //     MUL-2923 / #3658) and effectively become a no-op.
 //
 // The test connects to whatever DATABASE_URL points at (default
-// postgres://multica:multica@localhost:5432/multica?sslmode=disable),
+// postgres://multica:multica@localhost:5432/multica_test?sslmode=disable),
 // matching the harness pattern already used in
 // server/internal/handler/handler_test.go and
 // server/internal/metrics/business_sampler_pgsleep_test.go. If
@@ -76,7 +76,7 @@ func openTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://multica:multica@localhost:5432/multica_test?sslmode=disable"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -351,7 +351,7 @@ func TestRunMigrationsAdvisoryLockSerializes(t *testing.T) {
 	// prove serialization.)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://multica:multica@localhost:5432/multica_test?sslmode=disable"
 	}
 	holder, err := pgx.Connect(ctx, dbURL)
 	if err != nil {
@@ -414,7 +414,7 @@ func TestRunMigrationsAdvisoryLockSerializes(t *testing.T) {
 func TestRunMigrationsConcurrentMixedPoolStress(t *testing.T) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://multica:multica@localhost:5432/multica_test?sslmode=disable"
 	}
 	cfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {

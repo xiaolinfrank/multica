@@ -324,11 +324,17 @@ build: ## Build the server, CLI, and migrate binaries into server/bin
 	cd server && go build -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)" -o bin/multica ./cmd/multica
 	cd server && go build -o bin/migrate ./cmd/migrate
 
-test: ## Run Go tests after ensuring the target DB exists and migrations are applied
+test: ## Run Go tests against a dedicated <db>_test database
 	$(REQUIRE_ENV)
 	@bash scripts/ensure-postgres.sh "$(ENV_FILE)"
-	cd server && go run ./cmd/migrate up
-	bash scripts/test-go.sh --race
+	@# Tests create fixtures and this target migrates first, so both must hit a
+	@# throwaway database — pointed at DATABASE_URL they would mutate the real
+	@# one, which on a self-hosted deployment is the live database. Override the
+	@# target with TEST_DATABASE_URL.
+	@TEST_DB_URL="$$(bash scripts/ensure-test-db.sh '$(ENV_FILE)')" && \
+	  echo "==> Test database: $${TEST_DB_URL##*/}" && \
+	  (cd server && DATABASE_URL="$$TEST_DB_URL" go run ./cmd/migrate up) && \
+	  DATABASE_URL="$$TEST_DB_URL" bash scripts/test-go.sh --race
 
 # Database
 ##@ Database

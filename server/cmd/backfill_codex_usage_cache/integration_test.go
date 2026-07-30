@@ -20,7 +20,7 @@ import (
 func TestExecuteBackfillUpdatesOnlyEligibleCodexRowsAndRebuildsRollup(t *testing.T) {
 	adminURL := os.Getenv("DATABASE_URL")
 	if adminURL == "" {
-		adminURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		adminURL = "postgres://multica:multica@localhost:5432/multica_test?sslmode=disable"
 	}
 
 	ctx := context.Background()

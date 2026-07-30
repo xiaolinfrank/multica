@@ -39,7 +39,7 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://multica:multica@localhost:5432/multica?sslmode=disable"
+		dbURL = "postgres://multica:multica@localhost:5432/multica_test?sslmode=disable"
 	}
 
 	pool, err := pgxpool.New(ctx, dbURL)
@@ -2620,6 +2620,14 @@ func TestSendCodeDbError(t *testing.T) {
 
 func TestSendCodeRateLimit(t *testing.T) {
 	const email = "ratelimit-test@multica.ai"
+	// The resend cooldown is deliberately skipped while a fixed dev
+	// verification code is active — no email is sent then, so the cooldown is
+	// only friction (see devVerificationCodeActive). This test is about the
+	// cooldown itself, so pin the env instead of inheriting whatever .env sets;
+	// BayClaw deployments set MULTICA_DEV_VERIFICATION_CODE and would otherwise
+	// make it fail whenever tests run with the env file loaded.
+	t.Setenv("APP_ENV", "")
+	t.Setenv(devVerificationCodeEnv, "")
 	t.Cleanup(func() {
 		testPool.Exec(context.Background(), `DELETE FROM verification_code WHERE email = $1`, email)
 	})
