@@ -48,10 +48,13 @@ test.describe("Issues", () => {
     await api.createIssue("E2E Board View " + Date.now());
     await reloadAppPage(page);
 
-    // Board columns should be visible
-    await expect(page.locator("text=Backlog")).toBeVisible();
-    await expect(page.locator("text=Todo")).toBeVisible();
-    await expect(page.locator("text=In Progress")).toBeVisible();
+    // Board columns should be visible. Exact matches: the Backlog column also
+    // carries a hint ("…move one to Todo to start it.") that a substring
+    // locator resolves to alongside the Todo column header, which trips
+    // Playwright's strict mode.
+    await expect(page.getByText("Backlog", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Todo", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("In Progress", { exact: true }).first()).toBeVisible();
   });
 
   test("can switch from board to list view", async ({ page }) => {
