@@ -11,7 +11,6 @@ import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceSeen } from "@multica/views/workspace/use-workspace-seen";
 import { WelcomeAfterOnboarding } from "@multica/views/workspace/welcome-after-onboarding";
 import { WorkspacePresencePrefetch } from "@multica/views/layout";
-import { SourceBackfillModal } from "@multica/views/onboarding";
 import { useTabStore } from "@/stores/tab-store";
 import { useWindowOverlayStore } from "@/stores/window-overlay-store";
 
@@ -106,13 +105,12 @@ export function WorkspaceRouteLayout() {
        *  Modal — unless the store signal has already been consumed, in
        *  which case the hook renders null. */}
       {!overlayActive && <WelcomeAfterOnboarding />}
-      {/* Source-attribution backfill: same Dialog the web shell mounts
-       *  inside DashboardLayout. Desktop's WorkspaceRouteLayout doesn't
-       *  wrap DashboardLayout, so the modal has to be wired in directly
-       *  here. Same overlay-suppression rule as WelcomeAfterOnboarding —
-       *  a portal-rendered Dialog at z-50 would otherwise sit above an
-       *  active pre-workspace overlay. */}
-      {!overlayActive && <SourceBackfillModal />}
+      {/* SourceBackfillModal ("How did you hear about us?") is deliberately
+       *  NOT mounted. BayClaw is an internal platform with no acquisition
+       *  channels worth surveying, so the web shell drops it from
+       *  DashboardLayout too — desktop has to opt out separately because
+       *  WorkspaceRouteLayout does not wrap DashboardLayout. Re-enabling
+       *  means mounting it in both places, not just here. */}
     </WorkspaceSlugProvider>
   );
 }

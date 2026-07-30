@@ -73,10 +73,9 @@ vi.mock("@multica/views/layout", () => ({
   WorkspacePresencePrefetch: () => null,
 }));
 
-// The point of this whole test: assert the desktop layout mounts the
-// SourceBackfillModal. We stub the real component with a marker that
-// renders only when the layout actually rendered it (and not e.g.
-// suppressed by overlayActive).
+// The point of this whole test: assert the desktop layout does NOT mount the
+// SourceBackfillModal. The stub increments a counter when rendered, so any
+// re-mount of the survey — here or via a shared layout — fails the suite.
 vi.mock("@multica/views/onboarding", () => ({
   SourceBackfillModal: () => {
     state.modalRenders += 1;
@@ -132,13 +131,19 @@ beforeEach(() => {
 });
 
 describe("WorkspaceRouteLayout", () => {
-  it("mounts SourceBackfillModal when no WindowOverlay is active", () => {
+  // BayClaw is an internal platform with no acquisition channels worth
+  // surveying, so the "How did you hear about us?" prompt is dropped on both
+  // shells. Web opts out by not mounting it in DashboardLayout; desktop has to
+  // opt out here separately because WorkspaceRouteLayout does not wrap
+  // DashboardLayout — which is exactly how it stayed mounted on desktop after
+  // the web side removed it.
+  it("never mounts SourceBackfillModal", () => {
     const { queryByTestId } = renderLayout();
-    expect(queryByTestId(state.modalAriaLabel)).not.toBeNull();
-    expect(state.modalRenders).toBeGreaterThan(0);
+    expect(queryByTestId(state.modalAriaLabel)).toBeNull();
+    expect(state.modalRenders).toBe(0);
   });
 
-  it("suppresses SourceBackfillModal while a WindowOverlay is active", () => {
+  it("still does not mount it while a WindowOverlay is active", () => {
     state.overlay = { type: "new-workspace" };
     const { queryByTestId } = renderLayout();
     expect(queryByTestId(state.modalAriaLabel)).toBeNull();
