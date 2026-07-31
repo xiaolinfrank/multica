@@ -161,6 +161,49 @@ func isSixDigitCode(code string) bool {
 	return true
 }
 
+const personalVerificationCodesEnv = "MULTICA_PERSONAL_CODES"
+
+// personalVerificationCodeForEmail returns the configured personal fixed code
+// for email from MULTICA_PERSONAL_CODES ("email:code,email:code"), or "" when
+// nothing matches. Personal codes are a private-deployment convenience: like
+// the dev code they bypass the single-use verification_code lifecycle so a
+// user can log in repeatedly with the same code, and they are disabled in
+// production. Only the first matching entry for the email is honored.
+func personalVerificationCodeForEmail(email string) string {
+	if isProductionEnv() {
+		return ""
+	}
+	raw := strings.TrimSpace(os.Getenv(personalVerificationCodesEnv))
+	if raw == "" {
+		return ""
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, pair := range strings.Split(raw, ",") {
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		entryEmail := strings.ToLower(strings.TrimSpace(parts[0]))
+		entryCode := strings.TrimSpace(parts[1])
+		if entryEmail == "" || entryEmail != email || !isSixDigitCode(entryCode) {
+			continue
+		}
+		return entryCode
+	}
+	return ""
+}
+
+// isPersonalVerificationCode reports whether code is the configured personal
+// fixed code for email. Constant-time compared so timing can't reveal which
+// emails have a personal code configured.
+func isPersonalVerificationCode(email, code string) bool {
+	want := personalVerificationCodeForEmail(email)
+	if want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(code), []byte(want)) == 1
+}
+
 func (h *Handler) issueJWT(user db.User) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":   uuidToString(user.ID),
@@ -380,12 +423,13 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The fixed dev verification code authenticates without a stored code
-	// row. Tying it to the row's lifecycle (unused, 10-minute TTL, attempt
-	// cap) produced spurious "invalid or expired code" failures on re-login
-	// — e.g. after the previous login consumed the row, or after sitting on
+	// The fixed dev verification code, and any per-email personal code from
+	// MULTICA_PERSONAL_CODES, authenticate without a stored code row. Tying
+	// them to the row's lifecycle (unused, 10-minute TTL, attempt cap)
+	// produced spurious "invalid or expired code" failures on re-login —
+	// e.g. after the previous login consumed the row, or after sitting on
 	// the code step past the TTL. Production never reaches this branch.
-	if !isDevVerificationCode(code) {
+	if !isDevVerificationCode(code) && !isPersonalVerificationCode(email, code) {
 		dbCode, err := h.Queries.GetLatestVerificationCode(r.Context(), email)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid or expired code")
