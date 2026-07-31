@@ -1566,3 +1566,11 @@ SET status = CASE WHEN EXISTS (
     updated_at = now()
 WHERE a.id = $1
 RETURNING *;
+
+-- name: RebindClusterAgentRuntime :one
+-- Follows the live runtime row when a cluster generic agent's runtime_id
+-- drifts (daemon_id migration or runtime GC + re-register).
+UPDATE agent
+SET runtime_id = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;

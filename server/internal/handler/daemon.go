@@ -417,6 +417,10 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	var seedRuntimeID pgtype.UUID
 	var seedRuntimeMode string
 	var seedRuntimeProvider string
+	// Shared-runner built-in Claude runtimes collected this registration; each
+	// gets a cluster generic agent ensured after the loop (see
+	// ensureClusterGenericAgent).
+	var clusterCandidates []db.AgentRuntime
 	for _, runtime := range req.Runtimes {
 		provider := normalizeProvider(runtime.Type)
 		if provider == "" {
@@ -587,6 +591,14 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Shared-runner built-in Claude runtimes get a workspace-visible
+		// "集群通用智能体 @ <node>" agent auto-provisioned so every workspace the
+		// shared daemon serves exposes one generic worker per compute node.
+		if h.cfg.EnsureClusterGenericAgent && h.isSharedRunner(r.Context(), registered.OwnerID) &&
+			registered.Provider == seedPreferredProvider && !registered.ProfileID.Valid {
+			clusterCandidates = append(clusterCandidates, registered)
+		}
+
 		// Inserted is false for normal daemon reconnects/upserts, so
 		// runtime_ready is a first-ready-per-runtime-row signal.
 		if inserted {
@@ -708,6 +720,12 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	// seeder is idempotent and skips a workspace that already has squads.
 	if h.cfg.DefaultWorkspaceSeedTemplate != "" && seedRuntimeID.Valid && ownerID.Valid {
 		go h.seedDefaultWorkspaceTeam(wsUUID, seedRuntimeID, seedRuntimeMode, ownerID)
+	}
+
+	// Detached like the seeder above: idempotent and best-effort, so it never
+	// blocks or fails the register response.
+	for _, rt := range clusterCandidates {
+		go h.ensureClusterGenericAgent(rt)
 	}
 
 	h.publish(protocol.EventDaemonRegister, req.WorkspaceID, "system", "", map[string]any{

@@ -118,6 +118,12 @@ type Config struct {
 	// Set via DEFAULT_WORKSPACE_SEED_TEMPLATE (e.g. "biomedical-intel" for the
 	// BayClaw deployment).
 	DefaultWorkspaceSeedTemplate string
+	// EnsureClusterGenericAgent, when true (the default), auto-provisions a
+	// workspace-visible "集群通用智能体 @ <node>" agent for every built-in Claude
+	// runtime a shared-runner account (SHARED_RUNNER_EMAILS) registers, plus a
+	// one-shot startup backfill across existing workspaces. Set
+	// ENSURE_CLUSTER_GENERIC_AGENT=false to manage these agents manually.
+	EnsureClusterGenericAgent bool
 	// AttachmentFrameAncestors are trusted browser origins allowed to embed
 	// attachment preview responses. In production this should mirror the
 	// frontend/CORS origin allowlist so split app/api self-hosted deployments
