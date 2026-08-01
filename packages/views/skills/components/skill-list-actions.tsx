@@ -15,6 +15,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Agent, SkillSummary } from "@multica/core/types";
 import { api } from "@multica/core/api";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { Button } from "@multica/ui/components/ui/button";
@@ -240,6 +242,9 @@ export function AddToAgentDialog({
 
   const skillIds = skills.map((s) => s.id);
   const { mine, others } = partitionAgents(ctx);
+  const pinnedAgentName = useConfigStore(
+    (s) => s.defaultIssueAssigneeAgentName,
+  );
   const count = selectedIds.size;
 
   // Search across both groups by agent name. Filtering is applied per group
@@ -251,7 +256,10 @@ export function AddToAgentDialog({
   const matchesQuery = (a: Agent) =>
     !searching || a.name.toLowerCase().includes(trimmedQuery);
   const filteredMine = mine.filter(matchesQuery);
-  const filteredOthers = others.filter(matchesQuery);
+  const filteredOthers = pinAgentByName(
+    others.filter(matchesQuery),
+    pinnedAgentName,
+  );
   const hasAnyAgent = mine.length + others.length > 0;
   const hasMatch = filteredMine.length + filteredOthers.length > 0;
 

@@ -13,6 +13,8 @@ import {
 } from "../../issues/components/pickers/property-picker";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 import type { Agent } from "@multica/core/types";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { useT } from "../../i18n";
 
 /**
@@ -43,6 +45,7 @@ export function AgentPicker({
   const { t } = useT("chat");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
   const { mine, others } = useMemo(() => {
     const mine: Agent[] = [];
     const others: Agent[] = [];
@@ -57,7 +60,10 @@ export function AgentPicker({
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
   const filteredMine = mine.filter((agent) => matches(agent.name));
-  const filteredOthers = others.filter((agent) => matches(agent.name));
+  const filteredOthers = pinAgentByName(
+    others.filter((agent) => matches(agent.name)),
+    pinnedAgentName,
+  );
 
   const handlePick = (agent: Agent) => {
     onSelect(agent);

@@ -15,7 +15,12 @@ import (
 // "backlog" parks it.
 
 const defaultAssigneeProbeNode = "probe-default-node"
-const defaultAssigneeProbeAgentName = clusterGenericAgentPrefix + defaultAssigneeProbeNode
+
+// defaultAssigneeProbeAgentName is the new-scheme name for the probe node
+// ("通用智能体（probe-default-node）" — neither the API host nor a numbered
+// fleet node, so the generic fallback shape applies).
+var defaultAssigneeProbeAgentName = clusterAgentNameForNode(defaultAssigneeProbeNode)
+
 const defaultAssigneeProbeDeviceInfo = defaultAssigneeProbeNode + " · 1.0.0 (Claude Code)"
 
 func setDefaultIssueAssigneeNode(t *testing.T, node string) {

@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,7 +98,7 @@ func countClusterGenericAgents(t *testing.T, wsID string) int {
 	t.Helper()
 	var n int
 	if err := testPool.QueryRow(context.Background(), `
-		SELECT count(*) FROM agent WHERE workspace_id = $1 AND name LIKE '集群通用智能体%'
+		SELECT count(*) FROM agent WHERE workspace_id = $1 AND name LIKE '通用智能体%'
 	`, wsID).Scan(&n); err != nil {
 		t.Fatalf("count cluster agents: %v", err)
 	}
@@ -125,7 +127,20 @@ func setClusterProbeConfig(t *testing.T, runnerEmail string) {
 
 // --- naming -----------------------------------------------------------------
 
+// toggledLocalSuffix returns host with a trailing ".local" added when absent
+// or removed when present — the alternate mDNS form the daemon may register.
+func toggledLocalSuffix(host string) string {
+	if strings.HasSuffix(host, ".local") {
+		return strings.TrimSuffix(host, ".local")
+	}
+	return host + ".local"
+}
+
 func TestClusterGenericAgentName_StableAcrossRuntimeShapes(t *testing.T) {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		t.Fatalf("os.Hostname: %v", err)
+	}
 	cases := []struct {
 		name string
 		rt   db.AgentRuntime
@@ -137,12 +152,12 @@ func TestClusterGenericAgentName_StableAcrossRuntimeShapes(t *testing.T) {
 				DeviceInfo: "fosun_agent_1 · 2.1.220 (Claude Code)",
 				Name:       "Claude (fosun_agent_1)",
 			},
-			want: "集群通用智能体 @ fosun_agent_1",
+			want: "通用智能体 1",
 		},
 		{
 			name: "bare device info",
 			rt:   db.AgentRuntime{DeviceInfo: "fosun_agent_2", Name: "Claude (fosun_agent_2)"},
-			want: "集群通用智能体 @ fosun_agent_2",
+			want: "通用智能体 2",
 		},
 		{
 			name: "custom name fallback",
@@ -151,12 +166,22 @@ func TestClusterGenericAgentName_StableAcrossRuntimeShapes(t *testing.T) {
 				CustomName: pgtype.Text{String: "node-x", Valid: true},
 				Name:       "Claude (whatever)",
 			},
-			want: "集群通用智能体 @ node-x",
+			want: "通用智能体（node-x）",
 		},
 		{
 			name: "parenthesised name fallback",
 			rt:   db.AgentRuntime{DeviceInfo: "", Name: "Claude (fosun_agent_6)"},
-			want: "集群通用智能体 @ fosun_agent_6",
+			want: "通用智能体 6",
+		},
+		{
+			name: "API host is the primary",
+			rt:   db.AgentRuntime{DeviceInfo: host + " · 2.1.220 (Claude Code)"},
+			want: "通用智能体（主）",
+		},
+		{
+			name: "host matches despite .local drift",
+			rt:   db.AgentRuntime{DeviceInfo: toggledLocalSuffix(host)},
+			want: "通用智能体（主）",
 		},
 	}
 	for _, tc := range cases {
@@ -184,7 +209,7 @@ func TestEnsureClusterGenericAgent_CreatesWorkspaceVisibleAgent(t *testing.T) {
 	rt := clusterProbeRuntime(t, wsID, runtimeID, runnerID, "claude", "probe-node-a · 1.0.0 (Claude Code)")
 	testHandler.ensureClusterGenericAgent(rt)
 
-	const wantName = "集群通用智能体 @ probe-node-a"
+	const wantName = "通用智能体（probe-node-a）"
 	var permMode, vis, boundRuntime, owner string
 	if err := testPool.QueryRow(ctx, `
 		SELECT permission_mode, visibility, runtime_id::text, owner_id::text
@@ -248,7 +273,7 @@ func TestEnsureClusterGenericAgent_RebindsStaleRuntimeID(t *testing.T) {
 	oldRuntimeID := insertClusterProbeRuntime(t, wsID, runnerID, "claude", "probe-node-c-old · 1.0.0 (Claude Code)")
 	newRuntimeID := insertClusterProbeRuntime(t, wsID, runnerID, "claude", "probe-node-c · 1.0.0 (Claude Code)")
 
-	const wantName = "集群通用智能体 @ probe-node-c"
+	const wantName = "通用智能体（probe-node-c）"
 	if _, err := testPool.Exec(ctx, `
 		INSERT INTO agent (workspace_id, name, description, runtime_mode, runtime_config, runtime_id, visibility, permission_mode, max_concurrent_tasks, owner_id)
 		VALUES ($1, $2, '', 'local', '{}'::jsonb, $3, 'workspace', 'public_to', 6, $4)
@@ -273,6 +298,59 @@ func TestEnsureClusterGenericAgent_RebindsStaleRuntimeID(t *testing.T) {
 	}
 }
 
+func TestEnsureClusterGenericAgent_RenamesLegacyName(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	runnerID := insertClusterProbeUser(t, clusterProbePrefix+"-rename-runner@test.local")
+	wsID := insertClusterProbeWorkspace(t, clusterProbePrefix+"-rename")
+	deleteClusterProbeAgents(t, wsID)
+	t.Cleanup(func() { deleteClusterProbeAgents(t, wsID) })
+	runtimeID := insertClusterProbeRuntime(t, wsID, runnerID, "claude", "probe-node-e · 1.0.0 (Claude Code)")
+
+	// Pre-rename agent for the same node, created under the legacy scheme and
+	// bound to a stale runtime — ensure must migrate it in place (rename +
+	// rebind) instead of creating a second agent under the new name.
+	staleRuntimeID := insertClusterProbeRuntime(t, wsID, runnerID, "claude", "probe-node-e-old · 1.0.0 (Claude Code)")
+	const legacyName = "集群通用智能体 @ probe-node-e"
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO agent (workspace_id, name, description, runtime_mode, runtime_config, runtime_id, visibility, permission_mode, max_concurrent_tasks, owner_id)
+		VALUES ($1, $2, '', 'local', '{}'::jsonb, $3, 'workspace', 'public_to', 6, $4)
+	`, wsID, legacyName, staleRuntimeID, runnerID); err != nil {
+		t.Fatalf("insert legacy-named agent: %v", err)
+	}
+
+	rt := clusterProbeRuntime(t, wsID, runtimeID, runnerID, "claude", "probe-node-e · 1.0.0 (Claude Code)")
+	testHandler.ensureClusterGenericAgent(rt)
+
+	if got := countClusterGenericAgents(t, wsID); got != 1 {
+		t.Fatalf("cluster agents = %d, want 1 (rename, not duplicate)", got)
+	}
+	const wantName = "通用智能体（probe-node-e）"
+	var name, bound string
+	if err := testPool.QueryRow(ctx, `
+		SELECT name, runtime_id::text FROM agent WHERE workspace_id = $1 AND name LIKE '通用智能体%'
+	`, wsID).Scan(&name, &bound); err != nil {
+		t.Fatalf("read renamed agent: %v", err)
+	}
+	if name != wantName {
+		t.Fatalf("name = %q, want renamed to %q", name, wantName)
+	}
+	if bound != runtimeID {
+		t.Fatalf("runtime_id = %q, want healed to %q", bound, runtimeID)
+	}
+	var legacyCount int
+	if err := testPool.QueryRow(ctx, `
+		SELECT count(*) FROM agent WHERE workspace_id = $1 AND name = $2
+	`, wsID, legacyName).Scan(&legacyCount); err != nil {
+		t.Fatalf("count legacy names: %v", err)
+	}
+	if legacyCount != 0 {
+		t.Fatalf("legacy-named agent still present after rename")
+	}
+}
+
 func TestEnsureClusterGenericAgent_LeavesUserCreatedSameName(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")
@@ -285,7 +363,7 @@ func TestEnsureClusterGenericAgent_LeavesUserCreatedSameName(t *testing.T) {
 	t.Cleanup(func() { deleteClusterProbeAgents(t, wsID) })
 	runtimeID := insertClusterProbeRuntime(t, wsID, runnerID, "claude", "probe-node-d · 1.0.0 (Claude Code)")
 
-	const wantName = "集群通用智能体 @ probe-node-d"
+	const wantName = "通用智能体（probe-node-d）"
 	const customDesc = "user-maintained custom worker, do not touch"
 	if _, err := testPool.Exec(ctx, `
 		INSERT INTO agent (workspace_id, name, description, runtime_mode, runtime_config, runtime_id, visibility, permission_mode, max_concurrent_tasks, owner_id)

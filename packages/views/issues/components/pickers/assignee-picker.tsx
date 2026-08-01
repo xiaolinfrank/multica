@@ -6,6 +6,8 @@ import type { Agent, IssueAssigneeType, UpdateIssueRequest } from "@multica/core
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
 import { canAssignAgentToIssue } from "@multica/core/permissions";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { memberListOptions, agentListOptions, squadListOptions, assigneeFrequencyOptions } from "@multica/core/workspace/queries";
@@ -111,6 +113,7 @@ function AssigneePickerImpl({
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
   const { data: frequency = [] } = useQuery(assigneeFrequencyOptions(wsId));
   const { getActorName } = useActorName();
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
   const memberRole = currentMember?.role;
@@ -130,9 +133,12 @@ function AssigneePickerImpl({
   const filteredMembers = members
     .filter((m) => m.name.toLowerCase().includes(query) || matchesPinyin(m.name, query))
     .sort((a, b) => getFreq("member", b.user_id) - getFreq("member", a.user_id));
-  const filteredAgents = agents
-    .filter((a) => !a.archived_at && (a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query)))
-    .sort((a, b) => getFreq("agent", b.id) - getFreq("agent", a.id));
+  const filteredAgents = pinAgentByName(
+    agents
+      .filter((a) => !a.archived_at && (a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query)))
+      .sort((a, b) => getFreq("agent", b.id) - getFreq("agent", a.id)),
+    pinnedAgentName,
+  );
   const filteredSquads = squads
     .filter((s) => !s.archived_at && (s.name.toLowerCase().includes(query) || matchesPinyin(s.name, query)))
     .sort((a, b) => getFreq("squad", b.id) - getFreq("squad", a.id));

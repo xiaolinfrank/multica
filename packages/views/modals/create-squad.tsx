@@ -12,7 +12,11 @@ import {
   memberListOptions,
   workspaceKeys,
 } from "@multica/core/workspace/queries";
-import { AGENT_DESCRIPTION_MAX_LENGTH } from "@multica/core/agents";
+import {
+  AGENT_DESCRIPTION_MAX_LENGTH,
+  pinAgentByName,
+} from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { isImeComposing } from "@multica/core/utils";
 import type { Agent, MemberWithUser } from "@multica/core/types";
 import {
@@ -261,6 +265,9 @@ function LeaderPicker({
   const { t } = useT("modals");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const pinnedAgentName = useConfigStore(
+    (s) => s.defaultIssueAssigneeAgentName,
+  );
 
   const myAgents = useMemo(
     () => (currentUserId ? agents.filter((a) => a.owner_id === currentUserId) : []),
@@ -277,8 +284,8 @@ function LeaderPicker({
   const q = filter.trim().toLowerCase();
   const matches = (a: Agent) =>
     !q || a.name.toLowerCase().includes(q) || matchesPinyin(a.name, q);
-  const filteredMine = myAgents.filter(matches);
-  const filteredOthers = otherAgents.filter(matches);
+  const filteredMine = pinAgentByName(myAgents.filter(matches), pinnedAgentName);
+  const filteredOthers = pinAgentByName(otherAgents.filter(matches), pinnedAgentName);
 
   const selected = agents.find((a) => a.id === value) ?? null;
   const noAgents = agents.length === 0;
@@ -409,6 +416,9 @@ function AdditionalMembersPicker({
   const { t } = useT("modals");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const pinnedAgentName = useConfigStore(
+    (s) => s.defaultIssueAssigneeAgentName,
+  );
 
   const isSelected = (type: "agent" | "member", id: string) =>
     value.some((m) => m.type === type && m.id === id);
@@ -448,8 +458,8 @@ function AdditionalMembersPicker({
   const memberMatches = (m: MemberWithUser) =>
     !q || m.name.toLowerCase().includes(q) || matchesPinyin(m.name, q);
 
-  const filteredMine = myAgents.filter(agentMatches);
-  const filteredOthers = otherAgents.filter(agentMatches);
+  const filteredMine = pinAgentByName(myAgents.filter(agentMatches), pinnedAgentName);
+  const filteredOthers = pinAgentByName(otherAgents.filter(agentMatches), pinnedAgentName);
   const filteredMembers = members.filter(memberMatches);
   const anyResults =
     filteredMine.length + filteredOthers.length + filteredMembers.length > 0;

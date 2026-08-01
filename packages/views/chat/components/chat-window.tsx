@@ -19,7 +19,8 @@ import { agentListOptions, memberListOptions } from "@multica/core/workspace/que
 import { projectListOptions } from "@multica/core/projects/queries";
 import { canAssignAgent } from "@multica/views/issues/components";
 import { api } from "@multica/core/api";
-import { useAgentPresenceDetail, useWorkspaceAgentAvailability } from "@multica/core/agents";
+import { pinAgentByName, useAgentPresenceDetail, useWorkspaceAgentAvailability } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { useAppForeground } from "../../common/use-app-foreground";
 import {
@@ -209,8 +210,12 @@ export function ChatWindow() {
 
   const currentMember = members.find((m) => m.user_id === user?.id);
   const memberRole = currentMember?.role;
-  const availableAgents = agents.filter(
-    (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
+  const availableAgents = pinAgentByName(
+    agents.filter(
+      (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+    ),
+    pinnedAgentName,
   );
 
   // The agent bound to the OPEN session, resolved from the full agent list
@@ -914,6 +919,7 @@ export function AgentDropdown({
   const { t } = useT("chat");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
   // Split into the user's own agents and everyone else so the menu groups
   // them — matches the old AgentSelector layout.
   const { mine, others } = useMemo(() => {
@@ -930,7 +936,10 @@ export function AgentDropdown({
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
   const filteredMine = mine.filter((agent) => matches(agent.name));
-  const filteredOthers = others.filter((agent) => matches(agent.name));
+  const filteredOthers = pinAgentByName(
+    others.filter((agent) => matches(agent.name)),
+    pinnedAgentName,
+  );
 
   const handlePick = (agent: Agent) => {
     onSelect(agent);

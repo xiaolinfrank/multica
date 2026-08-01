@@ -22,6 +22,7 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -29,30 +30,79 @@ import (
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-// clusterGenericAgentPrefix is the display-name prefix of the auto-provisioned
-// per-node generic worker. Byte-identical to the agents originally hand-created
-// in fosun-bio so the name check lands on them instead of duplicating.
-const clusterGenericAgentPrefix = "集群通用智能体 @ "
+// clusterGenericAgentPrefix is the common display-name prefix of every
+// auto-provisioned generic worker: "通用智能体（主）" on the API host,
+// "通用智能体 N" on numbered fleet nodes.
+const clusterGenericAgentPrefix = "通用智能体"
+
+// legacyClusterGenericAgentPrefix is the pre-rename naming scheme
+// ("集群通用智能体 @ <node>"). ensure renames agents still carrying it onto
+// the new scheme instead of creating duplicates alongside them.
+const legacyClusterGenericAgentPrefix = "集群通用智能体 @ "
+
+// fleetNodeLabelPrefix prefixes the numbered fleet-node hostnames
+// ("fosun_agent_1"…"fosun_agent_6"); their agents drop it for a plain number.
+const fleetNodeLabelPrefix = "fosun_agent_"
 
 // clusterGenericAgentTimeout bounds one detached ensure run.
 const clusterGenericAgentTimeout = 15 * time.Second
 
-// clusterAgentName builds the stable, human-readable name for the cluster
-// generic agent bound to rt. Source priority: DeviceInfo's pre-" · " segment
-// (exactly the daemon's DeviceName, rewritten identically on every register),
-// then custom_name, then the parenthesised tail of Name, then the runtime id
-// tail. Never empty.
-func clusterAgentName(rt db.AgentRuntime) string {
+// normalizeNodeLabel lowercases and strips a trailing ".local" so the API
+// host and its co-located daemon compare equal despite mDNS hostname drift
+// (the daemon may register "foo" or "foo.local" on different boots).
+func normalizeNodeLabel(s string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".local")
+}
+
+// isHostNodeLabel reports whether node labels the machine the API server
+// itself runs on. In the BayClaw deployment the host daemon is co-located
+// with the API, so its generic agent is the primary one ("通用智能体（主）").
+func isHostNodeLabel(node string) bool {
+	host, err := os.Hostname()
+	if err != nil || strings.TrimSpace(host) == "" {
+		return false
+	}
+	return normalizeNodeLabel(node) == normalizeNodeLabel(host)
+}
+
+// clusterAgentNameForNode maps a runtime node label to the generic agent's
+// display name: the API server's own host is "通用智能体（主）", numbered
+// fleet nodes "fosun_agent_N" become "通用智能体 N", anything else falls back
+// to "通用智能体（<node>）".
+func clusterAgentNameForNode(node string) string {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return clusterGenericAgentPrefix + "（未知节点）"
+	}
+	if isHostNodeLabel(node) {
+		return clusterGenericAgentPrefix + "（主）"
+	}
+	if n, ok := strings.CutPrefix(node, fleetNodeLabelPrefix); ok && n != "" {
+		return clusterGenericAgentPrefix + " " + n
+	}
+	return clusterGenericAgentPrefix + "（" + node + "）"
+}
+
+// clusterNodeLabel extracts the stable node label for rt — DeviceInfo's
+// pre-" · " segment (the daemon's DeviceName), then custom_name, then the
+// parenthesised tail of Name, then the runtime id tail. Never empty.
+func clusterNodeLabel(rt db.AgentRuntime) string {
 	if node := nodeLabelFromDeviceInfo(rt.DeviceInfo); node != "" {
-		return clusterGenericAgentPrefix + node
+		return node
 	}
 	if rt.CustomName.Valid && strings.TrimSpace(rt.CustomName.String) != "" {
-		return clusterGenericAgentPrefix + strings.TrimSpace(rt.CustomName.String)
+		return strings.TrimSpace(rt.CustomName.String)
 	}
 	if node := nodeLabelFromName(rt.Name); node != "" {
-		return clusterGenericAgentPrefix + node
+		return node
 	}
-	return clusterGenericAgentPrefix + uuidToString(rt.ID)[:8]
+	return uuidToString(rt.ID)[:8]
+}
+
+// clusterAgentName builds the display name for the cluster generic agent
+// bound to rt from its node label.
+func clusterAgentName(rt db.AgentRuntime) string {
+	return clusterAgentNameForNode(clusterNodeLabel(rt))
 }
 
 // nodeLabelFromDeviceInfo returns the device/hostname segment the daemon
@@ -85,11 +135,10 @@ func nodeLabelFromName(name string) string {
 // per-runtime generic worker: workspace-visible, owned by the shared runner,
 // bound to its own runtime, minimal payload (no instructions/mcp/custom env).
 func clusterGenericAgentParams(rt db.AgentRuntime, name string) db.CreateAgentParams {
-	node := strings.TrimPrefix(name, clusterGenericAgentPrefix)
 	return db.CreateAgentParams{
 		WorkspaceID:        rt.WorkspaceID,
 		Name:               name,
-		Description:        "运行在 " + node + " 节点的集群通用智能体",
+		Description:        "运行在 " + clusterNodeLabel(rt) + " 节点的通用智能体",
 		Instructions:       "",
 		RuntimeMode:        rt.RuntimeMode,
 		RuntimeConfig:      []byte("{}"),
@@ -124,6 +173,7 @@ func (h *Handler) ensureClusterGenericAgent(rt db.AgentRuntime) {
 		return
 	}
 	wantName := clusterAgentName(rt)
+	legacyName := legacyClusterGenericAgentPrefix + clusterNodeLabel(rt)
 
 	existing, err := h.Queries.ListAgents(ctx, rt.WorkspaceID)
 	if err != nil {
@@ -132,8 +182,26 @@ func (h *Handler) ensureClusterGenericAgent(rt db.AgentRuntime) {
 		return
 	}
 	for _, a := range existing {
-		if a.Name != wantName {
+		if a.Name != wantName && a.Name != legacyName {
 			continue
+		}
+		if a.Name == legacyName && legacyName != wantName {
+			// Pre-rename agent for this same node: migrate it onto the new
+			// naming scheme instead of creating a duplicate alongside it.
+			// UNIQUE(workspace_id, name) is safe — reaching here means no
+			// agent in this workspace already carries wantName. On failure
+			// stop here; the next register/backfill retries.
+			if _, err := h.Queries.RenameClusterAgent(ctx, db.RenameClusterAgentParams{
+				ID:   a.ID,
+				Name: wantName,
+			}); err != nil {
+				slog.Warn("cluster generic agent: rename failed",
+					"agent_id", uuidToString(a.ID), "from", a.Name, "to", wantName, "error", err)
+				return
+			}
+			slog.Info("cluster generic agent: renamed",
+				"agent_id", uuidToString(a.ID), "from", a.Name, "to", wantName,
+				"workspace_id", uuidToString(rt.WorkspaceID))
 		}
 		// Present by name — ours from a previous run or user-created. Only heal
 		// the runtime binding if it drifted (daemon_id migration or runtime GC +
@@ -193,7 +261,7 @@ func (h *Handler) defaultClusterAssignee(ctx context.Context, workspaceID pgtype
 			"error", err, "workspace_id", uuidToString(workspaceID))
 		return pgtype.UUID{}
 	}
-	want := clusterGenericAgentPrefix + node
+	want := clusterAgentNameForNode(node)
 	for _, a := range agents {
 		if a.Name == want && a.RuntimeID.Valid {
 			return a.ID

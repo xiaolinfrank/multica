@@ -91,7 +91,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config.DaemonServerURL, config.DaemonAppURL = daemonSetupURLsFromEnv()
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
 	if node := strings.TrimSpace(h.cfg.DefaultIssueAssigneeNode); node != "" {
-		config.DefaultIssueAssigneeAgentName = clusterGenericAgentPrefix + node
+		config.DefaultIssueAssigneeAgentName = clusterAgentNameForNode(node)
 	}
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed

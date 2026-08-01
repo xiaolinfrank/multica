@@ -24,6 +24,8 @@ import {
 } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { useAuthStore } from "@multica/core/auth";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { api } from "@multica/core/api";
 import { useModalStore } from "@multica/core/modals";
 import {
@@ -818,6 +820,8 @@ export function SquadsPage() {
     });
   }, [squads, scope, currentUser]);
 
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
+
   const leaderOptions = useMemo(() => {
     const m = new Map<string, { id: string; name: string; count: number }>();
     for (const s of scopeRows) {
@@ -830,8 +834,8 @@ export function SquadsPage() {
           count: 1,
         });
     }
-    return [...m.values()];
-  }, [scopeRows, agentsById]);
+    return pinAgentByName([...m.values()], pinnedAgentName);
+  }, [scopeRows, agentsById, pinnedAgentName]);
 
   const creatorOptions = useMemo(() => {
     const m = new Map<string, { id: string; name: string; count: number }>();

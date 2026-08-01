@@ -1574,3 +1574,12 @@ UPDATE agent
 SET runtime_id = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- name: RenameClusterAgent :one
+-- Migrates a cluster generic agent onto a new display-name scheme in place
+-- (idempotent ensure only calls it when no same-workspace agent already
+-- carries the target name, so UNIQUE(workspace_id, name) is not violated).
+UPDATE agent
+SET name = $2, updated_at = now()
+WHERE id = $1
+RETURNING *;

@@ -16,6 +16,8 @@ import { flattenIssueBuckets, issueKeys } from "@multica/core/issues/queries";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { useAuthStore } from "@multica/core/auth";
 import { canAssignAgentToIssue } from "@multica/core/permissions";
+import { pinAgentByName } from "@multica/core/agents";
+import { configStore } from "@multica/core/config";
 import { api } from "@multica/core/api";
 import { isImeComposing } from "@multica/core/utils";
 import type {
@@ -597,9 +599,16 @@ export function createMentionSuggestion(
     // targets come first regardless of type, with an alphabetical fallback
     // for everyone the user hasn't mentioned yet on this device.
     const recency = getRecencyMap(wsId);
-    const userItems = sortUserItemsByRecency(
-      [...memberItems, ...agentItems, ...squadItems],
-      recency,
+    // BayClaw fork: the deployment's default-assignee agent leads the users
+    // bucket. MentionItem carries `label`, so adapt to `name` for the shared
+    // pin helper. Factory scope — read the config store imperatively, same as
+    // useAuthStore above.
+    const userItems = pinAgentByName(
+      sortUserItemsByRecency(
+        [...memberItems, ...agentItems, ...squadItems],
+        recency,
+      ).map((item) => ({ ...item, name: item.label })),
+      configStore.getState().defaultIssueAssigneeAgentName,
     );
 
     // Cached issues give an instant first paint; MentionList adds server

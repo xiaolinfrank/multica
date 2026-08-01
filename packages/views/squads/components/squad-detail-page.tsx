@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { useAuthStore } from "@multica/core/auth";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -517,10 +519,11 @@ function AddMemberDialog({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerFilter, setPickerFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   const query = pickerFilter.trim().toLowerCase();
   const filteredMembers = availableMembers.filter((m) => m.name.toLowerCase().includes(query) || matchesPinyin(m.name, query));
-  const filteredAgents = availableAgents.filter((a) => a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query));
+  const filteredAgents = pinAgentByName(availableAgents.filter((a) => a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query)), pinnedAgentName);
 
   const canSubmit = !!target && !submitting;
 

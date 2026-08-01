@@ -26,6 +26,8 @@ import {
 import { Button } from "@multica/ui/components/ui/button";
 import { Switch } from "@multica/ui/components/ui/switch";
 import { api, ApiError } from "@multica/core/api";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../navigation";
@@ -134,6 +136,7 @@ export function AgentCreatePanel({
     () => members.find((m) => m.user_id === userId)?.role,
     [members, userId],
   );
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   // Visible = not archived AND assignable by this user. Squads inherit
   // their leader agent's reachability: the backend always routes a squad
@@ -141,10 +144,13 @@ export function AgentCreatePanel({
   // the picker honest with what the server would actually accept.
   const visibleAgents = useMemo(
     () =>
-      agents.filter(
-        (a) => !a.archived_at && canAssignAgent(a, userId, memberRole),
+      pinAgentByName(
+        agents.filter(
+          (a) => !a.archived_at && canAssignAgent(a, userId, memberRole),
+        ),
+        pinnedAgentName,
       ),
-    [agents, userId, memberRole],
+    [agents, userId, memberRole, pinnedAgentName],
   );
   const visibleAgentIds = useMemo(
     () => new Set(visibleAgents.map((a) => a.id)),

@@ -97,6 +97,9 @@ vi.mock("@multica/core/api", () => ({
 vi.mock("@multica/core/agents", () => ({
   useAgentPresenceDetail: () => ({ availability: "online" }),
   useWorkspaceAgentAvailability: () => "available",
+  // Identity transform: ordering assertions in this suite predate the
+  // default-assignee pin and must not depend on config state.
+  pinAgentByName: (agents: unknown[]) => agents,
 }));
 vi.mock("@multica/core/hooks/use-file-upload", () => ({
   useFileUpload: () => ({ uploadWithToast: vi.fn() }),

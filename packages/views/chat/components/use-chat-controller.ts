@@ -14,7 +14,8 @@ import { agentListOptions, memberListOptions } from "@multica/core/workspace/que
 import { projectListOptions } from "@multica/core/projects/queries";
 import { canAssignAgent } from "@multica/views/issues/components";
 import { api, dispatchReasonCode } from "@multica/core/api";
-import { useAgentPresenceDetail, useWorkspaceAgentAvailability } from "@multica/core/agents";
+import { pinAgentByName, useAgentPresenceDetail, useWorkspaceAgentAvailability } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import {
   chatSessionsOptions,
   chatMessagesPageOptions,
@@ -291,8 +292,12 @@ export function useChatController(opts?: { isActive?: boolean }) {
 
   const currentMember = members.find((m) => m.user_id === user?.id);
   const memberRole = currentMember?.role;
-  const availableAgents = agents.filter(
-    (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
+  const availableAgents = pinAgentByName(
+    agents.filter(
+      (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+    ),
+    pinnedAgentName,
   );
   // `availableAgents` is only trustworthy once BOTH queries above succeeded:
   // the permission filter reads the member role, so agents-without-members

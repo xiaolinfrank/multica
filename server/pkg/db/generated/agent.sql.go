@@ -5406,6 +5406,57 @@ func (q *Queries) RegisterPlannedCommentForActiveTask(ctx context.Context, arg R
 	return i, err
 }
 
+const renameClusterAgent = `-- name: RenameClusterAgent :one
+UPDATE agent
+SET name = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier
+`
+
+type RenameClusterAgentParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Name string      `json:"name"`
+}
+
+// Migrates a cluster generic agent onto a new display-name scheme in place
+// (idempotent ensure only calls it when no same-workspace agent already
+// carries the target name, so UNIQUE(workspace_id, name) is not violated).
+func (q *Queries) RenameClusterAgent(ctx context.Context, arg RenameClusterAgentParams) (Agent, error) {
+	row := q.db.QueryRow(ctx, renameClusterAgent, arg.ID, arg.Name)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.RuntimeMode,
+		&i.RuntimeConfig,
+		&i.Visibility,
+		&i.Status,
+		&i.MaxConcurrentTasks,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.RuntimeID,
+		&i.Instructions,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.CustomEnv,
+		&i.CustomArgs,
+		&i.McpConfig,
+		&i.Model,
+		&i.ThinkingLevel,
+		&i.ComposioToolkitAllowlist,
+		&i.PermissionMode,
+		&i.Kind,
+		&i.SystemKey,
+		&i.DisabledRuntimeSkills,
+		&i.ServiceTier,
+	)
+	return i, err
+}
+
 const requeueAgentTaskAfterClaimFailure = `-- name: RequeueAgentTaskAfterClaimFailure :one
 UPDATE agent_task_queue
 SET status = 'queued',

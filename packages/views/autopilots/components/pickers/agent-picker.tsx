@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import type { AutopilotAssigneeType } from "@multica/core/types";
 import { ActorAvatar } from "../../../common/actor-avatar";
@@ -40,6 +42,7 @@ export function AgentPicker({
   const [filter, setFilter] = useState("");
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   const activeAgents = useMemo(() => agents.filter((a) => !a.archived_at), [agents]);
   const activeSquads = useMemo(() => squads.filter((s) => !s.archived_at), [squads]);
@@ -53,7 +56,7 @@ export function AgentPicker({
   const query = filter.trim().toLowerCase();
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
-  const filteredAgents = activeAgents.filter((a) => matches(a.name));
+  const filteredAgents = pinAgentByName(activeAgents.filter((a) => matches(a.name)), pinnedAgentName);
   const filteredSquads = activeSquads.filter((s) => matches(s.name));
 
   const isSelected = (type: AutopilotAssigneeType, id: string) =>

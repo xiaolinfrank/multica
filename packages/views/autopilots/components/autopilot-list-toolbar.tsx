@@ -17,6 +17,8 @@ import {
   type AutopilotSortField,
 } from "@multica/core/autopilots/stores";
 import { useActorName } from "@multica/core/workspace/hooks";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -118,6 +120,7 @@ export function AutopilotListToolbar({
 }) {
   const { t } = useT("autopilots");
   const { getActorName } = useActorName();
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   const activeCount = countActiveFilterDimensions(filters);
   const hasActiveFilters = activeCount > 0;
@@ -326,8 +329,16 @@ export function AutopilotListToolbar({
                 )}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="max-h-72 w-auto min-w-48 overflow-y-auto">
-                {[...assigneeOptions.entries()].map(
-                  ([value, { type, id, count }]) => (
+                {pinAgentByName(
+                  // Option values carry no name (resolved at render via
+                  // getActorName), so adapt each entry to `{ name, entry }`
+                  // for the shared pin helper.
+                  [...assigneeOptions.entries()].map((entry) => ({
+                    name: getActorName(entry[1].type, entry[1].id),
+                    entry,
+                  })),
+                  pinnedAgentName,
+                ).map(({ entry: [value, { type, id, count }] }) => (
                     <DropdownMenuCheckboxItem
                       key={value}
                       checked={filters.assignees.includes(value)}

@@ -119,18 +119,19 @@ type Config struct {
 	// BayClaw deployment).
 	DefaultWorkspaceSeedTemplate string
 	// EnsureClusterGenericAgent, when true (the default), auto-provisions a
-	// workspace-visible "集群通用智能体 @ <node>" agent for every built-in Claude
+	// workspace-visible generic agent ("通用智能体（主）" on the API host,
+	// "通用智能体 N" on numbered fleet nodes) for every built-in Claude
 	// runtime a shared-runner account (SHARED_RUNNER_EMAILS) registers, plus a
 	// one-shot startup backfill across existing workspaces. Set
 	// ENSURE_CLUSTER_GENERIC_AGENT=false to manage these agents manually.
 	EnsureClusterGenericAgent bool
 	// DefaultIssueAssigneeNode, when non-empty, names the cluster node whose
-	// generic agent ("集群通用智能体 @ <node>") receives issues created without
-	// an explicit assignee (BayClaw fork, DEFAULT_ISSUE_ASSIGNEE_NODE). The
-	// fallback only fills an empty assignee — an explicit pick always wins —
-	// and the standard trigger rules still apply: creating into "todo"
-	// enqueues a run immediately, "backlog" parks it. When the workspace has
-	// no such agent (or none ready), the issue stays unassigned.
+	// generic agent receives issues created without an explicit assignee
+	// (BayClaw fork, DEFAULT_ISSUE_ASSIGNEE_NODE). The fallback only fills an
+	// empty assignee — an explicit pick always wins — and the standard
+	// trigger rules still apply: creating into "todo" enqueues a run
+	// immediately, "backlog" parks it. When the workspace has no such agent
+	// (or none ready), the issue stays unassigned.
 	DefaultIssueAssigneeNode string
 	// AttachmentFrameAncestors are trusted browser origins allowed to embed
 	// attachment preview responses. In production this should mirror the

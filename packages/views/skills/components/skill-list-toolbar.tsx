@@ -12,6 +12,8 @@ import {
   X,
 } from "lucide-react";
 import type { Agent, MemberWithUser } from "@multica/core/types";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -118,6 +120,7 @@ export function SkillListToolbar({
   visibleCount: number;
 }) {
   const { t } = useT("skills");
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
 
   const activeCount = countActiveFilterDimensions(filters);
   const hasActiveFilters = activeCount > 0;
@@ -324,7 +327,12 @@ export function SkillListToolbar({
                 )}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="max-h-72 w-auto min-w-48 overflow-y-auto">
-                {[...agentOptions.values()].map(({ agent, count }) => (
+                {pinAgentByName(
+                  // Option values nest the Agent as `agent`, so surface its
+                  // `name` at the top level for the shared pin helper.
+                  [...agentOptions.values()].map((o) => ({ ...o, name: o.agent.name })),
+                  pinnedAgentName,
+                ).map(({ agent, count }) => (
                   <DropdownMenuCheckboxItem
                     key={agent.id}
                     checked={filters.agents.includes(agent.id)}

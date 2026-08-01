@@ -55,6 +55,8 @@ import {
 import { StatusIcon, PriorityIcon } from ".";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { pinAgentByName } from "@multica/core/agents";
+import { useConfigStore } from "@multica/core/config";
 import { memberListOptions, agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { labelListOptions } from "@multica/core/labels/queries";
@@ -288,12 +290,16 @@ function ActorSubContent({
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
+  const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
   const query = search.trim().toLowerCase();
   const filteredMembers = members.filter((m) =>
     m.name.toLowerCase().includes(query) || matchesPinyin(m.name, query),
   );
-  const filteredAgents = agents.filter((a) =>
-    !a.archived_at && (a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query)),
+  const filteredAgents = pinAgentByName(
+    agents.filter((a) =>
+      !a.archived_at && (a.name.toLowerCase().includes(query) || matchesPinyin(a.name, query)),
+    ),
+    pinnedAgentName,
   );
   const filteredSquads = squads.filter((s) =>
     !s.archived_at && (s.name.toLowerCase().includes(query) || matchesPinyin(s.name, query)),

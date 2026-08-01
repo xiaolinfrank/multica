@@ -690,9 +690,9 @@ describe("CreateIssueModal", () => {
     const user = userEvent.setup();
     configStore
       .getState()
-      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ test-node");
+      .setDefaultIssueAssigneeAgentName("通用智能体（test-node）");
     mockWorkspaceAgentsState.agents = [
-      { id: "agent-host-1", name: "集群通用智能体 @ test-node", archived_at: null },
+      { id: "agent-host-1", name: "通用智能体（test-node）", archived_at: null },
       { id: "agent-other", name: "另一个智能体", archived_at: null },
     ];
 
@@ -718,9 +718,9 @@ describe("CreateIssueModal", () => {
     const user = userEvent.setup();
     configStore
       .getState()
-      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ test-node");
+      .setDefaultIssueAssigneeAgentName("通用智能体（test-node）");
     mockWorkspaceAgentsState.agents = [
-      { id: "agent-host-1", name: "集群通用智能体 @ test-node", archived_at: null },
+      { id: "agent-host-1", name: "通用智能体（test-node）", archived_at: null },
     ];
 
     renderModal(
@@ -749,7 +749,7 @@ describe("CreateIssueModal", () => {
     const user = userEvent.setup();
     configStore
       .getState()
-      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ nowhere-node");
+      .setDefaultIssueAssigneeAgentName("通用智能体（nowhere-node）");
     mockWorkspaceAgentsState.agents = [
       { id: "agent-other", name: "另一个智能体", archived_at: null },
     ];
