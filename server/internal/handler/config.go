@@ -65,6 +65,13 @@ type AppConfig struct {
 	// which is continuously deployed so its users can't act on the version —
 	// and empty for dev builds that aren't stamped via -X main.version.
 	ServerVersion string `json:"server_version,omitempty"`
+
+	// DefaultIssueAssigneeAgentName is the full display name of the agent that
+	// receives otherwise-unassigned new issues (BayClaw fork, derived from
+	// DEFAULT_ISSUE_ASSIGNEE_NODE). Omitted when the feature is off. The
+	// create-issue dialog pre-selects this agent so the automatic assignment —
+	// and the run it immediately triggers — is visible before submit.
+	DefaultIssueAssigneeAgentName string `json:"default_issue_assignee_agent_name,omitempty"`
 }
 
 // GetConfig is mounted on the public (unauthenticated) route group because
@@ -83,6 +90,9 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config.CdnSigned = h.CFSigner != nil
 	config.DaemonServerURL, config.DaemonAppURL = daemonSetupURLsFromEnv()
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
+	if node := strings.TrimSpace(h.cfg.DefaultIssueAssigneeNode); node != "" {
+		config.DefaultIssueAssigneeAgentName = clusterGenericAgentPrefix + node
+	}
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed
 	// cloud is continuously deployed and its users can't choose the build, so

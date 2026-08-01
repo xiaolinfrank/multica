@@ -175,6 +175,33 @@ func (h *Handler) ensureClusterGenericAgent(rt db.AgentRuntime) {
 		"runtime_id", uuidToString(rt.ID), "name", wantName)
 }
 
+// defaultClusterAssignee returns the id of the workspace's cluster generic
+// agent for the configured DefaultIssueAssigneeNode, for use as the fallback
+// assignee when an issue is created without one. Returns an invalid UUID when
+// the feature is off or no ready agent exists (not provisioned yet, or
+// runtime-less) — the caller then leaves the issue unassigned. ListAgents
+// already excludes archived agents; RuntimeID must be set or the assignment
+// could never dispatch a run.
+func (h *Handler) defaultClusterAssignee(ctx context.Context, workspaceID pgtype.UUID) pgtype.UUID {
+	node := strings.TrimSpace(h.cfg.DefaultIssueAssigneeNode)
+	if node == "" || !workspaceID.Valid {
+		return pgtype.UUID{}
+	}
+	agents, err := h.Queries.ListAgents(ctx, workspaceID)
+	if err != nil {
+		slog.Warn("default cluster assignee: list agents failed",
+			"error", err, "workspace_id", uuidToString(workspaceID))
+		return pgtype.UUID{}
+	}
+	want := clusterGenericAgentPrefix + node
+	for _, a := range agents {
+		if a.Name == want && a.RuntimeID.Valid {
+			return a.ID
+		}
+	}
+	return pgtype.UUID{}
+}
+
 // BackfillClusterGenericAgents is a one-shot startup reconciliation: for every
 // workspace a shared runner serves, ensure the cluster generic agent exists for
 // each of its built-in Claude runtimes. Covers existing workspaces on first

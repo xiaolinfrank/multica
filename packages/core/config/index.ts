@@ -25,6 +25,11 @@ interface ConfigState {
   // self-hosted operators can confirm what's deployed. Empty for dev builds
   // or servers older than this feature.
   serverVersion: string;
+  // Full display name of the agent that receives otherwise-unassigned new
+  // issues (BayClaw fork, DEFAULT_ISSUE_ASSIGNEE_NODE). Empty when the
+  // server has the feature off; the create-issue dialog pre-selects this
+  // agent so the automatic assignment is visible before submit.
+  defaultIssueAssigneeAgentName: string;
   setCdnConfig: (config: { cdnDomain: string; cdnSigned?: boolean }) => void;
   setAuthConfig: (config: {
     allowSignup: boolean;
@@ -38,6 +43,7 @@ interface ConfigState {
   }) => void;
   setFeatureFlags: (flags?: Record<string, boolean>) => void;
   setServerVersion: (version?: string) => void;
+  setDefaultIssueAssigneeAgentName: (name?: string) => void;
 }
 
 export const configStore = createStore<ConfigState>((set) => ({
@@ -51,6 +57,7 @@ export const configStore = createStore<ConfigState>((set) => ({
   vcsIntegrationAvailable: false,
   featureFlags: {},
   serverVersion: "",
+  defaultIssueAssigneeAgentName: "",
   setCdnConfig: ({ cdnDomain, cdnSigned = false }) => set({ cdnDomain, cdnSigned }),
   setAuthConfig: ({
     allowSignup,
@@ -62,6 +69,7 @@ export const configStore = createStore<ConfigState>((set) => ({
     set({ daemonServerUrl, daemonAppUrl }),
   setFeatureFlags: (flags = {}) => set({ featureFlags: { ...flags } }),
   setServerVersion: (version = "") => set({ serverVersion: version }),
+  setDefaultIssueAssigneeAgentName: (name = "") => set({ defaultIssueAssigneeAgentName: name }),
 }));
 
 export function useConfigStore(): ConfigState;

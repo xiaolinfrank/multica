@@ -304,6 +304,10 @@ export interface AppConfigResponse {
   vcs_integration_available?: boolean;
   feature_flags?: Record<string, boolean>;
   server_version?: string;
+  /** Full display name of the agent that receives otherwise-unassigned new
+   * issues (BayClaw fork). Absent/empty when the deployment has the feature
+   * off — the create dialog then pre-selects nothing. */
+  default_issue_assignee_agent_name?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,6 +459,7 @@ export const AppConfigSchema = z.object({
   vcs_integration_available: BooleanWithDefaultSchema(false).optional(),
   feature_flags: FeatureFlagsSchema,
   server_version: OptionalStringSchema,
+  default_issue_assignee_agent_name: OptionalStringSchema,
 }).loose();
 
 export const EMPTY_APP_CONFIG: AppConfigResponse = {

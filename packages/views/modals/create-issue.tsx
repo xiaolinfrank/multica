@@ -61,6 +61,8 @@ import { useActorName } from "@multica/core/workspace/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueDraftStore, type IssueCreateDraft } from "@multica/core/issues/stores/draft-store";
+import { agentListOptions } from "@multica/core/workspace/queries";
+import { useConfigStore } from "@multica/core/config";
 import { useCreateModeStore } from "@multica/core/issues/stores/create-mode-store";
 import { useQuickCreateStore } from "@multica/core/issues/stores/quick-create-store";
 import {
@@ -357,6 +359,31 @@ export function ManualCreatePanel({
     setAssigneeType(type); setAssigneeId(id);
     setManual({ assigneeType: type, assigneeId: id });
   };
+
+  // BayClaw fork: when the deployment sets a default issue assignee (the host
+  // cluster generic agent), pre-select it so the automatic assignment — and
+  // the run it triggers on submit — is visible and changeable before submit.
+  // One-shot: an explicit opener prefill, a persisted draft, or any user
+  // interaction (pick or clear) permanently wins over the default. Setting
+  // assigneeId also auto-reveals the assignee pill via showField.assignee.
+  const defaultAssigneeAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
+  const { data: workspaceAgents } = useQuery(agentListOptions(wsId));
+  const defaultAssigneeAppliedRef = useRef(false);
+  useEffect(() => {
+    if (defaultAssigneeAppliedRef.current) return;
+    if (assigneeType !== undefined || assigneeId !== undefined) {
+      defaultAssigneeAppliedRef.current = true;
+      return;
+    }
+    if (!defaultAssigneeAgentName) return; // config still loading, or feature off
+    const match = workspaceAgents?.find(
+      (a) => a.name === defaultAssigneeAgentName && !a.archived_at,
+    );
+    if (!match) return; // agents still loading, or the agent is absent here
+    defaultAssigneeAppliedRef.current = true;
+    setAssigneeType("agent");
+    setAssigneeId(match.id);
+  }, [workspaceAgents, defaultAssigneeAgentName, assigneeType, assigneeId]);
   const updateProject = (id?: string) => { setProjectId(id); setShared({ projectId: id }); };
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };
   const updateDueDate = (v: string | null) => { setDueDate(v); setShared({ dueDate: v }); };

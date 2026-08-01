@@ -216,6 +216,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		SharedRunnerEmails:           splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
 		DefaultWorkspaceSeedTemplate: strings.TrimSpace(os.Getenv("DEFAULT_WORKSPACE_SEED_TEMPLATE")),
 		EnsureClusterGenericAgent:    envBool("ENSURE_CLUSTER_GENERIC_AGENT", true),
+		DefaultIssueAssigneeNode:     strings.TrimSpace(os.Getenv("DEFAULT_ISSUE_ASSIGNEE_NODE")),
 		AttachmentFrameAncestors:     origins,
 		LLMAPIKey:                    strings.TrimSpace(os.Getenv("MULTICA_LLM_API_KEY")),
 		LLMBaseURL:                   strings.TrimSpace(os.Getenv("MULTICA_LLM_BASE_URL")),

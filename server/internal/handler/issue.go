@@ -2458,6 +2458,18 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		assigneeID = id
 	}
 
+	// BayClaw fork: an otherwise-unassigned issue falls back to the workspace's
+	// cluster generic agent on the configured default node, so new work is
+	// picked up automatically (status "todo" enqueues a run immediately;
+	// "backlog" parks it). An explicit assignee always wins, and the fallback
+	// still passes through the same validateAssigneePair gate below.
+	if !assigneeType.Valid && !assigneeID.Valid {
+		if id := h.defaultClusterAssignee(r.Context(), wsUUID); id.Valid {
+			assigneeType = pgtype.Text{String: "agent", Valid: true}
+			assigneeID = id
+		}
+	}
+
 	if status, msg := h.validateAssigneePair(r.Context(), r, workspaceID, assigneeType, assigneeID); status != 0 {
 		writeError(w, status, msg)
 		return

@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { configStore } from "@multica/core/config";
 import enCommon from "../locales/en/common.json";
 import enModals from "../locales/en/modals.json";
 import enEditor from "../locales/en/editor.json";
@@ -40,6 +41,10 @@ const mockToastError = vi.hoisted(() => vi.fn());
 // `api.uploadFile(file, ctx, signal)` (MUL-5181 L2). Tests drive uploads by
 // mocking that call; it resolves a plain server Attachment row.
 const mockApiUploadFile = vi.hoisted(() => vi.fn());
+// Workspace agents feeding the default-assignee preselect (agentListOptions).
+const mockWorkspaceAgentsState = vi.hoisted(() => ({
+  agents: [] as Array<Record<string, unknown>>,
+}));
 
 type DraftAttachment = {
   id: string;
@@ -180,6 +185,13 @@ vi.mock("../issues/hooks/use-issue-trigger-preview", () => ({
 
 vi.mock("@multica/core/workspace/hooks", () => ({
   useActorName: () => ({ getActorName: () => "Agent" }),
+}));
+
+vi.mock("@multica/core/workspace/queries", () => ({
+  agentListOptions: (wsId: string) => ({
+    queryKey: ["test", "agents", wsId],
+    queryFn: () => Promise.resolve(mockWorkspaceAgentsState.agents),
+  }),
 }));
 
 // CreateRunHint now renders an ActorAvatar for agent/squad assignees. This
@@ -550,6 +562,8 @@ describe("CreateIssueModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockQuickCreateStore.keepOpen = false;
+    mockWorkspaceAgentsState.agents = [];
+    configStore.getState().setDefaultIssueAssigneeAgentName("");
     mockCreateSettingsStore.manualCreateFields = DEFAULT_MANUAL_FIELDS;
     mockSetKeepOpen.mockImplementation((v: boolean) => {
       mockQuickCreateStore.keepOpen = v;
@@ -670,6 +684,91 @@ describe("CreateIssueModal", () => {
 
     expect(mockPush).toHaveBeenCalledWith("/ws-test/issues/issue-123");
     expect(mockToastDismiss).toHaveBeenCalledWith("toast-1");
+  });
+
+  it("pre-selects the deployment default assignee agent when nothing else seeds one", async () => {
+    const user = userEvent.setup();
+    configStore
+      .getState()
+      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ test-node");
+    mockWorkspaceAgentsState.agents = [
+      { id: "agent-host-1", name: "集群通用智能体 @ test-node", archived_at: null },
+      { id: "agent-other", name: "另一个智能体", archived_at: null },
+    ];
+
+    renderModal(<CreateIssueModal onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "auto assigned issue" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() => {
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignee_type: "agent",
+          assignee_id: "agent-host-1",
+        }),
+      );
+    });
+    expect(mockSetLastAssignee).toHaveBeenCalledWith("agent", "agent-host-1");
+  });
+
+  it("never lets the default assignee override an explicit opener prefill", async () => {
+    const user = userEvent.setup();
+    configStore
+      .getState()
+      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ test-node");
+    mockWorkspaceAgentsState.agents = [
+      { id: "agent-host-1", name: "集群通用智能体 @ test-node", archived_at: null },
+    ];
+
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{ assignee_type: "member", assignee_id: "user-9" }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "explicit assignee issue" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() => {
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignee_type: "member",
+          assignee_id: "user-9",
+        }),
+      );
+    });
+  });
+
+  it("pre-selects nothing when the configured default agent is absent here", async () => {
+    const user = userEvent.setup();
+    configStore
+      .getState()
+      .setDefaultIssueAssigneeAgentName("集群通用智能体 @ nowhere-node");
+    mockWorkspaceAgentsState.agents = [
+      { id: "agent-other", name: "另一个智能体", archived_at: null },
+    ];
+
+    renderModal(<CreateIssueModal onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "still unassigned issue" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() => {
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assignee_type: undefined,
+          assignee_id: undefined,
+        }),
+      );
+    });
   });
 
   it("forwards selected labels in the create payload so they attach in the same transaction", async () => {

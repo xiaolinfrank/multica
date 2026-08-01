@@ -71,6 +71,9 @@ export function AuthInitializer({
         });
         configStore.getState().setFeatureFlags(cfg.feature_flags);
         configStore.getState().setServerVersion(cfg.server_version);
+        configStore
+          .getState()
+          .setDefaultIssueAssigneeAgentName(cfg.default_issue_assignee_agent_name);
         if (cfg.posthog_key) {
           initAnalytics({
             key: cfg.posthog_key,
