@@ -15,10 +15,10 @@ export function RuntimeAsidePanel() {
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <div className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="mb-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {t(($) => $.runtime_aside.what_eyebrow)}
         </div>
-        <p className="text-[14px] leading-[1.6] text-foreground/80">
+        <p className="text-body leading-[1.6] text-foreground">
           {t(($) => $.runtime_aside.what_prefix)}
           <strong className="font-medium text-foreground">{t(($) => $.runtime_aside.what_term)}</strong>
           {t(($) => $.runtime_aside.what_suffix)}
@@ -26,7 +26,7 @@ export function RuntimeAsidePanel() {
       </section>
 
       <section>
-        <div className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="mb-3 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {t(($) => $.runtime_aside.good_eyebrow)}
         </div>
         <div className="flex flex-col gap-4">
@@ -42,7 +42,6 @@ export function RuntimeAsidePanel() {
           />
         </div>
       </section>
-
     </div>
   );
 }
@@ -60,13 +59,13 @@ function AsideItem({
     <div className="grid grid-cols-[22px_1fr] gap-3">
       <div
         aria-hidden
-        className="flex h-[20px] w-[20px] items-center justify-center text-[14px] text-muted-foreground"
+        className="flex h-[20px] w-[20px] items-center justify-center text-body text-muted-foreground"
       >
         {glyph}
       </div>
       <div className="flex flex-col">
-        <div className="text-[13.5px] font-medium text-foreground">{title}</div>
-        <div className="mt-1 text-[12.5px] leading-[1.55] text-muted-foreground">
+        <div className="text-label font-medium text-foreground">{title}</div>
+        <div className="mt-1 text-caption leading-[1.55] text-muted-foreground">
           {body}
         </div>
       </div>

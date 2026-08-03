@@ -65,7 +65,7 @@ import {
   traceEventSummary,
   traceEventSummaryIsMono,
 } from "./trace-event-presenter";
-import type { TraceDiffLine } from "./trace-event-presenter";
+import type { TraceDiffLine, TracePatchFile, TraceSummaryLabels } from "./trace-event-presenter";
 import { highlightBlock, highlightToLines, languageForPath } from "./diff-highlight";
 import { useT } from "../../i18n";
 import "../../editor/styles/code.css";
@@ -171,7 +171,7 @@ function RunDetailRow({
   copied?: boolean;
   copyTitle?: string;
 }) {
-  const valueClass = cn("min-w-0 select-text break-all text-foreground/80", mono && "font-mono");
+  const valueClass = cn("min-w-0 select-text break-all text-foreground", mono && "font-mono");
   if (onCopy) {
     return (
       <button
@@ -524,7 +524,7 @@ export function AgentTranscriptDialog({
   // proper labels instead of raw enum text.
   const effectiveStatus = isLive ? "running" : task.status;
   const statusBadge = (() => {
-    const base = "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium";
+    const base = "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption font-medium";
     switch (effectiveStatus) {
       case "running":
         return (
@@ -646,7 +646,7 @@ export function AgentTranscriptDialog({
                   <Bot className="h-3 w-3" />
                 </div>
               )}
-              <span className="truncate font-medium text-sm">
+              <span className="truncate font-medium text-body">
                 {agentName || agentInfo?.name || ""}
               </span>
             </div>
@@ -654,7 +654,7 @@ export function AgentTranscriptDialog({
                 who triggered the run and how — reads as "<person> · <how>",
                 not three peer entities. The person's avatar is dropped here so
                 two same-size faces don't read as two agents. */}
-            <div className="flex min-w-0 flex-1 items-center gap-x-1.5 overflow-hidden text-xs text-muted-foreground">
+            <div className="flex min-w-0 flex-1 items-center gap-x-1.5 overflow-hidden text-caption text-muted-foreground">
               {hasTriggeredBy && (
                 <>
                   <AttributionBadge
@@ -686,10 +686,10 @@ export function AgentTranscriptDialog({
                     <Info className="h-3.5 w-3.5" />
                   </PopoverTrigger>
                   <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] p-3">
-                    <div className="mb-2 text-xs font-medium text-foreground">
+                    <div className="mb-2 text-caption font-medium text-foreground">
                       {t(($) => $.transcript.run_info)}
                     </div>
-                    <div className="space-y-1 text-xs">
+                    <div className="space-y-1 text-caption">
                       {runtimeInfo && (
                         <RunDetailRow
                           label={t(($) => $.transcript.details_runtime)}
@@ -742,7 +742,7 @@ export function AgentTranscriptDialog({
             (right). Duration + event count fill the left, so the row balances
             instead of leaving dead space. ── */}
         <div className="flex items-center gap-3 border-b px-4 py-1.5 shrink-0">
-          <div className="flex min-w-0 flex-1 items-center gap-x-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-x-1.5 overflow-hidden whitespace-nowrap text-caption text-muted-foreground">
             {createdShort && (
               <>
                 <span>{t(($) => $.transcript.fact_created, { time: createdShort })}</span>
@@ -798,7 +798,7 @@ export function AgentTranscriptDialog({
                       <DropdownMenuRadioItem key={value} value={value} className="items-start">
                         <span className="flex min-w-0 flex-col gap-0.5">
                           <span>{name}</span>
-                          <span className="text-[11px] leading-snug text-muted-foreground">
+                          <span className="text-micro leading-snug text-muted-foreground">
                             {description}
                           </span>
                         </span>
@@ -834,7 +834,7 @@ export function AgentTranscriptDialog({
                   <Filter className="h-3 w-3" />
                   <span className="hidden sm:inline">{t(($) => $.transcript.filter)}</span>
                   {activeFilterKeys.length > 0 && (
-                    <span className="ml-0.5 rounded-full bg-brand-foreground/20 px-1.5 py-0 text-[10px] font-medium tabular-nums">
+                    <span className="ml-0.5 rounded-full bg-brand-foreground/20 px-1.5 py-0 text-micro font-medium tabular-nums">
                       {activeFilterKeys.length}
                     </span>
                   )}
@@ -894,7 +894,7 @@ export function AgentTranscriptDialog({
         {/* ── Event list ─────────────────────────────────────────── */}
         <div className="flex-1 min-h-0">
           {displayItems.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-full text-body text-muted-foreground">
               {isAntigravityLiveEmpty ? (
                 <div className="flex max-w-md items-center gap-2 px-4 text-center">
                   <Clock className="h-4 w-4 shrink-0" />
@@ -1004,7 +1004,7 @@ function SortDirectionToggle({ value, onChange, labels }: SortDirectionTogglePro
 
 function FactDot() {
   return (
-    <span aria-hidden className="text-muted-foreground/40">
+    <span aria-hidden className="text-faint-foreground">
       ·
     </span>
   );
@@ -1071,7 +1071,7 @@ function TimelineBar({
             title={`${traceEventLabel(items[seg.startIdx]!)}${seg.count > 1 ? ` (+${seg.count - 1} more)` : ""}`}
           >
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
-              <div className="rounded bg-popover border px-2 py-1 text-[10px] text-popover-foreground shadow-md whitespace-nowrap">
+              <div className="rounded bg-popover border px-2 py-1 text-micro text-popover-foreground shadow-md whitespace-nowrap">
                 {traceEventLabel(items[seg.startIdx]!)}
                 {seg.count > 1 && <span className="text-muted-foreground ml-1">+{seg.count - 1}</span>}
               </div>
@@ -1102,7 +1102,17 @@ const TranscriptEventRow = ({
   const kind = traceEventKind(item);
   const color = getEventColor(item);
   const label = traceEventLabel(item);
-  const summary = traceEventSummary(item);
+  // The presenter stays i18n-free, so the localizable phrasing is injected.
+  // `extra` counts files beyond the named one, and is deliberately not called
+  // `count`: i18next reads `count` as a plural selector.
+  const summaryLabels = useMemo<TraceSummaryLabels>(
+    () => ({
+      morePaths: (path, extraCount) =>
+        t(($) => $.transcript.patch_summary_more, { path, extra: extraCount }),
+    }),
+    [t],
+  );
+  const summary = traceEventSummary(item, summaryLabels);
   const date = useMemo(
     () => (item.created_at ? new Date(item.created_at) : null),
     [item.created_at],
@@ -1129,7 +1139,7 @@ const TranscriptEventRow = ({
           {/* Type label badge */}
           <span
             className={cn(
-              "inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium mt-0.5 min-w-[60px] justify-center",
+              "inline-flex items-center shrink-0 rounded px-1.5 py-0.5 text-micro font-medium mt-0.5 min-w-[60px] justify-center",
               colorClasses[color].label,
             )}
           >
@@ -1142,7 +1152,7 @@ const TranscriptEventRow = ({
             <div className="flex flex-1 items-start gap-1.5 min-w-0">
               <CollapsibleTrigger
                 aria-label={label}
-                className="shrink-0 mt-0.5 cursor-pointer rounded p-0.5 text-muted-foreground/50 transition-colors hover:text-foreground"
+                className="shrink-0 mt-0.5 cursor-pointer rounded p-0.5 text-faint-foreground transition-colors hover:text-foreground"
               >
                 <ChevronRight className="h-3 w-3 rotate-90 transition-transform" />
               </CollapsibleTrigger>
@@ -1156,7 +1166,7 @@ const TranscriptEventRow = ({
                 ) : (
                   <div
                     className={cn(
-                      "whitespace-pre-wrap break-words text-xs leading-relaxed",
+                      "whitespace-pre-wrap break-words text-caption leading-relaxed",
                       kind === "error" ? "text-destructive" : "text-muted-foreground",
                     )}
                   >
@@ -1168,7 +1178,7 @@ const TranscriptEventRow = ({
           ) : (
             <CollapsibleTrigger
               className={cn(
-                "flex-1 text-left text-xs min-w-0 py-0.5 transition-colors",
+                "flex-1 text-left text-caption min-w-0 py-0.5 transition-colors",
                 hasDetail ? "cursor-pointer hover:text-foreground" : "cursor-default",
                 kind === "error" ? "text-destructive" : "text-muted-foreground",
               )}
@@ -1178,7 +1188,7 @@ const TranscriptEventRow = ({
                 {hasDetail && (
                   <ChevronRight
                     className={cn(
-                      "h-3 w-3 shrink-0 mt-0.5 text-muted-foreground/50 transition-transform",
+                      "h-3 w-3 shrink-0 mt-0.5 text-faint-foreground transition-transform",
                       expanded && "rotate-90",
                     )}
                   />
@@ -1186,8 +1196,8 @@ const TranscriptEventRow = ({
                 <span
                   className={cn(
                     "truncate",
-                    traceEventSummaryIsMono(kind) && summary && "font-mono text-[11px]",
-                    !summary && "text-muted-foreground/60",
+                    traceEventSummaryIsMono(kind) && summary && "font-mono text-micro",
+                    !summary && "text-muted-foreground",
                   )}
                 >
                   {summary || t(($) => $.transcript.no_output)}
@@ -1197,13 +1207,13 @@ const TranscriptEventRow = ({
           )}
 
           {/* Seq number / index */}
-          <span className="shrink-0 text-[10px] text-muted-foreground/50 tabular-nums mt-1">
+          <span className="shrink-0 text-micro text-muted-foreground tabular-nums mt-1">
             #{item.seq}
           </span>
 
           {/* Timestamp */}
           {date && (
-            <span className="shrink-0 text-[10px] text-muted-foreground/50 tabular-nums mt-1" title={date.toLocaleString()}>
+            <span className="shrink-0 text-micro text-muted-foreground tabular-nums mt-1" title={date.toLocaleString()}>
               {date.toLocaleTimeString(undefined, {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -1221,6 +1231,8 @@ const TranscriptEventRow = ({
               <div className="ml-[72px] rounded-md bg-muted/40">
                 {detail.kind === "diff" ? (
                   <DiffDetailSurface lines={detail.lines} path={detail.path} />
+                ) : detail.kind === "patch" ? (
+                  <PatchDetailSurface files={detail.files} truncated={detail.truncated} />
                 ) : detail.kind === "file" ? (
                   <FileWriteSurface text={detail.text} lineCount={detail.lineCount} path={detail.path} />
                 ) : (
@@ -1261,7 +1273,7 @@ function renderDiffRows(lines: TraceDiffLine[], highlighted: HighlightedSides) {
     if (line.kind === "gap") {
       return (
         // Transcript events are immutable once persisted, so index is stable.
-        <div key={index} className="select-none text-muted-foreground/40" aria-hidden>
+        <div key={index} className="select-none text-faint-foreground" aria-hidden>
           {"  ⋯"}
         </div>
       );
@@ -1288,7 +1300,7 @@ function renderDiffRows(lines: TraceDiffLine[], highlighted: HighlightedSides) {
         <span
           aria-hidden
           className={cn(
-            "select-none opacity-60",
+            "select-none",
             kind === "add" && "text-success",
             kind === "remove" && "text-destructive",
           )}
@@ -1323,8 +1335,75 @@ function FileWriteSurface({
 }) {
   return (
     <div>
-      <div className="px-3 pt-2 font-mono text-[10px] text-success">+{lineCount}</div>
+      <div className="px-3 pt-2 font-mono text-micro text-success">+{lineCount}</div>
       <ToolDetailSurface text={redactSecrets(text)} language={languageForPath(path)} />
+    </div>
+  );
+}
+
+/**
+ * A multi-file patch: one section per file, each reusing the single-file
+ * surfaces. Codex's `patch_apply` routinely touches several files in one call,
+ * so collapsing them into a single body would lose which change belongs where.
+ */
+function PatchDetailSurface({
+  files,
+  truncated,
+}: {
+  files: TracePatchFile[];
+  truncated: boolean;
+}) {
+  const { t } = useT("agents");
+  return (
+    <div className="divide-y divide-border/40">
+      {files.map((file, index) => (
+        // Transcript events are immutable once persisted, so index is stable.
+        <div key={`${file.path}:${index}`}>
+          <div className="flex items-center gap-2 px-3 pt-2 font-mono text-micro">
+            {file.changeKind && (
+              <span
+                className={cn(
+                  "shrink-0 uppercase",
+                  file.changeKind === "add" && "text-success",
+                  file.changeKind === "delete" && "text-destructive",
+                  file.changeKind === "update" && "text-muted-foreground",
+                )}
+              >
+                {file.changeKind}
+              </span>
+            )}
+            <span className="truncate text-muted-foreground">{file.path}</span>
+            {file.movePath && (
+              <>
+                <span className="shrink-0 text-faint-foreground" aria-hidden>
+                  →
+                </span>
+                <span className="truncate text-muted-foreground">{file.movePath}</span>
+              </>
+            )}
+          </div>
+          {file.body.kind === "diff" ? (
+            <DiffDetailSurface lines={file.body.lines} path={file.path} />
+          ) : file.body.kind === "file" ? (
+            <FileWriteSurface
+              text={file.body.text}
+              lineCount={file.body.lineCount}
+              path={file.path}
+            />
+          ) : (
+            <div className="px-3 pb-2 pt-1 font-mono text-micro text-muted-foreground">
+              {file.truncated
+                ? t(($) => $.transcript.patch_body_truncated)
+                : t(($) => $.transcript.patch_no_content)}
+            </div>
+          )}
+        </div>
+      ))}
+      {truncated && (
+        <div className="px-3 py-2 font-mono text-micro text-muted-foreground">
+          {t(($) => $.transcript.patch_truncated)}
+        </div>
+      )}
     </div>
   );
 }
@@ -1363,13 +1442,13 @@ function DiffDetailSurface({ lines, path }: { lines: TraceDiffLine[]; path: stri
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-2 px-3 pt-2 font-mono text-[10px] text-muted-foreground/70">
+      <div className="flex items-center gap-2 px-3 pt-2 font-mono text-micro text-muted-foreground">
         {added > 0 && <span className="text-success">+{added}</span>}
         {removed > 0 && <span className="text-destructive">-{removed}</span>}
       </div>
       <pre
         className={cn(
-          "transcript-code px-3 pb-3 pt-1 font-mono text-[11px] whitespace-pre-wrap break-all",
+          "transcript-code px-3 pb-3 pt-1 font-mono text-micro whitespace-pre-wrap break-all",
           isLong && !showAll && "max-h-52 overflow-hidden",
         )}
       >
@@ -1382,7 +1461,7 @@ function DiffDetailSurface({ lines, path }: { lines: TraceDiffLine[]; path: stri
             onClick={() => setShowAll(true)}
             // Opaque: the gradient alone does not clear the clipped line, so a
             // transparent label lands on top of it and both become unreadable.
-            className="mb-1.5 rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+            className="mb-1.5 rounded border bg-background px-2 py-0.5 text-micro text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
           >
             {t(($) => $.transcript.show_all)}
           </button>
@@ -1403,7 +1482,7 @@ function ToolDetailSurface({ text, language }: { text: string; language?: string
     <div className="relative">
       <pre
         className={cn(
-          "transcript-code p-3 font-mono text-[11px] text-muted-foreground whitespace-pre-wrap break-all",
+          "transcript-code p-3 font-mono text-micro text-muted-foreground whitespace-pre-wrap break-all",
           isLong && !showAll && "max-h-52 overflow-hidden",
         )}
       >
@@ -1422,7 +1501,7 @@ function ToolDetailSurface({ text, language }: { text: string; language?: string
             onClick={() => setShowAll(true)}
             // Opaque: the gradient alone does not clear the clipped line, so a
             // transparent label lands on top of it and both become unreadable.
-            className="mb-1.5 rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+            className="mb-1.5 rounded border bg-background px-2 py-0.5 text-micro text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
           >
             {t(($) => $.transcript.show_all)}
           </button>
@@ -1431,4 +1510,3 @@ function ToolDetailSurface({ text, language }: { text: string; language?: string
     </div>
   );
 }
-

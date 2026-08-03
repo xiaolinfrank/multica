@@ -75,7 +75,7 @@ export function StepPlatformFork({
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="flex items-center gap-1.5 text-body text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t(($) => $.common.back)}
@@ -94,15 +94,15 @@ export function StepPlatformFork({
           className="min-h-0 flex-1 overflow-y-auto"
         >
           <div className="mx-auto w-full max-w-[620px] px-6 py-10 sm:px-10 md:px-14 lg:px-0 lg:py-14">
-            <div className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <div className="mb-2 text-caption font-medium uppercase tracking-[0.08em] text-muted-foreground">
               {t(($) => $.step_platform.cloud_ready_eyebrow)}
             </div>
-            <h1 className="text-balance font-serif text-[36px] font-medium leading-[1.1] tracking-tight text-foreground">
+            <h1 className="text-balance font-serif text-display font-medium leading-[1.1] tracking-tight text-foreground">
               {hasShared
                 ? t(($) => $.step_platform.cloud_ready_headline)
                 : t(($) => $.step_platform.cloud_waiting_headline)}
             </h1>
-            <p className="mt-4 max-w-[560px] text-[15.5px] leading-[1.55] text-muted-foreground">
+            <p className="mt-4 max-w-[560px] text-body-lg leading-[1.55] text-muted-foreground">
               {hasShared
                 ? t(($) => $.step_platform.cloud_ready_lede)
                 : t(($) => $.step_platform.cloud_waiting_lede)}
@@ -111,7 +111,7 @@ export function StepPlatformFork({
             <div className="mt-10 flex max-w-[560px] flex-col gap-3.5">
               {hasShared ? (
                 <>
-                  <div className="flex items-center gap-2 text-sm">
+                  <div className="flex items-center gap-2 text-body">
                     <span
                       aria-hidden
                       className="inline-block size-2 shrink-0 rounded-full bg-success"
@@ -139,7 +139,7 @@ export function StepPlatformFork({
                     aria-hidden
                     className="inline-block size-2 shrink-0 rounded-full bg-success animate-pulse"
                   />
-                  <span className="text-[13px] leading-[1.55] text-muted-foreground">
+                  <span className="text-label leading-[1.55] text-muted-foreground">
                     {t(($) => $.step_platform.cloud_waiting_hint)}
                   </span>
                 </div>
@@ -150,7 +150,7 @@ export function StepPlatformFork({
                 the right. Continue is enabled once a shared runtime is
                 selected; Skip creates the self-serve onboarding issue. */}
             <div className="mt-8 flex max-w-[560px] flex-wrap items-center justify-between gap-x-4 gap-y-2">
-              <span aria-live="polite" className="text-xs text-muted-foreground">
+              <span aria-live="polite" className="text-caption text-muted-foreground">
                 {hasShared && selected
                   ? t(($) => $.step_runtime.hint_selected, {
                       // Not selected.name: a user-set custom_name alias would
