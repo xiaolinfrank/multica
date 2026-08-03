@@ -48,7 +48,8 @@ describe("StepAboutYou", () => {
       screen.getByText("Which best describes you?"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("What do you want to use Multica for?"),
+      // Fork: the survey copy is rebranded to BayClaw in en/onboarding.json.
+      screen.getByText("What do you want to use BayClaw for?"),
     ).toBeInTheDocument();
   });
 
