@@ -235,7 +235,7 @@ export const BoardColumn = memo(function BoardColumn({
         </div>
       </div>
       {status === "backlog" && (
-        <div className="mb-2 flex items-start gap-1.5 rounded-md border border-dashed border-border/70 bg-background/50 px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+        <div className="mb-2 flex items-start gap-1.5 rounded-md border border-dashed border-border/70 bg-background/50 px-2 py-1.5 text-micro leading-snug text-muted-foreground">
           <Info className="mt-px size-3 shrink-0" />
           <span>{t(($) => $.backlog_hint.column_note)}</span>
         </div>

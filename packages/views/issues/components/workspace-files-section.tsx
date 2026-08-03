@@ -46,7 +46,7 @@ export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
     <div>
       <button
         type="button"
-        className={`flex w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors mb-2 hover:bg-accent/70 ${
+        className={`flex w-full items-center gap-1 rounded-md px-2 py-1 text-caption font-medium transition-colors mb-2 hover:bg-accent/70 ${
           open ? "" : "text-muted-foreground hover:text-foreground"
         }`}
         onClick={() => setOpen(!open)}
@@ -79,7 +79,7 @@ function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
   const agentLabel = ws.agent_name || ws.agent_id || "—";
 
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs">
+    <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-caption">
       {/* Agent name is the primary identifier — it's what distinguishes the
           rows of a multi-agent squad. Give it the flexible space and drop the
           device name to a secondary line: within one issue the device name is
@@ -90,7 +90,7 @@ function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
           {agentLabel}
         </div>
         {ws.device_name ? (
-          <div className="truncate text-[11px] text-muted-foreground" title={ws.device_name}>
+          <div className="truncate text-micro text-muted-foreground" title={ws.device_name}>
             {ws.device_name}
           </div>
         ) : null}

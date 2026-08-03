@@ -227,7 +227,7 @@ function ThermalMeter({ thermal }: { thermal: Thermal }) {
           );
         })}
       </div>
-      <span className={cn("text-[10px] font-medium tabular-nums", thermal.tone)}>
+      <span className={cn("text-micro font-medium tabular-nums", thermal.tone)}>
         {thermal.label}
       </span>
     </div>
@@ -240,7 +240,7 @@ function NetReadout({ rx, tx, t }: { rx: number; tx: number; t: FleetT }) {
   const up = formatBytesPerSec(tx);
   const active = rx > 0 || tx > 0;
   return (
-    <div className="flex items-center gap-2.5 font-mono text-[10px] tabular-nums">
+    <div className="flex items-center gap-2.5 font-mono text-micro tabular-nums">
       <span
         className={cn("flex items-center gap-0.5", active ? "text-foreground" : "text-muted-foreground")}
         title={t(($) => $.net.down)}
@@ -273,7 +273,7 @@ function MicroStat({
 }) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border bg-background/40 px-2.5 py-2">
-      <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
         <Icon className="h-3 w-3" />
         {label}
       </span>
@@ -301,7 +301,7 @@ function NodeSpark({
   const hasHistory = data.length > 1;
   return (
     <div className={cn("flex flex-col gap-1", metricClass)}>
-      <span className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
         <Icon className="h-2.5 w-2.5" />
         {label}
       </span>
@@ -309,7 +309,7 @@ function NodeSpark({
         {hasHistory ? (
           <Sparkline data={data} height={24} range="percent" muted={!online} live={online} />
         ) : (
-          <span className="flex h-6 items-center text-[9px] tabular-nums text-muted-foreground/70">
+          <span className="flex h-6 items-center text-micro tabular-nums text-muted-foreground">
             {t(($) => $.trend.collecting)}
           </span>
         )}
@@ -357,16 +357,16 @@ function DeviceCard({
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2">
                 <StatusDot online={online} />
-                <span className="fleet-display truncate text-sm font-semibold tracking-wide">
+                <span className="fleet-display truncate text-body font-semibold tracking-wide">
                   {device.name}
                 </span>
                 {device.local ? (
-                  <span className="flex shrink-0 items-center gap-0.5 rounded border border-brand/30 bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-brand">
+                  <span className="flex shrink-0 items-center gap-0.5 rounded border border-brand/30 bg-brand/10 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wider text-brand">
                     <Radio className="h-2.5 w-2.5" />
                     {t(($) => $.coordinator)}
                   </span>
                 ) : (
-                  <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-micro font-medium uppercase tracking-wider text-muted-foreground">
                     {t(($) => $.runtime.label)}
                   </span>
                 )}
@@ -374,14 +374,14 @@ function DeviceCard({
               <div className="flex items-center gap-1.5 pl-[18px]">
                 {device.chip && (
                   <span
-                    className="flex shrink-0 items-center gap-1 rounded border border-brand/20 bg-brand/5 px-1.5 py-0.5 text-[10px] font-medium text-brand"
+                    className="flex shrink-0 items-center gap-1 rounded border border-brand/20 bg-brand/5 px-1.5 py-0.5 text-micro font-medium text-brand"
                     title={t(($) => $.hw.chip)}
                   >
                     <Cpu className="h-2.5 w-2.5" />
                     {device.chip}
                   </span>
                 )}
-                <span className="truncate font-mono text-[11px] text-muted-foreground">
+                <span className="truncate font-mono text-micro text-muted-foreground">
                   {device.host}
                   {device.os ? ` · macOS ${device.os}` : ""}
                 </span>
@@ -391,7 +391,7 @@ function DeviceCard({
             {/* Docker chip */}
             <div
               className={cn(
-                "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
+                "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-micro font-medium",
                 docker.tone,
               )}
               title={t(($) => $.docker.label)}
@@ -408,7 +408,7 @@ function DeviceCard({
           {/* Agent runtime / live load — independent of SSH reachability. First-class:
               this is a compute pool running AI agents, so the execution state leads. */}
           {(device.providers.length > 0 || device.runtime_online) && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-brand/20 bg-brand/[0.06] px-2.5 py-1.5 text-[11px]">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-brand/20 bg-brand/[0.06] px-2.5 py-1.5 text-micro">
               <span className="flex min-w-0 items-center gap-1.5">
                 <StatusDot online={device.runtime_online} size="sm" />
                 <span className="text-muted-foreground">{t(($) => $.runtime.label)}</span>
@@ -416,7 +416,7 @@ function DeviceCard({
                   {device.providers.map((p) => (
                     <span
                       key={p}
-                      className="rounded border border-brand/30 bg-brand/10 px-1 font-mono text-[10px] font-medium text-brand"
+                      className="rounded border border-brand/30 bg-brand/10 px-1 font-mono text-micro font-medium text-brand"
                     >
                       {p}
                     </span>
@@ -511,7 +511,7 @@ function DeviceCard({
                   {thermal.available ? (
                     <ThermalMeter thermal={thermal} />
                   ) : (
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-micro text-muted-foreground">
                       {t(($) => $.thermal_level.unknown)}
                     </span>
                   )}
@@ -522,7 +522,7 @@ function DeviceCard({
               </div>
 
               {/* Footer stats — monospace ops readout. */}
-              <div className="flex items-center justify-between border-t pt-2.5 text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between border-t pt-2.5 text-micro text-muted-foreground">
                 <span className="flex items-center gap-1" title={t(($) => $.metric.load)}>
                   <Activity className="h-3 w-3" />
                   <span className="font-mono tabular-nums">{device.load1.toFixed(2)}</span>
@@ -545,12 +545,12 @@ function DeviceCard({
               </div>
             </>
           ) : (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-caption text-muted-foreground">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
               <div className="min-w-0">
                 <div className="font-medium text-destructive">{t(($) => $.status.offline)}</div>
                 {device.error && (
-                  <div className="mt-0.5 break-words font-mono text-[10px]">{device.error}</div>
+                  <div className="mt-0.5 break-words font-mono text-micro">{device.error}</div>
                 )}
               </div>
             </div>
@@ -576,16 +576,16 @@ function SummaryStat({
 }) {
   return (
     <div className="relative flex flex-col gap-1.5 px-4 py-3.5">
-      <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-micro font-medium uppercase tracking-wider text-muted-foreground">
         <Icon className="h-3 w-3" />
         {label}
       </span>
       <span className="flex items-baseline gap-1.5">
-        <span className={cn("fleet-display text-3xl font-semibold leading-none tabular-nums", accent)}>
+        <span className={cn("fleet-display text-display font-semibold leading-none tabular-nums", accent)}>
           {value}
         </span>
         {sub && (
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{sub}</span>
+          <span className="font-mono text-micro tabular-nums text-muted-foreground">{sub}</span>
         )}
       </span>
     </div>
@@ -612,13 +612,13 @@ function VitalMeter({
   return (
     <div className={cn("flex flex-col gap-1.5", metricClass)}>
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
           <Icon className="h-3 w-3" />
           {label}
         </span>
-        <span className={cn("fleet-display text-base font-semibold tabular-nums", tone)}>
+        <span className={cn("fleet-display text-title-sm font-semibold tabular-nums", tone)}>
           {Math.round(pct)}
-          <span className="text-[10px]">%</span>
+          <span className="text-micro">%</span>
         </span>
       </div>
       <MeterBar pct={pct} toneClass={tone} />
@@ -699,22 +699,22 @@ export function FleetPage() {
                         </span>
                         <div className="flex flex-col">
                           <span className="flex items-center gap-2">
-                            <h1 className="fleet-display text-xl font-bold uppercase tracking-[0.18em] text-foreground">
+                            <h1 className="fleet-display text-title-lg font-bold uppercase tracking-[0.18em] text-foreground">
                               {t(($) => $.title)}
                             </h1>
-                            <span className="rounded border border-brand/30 bg-brand/10 px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.2em] text-brand">
+                            <span className="rounded border border-brand/30 bg-brand/10 px-1.5 py-0.5 font-mono text-micro font-medium uppercase tracking-[0.2em] text-brand">
                               {t(($) => $.console_tag)}
                             </span>
                           </span>
                         </div>
                       </div>
-                      <p className="max-w-2xl text-sm text-muted-foreground">{t(($) => $.subtitle)}</p>
+                      <p className="max-w-2xl text-body text-muted-foreground">{t(($) => $.subtitle)}</p>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <span
                         className={cn(
-                          "fleet-display flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold uppercase tracking-wider tabular-nums",
+                          "fleet-display flex items-center gap-1.5 rounded-full border px-3 py-1 text-body font-semibold uppercase tracking-wider tabular-nums",
                           allOnline
                             ? "border-success/40 bg-success/10 text-success"
                             : "border-warning/40 bg-warning/10 text-warning",
@@ -723,7 +723,7 @@ export function FleetPage() {
                         <StatusDot online={allOnline} size="sm" />
                         {summary.online}/{summary.total}
                       </span>
-                      <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                      <span className="flex items-center gap-1.5 font-mono text-micro uppercase tracking-[0.2em] text-muted-foreground">
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
                           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
@@ -782,7 +782,7 @@ export function FleetPage() {
                 <m.div variants={riseVariants}>
                   <div className="fleet-panel grid gap-4 rounded-2xl border bg-card/70 p-4 backdrop-blur-sm lg:grid-cols-[1.4fr_1fr]">
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-micro font-medium uppercase tracking-[0.18em] text-muted-foreground">
                         <Gauge className="h-3.5 w-3.5 text-brand" />
                         <span className="fleet-display">{t(($) => $.vitals.title)}</span>
                       </div>
@@ -809,23 +809,23 @@ export function FleetPage() {
                           data={history.pool.gpu}
                         />
                       </div>
-                      <div className="flex items-center gap-4 border-t pt-3 text-[11px]">
+                      <div className="flex items-center gap-4 border-t pt-3 text-micro">
                         <span className="flex items-center gap-1.5 text-muted-foreground">
                           <ListChecks className="h-3.5 w-3.5 text-success" />
-                          <span className="fleet-display text-base font-semibold tabular-nums text-foreground">
+                          <span className="fleet-display text-title-sm font-semibold tabular-nums text-foreground">
                             {summary.running}
                           </span>
                           {t(($) => $.runtime.running)}
                         </span>
                         <span className="flex items-center gap-1.5 text-muted-foreground">
                           <Clock className="h-3.5 w-3.5" />
-                          <span className="fleet-display text-base font-semibold tabular-nums text-foreground">
+                          <span className="fleet-display text-title-sm font-semibold tabular-nums text-foreground">
                             {summary.queued}
                           </span>
                           {t(($) => $.runtime.queued)}
                         </span>
                         <span
-                          className="ml-auto flex items-center gap-1.5 font-mono text-[11px] tabular-nums text-muted-foreground"
+                          className="ml-auto flex items-center gap-1.5 font-mono text-micro tabular-nums text-muted-foreground"
                           title={t(($) => $.hw.power)}
                         >
                           <Zap className="h-3.5 w-3.5 text-brand" />
@@ -836,7 +836,7 @@ export function FleetPage() {
 
                     {/* Node activity heat-strip */}
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      <div className="flex items-center gap-2 text-micro font-medium uppercase tracking-[0.18em] text-muted-foreground">
                         <Activity className="h-3.5 w-3.5 text-brand" />
                         <span className="fleet-display">{t(($) => $.vitals.activity)}</span>
                       </div>
@@ -886,16 +886,16 @@ export function FleetPage() {
               ) : devices.length === 0 ? (
                 <m.div
                   variants={riseVariants}
-                  className="rounded-2xl border border-dashed p-12 text-center text-sm text-muted-foreground"
+                  className="rounded-2xl border border-dashed p-12 text-center text-body text-muted-foreground"
                 >
                   {t(($) => $.empty)}
                 </m.div>
               ) : (
                 <m.div variants={riseVariants} className="space-y-3">
-                  <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  <div className="flex items-center gap-2 text-micro font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     <Server className="h-3.5 w-3.5 text-brand" />
                     <span className="fleet-display">{t(($) => $.nodes_title)}</span>
-                    <span className="font-mono tabular-nums text-muted-foreground/70">
+                    <span className="font-mono tabular-nums text-muted-foreground">
                       {summary.total}
                     </span>
                   </div>

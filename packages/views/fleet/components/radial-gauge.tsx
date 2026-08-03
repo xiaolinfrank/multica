@@ -89,25 +89,25 @@ export function RadialGauge({
           <span
             className={cn(
               "flex items-baseline font-mono font-semibold tabular-nums leading-none",
-              hero ? "text-2xl" : "text-sm",
+              hero ? "text-display-sm" : "text-body",
               toneClass,
             )}
           >
             {Math.round(pct)}
             {unit && (
-              <span className={cn("font-medium", hero ? "ml-0.5 text-sm" : "text-[10px]")}>
+              <span className={cn("font-medium", hero ? "ml-0.5 text-body" : "text-micro")}>
                 {unit}
               </span>
             )}
           </span>
           {sub && (
-            <span className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+            <span className="mt-0.5 font-mono text-micro tabular-nums text-muted-foreground">
               {sub}
             </span>
           )}
         </div>
       </div>
-      <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-center gap-1 text-micro font-medium uppercase tracking-wider text-muted-foreground">
         <Icon className="h-3 w-3" />
         {label}
       </span>

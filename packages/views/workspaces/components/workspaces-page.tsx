@@ -93,8 +93,8 @@ export function WorkspacesPage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-6 p-6">
         <header className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight">{t(($) => $.title)}</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">{t(($) => $.subtitle)}</p>
+          <h1 className="text-title-lg font-semibold tracking-tight">{t(($) => $.title)}</h1>
+          <p className="max-w-2xl text-body text-muted-foreground">{t(($) => $.subtitle)}</p>
         </header>
 
         <div className="grid grid-cols-3 gap-3">
@@ -123,8 +123,8 @@ export function WorkspacesPage() {
           </div>
         ) : groups.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-10 text-center">
-            <p className="text-sm font-medium">{t(($) => $.empty.title)}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{t(($) => $.empty.hint)}</p>
+            <p className="text-body font-medium">{t(($) => $.empty.title)}</p>
+            <p className="mt-1 text-body text-muted-foreground">{t(($) => $.empty.hint)}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -146,9 +146,9 @@ function IssueGroupRow({ wsId, group }: { wsId: string; group: IssueGroup }) {
     <div className="rounded-lg border border-border bg-card">
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         {group.identifier ? (
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{group.identifier}</span>
+          <span className="shrink-0 font-mono text-caption text-muted-foreground">{group.identifier}</span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-body font-medium">
           {group.title || group.issueId}
         </span>
         {group.status ? (
@@ -156,13 +156,13 @@ function IssueGroupRow({ wsId, group }: { wsId: string; group: IssueGroup }) {
             {group.status.replace(/_/g, " ")}
           </Badge>
         ) : null}
-        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+        <span className="shrink-0 text-body tabular-nums text-muted-foreground">
           {formatBytes(group.sizeBytes)}
         </span>
         {group.issueId ? (
           <AppLink
             href={paths.issueDetail(group.issueId)}
-            className="shrink-0 text-xs font-medium text-brand hover:underline"
+            className="shrink-0 text-caption font-medium text-brand hover:underline"
           >
             {t(($) => $.row.open_issue)}
           </AppLink>
@@ -192,32 +192,32 @@ function AgentRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
   });
 
   return (
-    <li className="flex items-center gap-3 px-4 py-2 text-sm">
+    <li className="flex items-center gap-3 px-4 py-2 text-body">
       <span className="min-w-0 flex-1 truncate">
         {ws.agent_name || ws.agent_id || "—"}
-        <span className="ml-2 text-xs text-muted-foreground">
+        <span className="ml-2 text-caption text-muted-foreground">
           {t(($) => $.row.on_device, { device: ws.device_name || "—" })}
         </span>
       </span>
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <span className="shrink-0 text-caption text-muted-foreground">
         {t(($) => $.row.files, { count: ws.file_count })}
       </span>
       {ws.repo_checkout_bytes > 0 ? (
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="shrink-0 text-caption text-muted-foreground">
           {t(($) => $.row.reclaimable, { size: formatBytes(ws.repo_checkout_bytes) })}
         </span>
       ) : null}
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+      <span className="shrink-0 text-caption tabular-nums text-muted-foreground">
         {formatAge(ws.age_seconds)}
       </span>
-      <span className="w-16 shrink-0 text-right text-sm tabular-nums">
+      <span className="w-16 shrink-0 text-right text-body tabular-nums">
         {formatBytes(ws.size_bytes)}
       </span>
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"
           onClick={() => setBrowsing(true)}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
         >
           <FolderOpen className="size-3.5" />
           {t(($) => $.row.browse)}
@@ -227,7 +227,7 @@ function AgentRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
             type="button"
             onClick={() => reclaim.mutate()}
             disabled={reclaim.isPending}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-50"
           >
             <Recycle className="size-3.5" />
             {t(($) => $.row.clear_repo)}
@@ -308,11 +308,11 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
         {icon}
         <span className="truncate">{label}</span>
       </div>
-      <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
+      <div className="mt-1 text-title font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

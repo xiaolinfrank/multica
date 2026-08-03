@@ -164,7 +164,7 @@ export function SharedEnvCard({
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 px-4 py-2.5">
         <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-body font-medium">
           {t(($) => $.shared.title)}
         </span>
         <Badge variant="secondary" className="shrink-0 font-mono">
@@ -192,7 +192,7 @@ export function SharedEnvCard({
       </div>
 
       <div className="border-t px-4 py-2.5">
-        <p className="mb-2 text-xs text-muted-foreground">
+        <p className="mb-2 text-caption text-muted-foreground">
           {t(($) => $.shared.hint)}
         </p>
 
@@ -203,13 +203,13 @@ export function SharedEnvCard({
               {keyNames.map((name) => (
                 <li
                   key={name}
-                  className="flex items-center gap-3 px-3 py-1.5 text-sm"
+                  className="flex items-center gap-3 px-3 py-1.5 text-body"
                 >
                   <span className="min-w-0 flex-1 truncate font-mono">
                     {name}
                   </span>
                   <span
-                    className="shrink-0 font-mono text-xs tracking-widest text-muted-foreground/60 select-none"
+                    className="shrink-0 font-mono text-caption tracking-widest text-muted-foreground select-none"
                     aria-label={t(($) => $.page.value_hidden)}
                   >
                     {MASK}
@@ -218,7 +218,7 @@ export function SharedEnvCard({
               ))}
             </ul>
           ) : (
-            <p className="text-xs italic text-muted-foreground">
+            <p className="text-caption italic text-muted-foreground">
               {t(($) => $.shared.empty)}
             </p>
           )
@@ -231,7 +231,7 @@ export function SharedEnvCard({
                   value={entry.key}
                   onChange={(e) => updateEntry(index, "key", e.target.value)}
                   placeholder={t(($) => $.shared.key_placeholder)}
-                  className="w-[40%] font-mono text-xs"
+                  className="w-[40%] font-mono text-caption"
                 />
                 <div className="relative flex-1">
                   <Input
@@ -239,7 +239,7 @@ export function SharedEnvCard({
                     value={entry.value}
                     onChange={(e) => updateEntry(index, "value", e.target.value)}
                     placeholder={t(($) => $.shared.value_placeholder)}
-                    className="pr-8 font-mono text-xs"
+                    className="pr-8 font-mono text-caption"
                   />
                   <button
                     type="button"
@@ -282,7 +282,7 @@ export function SharedEnvCard({
               </Button>
               <div className="flex items-center gap-3">
                 {dirty && (
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     {t(($) => $.shared.unsaved_changes)}
                   </span>
                 )}

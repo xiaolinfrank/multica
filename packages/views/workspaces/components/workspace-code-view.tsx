@@ -88,7 +88,7 @@ export function WorkspaceCodeView({
     <div className="h-full overflow-auto bg-card">
       <div
         className={cn(
-          "rich-text-editor py-1 font-mono text-[0.8125rem] leading-[1.6]",
+          "rich-text-editor py-1 font-mono text-label leading-[1.6]",
           wrap ? "w-full" : "w-max min-w-full",
         )}
       >
@@ -96,7 +96,7 @@ export function WorkspaceCodeView({
           <div key={i} className="flex w-full hover:bg-accent/40">
             <span
               aria-hidden
-              className="sticky left-0 z-10 shrink-0 select-none border-r border-border bg-card px-2 text-right text-muted-foreground/60"
+              className="sticky left-0 z-10 shrink-0 select-none border-r border-border bg-card px-2 text-right text-muted-foreground"
               style={{ minWidth: `calc(${gutterCh}ch + 1rem)` }}
             >
               {i + 1}

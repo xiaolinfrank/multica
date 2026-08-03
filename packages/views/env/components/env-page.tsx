@@ -72,16 +72,16 @@ function KeyRow({
   overrideLabel?: string;
 }) {
   return (
-    <li className="flex items-center gap-3 px-4 py-2 text-sm">
-      <KeyRound className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+    <li className="flex items-center gap-3 px-4 py-2 text-body">
+      <KeyRound className="h-3.5 w-3.5 shrink-0 text-faint-foreground" />
       <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
       {overridesShared && (
-        <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+        <Badge variant="outline" className="shrink-0 text-micro font-normal">
           {overrideLabel}
         </Badge>
       )}
       <span
-        className="shrink-0 font-mono text-xs tracking-widest text-muted-foreground/60 select-none"
+        className="shrink-0 font-mono text-caption tracking-widest text-muted-foreground select-none"
         aria-label={hidden}
       >
         {MASK}
@@ -117,11 +117,11 @@ function SecretSection({
   return (
     <div>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 pt-2.5 pb-1">
-        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
           {icon}
           <span className="min-w-0 truncate">{label}</span>
         </span>
-        <span className="text-[11px] text-muted-foreground/70">{hint}</span>
+        <span className="text-micro text-muted-foreground">{hint}</span>
       </div>
       <ul className="divide-y border-t">
         {keys.map((k) => (
@@ -154,7 +154,7 @@ function AgentEnvCard({
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 px-4 py-2.5">
         <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-body font-medium">
           {group.agent_name}
         </span>
         {group.gateway_token && (
@@ -212,9 +212,9 @@ function CenteredState({
       <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-muted/50 text-muted-foreground">
         {icon}
       </div>
-      <p className="text-sm font-medium">{title}</p>
+      <p className="text-body font-medium">{title}</p>
       {hint && (
-        <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+        <p className="mx-auto mt-1 max-w-md text-caption text-muted-foreground">
           {hint}
         </p>
       )}
@@ -327,7 +327,7 @@ export function EnvPage() {
     }
     if (envQuery.error) {
       return (
-        <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {t(($) => $.page.load_error)}
         </div>
@@ -375,13 +375,13 @@ export function EnvPage() {
       <PageHeader className="justify-between px-5">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-sm font-medium">{t(($) => $.page.title)}</h1>
+          <h1 className="text-body font-medium">{t(($) => $.page.title)}</h1>
           {totalKeys > 0 && (
-            <span className="font-mono text-xs tabular-nums text-muted-foreground/70">
+            <span className="font-mono text-caption tabular-nums text-muted-foreground">
               {totalKeys}
             </span>
           )}
-          <p className="ml-2 hidden text-xs text-muted-foreground md:block">
+          <p className="ml-2 hidden text-caption text-muted-foreground md:block">
             {t(($) => $.page.tagline)}
           </p>
         </div>
@@ -417,7 +417,7 @@ export function EnvPage() {
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {/* Masked, read-only reminder so it's obvious this is a viewer, not an editor. */}
         {showToolbar && (
-          <p className="mb-3 text-xs text-muted-foreground">
+          <p className="mb-3 text-caption text-muted-foreground">
             {t(($) => $.page.masked_hint)}
           </p>
         )}

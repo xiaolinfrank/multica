@@ -36,15 +36,15 @@ function BrowseSkillItem({ skill }: { skill: RuntimeLocalSkillSummary }) {
     <div className="flex items-start gap-3 rounded-lg border px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{skill.name}</span>
+          <span className="truncate text-body font-medium">{skill.name}</span>
           <Badge variant="secondary">{skill.provider}</Badge>
         </div>
         {skill.description && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-1 line-clamp-2 text-caption text-muted-foreground">
             {skill.description}
           </p>
         )}
-        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+        <p className="mt-1 truncate font-mono text-caption text-muted-foreground">
           {skill.source_path}
         </p>
       </div>
@@ -111,10 +111,10 @@ export function RuntimeSkillsBrowsePanel() {
     if (localRuntimes.length === 0) {
       return (
         <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             {t(($) => $.runtime_import.no_local_runtimes_title)}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-caption text-muted-foreground">
             {t(($) => $.runtime_import.no_local_runtimes_hint)}
           </p>
         </div>
@@ -123,7 +123,7 @@ export function RuntimeSkillsBrowsePanel() {
     if (!selectedRuntime) {
       return (
         <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             {t(($) => $.runtime_import.choose_runtime)}
           </p>
         </div>
@@ -131,7 +131,7 @@ export function RuntimeSkillsBrowsePanel() {
     }
     if (selectedRuntime.status !== "online") {
       return (
-        <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-caption text-muted-foreground">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
           {t(($) => $.runtime_import.must_be_online)}
         </div>
@@ -151,7 +151,7 @@ export function RuntimeSkillsBrowsePanel() {
     }
     if (skillsQuery.error) {
       return (
-        <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-caption text-destructive">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {skillsQuery.error instanceof Error
             ? skillsQuery.error.message
@@ -161,7 +161,7 @@ export function RuntimeSkillsBrowsePanel() {
     }
     if (!skillsQuery.data?.supported) {
       return (
-        <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-caption text-muted-foreground">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {t(($) => $.runtime_import.not_supported)}
         </div>
@@ -170,10 +170,10 @@ export function RuntimeSkillsBrowsePanel() {
     if (runtimeSkills.length === 0) {
       return (
         <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             {t(($) => $.runtime_import.no_skills_title)}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-caption text-muted-foreground">
             {t(($) => $.runtime_import.no_skills_hint)}
           </p>
         </div>
@@ -193,7 +193,7 @@ export function RuntimeSkillsBrowsePanel() {
       {/* Sticky top: runtime picker + status + refresh */}
       <div className="shrink-0 space-y-2 border-b px-5 py-3">
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">
+          <label className="text-caption text-muted-foreground">
             {t(($) => $.runtime_import.runtime_label)}
           </label>
           <div className="flex items-center gap-2">
@@ -239,7 +239,7 @@ export function RuntimeSkillsBrowsePanel() {
         </div>
 
         {selectedRuntime && (
-          <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-1.5 text-caption text-muted-foreground">
             <HardDrive className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">
               {runtimeLabel(selectedRuntime)}
@@ -254,7 +254,7 @@ export function RuntimeSkillsBrowsePanel() {
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t(($) => $.runtime_browse.hint)}
         </p>
       </div>
