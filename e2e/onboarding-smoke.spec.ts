@@ -83,7 +83,10 @@ test("onboarding — zh-Hans renders Chinese labels", async ({ page, context }) 
   await page.goto("/onboarding", { waitUntil: "domcontentloaded" });
   await waitForPageText(page, "开始探索");
 
-  await page.getByRole("button").first().click().catch(() => {});
+  // Click the named CTA, not ".first()": the onboarding header gained a
+  // logout escape (c3cc777ac) which sits earlier in DOM order and signs
+  // the test user out.
+  await page.getByRole("button", { name: "开始探索" }).click();
 
   // About-you screen — Chinese headline + both sub-questions.
   await expect(page.getByText("简单介绍一下你自己。")).toBeVisible({ timeout: 10000 });
