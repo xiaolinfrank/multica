@@ -312,7 +312,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
           "Every workspace can now label agents and Skills to keep them organized.",
           "Codex on Linux now uses the tools and logins already set up on that machine.",
           "Built-in Skills have consistent names and take up far less of each agent run.",
-          "Dimmed text across Multica is now solid and readable instead of washed out.",
+          "Dimmed text across BayClaw is now solid and readable instead of washed out.",
         ],
         fixes: [
           "Multi-line prompts sent to Copilot on Windows no longer lose their line breaks.",
@@ -341,14 +341,14 @@ export function createEnDict(allowSignup: boolean): LandingDict {
         ],
         improvements: [
           "Issue tables stay responsive when you switch workspaces.",
-          "Multica's interface and four-language docs are more consistent and readable.",
+          "BayClaw's interface and four-language docs are more consistent and readable.",
           "Attachment-heavy CLI and agent workflows now transfer less data.",
           "Self-hosted setup now carries your configuration into the daemon.",
         ],
         fixes: [
           "Codex file changes are now preserved in task transcripts.",
           "Hermes agents now recover from a lost resumed session.",
-          "Qoder CLI is now found when Multica starts from a desktop app.",
+          "Qoder CLI is now found when BayClaw starts from a desktop app.",
           "Daemon updates no longer wait forever while the machine is idle.",
           "Issue activity labels no longer clip letters below the baseline.",
         ],

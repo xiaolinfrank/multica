@@ -316,9 +316,9 @@ function OnboardingStepFlow({
   // Step 3. Both paths own full-bleed two-column layouts.
   //   - Desktop (no cliInstructions slot) → StepRuntimeConnect drives
   //     the local daemon's runtime list directly.
-  //   - Web → StepPlatformFork offers Download / CLI / Cloud paths.
-  //     Under the CLI path it embeds StepRuntimeConnect for the live
-  //     probe; the Cloud path is a soft exit via the waitlist.
+  //   - Web → StepPlatformFork lists the platform-operated shared
+  //     runtimes (BayClaw is server-centric; nothing to install) and
+  //     continues once one is selected.
   if (step === "runtime" && workspace) {
     if (!runtimeInstructions) {
       return (
