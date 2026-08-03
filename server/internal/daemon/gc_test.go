@@ -1285,6 +1285,10 @@ func (c *blockingRepoCache) Lookup(workspaceID, url string) string {
 	return c.inner.Lookup(workspaceID, url)
 }
 
+func (c *blockingRepoCache) BarePath(workspaceID, url string) string {
+	return c.inner.BarePath(workspaceID, url)
+}
+
 func (c *blockingRepoCache) Sync(workspaceID string, repos []repocache.RepoInfo) error {
 	return c.inner.Sync(workspaceID, repos)
 }

@@ -12,4 +12,8 @@ export * from "./visibility-label";
 export * from "./use-workspace-agent-availability";
 export * from "./mcp-support";
 export * from "./openclaw-runtime-config";
+// Fork: pin-agent keeps the cluster generic agent (通用智能体（主）) at the top of
+// every picker. Upstream: runtime-binding gates pickers to runtime-bound agents.
+// Both compose — filter by runtime-bound first, then pin the default assignee.
 export * from "./pin-agent";
+export * from "./runtime-binding";
