@@ -272,6 +272,10 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://multica:multica@localhost:5432/multica?sslmode=disable
+      # Fork: scripts/test-go.sh refuses non-*_test database names to protect
+      # self-hosted production databases. The CI postgres service is a fresh
+      # throwaway container per run, so opting in here is honest.
+      MULTICA_ALLOW_NON_TEST_DB: "1"
       # Wires up the RedisLocalSkill*_test.go suite. Distinct from REDIS_URL
       # (which would flip the server binary itself onto the Redis-backed
       # realtime relay + request stores); the tests talk to this Redis
