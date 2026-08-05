@@ -193,6 +193,27 @@ func TestClusterGenericAgentName_StableAcrossRuntimeShapes(t *testing.T) {
 	}
 }
 
+func TestClusterGenericAgentAvatarSlug(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "primary host", in: "通用智能体（主）", want: "cluster-primary"},
+		{name: "node 1", in: "通用智能体 1", want: "cluster-node-1"},
+		{name: "node 6", in: "通用智能体 6", want: "cluster-node-6"},
+		{name: "named node falls back to primary", in: "通用智能体（probe-node-a）", want: "cluster-primary"},
+		{name: "empty falls back to primary", in: "", want: "cluster-primary"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := clusterAgentAvatarSlug(tc.in); got != tc.want {
+				t.Fatalf("clusterAgentAvatarSlug(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // --- ensure -----------------------------------------------------------------
 
 func TestEnsureClusterGenericAgent_CreatesWorkspaceVisibleAgent(t *testing.T) {
@@ -210,11 +231,11 @@ func TestEnsureClusterGenericAgent_CreatesWorkspaceVisibleAgent(t *testing.T) {
 	testHandler.ensureClusterGenericAgent(rt)
 
 	const wantName = "通用智能体（probe-node-a）"
-	var permMode, vis, boundRuntime, owner string
+	var permMode, vis, boundRuntime, owner, avatarURL string
 	if err := testPool.QueryRow(ctx, `
-		SELECT permission_mode, visibility, runtime_id::text, owner_id::text
+		SELECT permission_mode, visibility, runtime_id::text, owner_id::text, COALESCE(avatar_url,'')
 		FROM agent WHERE workspace_id = $1 AND name = $2
-	`, wsID, wantName).Scan(&permMode, &vis, &boundRuntime, &owner); err != nil {
+	`, wsID, wantName).Scan(&permMode, &vis, &boundRuntime, &owner, &avatarURL); err != nil {
 		t.Fatalf("cluster agent not created: %v", err)
 	}
 	if permMode != "public_to" {
@@ -228,6 +249,10 @@ func TestEnsureClusterGenericAgent_CreatesWorkspaceVisibleAgent(t *testing.T) {
 	}
 	if owner != runnerID {
 		t.Fatalf("owner_id = %q, want runner %q", owner, runnerID)
+	}
+	// A named (non-numbered, non-host) node falls back to the primary avatar.
+	if avatarURL != "/uploads/agent-avatars/cluster-primary.png" {
+		t.Fatalf("avatar_url = %q, want cluster-primary avatar", avatarURL)
 	}
 
 	var targets int

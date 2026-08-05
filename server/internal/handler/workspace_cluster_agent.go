@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/seed"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -105,6 +106,24 @@ func clusterAgentName(rt db.AgentRuntime) string {
 	return clusterAgentNameForNode(clusterNodeLabel(rt))
 }
 
+// clusterAgentAvatarSlug maps a cluster generic agent's display name to its
+// embedded avatar slug. The API host ("通用智能体（主）") maps to the gold
+// primary avatar; numbered fleet nodes ("通用智能体 1"…"通用智能体 6") map to
+// their matching numbered node avatar. Any other name (an unknown node label)
+// falls back to the primary avatar so every generic worker always has a face.
+// Slugs match embedded PNGs in seed/avatars, served at
+// /uploads/agent-avatars/<slug>.png by seed.ServeAvatar.
+func clusterAgentAvatarSlug(name string) string {
+	switch {
+	case name == clusterGenericAgentPrefix+"（主）":
+		return "cluster-primary"
+	case strings.HasPrefix(name, clusterGenericAgentPrefix+" "):
+		return "cluster-node-" + strings.TrimPrefix(name, clusterGenericAgentPrefix+" ")
+	default:
+		return "cluster-primary"
+	}
+}
+
 // nodeLabelFromDeviceInfo returns the device/hostname segment the daemon
 // writes as everything before the first " · " in DeviceInfo (e.g.
 // "fosun_agent_1 · 2.1.220 (Claude Code)" -> "fosun_agent_1"). SplitN-style
@@ -138,6 +157,7 @@ func clusterGenericAgentParams(rt db.AgentRuntime, name string) db.CreateAgentPa
 	return db.CreateAgentParams{
 		WorkspaceID:        rt.WorkspaceID,
 		Name:               name,
+		AvatarUrl:          pgtype.Text{String: seed.AvatarURLFor(clusterAgentAvatarSlug(name)), Valid: true},
 		Description:        "运行在 " + clusterNodeLabel(rt) + " 节点的通用智能体",
 		Instructions:       "",
 		RuntimeMode:        rt.RuntimeMode,
