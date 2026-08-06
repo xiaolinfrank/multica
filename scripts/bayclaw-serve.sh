@@ -86,6 +86,21 @@ build_go() {
   ( cd "$ROOT" && make build ) || { echo "ERROR: make build failed" >&2; exit 1; }
 }
 
+# Wait for Postgres (runs in colima docker) before starting the Go server.
+# On reboot, colima can take minutes to come up; the Go binary fatals if the
+# DB is unreachable at boot, and com.bayclaw.serve (RunAtLoad, no KeepAlive)
+# would not restart it. Poll the host-side 5432 forward until it is up.
+wait_for_pg() {
+  local i
+  say "waiting for Postgres on 127.0.0.1:5432 ..."
+  for i in $(seq 1 180); do
+    nc -z 127.0.0.1 5432 2>/dev/null && { say "Postgres is ready (after ${i}s)"; return 0; }
+    sleep 1
+  done
+  echo "WARN: Postgres not reachable after 180s; starting server anyway" >&2
+  return 1
+}
+
 start_server() {
   [ -x "$ROOT/server/bin/server" ] || { echo "ERROR: server/bin/server missing -- run a build first" >&2; exit 1; }
   say "starting API server (:$PORT) -> logs/server.log"
@@ -138,6 +153,7 @@ case "$cmd" in
   start)
     build_go
     build_web
+    wait_for_pg
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"
     echo; status
@@ -150,6 +166,7 @@ case "$cmd" in
     build_go
     build_web
     stop_all
+    wait_for_pg
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"
     echo; status

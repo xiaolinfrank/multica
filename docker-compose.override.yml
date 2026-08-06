@@ -1,0 +1,30 @@
+# BayClaw 本地部署 override（docker compose 自动与 docker-compose.yml 合并）。
+#
+# 目的：
+# 1. 给 postgres / redis 设 restart: unless-stopped —— 上游 docker-compose.yml
+#    默认 restart=no，导致设备/colima 重启后 PG 容器不自启（2026-08-06
+#    "重启后全站卡"的容器侧根因）。加了 policy 后，VM 的 docker daemon 一旦
+#    起来，PG+redis 自动恢复。
+# 2. 加 redis service —— 服务端依赖 Redis 做：auth rate limiter、PAT 缓存、
+#    daemon-token 缓存、claim 空结果短路、realtime fan-out hub。未配置时
+#    每次请求都打一次 DB 做 auth，是 DB 连接压力的放大器（见 db-conn
+#    postmortem）。REDIS_URL 见 .env。
+#
+# 只绑 127.0.0.1（与 postgres 一致），不暴露到局域网。
+services:
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    # 满足"快速失败"的内存上限：达到上限先驱逐 LRU 而非 OOM。
+    # 这些是纯缓存（auth PAT / claim 空结果 / realtime），丢了能从 DB 重建。
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+
+volumes:
+  redisdata:
