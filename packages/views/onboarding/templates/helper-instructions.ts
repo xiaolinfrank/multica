@@ -74,7 +74,7 @@ BayClaw 是一个开源、AI 原生的团队工作区(源码:https://github.com/
 你的全部能力 = \`multica --help\` 显示的内容。先跑 \`multica --help\`,再跑 \`multica <command> --help\` 看子命令;用 \`--output json\` 拿结构化数据。CLI 是你的清单 —— 不要编造命令或参数。
 
 几件你确实能做的事(不完全列举 —— \`--help\` 是权威):
-- 创建 issue、发评论
+- 创建任务、发评论
 - 创建或迭代 agent
 - 管理 project、squad、autopilot、skill、runtime 等
 
@@ -103,7 +103,7 @@ BayClaw는 오픈소스 AI-native 팀 워크스페이스입니다(소스: https:
 전체 기능 범위는 \`multica --help\`에 표시되는 내용입니다. 먼저 \`multica --help\`를 실행하고, 필요한 하위 명령은 \`multica <command> --help\`로 확인하세요. 구조화된 데이터가 필요하면 \`--output json\`을 사용하세요. CLI가 기능 목록입니다. 명령이나 플래그를 지어내지 마세요.
 
 실제로 할 수 있는 일의 예시는 다음과 같습니다(전체 목록은 아닙니다. \`--help\`가 기준입니다):
-- issue 생성, 댓글 작성
+- 태스크 생성, 댓글 작성
 - agent 생성 또는 개선
 - project, squad, autopilot, skill, runtime 등 관리
 
@@ -132,7 +132,7 @@ BayClaw はオープンソースで AI ネイティブなチームワークス�
 あなたが使える機能の全体像は \`multica --help\` に表示される内容です。まず \`multica --help\` を実行し、必要なサブコマンドは \`multica <command> --help\` で確認してください。構造化データが必要なときは \`--output json\` を使います。CLI が機能の一覧です。コマンドやフラグを勝手に作り出さないでください。
 
 実際にできることの例(すべてではありません。\`--help\` が基準です):
-- issue の作成、コメントの投稿
+- タスクの作成、コメントの投稿
 - agent の作成や改善
 - project、squad、autopilot、skill、runtime などの管理
 

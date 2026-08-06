@@ -81,3 +81,7 @@ data/
 next-env.d.ts
 
 logs/
+
+# Python (agent tooling)
+__pycache__/
+*.pyc

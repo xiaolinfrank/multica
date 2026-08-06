@@ -115,6 +115,7 @@ export const RUNTIME_PROFILE_PROTOCOL_FAMILIES = [
   "pi",
   "cursor",
   "kimi",
+  "reasonix",
   "kiro",
   "antigravity",
   "qoder",
@@ -368,6 +369,41 @@ export interface AgentTask {
    * user-facing task surfaces; older backends omit it — render conditionally.
    */
   attribution?: TaskAttribution;
+  /**
+   * This run's own token consumption, one entry per (provider, model) it used.
+   * Present on the issue execution-log endpoint only; the daemon claim path
+   * omits it.
+   *
+   * `undefined` (old backend, or a surface that doesn't hydrate it) and `[]`
+   * (backend hydrated, this run has no recorded usage) both mean "no number to
+   * show" and must render as an em dash, never as 0 — a run that predates usage
+   * reporting was not free, we just don't know what it cost.
+   */
+  usage?: TaskUsage[];
+}
+
+/**
+ * One (provider, model) slice of a single run's token usage.
+ *
+ * Field names deliberately match {@link RuntimeUsage} so the same
+ * `estimateCost` / `estimateCostBreakdown` / `estimateCacheSavings` helpers in
+ * `packages/views/runtimes/utils.ts` price a run and a runtime-day identically
+ * — there is exactly one cost formula in the product.
+ *
+ * `cost_usd_ticks` is the provider's own price for this slice (1e-10 USD),
+ * absent when it reported none; those tokens get estimated from the rate table
+ * instead. Unlike the aggregate rows there is no `uncosted_*` split here: a
+ * `task_usage` row is priced or it isn't, so "uncosted" is just "all of them
+ * when cost_usd_ticks is absent", which is what the estimator already assumes.
+ */
+export interface TaskUsage {
+  provider?: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  cost_usd_ticks?: number;
 }
 
 export interface Agent {
@@ -560,6 +596,54 @@ export interface AgentBuilderSession {
   session_id: string;
   builder_agent_id: string;
   runtime_id: string;
+}
+
+/** Who may invoke the agent being created, as the creation form models it. */
+export type AgentPermissionScope = "private" | "workspace" | "members";
+
+/**
+ * The wire form of an in-progress agent configuration.
+ *
+ * Differs from the editable draft in two deliberate ways: `Set` becomes an
+ * array (JSON has no sets), and there is no runtime — which runtime a
+ * conversation executes on is owned by its carrier agent server-side, and a
+ * copy here could only go stale. `applied_message_id` travels along because it
+ * is what stops a restore from re-applying the last reply's `<agent_draft>`
+ * over edits the user made after it.
+ */
+export interface StoredAgentDraft {
+  name: string;
+  description: string;
+  instructions: string;
+  avatar_url: string | null;
+  model: string;
+  thinking_level: string;
+  service_tier: string;
+  skill_ids: string[];
+  permission_scope: AgentPermissionScope;
+  member_ids: string[];
+  team_ids: string[];
+  applied_message_id: string | null;
+}
+
+/** One unfinished agent-creation conversation, as listed by the studio. */
+export interface AgentBuilderSessionSummary {
+  session_id: string;
+  title: string;
+  /** The carrier's runtime — where this conversation actually executes. The
+   *  picker seeds from it so it can never disagree with what answers the next
+   *  message (MUL-5163). */
+  runtime_id: string;
+  created_at: string;
+  updated_at: string;
+  /** Still in the builder wire format; decode with the builder protocol helpers
+   *  before showing it to a human. */
+  last_message_content: string;
+  last_message_role: string;
+  last_message_at: string;
+  /** The stored configuration, or null when the conversation has never been
+   *  hand-edited — the client then replays the last `<agent_draft>` block. */
+  draft?: StoredAgentDraft | null;
 }
 
 /** Result of rebinding a live builder conversation to another runtime.

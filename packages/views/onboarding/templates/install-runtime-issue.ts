@@ -36,11 +36,11 @@ BayClaw's agents run on shared cloud runtimes that the platform team provisions 
 Before a runtime is available, you can:
 
 1. Create a project for your current work.
-2. Create a few issues and move them across backlog, todo, in_progress, and done.
+2. Create a few tasks and move them across backlog, todo, in_progress, and done.
 3. Add priorities, labels, comments, and subscriptions.
 4. Use Inbox to track assignments and mentions.
 
-That gives you the project-management layer first. Once a cloud runtime is available, agents can start working from the same issues.
+That gives you the project-management layer first. Once a cloud runtime is available, agents can start working from the same tasks.
 
 ## About your cloud runtime
 
@@ -61,11 +61,11 @@ BayClaw 的智能体运行在平台团队统一配置和维护的共享云端服
 运行时开通前，你可以先做这些事：
 
 1. 为当前工作创建一个项目。
-2. 新建几个 issue，并在 backlog、todo、in_progress、done 之间流转。
-3. 给 issue 加优先级、标签、评论和订阅。
+2. 新建几个 ä»»å¡，并在 backlog、todo、in_progress、done 之间流转。
+3. 给 ä»»å¡ 加优先级、标签、评论和订阅。
 4. 用收件箱追踪分配给你的事项和 @mention。
 
-这样你先熟悉项目管理层。云端运行时开通后，智能体会直接在这些 issue 上开始工作。
+这样你先熟悉项目管理层。云端运行时开通后，智能体会直接在这些 ä»»å¡ 上开始工作。
 
 ## 关于云端运行时
 
@@ -86,11 +86,11 @@ BayClaw의 agent는 플랫폼 팀이 미리 구성하고 운영하는 공유 클
 runtime이 준비되기 전에는 다음을 해볼 수 있습니다:
 
 1. 현재 작업을 위한 project를 만듭니다.
-2. issue 몇 개를 만들고 backlog, todo, in_progress, done 사이에서 이동해 봅니다.
+2. 태스크 몇 개를 만들고 backlog, todo, in_progress, done 사이에서 이동해 봅니다.
 3. priority, label, comment, subscription을 추가합니다.
 4. Inbox에서 나에게 배정된 작업과 mention을 확인합니다.
 
-이렇게 프로젝트 관리 계층을 먼저 익힐 수 있습니다. 클라우드 runtime이 준비되면 agent가 같은 issue에서 바로 작업을 시작합니다.
+이렇게 프로젝트 관리 계층을 먼저 익힐 수 있습니다. 클라우드 runtime이 준비되면 agent가 같은 íì¤í¬에서 바로 작업을 시작합니다.
 
 ## 클라우드 runtime 안내
 
@@ -111,11 +111,11 @@ BayClaw の agent は、プラットフォームチームがあらかじめ構�
 runtime が準備できる前に、次のことを試せます:
 
 1. いまの仕事のための project を作る。
-2. issue をいくつか作り、backlog、todo、in_progress、done の間で動かしてみる。
+2. タスクをいくつか作り、backlog、todo、in_progress、done の間で動かしてみる。
 3. priority、label、comment、subscription を追加する。
 4. Inbox で自分への割り当てや mention を確認する。
 
-これでまずプロジェクト管理のレイヤーに慣れることができます。クラウド runtime が利用可能になると、agent が同じ issue から作業を始められます。
+これでまずプロジェクト管理のレイヤーに慣れることができます。クラウド runtime が利用可能になると、agent が同じ ã¿ã¹ã¯ から作業を始められます。
 
 ## クラウド runtime について
 

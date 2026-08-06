@@ -1362,8 +1362,15 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/{slug}", h.GetAgentTemplate)
 			})
 			r.Route("/api/agent-builder/sessions", func(r chi.Router) {
+				// The creation studio's unfinished drafts. Builder sessions are
+				// invisible to every chat list (their carrier is kind='system'),
+				// so this is the only route back to one.
+				r.Get("/", h.ListAgentBuilderSessions)
 				r.Post("/", h.CreateAgentBuilderSession)
 				r.Patch("/{sessionId}/runtime", h.SwitchAgentBuilderRuntime)
+				// Autosaved configuration, including edits the user has typed
+				// but not sent. Read back through the list above.
+				r.Put("/{sessionId}/draft", h.SaveAgentBuilderDraft)
 			})
 
 			// Skills
@@ -1504,6 +1511,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/messages", h.ListChatMessages)
 					r.Get("/messages/page", h.ListChatMessagesPage)
 					r.Get("/pending-task", h.GetPendingChatTask)
+					r.Delete("/queued-tasks", h.ClearQueuedChatTasks)
+					r.Post("/queued-tasks/{taskId}/prioritize", h.PrioritizeQueuedChatTask)
 					r.Post("/read", h.MarkChatSessionRead)
 					// Deferred-cancellation draft restores (#5219):
 					// creator-only fetch + idempotent consume.
