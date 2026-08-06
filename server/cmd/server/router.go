@@ -714,6 +714,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Use(opts.HTTPMetrics.Middleware)
 	}
 	r.Use(chimw.Recoverer)
+	// Cap synchronous API requests so a stalled DB degrades to a fast 5xx
+	// instead of pinning pool connections and hanging clients for the
+	// browser's full timeout (the 2026-08-06 outage). The deadline flows
+	// through r.Context() into every pgxpool query. WebSocket upgrades and
+	// streaming downloads are exempt via isLongLivedRequest.
+	r.Use(middleware.RequestTimeout(30 * time.Second))
 	r.Use(middleware.ContentSecurityPolicy)
 
 	// Share allowed origins with WebSocket origin checker.

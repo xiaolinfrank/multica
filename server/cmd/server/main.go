@@ -402,6 +402,18 @@ func main() {
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: r,
+		// ReadHeaderTimeout caps how long we wait for the request headers
+		// without constraining the body, long uploads, or upgraded
+		// WebSocket connections (those need unbounded read/write). It is
+		// the one http.Server timeout that is always safe alongside WS,
+		// so we set it; ReadTimeout/WriteTimeout are intentionally left
+		// zero because they would tear down active WS and uploads.
+		ReadHeaderTimeout: 10 * time.Second,
+		// IdleTimeout reaps keep-alive connections that have gone idle,
+		// preventing fd accumulation under high connection churn (the
+		// deploy saw thousands of TIME_WAIT/half-open conns). Does not
+		// affect active requests or WS.
+		IdleTimeout: 120 * time.Second,
 	}
 
 	// Start background workers.
