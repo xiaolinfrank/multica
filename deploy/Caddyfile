@@ -39,7 +39,11 @@ https://10.35.178.181:13000, https://10.35.182.19:13000, https://localhost:13000
 	tls internal
 
 	# 反代到 Next.js 生产服务（已挪到 13001，仅监听回环）。
-	reverse_proxy 127.0.0.1:13001 {
+	# 2026-08-06: 上游地址必须用 [::1] 而不是 127.0.0.1 —— 本机的 Cisco
+	# AnyConnect Socket Filter 系统扩展会间歇性吞掉 IPv4 回环(127.0.0.1)上的
+	# 新 TCP SYN（已建立的连接、::1、网卡 IP 都不受影响），一旦 Caddy 的上游
+	# 连接池被回收后重建连接被吞，全站就会跟着卡 30-75s。IPv6 回环绕过该过滤器。
+	reverse_proxy [::1]:13001 {
 		# WebSocket 与 SSE 需要原样透传（BayClaw 的实时通道走 /ws）。
 		# Caddy 默认已支持 Upgrade；X-Forwarded-Host / -Proto 也默认透传。
 		header_up Host {upstream_hostport}
