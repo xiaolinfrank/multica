@@ -2,11 +2,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentRuntime } from "@multica/core/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../../locales/en/common.json";
 import enOnboarding from "../../locales/en/onboarding.json";
+import enAgents from "../../locales/en/agents.json";
 
-const TEST_RESOURCES = { en: { common: enCommon, onboarding: enOnboarding } };
+const TEST_RESOURCES = {
+  en: { common: enCommon, onboarding: enOnboarding, agents: enAgents },
+};
 
 const mocks = vi.hoisted(() => ({
   pickerState: {
@@ -50,10 +54,15 @@ function renderFork(
   overrides: Partial<React.ComponentProps<typeof StepPlatformFork>> = {},
 ) {
   const onNext = vi.fn();
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   render(
-    <I18nProvider locale="en" resources={TEST_RESOURCES}>
-      <StepPlatformFork wsId="ws_test" onNext={onNext} {...overrides} />
-    </I18nProvider>,
+    <QueryClientProvider client={qc}>
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <StepPlatformFork wsId="ws_test" onNext={onNext} {...overrides} />
+      </I18nProvider>
+    </QueryClientProvider>,
   );
   return { onNext };
 }
@@ -121,6 +130,8 @@ describe("StepPlatformFork (cloud-direct)", () => {
     expect(connect).toBeEnabled();
     await user.click(connect);
     expect(onNext).toHaveBeenCalledTimes(1);
+    // Cloud-direct carries no model — the shared runtime runs on the model
+    // the platform team configured for it.
     expect(onNext).toHaveBeenCalledWith(rt);
   });
 

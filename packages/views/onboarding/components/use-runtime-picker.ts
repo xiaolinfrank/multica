@@ -25,10 +25,15 @@ import type { AgentRuntime } from "@multica/core/types";
  * desktop behavior of only the user's own daemons; "all" lists every
  * workspace runtime so shared (public) server-side runtimes show up —
  * the web onboarding uses this for the server-centric deployment model.
+ *
+ * `wsSlug` is passed when the caller knows the target workspace slug, so
+ * the runtime list reads the workspace being set up rather than the one
+ * the app is currently showing.
  */
 export function useRuntimePicker(
   wsId: string,
   scope: "me" | "all" = "me",
+  wsSlug?: string,
 ): {
   runtimes: AgentRuntime[];
   selected: AgentRuntime | null;
@@ -39,7 +44,7 @@ export function useRuntimePicker(
   const qc = useQueryClient();
 
   const { data: runtimes = [] } = useQuery({
-    ...runtimeListOptions(wsId, scope === "me" ? "me" : undefined),
+    ...runtimeListOptions(wsId, scope === "me" ? "me" : undefined, wsSlug),
     refetchInterval: (q) => (q.state.data?.length ? false : 2000),
   });
 

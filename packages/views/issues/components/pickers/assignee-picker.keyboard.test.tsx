@@ -29,7 +29,10 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "workspace-1" }));
 vi.mock("@multica/core/auth", () => ({ useAuthStore: () => ({ id: "user-1" }) }));
-vi.mock("@multica/core/agents", () => ({ isAgentRuntimeBound: () => true }));
+vi.mock("@multica/core/agents", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@multica/core/agents")>();
+  return { ...actual, isAgentRuntimeBound: () => true };
+});
 vi.mock("@multica/core/permissions", () => ({
   canAssignAgentToIssue: () => ({ allowed: true }),
 }));
