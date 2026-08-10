@@ -649,6 +649,78 @@ func TestAttachmentToResponse_NonCloudFrontUsesDownloadEndpoint(t *testing.T) {
 	}
 }
 
+func TestAttachmentToResponse_LocalStorageExposesFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("LOCAL_UPLOAD_DIR", tmpDir)
+	os.Unsetenv("LOCAL_UPLOAD_BASE_URL")
+	localStore := storage.NewLocalStorageFromEnv()
+	if localStore == nil {
+		t.Fatal("NewLocalStorageFromEnv returned nil")
+	}
+	origStorage := testHandler.Storage
+	origSigner := testHandler.CFSigner
+	testHandler.Storage = localStore
+	testHandler.CFSigner = nil
+	t.Cleanup(func() {
+		testHandler.Storage = origStorage
+		testHandler.CFSigner = origSigner
+	})
+
+	// LocalStorage persists under <uploadDir>/<key> and serves at /uploads/<key>;
+	// KeyFromURL recovers the key, GetFilePath rejoins it onto the (absolute)
+	// upload dir, yielding the on-disk path the "Copy file path" button copies.
+	key := "workspaces/" + testWorkspaceID + "/x.png"
+	id := seedAttachmentURL(t, "/uploads/"+key, "x.png", "image/png", 5)
+	att, err := testHandler.Queries.GetAttachment(context.Background(), db.GetAttachmentParams{
+		ID:          parseUUID(id),
+		WorkspaceID: parseUUID(testWorkspaceID),
+	})
+	if err != nil {
+		t.Fatalf("GetAttachment: %v", err)
+	}
+
+	resp := testHandler.attachmentToResponse(att, attachmentURLModeSigned)
+	want := filepath.Join(tmpDir, key)
+	if resp.FilePath != want {
+		t.Fatalf("FilePath = %q, want absolute on-disk path %q", resp.FilePath, want)
+	}
+}
+
+func TestAttachmentToResponse_NonFilePatherStorageOmitsFilePath(t *testing.T) {
+	// Object-storage backends (S3/R2/MinIO) do not implement storage.FilePather,
+	// so file_path must stay empty and the JSON must omit it (omitempty) — the
+	// UI hides the "Copy file path" button on those deployments.
+	origStorage := testHandler.Storage
+	origSigner := testHandler.CFSigner
+	testHandler.Storage = &mockStorageNoCdn{}
+	testHandler.CFSigner = nil
+	t.Cleanup(func() {
+		testHandler.Storage = origStorage
+		testHandler.CFSigner = origSigner
+	})
+
+	id := seedAttachmentURL(t, "https://s3.example.com/test-bucket/private.txt", "private.txt", "text/plain", 5)
+	att, err := testHandler.Queries.GetAttachment(context.Background(), db.GetAttachmentParams{
+		ID:          parseUUID(id),
+		WorkspaceID: parseUUID(testWorkspaceID),
+	})
+	if err != nil {
+		t.Fatalf("GetAttachment: %v", err)
+	}
+
+	resp := testHandler.attachmentToResponse(att, attachmentURLModeSigned)
+	if resp.FilePath != "" {
+		t.Fatalf("FilePath = %q, want empty for non-FilePather storage", resp.FilePath)
+	}
+	body, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if bytes.Contains(body, []byte("file_path")) {
+		t.Fatalf("file_path must be omitted, body = %s", body)
+	}
+}
+
 func TestGetAttachmentByID_AutoPublicEndpointReturnsPresignedDownloadURL(t *testing.T) {
 	store := &mockStorageNoCdn{}
 	origStorage := testHandler.Storage

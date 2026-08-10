@@ -9,7 +9,9 @@
  * that decision out of this file so this stays a single-purpose row UI.
  */
 
-import { Download, Eye, FileText, Loader2, Trash2 } from "lucide-react";
+import { Clipboard, Download, Eye, FileText, Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { copyText } from "@multica/ui/lib/clipboard";
 import { useT } from "../i18n";
 import { getPreviewKind } from "./utils/preview";
 
@@ -22,6 +24,8 @@ interface AttachmentCardChromeProps {
   onPreview: () => void;
   onDownload: () => void;
   onDelete?: () => void;
+  /** Absolute on-disk path; when set, a "Copy file path" button is shown. */
+  filePath?: string;
 }
 
 function AttachmentCardChrome({
@@ -30,11 +34,20 @@ function AttachmentCardChrome({
   canPreview,
   canDownload,
   canDelete,
+  filePath,
   onPreview,
   onDownload,
   onDelete,
 }: AttachmentCardChromeProps) {
   const { t } = useT("editor");
+  const handleCopyFilePath = async () => {
+    if (!filePath) return;
+    if (await copyText(filePath)) {
+      toast.success(t(($) => $.attachment.file_path_copied));
+    } else {
+      toast.error(t(($) => $.attachment.copy_file_path_failed));
+    }
+  };
   return (
     <div
       className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted"
@@ -82,6 +95,21 @@ function AttachmentCardChrome({
           <Download className="size-3.5" />
         </button>
       )}
+      {!uploading && filePath && (
+        <button
+          type="button"
+          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          title={t(($) => $.attachment.copy_file_path)}
+          aria-label={t(($) => $.attachment.copy_file_path)}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleCopyFilePath();
+          }}
+        >
+          <Clipboard className="size-3.5" />
+        </button>
+      )}
       {!uploading && canDelete && onDelete && (
         <button
           type="button"
@@ -122,6 +150,8 @@ export interface AttachmentCardProps {
   onDownload: () => void;
   /** Optional remove button, used by editable comment/file-card surfaces. */
   onDelete?: () => void;
+  /** Absolute on-disk path; when set, a "Copy file path" button is shown. */
+  filePath?: string;
 }
 
 export function AttachmentCard({
@@ -133,6 +163,7 @@ export function AttachmentCard({
   onPreview,
   onDownload,
   onDelete,
+  filePath,
 }: AttachmentCardProps) {
   const kind = filename ? getPreviewKind(contentType, filename) : null;
   // Media kinds (pdf/video/audio) are previewable from a URL alone — the
@@ -153,6 +184,7 @@ export function AttachmentCard({
         canPreview={canPreview}
         canDownload={!!href}
         canDelete={!!onDelete}
+        filePath={filePath}
         onPreview={onPreview}
         onDownload={onDownload}
         onDelete={onDelete}

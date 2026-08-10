@@ -26,8 +26,10 @@
  * 80px placeholder and the toolbar pins itself open with all actions enabled.
  */
 
-import { Download, ExternalLink, Maximize2, Trash2 } from "lucide-react";
+import { Clipboard, Download, ExternalLink, Maximize2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
+import { copyText } from "@multica/ui/lib/clipboard";
 import { paths, useWorkspaceSlug } from "@multica/core/paths";
 import { useT } from "../i18n";
 import { useNavigation } from "../navigation";
@@ -43,6 +45,8 @@ interface HtmlAttachmentPreviewProps {
   onPreview: () => void;
   onDownload: () => void;
   onDelete?: () => void;
+  /** Absolute on-disk path; when set, a "Copy file path" button is shown. */
+  filePath?: string;
 }
 
 export function HtmlAttachmentPreview({
@@ -51,8 +55,17 @@ export function HtmlAttachmentPreview({
   onPreview,
   onDownload,
   onDelete,
+  filePath,
 }: HtmlAttachmentPreviewProps) {
   const { t } = useT("editor");
+  const handleCopyFilePath = async () => {
+    if (!filePath) return;
+    if (await copyText(filePath)) {
+      toast.success(t(($) => $.attachment.file_path_copied));
+    } else {
+      toast.error(t(($) => $.attachment.copy_file_path_failed));
+    }
+  };
   // Subscribe to the same React Query cache key the body consumes so the
   // toolbar can pin itself open during error. Re-subscribing is free — the
   // useQuery dedupe means no extra fetch.
@@ -145,6 +158,21 @@ export function HtmlAttachmentPreview({
         >
           <Download className="h-3.5 w-3.5" />
         </button>
+        {filePath && (
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            title={t(($) => $.attachment.copy_file_path)}
+            aria-label={t(($) => $.attachment.copy_file_path)}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCopyFilePath();
+            }}
+          >
+            <Clipboard className="h-3.5 w-3.5" />
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"

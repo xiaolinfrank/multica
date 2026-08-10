@@ -46,6 +46,26 @@ func TestLocalStorage_Upload(t *testing.T) {
 	}
 }
 
+func TestLocalStorage_GetFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("LOCAL_UPLOAD_DIR", tmpDir)
+	os.Unsetenv("LOCAL_UPLOAD_BASE_URL")
+
+	store := NewLocalStorageFromEnv()
+	if store == nil {
+		t.Fatal("NewLocalStorageFromEnv returned nil")
+	}
+
+	// uploadDir is resolved to absolute at construction, so GetFilePath returns
+	// the absolute on-disk path the "Copy file path" UI affordance copies.
+	key := "workspaces/ws-1/a.png"
+	got := store.GetFilePath(key)
+	want := filepath.Join(tmpDir, key)
+	if got != want {
+		t.Errorf("GetFilePath(%q) = %q, want %q", key, got, want)
+	}
+}
+
 func TestLocalStorage_Upload_WithBaseURL(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("LOCAL_UPLOAD_DIR", tmpDir)

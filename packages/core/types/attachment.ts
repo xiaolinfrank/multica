@@ -35,6 +35,14 @@ export interface Attachment {
    * centralized.
    */
   markdown_url: string;
+  /**
+   * Absolute filesystem path of the attachment on the server, populated ONLY
+   * on self-hosted local-disk (LocalStorage) deployments where the operator
+   * runs the API server with access to the uploads directory. Absent on
+   * S3/R2/MinIO and on legacy servers. The "Copy file path" toolbar button
+   * renders iff this is non-empty; hidden otherwise.
+   */
+  file_path?: string;
   content_type: string;
   size_bytes: number;
   created_at: string;

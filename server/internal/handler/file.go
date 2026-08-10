@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,16 @@ type AttachmentResponse struct {
 	// previous site-relative `/api/attachments/<id>/download` link only
 	// resolved when the document origin proxied /api to the API host.
 	MarkdownURL string `json:"markdown_url"`
+	// FilePath is the absolute on-disk path of the attachment, populated
+	// ONLY on self-hosted local-disk (LocalStorage) deployments where the
+	// operator chose a storage shape whose audience shares the server's
+	// filesystem. Empty on S3/R2/MinIO and on servers old enough to predate
+	// this field. The UI renders a "Copy file path" button iff this is
+	// non-empty. Gated by the optional storage.FilePather capability so the
+	// field is absent-by-construction on object-storage backends — see
+	// MUL-4899 for the project's (distinct) stance against local paths in
+	// agent deliverables.
+	FilePath string `json:"file_path,omitempty"`
 	ContentType string `json:"content_type"`
 	SizeBytes   int64  `json:"size_bytes"`
 	CreatedAt   string `json:"created_at"`
@@ -160,6 +171,19 @@ func (h *Handler) attachmentToResponse(a db.Attachment, mode attachmentURLMode) 
 		ContentType:  a.ContentType,
 		SizeBytes:    a.SizeBytes,
 		CreatedAt:    a.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	// Local-disk (LocalStorage) deployments expose the absolute on-disk path so
+	// the UI can offer "Copy file path" for operators who share the server's
+	// filesystem. Object-storage backends (S3/R2/MinIO) do not implement
+	// storage.FilePather, so the field stays empty and the button is hidden.
+	if fp, ok := h.Storage.(storage.FilePather); ok && a.Url != "" {
+		// GetFilePath already returns an absolute path (LocalStorage resolves
+		// uploadDir to absolute at construction); filepath.Abs is a cheap
+		// no-op on absolute input and a defense against any future FilePather
+		// that returns a relative one.
+		if abs, err := filepath.Abs(fp.GetFilePath(h.Storage.KeyFromURL(a.Url))); err == nil {
+			resp.FilePath = abs
+		}
 	}
 	// Only CloudFront mode overrides the stable path here; the presign and proxy
 	// modes already leave DownloadURL as the stable path and resolve it at

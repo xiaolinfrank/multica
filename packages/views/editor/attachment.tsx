@@ -24,6 +24,7 @@
  */
 
 import {
+  Clipboard,
   Download,
   Link as LinkIcon,
   Maximize2,
@@ -402,6 +403,7 @@ export function Attachment({
           onView={openPreview}
           onDownload={handleDownload}
           onDelete={onDelete}
+          filePath={state.record?.file_path}
           className={className}
         />
         {preview.modal}
@@ -418,6 +420,7 @@ export function Attachment({
           onPreview={openPreview}
           onDownload={handleDownload}
           onDelete={editable ? onDelete : undefined}
+          filePath={state.record?.file_path}
         />
         {preview.modal}
       </>
@@ -435,6 +438,7 @@ export function Attachment({
         onPreview={openPreview}
         onDownload={handleDownload}
         onDelete={editable ? onDelete : undefined}
+        filePath={state.record?.file_path}
       />
       {preview.modal}
     </>
@@ -468,6 +472,8 @@ interface ImageAttachmentViewProps {
   onView: () => void;
   onDownload: () => void;
   onDelete?: () => void;
+  /** Absolute on-disk path; when set, the toolbar shows a "Copy file path" button. */
+  filePath?: string;
   className?: string;
 }
 
@@ -483,6 +489,7 @@ function ImageAttachmentView({
   onView,
   onDownload,
   onDelete,
+  filePath,
   className,
 }: ImageAttachmentViewProps) {
   const { t } = useT("editor");
@@ -492,6 +499,18 @@ function ImageAttachmentView({
       toast.success(t(($) => $.image.link_copied));
     } else {
       toast.error(t(($) => $.image.copy_link_failed));
+    }
+  };
+
+  // Copies the server-side on-disk path (self-hosted LocalStorage deployments
+  // only). Mirrors handleCopyLink; the button is gated on `filePath` so this
+  // never fires on S3/R2/MinIO where no path exists.
+  const handleCopyFilePath = async () => {
+    if (!filePath) return;
+    if (await copyText(filePath)) {
+      toast.success(t(($) => $.attachment.file_path_copied));
+    } else {
+      toast.error(t(($) => $.attachment.copy_file_path_failed));
     }
   };
 
@@ -541,6 +560,15 @@ function ImageAttachmentView({
             <button type="button" onClick={handleCopyLink} title={t(($) => $.image.copy_link)}>
               <LinkIcon className="size-3.5" />
             </button>
+            {filePath && (
+              <button
+                type="button"
+                onClick={handleCopyFilePath}
+                title={t(($) => $.attachment.copy_file_path)}
+              >
+                <Clipboard className="size-3.5" />
+              </button>
+            )}
             {editable && onDelete && (
               <button type="button" onClick={onDelete} title={t(($) => $.image.delete)}>
                 <Trash2 className="size-3.5" />

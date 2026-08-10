@@ -481,6 +481,10 @@ export const AttachmentResponseSchema = z.object({
   url: z.string(),
   download_url: z.string(),
   markdown_url: z.string().optional().default(""),
+  // Absolute on-disk path, populated only on self-hosted LocalStorage
+  // deployments. Absent (omitted via omitempty) on S3/R2/MinIO; the UI
+  // hides the "Copy file path" button when empty.
+  file_path: z.string().optional(),
   filename: z.string(),
   chat_session_id: z.string().nullable().optional(),
   chat_message_id: z.string().nullable().optional(),
@@ -499,6 +503,7 @@ export const EMPTY_ATTACHMENT: Attachment = {
   url: "",
   download_url: "",
   markdown_url: "",
+  file_path: "",
   content_type: "",
   size_bytes: 0,
   created_at: "",

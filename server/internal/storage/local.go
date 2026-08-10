@@ -48,6 +48,17 @@ func NewLocalStorageFromEnv() *LocalStorage {
 		uploadDir = "./data/uploads"
 	}
 
+	// Resolve to an absolute path once at construction. GetFilePath exposes
+	// the on-disk location for the "Copy file path" UI affordance on
+	// self-hosted deployments, and an absolute path is what lands on the
+	// operator's clipboard. Doing it here (rather than per GetFilePath call)
+	// also avoids a getcwd syscall on every attachment row in a list
+	// response. ServeFile / GetReader / Delete operate identically on an
+	// absolute root.
+	if abs, err := filepath.Abs(uploadDir); err == nil {
+		uploadDir = abs
+	}
+
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		slog.Error("failed to create upload directory", "dir", uploadDir, "error", err)
 		return nil

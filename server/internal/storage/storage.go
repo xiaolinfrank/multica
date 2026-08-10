@@ -33,3 +33,18 @@ type Presigner interface {
 type DownloadPresigner interface {
 	PresignGetWithContentDisposition(ctx context.Context, key string, ttl time.Duration, contentDisposition string) (string, error)
 }
+
+// FilePather is an optional capability a Storage backend implements when it
+// is backed by a real filesystem and can return a local on-disk path for a
+// storage key. The handler uses it to surface a "Copy file path" affordance
+// on self-hosted local-disk (LocalStorage) deployments, where the audience
+// shares the server's filesystem. S3/R2/MinIO do not implement it, so the
+// attachment response's file_path stays empty there and the UI hides the
+// button — the feature is opt-in by deployment shape, never appearing on the
+// hosted product. Not the same surface as MUL-4899 (which blocks
+// agent-authored file:// links in deliverables read across machines): this
+// is a human copying the server's own uploads path for use on hosts that can
+// actually open it.
+type FilePather interface {
+	GetFilePath(key string) string
+}
