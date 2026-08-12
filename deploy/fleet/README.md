@@ -12,12 +12,12 @@ Accounts equal device names; SSH keys are pre-installed on the coordinator, so
 | id            | host          | account       | role        |
 | ------------- | ------------- | ------------- | ----------- |
 | local         | localhost     | —             | coordinator |
-| fosun_agent_1 | 10.35.182.4   | fosun_agent_1 | worker      |
-| fosun_agent_2 | 10.35.182.31  | fosun_agent_2 | worker      |
-| fosun_agent_3 | 10.35.182.39  | fosun_agent_3 | worker      |
-| fosun_agent_4 | 10.35.182.34  | fosun_agent_4 | worker      |
-| fosun_agent_5 | 10.35.182.25  | fosun_agent_5 | worker      |
-| fosun_agent_6 | 10.35.182.29  | fosun_agent_6 | worker      |
+| fosun_agent_1 | 10.35.182.3   | fosun_agent_1 | worker      |
+| fosun_agent_2 | 10.35.182.5   | fosun_agent_2 | worker      |
+| fosun_agent_3 | 10.35.182.2   | fosun_agent_3 | worker      |
+| fosun_agent_4 | 10.35.182.4   | fosun_agent_4 | worker      |
+| fosun_agent_5 | 10.35.182.6   | fosun_agent_5 | worker      |
+| fosun_agent_6 | 10.35.182.1   | fosun_agent_6 | worker      |
 
 The list lives in [`devices.json`](./devices.json). The Go backend reads the
 same file (`FLEET_DEVICES_FILE`, default `deploy/fleet/devices.json`) and falls

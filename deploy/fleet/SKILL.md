@@ -21,12 +21,12 @@ hardcode hosts elsewhere.
 | id            | host          | role        |
 | ------------- | ------------- | ----------- |
 | local         | localhost     | coordinator |
-| fosun_agent_1 | 10.35.182.4   | worker      |
-| fosun_agent_2 | 10.35.182.31  | worker      |
-| fosun_agent_3 | 10.35.182.39  | worker      |
-| fosun_agent_4 | 10.35.182.34  | worker      |
-| fosun_agent_5 | 10.35.182.25  | worker      |
-| fosun_agent_6 | 10.35.182.29  | worker      |
+| fosun_agent_1 | 10.35.182.3   | worker      |
+| fosun_agent_2 | 10.35.182.5   | worker      |
+| fosun_agent_3 | 10.35.182.2   | worker      |
+| fosun_agent_4 | 10.35.182.4   | worker      |
+| fosun_agent_5 | 10.35.182.6   | worker      |
+| fosun_agent_6 | 10.35.182.1   | worker      |
 
 ## Check status first (read-only)
 
@@ -121,7 +121,7 @@ Use the **copy-in / copy-out** pattern — never bind-mount (`-v`) host paths;
 the worker's filesystem layout is not guaranteed and mounts leak host state.
 
 ```bash
-NODE=fosun_agent_2@10.35.182.31
+NODE=fosun_agent_2@10.35.182.5
 ssh $NODE 'docker create --name job1 -w /work python:3.11 python /work/run.py'
 ssh $NODE 'mkdir -p ~/bayclaw/work/job1'      # stage inputs under the standard dir
 scp ./run.py $NODE:~/bayclaw/work/job1/
