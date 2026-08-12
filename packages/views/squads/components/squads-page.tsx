@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  ExternalLink,
   Filter,
   Loader2,
   MoreHorizontal,
@@ -54,6 +55,7 @@ import {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -83,7 +85,7 @@ import {
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { FILTER_ITEM_CLASS, HoverCheck } from "../../common/hover-check";
-import { useRowLink } from "../../navigation";
+import { useIntentNavigate, useRowLink } from "../../navigation";
 import {
   CollectionPageHeader,
   CollectionPageHeaderAction,
@@ -318,6 +320,9 @@ function ArchiveSquadDialog({
 
 function SquadRowActions({ squad }: { squad: Squad }) {
   const { t } = useT("squads");
+  const { t: tCommon } = useT("common");
+  const p = useWorkspacePaths();
+  const intentNavigate = useIntentNavigate();
   const [archiveOpen, setArchiveOpen] = useState(false);
   return (
     <span
@@ -337,6 +342,19 @@ function SquadRowActions({ squad }: { squad: Squad }) {
           }
         />
         <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem
+            onClick={() =>
+              intentNavigate(
+                p.squadDetail(squad.id),
+                "foreground-tab",
+                squad.name,
+              )
+            }
+          >
+            <ExternalLink className="size-3.5" />
+            {tCommon(($) => $.navigation.open_in_new_tab)}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
             onClick={() => setArchiveOpen(true)}
@@ -967,7 +985,7 @@ export function SquadsPage() {
                   <ListGridRow
                     key={squad.id}
                     className="cursor-pointer"
-                    {...rowLink(p.squadDetail(squad.id))}
+                    {...rowLink(p.squadDetail(squad.id), squad.name)}
                   >
                     <NameCell squad={squad} />
                     <LeaderCell
