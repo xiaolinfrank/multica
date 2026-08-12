@@ -937,6 +937,15 @@ func (h *Handler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// dl=1 forces a Content-Disposition: attachment response regardless of
+	// media type, so the editor's "download" action always saves the file
+	// instead of previewing inline media. The default (no param) keeps media
+	// inline so the "open"/preview path can render it in a new tab. CloudFront
+	// and Presign modes already force an attachment disposition, so they honor
+	// the download intent without needing this flag; only the proxy path
+	// branches on it.
+	forceDownload := r.URL.Query().Get("dl") == "1" || r.URL.Query().Get("dl") == "true"
+
 	key := h.Storage.KeyFromURL(att.Url)
 	switch h.resolveAttachmentDownloadMode(att.Url) {
 	case attachmentDownloadModeCloudFront:
@@ -975,7 +984,7 @@ func (h *Handler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
 		h.setAttachmentPreviewSecurityHeaders(w)
 		http.Redirect(w, r, signedURL, http.StatusFound)
 	case attachmentDownloadModeProxy:
-		h.proxyAttachmentDownload(w, r, att, key, false)
+		h.proxyAttachmentDownload(w, r, att, key, forceDownload)
 	default:
 		writeError(w, http.StatusInternalServerError, "invalid attachment download mode")
 	}
