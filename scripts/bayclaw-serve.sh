@@ -84,6 +84,29 @@ build_go() {
   fi
   say "building Go binaries (make build)"
   ( cd "$ROOT" && make build ) || { echo "ERROR: make build failed" >&2; exit 1; }
+  refresh_server_app
+}
+
+# refresh_server_app copies the freshly-built server binary into the
+# BayClawServer.app bundle and re-signs it with the pinned cert so the .app
+# keeps its FDA across rebuilds (DR = certificate root, not cdhash — the
+# authorization survives a binary swap + same-cert re-sign, no GUI re-grant).
+# No-op if the .app was never created (e.g. a fresh checkout without FDA set up).
+refresh_server_app() {
+  local app="$HOME/Applications/BayClawServer.app"
+  local kc="$HOME/Library/Keychains/bayclaw-signing.keychain-db"
+  local cert=8E5D68C59C6E9806E2D4870EDD90573B28FDE2FD
+  [ -d "$app" ] || return 0
+  [ -f "$ROOT/server/bin/server" ] || return 0
+  /bin/cp -f "$ROOT/server/bin/server" "$app/Contents/MacOS/server"
+  if [ -f "$kc" ]; then
+    security unlock-keychain -p bayclaw "$kc" 2>/dev/null
+    if codesign --force --sign "$cert" --keychain "$kc" --identifier com.bayclaw.server.serve "$app" 2>/dev/null; then
+      say "refreshed + re-signed BayClawServer.app (FDA preserved)"
+    else
+      say "WARN: BayClawServer.app re-sign failed (check keychain '$kc')"
+    fi
+  fi
 }
 
 # Wait for Postgres (runs in colima docker) before starting the Go server.
@@ -92,19 +115,56 @@ build_go() {
 # would not restart it. Poll the host-side 5432 forward until it is up.
 wait_for_pg() {
   local i
-  say "waiting for Postgres on 127.0.0.1:5432 ..."
-  for i in $(seq 1 180); do
-    nc -z 127.0.0.1 5432 2>/dev/null && { say "Postgres is ready (after ${i}s)"; return 0; }
+  say "waiting for Postgres ..."
+  for i in $(seq 1 60); do
+    # Prefer `docker exec pg_isready`: it asks Postgres inside the container
+    # directly and bypasses the host loopback, which the Cisco AnyConnect
+    # acsockext filter can otherwise swallow (new SYNs to 127.0.0.1 make `nc`
+    # hang even though PG is fine — that hang previously killed restart
+    # mid-way, after stop_all had already taken the server down).
+    # Fall back to nc on [::1] (IPv6 loopback is immune), with a 2s timeout.
+    if docker exec multica-postgres-1 pg_isready -U multica -d multica >/dev/null 2>&1; then
+      say "Postgres is ready (after ${i}s)"; return 0
+    fi
+    nc -z -w2 ::1 5432 2>/dev/null && { say "Postgres is ready via ::1 (after ${i}s)"; return 0; }
     sleep 1
   done
-  echo "WARN: Postgres not reachable after 180s; starting server anyway" >&2
+  echo "WARN: Postgres not reachable after 60s; starting server anyway" >&2
+  return 1
+}
+
+# wait_for_nas blocks until the SMB share is mounted, so the server doesn't
+# race the mount on boot (LOCAL_UPLOAD_DIR may point at the NAS for the
+# attachments-on-NAS deployment). Reads the mount table ONLY — never touches a
+# file on the volume: AnyConnect's TCC wall blocks sentinel `[ -f ]` probes on
+# network volumes from launchd contexts, but `mount` output is always readable
+# (getfsstat, not a file open).
+wait_for_nas() {
+  local i
+  say "waiting for NAS mount /Volumes/虚拟员工工作区 ..."
+  for i in $(seq 1 60); do
+    if mount | grep -qF "on /Volumes/虚拟员工工作区 (smbfs"; then
+      say "NAS mounted (after ${i}s)"; return 0
+    fi
+    sleep 1
+  done
+  echo "WARN: NAS /Volumes/虚拟员工工作区 not mounted after 60s; starting server anyway (uploads fail if LOCAL_UPLOAD_DIR points there)" >&2
   return 1
 }
 
 start_server() {
   [ -x "$ROOT/server/bin/server" ] || { echo "ERROR: server/bin/server missing -- run a build first" >&2; exit 1; }
-  say "starting API server (:$PORT) -> logs/server.log"
-  ( cd "$ROOT" && nohup ./server/bin/server >> "$LOG_DIR/server.log" 2>&1 & disown )
+  # Prefer the .app-wrapped binary so the process runs under BayClawServer.app's
+  # identity (and its FDA / network-volume TCC grant once granted). Falls back to
+  # the bare binary if the .app was never created (no FDA setup yet).
+  local app_server="$HOME/Applications/BayClawServer.app/Contents/MacOS/server"
+  if [ -x "$app_server" ]; then
+    say "starting API server via BayClawServer.app (:$PORT, FDA-eligible) -> logs/server.log"
+    ( cd "$ROOT" && nohup "$app_server" >> "$LOG_DIR/server.log" 2>&1 & disown )
+  else
+    say "starting API server (:$PORT) -> logs/server.log"
+    ( cd "$ROOT" && nohup ./server/bin/server >> "$LOG_DIR/server.log" 2>&1 & disown )
+  fi
 }
 
 build_web() {
@@ -154,6 +214,7 @@ case "$cmd" in
     build_go
     build_web
     wait_for_pg
+    wait_for_nas
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"
     echo; status
@@ -167,6 +228,7 @@ case "$cmd" in
     build_web
     stop_all
     wait_for_pg
+    wait_for_nas
     start_server; start_web
     wait_port "$PORT" "API server"; wait_port "$FRONTEND_PORT" "Web dev"
     echo; status
