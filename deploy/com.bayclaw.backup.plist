@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Daily Multica backup to NAS: scripts/bayclaw-backup.sh.
+         Runs at 02:00; relies on com.fosunpharma.mount-nas (every 120s)
+         keeping /Volumes/虚拟员工工作区 mounted. -->
+    <key>Label</key>
+    <string>com.bayclaw.backup</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/fosun_main_agent/.local/bin</string>
+    </dict>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/fosun_main_agent/var/multica/scripts/bayclaw-backup.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>/Users/fosun_main_agent/Library/Logs/bayclaw-backup.log</string>
+    <key>StandardOutPath</key>
+    <string>/Users/fosun_main_agent/Library/Logs/bayclaw-backup.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

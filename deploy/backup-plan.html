@@ -1,0 +1,422 @@
+<title>Multica 备份规划</title>
+
+<style>
+  :root {
+    --bg: #F3F0E8;
+    --surface: #FBFAF6;
+    --surface-2: #ECE8DC;
+    --ink: #26231C;
+    --ink-muted: #6E6759;
+    --ink-faint: #97917F;
+    --accent: #1F4E5C;
+    --accent-ink: #12323C;
+    --accent-soft: #DCE6E6;
+    --gold: #A0740E;
+    --gold-soft: #EFE3C2;
+    --ok: #2E7D32;
+    --ok-soft: #DDEEDD;
+    --warn: #A25E12;
+    --warn-soft: #F2E2C8;
+    --crit: #B3261E;
+    --crit-soft: #F4DEDA;
+    --rule: #D8D2C2;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --serif: "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161B;
+      --surface: #171E25;
+      --surface-2: #1E2730;
+      --ink: #EAE6DA;
+      --ink-muted: #A6A295;
+      --ink-faint: #7C7A70;
+      --accent: #86BFD0;
+      --accent-ink: #BCE0EA;
+      --accent-soft: #1C3038;
+      --gold: #D9A441;
+      --gold-soft: #3A3120;
+      --ok: #6FC277;
+      --ok-soft: #1E3322;
+      --warn: #DDA15E;
+      --warn-soft: #372A1B;
+      --crit: #E5837B;
+      --crit-soft: #3A2320;
+      --rule: #2C3640;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161B;
+    --surface: #171E25;
+    --surface-2: #1E2730;
+    --ink: #EAE6DA;
+    --ink-muted: #A6A295;
+    --ink-faint: #7C7A70;
+    --accent: #86BFD0;
+    --accent-ink: #BCE0EA;
+    --accent-soft: #1C3038;
+    --gold: #D9A441;
+    --gold-soft: #3A3120;
+    --ok: #6FC277;
+    --ok-soft: #1E3322;
+    --warn: #DDA15E;
+    --warn-soft: #372A1B;
+    --crit: #E5837B;
+    --crit-soft: #3A2320;
+    --rule: #2C3640;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.65;
+    font-size: 15px;
+    padding: 56px 24px 80px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  /* Header */
+  header { margin-bottom: 44px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(30px, 5vw, 42px);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin-bottom: 12px;
+  }
+  .lede {
+    font-size: 16px;
+    color: var(--ink-muted);
+    max-width: 34em;
+    text-wrap: balance;
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin-top: 28px;
+  }
+  .kpi { background: var(--surface); padding: 14px 16px; }
+  .kpi .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--ink-faint); text-transform: uppercase; }
+  .kpi .v { font-family: var(--serif); font-size: 21px; margin-top: 4px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kpi .d { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+
+  /* Sections */
+  section { margin-top: 44px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-bottom: 20px; }
+  .sec-no { font-family: var(--mono); font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  h2 { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: 0.01em; }
+  h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  p { margin: 8px 0; }
+  .note { color: var(--ink-muted); font-size: 13.5px; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 12px;
+    letter-spacing: 0.04em; color: var(--ink-muted);
+    background: var(--surface-2);
+    padding: 9px 12px; border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code, .path { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+
+  /* Status pills */
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 3px; white-space: nowrap; letter-spacing: 0.02em; }
+  .pill.ok { color: var(--ok); background: var(--ok-soft); }
+  .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.crit { color: var(--crit); background: var(--crit-soft); }
+  .pill.na { color: var(--ink-faint); background: var(--surface-2); }
+
+  /* Tier cards */
+  .tier {
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .tier-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tier-label { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.08em; }
+  .tier-title { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+  .tier .rpo { font-family: var(--mono); font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
+  .tier-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-top: 12px; }
+  .tier-item .tk { font-size: 11.5px; color: var(--ink-faint); letter-spacing: 0.05em; text-transform: uppercase; }
+  .tier-item .tv { font-size: 13px; margin-top: 2px; }
+  .tier.enhance { border-left: 3px solid var(--gold); }
+  .tier.extend { border-left: 3px solid var(--crit); opacity: 0.92; }
+
+  /* Tree block */
+  .tree {
+    font-family: var(--mono); font-size: 13px; line-height: 1.7;
+    background: var(--surface); border: 1px solid var(--rule);
+    padding: 18px 20px; overflow-x: auto;
+    white-space: pre;
+  }
+  .tree .cm { color: var(--ink-faint); }
+  .tree .dir { color: var(--accent); }
+
+  /* Steps */
+  ol.steps { counter-reset: s; list-style: none; margin: 10px 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 8px 0 8px 38px; border-bottom: 1px dashed var(--rule); }
+  ol.steps li:last-child { border-bottom: none; }
+  ol.steps li::before {
+    content: counter(s, decimal-leading-zero);
+    position: absolute; left: 0; top: 8px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--accent);
+  }
+
+  /* Decision list */
+  .decisions { list-style: none; margin: 8px 0; }
+  .decisions li {
+    display: grid; grid-template-columns: 52px 1fr; gap: 4px 14px;
+    padding: 12px 0; border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .decisions li:last-child { border-bottom: none; }
+  .decisions .dv { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+
+  /* RPO/RTO mini table */
+  .rpo { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 12px 0; }
+  .rpo-cell { background: var(--surface); padding: 12px 14px; }
+  .rpo-cell .k { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: 0.06em; text-transform: uppercase; }
+  .rpo-cell .v { font-size: 14px; margin-top: 3px; font-weight: 600; }
+  .rpo-cell .v em { font-style: normal; color: var(--gold); }
+
+  .foot { margin-top: 52px; border-top: 1px solid var(--rule); padding-top: 18px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tag { display: inline-block; border: 1px solid var(--rule); padding: 1px 7px; border-radius: 3px; font-size: 11px; color: var(--ink-muted); margin: 0 4px 4px 0; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">BayClaw 部署 · 数据保障方案</div>
+  <h1>Multica 备份规划</h1>
+  <p class="lede">把用户、任务、项目、聊天在内的平台数据，从本机备份到 NAS 10.35.182.50 的分层方案。含数据源盘点、RPO/RTO、脚本与调度、校验与恢复演练。</p>
+  <p style="margin-top:18px"><span class="pill ok">已上线 · 2026-08-12</span>&nbsp;<span class="pill ok">每日 02:00 · launchd com.bayclaw.backup</span>&nbsp;<span class="pill na">目标 虚拟员工工作区/backup/multica</span></p>
+  <div class="kpis">
+    <div class="kpi"><div class="k">备份对象</div><div class="v">5 层</div><div class="d">核心数据源</div></div>
+    <div class="kpi"><div class="k">数据总量</div><div class="v">≈2 GB</div><div class="d">PG 214M + 附件 374M + 工作区 1.1G</div></div>
+    <div class="kpi"><div class="k">目标 RPO</div><div class="v">24 h</div><div class="d">可增强至 ~15 min</div></div>
+    <div class="kpi"><div class="k">调度</div><div class="v">每日 02:00</div><div class="d">launchd · NAS 挂载依赖</div></div>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head"><span class="sec-no">01</span><h2>数据源盘点 —— 数据都在哪</h2></div>
+  <p class="note">结论：核心业务数据全部集中在 <b>colima 的 PostgreSQL</b> 与<b>本机 uploads 目录</b>，agent 工作区已在 NAS 上。除此之外，审计还发现一个运行中但<b>零备份</b>的 OpenClaw 平台。</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>数据源</th><th>位置</th><th class="num">体量</th><th>形态</th><th>现状</th></tr></thead>
+    <tbody>
+      <tr><td><b>业务主库</b><br><span class="note">用户/任务/项目/聊天/评论/附件元数据等 89 表</span></td><td><span class="path">colima PG · multica</span></td><td class="num">94 MB</td><td>PostgreSQL 17.10</td><td><span class="pill crit">无备份</span></td></tr>
+      <tr><td><b>同实例其他库</b></td><td><span class="path">rehearsal / test / multica_28</span></td><td class="num">120 MB</td><td>PostgreSQL</td><td><span class="pill crit">无备份</span></td></tr>
+      <tr><td><b>附件文件</b></td><td><span class="path">~/var/multica/data/uploads</span></td><td class="num">374 MB / 756 文件</td><td>本地磁盘</td><td><span class="pill crit">无备份</span></td></tr>
+      <tr><td><b>agent 工作区</b></td><td><span class="path">/Volumes/虚拟员工工作区/v2/*</span></td><td class="num">1.1 GB</td><td>NAS（smbfs）</td><td><span class="pill warn">在 NAS · 无快照</span></td></tr>
+      <tr><td><b>配置与密钥</b></td><td><span class="path">.env · deploy/ · launchd · ~/.multica</span></td><td class="num">&lt;10 MB</td><td>文件</td><td><span class="pill crit">无备份</span></td></tr>
+      <tr><td><b>Redis</b></td><td><span class="path">colima redis · volume</span></td><td class="num">20 MB RDB</td><td>缓存/会话</td><td><span class="pill ok">纳入 L5 · 每日快照</span></td></tr>
+      <tr><td><b>OpenClaw 平台</b><br><span class="note">独立运行的 agent 平台，gateway 进程活跃</span></td><td><span class="path">~/.openclaw</span></td><td class="num">152 MB</td><td>SQLite ×8 + 文件</td><td><span class="pill na">已决策不纳入</span></td></tr>
+      <tr><td><b>NAS 组织数据</b></td><td><span class="path">AI 平台 ~120G · 团队文件 2.2G · home</span></td><td class="num">≈120 GB</td><td>NAS</td><td><span class="pill warn">依赖 NAS 自身冗余</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:10px" class="note">Redis 明细：<code>mul:runtime:*</code> 心跳/claim（可再生）；但 <code>mul:auth:member:*</code>、<code>mul:auth:pat:*</code> 会话缓存清库会导致<b>全员与 daemon 重新认证</b>——成本极低，建议顺手备份。</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">02</span><h2>备份分层 —— 各层怎么做</h2></div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <div><span class="tier-label">L1 · 核心</span> <span class="tier-title">PostgreSQL 逻辑备份</span></div>
+      <span class="rpo">RPO 24h · RTO &lt;30min</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">工具</div><div class="tv">逐库 <code>pg_dump</code> + <code>gzip</code>（不停库）</div></div>
+      <div class="tier-item"><div class="tk">频率</div><div class="tv">每日，凌晨低峰</div></div>
+      <div class="tier-item"><div class="tk">目标</div><div class="tv"><code>/Volumes/虚拟员工工作区/backup/multica/postgres/&lt;date&gt;/</code></div></div>
+      <div class="tier-item"><div class="tk">保留</div><div class="tv">30 天 + 月末归档</div></div>
+      <div class="tier-item"><div class="tk">校验</div><div class="tv"><code>pg_restore --list</code> + <code>gzip -t</code></div></div>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <div><span class="tier-label">L2 · 核心</span> <span class="tier-title">附件文件镜像</span></div>
+      <span class="rpo">RPO 24h · RTO &lt;1h</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">工具</div><div class="tv"><code>rsync -a --delete</code> 增量同步</div></div>
+      <div class="tier-item"><div class="tk">目标</div><div class="tv"><code>/Volumes/虚拟员工工作区/backup/multica/uploads/</code></div></div>
+      <div class="tier-item"><div class="tk">说明</div><div class="tv">374MB，全量同步亦秒级完成</div></div>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <div><span class="tier-label">L3 · 核心</span> <span class="tier-title">agent 工作区副本</span></div>
+      <span class="rpo">防误删 · RTO &lt;1h</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">现状</div><div class="tv">工作区本就在 NAS <code>v2/*</code>，1.1G</div></div>
+      <div class="tier-item"><div class="tk">做法</div><div class="tv">rsync 到 <code>/Volumes/虚拟员工工作区/backup/multica/workspaces/</code>（同 NAS 异目录，防误删/覆盖）</div></div>
+      <div class="tier-item"><div class="tk">依赖</div><div class="tv">NAS 无快照机制，本副本是唯一"后悔药"</div></div>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <div><span class="tier-label">L4 · 核心</span> <span class="tier-title">配置与密钥</span></div>
+      <span class="rpo">RPO 24h · 恢复最快</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">内容</div><div class="tv"><code>.env</code>·<code>deploy/</code>·launchd plist·<code>~/.multica</code>·mount-nas.sh·wrapper</div></div>
+      <div class="tier-item"><div class="tk">做法</div><div class="tv"><code>tar</code> 打包 → <code>/Volumes/虚拟员工工作区/backup/multica/config/&lt;date&gt;/</code>，<code>chmod 600</code></div></div>
+      <div class="tier-item"><div class="tk">注意</div><div class="tv">含 JWT_SECRET / 个人登录码 / 各平台私钥，须限权</div></div>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <div><span class="tier-label">L5 · 核心</span> <span class="tier-title">Redis 会话快照</span></div>
+      <span class="rpo">防重认证 · RTO 分钟级</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">内容</div><div class="tv">会话 / PAT 缓存（<code>mul:auth:*</code>），清库 = 全员与 daemon 重新认证</div></div>
+      <div class="tier-item"><div class="tk">做法</div><div class="tv"><code>SAVE</code> 后拷贝 RDB → <code>/Volumes/虚拟员工工作区/backup/multica/redis/</code></div></div>
+      <div class="tier-item"><div class="tk">说明</div><div class="tv">20MB，成本极低</div></div>
+    </div>
+  </div>
+
+  <div class="tier enhance">
+    <div class="tier-head">
+      <div><span class="tier-label">增强 A</span> <span class="tier-title">WAL 归档 → 分钟级 RPO</span></div>
+      <span class="rpo">RPO ~15min · 已暂缓</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">做法</div><div class="tv"><code>pg_basebackup</code> 全量 + 启用 <code>archive_mode=on</code> 连续归档</div></div>
+      <div class="tier-item"><div class="tk">代价</div><div class="tv">改容器配置并<b>重启 PostgreSQL 一次</b>（须许可）</div></div>
+      <div class="tier-item"><div class="tk">建议</div><div class="tv">先跑 L1，稳定后择低峰窗口升级</div></div>
+    </div>
+  </div>
+
+  <div class="tier extend">
+    <div class="tier-head">
+      <div><span class="tier-label">扩展 B</span> <span class="tier-title">OpenClaw / NAS 组织数据</span></div>
+      <span class="rpo">待决策</span>
+    </div>
+    <div class="tier-body">
+      <div class="tier-item"><div class="tk">OpenClaw</div><div class="tv">SQLite 一致性快照（<code>sqlite3 .backup</code>）+ rsync <code>~/.openclaw</code>，152MB</div></div>
+      <div class="tier-item"><div class="tk">NAS 组织数据</div><div class="tv">AI 平台 120G 等——先确认 NAS RAID/快照，再决定是否增量拉取</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">03</span><h2>NAS 目标目录</h2></div>
+  <div class="tree"><span class="cm"># 10.35.182.50 · 共享「虚拟员工工作区」</span>
+<span class="dir">backup/multica/</span>
+├── <span class="dir">postgres/</span>        <span class="cm"># L1 · 每日 dump，保留 30 天</span>
+│   └── 2026-08-12/
+│       ├── multica.dump.gz
+│       ├── multica_rehearsal.dump.gz
+│       ├── multica_multica_28.dump.gz
+│       └── multica_test.dump.gz
+├── <span class="dir">uploads/</span>          <span class="cm"># L2 · 附件镜像（rsync）</span>
+├── <span class="dir">workspaces/</span>       <span class="cm"># L3 · 工作区异目录副本</span>
+├── <span class="dir">config/</span>           <span class="cm"># L4 · 配置与密钥，chmod 600</span>
+│   └── 2026-08-12/multica-config.tar.gz
+├── <span class="dir">redis/</span>            <span class="cm"># 顺手 · RDB 快照</span>
+└── <span class="dir">logs/</span>             <span class="cm"># 备份日志 + 校验报告</span></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">04</span><h2>调度与依赖</h2></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>项</th><th>方案</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><b>调度</b></td><td><span class="path">launchd · com.bayclaw.backup</span></td><td>每日 02:00（避开 7 台 daemon 高峰）</td></tr>
+      <tr><td><b>NAS 挂载</b></td><td>脚本先 <code>mount | grep "AI 平台"</code></td><td>未挂载则退出并告警；<code>com.fosunpharma.mount-nas</code> 每 120s 自动重挂</td></tr>
+      <tr><td><b>备份窗口</b></td><td>&lt;5 分钟</td><td>PG 214M + 附件 374M + 工作区 1.1G，全增量</td></tr>
+      <tr><td><b>与现有脚本一致</b></td><td><span class="path">scripts/bayclaw-backup.sh</span></td><td>沿用 serve / nas-fda-setup 的 bash + launchd 模式</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">05</span><h2>脚本流程</h2></div>
+  <ol class="steps">
+    <li>检查 NAS 挂载，未挂载 → 记日志、退出非零、触发告警</li>
+    <li>逐库 <code>pg_dump</code> → <code>gzip</code> → 写 NAS <code>postgres/&lt;date&gt;/</code></li>
+    <li><code>rsync -a --delete</code> 同步 <code>data/uploads</code> → NAS <code>uploads/</code></li>
+    <li>rsync 工作区 <code>v2/*</code> → NAS <code>workspaces/</code></li>
+    <li><code>tar</code> 打包配置/密钥 → NAS <code>config/&lt;date&gt;/</code>，<code>chmod 600</code></li>
+    <li><code>redis-cli SAVE</code> 后拷贝 RDB → NAS <code>redis/</code></li>
+    <li>校验：<code>pg_restore --list</code> · <code>gzip -t</code> · 文件计数对比</li>
+    <li>写校验报告到 <code>logs/</code>，清理 14 天前的旧 dump</li>
+  </ol>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">06</span><h2>校验与恢复</h2></div>
+  <h3>备份后自动校验</h3>
+  <p><code>pg_restore --list</code> 验证 dump 可读、<code>gzip -t</code> 验证压缩完整、附件按文件计数对比源与目标。校验失败当日即告警，避免"备份了但没法恢复"。</p>
+  <h3>月度恢复演练</h3>
+  <p>每月在临时容器 <code>docker run pgvector/pgvector:pg17</code> 中 <code>pg_restore</code> 最近一份 dump，确认业务库可完整还原——备份的价值在恢复，演练证明恢复路径通。</p>
+  <h3>RPO / RTO 汇总</h3>
+  <div class="rpo">
+    <div class="rpo-cell"><div class="k">L1 · PG</div><div class="v">RPO 24h <em>（增强 ~15min）</em> · RTO &lt;30min</div></div>
+    <div class="rpo-cell"><div class="k">L2 · 附件</div><div class="v">RPO 24h · RTO &lt;1h</div></div>
+    <div class="rpo-cell"><div class="k">L3 · 工作区</div><div class="v">防误删 · RTO &lt;1h</div></div>
+    <div class="rpo-cell"><div class="k">L4 · 配置</div><div class="v">RPO 24h · RTO 分钟级</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">07</span><h2>决策与遗留</h2></div>
+  <p class="note">以下决策已定，方案据此落地：</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>项</th><th>决策</th></tr></thead>
+    <tbody>
+      <tr><td>OpenClaw 平台</td><td><span class="pill na">不纳入</span> · 仅备份 Multica 平台自身</td></tr>
+      <tr><td>WAL 归档增强档</td><td><span class="pill warn">暂缓</span> · 先跑每日 dump，稳定后择低峰窗口升级</td></tr>
+      <tr><td>dump 保留周期</td><td><span class="pill ok">30 天</span> + 月末归档</td></tr>
+      <tr><td>Redis 会话快照</td><td><span class="pill ok">纳入 L5</span> · 每日 RDB 拷贝</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>遗留待确认（不影响核心备份落地）</h3>
+  <ul class="decisions">
+    <li><span class="dv warn" style="color:var(--warn)">D2</span><div><b>NAS 组织数据（AI 平台 ~120G 等）冗余</b><br><span class="note">不在本备份目标内；建议与 NAS 管理员确认 RAID / 快照 / 异地同步。若全无，再单独评估关键目录增量拉取。</span></div></li>
+    <li><span class="dv" style="color:var(--ink-faint)">D6</span><div><b>运营机自身状态（~/.claude 凭证与记忆、~/.agents/skills、Tavily key）</b><br><span class="note">非平台数据，可后续单独归档，不阻塞本方案。</span></div></li>
+  </ul>
+</section>
+
+<div class="foot">
+  <span>Multica 备份规划 · v0.2 · 已上线 · 2026-08-12</span>
+  <span><span class="tag">核心 5 层</span><span class="tag">目标 虚拟员工工作区/backup</span><span class="tag">launchd 调度</span></span>
+</div>
+
+</div>
