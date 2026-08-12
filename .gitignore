@@ -58,6 +58,7 @@ apps/web/test-results/
 
 # local settings
 .claude/
+.workbuddy/
 .tool-versions
 
 # feature tracking
