@@ -32,12 +32,12 @@ fi
 
 host_of() {
   case "$1" in
-    agent_1) echo 10.35.182.4 ;;
-    agent_2) echo 10.35.182.31 ;;
-    agent_3) echo 10.35.182.39 ;;
-    agent_4) echo 10.35.182.34 ;;
-    agent_5) echo 10.35.182.25 ;;
-    agent_6) echo 10.35.182.29 ;;
+    agent_1) echo 10.35.182.3 ;;
+    agent_2) echo 10.35.182.5 ;;
+    agent_3) echo 10.35.182.2 ;;
+    agent_4) echo 10.35.182.4 ;;
+    agent_5) echo 10.35.182.6 ;;
+    agent_6) echo 10.35.182.1 ;;
     *) echo "" ;;
   esac
 }

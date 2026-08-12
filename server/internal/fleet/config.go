@@ -36,12 +36,12 @@ const defaultDevicesFile = "deploy/fleet/devices.json"
 // is the source of truth that deploy/fleet/devices.json mirrors.
 var defaultDevices = []Device{
 	{ID: "local", Name: "本机 · Coordinator", Host: "localhost", Local: true, Labels: []string{"coordinator"}},
-	{ID: "fosun_agent_1", Name: "fosun_agent_1", Host: "10.35.182.4", User: "fosun_agent_1", Labels: []string{"worker"}},
-	{ID: "fosun_agent_2", Name: "fosun_agent_2", Host: "10.35.182.31", User: "fosun_agent_2", Labels: []string{"worker"}},
-	{ID: "fosun_agent_3", Name: "fosun_agent_3", Host: "10.35.182.39", User: "fosun_agent_3", Labels: []string{"worker"}},
-	{ID: "fosun_agent_4", Name: "fosun_agent_4", Host: "10.35.182.34", User: "fosun_agent_4", Labels: []string{"worker"}},
-	{ID: "fosun_agent_5", Name: "fosun_agent_5", Host: "10.35.182.25", User: "fosun_agent_5", Labels: []string{"worker"}},
-	{ID: "fosun_agent_6", Name: "fosun_agent_6", Host: "10.35.182.29", User: "fosun_agent_6", Labels: []string{"worker"}},
+	{ID: "fosun_agent_1", Name: "fosun_agent_1", Host: "10.35.182.3", User: "fosun_agent_1", Labels: []string{"worker"}},
+	{ID: "fosun_agent_2", Name: "fosun_agent_2", Host: "10.35.182.5", User: "fosun_agent_2", Labels: []string{"worker"}},
+	{ID: "fosun_agent_3", Name: "fosun_agent_3", Host: "10.35.182.2", User: "fosun_agent_3", Labels: []string{"worker"}},
+	{ID: "fosun_agent_4", Name: "fosun_agent_4", Host: "10.35.182.4", User: "fosun_agent_4", Labels: []string{"worker"}},
+	{ID: "fosun_agent_5", Name: "fosun_agent_5", Host: "10.35.182.6", User: "fosun_agent_5", Labels: []string{"worker"}},
+	{ID: "fosun_agent_6", Name: "fosun_agent_6", Host: "10.35.182.1", User: "fosun_agent_6", Labels: []string{"worker"}},
 }
 
 // LoadDevices reads the inventory from FLEET_DEVICES_FILE (or the default
