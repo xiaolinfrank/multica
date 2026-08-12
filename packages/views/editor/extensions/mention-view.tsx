@@ -21,11 +21,13 @@
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { File } from "lucide-react";
+import { useWorkspaceId } from "@multica/core/hooks";
 import { IssueMentionCard } from "../../issues/components/issue-mention-card";
 import { ProjectMentionCard } from "../../projects/components/project-mention-card";
 
 export function MentionView({ node }: NodeViewProps) {
   const { type, id, label } = node.attrs;
+  const workspaceId = useWorkspaceId();
 
   // stopPropagation mirrors the readonly renderer's mention wrappers: a chip
   // click must not reach surrounding click handlers.
@@ -54,13 +56,15 @@ export function MentionView({ node }: NodeViewProps) {
   }
 
   if (type === "file") {
-    // Self-resolving endpoint: derives the workspace from the attachment row,
-    // so no workspace path is needed. Opens in a new tab as a native resource
-    // load (image preview / file download) using the caller's existing auth.
+    // Opens in a new tab as a native resource load (image preview / file
+    // download) using the caller's existing auth. The content endpoint
+    // requires the workspace to scope the attachment ACL, so it is passed as
+    // a query param (the editor can be rendered in any workspace route).
+    const href = `/api/attachments/${id}/content?workspace_id=${encodeURIComponent(workspaceId)}`;
     return (
       <NodeViewWrapper as="span" className="inline">
         <a
-          href={`/api/attachments/${id}/content`}
+          href={href}
           target="_blank"
           rel="noreferrer"
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
