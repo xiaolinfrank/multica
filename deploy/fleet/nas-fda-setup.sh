@@ -2,7 +2,7 @@
 # BayClaw fleet — set up NAS workspace access for the multica daemon on a node.
 #
 # macOS TCC blocks ANY launchd-spawned process (root LaunchDaemon or user
-# LaunchAgent) from reading/writing a network volume (/Volumes/NAS, SMB/NFS).
+# LaunchAgent) from reading/writing a network volume (/Volumes/虚拟员工工作区, SMB/NFS).
 # The only fix is to grant the multica binary Full Disk Access (FDA). FDA cannot
 # be added to a bare CLI binary, so multica is wrapped in /Applications/
 # BayClawFleet.app and code-signed with a stable self-signed cert so the FDA
@@ -28,7 +28,7 @@ WRAPPER="/usr/local/bin/bayclaw-fleet-daemon-wrapper.sh"
 PLIST="/Library/LaunchDaemons/com.bayclaw.fleet.daemon.plist"
 SIGN_CN="BayClaw Fleet Code Signing"
 SYS_KC="/Library/Keychains/System.keychain"
-NAS_MOUNTPOINT="/Volumes/NAS/虚拟员工工作区"
+NAS_MOUNTPOINT="/Volumes/虚拟员工工作区"
 WS_ROOT="${NAS_MOUNTPOINT}/v2/${DEV}"
 HERMES="${HOMEDIR}/var/hermes-agent/.venv/bin/hermes"
 PATHV="${HOMEDIR}/.local/bin:${HOMEDIR}/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -96,7 +96,7 @@ install_wrapper() {
 # Runs as /bin/bash (no FDA) so it MUST only read the mount table (getfsstat,
 # not TCC-gated), never touch files on the NAS volume.
 set -euo pipefail
-MOUNTPOINT="/Volumes/NAS/虚拟员工工作区"
+MOUNTPOINT="/Volumes/虚拟员工工作区"
 : "${MULTICA_WORKSPACES_ROOT:?MULTICA_WORKSPACES_ROOT must be set by the plist}"
 nas_mounted() { /sbin/mount | grep -qF "on ${MOUNTPOINT} ("; }
 for _ in $(seq 1 60); do nas_mounted && break; sleep 5; done
