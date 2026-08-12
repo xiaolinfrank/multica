@@ -397,6 +397,47 @@ func TestGetConfigOmitsServerVersionOnOfficialCloud(t *testing.T) {
 	}
 }
 
+// TestGetConfigExposesDefaultIssueAssigneeNode verifies /api/config surfaces
+// the raw DEFAULT_ISSUE_ASSIGNEE_NODE label alongside the derived agent name,
+// so onboarding's shared-runtime picker can default-select the Claude runtime
+// co-located with that node (BayClaw fork).
+func TestGetConfigExposesDefaultIssueAssigneeNode(t *testing.T) {
+	setDefaultIssueAssigneeNode(t, defaultAssigneeProbeNode)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	w := httptest.NewRecorder()
+	testHandler.GetConfig(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetConfig: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var cfg AppConfig
+	if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if cfg.DefaultIssueAssigneeNode != defaultAssigneeProbeNode {
+		t.Fatalf("default_issue_assignee_node: want %q, got %q", defaultAssigneeProbeNode, cfg.DefaultIssueAssigneeNode)
+	}
+	if cfg.DefaultIssueAssigneeAgentName != defaultAssigneeProbeAgentName {
+		t.Fatalf("default_issue_assignee_agent_name: want %q, got %q", defaultAssigneeProbeAgentName, cfg.DefaultIssueAssigneeAgentName)
+	}
+
+	setDefaultIssueAssigneeNode(t, "")
+	w = httptest.NewRecorder()
+	testHandler.GetConfig(w, req)
+	// Fresh struct: omitempty means the field is simply absent from this
+	// response's JSON, and json.Unmarshal never zeroes a destination field
+	// for a key that isn't present — reusing cfg here would keep the value
+	// from the first decode above.
+	cfg = AppConfig{}
+	if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if cfg.DefaultIssueAssigneeNode != "" {
+		t.Fatalf("default_issue_assignee_node: want empty when the feature is off, got %q", cfg.DefaultIssueAssigneeNode)
+	}
+}
+
 func TestGetConfigExposesFrontendFeatureFlags(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)

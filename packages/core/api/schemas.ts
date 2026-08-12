@@ -380,6 +380,11 @@ export interface AppConfigResponse {
    * issues (BayClaw fork). Absent/empty when the deployment has the feature
    * off — the create dialog then pre-selects nothing. */
   default_issue_assignee_agent_name?: string;
+  /** Raw node label default_issue_assignee_agent_name is derived from
+   * (BayClaw fork, DEFAULT_ISSUE_ASSIGNEE_NODE). Onboarding uses it to
+   * default-select the co-located Claude runtime. Absent/empty when the
+   * feature is off. */
+  default_issue_assignee_node?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -575,6 +580,7 @@ export const AppConfigSchema = z.object({
   feature_flags: FeatureFlagsSchema,
   server_version: OptionalStringSchema,
   default_issue_assignee_agent_name: OptionalStringSchema,
+  default_issue_assignee_node: OptionalStringSchema,
 }).loose();
 
 export const EMPTY_APP_CONFIG: AppConfigResponse = {

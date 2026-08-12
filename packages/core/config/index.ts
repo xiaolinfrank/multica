@@ -30,6 +30,10 @@ interface ConfigState {
   // server has the feature off; the create-issue dialog pre-selects this
   // agent so the automatic assignment is visible before submit.
   defaultIssueAssigneeAgentName: string;
+  // Raw node label defaultIssueAssigneeAgentName is derived from (BayClaw
+  // fork). Empty when the feature is off; onboarding's shared-runtime picker
+  // uses it to default-select the co-located Claude runtime.
+  defaultIssueAssigneeNode: string;
   setCdnConfig: (config: { cdnDomain: string; cdnSigned?: boolean }) => void;
   setAuthConfig: (config: {
     allowSignup: boolean;
@@ -44,6 +48,7 @@ interface ConfigState {
   setFeatureFlags: (flags?: Record<string, boolean>) => void;
   setServerVersion: (version?: string) => void;
   setDefaultIssueAssigneeAgentName: (name?: string) => void;
+  setDefaultIssueAssigneeNode: (node?: string) => void;
 }
 
 export const configStore = createStore<ConfigState>((set) => ({
@@ -58,6 +63,7 @@ export const configStore = createStore<ConfigState>((set) => ({
   featureFlags: {},
   serverVersion: "",
   defaultIssueAssigneeAgentName: "",
+  defaultIssueAssigneeNode: "",
   setCdnConfig: ({ cdnDomain, cdnSigned = false }) => set({ cdnDomain, cdnSigned }),
   setAuthConfig: ({
     allowSignup,
@@ -70,6 +76,7 @@ export const configStore = createStore<ConfigState>((set) => ({
   setFeatureFlags: (flags = {}) => set({ featureFlags: { ...flags } }),
   setServerVersion: (version = "") => set({ serverVersion: version }),
   setDefaultIssueAssigneeAgentName: (name = "") => set({ defaultIssueAssigneeAgentName: name }),
+  setDefaultIssueAssigneeNode: (node = "") => set({ defaultIssueAssigneeNode: node }),
 }));
 
 export function useConfigStore(): ConfigState;

@@ -57,3 +57,25 @@ export function providerDisplayName(provider: string): string {
   if (known) return known;
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
+
+/**
+ * Extracts a runtime's stable node label from `device_info`
+ * ("<node> · <version> (<provider>)"), mirroring the backend's
+ * nodeLabelFromDeviceInfo (BayClaw fork, workspace_cluster_agent.go). Falls
+ * back to the whole string when no " · " separator is present.
+ */
+export function runtimeNodeLabel(deviceInfo: string): string {
+  const trimmed = deviceInfo.trim();
+  if (!trimmed) return "";
+  const sep = trimmed.indexOf(" · ");
+  return sep > 0 ? trimmed.slice(0, sep).trim() : trimmed;
+}
+
+/**
+ * Normalizes a node label for comparison, mirroring the backend's
+ * normalizeNodeLabel: lowercase and strip a trailing ".local" so the same
+ * physical host compares equal despite mDNS hostname drift.
+ */
+export function normalizeNodeLabel(label: string): string {
+  return label.trim().toLowerCase().replace(/\.local$/, "");
+}

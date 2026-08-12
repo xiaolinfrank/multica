@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentRuntime } from "@multica/core/types";
+import { configStore } from "@multica/core/config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../../locales/en/common.json";
@@ -81,6 +82,10 @@ describe("StepPlatformFork (cloud-direct)", () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    configStore.getState().setDefaultIssueAssigneeNode("");
+  });
+
   it("with no shared runtime: shows the waiting state, no install guidance", () => {
     renderFork();
     expect(
@@ -156,5 +161,71 @@ describe("StepPlatformFork (cloud-direct)", () => {
     expect(
       screen.getByRole("button", { name: /start exploring/i }),
     ).toBeDisabled();
+  });
+
+  it("defaults to the co-located Claude runtime over other online public runtimes", () => {
+    const fleet = makeRuntime({
+      id: "rt_fleet",
+      name: "Claude (fosun_agent_2)",
+      provider: "claude",
+      device_info: "fosun_agent_2 · 2.1.228 (Claude Code)",
+    });
+    const local = makeRuntime({
+      id: "rt_local",
+      name: "Claude (host.local)",
+      provider: "claude",
+      device_info: "host.local · 2.1.228 (Claude Code)",
+    });
+    configStore.getState().setDefaultIssueAssigneeNode("host.local");
+    resetPicker({
+      runtimes: [fleet, local],
+      // The hook's own auto-select (first online) would otherwise land on
+      // the fleet runtime — the component must override it with the local
+      // Claude match.
+      selected: fleet,
+      selectedId: fleet.id,
+      hasRuntimes: true,
+    });
+
+    renderFork();
+
+    expect(
+      screen.getByText(/selected: claude \(host\.local\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it("a manual pick overrides the co-located Claude default", async () => {
+    const fleet = makeRuntime({
+      id: "rt_fleet",
+      name: "Claude (fosun_agent_2)",
+      provider: "claude",
+      device_info: "fosun_agent_2 · 2.1.228 (Claude Code)",
+    });
+    const local = makeRuntime({
+      id: "rt_local",
+      name: "Claude (host.local)",
+      provider: "claude",
+      device_info: "host.local · 2.1.228 (Claude Code)",
+    });
+    configStore.getState().setDefaultIssueAssigneeNode("host.local");
+    resetPicker({
+      runtimes: [fleet, local],
+      selected: local,
+      selectedId: local.id,
+      hasRuntimes: true,
+    });
+
+    const user = userEvent.setup();
+    const { onNext } = renderFork();
+
+    await user.click(screen.getByText(/claude \(fosun_agent_2\)/i));
+    expect(
+      screen.getByText(/selected: claude \(fosun_agent_2\)/i),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /start exploring/i }),
+    );
+    expect(onNext).toHaveBeenCalledWith(fleet);
   });
 });

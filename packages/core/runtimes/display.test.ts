@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { runtimeDisplayLabel, runtimeDisplayName } from "./display";
+import {
+  runtimeDisplayLabel,
+  runtimeDisplayName,
+  runtimeNodeLabel,
+  normalizeNodeLabel,
+} from "./display";
 
 describe("runtimeDisplayName", () => {
   it("prefers a custom name when set", () => {
@@ -113,5 +118,33 @@ describe("runtimeDisplayLabel", () => {
         provider: "codex",
       }),
     ).toBe("box (Codex)");
+  });
+});
+
+describe("runtimeNodeLabel", () => {
+  it("extracts the node segment before the version separator", () => {
+    expect(runtimeNodeLabel("fosun_agent_2 · 2.1.228 (Claude Code)")).toBe(
+      "fosun_agent_2",
+    );
+  });
+
+  it("falls back to the whole string when there is no separator", () => {
+    expect(runtimeNodeLabel("bare-hostname")).toBe("bare-hostname");
+  });
+
+  it("returns an empty string for blank device_info", () => {
+    expect(runtimeNodeLabel("")).toBe("");
+    expect(runtimeNodeLabel("   ")).toBe("");
+  });
+});
+
+describe("normalizeNodeLabel", () => {
+  it("lowercases and strips a trailing .local", () => {
+    expect(normalizeNodeLabel("Host.local")).toBe("host");
+    expect(normalizeNodeLabel("HOST")).toBe("host");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(normalizeNodeLabel("  host.local  ")).toBe("host");
   });
 });

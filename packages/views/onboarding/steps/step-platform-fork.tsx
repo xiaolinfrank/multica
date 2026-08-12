@@ -1,10 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { captureEvent } from "@multica/core/analytics";
 import { Button } from "@multica/ui/components/ui/button";
 import type { AgentRuntime } from "@multica/core/types";
-import { runtimeDisplayLabel } from "@multica/core/runtimes";
+import {
+  runtimeDisplayLabel,
+  runtimeNodeLabel,
+  normalizeNodeLabel,
+} from "@multica/core/runtimes";
+import { useConfigStore } from "@multica/core/config";
 import { StepFooter, StepHeading } from "../components/step-shell";
 import { CompactRuntimeRow } from "../../runtimes/components/compact-runtime-row";
 import { useRuntimePicker } from "../components/use-runtime-picker";
@@ -43,12 +49,37 @@ export function StepPlatformFork({
     (rt) => rt.visibility === "public",
   );
   const hasShared = sharedRuntimes.length > 0;
-  const selected =
-    picker.selected && picker.selected.visibility === "public"
-      ? picker.selected
-      : (sharedRuntimes.find((rt) => rt.status === "online") ??
-        sharedRuntimes[0] ??
-        null);
+
+  // The node co-located with the API server (BayClaw fork,
+  // DEFAULT_ISSUE_ASSIGNEE_NODE) — when set, its Claude runtime is the
+  // default pick instead of an arbitrary online fleet worker.
+  const defaultNode = useConfigStore((s) => s.defaultIssueAssigneeNode);
+  const preferredRuntime = defaultNode
+    ? sharedRuntimes.find(
+        (rt) =>
+          rt.provider === "claude" &&
+          rt.status === "online" &&
+          normalizeNodeLabel(runtimeNodeLabel(rt.device_info)) ===
+            normalizeNodeLabel(defaultNode),
+      )
+    : undefined;
+
+  // Tracks an explicit row click so it always wins over the local-Claude
+  // default above, even after the shared-runtime list refetches.
+  const [manualId, setManualId] = useState<string | null>(null);
+  const selected = manualId
+    ? (sharedRuntimes.find((rt) => rt.id === manualId) ?? null)
+    : (preferredRuntime ??
+      (picker.selected && picker.selected.visibility === "public"
+        ? picker.selected
+        : (sharedRuntimes.find((rt) => rt.status === "online") ??
+          sharedRuntimes[0] ??
+          null)));
+
+  const handleSelect = (id: string) => {
+    setManualId(id);
+    picker.setSelectedId(id);
+  };
 
   const handleContinue = () => {
     if (!selected) return;
@@ -96,7 +127,7 @@ export function StepPlatformFork({
                   key={rt.id}
                   runtime={rt}
                   selected={rt.id === (selected?.id ?? null)}
-                  onSelect={() => picker.setSelectedId(rt.id)}
+                  onSelect={() => handleSelect(rt.id)}
                 />
               ))}
             </div>

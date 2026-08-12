@@ -72,6 +72,12 @@ type AppConfig struct {
 	// create-issue dialog pre-selects this agent so the automatic assignment —
 	// and the run it immediately triggers — is visible before submit.
 	DefaultIssueAssigneeAgentName string `json:"default_issue_assignee_agent_name,omitempty"`
+	// DefaultIssueAssigneeNode is the raw node label
+	// DefaultIssueAssigneeAgentName is derived from (BayClaw fork,
+	// DEFAULT_ISSUE_ASSIGNEE_NODE). Onboarding's shared-runtime picker uses it
+	// to default-select the Claude runtime co-located with this node instead
+	// of an arbitrary online fleet worker. Omitted when the feature is off.
+	DefaultIssueAssigneeNode string `json:"default_issue_assignee_node,omitempty"`
 }
 
 // GetConfig is mounted on the public (unauthenticated) route group because
@@ -92,6 +98,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
 	if node := strings.TrimSpace(h.cfg.DefaultIssueAssigneeNode); node != "" {
 		config.DefaultIssueAssigneeAgentName = clusterAgentNameForNode(node)
+		config.DefaultIssueAssigneeNode = node
 	}
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed
