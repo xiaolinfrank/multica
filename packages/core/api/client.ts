@@ -12,6 +12,7 @@ import type {
   UpdateIssueRequest,
   GroupedIssuesResponse,
   ListIssuesResponse,
+  SearchAttachmentsResponse,
   SearchIssuesResponse,
   SearchProjectsResponse,
   UpdateMeRequest,
@@ -243,6 +244,7 @@ import {
   EMPTY_ISSUE_TABLE_GROUPS_RESPONSE,
   EMPTY_ISSUE_TABLE_ROWS_RESPONSE,
   EMPTY_LIST_ISSUES_RESPONSE,
+  EMPTY_SEARCH_ATTACHMENTS_RESPONSE,
   EMPTY_SEARCH_ISSUES_RESPONSE,
   EMPTY_SEARCH_PROJECTS_RESPONSE,
   EMPTY_SQUAD,
@@ -271,6 +273,7 @@ import {
   RuntimeUsageByAgentListSchema,
   RuntimeUsageByHourListSchema,
   RuntimeUsageListSchema,
+  SearchAttachmentsResponseSchema,
   SearchIssuesResponseSchema,
   SearchProjectsResponseSchema,
   SquadSchema,
@@ -915,6 +918,25 @@ export class ApiClient {
     );
     return parseWithFallback(raw, SearchProjectsResponseSchema, EMPTY_SEARCH_PROJECTS_RESPONSE, {
       endpoint: "GET /api/projects/search",
+    });
+  }
+
+  async searchAttachments(params: {
+    q?: string;
+    limit?: number;
+    days?: number;
+    signal?: AbortSignal;
+  }): Promise<SearchAttachmentsResponse> {
+    const search = new URLSearchParams();
+    if (params.q) search.set("q", params.q);
+    if (params.limit !== undefined) search.set("limit", String(params.limit));
+    if (params.days !== undefined) search.set("days", String(params.days));
+    const raw = await this.fetch<unknown>(
+      `/api/attachments/search?${search}`,
+      params.signal ? { signal: params.signal } : undefined,
+    );
+    return parseWithFallback(raw, SearchAttachmentsResponseSchema, EMPTY_SEARCH_ATTACHMENTS_RESPONSE, {
+      endpoint: "GET /api/attachments/search",
     });
   }
 

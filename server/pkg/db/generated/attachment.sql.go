@@ -708,3 +708,109 @@ func (q *Queries) ReplaceCommentAttachments(ctx context.Context, arg ReplaceComm
 	_, err := q.db.Exec(ctx, replaceCommentAttachments, arg.CommentID, arg.IssueID, arg.AttachmentIds)
 	return err
 }
+
+const searchWorkspaceAttachments = `-- name: SearchWorkspaceAttachments :many
+SELECT
+  a.id,
+  a.workspace_id,
+  a.issue_id,
+  a.comment_id,
+  a.chat_session_id,
+  a.task_id,
+  a.uploader_type,
+  a.uploader_id,
+  a.filename,
+  a.url,
+  a.content_type,
+  a.size_bytes,
+  a.created_at,
+  i.number AS issue_number,
+  i.title  AS issue_title
+FROM attachment a
+JOIN issue i ON i.id = a.issue_id
+WHERE a.workspace_id = $1
+  AND a.filename ILIKE '%' || $2 || '%'
+  AND a.issue_id IN (
+    SELECT DISTINCT al.issue_id
+    FROM activity_log al
+    WHERE al.workspace_id = $1
+      AND al.created_at > $3
+      AND al.issue_id IS NOT NULL
+  )
+ORDER BY a.created_at DESC
+LIMIT $4
+`
+
+type SearchWorkspaceAttachmentsParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Column2     pgtype.Text        `json:"column_2"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Limit       int32              `json:"limit"`
+}
+
+type SearchWorkspaceAttachmentsRow struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	IssueID       pgtype.UUID        `json:"issue_id"`
+	CommentID     pgtype.UUID        `json:"comment_id"`
+	ChatSessionID pgtype.UUID        `json:"chat_session_id"`
+	TaskID        pgtype.UUID        `json:"task_id"`
+	UploaderType  string             `json:"uploader_type"`
+	UploaderID    pgtype.UUID        `json:"uploader_id"`
+	Filename      string             `json:"filename"`
+	Url           string             `json:"url"`
+	ContentType   string             `json:"content_type"`
+	SizeBytes     int64              `json:"size_bytes"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	IssueNumber   int32              `json:"issue_number"`
+	IssueTitle    string             `json:"issue_title"`
+}
+
+// Files attached to recently-active issues in a workspace, filtered by
+// filename. Powers cross-issue @file mentions. "Recently active" is derived
+// from activity_log (issue_id IS NOT NULL, created within the window) so
+// comment/agent activity counts, not just issue field edits. The subquery
+// is bounded by the composite index idx_activity_log_workspace_created
+// (workspace_id, created_at DESC); the filename match uses the trigram index
+// idx_attachment_filename_trgm. Both are scanned with LIMIT, so cost stays
+// independent of total activity/attachment volume.
+func (q *Queries) SearchWorkspaceAttachments(ctx context.Context, arg SearchWorkspaceAttachmentsParams) ([]SearchWorkspaceAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, searchWorkspaceAttachments,
+		arg.WorkspaceID,
+		arg.Column2,
+		arg.CreatedAt,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchWorkspaceAttachmentsRow{}
+	for rows.Next() {
+		var i SearchWorkspaceAttachmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.IssueID,
+			&i.CommentID,
+			&i.ChatSessionID,
+			&i.TaskID,
+			&i.UploaderType,
+			&i.UploaderID,
+			&i.Filename,
+			&i.Url,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.CreatedAt,
+			&i.IssueNumber,
+			&i.IssueTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

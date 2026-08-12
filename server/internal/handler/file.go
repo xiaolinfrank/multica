@@ -118,6 +118,28 @@ type AttachmentResponse struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// AttachmentSearchResponse is the payload for GET /api/attachments/search,
+// the cross-issue @file mention lookup. It deliberately omits short-lived
+// signed download URLs (see AttachmentResponse's contract) — the mention chip
+// resolves a fresh, natively-loadable URL from the attachment id on click.
+type AttachmentSearchResponse struct {
+	Attachments []AttachmentSearchItem `json:"attachments"`
+}
+
+type AttachmentSearchItem struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int64  `json:"size_bytes"`
+	// URL is the raw storage object URL (NOT a signed/download URL). Kept for
+	// callers that render inline previews; the chip itself uses the id.
+	URL         string `json:"url"`
+	IssueID     string `json:"issue_id"`
+	IssueNumber int32  `json:"issue_number"`
+	IssueTitle  string `json:"issue_title"`
+	CreatedAt   string `json:"created_at"`
+}
+
 // attachmentURLMode selects how DownloadURL is rendered on a response.
 //
 // MUL-5372 / GitHub #5999. A CloudFront-signed DownloadURL is ~800 chars, of
@@ -645,6 +667,80 @@ func (h *Handler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 	resp := make([]AttachmentResponse, len(attachments))
 	for i, a := range attachments {
 		resp[i] = h.attachmentToResponse(a, mode)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ---------------------------------------------------------------------------
+// SearchAttachments — GET /api/attachments/search
+// ---------------------------------------------------------------------------
+
+// SearchAttachments returns files uploaded to recently-active issues in the
+// current workspace, filtered by filename. It powers cross-issue @file
+// mentions: a file is reachable from any issue it was attached to, not just
+// the one being commented on. "Recently active" is the set of issues that
+// have an activity_log row newer than `days` (default 30, clamped to 90) —
+// so comment and agent activity count, not just issue field edits. The query
+// is bounded by two indexes (idx_activity_log_workspace_created and
+// idx_attachment_filename_trgm) and a LIMIT, so cost is independent of total
+// activity/attachment volume. Files with no issue (chat/task uploads) are
+// excluded, matching the "files in tasks" scope.
+func (h *Handler) SearchAttachments(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if v, err := strconv.Atoi(d); err == nil && v > 0 {
+			days = v
+		}
+	}
+	if days > 90 {
+		days = 90
+	}
+	recentSince := time.Now().AddDate(0, 0, -days)
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := h.Queries.SearchWorkspaceAttachments(ctx, db.SearchWorkspaceAttachmentsParams{
+		WorkspaceID: wsUUID,
+		Column2:     pgtype.Text{String: q, Valid: true},
+		CreatedAt:   pgtype.Timestamptz{Time: recentSince, Valid: true},
+		Limit:       int32(limit),
+	})
+	if err != nil {
+		slog.Error("failed to search attachments", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to search attachments")
+		return
+	}
+
+	resp := AttachmentSearchResponse{Attachments: make([]AttachmentSearchItem, 0, len(rows))}
+	for _, row := range rows {
+		resp.Attachments = append(resp.Attachments, AttachmentSearchItem{
+			ID:          uuidToString(row.ID),
+			Filename:    row.Filename,
+			ContentType: row.ContentType,
+			SizeBytes:   row.SizeBytes,
+			URL:         row.Url,
+			IssueID:     uuidToString(row.IssueID),
+			IssueNumber: row.IssueNumber,
+			IssueTitle:  row.IssueTitle,
+			CreatedAt:   row.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00"),
+		})
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

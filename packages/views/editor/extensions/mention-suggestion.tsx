@@ -30,8 +30,9 @@ import type {
   MemberWithUser,
   Agent,
   Squad,
+  AttachmentSearchItem,
 } from "@multica/core/types";
-import { ListTodo } from "lucide-react";
+import { ListTodo, File } from "lucide-react";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { StatusIcon } from "../../issues/components/status-icon";
 import { ProjectIcon } from "../../projects/components/project-icon";
@@ -70,7 +71,7 @@ import { blockedReasonLabel } from "../../issues/blocked-trigger-copy";
 export interface MentionItem {
   id: string;
   label: string;
-  type: "member" | "agent" | "squad" | "issue" | "project" | "all";
+  type: "member" | "agent" | "squad" | "issue" | "project" | "all" | "file";
   /** Optional grouping hint for injected context items. */
   group?: "current" | "recent" | "search";
   /** Secondary text shown beside the label (e.g. issue title) */
@@ -294,7 +295,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
         void (async () => {
           try {
             if (includeProjectSearch) {
-              const [issues, projects] = await Promise.all([
+              const [issues, projects, files] = await Promise.all([
                 api.searchIssues({
                   q,
                   limit: SERVER_CONTEXT_SEARCH_LIMIT,
@@ -307,22 +308,38 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
                   include_closed: true,
                   signal: controller.signal,
                 }),
+                api.searchAttachments({
+                  q,
+                  limit: SERVER_ISSUE_SEARCH_LIMIT,
+                  signal: controller.signal,
+                }),
               ]);
               if (!cancelled && !controller.signal.aborted) {
                 setServerItems([
                   ...issues.issues.map((issue) => ({ ...issueToMention(issue), group: "search" as const })),
                   ...projects.projects.map((project) => ({ ...projectToMention(project), group: "search" as const })),
+                  ...files.attachments.map(fileToMention),
                 ]);
               }
             } else {
-              const res = await api.searchIssues({
-                q,
-                limit: SERVER_ISSUE_SEARCH_LIMIT,
-                include_closed: true,
-                signal: controller.signal,
-              });
+              const [res, files] = await Promise.all([
+                api.searchIssues({
+                  q,
+                  limit: SERVER_ISSUE_SEARCH_LIMIT,
+                  include_closed: true,
+                  signal: controller.signal,
+                }),
+                api.searchAttachments({
+                  q,
+                  limit: SERVER_ISSUE_SEARCH_LIMIT,
+                  signal: controller.signal,
+                }),
+              ]);
               if (!cancelled && !controller.signal.aborted) {
-                setServerItems(res.issues.map(issueToMention));
+                setServerItems([
+                  ...res.issues.map(issueToMention),
+                  ...files.attachments.map(fileToMention),
+                ]);
               }
             }
           } catch {
@@ -586,6 +603,29 @@ function MentionRow({
     );
   }
 
+  if (item.type === "file") {
+    return (
+      <button
+        type="button"
+        ref={buttonRef}
+        className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-caption transition-colors ${
+          selected ? "bg-accent" : "hover:bg-accent/50"
+        }`}
+        onClick={onSelect}
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+          <File className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">{item.label}</span>
+          {item.description && (
+            <span className="block truncate text-muted-foreground">{item.description}</span>
+          )}
+        </span>
+      </button>
+    );
+  }
+
   const disabledMessage = item.disabledReason
     ? blockedReasonLabel(item.disabledReason, issuesT)
     : null;
@@ -658,6 +698,18 @@ function projectToMention(p: { id: string; title: string; description?: string |
     description: p.description ?? undefined,
     icon: p.icon ?? null,
     projectStatus: p.status,
+  };
+}
+
+function fileToMention(a: AttachmentSearchItem): MentionItem {
+  return {
+    id: a.id,
+    label: a.filename,
+    type: "file" as const,
+    // Disambiguate files that share a name across issues: show the source
+    // issue's title as secondary text.
+    description: a.issue_title || undefined,
+    group: "search" as const,
   };
 }
 

@@ -145,3 +145,42 @@ DELETE FROM attachment WHERE id = $1 AND workspace_id = $2;
 SELECT * FROM attachment
 WHERE id = ANY(sqlc.arg(attachment_ids)::uuid[]) AND workspace_id = sqlc.arg(workspace_id)
 ORDER BY created_at ASC;
+
+-- name: SearchWorkspaceAttachments :many
+-- Files attached to recently-active issues in a workspace, filtered by
+-- filename. Powers cross-issue @file mentions. "Recently active" is derived
+-- from activity_log (issue_id IS NOT NULL, created within the window) so
+-- comment/agent activity counts, not just issue field edits. The subquery
+-- is bounded by the composite index idx_activity_log_workspace_created
+-- (workspace_id, created_at DESC); the filename match uses the trigram index
+-- idx_attachment_filename_trgm. Both are scanned with LIMIT, so cost stays
+-- independent of total activity/attachment volume.
+SELECT
+  a.id,
+  a.workspace_id,
+  a.issue_id,
+  a.comment_id,
+  a.chat_session_id,
+  a.task_id,
+  a.uploader_type,
+  a.uploader_id,
+  a.filename,
+  a.url,
+  a.content_type,
+  a.size_bytes,
+  a.created_at,
+  i.number AS issue_number,
+  i.title  AS issue_title
+FROM attachment a
+JOIN issue i ON i.id = a.issue_id
+WHERE a.workspace_id = $1
+  AND a.filename ILIKE '%' || $2 || '%'
+  AND a.issue_id IN (
+    SELECT DISTINCT al.issue_id
+    FROM activity_log al
+    WHERE al.workspace_id = $1
+      AND al.created_at > $3
+      AND al.issue_id IS NOT NULL
+  )
+ORDER BY a.created_at DESC
+LIMIT $4;

@@ -57,6 +57,7 @@ import type {
   NotificationPreferenceResponse,
   ResourceLabelsResponse,
   RuntimeModelListRequest,
+  SearchAttachmentsResponse,
   SearchIssuesResponse,
   SearchProjectsResponse,
   Squad,
@@ -840,6 +841,30 @@ export const SearchIssuesResponseSchema = z.object({
 export const EMPTY_SEARCH_ISSUES_RESPONSE: SearchIssuesResponse = {
   issues: [],
   total: 0,
+};
+
+export const AttachmentSearchItemSchema = z
+  .object({
+    id: z.string(),
+    filename: z.string(),
+    content_type: z.string(),
+    size_bytes: z.number(),
+    url: z.string().default(""),
+    issue_id: z.string(),
+    issue_number: z.number(),
+    issue_title: z.string(),
+    created_at: z.string(),
+  })
+  .loose();
+
+export const SearchAttachmentsResponseSchema = z
+  .object({
+    attachments: z.array(AttachmentSearchItemSchema).default([]),
+  })
+  .loose();
+
+export const EMPTY_SEARCH_ATTACHMENTS_RESPONSE: SearchAttachmentsResponse = {
+  attachments: [],
 };
 
 const ProjectSchema = z.object({

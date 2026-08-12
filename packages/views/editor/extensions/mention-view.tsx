@@ -20,6 +20,7 @@
 
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { File } from "lucide-react";
 import { IssueMentionCard } from "../../issues/components/issue-mention-card";
 import { ProjectMentionCard } from "../../projects/components/project-mention-card";
 
@@ -48,6 +49,27 @@ export function MentionView({ node }: NodeViewProps) {
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         <ProjectMentionCard projectId={id} fallbackLabel={label} />
+      </NodeViewWrapper>
+    );
+  }
+
+  if (type === "file") {
+    // Self-resolving endpoint: derives the workspace from the attachment row,
+    // so no workspace path is needed. Opens in a new tab as a native resource
+    // load (image preview / file download) using the caller's existing auth.
+    return (
+      <NodeViewWrapper as="span" className="inline">
+        <a
+          href={`/api/attachments/${id}/content`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          title={label ?? id}
+          className="file-mention align-middle inline-flex items-center gap-1 rounded border border-border bg-muted px-1 py-0.5 text-caption no-underline hover:bg-accent"
+        >
+          <File className="h-3 w-3" />
+          <span>@{label ?? id}</span>
+        </a>
       </NodeViewWrapper>
     );
   }

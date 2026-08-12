@@ -466,6 +466,22 @@ export interface SearchIssuesResponse {
   total: number;
 }
 
+export interface AttachmentSearchItem {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  url: string;
+  issue_id: string;
+  issue_number: number;
+  issue_title: string;
+  created_at: string;
+}
+
+export interface SearchAttachmentsResponse {
+  attachments: AttachmentSearchItem[];
+}
+
 export interface SearchProjectResult extends Project {
   match_source: "title" | "description";
   matched_snippet?: string;
