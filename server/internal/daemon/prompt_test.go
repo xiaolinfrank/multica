@@ -466,6 +466,63 @@ func TestBuildChatPromptAttachmentIDsCanBeBoundToCreatedIssues(t *testing.T) {
 	}
 }
 
+func TestBuildCommentPromptListsFileMentions(t *testing.T) {
+	task := Task{
+		IssueID:               "iss-1",
+		TriggerCommentID:      "c1",
+		TriggerCommentContent: "please review [@预算.docx](mention://file/019ec09d-6222-722b-bdfa-427b105d80be) and the screenshot [@shot.png](mention://file/019ec09d-aaaa-bbbb-cccc-000000000002)",
+	}
+	out := buildCommentPrompt(task, "claude")
+	for _, want := range []string{
+		"Files referenced via @file mentions in this thread:",
+		`id=019ec09d-6222-722b-bdfa-427b105d80be filename="预算.docx"`,
+		`id=019ec09d-aaaa-bbbb-cccc-000000000002 filename="shot.png"`,
+		"multica attachment download <id>",
+		"mention://file/<id>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("comment prompt missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+}
+
+func TestBuildCommentPromptFileMentionsDedupAndCoverCoalesced(t *testing.T) {
+	// Same id in trigger + coalesced → listed once; coalesced-only id also listed.
+	task := Task{
+		IssueID:               "iss-1",
+		TriggerCommentID:      "c1",
+		TriggerCommentContent: "see [@a.txt](mention://file/11111111-1111-1111-1111-111111111111)",
+		CoalescedComments: []CoalescedCommentData{
+			{ID: "c0", Content: "earlier [@a.txt](mention://file/11111111-1111-1111-1111-111111111111) and [@b.txt](mention://file/22222222-2222-2222-2222-222222222222)"},
+		},
+	}
+	out := buildCommentPrompt(task, "claude")
+	if got := strings.Count(out, "id=11111111-1111-1111-1111-111111111111"); got != 1 {
+		t.Errorf("duplicate id should be listed exactly once, got %d\n--- output ---\n%s", got, out)
+	}
+	if !strings.Contains(out, "id=22222222-2222-2222-2222-222222222222") {
+		t.Errorf("coalesced-only mention should be listed\n--- output ---\n%s", out)
+	}
+}
+
+func TestBuildPromptDefaultEmitsFileMentionGuidance(t *testing.T) {
+	// Issue (ownership) task carries no description on the Task, so there is no
+	// list — but the generic guidance must still teach the mention://file scheme
+	// so the agent handles mentions it only sees after `multica issue get`.
+	out := BuildPrompt(Task{IssueID: "iss-1"}, "claude")
+	for _, want := range []string{
+		"mention://file/<id>",
+		"multica attachment download <id>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("default prompt missing file-mention guidance %q\n--- output ---\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Files referenced via @file mentions") {
+		t.Errorf("default prompt should not list mentions when none are embedded\n--- output ---\n%s", out)
+	}
+}
+
 func TestBuildChatPromptChannelAwareness(t *testing.T) {
 	t.Run("slack-backed prompt teaches both read commands", func(t *testing.T) {
 		out := buildChatPrompt(Task{

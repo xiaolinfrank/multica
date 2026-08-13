@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
@@ -129,6 +130,7 @@ func buildPromptBody(task Task, provider string) string {
 		b.WriteString("You were handed this issue with a handoff note. Treat it as the assigner's scoping instruction for this run; follow it before doing anything broader, and do not reply to it as if it were a comment:\n\n")
 		fmt.Fprintf(&b, "> %s\n\n", task.HandoffNote)
 	}
+	writeFileMentionBlock(&b, nil)
 	fmt.Fprintf(&b, "Start by running `multica issue get %s --output json` to understand your task, then complete it.\n", task.IssueID)
 	fmt.Fprintf(&b, "For comment history, follow the rule in your runtime workflow file (assignment-triggered tasks treat the read as mandatory). Scan the threads first with `multica issue comment list %s --roots-only --summary --compact --output json`, then expand only what matters with `--thread <thread-id> --tail 30`. For `--since` incremental polling, pagination, and folding, see `multica issue comment list --help`.\n", task.IssueID)
 	return b.String()
@@ -340,6 +342,7 @@ func buildCommentPrompt(task Task, provider string) string {
 			fmt.Fprintf(&b, "⚠️ **Squad leader no_action rule:** If you decide no action is needed, call `multica squad activity %s no_action --reason \"...\"` and EXIT. DO NOT post any comment — not even one that says \"no action needed\" or \"exiting silently\". The squad activity call records your decision; a comment is redundant noise.\n\n", task.IssueID)
 		}
 	}
+	writeFileMentionBlock(&b, extractFileMentions(append([]string{task.TriggerCommentContent}, coalescedCommentContents(task)...)...))
 	fmt.Fprintf(&b, "Start by running `multica issue get %s --output json` to understand your task, then decide how to proceed.\n\n", task.IssueID)
 	// Comment-reading pointer. Warm path with new comments: issue-wide
 	// since-delta count, but steer the agent to read the triggering thread
@@ -629,6 +632,77 @@ func buildAutopilotPrompt(task Task) string {
 	// emission point, and a second hand-maintained per-turn copy is exactly
 	// how the two surfaces drifted into conflict before (MUL-5696).
 	return b.String()
+}
+
+// fileMention is a single @file reference parsed out of markdown text already
+// on the Task (issue comments, handoff note). The mention's visible label IS
+// the attachment filename, so resolving it needs no DB lookup.
+type fileMention struct {
+	Filename string
+	ID       string
+}
+
+// fileMentionRe matches [@filename](mention://file/<uuid>). The label carries
+// the uploaded filename (mention-suggestion persists it as the label), minus an
+// optional leading @. Scoped to file mentions and keeps the label, unlike
+// util.MentionRe which is type-agnostic and drops it.
+var fileMentionRe = regexp.MustCompile(`\[@?([^\]]+)\]\(mention://file/([0-9a-fA-F-]+)\)`)
+
+// extractFileMentions scans already-available Task text (the triggering comment
+// + any coalesced comments) for @file references, deduped by id in first-seen
+// order. The issue description is NOT here — the agent fetches it itself via
+// `multica issue get`, so mentions that appear only there are covered by the
+// generic note writeFileMentionBlock always emits, not pre-parsed here.
+func extractFileMentions(texts ...string) []fileMention {
+	seen := make(map[string]struct{})
+	var out []fileMention
+	for _, t := range texts {
+		for _, m := range fileMentionRe.FindAllStringSubmatch(t, -1) {
+			id := m[2]
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, fileMention{Filename: strings.TrimSpace(m[1]), ID: id})
+		}
+	}
+	return out
+}
+
+// coalescedCommentContents returns the body text of every coalesced comment on
+// the task, for @file-mention scanning.
+func coalescedCommentContents(task Task) []string {
+	out := make([]string, 0, len(task.CoalescedComments))
+	for _, cc := range task.CoalescedComments {
+		out = append(out, cc.Content)
+	}
+	return out
+}
+
+// writeFileMentionBlock teaches the agent how to consume @file mentions and,
+// when any are already visible in the embedded comment text, lists them by
+// id + filename up front. This mirrors the chat-message attachment block
+// (buildChatPrompt): list by id + filename and point at the authenticated CLI,
+// which re-signs at download time — a signed URL embedded in the body would
+// expire during a long run, and `mention://file/<id>` is an opaque scheme the
+// agent cannot open, so we always spell out the resolve → CLI → download path.
+//
+// The issue description is not on the Task (the agent fetches it itself), so
+// mentions that appear only there are handled by the generic closing note, not
+// the list. Pass nil mentions on paths with no embedded text (the issue
+// ownership path) to emit only that note.
+func writeFileMentionBlock(b *strings.Builder, mentions []fileMention) {
+	if len(mentions) > 0 {
+		b.WriteString("\nFiles referenced via @file mentions in this thread:\n")
+		for _, m := range mentions {
+			fmt.Fprintf(b, "- id=%s filename=%q\n", m.ID, m.Filename)
+		}
+		b.WriteString("Use `multica attachment download <id>` to fetch each one locally before referring to it.\n")
+	}
+	b.WriteString("\nThe issue body may reference files inline as `[@filename](mention://file/<id>)` — these are cross-issue file mentions, not openable links. Extract `<id>` and fetch the file with `multica attachment download <id>`.\n")
 }
 
 // squadBriefingMarker is the first heading of the squad-leader briefing the
