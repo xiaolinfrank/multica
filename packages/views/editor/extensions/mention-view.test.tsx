@@ -10,10 +10,11 @@
  * then return without an adapter, producing a dead click on web. These tests
  * pin the no-adapter path for both chips.
  */
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NavigationProvider } from "../../navigation/context";
 import type { NavigationAdapter } from "../../navigation/types";
+import { api } from "@multica/core/api";
 
 // Tiptap NodeView primitives can't be instantiated without a full editor.
 vi.mock("@tiptap/react", () => ({
@@ -37,6 +38,32 @@ vi.mock("../../projects/components/project-chip", () => ({
   ProjectChip: ({ fallbackLabel }: { fallbackLabel?: string }) => (
     <span data-testid="project-chip">{fallbackLabel}</span>
   ),
+}));
+
+// FileMentionChip lives behind a Radix Popover and pulls the workspace id +
+// api client. Stub the Popover so its content is always rendered (no portal /
+// pointer plumbing in jsdom), and mock the api + toast so copy-path behavior
+// is unit-testable without a backend.
+vi.mock("@multica/ui/components/ui/popover", () => ({
+  Popover: ({ children }: any) => children,
+  PopoverTrigger: ({ children, ...rest }: any) => (
+    <button type="button" {...rest}>
+      {children}
+    </button>
+  ),
+  PopoverContent: ({ children }: any) => <div>{children}</div>,
+}));
+
+vi.mock("@multica/core/hooks", () => ({
+  useWorkspaceId: () => "ws-1",
+}));
+
+vi.mock("@multica/core/api", () => ({
+  api: { getAttachment: vi.fn() },
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 import { MentionView } from "./mention-view";
@@ -173,5 +200,56 @@ describe("MentionView issue mention", () => {
     expect(defaultNotPrevented).toBe(false);
     expect(openInNewTab).toHaveBeenCalledWith(ISSUE_PATH, "MUL-7");
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe("MentionView file mention copy path", () => {
+  const FILE_ID = "019ec09d-6222-722b-bdfa-427b105d80be";
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    vi.mocked(api.getAttachment).mockReset();
+  });
+
+  // Renders a @file chip, clicks "复制路径", and waits for the async
+  // handleCopy (getAttachment → clipboard.writeText) to settle.
+  async function copyFileMention() {
+    renderMention({ type: "file", id: FILE_ID, label: "预算.docx" }, makeAdapter());
+    fireEvent.click(screen.getByRole("button", { name: "复制路径" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+  }
+
+  it("copies the on-disk file_path when the backend exposes it (LocalStorage/NAS)", async () => {
+    vi.mocked(api.getAttachment).mockResolvedValue({
+      id: FILE_ID,
+      filename: "预算.docx",
+      file_path: "/Volumes/虚拟员工工作区/uploads/workspaces/ws-1/abc.docx",
+    } as any);
+    await copyFileMention();
+    expect(api.getAttachment).toHaveBeenCalledWith(FILE_ID);
+    expect(writeText).toHaveBeenCalledWith(
+      "/Volumes/虚拟员工工作区/uploads/workspaces/ws-1/abc.docx",
+    );
+  });
+
+  it("falls back to the download URL when file_path is empty (object storage)", async () => {
+    vi.mocked(api.getAttachment).mockResolvedValue({
+      id: FILE_ID,
+      filename: "x.bin",
+      file_path: "",
+    } as any);
+    await copyFileMention();
+    expect(writeText).toHaveBeenCalledWith(`/api/attachments/${FILE_ID}/download`);
+  });
+
+  it("falls back to the download URL when the lookup fails", async () => {
+    vi.mocked(api.getAttachment).mockRejectedValue(new Error("network"));
+    await copyFileMention();
+    expect(writeText).toHaveBeenCalledWith(`/api/attachments/${FILE_ID}/download`);
   });
 });

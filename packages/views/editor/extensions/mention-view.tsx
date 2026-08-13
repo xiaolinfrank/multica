@@ -23,6 +23,7 @@ import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { File, ExternalLink, Download, Copy } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { api } from "@multica/core/api";
 import { toast } from "sonner";
 import {
   Popover,
@@ -87,7 +88,11 @@ export function MentionView({ node }: NodeViewProps) {
  * /content proxy (which needs the workspace to scope the attachment ACL),
  * while media (image/pdf/video/audio) preview inline via /download (which
  * keeps media inline unless dl=1 is passed). "下载" forces a save via
- * /download?dl=1 for every type. "复制路径" copies the stable download URL.
+ * /download?dl=1 for every type. "复制路径" copies the on-disk file_path
+ * (LocalStorage/NAS deployments — so a person can paste it into a terminal or
+ * into another issue for an agent to Read directly), falling back to the
+ * stable /download URL on object-storage deployments (S3/R2/MinIO) or when
+ * the lookup fails.
  */
 function FileMentionChip({ id, label }: { id: string; label: string }) {
   const [open, setOpen] = useState(false);
@@ -107,11 +112,25 @@ function FileMentionChip({ id, label }: { id: string; label: string }) {
   const downloadHref = `/api/attachments/${id}/download?dl=1`;
   const copyPath = `/api/attachments/${id}/download`;
 
-  const handleCopy = () => {
-    navigator.clipboard
-      .writeText(copyPath)
-      .then(() => toast.success("文件路径已复制"))
-      .catch(() => toast.error("复制失败"));
+  const handleCopy = async () => {
+    // Prefer the on-disk absolute path (LocalStorage / NAS deployments expose
+    // file_path; a person pastes it into a terminal or another issue for an
+    // agent to Read directly). Fall back to the stable download URL on
+    // object-storage deployments (S3/R2/MinIO expose no path) or on lookup
+    // failure — same value the chip used before this path-aware version.
+    let target = copyPath;
+    try {
+      const att = await api.getAttachment(id);
+      if (att.file_path) target = att.file_path;
+    } catch {
+      // keep the download-URL fallback
+    }
+    try {
+      await navigator.clipboard.writeText(target);
+      toast.success("文件路径已复制");
+    } catch {
+      toast.error("复制失败");
+    }
     setOpen(false);
   };
 
