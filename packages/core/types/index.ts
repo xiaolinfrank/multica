@@ -93,6 +93,17 @@ export type {
   WorkspaceDownloadResult,
   WorkspaceOpRequest,
 } from "./workspace-op";
+export type {
+  PluginBinding,
+  PluginInstallation,
+  PluginCatalogContribution,
+  PluginCatalogRelease,
+  PluginCatalogDiagnostic,
+  PluginCatalogResponse,
+  PluginInstallationListResponse,
+  PluginReleaseRequest,
+  PluginBindingRequest,
+} from "./plugin";
 export type { InboxItem, InboxSeverity, InboxItemType, InboxWorkspaceUnread } from "./inbox";
 export type { NotificationGroupKey, NotificationGroupValue, NotificationPreferences, NotificationPreferenceResponse } from "./notification-preference";
 export type { Comment, CommentType, CommentAuthorType, CommentTriggerPreview, CommentTriggerPreviewAgent, CommentTriggerSource, CommentTriggerOutcome, CommentTriggerStatus, Reaction } from "./comment";
@@ -162,6 +173,7 @@ export type {
   ProjectResourceRef,
   GithubRepoResourceRef,
   LocalDirectoryResourceRef,
+  LocalDirectoryExecutionMode,
   CreateProjectResourceRequest,
   UpdateProjectResourceRequest,
   ListProjectResourcesResponse,
@@ -208,9 +220,12 @@ export type {
 } from "./slack";
 export type {
   DingTalkInstallation,
+  DingTalkGroupRoute,
   ListDingTalkInstallationsResponse,
+  ListDingTalkGroupRoutesResponse,
   RegisterDingTalkBYORequest,
   RedeemDingTalkBindingTokenResponse,
+  UpdateDingTalkGroupRouteRequest,
 } from "./dingtalk";
 export type {
   WecomInstallation,
@@ -281,4 +296,9 @@ export type {
   CreateBillingCheckoutSessionResponse,
   BillingCheckoutSessionStatus,
   CreateBillingPortalSessionResponse,
+  WorkspaceSubscriptionInterval,
+  WorkspaceSubscriptionEntitlements,
+  WorkspaceSubscriptionSummary,
+  WorkspaceSubscriptionPrice,
+  WorkspaceSubscriptionPrices,
 } from "./billing";

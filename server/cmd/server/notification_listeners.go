@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/handler"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -434,6 +437,10 @@ func notifyIssueSubscribers(
 			ActorID:     e.ActorID,
 			Payload:     map[string]any{"item": resp},
 		})
+
+		// Forward this inbox item to the recipient's registered email, if
+		// forwarding is enabled (inboxEmailChan non-nil). Non-blocking.
+		enqueueInboxEmail(subID, workspaceID, item)
 	}
 
 	return notified, tierSuppressed
@@ -498,6 +505,10 @@ func notifyDirect(
 		ActorID:     e.ActorID,
 		Payload:     map[string]any{"item": resp},
 	})
+
+	// Forward this inbox item to the recipient's registered email, if
+	// forwarding is enabled. Non-blocking.
+	enqueueInboxEmail(recipientID, workspaceID, item)
 }
 
 // notifyMentionedMembers creates inbox items for each @mentioned member,
@@ -609,6 +620,10 @@ func notifyMentionedMembers(
 			ActorID:     e.ActorID,
 			Payload:     map[string]any{"item": resp},
 		})
+
+		// Forward this inbox item to the recipient's registered email, if
+		// forwarding is enabled. Non-blocking.
+		enqueueInboxEmail(id, e.WorkspaceID, item)
 	}
 }
 
@@ -1027,5 +1042,110 @@ func inboxItemToResponse(item db.InboxItem) map[string]any {
 		"actor_type":     util.TextToPtr(item.ActorType),
 		"actor_id":       util.UUIDToPtr(item.ActorID),
 		"details":        json.RawMessage(item.Details),
+	}
+}
+
+// inboxEmailJob carries everything needed to forward one inbox item to the
+// recipient's registered email. The (cheap) DB lookups for the user's email and
+// the workspace name happen in the worker, so the request path only performs a
+// non-blocking enqueue.
+type inboxEmailJob struct {
+	recipientID string
+	workspaceID string
+	item        db.InboxItem
+}
+
+// inboxEmailChan is the bounded queue between inbox creation (the HTTP request
+// path) and email delivery (background workers). It is nil unless inbox→email
+// forwarding is enabled at startup via INBOX_EMAIL_FORWARD=true, in which case
+// main.go initializes it and starts the worker pool. A nil channel makes
+// enqueueInboxEmail a no-op, so the rest of the notification code is unchanged
+// when forwarding is off.
+var inboxEmailChan chan inboxEmailJob
+
+// enqueueInboxEmail forwards one inbox item to the recipient's email without
+// blocking the request. It is a no-op when forwarding is disabled (nil channel)
+// or when the queue is full: dropping one email beats stalling the request that
+// produced it (email is best-effort; the in-app inbox is the source of truth).
+func enqueueInboxEmail(recipientID, workspaceID string, item db.InboxItem) {
+	if inboxEmailChan == nil {
+		return
+	}
+	select {
+	case inboxEmailChan <- inboxEmailJob{recipientID: recipientID, workspaceID: workspaceID, item: item}:
+	default:
+		slog.Warn("inbox email: queue full, dropping forward",
+			"recipient_id", recipientID, "workspace_id", workspaceID, "item_id", util.UUIDToString(item.ID))
+	}
+}
+
+// startInboxEmailWorkers drains inboxEmailChan with a fixed pool of goroutines.
+// Email delivery is best-effort: failures are logged and the item dropped, since
+// the in-app inbox remains authoritative.
+func startInboxEmailWorkers(emailSvc *service.EmailService, queries *db.Queries, ch chan inboxEmailJob, n int) {
+	if n < 1 {
+		n = 1
+	}
+	for i := 0; i < n; i++ {
+		go func() {
+			for job := range ch {
+				sendInboxItemEmail(context.Background(), emailSvc, queries, job)
+			}
+		}()
+	}
+}
+
+// sendInboxItemEmail delivers a single inbox item to the recipient's registered
+// email. It bails out when the user opted out of email forwarding, has no email
+// on file, or the workspace/user lookup fails.
+func sendInboxItemEmail(ctx context.Context, emailSvc *service.EmailService, queries *db.Queries, job inboxEmailJob) {
+	// Respect the per-user email channel toggle (absent key = enabled; "muted"
+	// disables). The in-app mute groups are already enforced upstream — an item
+	// the user muted in-app never reaches this point — so this is the single
+	// extra gate for the email channel specifically.
+	prefs := loadUserPrefs(ctx, queries, job.workspaceID, []string{job.recipientID})
+	if p, ok := prefs[job.recipientID]; ok && p["email"] == "muted" {
+		return
+	}
+
+	user, err := queries.GetUser(ctx, parseUUID(job.recipientID))
+	if err != nil {
+		slog.Error("inbox email: failed to load recipient", "recipient_id", job.recipientID, "error", err)
+		return
+	}
+	email := strings.TrimSpace(user.Email)
+	if email == "" {
+		return
+	}
+
+	ws, err := queries.GetWorkspace(ctx, parseUUID(job.workspaceID))
+	if err != nil {
+		slog.Error("inbox email: failed to load workspace", "workspace_id", job.workspaceID, "error", err)
+		return
+	}
+
+	deepLink := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
+	if deepLink == "" {
+		deepLink = "https://multica.ai"
+	}
+	if job.item.IssueID.Valid {
+		deepLink += "/issues/" + util.UUIDToString(job.item.IssueID)
+	} else {
+		deepLink += "/inbox"
+	}
+
+	body := ""
+	if bp := util.TextToPtr(job.item.Body); bp != nil {
+		body = *bp
+	}
+
+	if err := emailSvc.SendInboxItemEmail(email, service.InboxEmailInput{
+		WorkspaceName: ws.Name,
+		Title:         job.item.Title,
+		Body:          body,
+		Type:          job.item.Type,
+		DeepLink:      deepLink,
+	}); err != nil {
+		slog.Error("inbox email: send failed", "to", email, "workspace_id", job.workspaceID, "error", err)
 	}
 }

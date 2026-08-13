@@ -432,3 +432,70 @@ func sanitizeSubjectField(s string) string {
 	runes := []rune(cleaned)
 	return string(runes[:maxSubjectFieldRunes-1]) + "…"
 }
+
+// InboxEmailInput is the minimal, already-validated data needed to render an
+// inbox-forward email. All fields are treated as untrusted (workspace name and
+// inbox title/body are user-controlled), so SendInboxItemEmail escapes them.
+type InboxEmailInput struct {
+	WorkspaceName string
+	Title         string
+	Body          string
+	Type          string
+	DeepLink      string
+}
+
+// SendInboxItemEmail forwards a single inbox notification to the recipient's
+// registered email. Delivery priority mirrors the other senders in this file:
+// SMTP relay → Resend API → DEV stdout. Titles/bodies are user-controlled, so
+// they are HTML-escaped and the subject is run through sanitizeSubjectField to
+// prevent header/content injection.
+func (s *EmailService) SendInboxItemEmail(to string, in InboxEmailInput) error {
+	wsName := html.EscapeString(in.WorkspaceName)
+	safeTitle := html.EscapeString(in.Title)
+	safeBody := html.EscapeString(in.Body)
+
+	subject := fmt.Sprintf("%s: %s",
+		sanitizeSubjectField(in.WorkspaceName),
+		sanitizeSubjectField(in.Title))
+
+	appURL := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
+	if appURL == "" {
+		appURL = "https://multica.ai"
+	}
+	deepLink := in.DeepLink
+	if deepLink == "" {
+		deepLink = appURL + "/inbox"
+	}
+
+	bodyHTML := ""
+	if safeBody != "" {
+		bodyHTML = fmt.Sprintf("<p style=\"color:#333;white-space:pre-wrap;\">%s</p>", safeBody)
+	}
+
+	htmlBody := fmt.Sprintf(
+		`<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; color: #1a1a1a;">
+			<p style="color:#666;font-size:13px;margin:0 0 4px;">New notification in <strong>%s</strong></p>
+			<h3 style="margin:4px 0 12px;font-size:18px;">%s</h3>
+			%s
+			<p style="margin:24px 0;">
+				<a href="%s" style="display:inline-block;padding:10px 20px;background:#000;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">View in Multica</a>
+			</p>
+			<p style="color:#999;font-size:12px;line-height:1.5;">You're receiving this email because email notifications are enabled for your account. Turn them off anytime in your notification settings.</p>
+		</div>`, wsName, safeTitle, bodyHTML, deepLink)
+
+	if s.smtpHost != "" {
+		return s.sendSMTP(to, subject, htmlBody)
+	}
+	if s.client == nil {
+		fmt.Printf("[DEV] Inbox email to %s: %s — %s\n", to, subject, deepLink)
+		return nil
+	}
+	params := &resend.SendEmailRequest{
+		From:    s.fromEmail,
+		To:      []string{to},
+		Subject: subject,
+		Html:    htmlBody,
+	}
+	_, err := s.client.Emails.Send(params)
+	return err
+}

@@ -335,6 +335,19 @@ func main() {
 	// so subscribers must be written first within the same synchronous event dispatch.
 	registerSubscriberListeners(bus, pool)
 	registerActivityListeners(bus, queries)
+
+	// Inbox → email forwarding (opt-in). When INBOX_EMAIL_FORWARD=true, every
+	// new inbox item is enqueued for async delivery to the recipient's
+	// registered email. Off by default so it can be rolled out per deployment
+	// without code changes. The worker pool drains inboxEmailChan; when the
+	// var stays nil the notify* functions skip enqueueing entirely.
+	if os.Getenv("INBOX_EMAIL_FORWARD") == "true" {
+		emailSvc := service.NewEmailService()
+		inboxEmailChan = make(chan inboxEmailJob, 256)
+		startInboxEmailWorkers(emailSvc, queries, inboxEmailChan, 4)
+		slog.Info("inbox email forwarding enabled")
+	}
+
 	registerNotificationListeners(bus, queries)
 
 	metricsConfig := obsmetrics.ConfigFromEnv()
@@ -444,7 +457,7 @@ func main() {
 	}
 
 	// Start background sweeper to mark stale runtimes as offline.
-	go runRuntimeSweeper(sweepCtx, queries, liveness, taskSvc, bus)
+	go runRuntimeSweeper(sweepCtx, pool, queries, liveness, taskSvc, bus)
 	// One-shot startup backfill of cluster generic agents across workspaces the
 	// shared runners already serve; idempotent, no-op when disabled.
 	go h.BackfillClusterGenericAgents(sweepCtx)

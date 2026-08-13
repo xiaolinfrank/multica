@@ -16,7 +16,9 @@ import (
 // not an inbox event group — it's a delivery-channel toggle controlling
 // whether native OS notification banners fire — but it shares the same
 // preferences map so a single endpoint covers all user notification
-// preferences.
+// preferences. So does `email`: it's a delivery-channel toggle (default on)
+// that gates inbox→email forwarding; "muted" disables it. Absence of the key
+// means enabled, matching the all/muted model.
 var validNotifGroups = map[string]bool{
 	"assignments":          true,
 	"status_changes":       true,
@@ -25,6 +27,7 @@ var validNotifGroups = map[string]bool{
 	"updates":              true,
 	"agent_activity":       true,
 	"system_notifications": true,
+	"email":                true,
 }
 
 // validNotifValues is the set of allowed preference values per group.
