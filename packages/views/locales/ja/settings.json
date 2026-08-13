@@ -188,7 +188,7 @@
   },
   "plugins": {
     "title": "Plugins",
-    "description": "Multica が提供する署名済み機能を確認、インストール、スコープ設定、管理します。",
+    "description": "BayClaw が提供する署名済み機能を確認、インストール、スコープ設定、管理します。",
     "loading": "Plugins を読み込み中",
     "load_failed": "Plugins を読み込めませんでした",
     "load_failed_description": "再試行してください。有効な Plugins と固定済みの作業には影響しません。",

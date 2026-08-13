@@ -188,7 +188,7 @@
   },
   "plugins": {
     "title": "Plugins",
-    "description": "Review, install, scope, and manage signed capabilities delivered by Multica.",
+    "description": "Review, install, scope, and manage signed capabilities delivered by BayClaw.",
     "loading": "Loading Plugins",
     "load_failed": "Plugins couldn't be loaded",
     "load_failed_description": "Try again. Existing enabled Plugins and pinned runs are unaffected.",

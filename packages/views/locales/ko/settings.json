@@ -188,7 +188,7 @@
   },
   "plugins": {
     "title": "Plugins",
-    "description": "Multica가 제공하는 서명된 기능을 검토, 설치, 범위 지정 및 관리합니다.",
+    "description": "BayClaw가 제공하는 서명된 기능을 검토, 설치, 범위 지정 및 관리합니다.",
     "loading": "Plugins 불러오는 중",
     "load_failed": "Plugins를 불러오지 못했습니다",
     "load_failed_description": "다시 시도하세요. 활성 Plugins와 고정된 작업에는 영향이 없습니다.",

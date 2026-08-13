@@ -188,7 +188,7 @@
   },
   "plugins": {
     "title": "Plugins",
-    "description": "审查、安装、设置作用范围并管理由 Multica 交付的签名能力。",
+    "description": "审查、安装、设置作用范围并管理由 BayClaw 交付的签名能力。",
     "loading": "正在加载 Plugins",
     "load_failed": "无法加载 Plugins",
     "load_failed_description": "请重试。已启用的 Plugins 和已固定的 task 不受影响。",
