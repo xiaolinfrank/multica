@@ -60,6 +60,7 @@ export function NotificationsTab() {
   };
 
   const systemEnabled = preferences.system_notifications !== "muted";
+  const emailEnabled = preferences.email !== "muted";
 
   return (
     <SettingsTab title={t(($) => $.page.tabs.notifications)}>
@@ -100,6 +101,16 @@ export function NotificationsTab() {
                 checked={systemEnabled}
                 aria-label={t(($) => $.notifications.system.label)}
                 onCheckedChange={(checked) => handleToggle("system_notifications", checked)}
+              />
+          </SettingsRow>
+          <SettingsRow
+            label={t(($) => $.notifications.system.email.label)}
+            description={t(($) => $.notifications.system.email.hint)}
+          >
+              <Switch
+                checked={emailEnabled}
+                aria-label={t(($) => $.notifications.system.email.label)}
+                onCheckedChange={(checked) => handleToggle("email", checked)}
               />
           </SettingsRow>
         </SettingsCard>

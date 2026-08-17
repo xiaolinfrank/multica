@@ -512,6 +512,108 @@ func (q *Queries) ListInboxItems(ctx context.Context, arg ListInboxItemsParams) 
 	return items, nil
 }
 
+const listUnreadInboxForDigest = `-- name: ListUnreadInboxForDigest :many
+SELECT
+    i.workspace_id,
+    w.name AS workspace_name,
+    w.slug AS workspace_slug,
+    i.recipient_id,
+    u.name AS recipient_name,
+    u.email AS recipient_email,
+    i.type,
+    i.severity,
+    i.issue_id,
+    i.title,
+    i.body,
+    i.created_at
+FROM inbox_item i
+JOIN "user" u ON u.id = i.recipient_id
+JOIN workspace w ON w.id = i.workspace_id
+JOIN member m ON m.workspace_id = i.workspace_id AND m.user_id = i.recipient_id
+WHERE i.recipient_type = 'member'
+  AND i.archived = false
+  AND i.read = false
+  AND i.created_at >= $1
+  AND NOT EXISTS (
+    SELECT 1
+    FROM inbox_item newer
+    WHERE newer.workspace_id = i.workspace_id
+      AND newer.recipient_type = 'member'
+      AND newer.recipient_id = i.recipient_id
+      AND newer.archived = false
+      AND COALESCE(newer.issue_id, newer.id) = COALESCE(i.issue_id, i.id)
+      AND (newer.created_at, newer.id) > (i.created_at, i.id)
+  )
+`
+
+type ListUnreadInboxForDigestRow struct {
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	WorkspaceName  string             `json:"workspace_name"`
+	WorkspaceSlug  string             `json:"workspace_slug"`
+	RecipientID    pgtype.UUID        `json:"recipient_id"`
+	RecipientName  string             `json:"recipient_name"`
+	RecipientEmail string             `json:"recipient_email"`
+	Type           string             `json:"type"`
+	Severity       string             `json:"severity"`
+	IssueID        pgtype.UUID        `json:"issue_id"`
+	Title          string             `json:"title"`
+	Body           pgtype.Text        `json:"body"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+// One row per unread inbox GROUP within the digest window, mirroring the
+// inbox UI's deduplicated unread view (see CountUnreadInboxByWorkspace):
+// items group per issue (or per item when issue_id is null) and only the
+// NEWEST non-archived item of a group decides unreadness — opening an
+// issue marks just that newest item read, so returning raw read=false rows
+// would resurrect already-read notifications into daily digest emails
+// forever. The NOT EXISTS keeps only items with no newer non-archived
+// sibling, i.e. exactly the newest items, and the outer read/window
+// filters then admit only groups whose newest item is unread AND received
+// within the window — an older unread sibling can never resurrect a group
+// whose newest item was already read. "Newer" is compared on (created_at,
+// id) rather than created_at alone: two inbox_item rows created inside the
+// same DB transaction (e.g. two notification types firing off one issue
+// update) can share an identical created_at, and a plain `>` on created_at
+// would let both tied rows pass, duplicating one group in the digest — the
+// id tiebreaker keeps the comparison a strict total order so exactly one
+// row per group survives. The member join scopes to workspaces the
+// recipient still belongs to, so items left behind in a workspace the user
+// has since left are never emailed. Rows are unsorted; callers group per
+// recipient and order in Go.
+func (q *Queries) ListUnreadInboxForDigest(ctx context.Context, since pgtype.Timestamptz) ([]ListUnreadInboxForDigestRow, error) {
+	rows, err := q.db.Query(ctx, listUnreadInboxForDigest, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnreadInboxForDigestRow{}
+	for rows.Next() {
+		var i ListUnreadInboxForDigestRow
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.WorkspaceName,
+			&i.WorkspaceSlug,
+			&i.RecipientID,
+			&i.RecipientName,
+			&i.RecipientEmail,
+			&i.Type,
+			&i.Severity,
+			&i.IssueID,
+			&i.Title,
+			&i.Body,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAllInboxRead = `-- name: MarkAllInboxRead :execrows
 UPDATE inbox_item SET read = true
 WHERE workspace_id = $1 AND recipient_type = 'member' AND recipient_id = $2 AND archived = false AND read = false

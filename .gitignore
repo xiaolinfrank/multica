@@ -12,6 +12,9 @@ build
 bin
 dist-electron
 *.tsbuildinfo
+# Next.js / Turbopack build cache backups (e.g. .next.bak, .source.bak from
+# bayclaw-serve.sh restart) — safe to rm -rf, regenerated on next build.
+apps/web/*.bak
 # ...except electron-builder's source resources dir, which holds tracked
 # config files (entitlements, icons) — not build output.
 !apps/desktop/build/

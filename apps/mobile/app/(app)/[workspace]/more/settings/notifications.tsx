@@ -78,6 +78,7 @@ export default function NotificationsSettingsScreen() {
   };
 
   const systemEnabled = preferences.system_notifications !== "muted";
+  const emailEnabled = preferences.email !== "muted";
 
   if (isLoading) {
     return (
@@ -149,6 +150,21 @@ export default function NotificationsSettingsScreen() {
             onCheckedChange={(checked) =>
               onToggle("system_notifications", checked)
             }
+          />
+        </View>
+        <Separator />
+        <View className="flex-row items-center px-4 py-3 gap-3">
+          <View className="flex-1">
+            <Text className="text-base font-medium text-foreground">
+              Email notifications
+            </Text>
+            <Text className="text-xs text-muted-foreground mt-0.5">
+              Send system notifications to your registered email.
+            </Text>
+          </View>
+          <Switch
+            checked={emailEnabled}
+            onCheckedChange={(checked) => onToggle("email", checked)}
           />
         </View>
       </Section>

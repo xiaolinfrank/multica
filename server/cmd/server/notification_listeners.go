@@ -1128,10 +1128,16 @@ func sendInboxItemEmail(ctx context.Context, emailSvc *service.EmailService, que
 	if deepLink == "" {
 		deepLink = "https://multica.ai"
 	}
+	// Match the frontend's canonical inbox deep-link
+	// (apps/web/components/web-notification-bridge.tsx builds the same
+	// `${workspace(slug).inbox()}?issue=${id}` shape). Linking to the
+	// workspace-scoped inbox with the issue id pre-selected lands the user
+	// directly on the message, rather than a bare /issues/{id} route.
+	base := deepLink + "/" + ws.Slug + "/inbox"
 	if job.item.IssueID.Valid {
-		deepLink += "/issues/" + util.UUIDToString(job.item.IssueID)
+		deepLink = base + "?issue=" + util.UUIDToString(job.item.IssueID)
 	} else {
-		deepLink += "/inbox"
+		deepLink = base
 	}
 
 	body := ""

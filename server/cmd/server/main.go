@@ -517,6 +517,18 @@ func main() {
 	if err := schedulerMgr.Register(scheduler.AutopilotScheduleDispatchJob(pool, queries, autopilotSvc)); err != nil {
 		slog.Warn("scheduler: failed to register autopilot_schedule_dispatch job", "error", err)
 	}
+	// Daily unread-inbox digest email (opt-in, parallel to the per-item
+	// INBOX_EMAIL_FORWARD path above): every day at 09:00 Asia/Shanghai each
+	// member with unread notifications from the past 7 days gets ONE summary
+	// email. Idempotency comes from the scheduler's (job, scope, plan_time)
+	// unique key, so restarts or multi-instance deployments never re-send.
+	if envBool("INBOX_EMAIL_DIGEST", false) {
+		if err := schedulerMgr.Register(scheduler.InboxEmailDigestJob(queries, service.NewEmailService())); err != nil {
+			slog.Warn("scheduler: failed to register inbox_email_digest job", "error", err)
+		} else {
+			slog.Info("scheduler: inbox_email_digest job enabled (daily 09:00 Asia/Shanghai)")
+		}
+	}
 	go func() {
 		_ = schedulerMgr.Run(sweepCtx)
 	}()
