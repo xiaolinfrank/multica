@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { ApiClient } from "./client";
+import { ApiClient, ApiError } from "./client";
 import { parseWithFallback } from "./schema";
 
 // Helper: stub fetch with a single JSON response. Status defaults to 200.
@@ -126,6 +126,73 @@ describe("ApiClient schema fallback", () => {
       const client = new ApiClient("https://api.example.test");
       const res = await client.listIssues();
       expect(res).toEqual({ issues: [], total: 0 });
+    });
+  });
+
+  describe("getIssue", () => {
+    // Unlike a list, a single issue has no safe-empty shape, and the bare
+    // identifier autolink caches this result for 5 minutes. A malformed 2xx
+    // must therefore fail the call instead of becoming a truthy issue with an
+    // `undefined` id — and it must fail with something OTHER than an
+    // ApiError 404, which `issueIdentifierOptions` maps to "no such issue".
+    const validIssue = {
+      id: "issue-1",
+      workspace_id: "ws-1",
+      number: 1,
+      identifier: "MUL-1",
+      title: "Existing",
+      description: null,
+      status: "todo",
+      priority: "none",
+      assignee_type: null,
+      assignee_id: null,
+      creator_type: "member",
+      creator_id: "user-1",
+      parent_issue_id: null,
+      project_id: null,
+      position: 0,
+      start_date: null,
+      due_date: null,
+      created_at: "2025-01-01T00:00:00Z",
+      updated_at: "2025-01-01T00:00:00Z",
+    };
+
+    it("resolves a well-formed issue, defaulting the fields older servers omit", async () => {
+      stubFetchJson({ ...validIssue, unknown_field: "kept" });
+      const client = new ApiClient("https://api.example.test");
+      const issue = await client.getIssue("MUL-1");
+      expect(issue.id).toBe("issue-1");
+      expect(issue.stage).toBeNull();
+      expect(issue.metadata).toEqual({});
+      expect(issue.properties).toEqual({});
+    });
+
+    it("rejects a 200 body that is not a usable issue (no truthy issue with an undefined id)", async () => {
+      stubFetchJson({ not: "an issue" });
+      const client = new ApiClient("https://api.example.test");
+      await expect(client.getIssue("MUL-1")).rejects.toThrow();
+    });
+
+    it("rejects a 200 body whose required field drifted type", async () => {
+      stubFetchJson({ ...validIssue, number: "1" });
+      const client = new ApiClient("https://api.example.test");
+      await expect(client.getIssue("MUL-1")).rejects.toThrow();
+    });
+
+    it("does not disguise a malformed body as a 404", async () => {
+      stubFetchJson({ id: "issue-1" });
+      const client = new ApiClient("https://api.example.test");
+      await expect(client.getIssue("MUL-1")).rejects.not.toBeInstanceOf(
+        ApiError,
+      );
+    });
+
+    it("still surfaces a real 404 as an ApiError so autolink can resolve to null", async () => {
+      stubFetchJson({ error: "issue not found" }, 404);
+      const client = new ApiClient("https://api.example.test");
+      await expect(client.getIssue("TES-1")).rejects.toMatchObject({
+        status: 404,
+      });
     });
   });
 
@@ -617,6 +684,132 @@ describe("ApiClient schema fallback", () => {
         url: "",
       });
     });
+
+    it("parses workspace entitlements into camelCase without fabricating Free", async () => {
+      stubFetchJson({
+        workspace_id: "workspace-1",
+        plan: "pro",
+        status: "active",
+        seats: 4,
+        issue_window: null,
+        autopilot_runs: null,
+        current_period_end: "2026-09-13T00:00:00Z",
+        snapshot_expires_at: null,
+        version: 7,
+      });
+      const client = new ApiClient("https://api.example.test");
+
+      await expect(
+        client.getWorkspaceSubscriptionEntitlements(),
+      ).resolves.toEqual({
+        workspaceId: "workspace-1",
+        plan: "pro",
+        status: "active",
+        seats: 4,
+        issueWindow: null,
+        autopilotRuns: null,
+        currentPeriodEnd: "2026-09-13T00:00:00Z",
+        snapshotExpiresAt: null,
+        version: 7,
+      });
+
+      stubFetchJson({ plan: "free", seats: "unknown" });
+      await expect(client.getWorkspaceSubscriptionEntitlements()).resolves.toBeNull();
+    });
+
+    it("accepts an empty workspace entitlement snapshot", async () => {
+      stubFetchJson({
+        workspace_id: "workspace-1",
+        plan: "free",
+        status: "inactive",
+        seats: 0,
+        issue_window: 1000,
+        autopilot_runs: 100,
+        snapshot_expires_at: null,
+        version: 0,
+      });
+      const client = new ApiClient("https://api.example.test");
+
+      await expect(
+        client.getWorkspaceSubscriptionEntitlements(),
+      ).resolves.toMatchObject({ seats: 0, plan: "free" });
+    });
+
+    it("sends the Checkout idempotency key in the header and body", async () => {
+      stubFetchJson(
+        {
+          request_id: "request-1",
+          session_id: "cs_test_1",
+          url: "https://checkout.stripe.com/test-session",
+        },
+        201,
+      );
+      const client = new ApiClient("https://api.example.test");
+
+      await expect(
+        client.createWorkspaceSubscriptionCheckout({
+          interval: "year",
+          idempotencyKey: "checkout-intent-1",
+        }),
+      ).resolves.toEqual({
+        requestId: "request-1",
+        sessionId: "cs_test_1",
+        url: "https://checkout.stripe.com/test-session",
+      });
+
+      const fetchMock = vi.mocked(fetch);
+      const init = fetchMock.mock.calls[0]?.[1] as RequestInit & {
+        headers: Record<string, string>;
+      };
+      expect(init.headers["Idempotency-Key"]).toBe("checkout-intent-1");
+      expect(JSON.parse(String(init.body))).toEqual({
+        interval: "year",
+        idempotency_key: "checkout-intent-1",
+      });
+    });
+
+    it("rejects unreadable or non-HTTPS Stripe URLs at the schema boundary", async () => {
+      stubFetchJson(
+        {
+          request_id: "request-1",
+          session_id: "cs_test_1",
+          url: "javascript:alert(1)",
+        },
+        201,
+      );
+      const client = new ApiClient("https://api.example.test");
+
+      await expect(
+        client.createWorkspaceSubscriptionCheckout({
+          interval: "month",
+          idempotencyKey: "checkout-intent-1",
+        }),
+      ).resolves.toBeNull();
+
+      stubFetchJson({ url: 123 });
+      await expect(
+        client.createWorkspaceSubscriptionPortal("portal-intent-1"),
+      ).resolves.toBeNull();
+    });
+
+    it("parses seat reconciliation into camelCase", async () => {
+      stubFetchJson({
+        workspace_id: "workspace-1",
+        billed_seats: 5,
+        actual_seats: 4,
+        action: "scheduled_decrease",
+      });
+      const client = new ApiClient("https://api.example.test");
+
+      await expect(
+        client.reconcileWorkspaceSubscriptionSeats(),
+      ).resolves.toEqual({
+        workspaceId: "workspace-1",
+        billedSeats: 5,
+        actualSeats: 4,
+        action: "scheduled_decrease",
+      });
+    });
   });
 });
 
@@ -905,6 +1098,16 @@ describe("workspace subscription contract", () => {
       month: { currency: "usd", unit_amount: 20000, interval: "year", interval_count: 1 },
       year: { currency: "usd", unit_amount: 2000, interval: "month", interval_count: 1 },
     });
+    expect(await client.getWorkspaceSubscriptionPrices()).toBeNull();
+  });
+
+  it("rejects a prices response whose interval count is not one", async () => {
+    stubFetchJson({
+      month: { currency: "usd", unit_amount: 2000, interval: "month", interval_count: 3 },
+      year: { currency: "usd", unit_amount: 20000, interval: "year", interval_count: 1 },
+    });
+    const client = new ApiClient("https://api.example.test");
+
     expect(await client.getWorkspaceSubscriptionPrices()).toBeNull();
   });
 });

@@ -70,6 +70,7 @@ import { ProjectPicker } from "../../projects/components/project-picker";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { CommentCard } from "./comment-card";
 import { CommentInput } from "./comment-input";
+import { CurrentIssueRenderContextProvider } from "../current-issue-render-context";
 import { ResolvedThreadBar } from "./resolved-thread-bar";
 import { getShortcut, shortcutMatchesEvent } from "@multica/core/shortcuts";
 import { isImeComposing } from "@multica/core/utils";
@@ -118,6 +119,7 @@ import {
   useViewStateWriter,
 } from "../../platform";
 import { cn } from "@multica/ui/lib/utils";
+import { PAGE_GUTTER } from "../../layout/page-header";
 
 import { ProgressRing } from "./progress-ring";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
@@ -985,7 +987,7 @@ export function IssueNotFound({
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {leading && (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">{leading}</div>
+        <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b", PAGE_GUTTER)}>{leading}</div>
       )}
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-body text-muted-foreground">
         <p>{t(($) => $.detail.not_found)}</p>
@@ -1015,7 +1017,7 @@ export function IssueDetailSkeleton({ leading }: { leading?: ReactNode } = {}) {
       {/* The way back is real from the first frame, not once the issue lands:
           a host that gave up its own bar for `leadingAction` has nothing else
           to offer while this skeleton owns the screen. */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+      <div className={cn("flex h-12 shrink-0 items-center gap-2 border-b", PAGE_GUTTER)}>
         {leading ?? (
           <>
             <Skeleton className="h-4 w-16" />
@@ -2058,6 +2060,18 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     overrideTop: restoredScrollTop,
   });
 
+  // Keep the identity value stable across unrelated issue-detail updates so
+  // context consumers only re-render when the owning issue changes identity.
+  const resolvedIssueId = issue?.id;
+  const resolvedIssueIdentifier = issue?.identifier;
+  const currentIssueRenderContext = useMemo(
+    () =>
+      resolvedIssueId && resolvedIssueIdentifier
+        ? { id: resolvedIssueId, identifier: resolvedIssueIdentifier }
+        : null,
+    [resolvedIssueId, resolvedIssueIdentifier],
+  );
+
   if (loading) {
     return <IssueDetailSkeleton leading={leadingAction} />;
   }
@@ -2489,6 +2503,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
     // Hosts the one image viewer this issue's images page through — see
     // ImageSequenceProvider. Wraps the whole column so the description
     // editor's images and the timeline's images share one sequence.
+    <CurrentIssueRenderContextProvider value={currentIssueRenderContext}>
     <ImageSequenceProvider items={imageSequence}>
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
         {/* In-page find bar — floats over the top-right of the content column
@@ -3131,6 +3146,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         )}
       </div>
     </ImageSequenceProvider>
+    </CurrentIssueRenderContextProvider>
   );
 
   if (isMobile) {

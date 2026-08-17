@@ -8,6 +8,7 @@ import { WebProviders } from "@/components/web-providers";
 import type { SupportedLocale } from "@multica/core/i18n";
 import { RESOURCES } from "@multica/views/locales";
 import { getRequestLocale } from "@/lib/request-locale";
+import { SITE_TITLE, TITLE_TEMPLATE } from "@/platform/document-title";
 import {
   resolveBrowserApiBaseUrl,
   resolveBrowserWsUrl,
@@ -87,14 +88,30 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.multica.ai"),
   title: {
-    default: "BayClaw —— 复星医药大湾区虚拟员工平台",
-    template: "%s | BayClaw",
+    default: SITE_TITLE,
+    template: TITLE_TEMPLATE,
   },
   description:
     "BayClaw 是复星医药大湾区虚拟员工平台:把 AI 智能体作为数字员工纳入团队,在云端共享算力上分派任务、跟踪进度、沉淀技能。",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: ["/favicon.svg"],
+    // iOS never reads the manifest's icons for the home screen; it needs its
+    // own opaque, full-bleed square and rounds the corners itself.
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  // Home-screen behaviour: launch without browser chrome, and label the icon
+  // "Multica" rather than the long SEO <title>. `capable` renders the
+  // standardised `mobile-web-app-capable` tag — Next 16 no longer emits the
+  // deprecated apple-prefixed spelling, so iOS standalone rides on the
+  // manifest's `display` instead (honoured since iOS 16.4).
+  appleWebApp: {
+    capable: true,
+    title: "Multica",
+    // `default` keeps the web view below the status bar. Going edge-to-edge
+    // (`black-translucent` + viewport-fit=cover) needs env(safe-area-inset-*)
+    // padding, which no surface in the app has yet.
+    statusBarStyle: "default",
   },
   openGraph: {
     type: "website",
