@@ -97,7 +97,7 @@ describe("LocalDirectoryModeDialog", () => {
 
     const option = worktreeOption();
     expect(option.hasAttribute("disabled")).toBe(true);
-    const notice = screen.getByText(/Multica server is too old/i);
+    const notice = screen.getByText(/BayClaw server is too old/i);
     expect(notice.textContent).toMatch(/Update the server/i);
 
     fireEvent.click(option);
