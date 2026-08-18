@@ -73,7 +73,6 @@ import {
   runtimeAdvertisesLocalWorktree,
   runtimeListOptions,
 } from "@multica/core/runtimes";
-import { useConfigStore } from "@multica/core/config";
 import type { LocalDirectoryExecutionMode } from "@multica/core/types";
 import { LocalDirectoryModeOptions } from "../projects/components/local-directory-mode-dialog";
 

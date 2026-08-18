@@ -100,6 +100,9 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   runtimes: ["runtimes", "environments", "machines", "运行时"],
   skills: ["skills", "library", "技能"],
   settings: ["settings", "config", "preferences", "设置", "配置"],
+  fleet: ["fleet", "compute pool", "machines", "nodes", "算力池", "集群"],
+  env: ["env", "environment variables", "secrets", "环境变量"],
+  workspaces: ["agent workspaces", "workspaces", "files", "工作区", "文件"],
 };
 
 const NAV_PAGE_KEYS = Object.keys(WORKSPACE_PAGES) as WorkspacePageKey[];
