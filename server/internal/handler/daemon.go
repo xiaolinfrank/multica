@@ -645,8 +645,9 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Shared-runner built-in Claude runtimes get a workspace-visible
-		// "集群通用智能体 @ <node>" agent auto-provisioned so every workspace the
-		// shared daemon serves exposes one generic worker per compute node.
+		// generic worker agent (通用智能体（主）/通用智能体 N) auto-provisioned
+		// so every workspace the shared daemon serves exposes one generic
+		// worker per compute node.
 		if h.cfg.EnsureClusterGenericAgent && h.isSharedRunner(r.Context(), registered.OwnerID) &&
 			registered.Provider == seedPreferredProvider && !registered.ProfileID.Valid {
 			clusterCandidates = append(clusterCandidates, registered)
