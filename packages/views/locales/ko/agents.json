@@ -400,9 +400,7 @@
       "save_failed_toast": "사용자 지정 인자를 저장하지 못했습니다"
     },
     "mcp_config": {
-      "intro": "이 에이전트가 사용할 수 있는 MCP Server를 관리합니다. BayClaw에서 관리하는 Server와 로컬 Runtime에서 상속한 Server가 함께 사용됩니다.",
       "managed_title": "BayClaw에서 관리",
-      "managed_hint": "이 에이전트용으로 BayClaw에 저장됩니다. Runtime MCP와 병합되며 이름이 같으면 BayClaw 설정이 우선합니다.",
       "managed_empty": "BayClaw에서 관리하는 MCP Server가 없습니다.",
       "add_action": "MCP 추가",
       "agent_disabled_badge": "에이전트에서 꺼짐",

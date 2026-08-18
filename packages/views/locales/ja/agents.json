@@ -392,9 +392,7 @@
       "save_failed_toast": "カスタム引数を保存できませんでした"
     },
     "mcp_config": {
-      "intro": "このエージェントが使用できる MCP Server を管理します。BayClaw 管理の Server とローカル Runtime から継承した Server は統合して使用されます。",
       "managed_title": "BayClaw で管理",
-      "managed_hint": "このエージェント用に BayClaw に保存されます。Runtime MCP と統合され、同名の場合は BayClaw の設定が優先されます。",
       "managed_empty": "BayClaw で管理されている MCP Server はありません。",
       "add_action": "MCP を追加",
       "agent_disabled_badge": "エージェントで無効",

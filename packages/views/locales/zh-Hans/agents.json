@@ -499,9 +499,7 @@
       "save_failed_toast": "保存自定义参数失败"
     },
     "mcp_config": {
-      "intro": "管理该智能体可用的 MCP Server。由 BayClaw 管理的 Server 会与本地 Runtime 继承的 Server 合并使用。",
       "managed_title": "由 BayClaw 管理",
-      "managed_hint": "保存在 BayClaw 中并仅配置给该智能体。执行任务时会与 Runtime MCP 合并；名称相同时以 BayClaw 配置为准。",
       "managed_empty": "还没有由 BayClaw 管理的 MCP Server。",
       "add_action": "添加 MCP",
       "agent_disabled_badge": "已为智能体关闭",

@@ -510,9 +510,7 @@
       "save_failed_toast": "Failed to save custom arguments"
     },
     "mcp_config": {
-      "intro": "Manage the MCP servers available to this agent. Servers managed by BayClaw are merged with servers inherited from the local runtime.",
       "managed_title": "Managed by BayClaw",
-      "managed_hint": "Saved in BayClaw for this agent. These servers are merged with runtime servers; a BayClaw server wins when names match.",
       "managed_empty": "No MCP servers are managed by BayClaw yet.",
       "add_action": "Add MCP",
       "agent_disabled_badge": "Off for agent",
