@@ -345,7 +345,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
           "You can now create a share link that lets someone join your workspace directly.",
           "The transcript now reads as steps, with a two-lane timeline and an outcome summary.",
           "Files sent in Slack now arrive in the conversation as attachments.",
-          "You can now add Multica to your phone's home screen and open it like an app.",
+          "You can now add BayClaw to your phone's home screen and open it like an app.",
           "Browser tabs are now named after the workspace page you have open.",
           "Imported skills now show where they came from.",
           "A mention of the Issue you are reading now reads as \"This issue\".",
@@ -504,7 +504,7 @@ export function createEnDict(allowSignup: boolean): LandingDict {
           "Oh-My-Pi can now run your agents as well.",
           "Voice notes sent in WeCom now reach your agents as text.",
           "Kimi and Pi agents can now be set to think harder or faster.",
-          "Cmd/Ctrl+click or middle-click any link in Multica to open it in a new tab.",
+          "Cmd/Ctrl+click or middle-click any link in BayClaw to open it in a new tab.",
           "When WeCom cannot connect, the page now says whether it was refused or simply unreachable.",
         ],
         improvements: [

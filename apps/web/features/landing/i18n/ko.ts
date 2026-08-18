@@ -318,7 +318,7 @@ export function createKoDict(allowSignup: boolean): LandingDict {
             "공유 링크를 만들어 바로 워크스페이스에 들어오게 할 수 있어요.",
             "실행 기록이 단계 단위로 바뀌고, 2단 타임라인과 결과 요약이 붙습니다.",
             "Slack으로 보낸 파일이 대화에 첨부로 들어옵니다.",
-            "휴대폰 홈 화면에 Multica를 추가해 앱처럼 열 수 있어요.",
+            "휴대폰 홈 화면에 BayClaw를 추가해 앱처럼 열 수 있어요.",
             "브라우저 탭에 지금 열어 둔 워크스페이스 페이지 이름이 표시됩니다.",
             "가져온 스킬이 어디서 왔는지 보여 줍니다.",
             "지금 보고 있는 Issue를 멘션하면 '이 Issue'로 표시됩니다.",
@@ -475,7 +475,7 @@ export function createKoDict(allowSignup: boolean): LandingDict {
             "Oh-My-Pi로도 에이전트를 돌릴 수 있어요.",
             "WeCom에 보낸 음성 메모가 텍스트로 에이전트에게 전달됩니다.",
             "Kimi와 Pi 에이전트의 사고 강도를 고를 수 있어요.",
-            "Multica의 어떤 링크든 Cmd/Ctrl 또는 가운데 클릭으로 새 탭에서 열 수 있어요.",
+            "BayClaw의 어떤 링크든 Cmd/Ctrl 또는 가운데 클릭으로 새 탭에서 열 수 있어요.",
             "WeCom에 연결되지 않을 때, 거부된 것인지 닿지 않는 것인지 페이지가 알려 줍니다.",
           ],
           improvements: [

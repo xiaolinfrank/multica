@@ -343,7 +343,7 @@ export function createZhDict(allowSignup: boolean): LandingDict {
           "你可以生成一个分享链接，让别人直接加入工作区。",
           "运行记录改成按步骤看，配双轨时间线和结果概览。",
           "Slack 消息里发的文件现在会作为附件出现在对话里。",
-          "手机上可以把 Multica 添加到主屏幕，像应用一样打开。",
+          "手机上可以把 BayClaw 添加到主屏幕，像应用一样打开。",
           "浏览器标签页会显示你正打开的工作区页面名。",
           "导入的技能现在会显示它来自哪里。",
           "提到你正在看的这个 Issue 时，会显示成「本 Issue」。",
@@ -500,7 +500,7 @@ export function createZhDict(allowSignup: boolean): LandingDict {
           "Oh-My-Pi 现在也能跑你的智能体了。",
           "企业微信里的语音留言，智能体现在也听得懂。",
           "Kimi 和 Pi 的智能体现在可以选思考强度了。",
-          "Multica 里的任意链接，Cmd/Ctrl 或中键点击就能在新标签页打开。",
+          "BayClaw 里的任意链接，Cmd/Ctrl 或中键点击就能在新标签页打开。",
           "企业微信连不上时，页面会说清是被拒绝还是根本连不通。",
         ],
         improvements: [
