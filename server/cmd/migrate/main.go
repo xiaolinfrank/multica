@@ -194,6 +194,10 @@ var concurrentIndexCleanups = map[string]string{
 	"333_issue_status_pkey_index":                               "issue_status_pkey_uidx",
 	"335_issue_status_workspace_key_index":                      "idx_issue_status_workspace_key",
 	"336_issue_status_workspace_name_index":                     "idx_issue_status_workspace_name_active",
+	"343_comment_delegated_failure_pending_index":               "idx_comment_delegated_failure_pending",
+	"345_plugin_installation_workspace_key_index":               "idx_plugin_installation_workspace_key",
+	"346_plugin_storage_scope_key_index":                        "idx_plugin_storage_scope_key",
+	"347_plugin_secret_installation_key_index":                  "idx_plugin_secret_installation_key",
 	"900_attachment_filename_trgm_index":                        "idx_attachment_filename_trgm",
 	"901_activity_log_workspace_created_index":                  "idx_activity_log_workspace_created",
 }

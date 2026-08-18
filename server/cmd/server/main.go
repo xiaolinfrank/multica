@@ -494,7 +494,15 @@ func main() {
 	}
 
 	// Start background sweeper to mark stale runtimes as offline.
-	go runRuntimeSweeper(sweepCtx, pool, queries, liveness, taskSvc, bus)
+	runtimeReconnectGrace := envDuration("MULTICA_RUNTIME_RECONNECT_GRACE", defaultRuntimeReconnectGrace)
+	if runtimeReconnectGrace < minimumRuntimeReconnectGrace {
+		slog.Warn("runtime reconnect grace is shorter than heartbeat freshness; clamping",
+			"configured", runtimeReconnectGrace,
+			"minimum", minimumRuntimeReconnectGrace,
+		)
+		runtimeReconnectGrace = minimumRuntimeReconnectGrace
+	}
+	go runRuntimeSweeper(sweepCtx, pool, queries, liveness, taskSvc, bus, runtimeReconnectGrace)
 	// One-shot startup backfill of cluster generic agents across workspaces the
 	// shared runners already serve; idempotent, no-op when disabled.
 	go h.BackfillClusterGenericAgents(sweepCtx)

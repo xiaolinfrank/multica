@@ -101,21 +101,20 @@ export type {
   WorkspaceOpRequest,
 } from "./workspace-op";
 export type {
-  PluginBinding,
   PluginInstallation,
-  PluginCatalogContribution,
-  PluginCatalogRelease,
-  PluginCatalogDiagnostic,
-  PluginCatalogResponse,
+  PluginConfigField,
+  PluginConfigFieldType,
+  PluginSurface,
+  PluginSurfaceType,
+  PluginHook,
+  PluginHookTrigger,
+  PluginResource,
   PluginInstallationListResponse,
-  PluginReleaseRequest,
-  PluginBindingRequest,
-  PluginRemoteMCPConfig,
-  RemoteMCPConfigRequest,
-  RemoteMCPDiscoveryResponse,
-  RemoteMCPOAuthStartRequest,
-  RemoteMCPOAuthStartResponse,
-  RemoteMCPTool,
+  PluginManifestSummary,
+  PluginPreview,
+  PluginPreviewRequest,
+  PluginInstallRequest,
+  PluginConfigRequest,
 } from "./plugin";
 export type { InboxItem, InboxSeverity, InboxItemType, InboxWorkspaceUnread } from "./inbox";
 export type { NotificationGroupKey, NotificationGroupValue, NotificationPreferences, NotificationPreferenceResponse } from "./notification-preference";
