@@ -9,6 +9,7 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/logger"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 // workspaceEnvActivity* are the activity_log `action` constants for the
@@ -82,6 +83,7 @@ func (h *Handler) GetWorkspaceSharedEnv(w http.ResponseWriter, r *http.Request) 
 		"key_count":     len(revealedKeys),
 	})
 	if _, err := h.Queries.CreateActivity(r.Context(), db.CreateActivityParams{
+		ID:          dbid.NewV7(),
 		WorkspaceID: ws.ID,
 		IssueID:     pgtype.UUID{}, // env access is not tied to an issue
 		ActorType:   pgtype.Text{String: "member", Valid: true},
@@ -155,6 +157,7 @@ func (h *Handler) UpdateWorkspaceSharedEnv(w http.ResponseWriter, r *http.Reques
 	}
 	details, _ := json.Marshal(auditDetails)
 	if _, err := qtx.CreateActivity(r.Context(), db.CreateActivityParams{
+		ID:          dbid.NewV7(),
 		WorkspaceID: ws.ID,
 		IssueID:     pgtype.UUID{},
 		ActorType:   pgtype.Text{String: "member", Valid: true},
