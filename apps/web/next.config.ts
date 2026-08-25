@@ -48,6 +48,20 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
     qualities: [75, 80, 85],
   },
+  experimental: {
+    // proxy.ts rewrites /api/* to the Go backend; Next's proxy layer defaults
+    // this to 30s (router-utils/proxy-request.js: `proxyTimeout || 30000`),
+    // which kills large uploads from slow uplinks mid-transfer (the Go side
+    // already exempts /api/upload-file from its request deadline and caps the
+    // body at 100MB, so 10min here bounds the worst-case slow link without
+    // truncating legitimate transfers).
+    proxyTimeout: 600_000,
+    // The proxy/middleware pipeline also caps the request body it will buffer
+    // at 10MB by default, silently truncating larger uploads mid-multipart —
+    // the trailing boundary never arrives and the backend rejects the form.
+    // Match the Go handler's 100MB upload cap.
+    middlewareClientMaxBodySize: "100mb",
+  },
   async rewrites() {
     return {
       // Run before file-system routes so /docs isn't shadowed by the

@@ -52,6 +52,13 @@ func isLongLivedRequest(r *http.Request) bool {
 		strings.HasPrefix(p, "/api/avatars/"),
 		strings.Contains(p, "/attachments/"): // covers .../download and .../signed-download
 		return true
+	// Large-file uploads. A ~20-24MB PDF on a slow client uplink can take
+	// well over the 30s request deadline to stream in, which would cancel the
+	// MultipartForm read and fail the upload with a 4xx/5xx. Uploads are
+	// bounded by the handler's own 100MB MaxBytesReader, so exempting this
+	// route from the deadline does not open an unbounded body.
+	case p == "/api/upload-file":
+		return true
 	}
 	return false
 }

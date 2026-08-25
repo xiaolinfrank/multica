@@ -11,7 +11,7 @@ import (
 func TestRequestTimeout_ShortRequestGetsDeadline(t *testing.T) {
 	var gotDeadline bool
 	var deadline time.Time
-	h := RequestTimeout(5*time.Second)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := RequestTimeout(5 * time.Second)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d, ok := r.Context().Deadline()
 		gotDeadline = ok
 		deadline = d
@@ -49,6 +49,7 @@ func TestRequestTimeout_LongLivedRequestsExempt(t *testing.T) {
 		{"avatars", http.MethodGet, "/api/avatars/sig/img.png", nil},
 		{"attachment download", http.MethodGet, "/api/attachments/123/download", nil},
 		{"attachment signed download", http.MethodGet, "/api/attachments/123/signed-download", nil},
+		{"file upload", http.MethodPost, "/api/upload-file", nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -79,7 +80,7 @@ func TestRequestTimeout_HealthCheckExemptFromDeadlineLeak(t *testing.T) {
 	// /healthz etc. should get a deadline too (they hit the DB for readiness),
 	// proving the middleware applies broadly and the exempt set is narrow.
 	var gotDeadline bool
-	h := RequestTimeout(5*time.Second)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := RequestTimeout(5 * time.Second)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, gotDeadline = r.Context().Deadline()
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -94,7 +95,7 @@ func TestRequestTimeout_HealthCheckExemptFromDeadlineLeak(t *testing.T) {
 // blocked on a stalled Postgres.
 func TestRequestTimeout_PropagatesCancellation(t *testing.T) {
 	done := make(chan struct{})
-	h := RequestTimeout(20*time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := RequestTimeout(20 * time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 		case <-time.After(time.Second):
