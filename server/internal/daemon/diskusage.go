@@ -203,8 +203,8 @@ func ScanDiskUsage(workspacesRoot string, artifactPatterns []string) (DiskUsageR
 		if strings.HasPrefix(wsEntry.Name(), ".") {
 			continue
 		}
-		wsID := wsEntry.Name()
-		wsDir := filepath.Join(workspacesRoot, wsID)
+		physicalWorkspace := wsEntry.Name()
+		wsDir := filepath.Join(workspacesRoot, physicalWorkspace)
 		taskEntries, err := os.ReadDir(wsDir)
 		if err != nil {
 			continue
@@ -214,20 +214,21 @@ func ScanDiskUsage(workspacesRoot string, artifactPatterns []string) (DiskUsageR
 				continue
 			}
 			taskDir := filepath.Join(wsDir, t.Name())
-			usage := buildTaskUsage(taskDir, wsID, t.Name(), matcher)
+			usage := buildTaskUsage(taskDir, physicalWorkspace, t.Name(), matcher)
 
 			report.Tasks = append(report.Tasks, usage)
 			report.TotalSizeBytes += usage.SizeBytes
 			report.TotalArtifactSizeBytes += usage.ArtifactSizeBytes
 			report.TotalRepoCheckoutBytes += usage.RepoCheckoutBytes
 
-			ws, ok := wsAgg[wsID]
+			workspaceID := usage.WorkspaceID
+			ws, ok := wsAgg[workspaceID]
 			if !ok {
 				ws = &WorkspaceDiskUsage{
-					WorkspaceID:    wsID,
-					WorkspaceShort: ShortID(wsID),
+					WorkspaceID:    workspaceID,
+					WorkspaceShort: usage.WorkspaceShort,
 				}
-				wsAgg[wsID] = ws
+				wsAgg[workspaceID] = ws
 			}
 			ws.TaskCount++
 			ws.SizeBytes += usage.SizeBytes
@@ -328,8 +329,24 @@ func buildTaskUsage(taskDir, wsID, taskShort string, matcher artifactMatcher) Ta
 	}
 
 	metaPresent := false
+	if provenance, err := execenv.ReadManagedEnvProvenance(taskDir); err == nil && provenance != nil {
+		if workspaceID := strings.TrimSpace(provenance.WorkspaceID); workspaceID != "" {
+			usage.WorkspaceID = workspaceID
+			usage.WorkspaceShort = ShortID(workspaceID)
+		}
+	}
+	if owner, err := execenv.ReadEnvRootOwner(taskDir); err == nil && owner != nil {
+		if workspaceID := strings.TrimSpace(owner.WorkspaceID); workspaceID != "" {
+			usage.WorkspaceID = workspaceID
+			usage.WorkspaceShort = ShortID(workspaceID)
+		}
+	}
 	if meta, err := execenv.ReadGCMeta(taskDir); err == nil && meta != nil {
 		metaPresent = true
+		if workspaceID := strings.TrimSpace(meta.WorkspaceID); workspaceID != "" {
+			usage.WorkspaceID = workspaceID
+			usage.WorkspaceShort = ShortID(workspaceID)
+		}
 		usage.Kind = string(meta.Kind)
 		usage.IssueID = meta.IssueID
 		usage.AgentID = meta.AgentID

@@ -126,6 +126,7 @@ vi.mock("@multica/core/agents", () => ({
   isAgentRuntimeBound: (agent: { runtime_id: string; runtime_bound?: boolean }) =>
     agent.runtime_bound !== false && agent.runtime_id.length > 0,
   useAgentPresenceDetail: () => ({ availability: "online" }),
+  useCustomizeConversationStartersHref: () => null,
   useWorkspaceAgentAvailability: () => "available",
   // Identity transform: ordering assertions in this suite predate the
   // default-assignee pin and must not depend on config state.
