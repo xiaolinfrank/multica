@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
