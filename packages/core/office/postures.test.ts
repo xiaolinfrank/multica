@@ -18,7 +18,7 @@ const plan = (over: Partial<OfficeFloorPlan>): OfficeFloorPlan => ({
 describe("assignPoses", () => {
   it("seats up to eight desk workers and stands the overflow behind", () => {
     const ids = Array.from({ length: 10 }, (_, i) => `d${i}`);
-    const poses = assignPoses(plan({ desks: ids.map((id) => ({ agentId: id, runningCount: 1, capacity: 2 })) }), 0);
+    const poses = assignPoses(plan({ desks: ids.map((id) => ({ agentId: id, runningCount: 1, capacity: 2, focusTaskId: null })) }), 0);
     expect(poses.filter((p) => p.posture === "sitting")).toHaveLength(FLOOR_SEATS.desk);
     expect(poses.filter((p) => p.posture === "standing")).toHaveLength(2);
     expect(poses.every((p) => p.zone === "desk")).toBe(true);
@@ -58,7 +58,7 @@ describe("assignPoses", () => {
 
   it("never yields a posture for absent agents", () => {
     const poses = assignPoses(
-      plan({ desks: [{ agentId: "on", runningCount: 0, capacity: 1 }], absent: [{ agentId: "off", reason: "offline" }] }),
+      plan({ desks: [{ agentId: "on", runningCount: 0, capacity: 1, focusTaskId: null }], absent: [{ agentId: "off", reason: "offline" }] }),
       0,
     );
     expect(poses.map((p) => p.agentId)).toEqual(["on"]);

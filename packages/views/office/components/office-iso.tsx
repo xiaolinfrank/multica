@@ -15,6 +15,12 @@ export function iso(gx: number, gy: number): [number, number] {
   return [(gx - gy) * (TILE_W / 2), (gx + gy) * (TILE_H / 2)];
 }
 
+/**
+ * Tilt of the floor's x axis, for skewing a flat face onto the projection.
+ * atan(TILE_H / TILE_W) on the 2:1 plane.
+ */
+const ISO_SLANT_DEG = (Math.atan(TILE_H / TILE_W) * 180) / Math.PI;
+
 const WOOD = { top: "#c99b66", west: "#a87e50", east: "#8d663e" };
 const STEEL = { top: "#cfd6de", west: "#aab3bd", east: "#8d97a2" };
 const FABRIC = { top: "#9aa7d6", west: "#7c88ba", east: "#656f9c" };
@@ -140,14 +146,28 @@ export const MeetingTable = memo(function MeetingTable({ cx, cy }: { cx: number;
 });
 
 export const Whiteboard = memo(function Whiteboard({ gx, gy }: { gx: number; gy: number }) {
-  const [sx, sy] = iso(gx, gy);
+  // The panel is skewed onto the floor's x axis so it stands *in* the room.
+  // An axis-aligned rectangle here reads as a flat card pasted over the scene,
+  // because it is the one surface not following the projection.
+  const w = 2.1;
+  const stand = 22;
+  const h = 30;
+  const [x0, y0] = iso(gx - w / 2, gy);
+  const boardW = w * (TILE_W / 2);
   return (
     <g>
-      <rect x={sx - 46} y={sy - 52} width={92} height={44} rx={3} fill="#f4f6fa" stroke="#8d97a2" />
-      <path d={`M ${sx - 36} ${sy - 40} q 18 -8 34 0 t 34 2`} fill="none" stroke="#7c9cf5" strokeWidth={2} />
-      <line x1={sx - 36} y1={sy - 24} x2={sx + 12} y2={sy - 24} stroke="#e58fb1" strokeWidth={2} />
-      <IsoBox gx={gx - 0.75} gy={gy + 0.02} w={0.09} d={0.09} h={30} colors={STEEL} />
-      <IsoBox gx={gx + 0.68} gy={gy + 0.02} w={0.09} d={0.09} h={30} colors={STEEL} />
+      <IsoBox gx={gx - w / 2} gy={gy} w={0.09} d={0.09} h={stand} colors={STEEL} />
+      <IsoBox gx={gx + w / 2 - 0.09} gy={gy} w={0.09} d={0.09} h={stand} colors={STEEL} />
+      <g transform={`translate(${x0} ${y0 - stand - h}) skewY(${ISO_SLANT_DEG})`}>
+        <rect width={boardW} height={h} rx={2} fill="#f4f6fa" stroke="#8d97a2" />
+        <path
+          d={`M 7 ${h - 19} q ${boardW * 0.2} -7 ${boardW * 0.4} 0 t ${boardW * 0.4} 2`}
+          fill="none"
+          stroke="#7c9cf5"
+          strokeWidth={1.8}
+        />
+        <line x1={7} y1={h - 8} x2={boardW * 0.6} y2={h - 8} stroke="#e58fb1" strokeWidth={1.8} />
+      </g>
     </g>
   );
 });
@@ -368,6 +388,13 @@ export const StandingPerson = memo(function StandingPerson({
     </g>
   );
 });
+
+/**
+ * Height above a sprite's floor point of the stroked top edge of its name
+ * label — the highest ink a person draws. Thought bubbles park above this so
+ * they never land on the label or the head.
+ */
+export const LABEL_TOP = { sitting: 41, standing: 48 } as const;
 
 export interface WalkRoute {
   /** Loop of grid waypoints; the walker cycles through them forever. */

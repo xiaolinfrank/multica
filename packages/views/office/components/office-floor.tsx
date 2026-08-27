@@ -6,9 +6,17 @@ import type { Agent } from "@multica/core/types";
 import {
   assignPoses,
   hashString,
+  type AgentPose,
   type OfficeScene,
   type OfficeZoneId,
 } from "@multica/core/office";
+import {
+  BUBBLE_FONT,
+  estimateTextWidth,
+  layoutBubbles,
+  NAME_FONT,
+  type SpriteAnchor,
+} from "./office-layout";
 import {
   BarStool,
   CanteenTable,
@@ -18,6 +26,7 @@ import {
   Desk,
   HAIRS,
   iso,
+  LABEL_TOP,
   MeetingTable,
   OfficeChair,
   pick,
@@ -176,6 +185,20 @@ interface Renderable {
   node: React.ReactNode;
 }
 
+/** A pose resolved to a seat: where the sprite stands and how deep it sits. */
+interface Placement {
+  pose: AgentPose;
+  sx: number;
+  sy: number;
+  depth: number;
+}
+
+/** Scene box with no bubbles in it; the top edge grows to fit lifted ones. */
+const VIEW_LEFT = -(GRID_D * TILE_W) / 2 - 36;
+const VIEW_W = (GRID_W + GRID_D) * (TILE_W / 2) + 76;
+const VIEW_TOP = -74;
+const VIEW_BOTTOM = VIEW_TOP + (GRID_W + GRID_D) * (TILE_H / 2) + 112;
+
 export const OfficeFloor = memo(function OfficeFloor({
   scene,
   phase,
@@ -212,6 +235,36 @@ export const OfficeFloor = memo(function OfficeFloor({
     }
     return out;
   }, [scene.floor.zoneByAgent]);
+
+  // ---- Seat assignment ----------------------------------------------------
+  // Walked exactly once and shared by the sprites and the bubbles. Two
+  // independent walks would hand the same zone's seats out in different
+  // orders as soon as one of them skipped a pose, parking a bubble over
+  // somebody else's head.
+  const placements = useMemo<Placement[]>(() => {
+    const nextSeat: Record<furn, number> = {
+      desk: 0,
+      meeting: 0,
+      lounge: 0,
+      tea: 0,
+      canteen: 0,
+      waiting: 0,
+    };
+    const out: Placement[] = [];
+    for (const pose of poses) {
+      if (!agentById.has(pose.agentId) || !colorsById.has(pose.agentId)) continue;
+      if (pose.posture === "walking") {
+        out.push({ pose, sx: 0, sy: 0, depth: Number.MAX_SAFE_INTEGER });
+        continue;
+      }
+      const spot = seatSpot(pose.zone, nextSeat[pose.zone]);
+      nextSeat[pose.zone] += 1;
+      if (!spot) continue;
+      const [sx, sy] = iso(spot.gx, spot.gy);
+      out.push({ pose, sx, sy, depth: spot.gx + spot.gy });
+    }
+    return out;
+  }, [poses, agentById, colorsById]);
 
   // ---- Draw list: static furniture + placed people, depth-sorted ----------
   const items = useMemo<Renderable[]>(() => {
@@ -250,16 +303,8 @@ export const OfficeFloor = memo(function OfficeFloor({
       ] as const
     ).forEach(([gx, gy], i) => add(gx + gy, 0, `plant${i}`, <Plant gx={gx} gy={gy} />));
 
-    // People — one seat per zone in stable order.
-    const nextSeat: Record<furn, number> = {
-      desk: 0,
-      meeting: 0,
-      lounge: 0,
-      tea: 0,
-      canteen: 0,
-      waiting: 0,
-    };
-    for (const pose of poses) {
+    // People — drawn on the seats the shared placement pass handed out.
+    for (const { pose, sx, sy, depth } of placements) {
       const colors = colorsById.get(pose.agentId);
       const agent = agentById.get(pose.agentId);
       if (!colors || !agent) continue;
@@ -267,7 +312,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       if (pose.posture === "walking") {
         const base = WALK_ROUTES[pose.zone as "lounge" | "tea" | "canteen"];
         list.push({
-          depth: Number.MAX_SAFE_INTEGER,
+          depth,
           tieBreaker: 0,
           node: (
             <WalkingPerson
@@ -284,12 +329,8 @@ export const OfficeFloor = memo(function OfficeFloor({
         });
         continue;
       }
-      const spot = seatSpot(pose.zone, nextSeat[pose.zone]);
-      nextSeat[pose.zone] += 1;
-      if (!spot) continue;
-      const [sx, sy] = iso(spot.gx, spot.gy);
       list.push({
-        depth: spot.gx + spot.gy,
+        depth,
         tieBreaker: 1,
         node:
           pose.posture === "standing" ? (
@@ -318,7 +359,7 @@ export const OfficeFloor = memo(function OfficeFloor({
 
     list.sort((a, b) => a.depth - b.depth || a.tieBreaker - b.tieBreaker);
     return list;
-  }, [poses, colorsById, agentById, onAgentClick, floor]);
+  }, [placements, colorsById, agentById, onAgentClick, floor]);
 
   // Total running capacity headline for the desk band.
   const runningLine = useMemo(() => {
@@ -333,33 +374,48 @@ export const OfficeFloor = memo(function OfficeFloor({
   }, [floor.desks, t]);
 
   // Bubbles anchor to stationary seats only (a moving speaker would drag a
-  // box across the room).
+  // box across the room). Every seated sprite is handed to the layout, not
+  // just the speaking ones, so a bubble can dodge a silent neighbour's head.
   const bubbles = useMemo(() => {
-    const out: Array<{ agentId: string; text: string; sx: number; sy: number; lift: number }> = [];
-    const nextSeat: Record<furn, number> = {
-      desk: 0,
-      meeting: 0,
-      lounge: 0,
-      tea: 0,
-      canteen: 0,
-      waiting: 0,
-    };
-    for (const pose of poses) {
+    const anchors: SpriteAnchor[] = [];
+    for (const { pose, sx, sy } of placements) {
       if (pose.posture === "walking") continue;
-      const text = bubbleFor(pose.agentId);
-      const spot = seatSpot(pose.zone, nextSeat[pose.zone]);
-      nextSeat[pose.zone] += 1;
-      if (!text || !spot) continue;
-      const [sx, sy] = iso(spot.gx, spot.gy);
-      out.push({ agentId: pose.agentId, text, sx, sy, lift: (hashString(pose.agentId) % 3) * 6 });
+      const name = agentById.get(pose.agentId)?.name ?? "";
+      anchors.push({
+        agentId: pose.agentId,
+        sx,
+        sy,
+        clearance: LABEL_TOP[pose.posture === "standing" ? "standing" : "sitting"],
+        labelWidth: estimateTextWidth(name, NAME_FONT),
+        text: bubbleFor(pose.agentId),
+      });
     }
-    return out;
-  }, [poses, bubbleFor]);
+    // The running-capacity badge is live data, so a bubble may not sit on it.
+    const [bx, by] = iso(ROOMS.desk.x + ROOMS.desk.w, ROOMS.desk.y);
+    const reserved = runningLine
+      ? [
+          {
+            left: bx - 4 - estimateTextWidth(runningLine, 9),
+            top: by - 14 - 9,
+            right: bx - 4,
+            bottom: by - 14 + 2,
+          },
+        ]
+      : [];
+    return layoutBubbles(anchors, reserved);
+  }, [placements, agentById, bubbleFor, runningLine]);
+
+  // A stack of lifted bubbles can reach above the empty scene box; grow the
+  // viewBox rather than let them paint over the page header.
+  const viewTop = useMemo(
+    () => Math.min(VIEW_TOP, ...bubbles.map((b) => b.y - 6)),
+    [bubbles],
+  );
 
   return (
     <div className="flex flex-col gap-3">
       <svg
-        viewBox={`${-(GRID_D * TILE_W) / 2 - 36} -74 ${(GRID_W + GRID_D) * (TILE_W / 2) + 76} ${(GRID_W + GRID_D) * (TILE_H / 2) + 112}`}
+        viewBox={`${VIEW_LEFT} ${viewTop} ${VIEW_W} ${VIEW_BOTTOM - viewTop}`}
         className="w-full"
         style={{ overflow: "visible" }}
         role="img"
@@ -373,15 +429,22 @@ export const OfficeFloor = memo(function OfficeFloor({
           fill="#e8e2d62e"
           stroke="#8b83755c"
         />
-        {/* Zone carpets, names and empty-state hints drawn on the carpet */}
+        {/* Zone carpets */}
+        {(Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => (
+          <Rug key={zone} rect={rect} fill="#6f7a8c12" stroke="#6f7a8c38" />
+        ))}
+        {items.map((item, i) => (
+          <Fragment key={i}>{item.node}</Fragment>
+        ))}
+        {/* Room signage. Drawn above the furniture it names — on the carpet a
+            tall desk row swallows it — and below the bubbles. */}
         {(Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => {
           const empty = zoneCounts[zone] === 0;
           const [lx, ly] = zoneLabel(rect);
           const hint =
             zone === "waiting" ? t(`zones.${zone}.hint`) : empty ? t(`zones.${zone}.empty`) : null;
           return (
-            <g key={zone}>
-              <Rug rect={rect} fill="#6f7a8c12" stroke="#6f7a8c38" />
+            <g key={zone} pointerEvents="none">
               <text
                 x={lx}
                 y={ly - 4}
@@ -426,34 +489,43 @@ export const OfficeFloor = memo(function OfficeFloor({
             strokeWidth={2.4}
             paintOrder="stroke"
             fill="var(--foreground)"
+            pointerEvents="none"
           >
             {runningLine}
           </text>
         ) : null}
-        {items.map((item, i) => (
-          <Fragment key={i}>{item.node}</Fragment>
-        ))}
         {bubbles.map((b) => (
           <foreignObject
-            key={`b-${b.agentId}`} data-agent={b.agentId}
-            x={b.sx - 70}
-            y={b.sy - 76 - b.lift}
-            width={140}
-            height={40}
+            key={`b-${b.agentId}`}
+            data-agent={b.agentId}
+            x={b.x}
+            y={b.y}
+            width={b.width}
+            height={b.height}
+            style={{ overflow: "visible" }}
           >
+            {/* The box is sized by layoutBubbles, so a one-line bubble must not
+                be allowed to wrap into a second line the layout reserved no
+                room for, and a longer one is clamped to the two it measured. */}
             <div
-              className="mx-auto w-fit max-w-full rounded-lg border bg-popover px-1.5 py-1 text-popover-foreground shadow-sm"
-              style={{
-                fontSize: 9,
-                lineHeight: 1.25,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
+              className="flex size-full items-center justify-center overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-sm"
+              style={{ fontSize: BUBBLE_FONT, lineHeight: 1.25, paddingInline: 6 }}
               title={b.text}
             >
-              {b.text}
+              <span
+                style={
+                  b.lines === 1
+                    ? { whiteSpace: "nowrap" }
+                    : {
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }
+                }
+              >
+                {b.text}
+              </span>
             </div>
           </foreignObject>
         ))}

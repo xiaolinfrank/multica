@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../../navigation";
@@ -42,11 +42,20 @@ export function OfficePage() {
   // why the namespace is dynamically keyed. Riding the provider instance's
   // `t` (with the ns option) keeps every call loose at compile time while
   // parity/monologue tests pin the bundle structure.
-  const tr: OfficeTranslate = (key, params) =>
-    (i18n.t as (k: string, o?: Record<string, unknown>) => string)(key, {
-      ...params,
-      ns: "office",
-    });
+  // Keyed on the active language so the adapter keeps a stable identity
+  // between renders — `bubbleFor` memoises on it — while still re-resolving
+  // every string when the language changes. The i18n instance itself never
+  // changes identity, so it cannot carry that signal on its own.
+  const lang = i18n.language;
+  const tr: OfficeTranslate = useCallback(
+    (key, params) =>
+      (i18n.t as (k: string, o?: Record<string, unknown>) => string)(key, {
+        ...params,
+        ns: "office",
+        lng: lang,
+      }),
+    [i18n, lang],
+  );
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
@@ -73,7 +82,7 @@ export function OfficePage() {
       const msg = monologueMessage(slot);
       return tr(msg.key, msg.params);
     };
-  }, [scene.floor.zoneByAgent, presence, phase]);
+  }, [scene.floor.zoneByAgent, presence, phase, tr]);
 
   const onAgentClick = (agentId: string) => {
     navigation.push(paths.agentDetail(agentId));
