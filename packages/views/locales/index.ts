@@ -25,6 +25,7 @@ import enUsage from "./en/usage.json";
 import enFleet from "./en/fleet.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
+import enOffice from "./en/office.json";
 import enBilling from "./en/billing.json";
 import enWorkspaces from "./en/workspaces.json";
 import zhHansCommon from "./zh-Hans/common.json";
@@ -53,6 +54,7 @@ import zhHansUsage from "./zh-Hans/usage.json";
 import zhHansFleet from "./zh-Hans/fleet.json";
 import zhHansUi from "./zh-Hans/ui.json";
 import zhHansSquads from "./zh-Hans/squads.json";
+import zhHansOffice from "./zh-Hans/office.json";
 import zhHansBilling from "./zh-Hans/billing.json";
 import zhHansWorkspaces from "./zh-Hans/workspaces.json";
 import koCommon from "./ko/common.json";
@@ -81,6 +83,7 @@ import koUsage from "./ko/usage.json";
 import koFleet from "./ko/fleet.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
+import koOffice from "./ko/office.json";
 import koBilling from "./ko/billing.json";
 import koWorkspaces from "./ko/workspaces.json";
 import jaCommon from "./ja/common.json";
@@ -109,6 +112,7 @@ import jaUsage from "./ja/usage.json";
 import jaFleet from "./ja/fleet.json";
 import jaUi from "./ja/ui.json";
 import jaSquads from "./ja/squads.json";
+import jaOffice from "./ja/office.json";
 import jaBilling from "./ja/billing.json";
 import jaWorkspaces from "./ja/workspaces.json";
 
@@ -143,6 +147,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     fleet: enFleet,
     ui: enUi,
     squads: enSquads,
+    office: enOffice,
     billing: enBilling,
     workspaces: enWorkspaces,
   },
@@ -173,6 +178,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     fleet: zhHansFleet,
     ui: zhHansUi,
     squads: zhHansSquads,
+    office: zhHansOffice,
     billing: zhHansBilling,
     workspaces: zhHansWorkspaces,
   },
@@ -203,6 +209,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     fleet: koFleet,
     ui: koUi,
     squads: koSquads,
+    office: koOffice,
     billing: koBilling,
     workspaces: koWorkspaces,
   },
@@ -233,6 +240,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     fleet: jaFleet,
     ui: jaUi,
     squads: jaSquads,
+    office: jaOffice,
     billing: jaBilling,
     workspaces: jaWorkspaces,
   },

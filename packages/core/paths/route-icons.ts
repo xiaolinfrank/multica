@@ -27,6 +27,7 @@ export type RouteIconName =
   | "FolderKanban"
   | "Zap"
   | "Bot"
+  | "Building2"
   | "Users"
   | "BarChart3"
   | "Monitor"
@@ -53,6 +54,7 @@ export type NavLabelKey =
   | "projects"
   | "autopilots"
   | "agents"
+  | "office"
   | "squads"
   | "usage"
   | "runtimes"
@@ -71,6 +73,7 @@ export type WorkspacePageKey =
   | "projects"
   | "autopilots"
   | "agents"
+  | "office"
   | "squads"
   | "usage"
   | "runtimes"
@@ -101,6 +104,7 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   projects: { segment: "projects", icon: "FolderKanban", navKey: "projects" },
   autopilots: { segment: "autopilots", icon: "Zap", navKey: "autopilots" },
   agents: { segment: "agents", icon: "Bot", navKey: "agents" },
+  office: { segment: "office", icon: "Building2", navKey: "office" },
   squads: { segment: "squads", icon: "Users", navKey: "squads" },
   usage: { segment: "usage", icon: "BarChart3", navKey: "usage" },
   runtimes: { segment: "runtimes", icon: "Monitor", navKey: "runtimes" },

@@ -74,6 +74,7 @@
     "./fleet": "./fleet/index.ts",
     "./fleet/queries": "./fleet/queries.ts",
     "./agents": "./agents/index.ts",
+    "./office": "./office/index.ts",
     "./agents/queries": "./agents/queries.ts",
     "./agents/derive-presence": "./agents/derive-presence.ts",
     "./agents/use-agent-presence": "./agents/use-agent-presence.ts",

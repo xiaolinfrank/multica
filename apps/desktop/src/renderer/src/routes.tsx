@@ -30,6 +30,7 @@ import {
   ManualCreateAgentPage,
 } from "@multica/views/agents";
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
+import { OfficePage } from "@multica/views/office";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
 import { SettingsPage } from "@multica/views/settings";
@@ -218,6 +219,7 @@ export const appRoutes: RouteObject[] = [
             element: <MemberDetailPage />,
             handle: { title: "Member" },
           },
+          { path: "office", element: <OfficePage />, handle: { title: "Office" } },
           { path: "squads", element: <SquadsPage />, handle: { title: "Squads" } },
           {
             path: "squads/:id",
