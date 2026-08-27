@@ -15,17 +15,22 @@ import {
   estimateTextWidth,
   layoutBubbles,
   NAME_FONT,
+  type Rect,
   type SpriteAnchor,
 } from "./office-layout";
 import {
+  BackWalls,
   BarStool,
   CanteenTable,
   CoffeeBar,
   CoffeeTable,
   CLOTHES,
   Desk,
+  DESK_SEAT,
+  FloorTiles,
   HAIRS,
   iso,
+  IsoDefs,
   LABEL_TOP,
   MeetingTable,
   OfficeChair,
@@ -80,9 +85,24 @@ const ROOMS: Record<furn, RoomRect> = {
   waiting: { x: 2.3, y: 9.55, w: 4.3, d: 0.85 },
 };
 
-/** Eight workstations, two rows of four; each chair sits south of its desk. */
+/** Carpet tint per room. Low-alpha ink so it works on either theme. */
+const ZONE_TINT: Record<furn, string> = {
+  desk: "#7c9cf526",
+  meeting: "#9d8ff526",
+  tea: "#8fd0a926",
+  lounge: "#f2b26b26",
+  canteen: "#e58fb124",
+  waiting: "#8d97a226",
+};
+
+/**
+ * Eight workstations, two rows of four. The anchor is the desk's centre; the
+ * agent sits at DESK_SEAT from it, so the tabletop depth-sorts in front of the
+ * body. Spacing exceeds the desk's own width, so the row reads as four
+ * separate workstations rather than one continuous slab.
+ */
 const DESKS = Array.from({ length: 8 }, (_, i) => ({
-  gx: 1.0 + (i % 4) * 1.32,
+  gx: 1.38 + (i % 4) * 1.32,
   gy: i < 4 ? 1.25 : 3.1,
 }));
 
@@ -95,10 +115,14 @@ const MEETING_CHAIRS = [
   { gx: 4.65, gy: 7.85 },
 ];
 
+/**
+ * Stools down the counter. Spaced a full cell apart: any closer and adjacent
+ * name labels, which are far wider than the bodies under them, collide.
+ */
 const TEA_STOOLS = [
-  { gx: 9.95, gy: 0.95 },
-  { gx: 9.95, gy: 1.62 },
-  { gx: 9.95, gy: 2.29 },
+  { gx: 9.9, gy: 0.8 },
+  { gx: 9.9, gy: 1.75 },
+  { gx: 9.9, gy: 2.7 },
 ];
 
 const LOUNGE_SEATS = [
@@ -156,8 +180,10 @@ const WALK_ROUTES: Record<"lounge" | "tea" | "canteen", WalkRoute> = {
 
 function seatSpot(zone: furn, n: number): { gx: number; gy: number } | null {
   switch (zone) {
-    case "desk":
-      return DESKS[n % DESKS.length] ?? null;
+    case "desk": {
+      const d = DESKS[n % DESKS.length];
+      return d ? { gx: d.gx + DESK_SEAT.dx, gy: d.gy + DESK_SEAT.dy } : null;
+    }
     case "meeting":
       return MEETING_CHAIRS[n % MEETING_CHAIRS.length] ?? null;
     case "tea":
@@ -177,6 +203,12 @@ function zoneLabel(rect: RoomRect): [number, number] {
   const [sx, sy] = iso(rect.x + rect.w / 2, rect.y + 0.28);
   return [sx, sy];
 }
+
+/** Ink extent of a room caption above and below its anchor, in scene units. */
+const CAPTION_TOP = -12.5;
+const CAPTION_BOTTOM_NAME = -2;
+const CAPTION_BOTTOM_HINT = 12;
+const CAPTION_GAP = 5;
 
 interface Renderable {
   depth: number;
@@ -275,6 +307,14 @@ export const OfficeFloor = memo(function OfficeFloor({
     // Furniture — every piece renders even when the room is empty.
     DESKS.forEach((d, i) => {
       const occupant = floor.desks[i];
+      // The chair sorts before its occupant, the desk after both, so an empty
+      // station still shows a chair tucked under the tabletop.
+      add(
+        d.gx + d.gy + DESK_SEAT.dx + DESK_SEAT.dy - 0.05,
+        0,
+        `dchair${i}`,
+        <OfficeChair gx={d.gx + DESK_SEAT.dx - 0.29} gy={d.gy + DESK_SEAT.dy - 0.27} variant="task" />,
+      );
       add(d.gx + d.gy, 0, `desk${i}`, <Desk gx={d.gx} gy={d.gy} busy={(occupant?.runningCount ?? 0) > 0} />);
     });
     add(3.55 + 6.95, 0, "meet-table", <MeetingTable cx={3.55} cy={6.95} />);
@@ -373,6 +413,43 @@ export const OfficeFloor = memo(function OfficeFloor({
     return `${t("figure.running")} ${running}/${cap}`;
   }, [floor.desks, t]);
 
+  // ---- Room signage -------------------------------------------------------
+  // Captions sit at each room's north edge, above the furniture they name.
+  // A sprite seated in that strip would be painted over by its own room's
+  // name, so a caption with somebody under it rises until it clears them.
+  const signage = useMemo(() => {
+    return (Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => {
+      const empty = zoneCounts[zone] === 0;
+      const hint =
+        zone === "waiting" ? t(`zones.${zone}.hint`) : empty ? t(`zones.${zone}.empty`) : null;
+      const name = t(`zones.${zone}.name`);
+      const [lx, base] = zoneLabel(rect);
+      const halfW =
+        Math.max(estimateTextWidth(name, 11), hint ? estimateTextWidth(hint, 8) : 0) / 2 + 3;
+      const bottom = hint ? CAPTION_BOTTOM_HINT : CAPTION_BOTTOM_NAME;
+
+      let ly = base;
+      // Each pass moves strictly upwards past one sprite, so this terminates;
+      // the guard only covers pathological input.
+      for (let guard = 0; guard <= placements.length; guard += 1) {
+        let moved = false;
+        for (const p of placements) {
+          if (p.pose.posture === "walking") continue;
+          const reach =
+            estimateTextWidth(agentById.get(p.pose.agentId)?.name ?? "", NAME_FONT) / 2 + 2;
+          if (p.sx + reach <= lx - halfW || p.sx - reach >= lx + halfW) continue;
+          const spriteTop =
+            p.sy - LABEL_TOP[p.pose.posture === "standing" ? "standing" : "sitting"];
+          if (ly + CAPTION_TOP >= p.sy || ly + bottom <= spriteTop) continue;
+          ly = spriteTop - CAPTION_GAP - bottom;
+          moved = true;
+        }
+        if (!moved) break;
+      }
+      return { zone, name, hint, lx, ly, halfW, bottom };
+    });
+  }, [zoneCounts, t, placements, agentById]);
+
   // Bubbles anchor to stationary seats only (a moving speaker would drag a
   // box across the room). Every seated sprite is handed to the layout, not
   // just the speaking ones, so a bubble can dodge a silent neighbour's head.
@@ -390,26 +467,36 @@ export const OfficeFloor = memo(function OfficeFloor({
         text: bubbleFor(pose.agentId),
       });
     }
-    // The running-capacity badge is live data, so a bubble may not sit on it.
+    // Room captions and the running-capacity badge are already placed, so a
+    // bubble has to go round them.
+    const reserved: Rect[] = signage.map(({ lx, ly, halfW, bottom }) => ({
+      left: lx - halfW,
+      top: ly + CAPTION_TOP,
+      right: lx + halfW,
+      bottom: ly + bottom,
+    }));
     const [bx, by] = iso(ROOMS.desk.x + ROOMS.desk.w, ROOMS.desk.y);
-    const reserved = runningLine
-      ? [
-          {
-            left: bx - 4 - estimateTextWidth(runningLine, 9),
-            top: by - 14 - 9,
-            right: bx - 4,
-            bottom: by - 14 + 2,
-          },
-        ]
-      : [];
+    if (runningLine) {
+      reserved.push({
+        left: bx - 4 - estimateTextWidth(runningLine, 9),
+        top: by - 14 - 9,
+        right: bx - 4,
+        bottom: by - 14 + 2,
+      });
+    }
     return layoutBubbles(anchors, reserved);
-  }, [placements, agentById, bubbleFor, runningLine]);
+  }, [placements, agentById, bubbleFor, runningLine, signage]);
 
   // A stack of lifted bubbles can reach above the empty scene box; grow the
   // viewBox rather than let them paint over the page header.
   const viewTop = useMemo(
-    () => Math.min(VIEW_TOP, ...bubbles.map((b) => b.y - 6)),
-    [bubbles],
+    () =>
+      Math.min(
+        VIEW_TOP,
+        ...bubbles.map((b) => b.y - 6),
+        ...signage.map((s) => s.ly + CAPTION_TOP - 6),
+      ),
+    [bubbles, signage],
   );
 
   return (
@@ -421,62 +508,59 @@ export const OfficeFloor = memo(function OfficeFloor({
         role="img"
         aria-label={t("title")}
       >
-        {/* Ground slab */}
+        <IsoDefs />
+        {/* Room shell: the two back walls, then the tiled ground and its edge. */}
+        <BackWalls w={GRID_W} d={GRID_D} />
+        <FloorTiles w={GRID_W} d={GRID_D} />
         <polygon
           points={[iso(0, 0), iso(GRID_W, 0), iso(GRID_W, GRID_D), iso(0, GRID_D)]
             .map(([x, y]) => `${x},${y}`)
             .join(" ")}
-          fill="#e8e2d62e"
-          stroke="#8b83755c"
+          fill="none"
+          stroke="#8b837552"
         />
-        {/* Zone carpets */}
+        {/* Zone carpets, one hue each so the rooms read apart at a glance */}
         {(Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => (
-          <Rug key={zone} rect={rect} fill="#6f7a8c12" stroke="#6f7a8c38" />
+          <Rug key={zone} rect={rect} fill={ZONE_TINT[zone]} stroke="#6f7a8c40" />
         ))}
         {items.map((item, i) => (
           <Fragment key={i}>{item.node}</Fragment>
         ))}
         {/* Room signage. Drawn above the furniture it names — on the carpet a
             tall desk row swallows it — and below the bubbles. */}
-        {(Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => {
-          const empty = zoneCounts[zone] === 0;
-          const [lx, ly] = zoneLabel(rect);
-          const hint =
-            zone === "waiting" ? t(`zones.${zone}.hint`) : empty ? t(`zones.${zone}.empty`) : null;
-          return (
-            <g key={zone} pointerEvents="none">
+        {signage.map(({ zone, name, hint, lx, ly }) => (
+          <g key={zone} pointerEvents="none">
+            <text
+              x={lx}
+              y={ly - 4}
+              textAnchor="middle"
+              fontSize={11}
+              fontWeight={700}
+              opacity={0.6}
+              stroke="var(--background)"
+              strokeWidth={3}
+              paintOrder="stroke"
+              fill="var(--foreground)"
+            >
+              {name}
+            </text>
+            {hint ? (
               <text
                 x={lx}
-                y={ly - 4}
+                y={ly + 10}
                 textAnchor="middle"
-                fontSize={11}
-                fontWeight={700}
-                opacity={0.6}
+                fontSize={8}
+                opacity={0.5}
                 stroke="var(--background)"
-                strokeWidth={3}
+                strokeWidth={2.4}
                 paintOrder="stroke"
-                fill="var(--foreground)"
+                fill="var(--muted-foreground)"
               >
-                {t(`zones.${zone}.name`)}
+                {hint}
               </text>
-              {hint ? (
-                <text
-                  x={lx}
-                  y={ly + 10}
-                  textAnchor="middle"
-                  fontSize={8}
-                  opacity={0.5}
-                  stroke="var(--background)"
-                  strokeWidth={2.4}
-                  paintOrder="stroke"
-                  fill="var(--muted-foreground)"
-                >
-                  {hint}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
+            ) : null}
+          </g>
+        ))}
         {runningLine ? (
           <text
             x={iso(ROOMS.desk.x + ROOMS.desk.w, ROOMS.desk.y)[0] - 4}
