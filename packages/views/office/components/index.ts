@@ -1,3 +1,4 @@
 export { OfficePage } from "./office-page";
 export { OfficeFloor } from "./office-floor";
-export { OfficeRail, formatTokenCount } from "./office-rail";
+export { OfficeRail } from "./office-rail";
+export { formatTokenCount } from "./office-layout";

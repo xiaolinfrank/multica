@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { OfficeTranslate } from "./office-i18n";
 import type { Agent } from "@multica/core/types";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
@@ -9,12 +9,14 @@ import {
   hashString,
   type AgentPose,
   type OfficeScene,
+  type OfficeTokenRow,
   type OfficeZoneId,
 } from "@multica/core/office";
 import {
   BUBBLE_FONT,
   estimateTextWidth,
   fitText,
+  formatTokenCount,
   layoutBubbles,
   NAME_FONT,
   type SpriteAnchor,
@@ -22,52 +24,57 @@ import {
 import {
   Armchair,
   Bench,
-  CanteenTable,
   CLOTHES,
   CoffeeTable,
+  Desk,
+  FLOOR,
+  FloorEdges,
+  FloorSlab,
+  GlassWall,
   HAIRS,
+  headClearance,
+  HEAD_Z,
   MeetingTable,
-  NAME_LIFT,
-  NAMEPLATE_FONT,
-  NAMEPLATE_W,
+  NorthWall,
+  Pendant,
   Person,
   pick,
   Plant,
-  roomBox,
-  RoomShell,
+  px,
+  RoundTable,
   Rug,
   SCENE_H,
   SCENE_W,
   SceneDefs,
-  SIT_ON,
+  SIT_HEAD_Z,
   SKINS,
-  sitTop,
   Sofa,
-  STAND_TOP,
   Stool,
   TaskChair,
   TeaCounter,
   Walker,
+  WallScreen,
   WoodChair,
-  Workstation,
-  type RoomBox,
-  type RoomRect,
+  ZONE_FLOOR,
   type SpriteColors,
   type WalkRoute,
-} from "./office-room";
+} from "./office-view";
 
-// The office floor proper: six room boxes seen head-on, tiling the canvas.
+// The office floor proper: one open-plan storey seen from overhead.
 //
-// Rooms are axis-aligned rectangles, so nothing is wasted on empty diagonal
-// corners, and each opens into a shallow one-point-perspective interior with
-// two usable ranks of floor. Agents face the viewer, which is what lets their
-// real avatar carry the identity; the desk room prints names on the desks and
-// every other room floats one above the head.
+// Zones are plain rectangles on the floor plane — a desk bank along the north
+// light, a glazed meeting room, then tea, lounge, canteen and the waiting
+// bench across the south half, with circulation between them. Nothing is
+// rotated onto a diagonal, so the plan wastes no space and every caption
+// printed on the boards reads straight; height is what makes it a 3D view
+// (see office-view.tsx for the projection).
 //
-// Furniture renders unconditionally so an idle office still reads as an
-// office. Within a room the draw order is: shell, floor props, seating,
-// people, then the furniture people sit *behind* (desks, tables, counters),
-// so a tabletop hides a lower body exactly as it would in the room.
+// Draw order is a single painter's pass over world Y: every prop and every
+// agent goes into one list sorted from the back of the building to the front.
+// That is what puts a glass partition in front of the people behind it and a
+// canteen table in front of the diner facing it, with no per-zone special
+// casing. Seating sorts one unit ahead of whoever is on it, so the chair back
+// lands behind them and the pad under them.
 
 export interface OfficeFloorProps {
   scene: OfficeScene;
@@ -82,152 +89,119 @@ export interface OfficeFloorProps {
 
 type furn = Exclude<OfficeZoneId, "absent">;
 
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+}
+
 /**
- * The floor plan. Two bands of rooms filling the canvas exactly: the working
- * half on top (deeper, because the desk room carries two ranks), the social
- * half below. Widths are set by how many seats each room has to space out
- * without its occupants' name labels running together.
+ * The floor plate. The working half takes the north wall where the light and
+ * the big board are; the social half fills the south. Each rectangle is the
+ * zone's carpet field, sized to contain its occupants' heads — a sprite draws
+ * upwards from its floor point, so a zone needs headroom north of its front
+ * row, not just the furniture's own footprint.
  */
-const ROOMS: Record<furn, RoomRect> = {
-  desk: { x: 0, y: 0, w: 470, h: 226, depth: 52 },
-  tea: { x: 470, y: 0, w: 200, h: 226, depth: 52 },
-  lounge: { x: 670, y: 0, w: 230, h: 226, depth: 52 },
-  meeting: { x: 0, y: 226, w: 330, h: 194, depth: 40 },
-  canteen: { x: 330, y: 226, w: 330, h: 194, depth: 40 },
-  waiting: { x: 660, y: 226, w: 240, h: 194, depth: 40 },
+const ZONES: Record<furn, Rect> = {
+  desk: { x: 40, y: 160, w: 468, d: 230 },
+  meeting: { x: 556, y: 124, w: 384, d: 216 },
+  tea: { x: 40, y: 418, w: 258, d: 98 },
+  lounge: { x: 326, y: 414, w: 272, d: 174 },
+  canteen: { x: 622, y: 372, w: 292, d: 226 },
+  waiting: { x: 40, y: 562, w: 258, d: 84 },
 };
 
-const ROOM_ORDER = ["desk", "tea", "lounge", "meeting", "canteen", "waiting"] as const;
+const ZONE_ORDER = ["desk", "meeting", "tea", "lounge", "canteen", "waiting"] as const;
 
-const BOX = Object.fromEntries(
-  (Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => [zone, roomBox(rect)]),
-) as Record<furn, RoomBox>;
+/**
+ * Where each zone's caption is printed on the boards. Positions are explicit
+ * rather than derived from the rectangle: the aisle a zone can spare is on a
+ * different side for each one, and a caption that lands under a name label is
+ * exactly the "text covering the agents" problem this layer exists to avoid.
+ */
+const ZONE_TAG: Record<furn, { x: number; y: number }> = {
+  desk: { x: 44, y: 394 },
+  meeting: { x: 560, y: 346 },
+  tea: { x: 44, y: 519 },
+  lounge: { x: 330, y: 591 },
+  canteen: { x: 626, y: 601 },
+  waiting: { x: 44, y: 624 },
+};
 
 /** One place a sprite can be, and how much label room it has there. */
 interface Seat {
   x: number;
-  baseY: number;
-  scale: number;
-  /** Seat height, which sets where the body sits. */
-  seatH: number;
+  y: number;
   /** Width the name label may occupy before it runs into its neighbour. */
   slot: number;
-  /** 0 = against the wall, 1 = on the near floor line. Sets the draw order. */
-  rank: 0 | 1;
-  /** Desk-room seats print their name on the desk instead of above the head. */
+  /** Desk seats are named on the desktop instead of above the head. */
   plate?: boolean;
 }
 
-/**
- * Eight workstations in two ranks. The near four stand on the front floor
- * line at full size; the far four are pushed back to the wall and dropped to
- * 0.9, which is all the perspective this shallow a room needs to separate
- * them. Occupants sit 14 units behind their desk so the tabletop covers the
- * lower body.
- */
-const DESK_STATIONS = [
-  ...Array.from({ length: 4 }, (_, i) => ({
-    x: (i + 0.5) * (ROOMS.desk.w / 4),
-    seatY: BOX.desk.floorY - 14,
-    deskY: BOX.desk.floorY,
-    scale: 1,
-    rank: 1 as const,
-  })),
-  ...Array.from({ length: 4 }, (_, i) => ({
-    x: BOX.desk.xb0 + (i + 0.5) * ((BOX.desk.xb1 - BOX.desk.xb0) / 4),
-    seatY: BOX.desk.horizonY,
-    deskY: BOX.desk.horizonY + 8,
-    scale: 0.9,
-    rank: 0 as const,
-  })),
-];
+// --- Furniture layout ------------------------------------------------------
 
-const TEA_STOOLS = Array.from({ length: 3 }, (_, i) => ({
-  x: ROOMS.tea.x + (i + 0.5) * (ROOMS.tea.w / 3),
-  baseY: BOX.tea.floorY - 24,
-}));
-
-/** Three on the sofa, one in the armchair beside it. */
-const LOUNGE_SOFA_X = ROOMS.lounge.x + 88;
-const LOUNGE_SEATS = [
-  { x: LOUNGE_SOFA_X - 46, baseY: BOX.lounge.floorY - 12, seatH: SIT_ON.sofa },
-  { x: LOUNGE_SOFA_X, baseY: BOX.lounge.floorY - 12, seatH: SIT_ON.sofa },
-  { x: LOUNGE_SOFA_X + 46, baseY: BOX.lounge.floorY - 12, seatH: SIT_ON.sofa },
-  { x: ROOMS.lounge.x + 190, baseY: BOX.lounge.floorY - 6, seatH: SIT_ON.sofa },
-];
-
-const MEETING_CHAIRS = Array.from({ length: 6 }, (_, i) => ({
-  x: ROOMS.meeting.x + (i + 0.5) * (ROOMS.meeting.w / 6),
-  baseY: BOX.meeting.floorY - 16,
-}));
-
-/** Two round tables, three diners each, sitting on the far side. */
-const CANTEEN_TABLES = [ROOMS.canteen.x + 85, ROOMS.canteen.x + 245];
-const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((cx) =>
-  [-48, 0, 48].map((off) => ({ x: cx + off, baseY: BOX.canteen.floorY - 14 })),
+const DESK_W = 100;
+const DESK_D = 52;
+/** Two rows of four, each occupant seated on the north side of their desk. */
+const DESKS = [222, 332].flatMap((rowY) =>
+  Array.from({ length: 4 }, (_, i) => ({ x: 50 + i * 118, y: rowY })),
 );
 
-/** The bench spans its four seats exactly — nobody may perch off the end. */
-const WAITING_BENCH = { x0: ROOMS.waiting.x + 24, x1: ROOMS.waiting.x + ROOMS.waiting.w - 56 };
+const MEETING_TABLE: Rect = { x: 600, y: 198, w: 300, d: 68 };
+const MEETING_SEATS = [176, 288].flatMap((y) => [660, 750, 840].map((x) => ({ x, y })));
+
+const TEA_COUNTER: Rect = { x: 50, y: 422, w: 230, d: 34 };
+const TEA_SEATS = [92, 165, 238].map((x) => ({ x, y: 488 }));
+
+const LOUNGE_SOFA: Rect = { x: 348, y: 424, w: 168, d: 58 };
+const LOUNGE_ARMCHAIR: Rect = { x: 530, y: 428, w: 56, d: 56 };
+const LOUNGE_TABLE: Rect = { x: 390, y: 508, w: 100, d: 48 };
+const LOUNGE_SEATS = [390, 432, 474].map((x) => ({ x, y: 458 })).concat({ x: 558, y: 458 });
+
+const CANTEEN_TABLES = [700, 838].map((cx) => ({ cx, cy: 470, r: 46 }));
+const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((tb) => [
+  { x: tb.cx, y: 408 },
+  { x: tb.cx - 48, y: 522 },
+  { x: tb.cx + 48, y: 522 },
+]);
+
+const WAITING_BENCH: Rect = { x: 56, y: 584, w: 226, d: 30 };
 const WAITING_SEATS = Array.from({ length: 4 }, (_, i) => ({
-  x: WAITING_BENCH.x0 + (i + 0.5) * ((WAITING_BENCH.x1 - WAITING_BENCH.x0) / 4),
-  baseY: BOX.waiting.floorY - 4,
+  x: WAITING_BENCH.x + (i + 0.5) * (WAITING_BENCH.w / 4),
+  y: 600,
 }));
 
 const SEATS: Record<furn, Seat[]> = {
-  desk: DESK_STATIONS.map((d) => ({
-    x: d.x,
-    baseY: d.seatY,
-    scale: d.scale,
-    rank: d.rank,
-    seatH: SIT_ON.chair,
-    slot: NAMEPLATE_W - 4,
-    plate: true,
-  })),
-  tea: TEA_STOOLS.map((s) => ({ ...s, scale: 1, rank: 1 as const, seatH: SIT_ON.stool, slot: 58 })),
-  lounge: LOUNGE_SEATS.map((s) => ({ ...s, scale: 1, rank: 1 as const, slot: 44 })),
-  meeting: MEETING_CHAIRS.map((s) => ({ ...s, scale: 1, rank: 1 as const, seatH: SIT_ON.chair, slot: 50 })),
-  canteen: CANTEEN_SEATS.map((s) => ({ ...s, scale: 1, rank: 1 as const, seatH: SIT_ON.chair, slot: 44 })),
-  waiting: WAITING_SEATS.map((s) => ({ ...s, scale: 1, rank: 1 as const, seatH: SIT_ON.bench, slot: 38 })),
+  desk: DESKS.map((d) => ({ x: d.x + DESK_W / 2, y: d.y - 22, slot: DESK_W - 12, plate: true })),
+  meeting: MEETING_SEATS.map((s) => ({ ...s, slot: 84 })),
+  tea: TEA_SEATS.map((s) => ({ ...s, slot: 68 })),
+  lounge: LOUNGE_SEATS.map((s) => ({ ...s, slot: 40 })),
+  canteen: CANTEEN_SEATS.map((s) => ({ ...s, slot: 62 })),
+  waiting: WAITING_SEATS.map((s) => ({ ...s, slot: 52 })),
 };
 
 /**
- * Where overflow stands: on the near floor line, in front of the furniture,
- * offset a quarter slot from the seats behind so a stander never lines up
- * with a seated head. Four lanes is enough — past that a room is so full that
- * the rail is the better place to read it.
+ * Where overflow stands: in the aisle along the zone's south edge, in front of
+ * the furniture rather than inside it. Four lanes is as many as a zone can
+ * show; past that the floor is so full that the rail reads better anyway.
  */
 function standSpot(zone: furn, n: number): Seat {
-  const rect = ROOMS[zone];
+  const z = ZONES[zone];
   return {
-    x: rect.x + ((n % 4) + 0.22) * (rect.w / 4),
-    baseY: BOX[zone].floorY,
-    scale: 1,
-    rank: 1,
-    seatH: SIT_ON.chair,
-    slot: rect.w / 4 - 8,
+    x: z.x + ((n % 4) + 0.5) * (z.w / 4),
+    y: z.y + z.d - 2,
+    slot: z.w / 4 - 12,
   };
 }
 
 const WALK_ROUTES: Record<"lounge" | "tea" | "canteen", WalkRoute> = {
-  tea: { x0: ROOMS.tea.x + 26, x1: ROOMS.tea.x + ROOMS.tea.w - 26, baseY: BOX.tea.floorY - 4, speed: 15, offset: 0 },
-  lounge: {
-    x0: ROOMS.lounge.x + 26,
-    x1: ROOMS.lounge.x + ROOMS.lounge.w - 26,
-    baseY: BOX.lounge.floorY - 4,
-    speed: 17,
-    offset: 3,
-  },
-  canteen: {
-    x0: ROOMS.canteen.x + 26,
-    x1: ROOMS.canteen.x + ROOMS.canteen.w - 26,
-    baseY: BOX.canteen.floorY - 2,
-    speed: 19,
-    offset: 6,
-  },
+  tea: { x0: 62, x1: 276, y: 508, speed: 16, offset: 0 },
+  lounge: { x0: 340, x1: 584, y: 574, speed: 18, offset: 3 },
+  canteen: { x0: 636, x1: 900, y: 582, speed: 20, offset: 6 },
 };
 
-/** How many monologues a room floats at once. */
+/** How many monologues a zone floats at once. */
 const BUBBLE_CAP: Record<furn, number> = {
   desk: 3,
   meeting: 2,
@@ -239,22 +213,35 @@ const BUBBLE_CAP: Record<furn, number> = {
 
 /** Tallest bubble the layout can produce, plus its border. */
 const BUBBLE_MAX_H = 34;
+/** Height of a zone caption pill. */
+const TAG_H = 17;
+
+/** The office's big board, and the meeting room's own display. */
+const BOARD = { x: 88, base: 18, w: 384, h: 96 } as const;
+const MEETING_BOARD = { x: 636, base: 60, w: 214, h: 52 } as const;
 
 /**
  * The agent's own avatar, as an absolute URL. Resolving is skipped entirely
  * when there is nothing to resolve, so an office of avatar-less agents never
- * touches the API client for a base URL it does not need.
+ * asks the API client for a base URL it does not need.
  */
 function avatarOf(agent: Agent | undefined): string | null {
   return agent?.avatar_url ? resolvePublicFileUrl(agent.avatar_url) : null;
 }
 
-/** A pose resolved to a seat. */
+/** A pose resolved to a place on the floor. */
 interface Placement {
   pose: AgentPose;
   seat: Seat;
-  /** Height of this sprite's tallest ink above its floor point. */
-  clearance: number;
+  /** Index into the zone's seat list, or -1 for someone left standing. */
+  seatIndex: number;
+}
+
+/** One thing on the floor, and the world Y that decides when it is painted. */
+interface Drawn {
+  key: string;
+  y: number;
+  node: React.ReactNode;
 }
 
 export const OfficeFloor = memo(function OfficeFloor({
@@ -269,8 +256,7 @@ export const OfficeFloor = memo(function OfficeFloor({
 
   const poses = useMemo(() => assignPoses(floor, phase), [floor, phase]);
 
-  // Zone counts power both the wall boards and the per-room empty hints.
-  const zoneCounts = useMemo(
+  const zoneCounts = useMemo<Record<furn, number>>(
     () => ({
       desk: floor.desks.length,
       meeting: floor.meetings.reduce((n, m) => n + m.attendeeAgentIds.length, 0),
@@ -294,11 +280,17 @@ export const OfficeFloor = memo(function OfficeFloor({
     return out;
   }, [floor.zoneByAgent]);
 
+  /** How much is running at each desk, for the monitor's busy light. */
+  const deskRunning = useMemo(
+    () => new Map(floor.desks.map((d) => [d.agentId, d.runningCount])),
+    [floor.desks],
+  );
+
   // ---- Seat assignment ----------------------------------------------------
   // Walked exactly once and shared by the sprites and the bubbles. Two
-  // independent walks would hand the same zone's seats out in different
-  // orders as soon as one of them skipped a pose, parking a bubble over
-  // somebody else's head.
+  // independent walks would hand the same zone's seats out in different orders
+  // as soon as one of them skipped a pose, parking a bubble over somebody
+  // else's head.
   const placements = useMemo(() => {
     const nextSeat: Record<furn, number> = {
       desk: 0,
@@ -319,24 +311,21 @@ export const OfficeFloor = memo(function OfficeFloor({
         continue;
       }
       if (pose.posture === "standing") {
-        const seat = standSpot(zone, nextStand[zone]);
+        seated.push({ pose, seat: standSpot(zone, nextStand[zone]), seatIndex: -1 });
         nextStand[zone] += 1;
-        seated.push({ pose, seat, clearance: STAND_TOP + NAME_LIFT });
         continue;
       }
-      const seat = SEATS[zone][nextSeat[zone] % SEATS[zone].length];
+      const list = SEATS[zone];
+      const index = nextSeat[zone] % list.length;
       nextSeat[zone] += 1;
+      const seat = list[index];
       if (!seat) continue;
-      seated.push({
-        pose,
-        seat,
-        clearance: seat.scale * sitTop(seat.seatH) + (seat.plate ? 0 : NAME_LIFT),
-      });
+      seated.push({ pose, seat, seatIndex: index });
     }
     return { seated, walking };
   }, [poses, agentById, colorsById]);
 
-  /** Which agents are currently thinking out loud, capped per room. */
+  /** Which agents are currently thinking out loud, capped per zone. */
   const speaking = useMemo(() => {
     const byZone = new Map<furn, string[]>();
     for (const { pose } of placements.seated) {
@@ -344,8 +333,8 @@ export const OfficeFloor = memo(function OfficeFloor({
       list.push(pose.agentId);
       byZone.set(pose.zone as furn, list);
     }
-    // Rotating the window with the phase keeps every agent's inner voice on
-    // the board eventually, without stacking eight bubbles at once.
+    // Rotating the window with the phase gets every agent's inner voice onto
+    // the floor eventually, without floating eight bubbles at once.
     const out = new Set<string>();
     for (const [zone, ids] of byZone) {
       const cap = Math.min(BUBBLE_CAP[zone], ids.length);
@@ -357,31 +346,24 @@ export const OfficeFloor = memo(function OfficeFloor({
 
   /** Everything the sprite layer needs, resolved once per agent. */
   const sprites = useMemo(() => {
-    return placements.seated.map(({ pose, seat, clearance }) => {
+    return placements.seated.map(({ pose, seat, seatIndex }) => {
       const agent = agentById.get(pose.agentId);
       const name = agent?.name ?? "";
+      const standing = seatIndex < 0;
+      const labelled = standing || seat.plate !== true;
       return {
         pose,
         seat,
-        clearance,
+        seatIndex,
+        standing,
+        headZ: standing ? HEAD_Z : SIT_HEAD_Z,
         name,
-        label: seat.plate ? null : fitText(name, seat.slot, NAME_FONT),
+        label: labelled ? fitText(name, seat.slot, NAME_FONT) : null,
         avatarUrl: avatarOf(agent),
         colors: colorsById.get(pose.agentId) as SpriteColors,
       };
     });
   }, [placements.seated, agentById, colorsById]);
-
-  const spritesByZone = useMemo(() => {
-    const out = new Map<furn, typeof sprites>();
-    for (const s of sprites) {
-      const zone = s.pose.zone as furn;
-      const list = out.get(zone) ?? [];
-      list.push(s);
-      out.set(zone, list);
-    }
-    return out;
-  }, [sprites]);
 
   const walkers = useMemo(() => {
     return placements.walking.map((pose) => {
@@ -390,17 +372,29 @@ export const OfficeFloor = memo(function OfficeFloor({
       const base = WALK_ROUTES[zone];
       return {
         pose,
-        zone,
         name: agent?.name ?? "",
-        label: fitText(agent?.name ?? "", 54, NAME_FONT),
+        label: fitText(agent?.name ?? "", 62, NAME_FONT),
         avatarUrl: avatarOf(agent),
         colors: colorsById.get(pose.agentId) as SpriteColors,
-        route: base ? { ...base, offset: base.offset + (hashString(pose.agentId) % 13) } : null,
+        route: { ...base, offset: base.offset + (hashString(pose.agentId) % 13) },
       };
     });
   }, [placements.walking, agentById, colorsById]);
 
-  /** The line on the open-plan wall board: the office's live load. */
+  /** Desk slot → who took it, so the desktop can carry their nameplate. */
+  const deskNames = useMemo(() => {
+    const out = new Map<number, { name: string; busy: boolean }>();
+    for (const s of sprites) {
+      if (s.pose.zone !== "desk" || s.seatIndex < 0) continue;
+      out.set(s.seatIndex, {
+        name: s.name,
+        busy: (deskRunning.get(s.pose.agentId) ?? 0) > 0,
+      });
+    }
+    return out;
+  }, [sprites, deskRunning]);
+
+  /** The floor's live load, shown on the big board beside the leaderboard. */
   const runningLine = useMemo(() => {
     if (floor.desks.length === 0) return null;
     let running = 0;
@@ -412,25 +406,142 @@ export const OfficeFloor = memo(function OfficeFloor({
     return `${t("figure.running")} ${running}/${cap}`;
   }, [floor.desks, t]);
 
-  /** The meeting room's screen shows whose room it currently is. */
-  const meetingBoard = useMemo(() => {
+  /**
+   * Zone captions, measured once. The bubble layer needs their boxes as well
+   * as the renderer does — a monologue lifted over a caption printed on the
+   * floor covers the caption, and both are text.
+   */
+  const zoneTags = useMemo(() => {
+    return ZONE_ORDER.map((zone) => {
+      const name = t(`zones.${zone}.name`);
+      const count = zoneCounts[zone];
+      const hint =
+        zone === "waiting"
+          ? t("zones.waiting.hint")
+          : count === 0
+            ? t(`zones.${zone}.empty`)
+            : null;
+      const nameW = estimateTextWidth(name, 10);
+      const countW = count > 0 ? estimateTextWidth(String(count), 8.5) + 12 : 0;
+      const hintW = hint ? estimateTextWidth(hint, 8) + 6 : 0;
+      const { x, y } = ZONE_TAG[zone];
+      return { zone, name, hint, count, nameW, countW, x, y, w: 12 + nameW + countW + hintW + 10 };
+    });
+  }, [t, zoneCounts]);
+
+  const meetingLine = useMemo(() => {
     const squad = floor.meetings[0];
-    if (!squad) return null;
-    return fitText(squad.squadName, (BOX.meeting.xb1 - BOX.meeting.xb0) * 0.5, 9);
+    return squad ? fitText(squad.squadName, MEETING_BOARD.w - 28, 12) : null;
   }, [floor.meetings]);
 
-  // Bubbles anchor to stationary seats only (a moving speaker would drag a
-  // box across the room). Every seated sprite is handed to the layout, not
-  // just the speaking ones, so a bubble can dodge a silent neighbour's head,
-  // and each carries the headroom its own room has before the ceiling.
+  // ---- The painter's list -------------------------------------------------
+  const drawn = useMemo(() => {
+    const list: Drawn[] = [];
+    const add = (key: string, y: number, node: React.ReactNode) => list.push({ key, y, node });
+
+    // Desks. The chair sorts one unit ahead of its occupant so the back lands
+    // behind them; the desktop sorts on its own front edge, in front of them.
+    SEATS.desk.forEach((seat, i) => {
+      const desk = DESKS[i];
+      if (!desk) return;
+      const taken = deskNames.get(i);
+      add(`chair-desk-${i}`, seat.y - 1, <TaskChair x={seat.x} y={seat.y} />);
+      add(
+        `desk-${i}`,
+        desk.y + DESK_D,
+        <Desk
+          x={desk.x}
+          y={desk.y}
+          w={DESK_W}
+          d={DESK_D}
+          busy={taken?.busy === true}
+          name={taken ? fitText(taken.name, DESK_W - 18, 7) : null}
+        />,
+      );
+    });
+
+    // Meeting room: glazed on the two sides that face the floor.
+    const mtg = ZONES.meeting;
+    add("glass-w", mtg.y + mtg.d, <GlassWall x={548} y={mtg.y} w={7} d={mtg.d} />);
+    // The south run stops short of the west partition: that gap is the door.
+    add("glass-s", mtg.y + mtg.d + 1, <GlassWall x={608} y={mtg.y + mtg.d} w={332} d={7} />);
+    MEETING_SEATS.forEach((s, i) => add(`chair-mtg-${i}`, s.y - 1, <WoodChair x={s.x} y={s.y} />));
+    add("mtg-table", MEETING_TABLE.y + MEETING_TABLE.d, <MeetingTable {...MEETING_TABLE} />);
+
+    // Tea corner.
+    add("tea-counter", TEA_COUNTER.y + TEA_COUNTER.d, <TeaCounter {...TEA_COUNTER} />);
+    TEA_SEATS.forEach((s, i) => add(`stool-${i}`, s.y - 1, <Stool x={s.x} y={s.y} />));
+
+    // Lounge.
+    add("sofa", LOUNGE_SOFA.y - 5, <Sofa {...LOUNGE_SOFA} />);
+    add("armchair", LOUNGE_ARMCHAIR.y - 5, <Armchair {...LOUNGE_ARMCHAIR} />);
+    add("coffee", LOUNGE_TABLE.y + LOUNGE_TABLE.d, <CoffeeTable {...LOUNGE_TABLE} />);
+
+    // Canteen.
+    CANTEEN_SEATS.forEach((s, i) => add(`chair-cant-${i}`, s.y - 1, <WoodChair x={s.x} y={s.y} />));
+    CANTEEN_TABLES.forEach((tb, i) =>
+      add(`round-${i}`, tb.cy + tb.r, <RoundTable cx={tb.cx} cy={tb.cy} r={tb.r} />),
+    );
+
+    // Waiting strip, and the greenery marking the corners of the plate.
+    add("bench", WAITING_BENCH.y - 6, <Bench {...WAITING_BENCH} />);
+    add("plant-nw", 178, <Plant x={524} y={176} scale={0.95} />);
+    add("plant-lounge", 428, <Plant x={340} y={426} scale={0.9} />);
+    add("plant-wait", 574, <Plant x={296} y={572} scale={0.85} />);
+    add("plant-se", 620, <Plant x={922} y={618} scale={0.9} />);
+
+    for (const s of sprites) {
+      add(
+        `p-${s.pose.agentId}`,
+        s.seat.y,
+        <Person
+          agentId={s.pose.agentId}
+          name={s.name}
+          label={s.label}
+          x={s.seat.x}
+          y={s.seat.y}
+          posture={s.standing ? "standing" : "sitting"}
+          colors={s.colors}
+          avatarUrl={s.avatarUrl}
+          onClick={onAgentClick ? () => onAgentClick(s.pose.agentId) : undefined}
+        />,
+      );
+    }
+
+    for (const w of walkers) {
+      add(
+        `w-${w.pose.agentId}`,
+        w.route.y,
+        <Walker
+          agentId={w.pose.agentId}
+          name={w.name}
+          label={w.label}
+          colors={w.colors}
+          avatarUrl={w.avatarUrl}
+          route={w.route}
+          onClick={onAgentClick ? () => onAgentClick(w.pose.agentId) : undefined}
+        />,
+      );
+    }
+
+    // Stable sort: equal depths keep insertion order, which is furniture
+    // before the people who belong to it.
+    return list
+      .map((item, i) => ({ item, i }))
+      .sort((a, b) => a.item.y - b.item.y || a.i - b.i)
+      .map(({ item }) => item);
+  }, [sprites, walkers, deskNames, onAgentClick]);
+
+  // ---- Bubbles ------------------------------------------------------------
   const bubbles = useMemo(() => {
-    // Monologue variants are picked by hashing the agent id, so two neighbours
-    // in the same mood land on the same line often enough to notice. One of
-    // them stays quiet rather than echoing their colleague word for word.
+    // Monologue variants are picked by hashing the agent id into a handful of
+    // lines, so two neighbours in the same mood land on the same one often
+    // enough to notice. One of them stays quiet rather than echoing their
+    // colleague word for word.
     const said = new Map<furn, Set<string>>();
-    const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, clearance, label }) => {
+    const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, headZ, label }) => {
       const zone = pose.zone as furn;
-      const preferred = seat.baseY - clearance - 6;
+      const clearance = headClearance(headZ, label !== null && label !== "");
       let text = speaking.has(pose.agentId) ? bubbleFor(pose.agentId) : null;
       if (text) {
         const heard = said.get(zone) ?? new Set<string>();
@@ -440,18 +551,25 @@ export const OfficeFloor = memo(function OfficeFloor({
       }
       return {
         agentId: pose.agentId,
-        sx: seat.x,
-        sy: seat.baseY,
+        sx: px(seat.x, headZ),
+        sy: seat.y,
         clearance,
-        labelWidth: Math.max(26 * seat.scale, label ? estimateTextWidth(label, NAME_FONT) : 0),
+        labelWidth: Math.max(28, label ? estimateTextWidth(label, NAME_FONT) : 0),
         text,
-        // A room is a closed box: a bubble that cannot fit under this
-        // ceiling is dropped rather than allowed to climb into the room above.
-        maxLift: Math.max(0, preferred - BUBBLE_MAX_H - (BOX[zone].backTop + 4)),
+        // Nothing may climb into the wall: above the skirting a bubble covers
+        // the big board, which is the one thing on this floor that has to
+        // stay readable.
+        maxLift: Math.max(0, seat.y - clearance - 6 - BUBBLE_MAX_H - FLOOR.y0),
       };
     });
-    return layoutBubbles(anchors, [], { left: 6, right: SCENE_W - 6 });
-  }, [sprites, speaking, bubbleFor]);
+    const reserved = zoneTags.map((g) => ({
+      left: g.x - 2,
+      top: g.y - 2,
+      right: g.x + g.w + 2,
+      bottom: g.y + TAG_H + 2,
+    }));
+    return layoutBubbles(anchors, reserved, { left: 6, right: SCENE_W - 6 });
+  }, [sprites, speaking, bubbleFor, zoneTags]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -461,37 +579,51 @@ export const OfficeFloor = memo(function OfficeFloor({
         role="img"
         aria-label={t("title")}
       >
-        <SceneFrame />
+        <SceneDefs />
+        <clipPath id="office-frame">
+          <rect x={0} y={0} width={SCENE_W} height={SCENE_H} rx={10} />
+        </clipPath>
         <g clipPath="url(#office-frame)">
-          {ROOM_ORDER.map((zone) => (
-            <Fragment key={zone}>
-              <RoomShell
-                box={BOX[zone]}
-                zone={zone}
-                board={zone === "desk" ? runningLine : zone === "meeting" ? meetingBoard : null}
-              />
-              <RoomContents
-                zone={zone}
-                box={BOX[zone]}
-                floorDesks={floor.desks}
-                agentById={agentById}
-                sprites={spritesByZone.get(zone) ?? []}
-                walkers={walkers.filter((w) => w.zone === zone)}
-                onAgentClick={onAgentClick}
-              />
-              <Caption
-                box={BOX[zone]}
-                name={t(`zones.${zone}.name`)}
-                hint={
-                  zone === "waiting"
-                    ? t("zones.waiting.hint")
-                    : zoneCounts[zone] === 0
-                      ? t(`zones.${zone}.empty`)
-                      : null
-                }
-                count={zoneCounts[zone]}
-              />
-            </Fragment>
+          <rect x={0} y={0} width={SCENE_W} height={SCENE_H} fill="#20242b" />
+          <FloorSlab />
+          {ZONE_ORDER.map((zone) => (
+            <Rug
+              key={zone}
+              x={ZONES[zone].x}
+              y={ZONES[zone].y}
+              w={ZONES[zone].w}
+              d={ZONES[zone].d}
+              fill={ZONE_FLOOR[zone] as string}
+            />
+          ))}
+          <FloorEdges />
+          <NorthWall slatFrom={540} slatTo={FLOOR.x1} />
+          <WallScreen {...BOARD}>
+            <TokenBoard
+              rows={scene.tokenBoard}
+              agentById={agentById}
+              t={t}
+              running={runningLine}
+              w={BOARD.w}
+              h={BOARD.h}
+            />
+          </WallScreen>
+          <WallScreen {...MEETING_BOARD}>
+            <text x={14} y={-MEETING_BOARD.h + 18} fontSize={9} fontWeight={600} fill="#7f9dc4">
+              {t("zones.meeting.name")}
+            </text>
+            <text x={14} y={-MEETING_BOARD.h + 36} fontSize={12} fontWeight={700} fill="#dce9ff">
+              {meetingLine ?? t("zones.meeting.empty")}
+            </text>
+          </WallScreen>
+          <Pendant x={168} y={462} r={62} />
+          <Pendant x={432} y={476} r={70} />
+          <Pendant x={770} y={470} r={80} />
+          {drawn.map((d) => (
+            <g key={d.key}>{d.node}</g>
+          ))}
+          {zoneTags.map((g) => (
+            <ZoneTag key={g.zone} {...g} />
           ))}
           {bubbles.map((b) => (
             <foreignObject
@@ -541,7 +673,7 @@ export const OfficeFloor = memo(function OfficeFloor({
         />
       </svg>
 
-      {/* Out-of-office strip */}
+      {/* Out of office: nobody to draw on the floor, so they get a strip. */}
       <div className="flex flex-wrap gap-2">
         {floor.absent.map((a) => {
           const agent = agentById.get(a.agentId);
@@ -572,247 +704,138 @@ export const OfficeFloor = memo(function OfficeFloor({
   );
 });
 
-/** Scene-wide defs plus the rounded frame everything is clipped to. */
-function SceneFrame() {
-  return (
-    <>
-      <SceneDefs />
-      <clipPath id="office-frame">
-        <rect x={0} y={0} width={SCENE_W} height={SCENE_H} rx={10} />
-      </clipPath>
-    </>
-  );
-}
-
 /**
- * The room caption, printed on the structural slab under the floor. It is
- * below every sprite and every bubble in the scene, so unlike a caption laid
- * over the room it can never cover the people it names.
+ * The office's big board, mounted on the north wall above the desk bank: who
+ * is burning tokens, and how much of the floor's capacity is running right
+ * now. It belongs in the scene rather than in a side panel because a
+ * leaderboard is a thing on a wall that the whole room can see.
  */
-function Caption({
-  box,
-  name,
-  hint,
-  count,
+function TokenBoard({
+  rows,
+  agentById,
+  t,
+  running,
+  w,
+  h,
 }: {
-  box: RoomBox;
-  name: string;
-  hint: string | null;
-  count: number;
+  rows: readonly OfficeTokenRow[];
+  agentById: ReadonlyMap<string, Agent>;
+  t: OfficeTranslate;
+  running: string | null;
+  w: number;
+  h: number;
 }) {
-  const y = (box.floorY + box.y1) / 2 + 3.6;
+  const shown = rows.slice(0, 5);
+  const max = shown.length > 0 ? Math.max(...shown.map((r) => r.totalTokens)) : 1;
+  const title = t("tokens.title");
+  const barX = 168;
+  const barW = 112;
   return (
-    <g pointerEvents="none">
-      <text x={box.x0 + 12} y={y} fontSize={10} fontWeight={700} fill="#f2e7d8">
-        {name}
+    <g>
+      <text x={14} y={-h + 20} fontSize={12} fontWeight={700} fill="#dce9ff">
+        {title}
       </text>
-      {hint ? (
-        <text
-          x={box.x0 + 16 + estimateTextWidth(name, 10)}
-          y={y}
-          fontSize={8}
-          fill="#f2e7d8"
-          opacity={0.62}
-        >
-          {hint}
+      <text x={20 + estimateTextWidth(title, 12)} y={-h + 20} fontSize={8} fill="#6f8db4">
+        {t("tokens.window")}
+      </text>
+      {running ? (
+        <text x={w - 14} y={-h + 20} textAnchor="end" fontSize={10} fontWeight={600} fill="#8fd6a8">
+          {running}
         </text>
       ) : null}
-      {count > 0 ? (
-        <text x={box.x1 - 12} y={y} textAnchor="end" fontSize={9} fontWeight={600} fill="#f2e7d8" opacity={0.8}>
-          {count}
+      <line x1={14} y1={-h + 28} x2={w - 14} y2={-h + 28} stroke="#3d5a86" strokeWidth={1} />
+      {shown.length === 0 ? (
+        <text x={14} y={-h + 48} fontSize={9.5} fill="#6f8db4">
+          {t("tokens.empty")}
         </text>
-      ) : null}
+      ) : (
+        shown.map((row, i) => {
+          const y = -h + 45 + i * 13;
+          const agent = agentById.get(row.agentId);
+          const pct = Math.max(0.06, row.totalTokens / max);
+          return (
+            <g key={row.agentId}>
+              <text x={14} y={y} fontSize={8} fill="#6f8db4">
+                {i + 1}
+              </text>
+              <text x={26} y={y} fontSize={9.5} fontWeight={600} fill="#dce9ff">
+                {fitText(agent?.name ?? row.agentId.slice(0, 8), barX - 36, 9.5)}
+              </text>
+              <rect x={barX} y={y - 6.4} width={barW} height={6} rx={3} fill="#26385a" />
+              <rect x={barX} y={y - 6.4} width={barW * pct} height={6} rx={3} fill="#5f9bea" />
+              <text x={barX + barW + 10} y={y} fontSize={8} fill="#6f8db4">
+                {t("tokens.tasks", { count: row.taskCount })}
+              </text>
+              <text
+                x={w - 14}
+                y={y}
+                textAnchor="end"
+                fontSize={9}
+                fill="#a9c4e6"
+                fontFamily="ui-monospace, monospace"
+              >
+                {formatTokenCount(row.totalTokens)}
+              </text>
+            </g>
+          );
+        })
+      )}
     </g>
   );
 }
 
-type Sprite = {
-  pose: AgentPose;
-  seat: Seat;
-  name: string;
-  label: string | null;
-  avatarUrl: string | null;
-  colors: SpriteColors;
-};
-
-type WalkerSprite = {
-  pose: AgentPose;
-  name: string;
-  label: string;
-  avatarUrl: string | null;
-  colors: SpriteColors;
-  route: WalkRoute | null;
-};
-
 /**
- * One room's contents. Seating goes down first, then the people on it, then
- * the surfaces they sit behind — that order is what makes a tabletop cover a
- * lower body instead of floating over a face.
+ * A zone's name, printed flat on the boards in the aisle beside it. The floor
+ * plane is undistorted in this projection, so floor text is the one place a
+ * caption can sit and stay perfectly legible — and lying on the floor it can
+ * never cover the people standing on it.
  */
-function RoomContents({
-  zone,
-  box,
-  floorDesks,
-  agentById,
-  sprites,
-  walkers,
-  onAgentClick,
+function ZoneTag({
+  x,
+  y,
+  w,
+  name,
+  nameW,
+  countW,
+  hint,
+  count,
 }: {
-  zone: furn;
-  box: RoomBox;
-  floorDesks: OfficeScene["floor"]["desks"];
-  agentById: ReadonlyMap<string, Agent>;
-  sprites: Sprite[];
-  walkers: WalkerSprite[];
-  onAgentClick?: (agentId: string) => void;
+  x: number;
+  y: number;
+  w: number;
+  name: string;
+  nameW: number;
+  countW: number;
+  hint: string | null;
+  count: number;
 }) {
-  const person = (s: Sprite) => (
-    <Person
-      key={s.pose.agentId}
-      agentId={s.pose.agentId}
-      name={s.name}
-      label={s.label}
-      x={s.seat.x}
-      baseY={s.seat.baseY}
-      scale={s.seat.scale}
-      posture={s.pose.posture === "standing" ? "standing" : "sitting"}
-      seatH={s.seat.seatH}
-      colors={s.colors}
-      avatarUrl={s.avatarUrl}
-      onClick={onAgentClick ? () => onAgentClick(s.pose.agentId) : undefined}
-    />
-  );
-  // Anyone who overflowed their room's seating stands on the near floor line,
-  // in front of the furniture, so they draw after it.
-  const seatedPeople = sprites.filter((s) => s.pose.posture !== "standing");
-  const standing = sprites.filter((s) => s.pose.posture === "standing").map(person);
-  const people = seatedPeople.map(person);
-
-  const strollers = walkers.map((w) =>
-    w.route ? (
-      <Walker
-        key={`w-${w.pose.agentId}`}
-        agentId={w.pose.agentId}
-        name={w.name}
-        label={w.label}
-        colors={w.colors}
-        avatarUrl={w.avatarUrl}
-        route={w.route}
-        onClick={onAgentClick ? () => onAgentClick(w.pose.agentId) : undefined}
+  return (
+    <g pointerEvents="none">
+      <rect x={x} y={y} width={w} height={TAG_H} rx={TAG_H / 2} fill="#fbf7f0" opacity={0.92} />
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={TAG_H}
+        rx={TAG_H / 2}
+        fill="none"
+        stroke="#8b6740"
+        strokeOpacity={0.3}
+        strokeWidth={0.9}
       />
-    ) : null,
+      <text x={x + 11} y={y + 12} fontSize={10} fontWeight={700} fill="#3a2e22">
+        {name}
+      </text>
+      {count > 0 ? (
+        <text x={x + 11 + nameW + 6} y={y + 11.6} fontSize={8.5} fontWeight={600} fill="#8b6740">
+          {count}
+        </text>
+      ) : null}
+      {hint ? (
+        <text x={x + 11 + nameW + countW + 3} y={y + 11.6} fontSize={8} fill="#7a6a58">
+          {hint}
+        </text>
+      ) : null}
+    </g>
   );
-
-  switch (zone) {
-    // Two ranks, drawn strictly back to front: a far desk painted after a near
-    // agent would sit on their face.
-    case "desk": {
-      const station = (rank: 0 | 1) => (
-        <>
-          {DESK_STATIONS.map((d, i) =>
-            d.rank === rank ? (
-              <TaskChair key={`c${i}`} x={d.x} baseY={d.seatY + 3} scale={d.scale} />
-            ) : null,
-          )}
-          {seatedPeople.filter((s) => s.seat.rank === rank).map(person)}
-          {DESK_STATIONS.map((d, i) => {
-            if (d.rank !== rank) return null;
-            const occupant = floorDesks[i];
-            const name = occupant ? (agentById.get(occupant.agentId)?.name ?? "") : "";
-            return (
-              <Workstation
-                key={`d${i}`}
-                x={d.x}
-                baseY={d.deskY}
-                scale={d.scale}
-                busy={(occupant?.runningCount ?? 0) > 0}
-                name={name ? fitText(name, NAMEPLATE_W - 6, NAMEPLATE_FONT) : null}
-              />
-            );
-          })}
-        </>
-      );
-      return (
-        <g>
-          {station(0)}
-          {station(1)}
-          {standing}
-        </g>
-      );
-    }
-
-    case "meeting":
-      return (
-        <g>
-          <Rug box={box} from={0.14} to={0.86} near={0.94} far={0.1} fill="#8b6f52" />
-          {MEETING_CHAIRS.map((c, i) => (
-            <TaskChair key={i} x={c.x} baseY={c.baseY + 3} />
-          ))}
-          {people}
-          <MeetingTable
-            x={(box.x0 + box.x1) / 2}
-            baseY={box.floorY - 2}
-            w={(box.x1 - box.x0) * 0.82}
-          />
-          {standing}
-        </g>
-      );
-
-    case "tea":
-      return (
-        <g>
-          {TEA_STOOLS.map((s, i) => (
-            <Stool key={i} x={s.x} baseY={s.baseY} />
-          ))}
-          {people}
-          <TeaCounter x={(box.x0 + box.x1) / 2} baseY={box.floorY - 6} w={box.x1 - box.x0 - 30} />
-          {strollers}
-          {standing}
-        </g>
-      );
-
-    case "lounge":
-      return (
-        <g>
-          <Rug box={box} from={0.08} to={0.7} near={0.96} far={0.24} fill="#a8896a" />
-          <Plant x={box.x1 - 22} baseY={box.horizonY + 10} scale={0.86} />
-          <Sofa x={LOUNGE_SOFA_X} baseY={BOX.lounge.floorY - 12} w={132} />
-          <Armchair x={ROOMS.lounge.x + 190} baseY={BOX.lounge.floorY - 6} />
-          {people}
-          <CoffeeTable x={LOUNGE_SOFA_X - 6} baseY={box.floorY - 1} />
-          {strollers}
-          {standing}
-        </g>
-      );
-
-    case "canteen":
-      return (
-        <g>
-          {CANTEEN_SEATS.map((s, i) => (
-            <WoodChair key={i} x={s.x} baseY={s.baseY + 3} />
-          ))}
-          {people}
-          {CANTEEN_TABLES.map((cx) => (
-            <CanteenTable key={cx} x={cx} baseY={box.floorY - 2} />
-          ))}
-          {strollers}
-          {standing}
-        </g>
-      );
-
-    case "waiting":
-    default:
-      return (
-        <g>
-          <Plant x={box.x1 - 22} baseY={box.floorY - 2} scale={0.8} />
-          <Bench
-            x={(WAITING_BENCH.x0 + WAITING_BENCH.x1) / 2}
-            baseY={box.floorY - 4}
-            w={WAITING_BENCH.x1 - WAITING_BENCH.x0}
-          />
-          {people}
-          {standing}
-        </g>
-      );
-  }
 }

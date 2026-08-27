@@ -12,8 +12,13 @@
 // (dense rooms, long monologues, a bubble that cannot be lifted clear) can be
 // tested without mounting an SVG. Units are SVG user units of the floor scene.
 
-/** Font size of a sprite's name label, mirrored from office-room.tsx. */
+/** Font size of a sprite's name label, mirrored from office-view.tsx. */
 export const NAME_FONT = 8.5;
+
+/** 1234 → "1.2K", 5600000 → "5.6M" — compact enough for a bar label. */
+export function formatTokenCount(n: number): string {
+  return new Intl.NumberFormat(undefined, { notation: "compact" }).format(n);
+}
 
 /** Font size, line box and outer width of a bubble, mirrored from the JSX. */
 export const BUBBLE_FONT = 9;

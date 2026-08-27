@@ -1,8 +1,8 @@
-// Posture planning for the isometric floor. Zone assignment decides WHICH
-// room an agent is in; this module decides what they are DOING there —
-// sitting at a chair, standing behind the last row, or strolling across the
-// room. Grid coordinates stay in the views layer; only the decision matrix
-// lives here so the node suite can pin it down.
+// Posture planning for the office floor. Zone assignment decides WHICH part
+// of the floor an agent is in; this module decides what they are DOING there —
+// sitting on a chair, standing in the aisle when the seats run out, or
+// strolling across the zone. Floor coordinates stay in the views layer; only
+// the decision matrix lives here so the node suite can pin it down.
 import type { OfficeFloorPlan, OfficeZoneId } from "./types";
 
 export type OfficePosture = "sitting" | "standing" | "walking";
@@ -14,7 +14,7 @@ export interface AgentPose {
 }
 
 /**
- * Physical seats drawn on the isometric floor. Must match the seat tables
+ * Physical seats drawn on the office floor. Must match the seat tables
  * rendered by views/office — keep the numbers in sync with office-floor.tsx.
  */
 export const FLOOR_SEATS = {
