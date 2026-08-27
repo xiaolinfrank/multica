@@ -708,6 +708,70 @@ func TestSendSMTP_NoAuthWhenUsernameEmpty(t *testing.T) {
 	}
 }
 
+// --- suppressed recipient domains ---
+
+func TestIsSuppressedRecipient(t *testing.T) {
+	tests := []struct {
+		name  string
+		email string
+		want  bool
+	}{
+		{"fictional fixture domain", "demo@bayclaw.cn", true},
+		{"case-insensitive domain", "DEMO@BAYCLAW.CN", true},
+		{"runner account", "runner-bio@bayclaw.cn", true},
+		{"real domain passes", "someone@fosunpharma.com", false},
+		{"similar suffix passes", "demo@notbayclaw.cn", false},
+		{"subdomain passes", "demo@mail.bayclaw.cn", false},
+		{"no at sign", "demobayclaw.cn", false},
+		{"empty", "", false},
+		{"local part only", "demo@", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSuppressedRecipient(tt.email); got != tt.want {
+				t.Errorf("isSuppressedRecipient(%q) = %v, want %v", tt.email, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSendersSuppressUndeliverableDomain proves every public send method drops
+// mail to suppressed recipient domains before touching the relay. Each service
+// instance points at a closed loopback port, so a send that escaped suppression
+// would fail with a dial error and fail the test.
+func TestSendersSuppressUndeliverableDomain(t *testing.T) {
+	t.Setenv("FRONTEND_ORIGIN", "http://test.example")
+	senders := map[string]func(s *EmailService, to string) error{
+		"verification code": func(s *EmailService, to string) error {
+			return s.SendVerificationCode(to, "123456")
+		},
+		"welcome": func(s *EmailService, to string) error {
+			return s.SendWelcomeEmail(to, "123456", false)
+		},
+		"invitation": func(s *EmailService, to string) error {
+			return s.SendInvitationEmail(to, "Alice", "Acme", "inv-123")
+		},
+		"inbox item": func(s *EmailService, to string) error {
+			return s.SendInboxItemEmail(to, InboxEmailInput{WorkspaceName: "Acme", Title: "Hello"})
+		},
+		"inbox summary": func(s *EmailService, to string) error {
+			return s.SendInboxSummaryEmail(to, InboxSummaryEmailInput{RecipientName: "Bob"})
+		},
+	}
+	for name, send := range senders {
+		t.Run(name, func(t *testing.T) {
+			s := &EmailService{
+				fromEmail: "from@example.com",
+				smtpHost:  "127.0.0.1",
+				smtpPort:  "1",
+			}
+			if err := send(s, "demo@bayclaw.cn"); err != nil {
+				t.Fatalf("send to suppressed domain returned error (send was not suppressed): %v", err)
+			}
+		})
+	}
+}
+
 func TestSendSMTP_LoginAuthRejectsUnencryptedRemote(t *testing.T) {
 	// Simulate a remote server that advertises LOGIN but not STARTTLS.
 	// Since the connection is not TLS and not localhost, loginAuth.Start

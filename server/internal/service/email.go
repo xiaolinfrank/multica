@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"log/slog"
 	"mime"
 	"mime/quotedprintable"
 	"net"
@@ -36,6 +37,31 @@ var fosunLogoEmailFS embed.FS
 // inviter name) can land in an email Subject. Prevents attackers from stuffing
 // a full phishing pitch into a workspace name that gets sent from our domain.
 const maxSubjectFieldRunes = 60
+
+// suppressedRecipientDomains lists recipient domains that can never receive
+// mail. bayclaw.cn has no MX record and never did — it is a fictional domain
+// invented during AI-assisted development for test fixtures (demo@,
+// runner-bio@, …). Relays still accept such mail, then retry delivery for days
+// and flood the From inbox with delay notifications, so sends to these domains
+// are dropped silently. Remove the entry if the domain ever gets a real MX.
+var suppressedRecipientDomains = []string{"bayclaw.cn"}
+
+// isSuppressedRecipient reports whether email to this address must be dropped
+// because its domain cannot receive mail. Case-insensitive exact-domain match
+// only; subdomains are not suppressed.
+func isSuppressedRecipient(email string) bool {
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false
+	}
+	domain := strings.ToLower(email[at+1:])
+	for _, d := range suppressedRecipientDomains {
+		if domain == d {
+			return true
+		}
+	}
+	return false
+}
 
 type EmailService struct {
 	client          *resend.Client
@@ -446,6 +472,10 @@ func (s *EmailService) sendSMTP(to, subject, htmlBody string, opts ...sendOpt) e
 // (6-digit numeric) so no user-controlled text reaches the email body here.
 // Delivery priority: SMTP relay → Resend API → DEV stdout.
 func (s *EmailService) SendVerificationCode(to, code string) error {
+	if isSuppressedRecipient(to) {
+		slog.Info("email dropped: recipient domain cannot receive mail", "to", to)
+		return nil
+	}
 	body := fmt.Sprintf(
 		`<div style="font-family: sans-serif; max-width: 400px; margin: 0 auto;">
 			<h2>Your verification code</h2>
@@ -483,6 +513,10 @@ func (s *EmailService) SendVerificationCode(to, code string) error {
 // bottom of the email (centered, inside the footer band below the copyright
 // line). Delivery priority: SMTP relay → Resend → DEV.
 func (s *EmailService) SendWelcomeEmail(to, code string, permanent bool) error {
+	if isSuppressedRecipient(to) {
+		slog.Info("email dropped: recipient domain cannot receive mail", "to", to)
+		return nil
+	}
 	appURL := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
 	if appURL == "" {
 		appURL = "http://10.35.178.181:13000"
@@ -570,6 +604,10 @@ func (s *EmailService) SendWelcomeEmail(to, code string, permanent bool) error {
 // SendInvitationEmail notifies the invitee that they have been invited to a workspace.
 // invitationID is included in the URL so the email deep-links to /invite/{id}.
 func (s *EmailService) SendInvitationEmail(to, inviterName, workspaceName, invitationID string) error {
+	if isSuppressedRecipient(to) {
+		slog.Info("email dropped: recipient domain cannot receive mail", "to", to)
+		return nil
+	}
 	appURL := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
 	if appURL == "" {
 		appURL = "https://multica.ai"
@@ -721,6 +759,10 @@ func stripMentionLinks(s string) string {
 // Resend API → DEV stdout. Workspace/title/body/type are user-controlled, so
 // they are HTML-escaped and the subject is run through sanitizeSubjectField.
 func (s *EmailService) SendInboxItemEmail(to string, in InboxEmailInput) error {
+	if isSuppressedRecipient(to) {
+		slog.Info("email dropped: recipient domain cannot receive mail", "to", to)
+		return nil
+	}
 	appURL := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
 	if appURL == "" {
 		appURL = "http://10.35.178.181:13000"
@@ -1033,6 +1075,10 @@ func buildInboxSummaryEmail(in InboxSummaryEmailInput) (subject, htmlOut string,
 // senders. Delivery priority mirrors them: SMTP relay → Resend API → DEV
 // stdout. All user-controlled fields are escaped inside the builder.
 func (s *EmailService) SendInboxSummaryEmail(to string, in InboxSummaryEmailInput) error {
+	if isSuppressedRecipient(to) {
+		slog.Info("email dropped: recipient domain cannot receive mail", "to", to)
+		return nil
+	}
 	subject, htmlBody, err := buildInboxSummaryEmail(in)
 	if err != nil {
 		return err
