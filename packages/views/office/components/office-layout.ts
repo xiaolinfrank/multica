@@ -12,7 +12,7 @@
 // (dense rooms, long monologues, a bubble that cannot be lifted clear) can be
 // tested without mounting an SVG. Units are SVG user units of the floor scene.
 
-/** Font size of a sprite's name label, mirrored from office-iso.tsx. */
+/** Font size of a sprite's name label, mirrored from office-room.tsx. */
 export const NAME_FONT = 8.5;
 
 /** Font size, line box and outer width of a bubble, mirrored from the JSX. */
@@ -53,6 +53,28 @@ export function estimateTextWidth(text: string, fontSize: number): number {
 }
 
 /**
+ * Longest prefix of `text` that fits `maxWidth`, with an ellipsis when it had
+ * to cut. Seats in a crowded room are closer together than a full agent name
+ * is wide, so a name label is trimmed to its own slot rather than allowed to
+ * run into its neighbour's.
+ */
+export function fitText(text: string, maxWidth: number, fontSize: number): string {
+  if (estimateTextWidth(text, fontSize) <= maxWidth) return text;
+  const chars = [...text];
+  const ellipsis = estimateTextWidth("…", fontSize);
+  let width = 0;
+  let cut = 0;
+  while (cut < chars.length) {
+    const next = width + estimateTextWidth(chars[cut] as string, fontSize);
+    if (next + ellipsis > maxWidth) break;
+    width = next;
+    cut += 1;
+  }
+  // Below one character plus the ellipsis there is nothing worth showing.
+  return cut === 0 ? "" : `${chars.slice(0, cut).join("")}…`;
+}
+
+/**
  * Outer size of the rendered bubble. The component keeps a one-line bubble on
  * a single line and clamps a longer one to two, so these numbers are what the
  * browser actually paints rather than an approximation of it.
@@ -78,6 +100,13 @@ export interface SpriteAnchor {
   labelWidth: number;
   /** Monologue to float above this sprite, or null for none. */
   text: string | null;
+  /**
+   * How far this bubble may climb before it is dropped instead. Each room is a
+   * closed box, so a bubble that would rise through its own ceiling into the
+   * room above is worse than no bubble; the caller passes the headroom its
+   * room actually has. Defaults to {@link MAX_LIFT}.
+   */
+  maxLift?: number;
 }
 
 export interface BubbleBox {
@@ -110,12 +139,24 @@ function hits(box: Rect, others: readonly Rect[]): Rect | null {
  * monologues beats stacking eight into an unreadable column.
  *
  * `reserved` holds anything else in the scene a bubble must not cover, such as
- * the running-capacity badge.
+ * the running-capacity badge. `bounds` is the horizontal strip a bubble has to
+ * stay inside — without it the leftmost and rightmost sprites push their
+ * bubbles off the edge of the scene, where the frame clips them mid-sentence.
  */
 export function layoutBubbles(
   anchors: readonly SpriteAnchor[],
   reserved: readonly Rect[] = [],
+  bounds?: { left: number; right: number },
 ): BubbleBox[] {
+  // A bubble is centred on its sprite, and the sprites at the far ends of the
+  // scene sit closer to the edge than half a bubble is wide. Slide it back
+  // inside before anything is tested against it, so what collision avoidance
+  // sees is where the box will actually be painted.
+  const clampX = (left: number, width: number): number => {
+    if (!bounds) return left;
+    return Math.max(bounds.left, Math.min(left, bounds.right - width));
+  };
+
   // Every sprite blocks, whether or not it is speaking — the whole point is to
   // keep a bubble off a *neighbour's* head.
   const blockers: Rect[] = anchors.map((a) => ({
@@ -135,7 +176,9 @@ export function layoutBubbles(
 
   for (const a of speakers) {
     const m = measureBubble(a.text);
+    const left = clampX(a.sx - m.width / 2, m.width);
     const preferred = a.sy - a.clearance - GAP;
+    const lift = a.maxLift ?? MAX_LIFT;
     let bottom = preferred;
     let settled = false;
 
@@ -143,33 +186,23 @@ export function layoutBubbles(
     // strictly upwards past one blocker, so this terminates; the guard only
     // covers pathological input.
     for (let guard = 0; guard <= blockers.length + placed.length + 1; guard++) {
-      const box: Rect = {
-        left: a.sx - m.width / 2,
-        top: bottom - m.height,
-        right: a.sx + m.width / 2,
-        bottom,
-      };
+      const box: Rect = { left, top: bottom - m.height, right: left + m.width, bottom };
       const hit = hits(box, blockers) ?? hits(box, placed);
       if (!hit) {
         settled = true;
         break;
       }
       bottom = hit.top - GAP;
-      if (preferred - bottom > MAX_LIFT) break;
+      if (preferred - bottom > lift) break;
     }
 
-    if (!settled || preferred - bottom > MAX_LIFT) continue;
+    if (!settled || preferred - bottom > lift) continue;
 
-    placed.push({
-      left: a.sx - m.width / 2,
-      top: bottom - m.height,
-      right: a.sx + m.width / 2,
-      bottom,
-    });
+    placed.push({ left, top: bottom - m.height, right: left + m.width, bottom });
     out.push({
       agentId: a.agentId,
       text: a.text,
-      x: a.sx - m.width / 2,
+      x: left,
       y: bottom - m.height,
       width: m.width,
       height: m.height,

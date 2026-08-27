@@ -15,7 +15,7 @@ export interface AgentPose {
 
 /**
  * Physical seats drawn on the isometric floor. Must match the seat tables
- * rendered by views/office — keep the numbers in sync with office-iso.tsx.
+ * rendered by views/office — keep the numbers in sync with office-floor.tsx.
  */
 export const FLOOR_SEATS = {
   desk: 8,

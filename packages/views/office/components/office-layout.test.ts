@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   BUBBLE_MAX_W,
   estimateTextWidth,
+  fitText,
   layoutBubbles,
   measureBubble,
+  NAME_FONT,
   type BubbleBox,
   type SpriteAnchor,
 } from "./office-layout";
@@ -160,5 +162,54 @@ describe("layoutBubbles", () => {
     const reversed = layoutBubbles([...anchors].reverse());
     const key = (b: BubbleBox) => `${b.agentId}:${b.x}:${b.y}`;
     expect(forward.map(key).sort()).toEqual(reversed.map(key).sort());
+  });
+
+  it("honours a per-anchor lift budget instead of climbing out of the room", () => {
+    // Two speakers on the same spot: the second has to climb over the first's
+    // bubble, and a room with no headroom to spare would rather drop it.
+    const stacked = (maxLift: number) =>
+      layoutBubbles([
+        anchor({ agentId: "a", sx: 0, sy: 100, text: "先说", maxLift }),
+        anchor({ agentId: "b", sx: 0, sy: 100, text: "后说", maxLift }),
+      ]);
+    expect(stacked(120).map((b) => b.agentId).sort()).toEqual(["a", "b"]);
+    expect(stacked(0).map((b) => b.agentId)).toEqual(["a"]);
+  });
+
+  it("slides an edge speaker's bubble back inside the scene", () => {
+    const edge = anchor({ agentId: "a", sx: 4, sy: 100, text: "这条任务有点意思，快理清思路了" });
+    expect(only(layoutBubbles([edge])).x).toBeLessThan(0);
+    const box = only(layoutBubbles([edge], [], { left: 6, right: 900 }));
+    expect(box.x).toBe(6);
+    expect(box.x + box.width).toBeLessThanOrEqual(900);
+  });
+
+  it("dodges a neighbour using the clamped position, not the wished-for one", () => {
+    // Both bubbles get pinned to the left margin, so they overlap there even
+    // though their sprites are far enough apart to have been clear.
+    const anchors = [
+      anchor({ agentId: "a", sx: 4, sy: 100, text: "这条任务有点意思，快理清思路了" }),
+      anchor({ agentId: "b", sx: 70, sy: 100, text: "这条任务有点意思，快理清思路了" }),
+    ];
+    const boxes = layoutBubbles(anchors, [], { left: 6, right: 150 });
+    expect(boxes).toHaveLength(2);
+    expect(pairs(boxes).every(([x, y]) => !overlaps(x, y))).toBe(true);
+  });
+});
+
+describe("fitText", () => {
+  it("leaves a name that already fits alone", () => {
+    expect(fitText("Alpha", 100, NAME_FONT)).toBe("Alpha");
+  });
+
+  it("trims an over-long name to its slot and marks the cut", () => {
+    const trimmed = fitText("通用智能体（主）", 40, NAME_FONT);
+    expect(trimmed.endsWith("…")).toBe(true);
+    expect(estimateTextWidth(trimmed, NAME_FONT)).toBeLessThanOrEqual(40);
+    expect("通用智能体（主）".startsWith(trimmed.slice(0, -1))).toBe(true);
+  });
+
+  it("gives back nothing rather than a bare ellipsis in an unusable slot", () => {
+    expect(fitText("通用智能体", 4, NAME_FONT)).toBe("");
   });
 });
