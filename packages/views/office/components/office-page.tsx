@@ -12,6 +12,7 @@ import {
 } from "@multica/core/office";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useT } from "../../i18n";
+import { buildDemoScene } from "./office-demo";
 import { OfficeFloor } from "./office-floor";
 import type { OfficeTranslate } from "./office-i18n";
 import { OfficeRail } from "./office-rail";
@@ -50,7 +51,14 @@ export function OfficePage() {
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
   const phase = useOfficePhase();
-  const { scene, presence, loading } = useOfficeScene(wsId, phase);
+  // `?demo=1` renders a fully-staffed synthetic floor without touching the
+  // API — used for visual development and screenshot verification.
+  const isDemo = navigation.searchParams.get("demo") === "1";
+  const live = useOfficeScene(wsId, phase);
+  const demo = useMemo(() => buildDemoScene(phase), [phase]);
+  const scene = isDemo ? demo.scene : live.scene;
+  const presence = isDemo ? demo.presence : live.presence;
+  const loading = isDemo ? false : live.loading;
 
   const agentById = useMemo(
     () => new Map(scene.agents.map((a) => [a.id, a])),
@@ -118,6 +126,7 @@ export function OfficePage() {
         <div className="grid min-h-0 flex-1 items-start gap-4 @3xl:grid-cols-[minmax(0,1fr)_320px]">
           <OfficeFloor
             scene={scene}
+            phase={phase}
             agentById={agentById}
             t={tr}
             bubbleFor={bubbleFor}

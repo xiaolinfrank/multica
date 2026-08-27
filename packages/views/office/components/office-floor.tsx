@@ -1,17 +1,54 @@
-import { memo } from "react";
+"use client";
+
+import { Fragment, memo, useMemo } from "react";
 import type { OfficeTranslate } from "./office-i18n";
 import type { Agent } from "@multica/core/types";
-import type { OfficeScene } from "@multica/core/office";
-import { cn } from "@multica/ui/lib/utils";
-import { OfficeAgentFigure } from "./office-agent-figure";
+import {
+  assignPoses,
+  hashString,
+  type OfficeScene,
+  type OfficeZoneId,
+} from "@multica/core/office";
+import {
+  BarStool,
+  CanteenTable,
+  CoffeeBar,
+  CoffeeTable,
+  CLOTHES,
+  Desk,
+  HAIRS,
+  iso,
+  MeetingTable,
+  OfficeChair,
+  pick,
+  Plant,
+  Rug,
+  SittingPerson,
+  SKINS,
+  Sofa,
+  StandingPerson,
+  TILE_H,
+  TILE_W,
+  WaitingBench,
+  WalkingPerson,
+  Whiteboard,
+  type SpriteColors,
+  type WalkRoute,
+} from "./office-iso";
 
-// The floor plan proper: desks, squad meeting rooms, the three leisure
-// corners, the waiting bench and the out-of-office strip. Layout is a
-// responsive grid of "rooms"; each room keeps its own header + empty state
-// so an empty cafeteria never looks like a broken cafeteria.
+// The office floor proper: one game-style isometric room drawn in SVG.
+// Furniture and rugs render unconditionally so an idle office still reads
+// as an office; agents take the seats their zone gives them (overflow
+// stands at the back), and a leisure room with three or more people sends
+// one of them strolling around the carpet. Static sprites are depth-sorted
+// together with furniture; walkers draw above their own room band. Thought
+// bubbles are foreignObject boxes inside the same SVG so they scale with
+// the floor and float above heads — never on top of an agent.
 
 export interface OfficeFloorProps {
   scene: OfficeScene;
+  /** Wall-clock phase from the page; drives seat rotation & stroller pick. */
+  phase: number;
   agentById: ReadonlyMap<string, Agent>;
   t: OfficeTranslate;
   /** Resolves the thought bubble for an agent, or null for none. */
@@ -19,211 +56,434 @@ export interface OfficeFloorProps {
   onAgentClick?: (agentId: string) => void;
 }
 
-function Room({
-  title,
-  hint,
-  count,
-  className,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  count: number;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      className={cn(
-        "flex min-h-40 flex-col gap-3 rounded-xl border bg-card/60 p-4",
-        className,
-      )}
-    >
-      <header className="flex items-baseline justify-between gap-2">
-        <h3 className="text-label font-semibold text-foreground">{title}</h3>
-        <span className="text-caption text-muted-foreground">{count > 0 ? count : ""}</span>
-      </header>
-      {count === 0 ? (
-        <p className="m-auto text-caption text-muted-foreground">{hint}</p>
-      ) : (
-        children
-      )}
-    </section>
-  );
+const GRID_W = 12;
+const GRID_D = 11;
+
+type RoomRect = { x: number; y: number; w: number; d: number };
+type furn = Exclude<OfficeZoneId, "absent">;
+
+const ROOMS: Record<furn, RoomRect> = {
+  desk: { x: 0.5, y: 0.5, w: 6.1, d: 3.9 },
+  meeting: { x: 0.7, y: 4.75, w: 5.9, d: 4.3 },
+  tea: { x: 7.0, y: 0.5, w: 5.0, d: 2.35 },
+  lounge: { x: 7.0, y: 3.15, w: 5.0, d: 2.65 },
+  canteen: { x: 7.0, y: 6.1, w: 5.0, d: 3.05 },
+  waiting: { x: 2.3, y: 9.55, w: 4.3, d: 0.85 },
+};
+
+/** Eight workstations, two rows of four; each chair sits south of its desk. */
+const DESKS = Array.from({ length: 8 }, (_, i) => ({
+  gx: 1.0 + (i % 4) * 1.32,
+  gy: i < 4 ? 1.25 : 3.1,
+}));
+
+const MEETING_CHAIRS = [
+  { gx: 2.45, gy: 6.3 },
+  { gx: 3.55, gy: 6.3 },
+  { gx: 4.65, gy: 6.3 },
+  { gx: 2.45, gy: 7.85 },
+  { gx: 3.55, gy: 7.85 },
+  { gx: 4.65, gy: 7.85 },
+];
+
+const TEA_STOOLS = [
+  { gx: 9.95, gy: 0.95 },
+  { gx: 9.95, gy: 1.62 },
+  { gx: 9.95, gy: 2.29 },
+];
+
+const LOUNGE_SEATS = [
+  { gx: 7.72, gy: 4.98 },
+  { gx: 8.57, gy: 4.98 },
+  { gx: 9.42, gy: 4.98 },
+  { gx: 10.75, gy: 4.42 },
+];
+
+const CANTEEN_TABLES = [
+  { cx: 8.2, cy: 7.1 },
+  { cx: 10.15, cy: 8.25 },
+];
+
+const CANTEEN_SEATS = CANTEEN_TABLES.flatMap(({ cx, cy }) => [
+  { gx: cx - 0.9, gy: cy - 0.12 },
+  { gx: cx + 0.9, gy: cy - 0.12 },
+  { gx: cx, gy: cy + 0.78 },
+]);
+
+const WAITING_SEATS = [0, 1, 2, 3].map((i) => ({ gx: 2.9 + i * 0.9, gy: 10.16 }));
+
+const WALK_ROUTES: Record<"lounge" | "tea" | "canteen", WalkRoute> = {
+  lounge: {
+    points: [
+      { gx: 7.6, gy: 3.7 },
+      { gx: 11.1, gy: 3.7 },
+      { gx: 11.1, gy: 5.55 },
+      { gx: 7.6, gy: 5.55 },
+    ],
+    speed: 0.4,
+    offset: 13,
+  },
+  tea: {
+    points: [
+      { gx: 7.5, gy: 0.92 },
+      { gx: 9.2, gy: 0.92 },
+      { gx: 9.2, gy: 2.55 },
+      { gx: 7.5, gy: 2.55 },
+    ],
+    speed: 0.36,
+    offset: 31,
+  },
+  canteen: {
+    points: [
+      { gx: 7.4, gy: 6.55 },
+      { gx: 11.5, gy: 6.55 },
+      { gx: 11.5, gy: 9.0 },
+      { gx: 7.4, gy: 9.0 },
+    ],
+    speed: 0.44,
+    offset: 47,
+  },
+};
+
+function seatSpot(zone: furn, n: number): { gx: number; gy: number } | null {
+  switch (zone) {
+    case "desk":
+      return DESKS[n % DESKS.length] ?? null;
+    case "meeting":
+      return MEETING_CHAIRS[n % MEETING_CHAIRS.length] ?? null;
+    case "tea":
+      return TEA_STOOLS[n % TEA_STOOLS.length] ?? null;
+    case "lounge":
+      return LOUNGE_SEATS[n % LOUNGE_SEATS.length] ?? null;
+    case "canteen":
+      return CANTEEN_SEATS[n % CANTEEN_SEATS.length] ?? null;
+    case "waiting":
+      return WAITING_SEATS[n % WAITING_SEATS.length] ?? null;
+    default:
+      return null;
+  }
 }
 
-function figureProps(
-  agentId: string,
-  zone: Parameters<typeof OfficeAgentFigure>[0]["zone"],
-  agentById: ReadonlyMap<string, Agent>,
-  bubbleFor: (id: string) => string | null,
-  onAgentClick?: (id: string) => void,
-) {
-  const agent = agentById.get(agentId);
-  if (!agent) return null;
-  return (
-    <OfficeAgentFigure
-      key={agentId}
-      agent={agent}
-      zone={zone}
-      bubble={bubbleFor(agentId)}
-      onClick={onAgentClick ? () => onAgentClick(agentId) : undefined}
-    />
-  );
+function zoneLabel(rect: RoomRect): [number, number] {
+  const [sx, sy] = iso(rect.x + rect.w / 2, rect.y + 0.28);
+  return [sx, sy];
+}
+
+interface Renderable {
+  depth: number;
+  /** People break ties against furniture so bodies never hide under props. */
+  tieBreaker: number;
+  node: React.ReactNode;
 }
 
 export const OfficeFloor = memo(function OfficeFloor({
   scene,
+  phase,
   agentById,
   t,
   bubbleFor,
   onAgentClick,
 }: OfficeFloorProps) {
   const { floor } = scene;
-  const fp = (id: string, zone: Parameters<typeof OfficeAgentFigure>[0]["zone"]) =>
-    figureProps(id, zone, agentById, bubbleFor, onAgentClick);
+
+  const poses = useMemo(() => assignPoses(floor, phase), [floor, phase]);
+
+  // Zone counts power both the badge lines and the per-room empty hints.
+  const zoneCounts = useMemo(
+    () => ({
+      desk: floor.desks.length,
+      meeting: floor.meetings.reduce((n, m) => n + m.attendeeAgentIds.length, 0),
+      lounge: floor.lounge.length,
+      tea: floor.tea.length,
+      canteen: floor.canteen.length,
+      waiting: floor.waiting.length,
+    }),
+    [floor],
+  );
+
+  const colorsById = useMemo(() => {
+    const out = new Map<string, SpriteColors>();
+    for (const [id] of scene.floor.zoneByAgent) {
+      out.set(id, {
+        clothes: pick(CLOTHES, id),
+        skin: pick(SKINS, `${id}-skin`),
+        hair: pick(HAIRS, `${id}-hair`),
+      });
+    }
+    return out;
+  }, [scene.floor.zoneByAgent]);
+
+  // ---- Draw list: static furniture + placed people, depth-sorted ----------
+  const items = useMemo<Renderable[]>(() => {
+    const list: Renderable[] = [];
+    const add = (depth: number, tieBreaker: number, key: string, node: React.ReactNode) =>
+      list.push({ depth, tieBreaker, node: <Fragment key={key}>{node}</Fragment> });
+
+    // Furniture — every piece renders even when the room is empty.
+    DESKS.forEach((d, i) => {
+      const occupant = floor.desks[i];
+      add(d.gx + d.gy, 0, `desk${i}`, <Desk gx={d.gx} gy={d.gy} busy={(occupant?.runningCount ?? 0) > 0} />);
+    });
+    add(3.55 + 6.95, 0, "meet-table", <MeetingTable cx={3.55} cy={6.95} />);
+    MEETING_CHAIRS.forEach((c, i) =>
+      add(c.gx + c.gy, 0, `mchair${i}`, <OfficeChair gx={c.gx - 0.29} gy={c.gy - 0.27} />),
+    );
+    add(3.3 + 5.05, 0, "whiteboard", <Whiteboard gx={3.3} gy={5.05} />);
+    add(10.02 + 0.75, 0, "coffeebar", <CoffeeBar gx={10.02} gy={0.75} />);
+    TEA_STOOLS.forEach((s, i) => add(s.gx + s.gy, 1, `stool${i}`, <BarStool gx={s.gx} gy={s.gy} />));
+    add(7.3 + 4.72, 0, "sofa", <Sofa gx={7.3} gy={4.72} />);
+    add(10.35 + 4.85, 0, "ctable", <CoffeeTable gx={10.35} gy={4.85} />);
+    CANTEEN_TABLES.forEach((t0, i) =>
+      add(t0.cx + t0.cy, 0, `canT${i}`, <CanteenTable cx={t0.cx} cy={t0.cy} />),
+    );
+    CANTEEN_SEATS.forEach((s, i) =>
+      add(s.gx + s.gy, 0, `canS${i}`, <OfficeChair gx={s.gx - 0.26} gy={s.gy - 0.24} />),
+    );
+    add(2.85 + 10.3, 0, "bench", <WaitingBench gx={2.85} gy={10.3} />);
+    (
+      [
+        [0.45, 9.7],
+        [11.3, 0.45],
+        [6.55, 0.45],
+        [11.35, 5.9],
+        [6.55, 9.9],
+      ] as const
+    ).forEach(([gx, gy], i) => add(gx + gy, 0, `plant${i}`, <Plant gx={gx} gy={gy} />));
+
+    // People — one seat per zone in stable order.
+    const nextSeat: Record<furn, number> = {
+      desk: 0,
+      meeting: 0,
+      lounge: 0,
+      tea: 0,
+      canteen: 0,
+      waiting: 0,
+    };
+    for (const pose of poses) {
+      const colors = colorsById.get(pose.agentId);
+      const agent = agentById.get(pose.agentId);
+      if (!colors || !agent) continue;
+      const click = onAgentClick ? () => onAgentClick(pose.agentId) : undefined;
+      if (pose.posture === "walking") {
+        const base = WALK_ROUTES[pose.zone as "lounge" | "tea" | "canteen"];
+        list.push({
+          depth: Number.MAX_SAFE_INTEGER,
+          tieBreaker: 0,
+          node: (
+            <WalkingPerson
+              key={`w-${pose.agentId}`}
+              agentId={pose.agentId}
+              name={agent.name}
+              sx={0}
+              sy={0}
+              facing={1}
+              colors={colors}
+              route={{ ...base, offset: base.offset + (hashString(pose.agentId) % 17) }}
+            />
+          ),
+        });
+        continue;
+      }
+      const spot = seatSpot(pose.zone, nextSeat[pose.zone]);
+      nextSeat[pose.zone] += 1;
+      if (!spot) continue;
+      const [sx, sy] = iso(spot.gx, spot.gy);
+      list.push({
+        depth: spot.gx + spot.gy,
+        tieBreaker: 1,
+        node:
+          pose.posture === "standing" ? (
+            <StandingPerson
+              agentId={pose.agentId}
+              name={agent.name}
+              sx={sx}
+              sy={sy}
+              facing={1}
+              colors={colors}
+              onClick={click}
+            />
+          ) : (
+            <SittingPerson
+              agentId={pose.agentId}
+              name={agent.name}
+              sx={sx}
+              sy={sy}
+              facing={1}
+              colors={colors}
+              onClick={click}
+            />
+          ),
+      });
+    }
+
+    list.sort((a, b) => a.depth - b.depth || a.tieBreaker - b.tieBreaker);
+    return list;
+  }, [poses, colorsById, agentById, onAgentClick, floor]);
+
+  // Total running capacity headline for the desk band.
+  const runningLine = useMemo(() => {
+    if (floor.desks.length === 0) return null;
+    let running = 0;
+    let cap = 0;
+    for (const d of floor.desks) {
+      running += d.runningCount;
+      cap += d.capacity;
+    }
+    return `${t("figure.running")} ${running}/${cap}`;
+  }, [floor.desks, t]);
+
+  // Bubbles anchor to stationary seats only (a moving speaker would drag a
+  // box across the room).
+  const bubbles = useMemo(() => {
+    const out: Array<{ agentId: string; text: string; sx: number; sy: number; lift: number }> = [];
+    const nextSeat: Record<furn, number> = {
+      desk: 0,
+      meeting: 0,
+      lounge: 0,
+      tea: 0,
+      canteen: 0,
+      waiting: 0,
+    };
+    for (const pose of poses) {
+      if (pose.posture === "walking") continue;
+      const text = bubbleFor(pose.agentId);
+      const spot = seatSpot(pose.zone, nextSeat[pose.zone]);
+      nextSeat[pose.zone] += 1;
+      if (!text || !spot) continue;
+      const [sx, sy] = iso(spot.gx, spot.gy);
+      out.push({ agentId: pose.agentId, text, sx, sy, lift: (hashString(pose.agentId) % 3) * 6 });
+    }
+    return out;
+  }, [poses, bubbleFor]);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Desks — the main working area, full width on top. */}
-      <Room
-        title={t("zones.desk.name")}
-        hint={t("zones.desk.empty")}
-        count={floor.desks.length}
+    <div className="flex flex-col gap-3">
+      <svg
+        viewBox={`${-(GRID_D * TILE_W) / 2 - 36} -74 ${(GRID_W + GRID_D) * (TILE_W / 2) + 76} ${(GRID_W + GRID_D) * (TILE_H / 2) + 112}`}
+        className="w-full"
+        style={{ overflow: "visible" }}
+        role="img"
+        aria-label={t("title")}
       >
-        <div className="flex flex-wrap gap-2">
-          {floor.desks.map((d) => {
-            const node = fp(d.agentId, "desk");
-            if (!node) return null;
-            return (
-              <div
-                key={d.agentId}
-                className="flex flex-col items-center rounded-xl border bg-background/60 p-2"
+        {/* Ground slab */}
+        <polygon
+          points={[iso(0, 0), iso(GRID_W, 0), iso(GRID_W, GRID_D), iso(0, GRID_D)]
+            .map(([x, y]) => `${x},${y}`)
+            .join(" ")}
+          fill="#e8e2d62e"
+          stroke="#8b83755c"
+        />
+        {/* Zone carpets, names and empty-state hints drawn on the carpet */}
+        {(Object.entries(ROOMS) as Array<[furn, RoomRect]>).map(([zone, rect]) => {
+          const empty = zoneCounts[zone] === 0;
+          const [lx, ly] = zoneLabel(rect);
+          const hint =
+            zone === "waiting" ? t(`zones.${zone}.hint`) : empty ? t(`zones.${zone}.empty`) : null;
+          return (
+            <g key={zone}>
+              <Rug rect={rect} fill="#6f7a8c12" stroke="#6f7a8c38" />
+              <text
+                x={lx}
+                y={ly - 4}
+                textAnchor="middle"
+                fontSize={11}
+                fontWeight={700}
+                opacity={0.6}
+                stroke="var(--background)"
+                strokeWidth={3}
+                paintOrder="stroke"
+                fill="var(--foreground)"
               >
-                {node}
-                <span className="mt-1 rounded-md border bg-background px-1.5 py-0.5 text-micro text-muted-foreground">
-                  {t("figure.running")} {d.runningCount}/{d.capacity}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </Room>
-
-      {/* Squad meeting rooms — one card per squad with work in flight. */}
-      <Room
-        title={t("zones.meeting.name")}
-        hint={t("zones.meeting.empty")}
-        count={floor.meetings.length}
-      >
-        <div className="grid gap-3 @container md:grid-cols-2">
-          {floor.meetings.map((m) => (
-            <div
-              key={m.squadId}
-              className="flex flex-col gap-2 rounded-xl border border-dashed bg-primary/5 p-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-label font-medium text-foreground" title={m.squadName}>
-                  {m.squadName}
-                </span>
-                {m.supportingAgentIds.length > 0 ? (
-                  <span className="shrink-0 text-micro text-muted-foreground">
-                    {t("zones.meeting.supporting", { count: m.supportingAgentIds.length })}
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {m.attendeeAgentIds.map((id) => fp(id, "meeting"))}
-                {m.supportingAgentIds.map((id) => {
-                  const agent = agentById.get(id);
-                  if (!agent) return null;
-                  const url = agent.avatar_url;
-                  const initial = (agent.name || "?").trim().charAt(0).toUpperCase();
-                  return (
-                    <span
-                      key={id}
-                      className="flex size-7 items-center justify-center overflow-hidden rounded-full border bg-muted text-micro text-muted-foreground"
-                      title={agent.name}
-                    >
-                      {url ? (
-                        <img src={url} alt="" className="size-full object-cover" />
-                      ) : (
-                        initial
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Room>
-
-      {/* Leisure row: lounge / tea corner / canteen share one band. */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {(
-          [
-            ["lounge", floor.lounge],
-            ["tea", floor.tea],
-            ["canteen", floor.canteen],
-          ] as const
-        ).map(([zone, ids]) => (
-          <Room
-            key={zone}
-            title={t(`zones.${zone}.name`)}
-            hint={t(`zones.${zone}.empty`)}
-            count={ids.length}
-          >
-            <div className="flex flex-wrap justify-center gap-1">
-              {ids.map((id) => fp(id, zone))}
-            </div>
-          </Room>
-        ))}
-      </div>
-
-      {/* Waiting bench + out-of-office strip, compact. */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Room
-          title={t("zones.waiting.name")}
-          hint={t("zones.waiting.hint")}
-          count={floor.waiting.length}
-        >
-          <div className="flex flex-wrap gap-1">
-            {floor.waiting.map((id) => fp(id, "waiting"))}
-          </div>
-        </Room>
-        <Room
-          title={t("zones.absent.name")}
-          count={floor.absent.length}
-          hint=""
-        >
-          <div className="flex flex-wrap gap-2">
-            {floor.absent.map((a) => {
-              const agent = agentById.get(a.agentId);
-              if (!agent) return null;
-              return (
-                <span
-                  key={a.agentId}
-                  className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pl-1 pr-2.5 text-caption text-muted-foreground"
+                {t(`zones.${zone}.name`)}
+              </text>
+              {hint ? (
+                <text
+                  x={lx}
+                  y={ly + 10}
+                  textAnchor="middle"
+                  fontSize={8}
+                  opacity={0.5}
+                  stroke="var(--background)"
+                  strokeWidth={2.4}
+                  paintOrder="stroke"
+                  fill="var(--muted-foreground)"
                 >
-                  <span className="flex size-6 items-center justify-center overflow-hidden rounded-full bg-muted text-micro">
-                    {agent.avatar_url ? (
-                      <img src={agent.avatar_url} alt="" className="size-full object-cover opacity-60 grayscale" />
-                    ) : (
-                      (agent.name || "?").trim().charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="max-w-28 truncate" title={agent.name}>{agent.name}</span>
-                  <span>·</span>
-                  <span>{t(`zones.absent.${a.reason}`)}</span>
-                </span>
-              );
-            })}
-            {floor.absent.length === 0 ? (
-              <p className="text-caption text-muted-foreground">{t("stats.absent")}: 0</p>
-            ) : null}
-          </div>
-        </Room>
+                  {hint}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+        {runningLine ? (
+          <text
+            x={iso(ROOMS.desk.x + ROOMS.desk.w, ROOMS.desk.y)[0] - 4}
+            y={iso(ROOMS.desk.x + ROOMS.desk.w, ROOMS.desk.y)[1] - 14}
+            textAnchor="end"
+            fontSize={9}
+            fontWeight={600}
+            opacity={0.75}
+            stroke="var(--background)"
+            strokeWidth={2.4}
+            paintOrder="stroke"
+            fill="var(--foreground)"
+          >
+            {runningLine}
+          </text>
+        ) : null}
+        {items.map((item, i) => (
+          <Fragment key={i}>{item.node}</Fragment>
+        ))}
+        {bubbles.map((b) => (
+          <foreignObject
+            key={`b-${b.agentId}`} data-agent={b.agentId}
+            x={b.sx - 70}
+            y={b.sy - 76 - b.lift}
+            width={140}
+            height={40}
+          >
+            <div
+              className="mx-auto w-fit max-w-full rounded-lg border bg-popover px-1.5 py-1 text-popover-foreground shadow-sm"
+              style={{
+                fontSize: 9,
+                lineHeight: 1.25,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+              title={b.text}
+            >
+              {b.text}
+            </div>
+          </foreignObject>
+        ))}
+      </svg>
+
+      {/* Out-of-office strip */}
+      <div className="flex flex-wrap gap-2">
+        {floor.absent.map((a) => {
+          const agent = agentById.get(a.agentId);
+          if (!agent) return null;
+          return (
+            <span
+              key={a.agentId}
+              className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pl-1 pr-2.5 text-caption text-muted-foreground"
+            >
+              <span className="flex size-6 items-center justify-center overflow-hidden rounded-full bg-muted text-micro">
+                {agent.avatar_url ? (
+                  <img src={agent.avatar_url} alt="" className="size-full object-cover opacity-60 grayscale" />
+                ) : (
+                  (agent.name || "?").trim().charAt(0).toUpperCase()
+                )}
+              </span>
+              <span className="max-w-28 truncate" title={agent.name}>
+                {agent.name}
+              </span>
+              <span>·</span>
+              <span>{t(`zones.absent.${a.reason}`)}</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );
