@@ -37,6 +37,7 @@ import {
   HAIRS,
   headClearance,
   HEAD_R,
+    HUMAN_SCALE,
   HEAD_Z,
   MeetingTable,
   NorthWall,
@@ -440,10 +441,10 @@ export const OfficeFloor = memo(function OfficeFloor({
   const memberSprites = useMemo(() => {
     return users.map((user, i) => {
       const spot = memberSpot(i);
-      const hx = px(spot.x, HEAD_Z);
-      const hy = py(spot.y, HEAD_Z);
+      const hx = px(spot.x, HEAD_Z * HUMAN_SCALE);
+      const hy = py(spot.y, HEAD_Z * HUMAN_SCALE);
       // Above the name label: see Person for the label baseline.
-      const labelTop = hy - HEAD_R - 13;
+      const labelTop = hy - HEAD_R * HUMAN_SCALE - 13;
       const showSet = user.isSelf && user.status === "";
       const text = showSet
         ? t("status.set")
@@ -646,6 +647,7 @@ export const OfficeFloor = memo(function OfficeFloor({
           x={m.spot.x}
           y={m.spot.y}
           posture="standing"
+          human
           colors={m.colors}
           avatarUrl={m.avatarUrl}
           onClick={
@@ -869,7 +871,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       </svg>
       {editingUser && onUserStatusSave ? (
         <OfficeStatusEditor
-          anchor={{ x: editingUser.hx, y: editingUser.pill?.y ?? editingUser.hy - HEAD_R - 28 }}
+          anchor={{ x: editingUser.hx, y: editingUser.pill?.y ?? editingUser.hy - HEAD_R * HUMAN_SCALE - 30 }}
           current={editingUser.user.status}
           t={t}
           onSave={onUserStatusSave}

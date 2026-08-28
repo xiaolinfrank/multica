@@ -51,8 +51,8 @@ export const MEMBER_GRID = {
   zoneW: 198,
   perRow: 4,
   frontY: 302,
-  backY: 206,
-  slot: 38,
+  backY: 226,
+  slot: 46,
 } as const;
 
 export interface MemberSpot {

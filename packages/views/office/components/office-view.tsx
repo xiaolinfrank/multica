@@ -843,6 +843,8 @@ export interface SpriteColors {
 
 /** Head radius. Big enough that a real avatar is legible at scene scale. */
 export const HEAD_R = 12;
+/** Humans read as taller and broader than the agent figures sharing the floor. */
+export const HUMAN_SCALE = 1.3;
 /** Height of the head's centre above the floor, standing and seated. */
 export const HEAD_Z = 64;
 export const SIT_HEAD_Z = 50;
@@ -935,6 +937,8 @@ export interface PersonProps {
   avatarUrl: string | null;
   /** Walk-cycle frame; ignored unless walking. */
   frame?: 0 | 1;
+  /** Human figures are scaled up and get hair plus an open collar so they read as people, not agents. */
+  human?: boolean;
   onClick?: () => void;
 }
 
@@ -954,11 +958,13 @@ export const Person = memo(function Person({
   colors,
   avatarUrl,
   frame = 0,
+  human = false,
   onClick,
 }: PersonProps) {
   const sitting = posture === "sitting";
   const walking = posture === "walking";
-  const headZ = sitting ? SIT_HEAD_Z : HEAD_Z;
+  const s = human ? HUMAN_SCALE : 1;
+  const headZ = (sitting ? SIT_HEAD_Z : HEAD_Z) * s;
   const shoulder = headZ - 13;
   const hip = sitting ? 18 : 28;
   const swing = walking ? (frame === 0 ? 3.4 : -3.4) : 0;
@@ -967,8 +973,8 @@ export const Person = memo(function Person({
   return (
     <g data-agent={agentId} className={onClick ? "cursor-pointer" : undefined} onClick={onClick}>
       <title>{name}</title>
-      <ellipse cx={x} cy={y} rx={13} ry={5.4} fill={SHADOW} opacity={0.17} />
-      <g transform={`translate(${x} ${y}) matrix(1 0 ${LEAN} ${-LIFT} 0 0)`}>
+      <ellipse cx={x} cy={y} rx={13 * s} ry={5.4 * s} fill={SHADOW} opacity={0.17} />
+      <g transform={`translate(${x} ${y}) matrix(1 0 ${LEAN} ${-LIFT} 0 0) scale(${s})`}>
         {/* Legs. Seated, only the knees show above the seat pad. */}
         <rect x={-6.6 + swing} y={0} width={6} height={hip + 2} rx={3} fill={TROUSER} />
         <rect x={0.6 - swing} y={0} width={6} height={hip + 2} rx={3} fill={shade(TROUSER, 1.16)} />
@@ -982,16 +988,30 @@ export const Person = memo(function Person({
         {/* Shoulders and neck. */}
         <rect x={-10.5} y={shoulder - 6} width={21} height={7} rx={3.5} fill={shade(colors.clothes, 0.92)} />
         <rect x={-3.2} y={shoulder} width={6.4} height={5} rx={2.4} fill={shade(colors.skin, 0.88)} />
+        {human ? (
+          <path d={`M ${-4.4} ${shoulder - 6} L 0 ${shoulder - 1} L 4.4 ${shoulder - 6} Z`} fill={colors.skin} />
+        ) : null}
       </g>
-      <g transform={`translate(${hx} ${hy})`}>
+      <g transform={`translate(${hx} ${hy}) scale(${s})`}>
         <AvatarHead colors={colors} avatarUrl={avatarUrl} clipId={`office-av-${agentId}`} />
+        {human && !avatarUrl ? (
+          <g>
+            <clipPath id={`office-hair-${agentId}`}>
+              <circle r={HEAD_R - 0.6} />
+            </clipPath>
+            {/* Fringe straight across; the head ring frames it like a cap. */}
+            <g clipPath={`url(#office-hair-${agentId})`}>
+              <rect x={-HEAD_R} y={-HEAD_R - 0.5} width={HEAD_R * 2} height={HEAD_R * 1.12} fill={colors.hair} />
+            </g>
+          </g>
+        ) : null}
       </g>
       {label ? (
         <text
           x={hx}
-          y={hy - HEAD_R - 5}
+          y={hy - HEAD_R * s - 5}
           textAnchor="middle"
-          fontSize={8.5}
+          fontSize={human ? 9.5 : 8.5}
           fontWeight={700}
           fill={METAL.deep}
           stroke={WHITE.lit}
