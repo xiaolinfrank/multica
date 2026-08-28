@@ -72,6 +72,12 @@ declare global {
     usage: typeof usage;
     fleet: typeof fleet;
     squads: typeof squads;
+    // The office bundle renders mostly dynamic keys (zone ids, monologue
+    // variants), so it opts out of strict key typing on purpose: a loose
+    // record keeps every computed key assignable while the four locale
+    // bundles stay in structural lockstep via locales/parity.test.ts and
+    // core/office/monologue-key.test.ts.
+    office: Record<string, string>;
     billing: typeof billing;
     workspaces: typeof workspaces;
   }

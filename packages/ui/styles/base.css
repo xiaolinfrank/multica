@@ -630,3 +630,27 @@ html[data-dnd-dragging="true"] * {
   background-color: var(--find-match-active);
   color: var(--find-match-foreground);
 }
+
+/* Agent Office (packages/views/office) -------------------------------- */
+/* Breathing bob for agents at work; pause-friendly via prefers-reduced-motion. */
+@keyframes office-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.office-bob {
+  animation: office-bob 2.4s ease-in-out infinite;
+}
+/* Thought bubble: gentle float so monologues read as ambient, not alarming. */
+@keyframes office-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.office-bubble {
+  animation: office-float 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .office-bob,
+  .office-bubble {
+    animation: none;
+  }
+}

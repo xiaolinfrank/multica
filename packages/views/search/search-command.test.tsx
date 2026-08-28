@@ -183,6 +183,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     autopilots: () => "/ws-test/autopilots",
     agents: () => "/ws-test/agents",
     squads: () => "/ws-test/squads",
+    office: () => "/ws-test/office",
     usage: () => "/ws-test/usage",
     runtimes: () => "/ws-test/runtimes",
     skills: () => "/ws-test/skills",

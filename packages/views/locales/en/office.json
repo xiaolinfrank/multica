@@ -1,0 +1,120 @@
+{
+  "title": "Agent Office",
+  "subtitle": "See what your agents are up to right now",
+  "stats": {
+    "present": "Present",
+    "working": "Working",
+    "relaxing": "Relaxing",
+    "absent": "Absent"
+  },
+  "zones": {
+    "desk": {
+      "name": "Desks",
+      "empty": "Every desk is free — waiting for a new task"
+    },
+    "meeting": {
+      "name": "Meeting rooms",
+      "empty": "No squad is meeting right now",
+      "supporting": "{{count}} members supporting from their desks",
+      "room": "Squad room"
+    },
+    "lounge": {
+      "name": "Lounge",
+      "empty": "The sofa is free"
+    },
+    "tea": {
+      "name": "Tea corner",
+      "empty": "Tea is still warm, nobody around"
+    },
+    "canteen": {
+      "name": "Canteen",
+      "empty": "Not lunchtime yet"
+    },
+    "waiting": {
+      "name": "Waiting corner",
+      "hint": "Tasks on the plate, waiting for a runtime"
+    },
+    "absent": {
+      "name": "Out of office",
+      "offline": "Runtime offline",
+      "unstable": "Unstable connection",
+      "unbound": "No runtime bound"
+    }
+  },
+  "timeline": {
+    "title": "Recent activity",
+    "running": "started a task",
+    "completed": "completed a task",
+    "failed": "a task failed",
+    "empty": "Nothing new lately"
+  },
+  "chatter": {
+    "title": "Tea-corner chatter"
+  },
+  "tokens": {
+    "title": "Token leaderboard",
+    "window": "Last 7 days",
+    "tasks": "{{count}} tasks",
+    "empty": "No usage in the last 7 days"
+  },
+  "figure": {
+    "running": "Running",
+    "loading": "Opening the office…"
+  },
+  "monologue": {
+    "working": {
+      "0": "This task is a fun one — almost got the shape of it",
+      "1": "Pushing through {{count}} tasks…",
+      "2": "Nearly there — one more review pass, then it ships",
+      "3": "Context loaded. Time to build."
+    },
+    "queued": {
+      "0": "In the queue… rehearsing the plan in my head",
+      "1": "Tasks ahead of me — warming up first",
+      "2": "Ready and waiting for the next dispatch"
+    },
+    "idle": {
+      "lounge": {
+        "0": "A rare quiet moment — leaning back",
+        "1": "Just shipped. Time for a stretch",
+        "2": "Zoning out in the lounge for a bit"
+      },
+      "tea": {
+        "0": "This cup of tea is a good one",
+        "1": "Between refills — sketching the next step",
+        "2": "Bumped into a teammate at the tea corner"
+      },
+      "canteen": {
+        "0": "The canteen has something new today",
+        "1": "Recharging over lunch",
+        "2": "Lunch first, always"
+      }
+    },
+    "meeting": {
+      "0": "Syncing on the split — I'll take the wrap-up",
+      "1": "Picked up two tasks in the meeting",
+      "2": "The plan is roughly agreed"
+    },
+    "waiting": {
+      "0": "{{count}} tasks queued — the runtime will be right back",
+      "1": "Queued up — tidying context meanwhile",
+      "2": "Waiting for resources…"
+    },
+    "completed": {
+      "0": "Just delivered {{count}} tasks — feeling good",
+      "1": "That batch is wrapped up. Deep breath",
+      "2": "Another round done. On a roll"
+    },
+    "failed": {
+      "0": "A task slipped just now — running it back",
+      "1": "Hit a snag, retrying"
+    },
+    "offline": {
+      "0": "Runtime went offline — clocking out",
+      "1": "Weak signal — see you in a bit"
+    },
+    "unbound": {
+      "0": "No runtime bound yet — taking the day off"
+    }
+  }
+}
