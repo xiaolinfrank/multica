@@ -130,6 +130,7 @@ vi.mock("@multica/core/paths", async (importOriginal) => ({
     autopilots: () => "/acme/autopilots",
     agents: () => "/acme/agents",
     squads: () => "/acme/squads",
+    office: () => "/acme/office",
     usage: () => "/acme/usage",
     fleet: () => "/acme/fleet",
     runtimes: () => "/acme/runtimes",
