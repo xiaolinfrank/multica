@@ -48,26 +48,45 @@ export function py(y: number, z = 0): number {
 
 // --- Palette ---------------------------------------------------------------
 
-const OAK = { lit: "#e3c69f", face: "#d0ab7c", dark: "#b28e60", deep: "#8b6740" };
-const WALNUT = { lit: "#7d5942", face: "#664732", dark: "#503527", deep: "#3a2619" };
-const PLASTER = { lit: "#f7f2e9", face: "#ece5d8", dark: "#d8cfbf", deep: "#c0b5a3" };
-const METAL = { lit: "#4c525b", face: "#343a42", dark: "#22262c", deep: "#15181c" };
-/** Seat fabric. Deliberately cool: oak boards and oak desks are warm, and a
- *  warm chair on a warm floor is the shapeless slab this palette avoids. */
-const FABRIC = { lit: "#a7b1be", face: "#8b97a6", dark: "#6d7a8a", deep: "#535f6d" };
-const UPHOLSTERY = { lit: "#c2ccd6", face: "#a5b3c1", dark: "#8695a5", deep: "#6c7b8c" };
-const MOSS = { lit: "#8fb494", face: "#628d6c", dark: "#4a7055" };
-const TERRA = "#c2704f";
-const SCREEN_OFF = "#39414b";
+// A bright white office. When almost every surface is white, hue stops doing
+// any work and value has to carry the whole drawing, so the palette steps by
+// PLANE rather than by material: the wall is the brightest thing in the room,
+// furniture tops come next, the floor sits below both, and every front and
+// side face drops two clear steps further. That ordering is what still reads
+// as a solid standing on a floor once the colour has been taken away.
+//
+// Two anchors keep it from going clinical: charcoal, used only for screens,
+// chair columns and bezels, and light oak on the worktops and the soft-seating
+// frames.
 
-/** Carpet / floor finish per zone, so the open plan still reads as zoned. */
+/** Paint, plaster and white joinery — what most of this office is made of. */
+const WHITE = { lit: "#ffffff", face: "#f1f4f8", dark: "#dbe1e9", deep: "#bfc8d3" };
+/** Light oak: worktops, the meeting table, the canteen and the bench. */
+const OAK = { lit: "#f2e5d0", face: "#e5d2b4", dark: "#c9b28d", deep: "#a38b68" };
+/** Charcoal. Screens, chair columns, bezels — the only dark in the room. */
+const METAL = { lit: "#98a0ab", face: "#666e79", dark: "#3f454e", deep: "#282d34" };
+/** Task-chair mesh. Mid grey, so a chair never melts into a near-white floor. */
+const FABRIC = { lit: "#b9c1cb", face: "#9ea8b4", dark: "#848f9c", deep: "#6c7683" };
+/** Soft seating in off-white bouclé, shaded hard enough to keep its shape. */
+const UPHOLSTERY = { lit: "#ffffff", face: "#eef1f5", dark: "#d3dae2", deep: "#b0bac7" };
+const MOSS = { lit: "#b7d1b9", face: "#8fb694", dark: "#6d9575" };
+const TERRA = "#d98a68";
+const SCREEN_OFF = "#3f454e";
+/** Contact shadows. Cool, because a brown shadow on white tile reads as dirt. */
+const SHADOW = "#5a6472";
+
+/**
+ * Carpet per zone. Every tint is a step darker than the tile it sits on — on a
+ * white floor a lighter rug would read as a hole rather than as a zone — and
+ * each takes a different hue so six pale fields stay tellable apart.
+ */
 export const ZONE_FLOOR: Record<string, string> = {
-  desk: "#d9dee4",
-  meeting: "#c6ccd4",
-  tea: "#dfe9e4",
-  lounge: "#cdc4b5",
-  canteen: "#ece2d2",
-  waiting: "#dcd9e3",
+  desk: "#dce3ec",
+  meeting: "#d2dae6",
+  tea: "#d3e7dd",
+  lounge: "#e8dcc6",
+  canteen: "#eee5df",
+  waiting: "#dfdcec",
 };
 
 /**
@@ -87,14 +106,14 @@ export function shade(hex: string, k: number): string {
 export function SceneDefs() {
   return (
     <defs>
-      {/* Oak boards, lit from the north-west. */}
-      <linearGradient id="office-floor" x1="0" y1="0" x2="0.35" y2="1">
-        <stop offset="0%" stopColor={OAK.lit} />
-        <stop offset="100%" stopColor={OAK.face} />
+      {/* Large-format pale tile, falling off away from the north glazing. */}
+      <linearGradient id="office-floor" x1="0" y1="0" x2="0.2" y2="1">
+        <stop offset="0%" stopColor="#f2f5f8" />
+        <stop offset="100%" stopColor="#e3e8ee" />
       </linearGradient>
-      <linearGradient id="office-wall" x1="0" y1="0" x2="1" y2="0.2">
-        <stop offset="0%" stopColor={PLASTER.lit} />
-        <stop offset="100%" stopColor={PLASTER.dark} />
+      <linearGradient id="office-wall" x1="0" y1="0" x2="1" y2="0.25">
+        <stop offset="0%" stopColor={WHITE.lit} />
+        <stop offset="100%" stopColor="#e9edf2" />
       </linearGradient>
       <linearGradient id="office-glass" x1="0" y1="0" x2="0.4" y2="1">
         <stop offset="0%" stopColor="#dbe9f2" stopOpacity="0.5" />
@@ -109,8 +128,8 @@ export function SceneDefs() {
         <stop offset="100%" stopColor="#8fc4ff" stopOpacity="0" />
       </radialGradient>
       <radialGradient id="office-lamp">
-        <stop offset="0%" stopColor="#ffe6b0" stopOpacity="0.4" />
-        <stop offset="100%" stopColor="#ffe6b0" stopOpacity="0" />
+        <stop offset="0%" stopColor="#ffeecb" stopOpacity="0.28" />
+        <stop offset="100%" stopColor="#ffeecb" stopOpacity="0" />
       </radialGradient>
     </defs>
   );
@@ -135,8 +154,8 @@ function Shadow({ x, y, w, d, h }: { x: number; y: number; w: number; d: number;
       width={w + s}
       height={s * 1.6}
       rx={s}
-      fill="#4a3a24"
-      opacity={0.16}
+      fill={SHADOW}
+      opacity={0.13}
     />
   );
 }
@@ -220,7 +239,7 @@ export const Cyl = memo(function Cyl({
   const s = side ?? shade(top, 0.74);
   return (
     <g>
-      <ellipse cx={cx} cy={cy + ry * 0.5} rx={r * 1.02} ry={ry * 0.5} fill="#4a3a24" opacity={0.16} />
+      <ellipse cx={cx} cy={cy + ry * 0.5} rx={r * 1.02} ry={ry * 0.5} fill={SHADOW} opacity={0.13} />
       <path
         d={`M ${cx - r} ${cy} A ${r} ${ry} 0 0 0 ${cx + r} ${cy} L ${cx + r + dx} ${cy - dy} A ${r} ${ry} 0 0 1 ${cx - r + dx} ${cy - dy} Z`}
         fill={s}
@@ -232,27 +251,28 @@ export const Cyl = memo(function Cyl({
 
 // --- Shell -----------------------------------------------------------------
 
-/** The oak boards, laid across the building and seamed every few units. */
+/** Tile size. Large format, so the grout grid stays quiet under the furniture. */
+const TILE_W = 102;
+const TILE_D = 87;
+
+/** The floor: large-format pale tile on a fine grout grid. */
 export const FloorSlab = memo(function FloorSlab() {
   const { x0, x1, y0, y1 } = FLOOR;
-  const seams: number[] = [];
-  for (let y = y0 + 26; y < y1; y += 26) seams.push(y);
+  const cols: number[] = [];
+  for (let x = x0 + TILE_W; x < x1; x += TILE_W) cols.push(x);
+  const rows: number[] = [];
+  for (let y = y0 + TILE_D; y < y1; y += TILE_D) rows.push(y);
   return (
     <g>
       <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="url(#office-floor)" />
-      {seams.map((y) => (
-        <line key={y} x1={x0} y1={y} x2={x1} y2={y} stroke={OAK.deep} strokeOpacity={0.16} strokeWidth={0.9} />
+      {rows.map((y) => (
+        <line key={`r${y}`} x1={x0} y1={y} x2={x1} y2={y} stroke="#c8d0da" strokeOpacity={0.5} strokeWidth={0.9} />
       ))}
-      {seams.map((y, row) =>
-        Array.from({ length: 5 }, (_, i) => {
-          const bx = x0 + ((row % 2 === 0 ? 0.5 : 1) + i) * ((x1 - x0) / 5.5);
-          return bx < x1 ? (
-            <line key={`${y}-${i}`} x1={bx} y1={y} x2={bx} y2={y + 26} stroke={OAK.deep} strokeOpacity={0.11} strokeWidth={0.9} />
-          ) : null;
-        }),
-      )}
-      {/* Light pooling in from the north glazing. */}
-      <rect x={x0} y={y0} width={x1 - x0} height={120} fill="#fff6e2" opacity={0.16} />
+      {cols.map((x) => (
+        <line key={`c${x}`} x1={x} y1={y0} x2={x} y2={y1} stroke="#c8d0da" strokeOpacity={0.42} strokeWidth={0.9} />
+      ))}
+      {/* Daylight pooling in from the north glazing. */}
+      <rect x={x0} y={y0} width={x1 - x0} height={130} fill="#ffffff" opacity={0.42} />
     </g>
   );
 });
@@ -268,7 +288,8 @@ export function WallPlane({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The north wall: plaster over an oak wainscot, with a slatted centre bay. */
+/** The north wall: white plaster, with a bay of white battens behind the
+ *  meeting room and a shadow-gap skirting instead of a timber wainscot. */
 export const NorthWall = memo(function NorthWall({ slatFrom, slatTo }: { slatFrom: number; slatTo: number }) {
   const { x0, x1 } = FLOOR;
   const slats: number[] = [];
@@ -277,12 +298,12 @@ export const NorthWall = memo(function NorthWall({ slatFrom, slatTo }: { slatFro
     <g>
       <WallPlane>
         <rect x={x0} y={0} width={x1 - x0} height={WALL_H} fill="url(#office-wall)" />
-        <rect x={slatFrom} y={0} width={slatTo - slatFrom} height={WALL_H} fill={OAK.dark} />
+        <rect x={slatFrom} y={0} width={slatTo - slatFrom} height={WALL_H} fill="#e6ebf1" />
         {slats.map((x) => (
-          <rect key={x} x={x} y={0} width={6.5} height={WALL_H} fill={OAK.face} />
+          <rect key={x} x={x} y={0} width={6.5} height={WALL_H} fill={WHITE.lit} />
         ))}
-        <rect x={x0} y={0} width={x1 - x0} height={40} fill={OAK.face} />
-        <rect x={x0} y={38} width={x1 - x0} height={4} fill={OAK.lit} />
+        <rect x={x0} y={0} width={x1 - x0} height={18} fill={WHITE.face} />
+        <rect x={x0} y={18} width={x1 - x0} height={2.5} fill={WHITE.deep} />
       </WallPlane>
       {/* Cap: the wall's own top surface, catching the ceiling light. */}
       <polygon
@@ -292,10 +313,10 @@ export const NorthWall = memo(function NorthWall({ slatFrom, slatTo }: { slatFro
           [px(x1, WALL_H) - 12, py(FLOOR.y0, WALL_H) - 7],
           [px(x0, WALL_H) - 12, py(FLOOR.y0, WALL_H) - 7],
         )}
-        fill={PLASTER.deep}
+        fill={WHITE.deep}
       />
       {/* Skirting where the wall meets the boards. */}
-      <rect x={x0} y={FLOOR.y0 - 4} width={x1 - x0} height={4} fill={WALNUT.face} />
+      <rect x={x0} y={FLOOR.y0 - 4} width={x1 - x0} height={4} fill={WHITE.deep} />
     </g>
   );
 });
@@ -305,9 +326,9 @@ export const FloorEdges = memo(function FloorEdges() {
   const { x0, x1, y0, y1 } = FLOOR;
   return (
     <g>
-      <rect x={x0 - 8} y={y0 - 4} width={8} height={y1 - y0 + 12} fill={PLASTER.deep} />
-      <rect x={x1} y={y0 - 4} width={8} height={y1 - y0 + 12} fill={PLASTER.dark} />
-      <rect x={x0 - 8} y={y1} width={x1 - x0 + 16} height={8} fill={PLASTER.deep} />
+      <rect x={x0 - 8} y={y0 - 4} width={8} height={y1 - y0 + 12} fill={WHITE.deep} />
+      <rect x={x1} y={y0 - 4} width={8} height={y1 - y0 + 12} fill={WHITE.dark} />
+      <rect x={x0 - 8} y={y1} width={x1 - x0 + 16} height={8} fill={WHITE.deep} />
     </g>
   );
 });
@@ -396,9 +417,9 @@ export const GlassWall = memo(function GlassWall({
           />
         );
       })}
-      <rect x={x + dx} y={y - dy} width={w} height={d} rx={1.5} fill="#c3d0d9" />
-      <rect x={x + dx} y={y - dy} width={w} height={d} rx={1.5} fill="none" stroke="#93a8b6" strokeWidth={0.8} />
-      <rect x={x} y={y} width={w} height={d} rx={1.5} fill="#8d9ca8" opacity={0.4} />
+      <rect x={x + dx} y={y - dy} width={w} height={d} rx={1.5} fill="#b4c1cd" />
+      <rect x={x + dx} y={y - dy} width={w} height={d} rx={1.5} fill="none" stroke="#8698a8" strokeWidth={0.8} />
+      <rect x={x} y={y} width={w} height={d} rx={1.5} fill="#8595a3" opacity={0.45} />
     </g>
   );
 });
@@ -432,20 +453,20 @@ export const Desk = memo(function Desk({
   name: string | null;
 }) {
   return (
-    <Box x={x} y={y} w={w} d={d} h={DESK_H} top={OAK.lit} front={OAK.face} side={OAK.dark} radius={2}>
+    <Box x={x} y={y} w={w} d={d} h={DESK_H} top={WHITE.lit} front={WHITE.dark} side={WHITE.deep} radius={2}>
       {busy ? <ellipse cx={x + w * 0.5} cy={y + d * 0.42} rx={w * 0.36} ry={d * 0.38} fill="url(#office-glow)" /> : null}
       {/* Monitor, stood at the back edge facing its occupant. */}
       <rect x={x + w * 0.5 - 19} y={y + 7} width={38} height={4.4} rx={1.6} fill={busy ? "#6ea8e8" : SCREEN_OFF} />
       <rect x={x + w * 0.5 - 19} y={y + 9.4} width={38} height={2.6} rx={1.2} fill={METAL.dark} />
       <rect x={x + w * 0.5 - 5} y={y + 12} width={10} height={3} rx={1.2} fill={METAL.face} />
       {/* Keyboard, notepad and mug on the near half. */}
-      <rect x={x + w * 0.5 - 17} y={y + d - 21} width={34} height={9} rx={1.6} fill={PLASTER.face} />
-      <rect x={x + w * 0.5 - 15} y={y + d - 19.4} width={30} height={5.8} rx={1} fill={PLASTER.deep} opacity={0.7} />
+      <rect x={x + w * 0.5 - 17} y={y + d - 21} width={34} height={9} rx={1.6} fill={WHITE.dark} />
+      <rect x={x + w * 0.5 - 15} y={y + d - 19.4} width={30} height={5.8} rx={1} fill={METAL.lit} opacity={0.55} />
       <circle cx={x + w - 13} cy={y + d - 15} r={4.2} fill={TERRA} />
       <circle cx={x + w - 13} cy={y + d - 15} r={2.6} fill={shade(TERRA, 0.7)} />
       {name ? (
         <>
-          <rect x={x + 6} y={y + d - 12.5} width={w - 12} height={10} rx={2} fill={PLASTER.lit} opacity={0.92} />
+          <rect x={x + 6} y={y + d - 12.5} width={w - 12} height={10} rx={2} fill={WHITE.dark} />
           <text
             x={x + w / 2}
             y={y + d - 5}
@@ -470,7 +491,7 @@ export const Desk = memo(function Desk({
 export const TaskChair = memo(function TaskChair({ x, y }: { x: number; y: number }) {
   return (
     <g>
-      <ellipse cx={x} cy={y + 9} rx={12} ry={4.6} fill="#4a3a24" opacity={0.15} />
+      <ellipse cx={x} cy={y + 9} rx={12} ry={4.6} fill={SHADOW} opacity={0.13} />
       <path
         d={`M ${x - 10} ${y + 7} L ${x + 10} ${y + 7} M ${x} ${y + 4} L ${x - 8} ${y + 13} M ${x} ${y + 4} L ${x + 8} ${y + 13}`}
         stroke={METAL.dark}
@@ -484,15 +505,15 @@ export const TaskChair = memo(function TaskChair({ x, y }: { x: number; y: numbe
 });
 
 /**
- * Solid walnut chair for the canteen and the meeting room. Dark, because both
- * of those sit on pale carpet next to oak tables — an oak chair there
- * disappears into the table it belongs to.
+ * Light oak chair for the canteen and the meeting room. It is shaded one step
+ * below the table it stands at, so oak-on-oak still separates where the seat
+ * meets the tabletop.
  */
 export const WoodChair = memo(function WoodChair({ x, y }: { x: number; y: number }) {
   return (
     <g>
-      <Box x={x - 9.5} y={y - 3} w={19} d={16} h={SEAT_H} top={WALNUT.lit} front={WALNUT.face} side={WALNUT.dark} radius={3} shadow={false} />
-      <Box x={x - 8} y={y - 8} w={16} d={3.5} h={SEAT_H + 14} top={WALNUT.face} front={WALNUT.dark} side={WALNUT.deep} radius={2.5} shadow={false} />
+      <Box x={x - 9.5} y={y - 3} w={19} d={16} h={SEAT_H} top={OAK.face} front={OAK.dark} side={OAK.deep} radius={3} shadow={false} />
+      <Box x={x - 8} y={y - 8} w={16} d={3.5} h={SEAT_H + 14} top={OAK.lit} front={OAK.face} side={OAK.dark} radius={2.5} shadow={false} />
     </g>
   );
 });
@@ -502,17 +523,17 @@ export const Stool = memo(function Stool({ x, y }: { x: number; y: number }) {
   return <Cyl cx={x} cy={y} r={11} h={24} top={OAK.face} side={METAL.face} />;
 });
 
-/** Tea counter: oak top on a panelled base, with a machine on the end. */
+/** Tea counter: an oak worktop on white cabinetry, machine on the end. */
 export const TeaCounter = memo(function TeaCounter({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
   return (
-    <Box x={x} y={y} w={w} d={d} h={34} top={OAK.lit} front={OAK.dark} side={OAK.deep} radius={2}>
+    <Box x={x} y={y} w={w} d={d} h={34} top={OAK.lit} front={WHITE.dark} side={WHITE.deep} radius={2}>
       <rect x={x + 14} y={y + 5} width={26} height={22} rx={3} fill={METAL.face} />
       <rect x={x + 17} y={y + 8} width={20} height={7} rx={2} fill={METAL.lit} />
       <circle cx={x + 27} cy={y + 22} r={2.6} fill="#ffd479" />
       {[0.42, 0.52, 0.62].map((t, i) => (
         <g key={t}>
-          <circle cx={x + w * t} cy={y + d * 0.5} r={5} fill={i === 1 ? PLASTER.lit : "#d8a2b4"} />
-          <circle cx={x + w * t} cy={y + d * 0.5} r={3} fill={shade(i === 1 ? PLASTER.lit : "#d8a2b4", 0.78)} />
+          <circle cx={x + w * t} cy={y + d * 0.5} r={5} fill={i === 1 ? WHITE.lit : "#d8a2b4"} stroke={WHITE.deep} strokeWidth={0.7} />
+          <circle cx={x + w * t} cy={y + d * 0.5} r={3} fill={shade(i === 1 ? WHITE.lit : "#d8a2b4", 0.86)} />
         </g>
       ))}
       <rect x={x + w - 46} y={y + 8} width={30} height={14} rx={2} fill={MOSS.face} />
@@ -594,7 +615,7 @@ export const Armchair = memo(function Armchair({ x, y, w, d }: { x: number; y: n
 export const CoffeeTable = memo(function CoffeeTable({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
   return (
     <Box x={x} y={y} w={w} d={d} h={14} top={OAK.face} front={OAK.dark} side={OAK.deep} radius={4}>
-      <rect x={x + 12} y={y + 10} width={30} height={20} rx={2} fill={PLASTER.deep} />
+      <rect x={x + 12} y={y + 10} width={30} height={20} rx={2} fill={WHITE.lit} stroke={WHITE.deep} strokeWidth={0.8} />
       <circle cx={x + w - 22} cy={y + d * 0.5} r={4.6} fill={TERRA} />
     </Box>
   );
@@ -611,24 +632,24 @@ export const RoundTable = memo(function RoundTable({ cx, cy, r }: { cx: number; 
       <ellipse cx={cx + dx} cy={cy - dy} rx={r} ry={r * 0.88} fill="none" stroke={OAK.dark} strokeWidth={2} />
       {[-1, 0, 1].map((k) => (
         <g key={k} transform={`translate(${cx + dx + k * r * 0.5} ${cy - dy + (k === 0 ? -r * 0.34 : r * 0.3)})`}>
-          <circle r={9} fill={PLASTER.lit} />
-          <circle r={5} fill={TERRA} opacity={0.55} />
+          <circle r={9} fill={WHITE.lit} stroke={WHITE.deep} strokeWidth={0.8} />
+          <circle r={5} fill={TERRA} opacity={0.5} />
         </g>
       ))}
     </g>
   );
 });
 
-/** Slatted walnut bench for the waiting strip. */
+/** Slatted oak bench for the waiting strip. */
 export const Bench = memo(function Bench({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
   return (
     <g>
-      <Box x={x} y={y} w={w} d={d} h={SEAT_H} top={WALNUT.face} front={WALNUT.dark} side={WALNUT.deep} radius={3}>
+      <Box x={x} y={y} w={w} d={d} h={SEAT_H} top={OAK.face} front={OAK.dark} side={OAK.deep} radius={3}>
         {[0.34, 0.66].map((t) => (
-          <line key={t} x1={x + 3} y1={y + d * t} x2={x + w - 3} y2={y + d * t} stroke={WALNUT.deep} strokeWidth={1.2} strokeOpacity={0.7} />
+          <line key={t} x1={x + 3} y1={y + d * t} x2={x + w - 3} y2={y + d * t} stroke={OAK.deep} strokeWidth={1.2} strokeOpacity={0.6} />
         ))}
       </Box>
-      <Box x={x} y={y - 5} w={w} d={5} h={SEAT_H + 22} top={WALNUT.lit} front={WALNUT.face} side={WALNUT.deep} radius={2.5} shadow={false} />
+      <Box x={x} y={y - 5} w={w} d={5} h={SEAT_H + 22} top={OAK.lit} front={OAK.dark} side={OAK.deep} radius={2.5} shadow={false} />
     </g>
   );
 });
@@ -638,7 +659,7 @@ export const Plant = memo(function Plant({ x, y, scale = 1 }: { x: number; y: nu
   const r = 13 * scale;
   return (
     <g>
-      <Cyl cx={x} cy={y} r={r * 0.68} h={20 * scale} top="#8a6a4a" side={TERRA} ry={r * 0.5} />
+      <Cyl cx={x} cy={y} r={r * 0.68} h={20 * scale} top={WHITE.face} side={WHITE.deep} ry={r * 0.5} />
       <g transform={`translate(${px(x, 34 * scale)} ${py(y, 34 * scale)})`}>
         <circle cx={-r * 0.5} cy={r * 0.2} r={r * 0.66} fill={MOSS.face} />
         <circle cx={r * 0.55} cy={r * 0.3} r={r * 0.6} fill={MOSS.dark} />
@@ -755,7 +776,7 @@ function AvatarHead({
   if (!avatarUrl || broken) {
     return (
       <g>
-        <circle r={r} fill={PLASTER.lit} />
+        <circle r={r} fill={WHITE.lit} />
         <ProceduralFace colors={colors} />
         <circle r={r - 0.5} fill="none" stroke={METAL.dark} strokeOpacity={0.3} strokeWidth={1.1} />
       </g>
@@ -764,7 +785,7 @@ function AvatarHead({
   const inner = r - 1;
   return (
     <g>
-      <circle r={r} fill={PLASTER.lit} />
+      <circle r={r} fill={WHITE.lit} />
       <clipPath id={clipId}>
         <circle r={inner} />
       </clipPath>
@@ -832,7 +853,7 @@ export const Person = memo(function Person({
   return (
     <g data-agent={agentId} className={onClick ? "cursor-pointer" : undefined} onClick={onClick}>
       <title>{name}</title>
-      <ellipse cx={x} cy={y} rx={13} ry={5.4} fill="#4a3a24" opacity={0.2} />
+      <ellipse cx={x} cy={y} rx={13} ry={5.4} fill={SHADOW} opacity={0.17} />
       <g transform={`translate(${x} ${y}) matrix(1 0 ${LEAN} ${-LIFT} 0 0)`}>
         {/* Legs. Seated, only the knees show above the seat pad. */}
         <rect x={-6.6 + swing} y={0} width={6} height={hip + 2} rx={3} fill={TROUSER} />
@@ -859,7 +880,7 @@ export const Person = memo(function Person({
           fontSize={8.5}
           fontWeight={700}
           fill={METAL.deep}
-          stroke={PLASTER.lit}
+          stroke={WHITE.lit}
           strokeWidth={2.8}
           strokeOpacity={0.85}
           paintOrder="stroke"

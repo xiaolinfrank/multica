@@ -750,7 +750,7 @@ function TokenBoard({
         </text>
       ) : (
         shown.map((row, i) => {
-          const y = -h + 45 + i * 13;
+          const y = -h + 41 + i * 12;
           const agent = agentById.get(row.agentId);
           const pct = Math.max(0.06, row.totalTokens / max);
           return (
@@ -811,7 +811,7 @@ function ZoneTag({
 }) {
   return (
     <g pointerEvents="none">
-      <rect x={x} y={y} width={w} height={TAG_H} rx={TAG_H / 2} fill="#fbf7f0" opacity={0.92} />
+      <rect x={x} y={y} width={w} height={TAG_H} rx={TAG_H / 2} fill="#ffffff" opacity={0.94} />
       <rect
         x={x}
         y={y}
@@ -819,20 +819,20 @@ function ZoneTag({
         height={TAG_H}
         rx={TAG_H / 2}
         fill="none"
-        stroke="#8b6740"
-        strokeOpacity={0.3}
+        stroke="#98a3b1"
+        strokeOpacity={0.55}
         strokeWidth={0.9}
       />
-      <text x={x + 11} y={y + 12} fontSize={10} fontWeight={700} fill="#3a2e22">
+      <text x={x + 11} y={y + 12} fontSize={10} fontWeight={700} fill="#333b46">
         {name}
       </text>
       {count > 0 ? (
-        <text x={x + 11 + nameW + 6} y={y + 11.6} fontSize={8.5} fontWeight={600} fill="#8b6740">
+        <text x={x + 11 + nameW + 6} y={y + 11.6} fontSize={8.5} fontWeight={600} fill="#6a7482">
           {count}
         </text>
       ) : null}
       {hint ? (
-        <text x={x + 11 + nameW + countW + 3} y={y + 11.6} fontSize={8} fill="#7a6a58">
+        <text x={x + 11 + nameW + countW + 3} y={y + 11.6} fontSize={8} fill="#7e8896">
           {hint}
         </text>
       ) : null}
