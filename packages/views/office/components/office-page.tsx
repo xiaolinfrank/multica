@@ -10,6 +10,8 @@ import { memberListOptions, workspaceKeys } from "@multica/core/workspace/querie
 import type { MemberWithUser } from "@multica/core/types";
 import { useNavigation } from "../../navigation";
 import {
+  assignMemberSeat,
+  memberActivityFromIssues,
   monologueMessage,
   OFFICE_PHASE_MS,
   pickMonologueSlot,
@@ -86,14 +88,37 @@ export function OfficePage() {
     refetchInterval: 30_000,
   });
   const liveUsers = useMemo(() => toOfficeMembers(members, selfId), [members, selfId]);
+// Human seating follows what each member actually has open: the pure
+// classifier in core/office turns issue counts into a zone plus a
+// monologue slot, so people mix into the agents' areas instead of a corner.
+const { data: memberIssues = [] } = useQuery({
+  queryKey: ["workspaces", wsId, "office", "member-issues"],
+  queryFn: () =>
+    api.listIssues({ workspace_id: wsId ?? "", assignee_types: ["member"], limit: 200 }).then((r) => r.issues),
+  enabled: !!wsId && !isDemo,
+  refetchInterval: 60_000,
+});
+const seatedLive = useMemo(() => {
+  const activity = memberActivityFromIssues(
+    liveUsers.map((u) => u.userId),
+    memberIssues,
+  );
+  return liveUsers.map((u) => ({
+    ...u,
+    ...assignMemberSeat(
+      activity.get(u.userId) ?? { userId: u.userId, inProgress: 0, open: 0, recentlyDone: 0 },
+      phase,
+    ),
+  }));
+}, [liveUsers, memberIssues, phase]);
   // Demo keeps its own local status so the editor is exercisable offline.
   const [demoStatus, setDemoStatus] = useState<string | null>(null);
   const users = useMemo(
     () =>
       isDemo
         ? demo.users.map((u, i) => (i === 0 && demoStatus !== null ? { ...u, status: demoStatus } : u))
-        : liveUsers,
-    [isDemo, demo.users, demoStatus, liveUsers],
+        : seatedLive,
+    [isDemo, demo.users, demoStatus, seatedLive],
   );
 
   const queryClient = useQueryClient();
@@ -135,15 +160,25 @@ export function OfficePage() {
     [scene.agents],
   );
 
-  const bubbleFor = useMemo(() => {
+  /** Human monologue slots keyed by user id — bubbleFor checks these first. */
+const humanSlots = useMemo(
+  () => new Map(users.map((u) => [u.userId, u.monologue])),
+  [users],
+);
+const bubbleFor = useMemo(() => {
     return (agentId: string): string | null => {
-      const zone = scene.floor.zoneByAgent.get(agentId);
+      const human = humanSlots.get(agentId);
+    if (human) {
+      const msg = monologueMessage(human);
+      return tr(msg.key, msg.params);
+    }
+    const zone = scene.floor.zoneByAgent.get(agentId);
       if (!zone) return null;
       const slot = pickMonologueSlot(agentId, zone, presence, phase);
       const msg = monologueMessage(slot);
       return tr(msg.key, msg.params);
     };
-  }, [scene.floor.zoneByAgent, presence, phase, tr]);
+  }, [humanSlots, scene.floor.zoneByAgent, presence, phase, tr]);
 
   const onAgentClick = (agentId: string) => {
     navigation.push(paths.agentDetail(agentId));

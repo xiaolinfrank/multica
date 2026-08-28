@@ -90,7 +90,6 @@ export const ZONE_FLOOR: Record<string, string> = {
   canteen: "#eee5df",
   waiting: "#dfdcec",
   gym: "#c8d1d9",
-  members: "#e6d7dc",
 };
 
 /**
@@ -843,8 +842,6 @@ export interface SpriteColors {
 
 /** Head radius. Big enough that a real avatar is legible at scene scale. */
 export const HEAD_R = 12;
-/** Humans read as taller and broader than the agent figures sharing the floor. */
-export const HUMAN_SCALE = 1.3;
 /** Height of the head's centre above the floor, standing and seated. */
 export const HEAD_Z = 64;
 export const SIT_HEAD_Z = 50;
@@ -937,8 +934,6 @@ export interface PersonProps {
   avatarUrl: string | null;
   /** Walk-cycle frame; ignored unless walking. */
   frame?: 0 | 1;
-  /** Human figures are scaled up and get hair plus an open collar so they read as people, not agents. */
-  human?: boolean;
   onClick?: () => void;
 }
 
@@ -958,13 +953,11 @@ export const Person = memo(function Person({
   colors,
   avatarUrl,
   frame = 0,
-  human = false,
   onClick,
 }: PersonProps) {
   const sitting = posture === "sitting";
   const walking = posture === "walking";
-  const s = human ? HUMAN_SCALE : 1;
-  const headZ = (sitting ? SIT_HEAD_Z : HEAD_Z) * s;
+  const headZ = sitting ? SIT_HEAD_Z : HEAD_Z;
   const shoulder = headZ - 13;
   const hip = sitting ? 18 : 28;
   const swing = walking ? (frame === 0 ? 3.4 : -3.4) : 0;
@@ -973,8 +966,8 @@ export const Person = memo(function Person({
   return (
     <g data-agent={agentId} className={onClick ? "cursor-pointer" : undefined} onClick={onClick}>
       <title>{name}</title>
-      <ellipse cx={x} cy={y} rx={13 * s} ry={5.4 * s} fill={SHADOW} opacity={0.17} />
-      <g transform={`translate(${x} ${y}) matrix(1 0 ${LEAN} ${-LIFT} 0 0) scale(${s})`}>
+      <ellipse cx={x} cy={y} rx={13} ry={5.4} fill={SHADOW} opacity={0.17} />
+      <g transform={`translate(${x} ${y}) matrix(1 0 ${LEAN} ${-LIFT} 0 0)`}>
         {/* Legs. Seated, only the knees show above the seat pad. */}
         <rect x={-6.6 + swing} y={0} width={6} height={hip + 2} rx={3} fill={TROUSER} />
         <rect x={0.6 - swing} y={0} width={6} height={hip + 2} rx={3} fill={shade(TROUSER, 1.16)} />
@@ -988,30 +981,94 @@ export const Person = memo(function Person({
         {/* Shoulders and neck. */}
         <rect x={-10.5} y={shoulder - 6} width={21} height={7} rx={3.5} fill={shade(colors.clothes, 0.92)} />
         <rect x={-3.2} y={shoulder} width={6.4} height={5} rx={2.4} fill={shade(colors.skin, 0.88)} />
-        {human ? (
-          <path d={`M ${-4.4} ${shoulder - 6} L 0 ${shoulder - 1} L 4.4 ${shoulder - 6} Z`} fill={colors.skin} />
-        ) : null}
       </g>
-      <g transform={`translate(${hx} ${hy}) scale(${s})`}>
+      <g transform={`translate(${hx} ${hy})`}>
         <AvatarHead colors={colors} avatarUrl={avatarUrl} clipId={`office-av-${agentId}`} />
-        {human && !avatarUrl ? (
-          <g>
-            <clipPath id={`office-hair-${agentId}`}>
-              <circle r={HEAD_R - 0.6} />
-            </clipPath>
-            {/* Fringe straight across; the head ring frames it like a cap. */}
-            <g clipPath={`url(#office-hair-${agentId})`}>
-              <rect x={-HEAD_R} y={-HEAD_R - 0.5} width={HEAD_R * 2} height={HEAD_R * 1.12} fill={colors.hair} />
-            </g>
-          </g>
-        ) : null}
       </g>
       {label ? (
         <text
           x={hx}
-          y={hy - HEAD_R * s - 5}
+          y={hy - HEAD_R - 5}
           textAnchor="middle"
-          fontSize={human ? 9.5 : 8.5}
+          fontSize={8.5}
+          fontWeight={700}
+          fill={METAL.deep}
+          stroke={WHITE.lit}
+          strokeWidth={2.8}
+          strokeOpacity={0.85}
+          paintOrder="stroke"
+        >
+          {label}
+        </text>
+      ) : null}
+    </g>
+  );
+});
+
+/**
+ * A human member seen from above: shoulders capsule, hair-ringed head, hands
+ * at the sides. Deliberately a different drawing language from the agent
+ * Person figures (front-facing miniatures) so the two casts read apart at a
+ * glance, and sized one notch larger than the agents.
+ */
+export const HUMAN_HEAD_R = 15;
+/** Vertical distance from the head centre to the name-label baseline. */
+export const HUMAN_LABEL_DY = HUMAN_HEAD_R + 10;
+
+export interface HumanFigureProps {
+  id: string;
+  name: string;
+  /** Trimmed name shown above the head. */
+  label: string | null;
+  /** Floor position (footprint centre). */
+  x: number;
+  y: number;
+  colors: SpriteColors;
+  avatarUrl: string | null;
+  frame?: number;
+  onClick?: () => void;
+}
+
+export const HumanFigure = memo(function HumanFigure({
+  id,
+  name,
+  label,
+  x,
+  y,
+  colors,
+  avatarUrl,
+  frame = 0,
+  onClick,
+}: HumanFigureProps) {
+  const hy = y - 6;
+  // Hands drift slightly with the phase tick so standing people feel alive.
+  const bob = frame === 0 ? 1.3 : -1.3;
+  return (
+    <g data-member={id} className={onClick ? "cursor-pointer" : undefined} onClick={onClick}>
+      <title>{name}</title>
+      {/* Ground shadow plus a wide presence ring, one size above the agents'. */}
+      <ellipse cx={x} cy={y} rx={19} ry={8} fill={SHADOW} opacity={0.16} />
+      <ellipse cx={x} cy={y} rx={15.5} ry={6.4} fill={shade(colors.clothes, 1.4)} opacity={0.22} />
+      {/* Shoulders capsule, lit down its left edge like the furniture. */}
+      <g transform={`translate(${x} ${y})`}>
+        <rect x={-18} y={-10} width={36} height={20} rx={10} fill={colors.clothes} />
+        <rect x={-18} y={-10} width={11} height={20} rx={5.5} fill={shade(colors.clothes, 1.16)} opacity={0.85} />
+        <rect x={7} y={-10} width={11} height={20} rx={5.5} fill={shade(colors.clothes, 0.8)} opacity={0.9} />
+        {/* Hands at the sides. */}
+        <circle cx={-14.5} cy={1.5 + bob} r={3.6} fill={shade(colors.skin, 0.95)} />
+        <circle cx={14.5} cy={-1.5 - bob} r={3.6} fill={shade(colors.skin, 0.95)} />
+      </g>
+      {/* Head from above: hair ring around the face disc or avatar photo. */}
+      <g transform={`translate(${x} ${hy})`}>
+        <circle r={HUMAN_HEAD_R} fill={colors.hair} />
+        <AvatarHead colors={colors} avatarUrl={avatarUrl} clipId={`office-hum-${id}`} />
+      </g>
+      {label ? (
+        <text
+          x={x}
+          y={hy - HUMAN_LABEL_DY}
+          textAnchor="middle"
+          fontSize={9.5}
           fontWeight={700}
           fill={METAL.deep}
           stroke={WHITE.lit}

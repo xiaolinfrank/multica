@@ -3,6 +3,7 @@
 // filter and the grid are unit-testable without mounting the scene.
 
 import type { MemberWithUser } from "@multica/core/types";
+import type { MemberSeatZone, MonologueSlot } from "@multica/core/office";
 
 /**
  * Fork deployment scoping (BayClaw for Fosun Pharma): only real employee
@@ -23,6 +24,12 @@ export interface OfficeMemberFigure {
   isSelf: boolean;
 }
 
+/** An office member plus the zone and monologue their recent activity puts them in. */
+export type SeatedMember = OfficeMemberFigure & {
+  zone: MemberSeatZone;
+  monologue: MonologueSlot;
+};
+
 /** Filters the workspace member list down to office-eligible users. */
 export function toOfficeMembers(
   members: readonly MemberWithUser[],
@@ -41,31 +48,22 @@ export function toOfficeMembers(
 }
 
 /**
- * The members-corner grid: four standing slots on the south side of the
- * standup table, then a back row on the north side. Mirrors the geometry in
- * office-floor.tsx (MEMBERS zone x 952..1150); kept here so placement is a
- * pure function the node suite can pin.
+ * Standing spots for human figures, one list per zone they can land in.
+ * Coordinates sit clear of the agent SEATS arrays in office-floor.tsx so
+ * the two casts never overlap; the i-th member seated in a zone this phase
+ * takes spot i % len.
  */
-export const MEMBER_GRID = {
-  zoneX: 952,
-  zoneW: 198,
-  perRow: 4,
-  frontY: 302,
-  backY: 226,
-  slot: 46,
-} as const;
+export const HUMAN_SPOTS: Record<string, ReadonlyArray<{ x: number; y: number }>> = {
+  desk: [{ x: 100, y: 385 }, { x: 220, y: 385 }, { x: 340, y: 385 }],
+  waiting: [{ x: 88, y: 600 }, { x: 180, y: 615 }],
+  lounge: [{ x: 360, y: 530 }, { x: 560, y: 525 }, { x: 460, y: 560 }],
+  tea: [{ x: 66, y: 536 }, { x: 118, y: 558 }],
+  canteen: [{ x: 660, y: 560 }, { x: 860, y: 560 }],
+  gym: [{ x: 1000, y: 585 }, { x: 1120, y: 610 }, { x: 1060, y: 500 }],
+};
 
-export interface MemberSpot {
-  x: number;
-  y: number;
-  slot: number;
-}
-
-/** Floor position of the i-th member figure, in scene units. */
-export function memberSpot(i: number): MemberSpot {
-  return {
-    x: MEMBER_GRID.zoneX + ((i % MEMBER_GRID.perRow) + 0.5) * (MEMBER_GRID.zoneW / MEMBER_GRID.perRow),
-    y: i < MEMBER_GRID.perRow ? MEMBER_GRID.frontY : MEMBER_GRID.backY,
-    slot: MEMBER_GRID.slot,
-  };
+/** Floor position of the i-th human seated in a zone this phase. */
+export function humanSpot(zone: string, i: number): { x: number; y: number } {
+  const list = HUMAN_SPOTS[zone] ?? HUMAN_SPOTS.desk ?? [];
+  return list[i % list.length] ?? { x: 100, y: 300 };
 }

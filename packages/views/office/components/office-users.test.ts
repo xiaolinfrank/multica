@@ -4,7 +4,7 @@
 // only carries the happy path.
 import { describe, expect, it } from "vitest";
 import type { MemberWithUser } from "@multica/core/types";
-import { MEMBER_GRID, memberSpot, OFFICE_MEMBER_EMAIL_SUFFIX, toOfficeMembers } from "./office-users";
+import { humanSpot, HUMAN_SPOTS, OFFICE_MEMBER_EMAIL_SUFFIX, toOfficeMembers } from "./office-users";
 
 const member = (userId: string, email: string, over: Partial<MemberWithUser> = {}): MemberWithUser =>
   ({
@@ -52,20 +52,14 @@ describe("toOfficeMembers", () => {
     expect(out).toHaveLength(0);
   });
 });
-
-describe("memberSpot", () => {
-  it("lays the grid out four to a row, front row first", () => {
-    expect(memberSpot(0)).toMatchObject({ x: MEMBER_GRID.zoneX + 0.5 * (MEMBER_GRID.zoneW / 4), y: MEMBER_GRID.frontY });
-    expect(memberSpot(3).y).toBe(MEMBER_GRID.frontY);
-    expect(memberSpot(4).y).toBe(MEMBER_GRID.backY);
-    expect(memberSpot(7).y).toBe(MEMBER_GRID.backY);
+describe("humanSpot", () => {
+  it("returns the zone's i-th standing spot, wrapping once it is full", () => {
+    expect(humanSpot("desk", 0)).toEqual(HUMAN_SPOTS.desk?.[0]);
+    expect(humanSpot("desk", HUMAN_SPOTS.desk?.length ?? 0)).toEqual(HUMAN_SPOTS.desk?.[0]);
+    expect(humanSpot("gym", 1)).toEqual(HUMAN_SPOTS.gym?.[1]);
   });
 
-  it("keeps every column inside the members zone", () => {
-    for (let i = 0; i < MEMBER_GRID.perRow * 2; i++) {
-      const { x } = memberSpot(i);
-      expect(x).toBeGreaterThanOrEqual(MEMBER_GRID.zoneX);
-      expect(x).toBeLessThanOrEqual(MEMBER_GRID.zoneX + MEMBER_GRID.zoneW);
-    }
+  it("falls back to the desk spots for a zone humans never land in", () => {
+    expect(humanSpot("nonsense", 1)).toEqual(HUMAN_SPOTS.desk?.[1]);
   });
 });

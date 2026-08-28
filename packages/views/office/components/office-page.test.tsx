@@ -43,6 +43,7 @@ vi.mock("@multica/core/api", () => ({
     getDashboardUsageByAgent: vi.fn().mockResolvedValue([]),
     listMembers: vi.fn().mockResolvedValue([]),
     updateMe: vi.fn().mockResolvedValue({}),
+      listIssues: vi.fn().mockResolvedValue([]),
     getBaseUrl: vi.fn().mockReturnValue("https://api.example.test"),
   },
 }));
@@ -87,6 +88,7 @@ beforeEach(() => {
     getDashboardUsageByAgent: ReturnType<typeof vi.fn>;
     listMembers: ReturnType<typeof vi.fn>;
     updateMe: ReturnType<typeof vi.fn>;
+    listIssues: ReturnType<typeof vi.fn>;
   };
   mockedApi.listAgents.mockResolvedValue([]);
   mockedApi.listRuntimes.mockResolvedValue([]);
@@ -95,6 +97,7 @@ beforeEach(() => {
   mockedApi.getDashboardUsageByAgent.mockResolvedValue([]);
   mockedApi.listMembers.mockResolvedValue([]);
   mockedApi.updateMe.mockResolvedValue({});
+mockedApi.listIssues.mockResolvedValue([]);
 });
 
 describe("OfficePage", () => {
@@ -161,7 +164,10 @@ describe("OfficePage", () => {
   });
 
   it("renders member figures with their statuses, scoped to the office domain", async () => {
-    const mocked = api as unknown as { listMembers: ReturnType<typeof vi.fn> };
+    const mocked = api as unknown as {
+    listMembers: ReturnType<typeof vi.fn>;
+    listIssues: ReturnType<typeof vi.fn>;
+  };
     mocked.listMembers.mockResolvedValue([
       {
         id: "mem-1",
@@ -197,13 +203,36 @@ describe("OfficePage", () => {
         custom_status: "should not appear",
       },
     ] satisfies MemberWithUser[]);
+    // Self has work in progress (desk), Lin has queued work (waiting): the
+    // issue counts decide where each human stands, not a dedicated corner.
+    mocked.listIssues.mockResolvedValue({
+      total: 2,
+      issues: [
+      {
+        id: "issue-1",
+        assignee_type: "member",
+        assignee_id: "user-self",
+        status: "Doing",
+        status_category: "in_progress",
+      },
+      {
+        id: "issue-2",
+        assignee_type: "member",
+        assignee_id: "user-lin",
+        status: "Todo",
+        status_category: "todo",
+      },
+      ],
+    });
 
     renderPage();
 
     // Employees get figures with a status pill (title + drawn text); the
     // non-office account does not appear on the floor at all.
     expect(await screen.findAllByText("🎧 focusing")).not.toHaveLength(0);
-    expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(document.querySelector('[data-member="user-self"]')).not.toBeNull();
+    expect(document.querySelector('[data-member="user-lin"]')).not.toBeNull();
+    expect(document.querySelector('[data-member="user-bot"]')).toBeNull();
     expect(screen.queryByText("should not appear")).not.toBeInTheDocument();
     // A self with a status has no "set status" pill, but Lin (empty status,
     // not self) has no pill at all.

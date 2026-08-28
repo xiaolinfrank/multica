@@ -43,9 +43,6 @@
     "gym": {
       "name": "Gym",
       "empty": "The machines are resting too"
-    },
-    "members": {
-      "name": "Members"
     }
   },
   "timeline": {
@@ -69,6 +66,35 @@
     "loading": "Opening the office…"
   },
   "monologue": {
+    "human": {
+      "working": {
+        "0": "Going to crack this requirement today",
+        "1": "Third revision — almost there",
+        "2": "Focus mode, do not disturb"
+      },
+      "waiting": {
+        "0": "Scheduling has not landed yet",
+        "1": "The request is still in review…"
+      },
+      "idle": {
+        "lounge": {
+          "0": "Five-minute breather",
+          "1": "Brain needs a rest"
+        },
+        "tea": {
+          "0": "Coffee first",
+          "1": "Catching colleagues at the tea point"
+        },
+        "canteen": {
+          "0": "What is for lunch",
+          "1": "Almost meal time"
+        },
+        "gym": {
+          "0": "Time to move a little",
+          "1": "Ideas flow after a workout"
+        }
+      }
+    },
     "working": {
       "0": "This task is a fun one — almost got the shape of it",
       "1": "Pushing through {{count}} tasks…",

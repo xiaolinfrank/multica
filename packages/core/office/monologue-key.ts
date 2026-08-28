@@ -31,5 +31,9 @@ export function monologueMessage(slot: MonologueSlot): MonologueMessage {
       return { key: `monologue.offline.${slot.variant}` };
     case "unbound":
       return { key: `monologue.unbound.${slot.variant}` };
+    case "human":
+      return slot.mood === "idle"
+        ? { key: `monologue.human.idle.${slot.zone ?? "lounge"}.${slot.variant}` }
+        : { key: `monologue.human.${slot.mood}.${slot.variant}` };
   }
 }

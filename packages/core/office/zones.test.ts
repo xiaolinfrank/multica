@@ -182,6 +182,7 @@ describe("pickMonologueSlot", () => {
     for (const zone of zones) {
       for (const agentId of ["x", "y", "z"]) {
         const slot = pickMonologueSlot(agentId, zone, presenceMap, 7);
+        if (slot.kind === "human") continue; // human slots are budgeted separately
         expect(slot.variant).toBeLessThan(MONOLOGUE_VARIANTS[slot.kind]);
       }
     }

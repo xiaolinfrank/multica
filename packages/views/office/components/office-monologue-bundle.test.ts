@@ -4,7 +4,7 @@
 // many lines for each" kind, but nothing asserted it — a variant bump
 // without new copy rendered raw i18n keys above the agents' heads.
 import { describe, expect, it } from "vitest";
-import { MONOLOGUE_VARIANTS, RELAX_ZONES } from "@multica/core/office";
+import { MEMBER_MONOLOGUE_VARIANTS, MONOLOGUE_VARIANTS, RELAX_ZONES } from "@multica/core/office";
 import { RESOURCES } from "../../locales";
 
 type Json = Record<string, unknown>;
@@ -22,6 +22,23 @@ describe("office monologue bundle coverage", () => {
   const locales = Object.keys(RESOURCES) as Array<keyof typeof RESOURCES>;
 
   for (const locale of locales) {
+    it(`carries every human monologue variant in ${locale}`, () => {
+      const office = RESOURCES[locale].office as Json;
+      for (const [mood, count] of Object.entries(MEMBER_MONOLOGUE_VARIANTS)) {
+        if (mood === "idle") {
+          for (const zone of RELAX_ZONES) {
+            for (let v = 0; v < count; v++) {
+              expect(at(office, `monologue.human.idle.${zone}.${v}`), `${locale} monologue.human.idle.${zone}.${v}`).toBeTypeOf("string");
+            }
+          }
+          continue;
+        }
+        for (let v = 0; v < count; v++) {
+          expect(at(office, `monologue.human.${mood}.${v}`), `${locale} monologue.human.${mood}.${v}`).toBeTypeOf("string");
+        }
+      }
+    });
+
     it(`carries every monologue variant in ${locale}`, () => {
       const office = RESOURCES[locale].office as Json;
       for (const [kind, count] of Object.entries(MONOLOGUE_VARIANTS)) {
