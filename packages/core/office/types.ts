@@ -15,11 +15,12 @@ export type OfficeZoneId =
   | "lounge" // idle — sofa area
   | "tea" // idle — tea corner
   | "canteen" // idle — cafeteria
+  | "gym" // idle — gym corner
   | "waiting" // queued — tasks on the plate but nothing running
   | "absent"; // offline / unstable / unbound — not in the office today
 
-/** The three zones idle agents rotate through, in display order. */
-export const RELAX_ZONES = ["lounge", "tea", "canteen"] as const;
+/** The four zones idle agents rotate through, in display order. */
+export const RELAX_ZONES = ["lounge", "tea", "canteen", "gym"] as const;
 export type RelaxZone = (typeof RELAX_ZONES)[number];
 
 /** An agent seated at a desk, with what is on their plate. */
@@ -57,6 +58,7 @@ export interface OfficeFloorPlan {
   lounge: string[];
   tea: string[];
   canteen: string[];
+  gym: string[];
   absent: AbsentAssignment[];
   /** agent.id → zone, for spot lookups (monologue, hover cards). */
   zoneByAgent: ReadonlyMap<string, OfficeZoneId>;

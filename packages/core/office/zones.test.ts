@@ -147,6 +147,7 @@ describe("assignOfficeZones", () => {
         ...floor.lounge,
         ...floor.tea,
         ...floor.canteen,
+        ...floor.gym,
         ...floor.absent.map((a) => a.agentId),
       ];
       expect(seated).toHaveLength(agents.length);
@@ -172,7 +173,7 @@ describe("assignOfficeZones", () => {
 
 describe("pickMonologueSlot", () => {
   it("maps every zone to a slot kind within its variant budget", () => {
-    const zones: OfficeZoneId[] = ["desk", "meeting", "waiting", "lounge", "tea", "canteen", "absent"];
+    const zones: OfficeZoneId[] = ["desk", "meeting", "waiting", "lounge", "tea", "canteen", "gym", "absent"];
     const presenceMap = new Map<string, AgentPresenceDetail>([
       ["x", presence("online", "working", { runningCount: 2, queuedCount: 3 })],
       ["y", presence("online", "queued", { queuedCount: 3 })],
@@ -191,7 +192,7 @@ describe("pickMonologueSlot", () => {
 });
 
 describe("RELAX_ZONES", () => {
-  it("lists exactly the three leisure zones", () => {
-    expect([...RELAX_ZONES]).toEqual(["lounge", "tea", "canteen"]);
+  it("lists exactly the four leisure zones", () => {
+    expect([...RELAX_ZONES]).toEqual(["lounge", "tea", "canteen", "gym"]);
   });
 });

@@ -39,6 +39,13 @@
       "offline": "Runtime offline",
       "unstable": "Unstable connection",
       "unbound": "No runtime bound"
+    },
+    "gym": {
+      "name": "Gym",
+      "empty": "The machines are resting too"
+    },
+    "members": {
+      "name": "Members"
     }
   },
   "timeline": {
@@ -66,48 +73,65 @@
       "0": "This task is a fun one — almost got the shape of it",
       "1": "Pushing through {{count}} tasks…",
       "2": "Nearly there — one more review pass, then it ships",
-      "3": "Context loaded. Time to build."
+      "3": "Context loaded. Time to build.",
+      "4": "Today's tokens are hitting different — can't stop now",
+      "5": "This request is a maze, but I've got the map"
     },
     "queued": {
       "0": "In the queue… rehearsing the plan in my head",
       "1": "Tasks ahead of me — warming up first",
-      "2": "Ready and waiting for the next dispatch"
+      "2": "Ready and waiting for the next dispatch",
+      "3": "Still in line — storing up energy"
     },
     "idle": {
       "lounge": {
         "0": "A rare quiet moment — leaning back",
         "1": "Just shipped. Time for a stretch",
-        "2": "Zoning out in the lounge for a bit"
+        "2": "Zoning out in the lounge for a bit",
+        "3": "Don't mind if I do — five more minutes"
       },
       "tea": {
         "0": "This cup of tea is a good one",
         "1": "Between refills — sketching the next step",
-        "2": "Bumped into a teammate at the tea corner"
+        "2": "Bumped into a teammate at the tea corner",
+        "3": "Steeping tea, officially off the clock"
       },
       "canteen": {
         "0": "The canteen has something new today",
         "1": "Recharging over lunch",
-        "2": "Lunch first, always"
+        "2": "Lunch first, always",
+        "3": "Lunch is the real deadline"
+      },
+      "gym": {
+        "0": "Mid-set — this is where ideas land",
+        "1": "Plotting the next task on the treadmill",
+        "2": "Not feeling work today — lifting instead",
+        "3": "Leg day today, unstoppable tomorrow"
       }
     },
     "meeting": {
       "0": "Syncing on the split — I'll take the wrap-up",
       "1": "Picked up two tasks in the meeting",
-      "2": "The plan is roughly agreed"
+      "2": "The plan is roughly agreed",
+      "3": "Unexpectedly productive meeting"
     },
     "waiting": {
       "0": "{{count}} tasks queued — the runtime will be right back",
       "1": "Queued up — tidying context meanwhile",
-      "2": "Waiting for resources…"
+      "2": "Waiting for resources…",
+      "3": "Waiting on tokens…",
+      "4": "Still waiting on the user — hydrating meanwhile"
     },
     "completed": {
       "0": "Just delivered {{count}} tasks — feeling good",
       "1": "That batch is wrapped up. Deep breath",
-      "2": "Another round done. On a roll"
+      "2": "Another round done. On a roll",
+      "3": "Today's quota? Done."
     },
     "failed": {
       "0": "A task slipped just now — running it back",
-      "1": "Hit a snag, retrying"
+      "1": "Hit a snag, retrying",
+      "2": "Ouch. That one hurt — shaking it off"
     },
     "offline": {
       "0": "Runtime went offline — clocking out",
@@ -115,6 +139,21 @@
     },
     "unbound": {
       "0": "No runtime bound yet — taking the day off"
+    }
+  },
+  "status": {
+    "title": "My status",
+    "placeholder": "Type a custom status…",
+    "save": "Save",
+    "clear": "Clear",
+    "set": "Set status",
+    "presets": {
+      "focus": "🎧 Focusing",
+      "meeting": "🗣 In a meeting",
+      "gym": "🏋️ At the gym",
+      "coffee": "☕ Coffee break",
+      "away": "🚪 Away",
+      "vacation": "🏖 On vacation"
     }
   }
 }

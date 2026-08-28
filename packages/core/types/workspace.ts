@@ -80,6 +80,12 @@ export interface User {
   profile_description: string;
   /** Pinned IANA tz; null means "use browser-detected tz at render time". */
   timezone: string | null;
+  /**
+   * Free-form office presence status shown above the user's figure in the
+   * Agent Office. Global to the user (not per workspace); server always
+   * returns a string — NOT NULL DEFAULT '' at the column level.
+   */
+  custom_status: string;
   created_at: string;
   updated_at: string;
 }
@@ -93,6 +99,8 @@ export interface MemberWithUser {
   name: string;
   email: string;
   avatar_url: string | null;
+  /** User's office presence status; empty string when unset. */
+  custom_status?: string;
 }
 
 export interface Invitation {

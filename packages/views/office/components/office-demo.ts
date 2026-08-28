@@ -7,6 +7,7 @@ import {
   buildOfficeTimeline,
   mergeTokenRows,
 } from "@multica/core/office";
+import type { OfficeMemberFigure } from "./office-users";
 
 // A fully-staffed synthetic office for visual development and screenshot
 // verification (`/{ws}/office?demo=1`). It reuses the real pure builders
@@ -17,6 +18,8 @@ import {
 export interface DemoScene {
   scene: OfficeScene;
   presence: ReadonlyMap<string, AgentPresenceDetail>;
+  /** Stand-in humans for the members corner; the first is "you". */
+  users: OfficeMemberFigure[];
 }
 
 const agent = (id: string, name: string): Agent =>
@@ -124,5 +127,34 @@ export function buildDemoScene(phase: number): DemoScene {
     ),
   };
 
-  return { scene, presence };
+  return {
+    scene,
+    presence,
+    users: [
+      {
+        userId: "demo-user-0",
+        name: "You",
+        email: "you@fosunpharma.com",
+        avatarUrl: null,
+        status: "🎧 focusing",
+        isSelf: true,
+      },
+      {
+        userId: "demo-user-1",
+        name: "林医生",
+        email: "lin@fosunpharma.com",
+        avatarUrl: null,
+        status: "🏋️ at the gym",
+        isSelf: false,
+      },
+      {
+        userId: "demo-user-2",
+        name: "Wang",
+        email: "wang@fosunpharma.com",
+        avatarUrl: null,
+        status: "",
+        isSelf: false,
+      },
+    ],
+  };
 }

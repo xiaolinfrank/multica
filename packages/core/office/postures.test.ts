@@ -9,6 +9,7 @@ const plan = (over: Partial<OfficeFloorPlan>): OfficeFloorPlan => ({
   lounge: [],
   tea: [],
   canteen: [],
+  gym: [],
   waiting: [],
   absent: [],
   zoneByAgent: new Map(),
@@ -54,6 +55,18 @@ describe("assignPoses", () => {
     const poses = assignPoses(plan({ tea: ["x", "y"], canteen: ["z"] }), 7);
     expect(poses.filter((p) => p.posture === "walking")).toHaveLength(0);
     expect(poses.every((p) => p.posture === "sitting")).toBe(true);
+  });
+
+  it("seats two on the gym bench and jogs the third once three relax there", () => {
+    const ids = ["g0", "g1", "g2"];
+    for (const phase of [0, 1, 2]) {
+      const poses = assignPoses(plan({ gym: ids }), phase);
+      expect(poses.filter((p) => p.posture === "sitting")).toHaveLength(FLOOR_SEATS.gym);
+      const joggers = poses.filter((p) => p.posture === "walking");
+      expect(joggers).toHaveLength(1);
+      expect(joggers[0]!.agentId).toBe(ids[phase % 3]!);
+      expect(poses.every((p) => p.zone === "gym")).toBe(true);
+    }
   });
 
   it("never yields a posture for absent agents", () => {

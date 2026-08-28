@@ -472,6 +472,7 @@ import {
   EMPTY_SHARE_LINK,
   EMPTY_SHARE_LINK_INFO,
   EMPTY_JOIN_SHARE_LINK_RESPONSE,
+  MemberWithUserListSchema,
   type IssueView,
   type IssueViewPreference,
   type CreateIssueViewRequest,
@@ -2978,7 +2979,10 @@ export class ApiClient {
 
   // Members
   async listMembers(workspaceId: string): Promise<MemberWithUser[]> {
-    return this.fetch(`/api/workspaces/${workspaceId}/members`);
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/members`);
+    return parseWithFallback(raw, MemberWithUserListSchema, [], {
+      endpoint: "GET /api/workspaces/:id/members",
+    });
   }
 
   async listAgentWorkspaces(workspaceId: string): Promise<AgentWorkspacesResponse> {

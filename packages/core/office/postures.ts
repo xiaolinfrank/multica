@@ -23,6 +23,7 @@ export const FLOOR_SEATS = {
   lounge: 4,
   tea: 3,
   canteen: 6,
+  gym: 2,
   waiting: 4,
 } as const;
 
@@ -53,7 +54,8 @@ export function assignPoses(floor: OfficeFloorPlan, phase: number): AgentPose[] 
   // Leisure rooms: with three or more present, exactly one of them strolls
   // around the room — they yield their seat, so the rest keep chairs.
   // The stroller rotates with the phase so seating reshuffles every window.
-  for (const zone of ["lounge", "tea", "canteen"] as const) {
+  // In the gym the "stroll" is a jog between the machines.
+  for (const zone of ["lounge", "tea", "canteen", "gym"] as const) {
     const ids = floor[zone];
     const walkerAt = ids.length >= 3 ? ((phase % ids.length) + ids.length) % ids.length : -1;
     let sitting = 0;

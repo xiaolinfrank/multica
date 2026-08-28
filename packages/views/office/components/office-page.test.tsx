@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enOffice from "../../locales/en/office.json";
-import type { Agent } from "@multica/core/types";
+import type { Agent, MemberWithUser } from "@multica/core/types";
 // The zone matrix, timeline ordering and chatter pairing are pinned in
 // packages/core/office/*.test.ts (node suites); this file keeps the happy
 // path: the page composes data into zones, rails and the leaderboard.
@@ -14,6 +14,12 @@ vi.mock("@multica/core/hooks", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({ agentDetail: (id: string) => `/ws/agents/${id}` }),
+}));
+
+// Zustand callable-store shape per the testing rules: selectorFn + getState.
+const authState = { user: { id: "user-self", name: "Self", email: "self@fosunpharma.com" } };
+vi.mock("@multica/core/auth", () => ({
+  useAuthStore: (selector: (s: typeof authState) => unknown) => selector(authState),
 }));
 
 // Same shape as settings-page.test.tsx: the page navigates to the agent
@@ -35,6 +41,9 @@ vi.mock("@multica/core/api", () => ({
     getAgentTaskSnapshot: vi.fn().mockResolvedValue([]),
     listSquads: vi.fn().mockResolvedValue([]),
     getDashboardUsageByAgent: vi.fn().mockResolvedValue([]),
+    listMembers: vi.fn().mockResolvedValue([]),
+    updateMe: vi.fn().mockResolvedValue({}),
+    getBaseUrl: vi.fn().mockReturnValue("https://api.example.test"),
   },
 }));
 
@@ -76,12 +85,16 @@ beforeEach(() => {
     getAgentTaskSnapshot: ReturnType<typeof vi.fn>;
     listSquads: ReturnType<typeof vi.fn>;
     getDashboardUsageByAgent: ReturnType<typeof vi.fn>;
+    listMembers: ReturnType<typeof vi.fn>;
+    updateMe: ReturnType<typeof vi.fn>;
   };
   mockedApi.listAgents.mockResolvedValue([]);
   mockedApi.listRuntimes.mockResolvedValue([]);
   mockedApi.getAgentTaskSnapshot.mockResolvedValue([]);
   mockedApi.listSquads.mockResolvedValue([]);
   mockedApi.getDashboardUsageByAgent.mockResolvedValue([]);
+  mockedApi.listMembers.mockResolvedValue([]);
+  mockedApi.updateMe.mockResolvedValue({});
 });
 
 describe("OfficePage", () => {
@@ -145,5 +158,91 @@ describe("OfficePage", () => {
     renderPage();
     expect(await screen.findByText(/Every desk is free/)).toBeInTheDocument();
     expect(screen.getByText(/The sofa is free/)).toBeInTheDocument();
+  });
+
+  it("renders member figures with their statuses, scoped to the office domain", async () => {
+    const mocked = api as unknown as { listMembers: ReturnType<typeof vi.fn> };
+    mocked.listMembers.mockResolvedValue([
+      {
+        id: "mem-1",
+        workspace_id: "ws-1",
+        user_id: "user-self",
+        role: "member",
+        created_at: "2026-01-01T00:00:00Z",
+        name: "Self",
+        email: "self@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "🎧 focusing",
+      },
+      {
+        id: "mem-2",
+        workspace_id: "ws-1",
+        user_id: "user-lin",
+        role: "member",
+        created_at: "2026-01-02T00:00:00Z",
+        name: "Lin",
+        email: "lin@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "",
+      },
+      {
+        id: "mem-3",
+        workspace_id: "ws-1",
+        user_id: "user-bot",
+        role: "member",
+        created_at: "2026-01-03T00:00:00Z",
+        name: "Service Bot",
+        email: "bot@example.com",
+        avatar_url: null,
+        custom_status: "should not appear",
+      },
+    ] satisfies MemberWithUser[]);
+
+    renderPage();
+
+    // Employees get figures with a status pill (title + drawn text); the
+    // non-office account does not appear on the floor at all.
+    expect(await screen.findAllByText("🎧 focusing")).not.toHaveLength(0);
+    expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.queryByText("should not appear")).not.toBeInTheDocument();
+    // A self with a status has no "set status" pill, but Lin (empty status,
+    // not self) has no pill at all.
+    expect(screen.queryByText("Set status")).not.toBeInTheDocument();
+  });
+
+  it("opens the status editor above the viewer's own head and saves a custom status", async () => {
+    const mockedApi = api as unknown as {
+      listMembers: ReturnType<typeof vi.fn>;
+      updateMe: ReturnType<typeof vi.fn>;
+    };
+    mockedApi.listMembers.mockResolvedValue([
+      {
+        id: "mem-1",
+        workspace_id: "ws-1",
+        user_id: "user-self",
+        role: "member",
+        created_at: "2026-01-01T00:00:00Z",
+        name: "Self",
+        email: "self@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "",
+      },
+    ] satisfies MemberWithUser[]);
+
+    renderPage();
+
+    // Empty own status → a "Set status" pill above the own head.
+    const setPill = await screen.findByText("Set status");
+    fireEvent.click(setPill);
+
+    const input = await screen.findByPlaceholderText("Type a custom status…");
+    fireEvent.change(input, { target: { value: "reviewing PRs" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await vi.waitFor(() => {
+      expect(mockedApi.updateMe).toHaveBeenCalledWith({ custom_status: "reviewing PRs" });
+    });
+    // The editor closes after saving.
+    expect(screen.queryByPlaceholderText("Type a custom status…")).not.toBeInTheDocument();
   });
 });

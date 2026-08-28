@@ -6,9 +6,9 @@
 //   2. workload "working"                          → desk
 //   3. workload "queued"                           → waiting (printer corner)
 //   4. idle + member of a squad with work in flight→ meeting (that squad's room)
-//   5. idle otherwise                              → lounge / tea / canteen,
-//      picked by hash(agent.id + phase) so the cast visibly "walks around"
-//      every phase without any server-side state.
+//   5. idle otherwise                              → lounge / tea / canteen /
+//      gym, picked by hash(agent.id + phase) so the cast visibly "walks
+//      around" every phase without any server-side state.
 //
 // Everything here is synchronous and side-effect free: the same inputs +
 // phase always yield the same floor plan, which is what the unit tests pin.
@@ -100,7 +100,7 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
   const desks: DeskAssignment[] = [];
   const meetings: MeetingAssignment[] = [];
   const waiting: string[] = [];
-  const relax: Record<RelaxZone, string[]> = { lounge: [], tea: [], canteen: [] };
+  const relax: Record<RelaxZone, string[]> = { lounge: [], tea: [], canteen: [], gym: [] };
   const absent: AbsentAssignment[] = [];
   const zoneByAgent = new Map<string, OfficeZoneId>();
 
@@ -182,6 +182,7 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     lounge: relax.lounge,
     tea: relax.tea,
     canteen: relax.canteen,
+    gym: relax.gym,
     absent,
     zoneByAgent,
   };
@@ -190,13 +191,13 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
 /** Variant counts per monologue kind — the `office` locale bundle must carry
  * at least this many lines for each; see office.json `monologue.*`. */
 export const MONOLOGUE_VARIANTS = {
-  working: 4,
-  queued: 3,
-  idle: 3,
-  meeting: 3,
-  waiting: 3,
-  completed: 3,
-  failed: 2,
+  working: 6,
+  queued: 4,
+  idle: 4,
+  meeting: 4,
+  waiting: 5,
+  completed: 4,
+  failed: 3,
   offline: 2,
   unbound: 1,
 } as const;
@@ -232,6 +233,7 @@ export function pickMonologueSlot(
     case "lounge":
     case "tea":
     case "canteen":
+    case "gym":
       return {
         kind: "idle",
         variant: variant(agentId, phase, "idle"),

@@ -23,7 +23,7 @@ import { memo, useEffect, useRef, useState } from "react";
 // fixed palette; everything user-themed — names, bubbles — stays in tokens.
 
 /** Scene box. The SVG viewBox is these numbers. */
-export const SCENE_W = 980;
+export const SCENE_W = 1200;
 export const SCENE_H = 660;
 
 /** Screen units risen per unit of height, and the sideways lean with it. */
@@ -35,8 +35,10 @@ const LEAN_DEG = 9.09;
 /** Height of the north wall. Tall enough to carry the office's big screen. */
 export const WALL_H = 190;
 
-/** The interior floor, in world units on the z = 0 plane. */
-export const FLOOR = { x0: 22, x1: 940, y0: 124, y1: 646 } as const;
+/** The interior floor, in world units on the z = 0 plane. The plate carries
+ * an east strip beyond the canteen: the members corner up north and the gym
+ * down south, so the original six zones keep their collision-tested layout. */
+export const FLOOR = { x0: 22, x1: 1160, y0: 124, y1: 646 } as const;
 
 /** Projects a world point to scene coordinates. */
 export function px(x: number, z = 0): number {
@@ -87,6 +89,8 @@ export const ZONE_FLOOR: Record<string, string> = {
   lounge: "#e8dcc6",
   canteen: "#eee5df",
   waiting: "#dfdcec",
+  gym: "#c8d1d9",
+  members: "#e6d7dc",
 };
 
 /**
@@ -654,6 +658,116 @@ export const Bench = memo(function Bench({ x, y, w, d }: { x: number; y: number;
   );
 });
 
+// --- Gym ---------------------------------------------------------------------
+
+/**
+ * A treadmill, seen from above. The belt reads as the machine even at this
+ * scale, so the deck is charcoal and the moving surface darker still; the
+ * console at the north end carries a small blue panel to say "powered on".
+ */
+export const Treadmill = memo(function Treadmill({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <Box x={x} y={y} w={34} d={52} h={9} top={METAL.lit} front={METAL.dark} side={METAL.deep} radius={3}>
+        <rect x={x + 5} y={y + 6} width={24} height={40} rx={2} fill={METAL.deep} />
+        {[0.28, 0.5, 0.72].map((t) => (
+          <line
+            key={t}
+            x1={x + 6}
+            y1={y + 6 + 40 * t}
+            x2={x + 28}
+            y2={y + 6 + 40 * t}
+            stroke={METAL.lit}
+            strokeWidth={0.8}
+            strokeOpacity={0.55}
+          />
+        ))}
+      </Box>
+      {/* Side handrail along the belt; the far rail hides behind the deck. */}
+      <Box x={x + 31} y={y + 3} w={3} d={42} h={27} top={METAL.lit} front={METAL.face} side={METAL.dark} radius={1.5} shadow={false} />
+      <Box x={x + 3} y={y - 9} w={28} d={10} h={31} top={METAL.dark} front={METAL.deep} side={shade(METAL.dark, 0.82)} radius={2} />
+      <rect x={x + 9} y={y - 7.4} width={16} height={6} rx={1.5} fill="#7fb4ef" opacity={0.85} />
+    </g>
+  );
+});
+
+/**
+ * A dumbbell rack: a low charcoal shelf with two rows of pairs, lightest at
+ * the ends. The discs shrinking along the row is what makes it read as a rack
+ * rather than as a row of coins.
+ */
+export const DumbbellRack = memo(function DumbbellRack({ x, y, w }: { x: number; y: number; w: number }) {
+  const slots = Math.max(2, Math.floor((w - 10) / 17));
+  return (
+    <Box x={x} y={y} w={w} d={17} h={17} top={METAL.face} front={METAL.dark} side={METAL.deep} radius={2}>
+      {Array.from({ length: slots }, (_, i) => {
+        const dx = x + 6 + i * 17;
+        // Two pairs per slot, one behind the other.
+        return (
+          <g key={i}>
+            <rect x={dx} y={y + 3.6} width={12} height={2.2} rx={1.1} fill={METAL.lit} />
+            <circle cx={dx + 2.4} cy={y + 4.7} r={3.2 - i * 0.18} fill={METAL.deep} />
+            <circle cx={dx + 9.6} cy={y + 4.7} r={3.2 - i * 0.18} fill={METAL.deep} />
+            <rect x={dx + 1} y={y + 10.6} width={10} height={2} rx={1} fill={METAL.face} />
+            <circle cx={dx + 2.9} cy={y + 11.6} r={2.5 - i * 0.15} fill={METAL.dark} />
+            <circle cx={dx + 8.1} cy={y + 11.6} r={2.5 - i * 0.15} fill={METAL.dark} />
+          </g>
+        );
+      })}
+    </Box>
+  );
+});
+
+/**
+ * A workout bench with a racked bar. The bar is drawn at bar height in scene
+ * coordinates (not on the pad) so it floats above the upholstery the way a
+ * real one floats above the bench.
+ */
+export const WorkoutBench = memo(function WorkoutBench({ x, y }: { x: number; y: number }) {
+  const barZ = 34;
+  return (
+    <g>
+      <Cyl cx={x + 13} cy={y + 8} r={2.2} h={barZ} top={METAL.face} side={METAL.dark} ry={1.5} />
+      <Cyl cx={x + 43} cy={y + 8} r={2.2} h={barZ} top={METAL.face} side={METAL.dark} ry={1.5} />
+      <rect x={px(x - 16, barZ)} y={py(y + 7, barZ)} width={88} height={2.4} rx={1.2} fill={METAL.lit} />
+      {/* Plates on the bar, seen edge-on as short thick ticks. */}
+      <rect x={px(x - 14, barZ)} y={py(y + 4, barZ)} width={3.2} height={8} rx={1.6} fill={TERRA} />
+      <rect x={px(x + 62, barZ)} y={py(y + 4, barZ)} width={3.2} height={8} rx={1.6} fill={TERRA} />
+      <Box x={x} y={y} w={56} d={17} h={13} top={FABRIC.face} front={FABRIC.dark} side={FABRIC.deep} radius={4} />
+    </g>
+  );
+});
+
+/**
+ * A rolled-out yoga mat on the rubber. Flat ink only — anything taller would
+ * fight the jog lane beside it.
+ */
+export const YogaMat = memo(function YogaMat({ x, y }: { x: number; y: number }) {
+  return (
+    <g pointerEvents="none">
+      <rect x={x} y={y} width={46} height={22} rx={10} fill={MOSS.face} />
+      <rect x={x + 5} y={y + 4} width={36} height={14} rx={7} fill={MOSS.lit} opacity={0.7} />
+    </g>
+  );
+});
+
+/**
+ * The standup table in the members corner: a high oak bar table. It says
+ * "humans gather here" without stealing the agents' meeting-room furniture.
+ */
+export const StandupTable = memo(function StandupTable({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
+  return (
+    <Box x={x} y={y} w={w} d={d} h={38} top={OAK.lit} front={OAK.face} side={OAK.dark} radius={3}>
+      <rect x={x + w * 0.26} y={y + d * 0.28} width={26} height={17} rx={2} fill={WHITE.lit} stroke={WHITE.deep} strokeWidth={0.8} />
+      <line x1={x + w * 0.26 + 4} y1={y + d * 0.28 + 5} x2={x + w * 0.26 + 22} y2={y + d * 0.28 + 5} stroke="#c3cbd6" strokeWidth={0.9} />
+      <line x1={x + w * 0.26 + 4} y1={y + d * 0.28 + 9} x2={x + w * 0.26 + 22} y2={y + d * 0.28 + 9} stroke="#c3cbd6" strokeWidth={0.9} />
+      <circle cx={x + w * 0.64} cy={y + d * 0.52} r={4.2} fill={TERRA} />
+      <circle cx={x + w * 0.64} cy={y + d * 0.52} r={2.6} fill={shade(TERRA, 0.7)} />
+      <rect x={x + w - 24} y={y + 6} width={16} height={5} rx={2} fill={MOSS.face} />
+    </Box>
+  );
+});
+
 /** Potted plant, seen from above: a canopy of leaf discs over a pot. */
 export const Plant = memo(function Plant({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
   const r = 13 * scale;
@@ -728,7 +842,7 @@ export interface SpriteColors {
 }
 
 /** Head radius. Big enough that a real avatar is legible at scene scale. */
-const HEAD_R = 12;
+export const HEAD_R = 12;
 /** Height of the head's centre above the floor, standing and seated. */
 export const HEAD_Z = 64;
 export const SIT_HEAD_Z = 50;
