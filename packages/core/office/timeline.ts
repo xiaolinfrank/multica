@@ -116,7 +116,7 @@ export function buildChatter(
   if (ranked.length > 2) {
     b = ranked[1 + (hashString(a) + phase) % (ranked.length - 1)] ?? b;
   }
-  if (!b || a === b) b = ranked.find((id) => id !== a);
+  if (!b || a === b) b = ranked.find((id) => id !== a) ?? b;
   if (!b || a === b) return null;
 
   const fa = byId.get(a);

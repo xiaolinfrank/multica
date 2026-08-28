@@ -70,7 +70,7 @@ export const OfficeRail = memo(function OfficeRail({
                   {agentName(agentById, e.agentId)}
                 </button>
                 <span className="shrink-0 text-muted-foreground">{t(`timeline.${e.kind}`)}</span>
-                <time className="ml-auto shrink-0 text-micro text-muted-foreground/80">
+                <time className="ml-auto shrink-0 text-micro text-faint-foreground">
                   {e.at ? new Date(e.at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : ""}
                 </time>
               </li>
