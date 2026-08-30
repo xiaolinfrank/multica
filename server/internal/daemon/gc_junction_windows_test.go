@@ -78,7 +78,7 @@ func TestTaskSize_DoesNotCountDirectoryJunction(t *testing.T) {
 	}
 	createJunction(t, linked, filepath.Join(taskDir, "codex-home", "skills", "alpha"))
 
-	total, artifacts := taskSize(taskDir, newArtifactMatcher([]string{"node_modules"}, nil))
+	total, artifacts, _, _ := taskSize(taskDir, newArtifactMatcher([]string{"node_modules"}, nil))
 	if total != 16 {
 		t.Errorf("total = %d, want 16 (junction target must not be counted)", total)
 	}
