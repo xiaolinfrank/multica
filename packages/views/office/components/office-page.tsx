@@ -71,7 +71,7 @@ export function OfficePage() {
   // `?demo=1` renders a fully-staffed synthetic floor without touching the
   // API — used for visual development and screenshot verification.
   const isDemo = navigation.searchParams.get("demo") === "1";
-  const live = useOfficeScene(wsId, phase);
+  const live = useOfficeScene(isDemo ? undefined : wsId, phase);
   const demo = useMemo(() => buildDemoScene(phase), [phase]);
   const scene = isDemo ? demo.scene : live.scene;
   const presence = isDemo ? demo.presence : live.presence;
@@ -189,7 +189,7 @@ const bubbleFor = useMemo(() => {
     let relaxing = 0;
     let absent = 0;
     for (const zone of scene.floor.zoneByAgent.values()) {
-      if (zone === "desk" || zone === "waiting" || zone === "meeting") working += 1;
+      if (zone === "desk" || zone === "waiting" || zone === "meeting" || zone === "reception") working += 1;
       else if (zone === "lounge" || zone === "tea" || zone === "canteen" || zone === "gym") relaxing += 1;
       else absent += 1;
     }

@@ -67,7 +67,7 @@
   },
   "figure": {
     "running": "Running",
-    "loading": "Opening the office…"
+    "loading": "Opening the office..."
   },
   "monologue": {
     "human": {
@@ -78,7 +78,7 @@
       },
       "waiting": {
         "0": "Scheduling has not landed yet",
-        "1": "The request is still in review…"
+        "1": "The request is still in review..."
       },
       "idle": {
         "lounge": {
@@ -101,14 +101,14 @@
     },
     "working": {
       "0": "This task is a fun one — almost got the shape of it",
-      "1": "Pushing through {{count}} tasks…",
+      "1": "Pushing through {{count}} tasks...",
       "2": "Nearly there — one more review pass, then it ships",
       "3": "Context loaded. Time to build.",
       "4": "Today's tokens are hitting different — can't stop now",
       "5": "This request is a maze, but I've got the map"
     },
     "queued": {
-      "0": "In the queue… rehearsing the plan in my head",
+      "0": "In the queue... rehearsing the plan in my head",
       "1": "Tasks ahead of me — warming up first",
       "2": "Ready and waiting for the next dispatch",
       "3": "Still in line — storing up energy"
@@ -148,8 +148,8 @@
     "waiting": {
       "0": "{{count}} tasks queued — the runtime will be right back",
       "1": "Queued up — tidying context meanwhile",
-      "2": "Waiting for resources…",
-      "3": "Waiting on tokens…",
+      "2": "Waiting for resources...",
+      "3": "Waiting on tokens...",
       "4": "Still waiting on the user — hydrating meanwhile"
     },
     "completed": {
@@ -179,7 +179,7 @@
   },
   "status": {
     "title": "My status",
-    "placeholder": "Type a custom status…",
+    "placeholder": "Type a custom status...",
     "save": "Save",
     "clear": "Clear",
     "set": "Set status",

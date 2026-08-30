@@ -86,6 +86,6 @@ export function assignPoses(floor: OfficeFloorPlan, phase: number): AgentPose[] 
   for (const id of floor.reception) {
     out.push({ agentId: id, zone: "reception", posture: "standing" });
   }
-  
+
   return out;
 }

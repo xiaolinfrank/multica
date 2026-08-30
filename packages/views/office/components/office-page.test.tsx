@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enOffice from "../../locales/en/office.json";
-import type { Agent, MemberWithUser } from "@multica/core/types";
+import type { Agent, MemberWithUser, Squad } from "@multica/core/types";
 // The zone matrix, timeline ordering and chatter pairing are pinned in
 // packages/core/office/*.test.ts (node suites); this file keeps the happy
 // path: the page composes data into zones, rails and the leaderboard.
@@ -153,7 +153,7 @@ describe("OfficePage", () => {
     expect(screen.getByText("Desks")).toBeInTheDocument();
     expect(screen.getByText("Token leaderboard")).toBeInTheDocument();
     expect(screen.getByText("1K")).toBeInTheDocument(); // 900 + 100 compact
-    // Alpha runs a task so the desk caption reads "Running 1/…".
+    // Alpha runs a task so the desk caption reads "Running 1/...".
     expect(screen.getByText(/Running/)).toBeInTheDocument();
   });
 
@@ -264,7 +264,7 @@ describe("OfficePage", () => {
     const setPill = await screen.findByText("Set status");
     fireEvent.click(setPill);
 
-    const input = await screen.findByPlaceholderText("Type a custom status…");
+    const input = await screen.findByPlaceholderText("Type a custom status...");
     fireEvent.change(input, { target: { value: "reviewing PRs" } });
     fireEvent.click(screen.getByText("Save"));
 
@@ -272,6 +272,48 @@ describe("OfficePage", () => {
       expect(mockedApi.updateMe).toHaveBeenCalledWith({ custom_status: "reviewing PRs" });
     });
     // The editor closes after saving.
-    expect(screen.queryByPlaceholderText("Type a custom status…")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Type a custom status...")).not.toBeInTheDocument();
+  });
+
+  it("counts an idle squad captain staffing the reception as present and working", async () => {
+    const mocked = api as unknown as {
+      listAgents: ReturnType<typeof vi.fn>;
+      listRuntimes: ReturnType<typeof vi.fn>;
+      listSquads: ReturnType<typeof vi.fn>;
+    };
+    mocked.listAgents.mockResolvedValue([agent("a1", "Captain", "rt-1")]);
+    mocked.listRuntimes.mockResolvedValue([
+      { id: "rt-1", status: "online", last_seen_at: new Date().toISOString() },
+    ]);
+    // Idle leader of a squad with nothing in flight: zones.ts seats them at
+    // the reception desk, and the header stats must count them as on duty.
+    mocked.listSquads.mockResolvedValue([
+      {
+        id: "sq-1",
+        workspace_id: "ws-1",
+        name: "Review squad",
+        description: "",
+        instructions: "",
+        avatar_url: null,
+        leader_id: "a1",
+        creator_id: "u1",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        archived_at: null,
+        archived_by: null,
+        member_preview: [{ member_type: "agent", member_id: "a1", role: "lead" }],
+      } satisfies Squad,
+    ]);
+
+    renderPage();
+
+    const stat = (label: string) =>
+      screen.getByText(label).parentElement?.querySelector("dd")?.textContent;
+    await vi.waitFor(() => {
+      expect(stat(enOffice.stats.working)).toBe("1");
+    });
+    expect(stat(enOffice.stats.present)).toBe("1");
+    // Not absent: standing at the front desk is being on duty.
+    expect(stat(enOffice.stats.absent)).toBe("0");
   });
 });

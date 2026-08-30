@@ -55,7 +55,7 @@ export function toOfficeMembers(
  */
 export const HUMAN_SPOTS: Record<string, ReadonlyArray<{ x: number; y: number }>> = {
   desk: [{ x: 100, y: 385 }, { x: 220, y: 385 }, { x: 340, y: 385 }],
-  waiting: [{ x: 88, y: 600 }, { x: 180, y: 615 }],
+  waiting: [{ x: 120, y: 630 }, { x: 225, y: 630 }],
   lounge: [{ x: 360, y: 530 }, { x: 560, y: 525 }, { x: 460, y: 560 }],
   tea: [{ x: 66, y: 536 }, { x: 118, y: 558 }],
   canteen: [{ x: 660, y: 560 }, { x: 860, y: 560 }],

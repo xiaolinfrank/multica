@@ -130,7 +130,7 @@ const baseUsers = [
   },
   {
     userId: "demo-user-1",
-    name: "林医生",
+    name: "Dr. Lin",
     email: "lin@fosunpharma.com",
     avatarUrl: null,
     status: "🏋️ at the gym",

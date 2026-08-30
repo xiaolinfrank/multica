@@ -10,7 +10,7 @@ import {
   type AgentPose,
   type OfficeScene,
   type OfficeTokenRow,
-type MemberSeatZone,
+  type MemberSeatZone,
   type OfficeZoneId,
 } from "@multica/core/office";
 import {
@@ -38,8 +38,8 @@ import {
   HAIRS,
   headClearance,
   HumanFigure,
-HUMAN_LABEL_DY,
-      HEAD_Z,
+  HUMAN_LABEL_DY,
+  HEAD_Z,
   MeetingTable,
   NorthWall,
   Pendant,
@@ -129,9 +129,6 @@ const ZONES: Record<furn, Rect> = {
 };
 
 const ZONE_ORDER = ["desk", "meeting", "reception", "tea", "lounge", "canteen", "gym", "waiting"] as const;
-
-/**
-
 
 /** One place a sprite can be, and how much label room it has there. */
 interface Seat {

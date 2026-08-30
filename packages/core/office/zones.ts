@@ -127,7 +127,7 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     const leader = squad.leaderAgentId ?? "";
     if (leader !== "") captainIds.add(leader);
   }
-  
+
   for (const agent of agents) {
     // Archived agents left the company — they do not get a seat.
     if (agent.archived_at !== null) continue;
