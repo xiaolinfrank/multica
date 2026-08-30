@@ -1101,6 +1101,13 @@ export function useRealtimeSync(
         refetchType: "none",
       });
     };
+    // The graph snapshot extracts mention edges from issue descriptions and
+    // comment bodies at read time, so any comment mutation can change edges.
+    // Scoped to the graph subtree, not issueKeys.all, to avoid a broad
+    // board/list refetch on every comment.
+    const invalidateGraph = (wsId: string) => {
+      qc.invalidateQueries({ queryKey: [...issueKeys.all(wsId), "graph"] });
+    };
 
     const unsubCommentCreated = ws.on("comment:created", (p) => {
       const { comment, issue_revision: issueRevision } = p as CommentCreatedPayload;
@@ -1113,6 +1120,7 @@ export function useRealtimeSync(
       // updated_at, so the other comment events below deliberately do not.
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateGraph(wsId);
         invalidateUpdatedAtSortedIssueLists(qc, wsId);
         invalidateLastActivitySortedIssueLists(qc, wsId);
         // A comment carries only the aggregate owner revision, not a full
@@ -1132,6 +1140,7 @@ export function useRealtimeSync(
       invalidateTimeline(comment.issue_id);
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateGraph(wsId);
         invalidateLastActivitySortedIssueLists(qc, wsId);
         if (issue_revision) {
           onIssueAuxiliaryRevision(qc, wsId, comment.issue_id, issue_revision);
@@ -1147,6 +1156,7 @@ export function useRealtimeSync(
       invalidateTimeline(issue_id);
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateGraph(wsId);
         invalidateLastActivitySortedIssueLists(qc, wsId);
         if (issue_revision) {
           onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);

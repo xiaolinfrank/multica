@@ -406,6 +406,26 @@ describe("ApiClient server Table query", () => {
     });
   });
 
+  it("falls back to an empty graph when the response is malformed", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ nodes: "nope", edges: 7 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    await expect(client.getIssueGraph()).resolves.toEqual({ nodes: [], edges: [] });
+    await expect(
+      client.getIssueGraph({ project_id: "00000000-0000-0000-0000-000000000001" }),
+    ).resolves.toEqual({ nodes: [], edges: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("project_id=");
+  });
+
   it("falls back safely when Table responses are malformed", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(

@@ -1,0 +1,567 @@
+"use client";
+
+// Canvas force-directed renderer for the issue graph. All layout math,
+// filtering, and graph semantics live in @multica/core/graph — this component
+// only renders a GraphModel and reports pointer interaction. It owns the
+// d3-force simulation, the zoom/pan transform, hover/selection highlight, and
+// label falloff by zoom level (the Obsidian graph look).
+//
+// Colors come from the design tokens (tokens.css) read at runtime, so light
+// and dark themes both work without a prop; a MutationObserver on <html>
+// re-reads the palette when the theme class flips.
+
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+  type Simulation,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum,
+} from "d3-force";
+import {
+  matchesQuery,
+  nodeRadius,
+  projectColorIndex,
+  type GraphModel,
+  type GraphNode,
+} from "@multica/core/graph/build-graph-model";
+import type { Project } from "@multica/core/types";
+
+export interface GraphCanvasProps {
+  model: GraphModel;
+  projects: Project[];
+  colorBy: "project" | "status";
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onToggleCollapse: (id: string) => void;
+  /** Bump `nonce` to re-center on `id` (e.g. a search result was picked). */
+  centerOn: { id: string; nonce: number } | null;
+  /** Search query: matching nodes keep their labels even when zoomed out. */
+  searchQuery: string;
+}
+
+interface SimNode extends SimulationNodeDatum {
+  id: string;
+  label: string;
+  title: string;
+  statusCategory: string;
+  radius: number;
+  color: string;
+}
+
+interface SimLink extends SimulationLinkDatum<SimNode> {
+  kind: string;
+}
+
+interface Palette {
+  background: string;
+  foreground: string;
+  muted: string;
+  border: string;
+  accent: string;
+  chart: string[];
+  status: Record<string, string>;
+}
+
+const STATUS_CATEGORY_VARS: Record<string, string> = {
+  backlog: "--muted-foreground",
+  todo: "--muted-foreground",
+  in_progress: "--warning",
+  in_review: "--success",
+  done: "--info",
+  blocked: "--destructive",
+  cancelled: "--muted-foreground",
+};
+
+function readPalette(): Palette {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name: string) => cs.getPropertyValue(name).trim() || "gray";
+  return {
+    background: v("--background"),
+    foreground: v("--foreground"),
+    muted: v("--muted-foreground"),
+    border: v("--border"),
+    accent: v("--accent"),
+    chart: ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"].map(v),
+    status: Object.fromEntries(
+      Object.entries(STATUS_CATEGORY_VARS).map(([k, name]) => [k, v(name)]),
+    ),
+  };
+}
+
+export function GraphCanvas(props: GraphCanvasProps) {
+  const { model, projects, colorBy, selectedId, onSelect, onToggleCollapse, centerOn, searchQuery } =
+    props;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const simRef = useRef<Simulation<SimNode, SimLink> | null>(null);
+  const nodesRef = useRef<SimNode[]>([]);
+  const linksRef = useRef<SimLink[]>([]);
+  const posRef = useRef(new Map<string, { x: number; y: number }>());
+  const viewRef = useRef({ x: 0, y: 0, k: 1 });
+  const hoverRef = useRef<string | null>(null);
+  const dragRef = useRef<{
+    id: string | null;
+    moved: boolean;
+    panning: boolean;
+    lastX: number;
+    lastY: number;
+  }>({ id: null, moved: false, panning: false, lastX: 0, lastY: 0 });
+  const [palette, setPalette] = useState<Palette | null>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; node: GraphNode } | null>(null);
+
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
+
+  const nodeColor = useCallback(
+    (n: GraphNode, p: Palette): string => {
+      if (colorBy === "status") {
+        return p.status[n.status_category] ?? p.muted;
+      }
+      const idx = projectColorIndex(n.project_id, projectIds);
+      if (n.project_id === null) return p.muted;
+      return p.chart[idx % p.chart.length] ?? p.muted;
+    },
+    [colorBy, projectIds],
+  );
+
+  // Theme flips swap the token values under <html>.dark — re-read the palette.
+  useLayoutEffect(() => {
+    setPalette(readPalette());
+    const observer = new MutationObserver(() => setPalette(readPalette()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  // (Re)build the simulation whenever the filtered model changes, seeding
+  // previous positions so filter toggles do not scramble the layout.
+  useEffect(() => {
+    const width = wrapRef.current?.clientWidth ?? 800;
+    const height = wrapRef.current?.clientHeight ?? 600;
+    const prev = posRef.current;
+    const nodes: SimNode[] = model.nodes.map((n, i) => {
+      const degree = model.degree.get(n.id) ?? 0;
+      const p = prev.get(n.id);
+      const angle = (2 * Math.PI * i) / Math.max(model.nodes.length, 1);
+      const ring = 120 + ((i * 37) % 160);
+      return {
+        id: n.id,
+        label: n.identifier,
+        title: n.title,
+        statusCategory: n.status_category,
+        radius: nodeRadius(degree),
+        color: palette ? nodeColor(n, palette) : "gray",
+        x: p?.x ?? width / 2 + ring * Math.cos(angle),
+        y: p?.y ?? height / 2 + ring * Math.sin(angle),
+      };
+    });
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const links: SimLink[] = model.edges
+      .map((e) => ({
+        source: e.source,
+        target: e.target,
+        kind: e.kind,
+      }))
+      .filter((l) => byId.has(l.source as string) && byId.has(l.target as string));
+
+    nodesRef.current = nodes;
+    linksRef.current = links;
+
+    simRef.current?.stop();
+    const sim = forceSimulation<SimNode, SimLink>(nodes)
+      .force(
+        "link",
+        forceLink<SimNode, SimLink>(links)
+          .id((d) => d.id)
+          .distance(60)
+          .strength(0.35),
+      )
+      .force("charge", forceManyBody<SimNode>().strength(-160))
+      .force("collide", forceCollide<SimNode>((d) => d.radius + 6))
+      .force("x", forceX<SimNode>(width / 2).strength(0.04))
+      .force("y", forceY<SimNode>(height / 2).strength(0.06))
+      .alpha(0.9)
+      .alphaDecay(0.03);
+    sim.on("tick", () => {
+      for (const n of nodes) posRef.current.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
+      draw();
+    });
+    simRef.current = sim;
+    draw();
+    return () => {
+      sim.stop();
+      simRef.current = null;
+    };
+    // palette intentionally excluded: recoloring happens in draw() via a ref
+    // of the latest palette, not by rebuilding the simulation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, nodeColor]);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const p = paletteRef.current;
+    const nodes = nodesRef.current;
+    const links = linksRef.current;
+    const view = viewRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
+    if (!p) return;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const hovered = hoverRef.current;
+    const selected = selectedId;
+    // Highlight set: the hovered (or selected) node plus its neighbors.
+    let focusSet: Set<string> | null = null;
+    const focusId = hovered ?? selected;
+    if (focusId) {
+      focusSet = new Set<string>([focusId, ...(model.neighbors.get(focusId) ?? [])]);
+    }
+
+    const toWorld = (sx: number, sy: number) => ({ x: (sx - view.x) / view.k, y: (sy - view.y) / view.k });
+    void toWorld;
+
+    // Edges. Style by kind: child=solid, mention=dashed, related=dotted,
+    // blocks/blocked_by=solid with an arrowhead at the target.
+    for (const link of links) {
+      const s = link.source as SimNode;
+      const t = link.target as SimNode;
+      if (!s || !t) continue;
+      const inFocus = !focusSet || (focusSet.has(s.id) && focusSet.has(t.id));
+      ctx.globalAlpha = inFocus ? 0.75 : 0.12;
+      ctx.strokeStyle = inFocus && focusSet ? p.accent : p.border;
+      ctx.lineWidth = inFocus && focusSet ? 1.5 : 1;
+      const x1 = s.x ?? 0;
+      const y1 = s.y ?? 0;
+      const x2 = t.x ?? 0;
+      const y2 = t.y ?? 0;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const pad1 = s.radius + 2;
+      const pad2 = t.radius + (link.kind === "blocks" || link.kind === "blocked_by" ? 8 : 2);
+      const ax1 = x1 + ux * pad1;
+      const ay1 = y1 + uy * pad1;
+      const ax2 = x2 - ux * pad2;
+      const ay2 = y2 - uy * pad2;
+
+      ctx.beginPath();
+      if (link.kind === "mention") {
+        ctx.setLineDash([5, 4]);
+      } else if (link.kind === "related") {
+        ctx.setLineDash([2, 4]);
+      } else {
+        ctx.setLineDash([]);
+      }
+      ctx.moveTo(ax1, ay1);
+      ctx.lineTo(ax2, ay2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (link.kind === "blocks" || link.kind === "blocked_by") {
+        const arrow = 7;
+        ctx.beginPath();
+        ctx.moveTo(x2 - ux * (t.radius + 2), y2 - uy * (t.radius + 2));
+        ctx.lineTo(x2 - ux * (t.radius + 2 + arrow) - uy * arrow * 0.6, y2 - uy * (t.radius + 2 + arrow) + ux * arrow * 0.6);
+        ctx.lineTo(x2 - ux * (t.radius + 2 + arrow) + uy * arrow * 0.6, y2 - uy * (t.radius + 2 + arrow) - ux * arrow * 0.6);
+        ctx.closePath();
+        ctx.fillStyle = inFocus && focusSet ? p.accent : p.border;
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Nodes and labels.
+    const showAllLabels = view.k >= 1.1;
+    const showHubLabels = view.k >= 0.6;
+    for (const n of nodes) {
+      const inFocus = !focusSet || focusSet.has(n.id);
+      ctx.globalAlpha = inFocus ? 1 : 0.15;
+      const x = n.x ?? 0;
+      const y = n.y ?? 0;
+      if (n.id === selected || n.id === hovered) {
+        ctx.beginPath();
+        ctx.arc(x, y, n.radius + 3.5, 0, Math.PI * 2);
+        ctx.strokeStyle = p.accent;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, n.radius, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = p.background;
+      ctx.stroke();
+
+      const isQueryMatch = searchQuery !== "" && matchesQuery(
+        {
+          id: n.id,
+          identifier: n.label,
+          number: 0,
+          title: n.title,
+          status: "",
+          status_category: n.statusCategory,
+          priority: "none",
+          project_id: null,
+          updated_at: "",
+        },
+        searchQuery,
+      );
+      const degree = model.degree.get(n.id) ?? 0;
+      const labelWanted =
+        n.id === hovered ||
+        n.id === selected ||
+        isQueryMatch ||
+        (showAllLabels && degree > 0) ||
+        (showHubLabels && degree >= 4);
+      if (labelWanted) {
+        ctx.globalAlpha = inFocus ? 0.9 : 0.1;
+        ctx.font = `${view.k >= 1.1 ? 12 : 11}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillStyle = p.foreground;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(n.label, x, y + n.radius + 3);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }, [model, searchQuery, selectedId]);
+
+  // Keep a ref of the palette so draw() always reads the current one without
+  // being a dependency that rebuilds the simulation. The recolor effect below
+  // is what mirrors `palette` into it.
+  const paletteRef = useRef<Palette | null>(null);
+
+  // Resize handling: match the backing store to the element box * DPR.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const canvas = canvasRef.current;
+    if (!wrap || !canvas) return;
+    const apply = () => {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(wrap.clientWidth * dpr));
+      canvas.height = Math.max(1, Math.round(wrap.clientHeight * dpr));
+      canvas.style.width = `${wrap.clientWidth}px`;
+      canvas.style.height = `${wrap.clientHeight}px`;
+      draw();
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, [draw]);
+
+  // Recolor in place (no relayout) whenever the palette resolves, the theme
+  // flips, or the color dimension changes. Covers first mount too, where the
+  // simulation may be built before readPalette() has produced a value.
+  const recolor = useCallback(() => {
+    const p = paletteRef.current;
+    if (!p) return;
+    const byId = new Map(model.nodes.map((n) => [n.id, n]));
+    for (const sn of nodesRef.current) {
+      const n = byId.get(sn.id);
+      if (n) sn.color = nodeColor(n, p);
+    }
+  }, [model, nodeColor]);
+
+  useEffect(() => {
+    paletteRef.current = palette;
+    recolor();
+    draw();
+  }, [palette, recolor, draw]);
+
+  // Center-on request (search pick): translate the hovered node to center.
+  useEffect(() => {
+    if (!centerOn) return;
+    const n = nodesRef.current.find((x) => x.id === centerOn.id);
+    const canvas = canvasRef.current;
+    if (!n || !canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.width / dpr;
+    const height = canvas.height / dpr;
+    viewRef.current = { k: Math.max(viewRef.current.k, 1), x: width / 2 - (n.x ?? 0) * viewRef.current.k, y: height / 2 - (n.y ?? 0) * viewRef.current.k };
+    draw();
+  }, [centerOn, draw]);
+
+  const nodeAt = useCallback((sx: number, sy: number): SimNode | null => {
+    const view = viewRef.current;
+    const wx = (sx - view.x) / view.k;
+    const wy = (sy - view.y) / view.k;
+    let best: SimNode | null = null;
+    let bestDist = Infinity;
+    for (const n of nodesRef.current) {
+      const d = Math.hypot((n.x ?? 0) - wx, (n.y ?? 0) - wy);
+      if (d < n.radius + 5 && d < bestDist) {
+        best = n;
+        bestDist = d;
+      }
+    }
+    return best;
+  }, []);
+
+  const localPoint = useCallback((e: PointerEvent | React.PointerEvent | React.MouseEvent | WheelEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      const pt = localPoint(e);
+      const hit = nodeAt(pt.x, pt.y);
+      dragRef.current = {
+        id: hit?.id ?? null,
+        moved: false,
+        panning: !hit,
+        lastX: pt.x,
+        lastY: pt.y,
+      };
+      if (hit) {
+        const sim = simRef.current;
+        if (sim) sim.alphaTarget(0.25).restart();
+      }
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [localPoint, nodeAt],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const pt = localPoint(e);
+      const drag = dragRef.current;
+      if (drag.id || drag.panning) {
+        if (Math.hypot(pt.x - drag.lastX, pt.y - drag.lastY) > 2) drag.moved = true;
+        if (drag.id) {
+          const view = viewRef.current;
+          const n = nodesRef.current.find((x) => x.id === drag.id);
+          if (n) {
+            n.fx = (pt.x - view.x) / view.k;
+            n.fy = (pt.y - view.y) / view.k;
+            posRef.current.set(n.id, { x: n.fx, y: n.fy });
+          }
+        } else if (drag.panning) {
+          viewRef.current = {
+            ...viewRef.current,
+            x: viewRef.current.x + (pt.x - drag.lastX),
+            y: viewRef.current.y + (pt.y - drag.lastY),
+          };
+          drag.lastX = pt.x;
+          drag.lastY = pt.y;
+          draw();
+          return;
+        }
+        drag.lastX = pt.x;
+        drag.lastY = pt.y;
+        return;
+      }
+      // Hover detection with an HTML tooltip.
+      const hit = nodeAt(pt.x, pt.y);
+      const hitId = hit?.id ?? null;
+      if (hitId !== hoverRef.current) {
+        hoverRef.current = hitId;
+        draw();
+      }
+      if (hit) {
+        const byId = new Map(model.nodes.map((n) => [n.id, n]));
+        const n = byId.get(hit.id);
+        if (n) setTooltip({ x: pt.x, y: pt.y, node: n });
+      } else {
+        setTooltip(null);
+      }
+    },
+    [draw, localPoint, model, nodeAt],
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const drag = dragRef.current;
+      const pt = localPoint(e);
+      if (drag.id && !drag.moved) {
+        // A clean click selects (clicking the selected node again clears).
+        onSelect(drag.id === selectedId ? null : drag.id);
+      } else if (drag.panning && !drag.moved) {
+        onSelect(null);
+      }
+      if (drag.id) {
+        // The dragged node keeps fx/fy, so it stays where the user put it.
+        simRef.current?.alphaTarget(0);
+      }
+      dragRef.current = { id: null, moved: false, panning: false, lastX: pt.x, lastY: pt.y };
+    },
+    [localPoint, onSelect, selectedId],
+  );
+
+  const onDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const pt = localPoint(e);
+      const hit = nodeAt(pt.x, pt.y);
+      if (hit) onToggleCollapse(hit.id);
+    },
+    [localPoint, nodeAt, onToggleCollapse],
+  );
+
+  // Non-react wheel: zoom around the cursor.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const view = viewRef.current;
+      const k = Math.min(4, Math.max(0.15, view.k * Math.exp(-e.deltaY * 0.0015)));
+      viewRef.current = {
+        k,
+        x: sx - ((sx - view.x) / view.k) * k,
+        y: sy - ((sy - view.y) / view.k) * k,
+      };
+      draw();
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, [draw]);
+
+  return (
+    <div ref={wrapRef} className="relative h-full w-full overflow-hidden rounded-lg border bg-background">
+      <canvas
+        ref={canvasRef}
+        className="block h-full w-full touch-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={() => {
+          hoverRef.current = null;
+          setTooltip(null);
+          draw();
+        }}
+        onDoubleClick={onDoubleClick}
+      />
+      {tooltip ? <GraphTooltip x={tooltip.x} y={tooltip.y} node={tooltip.node} /> : null}
+    </div>
+  );
+}
+
+function GraphTooltip({ x, y, node }: { x: number; y: number; node: GraphNode }) {
+  return (
+    <div
+      className="pointer-events-none absolute z-10 max-w-64 rounded-md border bg-popover px-2.5 py-2 text-caption shadow-[var(--floating-shadow)]"
+      style={{ left: Math.min(x + 12, 9999), top: y + 12 }}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-micro text-muted-foreground">{node.identifier}</span>
+      </div>
+      <div className="mt-0.5 truncate text-body font-medium text-foreground">{node.title}</div>
+    </div>
+  );
+}

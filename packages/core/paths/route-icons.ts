@@ -29,6 +29,7 @@ export type RouteIconName =
   | "Bot"
   | "Building2"
   | "Users"
+  | "Network"
   | "BarChart3"
   | "Monitor"
   | "Server"
@@ -56,6 +57,7 @@ export type NavLabelKey =
   | "agents"
   | "office"
   | "squads"
+  | "graph"
   | "usage"
   | "runtimes"
   | "fleet"
@@ -75,6 +77,7 @@ export type WorkspacePageKey =
   | "agents"
   | "office"
   | "squads"
+  | "graph"
   | "usage"
   | "runtimes"
   | "fleet"
@@ -106,6 +109,7 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   agents: { segment: "agents", icon: "Bot", navKey: "agents" },
   office: { segment: "office", icon: "Building2", navKey: "office" },
   squads: { segment: "squads", icon: "Users", navKey: "squads" },
+  graph: { segment: "graph", icon: "Network", navKey: "graph" },
   usage: { segment: "usage", icon: "BarChart3", navKey: "usage" },
   runtimes: { segment: "runtimes", icon: "Monitor", navKey: "runtimes" },
   // BayClaw-only pages. They must be registered here, not just routed: this

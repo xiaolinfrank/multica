@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Graph",
+    "subtitle": "How your issues relate: sub-issues, dependencies, references"
+  },
+  "toolbar": {
+    "search_placeholder": "Search issues…",
+    "filter": "Filter",
+    "color_by": "Color",
+    "color_project": "Project",
+    "color_status": "Status",
+    "focus_depth": "Focus",
+    "focus_off": "All",
+    "focus_1": "1 hop",
+    "focus_2": "2 hops",
+    "reset": "Reset",
+    "no_results": "No matching issues"
+  },
+  "filter": {
+    "edge_kinds": "Relations",
+    "edge_group_child": "Sub-issues",
+    "edge_group_dependency": "Dependencies",
+    "edge_group_mention": "References",
+    "statuses": "Status",
+    "projects": "Projects",
+    "no_project": "No project"
+  },
+  "legend": {
+    "status_misc": "Other",
+    "more_projects_one": "+{{count}} more project",
+    "more_projects_other": "+{{count}} more projects"
+  },
+  "counts": {
+    "nodes_one": "{{count}} issue",
+    "nodes_other": "{{count}} issues",
+    "edges_one": "{{count}} link",
+    "edges_other": "{{count}} links",
+    "collapsed_one": "{{count}} collapsed",
+    "collapsed_other": "{{count}} collapsed"
+  },
+  "card": {
+    "dismiss": "Close",
+    "status": "Status",
+    "links": "Links",
+    "open": "Open issue"
+  },
+  "empty": {
+    "title": "Nothing to map yet",
+    "body": "Issues and their sub-issues, dependencies and references will appear here as a graph."
+  }
+}

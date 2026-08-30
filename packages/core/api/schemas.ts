@@ -50,6 +50,7 @@ import type {
   ListTelegramInstallationsResponse,
   RedeemTelegramBindingTokenResponse,
   GroupedIssuesResponse,
+  IssueGraphResponse,
   GitHubConnectResponse,
   GitHubPullRequest,
   InboxItem,
@@ -1520,6 +1521,33 @@ export const SubscribersListSchema = z.array(SubscriberSchema);
 export const ChildIssuesResponseSchema = z.object({
   issues: z.array(IssueSchema).default([]),
 }).loose();
+
+// GET /api/issues/graph. Node/edge fields default aggressively: a malformed or
+// older response degrades to an empty-but-renderable graph instead of failing
+// the whole snapshot. `kind` stays an open string — an unknown kind from a
+// newer backend is dropped when the graph model is built, not a schema error.
+const IssueGraphNodeSchema = z.object({
+  id: z.string(),
+  identifier: z.string().default(""),
+  number: z.number().default(0),
+  title: z.string().default(""),
+  status: z.string().default(""),
+  status_category: z.string().default(""),
+  priority: z.string().default("none"),
+  project_id: z.string().nullable().default(null),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const IssueGraphResponseSchema = z.object({
+  nodes: z.array(IssueGraphNodeSchema).default([]),
+  edges: z.array(z.object({
+    source: z.string(),
+    target: z.string(),
+    kind: z.string().default("related"),
+  }).loose()).default([]),
+}).loose();
+
+export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [] };
 
 export const ChildIssueProgressResponseSchema = z.object({
   progress: z

@@ -3,6 +3,7 @@ import { createMemoryRouter, Outlet, useMatches } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { IssueDetailPage } from "./pages/issue-detail-page";
 import { ProjectDetailPage } from "./pages/project-detail-page";
+import { ProjectGraphRoute } from "./pages/project-graph-page";
 import { AutopilotDetailPage } from "./pages/autopilot-detail-page";
 import { SkillDetailPage } from "./pages/skill-detail-page";
 import { AgentDetailPage } from "./pages/agent-detail-page";
@@ -31,6 +32,7 @@ import {
 } from "@multica/views/agents";
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { OfficePage } from "@multica/views/office";
+import { GraphPage } from "@multica/views/graph";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
 import { SettingsPage } from "@multica/views/settings";
@@ -152,6 +154,11 @@ export const appRoutes: RouteObject[] = [
             handle: { title: "Project" },
           },
           {
+            path: "projects/:id/graph",
+            element: <ProjectGraphRoute />,
+            handle: { title: "Project Graph" },
+          },
+          {
             path: "autopilots",
             element: <AutopilotsPage />,
             handle: { title: "Autopilot" },
@@ -220,6 +227,7 @@ export const appRoutes: RouteObject[] = [
             handle: { title: "Member" },
           },
           { path: "office", element: <OfficePage />, handle: { title: "Office" } },
+          { path: "graph", element: <GraphPage />, handle: { title: "Graph" } },
           { path: "squads", element: <SquadsPage />, handle: { title: "Squads" } },
           {
             path: "squads/:id",
