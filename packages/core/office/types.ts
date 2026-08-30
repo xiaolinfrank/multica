@@ -12,14 +12,16 @@ import type { AgentPresenceDetail } from "../agents/types";
 export type OfficeZoneId =
   | "desk" // working — at a desk with tasks running
   | "meeting" // squad room — idle member of a squad with work in flight
+  | "reception" // front desk — idle captain of a squad, greeting visitors
   | "lounge" // idle — sofa area
   | "tea" // idle — tea corner
   | "canteen" // idle — cafeteria
+  | "gym" // idle — gym corner
   | "waiting" // queued — tasks on the plate but nothing running
   | "absent"; // offline / unstable / unbound — not in the office today
 
-/** The three zones idle agents rotate through, in display order. */
-export const RELAX_ZONES = ["lounge", "tea", "canteen"] as const;
+/** The four zones idle agents rotate through, in display order. */
+export const RELAX_ZONES = ["lounge", "tea", "canteen", "gym"] as const;
 export type RelaxZone = (typeof RELAX_ZONES)[number];
 
 /** An agent seated at a desk, with what is on their plate. */
@@ -54,9 +56,12 @@ export interface OfficeFloorPlan {
   desks: DeskAssignment[];
   meetings: MeetingAssignment[];
   waiting: string[];
+  /** Idle squad captains, standing at the reception desk. */
+  reception: string[];
   lounge: string[];
   tea: string[];
   canteen: string[];
+  gym: string[];
   absent: AbsentAssignment[];
   /** agent.id → zone, for spot lookups (monologue, hover cards). */
   zoneByAgent: ReadonlyMap<string, OfficeZoneId>;
@@ -72,11 +77,13 @@ export type MonologueSlot =
   | { kind: "queued"; variant: number; queuedCount: number }
   | { kind: "idle"; variant: number; zone: RelaxZone }
   | { kind: "meeting"; variant: number }
+  | { kind: "captain"; variant: number }
   | { kind: "waiting"; variant: number; queuedCount: number }
   | { kind: "completed"; variant: number; count: number }
   | { kind: "failed"; variant: number }
   | { kind: "offline"; variant: number }
-  | { kind: "unbound"; variant: number };
+  | { kind: "unbound"; variant: number }
+  | { kind: "human"; variant: number; mood: "working" | "waiting" | "idle"; zone?: RelaxZone };
 
 /** One row of the recent-activity rail, derived from the task snapshot. */
 export interface OfficeTimelineEntry {

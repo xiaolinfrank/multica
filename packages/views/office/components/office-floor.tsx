@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import type { OfficeTranslate } from "./office-i18n";
 import type { Agent } from "@multica/core/types";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
@@ -10,6 +10,7 @@ import {
   type AgentPose,
   type OfficeScene,
   type OfficeTokenRow,
+  type MemberSeatZone,
   type OfficeZoneId,
 } from "@multica/core/office";
 import {
@@ -21,18 +22,23 @@ import {
   NAME_FONT,
   type SpriteAnchor,
 } from "./office-layout";
+import { humanSpot, type SeatedMember } from "./office-users";
+import { OfficeStatusEditor } from "./office-status-editor";
 import {
   Armchair,
   Bench,
   CLOTHES,
   CoffeeTable,
   Desk,
+  DumbbellRack,
   FLOOR,
   FloorEdges,
   FloorSlab,
   GlassWall,
   HAIRS,
   headClearance,
+  HumanFigure,
+  HUMAN_LABEL_DY,
   HEAD_Z,
   MeetingTable,
   NorthWall,
@@ -51,10 +57,14 @@ import {
   Sofa,
   Stool,
   TaskChair,
+  ReceptionCounter,
   TeaCounter,
+  Treadmill,
   Walker,
   WallScreen,
   WoodChair,
+  WorkoutBench,
+  YogaMat,
   ZONE_FLOOR,
   type SpriteColors,
   type WalkRoute,
@@ -85,6 +95,10 @@ export interface OfficeFloorProps {
   /** Resolves the thought bubble for an agent, or null for none. */
   bubbleFor: (agentId: string) => string | null;
   onAgentClick?: (agentId: string) => void;
+  /** Human members seated among the agents by their recent activity. */
+  users: readonly SeatedMember[];
+  /** Saves the viewer's own custom status; "" clears it. */
+  onUserStatusSave?: (status: string) => void;
 }
 
 type furn = Exclude<OfficeZoneId, "absent">;
@@ -109,25 +123,12 @@ const ZONES: Record<furn, Rect> = {
   tea: { x: 40, y: 418, w: 258, d: 98 },
   lounge: { x: 326, y: 414, w: 272, d: 174 },
   canteen: { x: 622, y: 372, w: 292, d: 226 },
+  gym: { x: 952, y: 376, w: 198, d: 262 },
   waiting: { x: 40, y: 562, w: 258, d: 84 },
+  reception: { x: 952, y: 150, w: 198, d: 220 },
 };
 
-const ZONE_ORDER = ["desk", "meeting", "tea", "lounge", "canteen", "waiting"] as const;
-
-/**
- * Where each zone's caption is printed on the boards. Positions are explicit
- * rather than derived from the rectangle: the aisle a zone can spare is on a
- * different side for each one, and a caption that lands under a name label is
- * exactly the "text covering the agents" problem this layer exists to avoid.
- */
-const ZONE_TAG: Record<furn, { x: number; y: number }> = {
-  desk: { x: 44, y: 394 },
-  meeting: { x: 560, y: 346 },
-  tea: { x: 44, y: 519 },
-  lounge: { x: 330, y: 591 },
-  canteen: { x: 626, y: 601 },
-  waiting: { x: 44, y: 624 },
-};
+const ZONE_ORDER = ["desk", "meeting", "reception", "tea", "lounge", "canteen", "gym", "waiting"] as const;
 
 /** One place a sprite can be, and how much label room it has there. */
 interface Seat {
@@ -167,10 +168,23 @@ const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((tb) => [
 ]);
 
 const WAITING_BENCH: Rect = { x: 56, y: 584, w: 226, d: 30 };
+// Reception: the counter captains stand behind, set into the top-right bay.
+const RECEPTION_COUNTER: Rect = { x: 972, y: 300, w: 158, d: 36 };
 const WAITING_SEATS = Array.from({ length: 4 }, (_, i) => ({
   x: WAITING_BENCH.x + (i + 0.5) * (WAITING_BENCH.w / 4),
   y: 600,
 }));
+
+// Gym: a rack along the north edge, two treadmills against the east mirror,
+// a bench to sit at between sets, and a mat on the rubber.
+const GYM_RACK: Rect = { x: 962, y: 386, w: 118, d: 17 };
+const GYM_TREADMILLS = [
+  { x: 1102, y: 420 },
+  { x: 1102, y: 486 },
+];
+const GYM_BENCH: Rect = { x: 986, y: 470, w: 56, d: 17 };
+const GYM_MAT: Rect = { x: 1016, y: 552, w: 46, d: 22 };
+
 
 const SEATS: Record<furn, Seat[]> = {
   desk: DESKS.map((d) => ({ x: d.x + DESK_W / 2, y: d.y - 22, slot: DESK_W - 12, plate: true })),
@@ -178,7 +192,12 @@ const SEATS: Record<furn, Seat[]> = {
   tea: TEA_SEATS.map((s) => ({ ...s, slot: 68 })),
   lounge: LOUNGE_SEATS.map((s) => ({ ...s, slot: 40 })),
   canteen: CANTEEN_SEATS.map((s) => ({ ...s, slot: 62 })),
+  gym: [
+    { x: GYM_BENCH.x + 15, y: GYM_BENCH.y + 12, slot: 34 },
+    { x: GYM_BENCH.x + 40, y: GYM_BENCH.y + 12, slot: 34 },
+  ],
   waiting: WAITING_SEATS.map((s) => ({ ...s, slot: 52 })),
+  reception: [],
 };
 
 /**
@@ -187,6 +206,14 @@ const SEATS: Record<furn, Seat[]> = {
  * show; past that the floor is so full that the rail reads better anyway.
  */
 function standSpot(zone: furn, n: number): Seat {
+  if (zone === "reception") {
+    // Captains line up behind the counter, one per stretch of it.
+    return {
+      x: RECEPTION_COUNTER.x + ((n % 3) + 0.5) * (RECEPTION_COUNTER.w / 3),
+      y: RECEPTION_COUNTER.y - 4,
+      slot: RECEPTION_COUNTER.w / 3 - 12,
+    };
+  }
   const z = ZONES[zone];
   return {
     x: z.x + ((n % 4) + 0.5) * (z.w / 4),
@@ -195,10 +222,11 @@ function standSpot(zone: furn, n: number): Seat {
   };
 }
 
-const WALK_ROUTES: Record<"lounge" | "tea" | "canteen", WalkRoute> = {
+const WALK_ROUTES: Record<"lounge" | "tea" | "canteen" | "gym", WalkRoute> = {
   tea: { x0: 62, x1: 276, y: 508, speed: 16, offset: 0 },
   lounge: { x0: 340, x1: 584, y: 574, speed: 18, offset: 3 },
   canteen: { x0: 636, x1: 900, y: 582, speed: 20, offset: 6 },
+  gym: { x0: 966, x1: 1136, y: 592, speed: 22, offset: 9 },
 };
 
 /** How many monologues a zone floats at once. */
@@ -208,7 +236,9 @@ const BUBBLE_CAP: Record<furn, number> = {
   tea: 2,
   lounge: 2,
   canteen: 2,
+  gym: 2,
   waiting: 1,
+  reception: 2,
 };
 
 /** Tallest bubble the layout can produce, plus its border. */
@@ -251,8 +281,13 @@ export const OfficeFloor = memo(function OfficeFloor({
   t,
   bubbleFor,
   onAgentClick,
+  users,
+  onUserStatusSave,
 }: OfficeFloorProps) {
   const { floor } = scene;
+  // Which member's status editor is open; only the viewer's own figure can
+  // open one, so the id is only ever a self id in practice.
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
   const poses = useMemo(() => assignPoses(floor, phase), [floor, phase]);
 
@@ -263,7 +298,9 @@ export const OfficeFloor = memo(function OfficeFloor({
       lounge: floor.lounge.length,
       tea: floor.tea.length,
       canteen: floor.canteen.length,
+      gym: floor.gym.length,
       waiting: floor.waiting.length,
+      reception: floor.reception.length,
     }),
     [floor],
   );
@@ -298,7 +335,9 @@ export const OfficeFloor = memo(function OfficeFloor({
       lounge: 0,
       tea: 0,
       canteen: 0,
+      gym: 0,
       waiting: 0,
+      reception: 0,
     };
     const nextStand: Record<furn, number> = { ...nextSeat };
     const seated: Placement[] = [];
@@ -357,18 +396,19 @@ export const OfficeFloor = memo(function OfficeFloor({
         seatIndex,
         standing,
         headZ: standing ? HEAD_Z : SIT_HEAD_Z,
+        badge: pose.zone === "reception" ? t("captain.label") : null,
         name,
         label: labelled ? fitText(name, seat.slot, NAME_FONT) : null,
         avatarUrl: avatarOf(agent),
         colors: colorsById.get(pose.agentId) as SpriteColors,
       };
     });
-  }, [placements.seated, agentById, colorsById]);
+  }, [placements.seated, agentById, colorsById, t]);
 
   const walkers = useMemo(() => {
     return placements.walking.map((pose) => {
       const agent = agentById.get(pose.agentId);
-      const zone = pose.zone as "lounge" | "tea" | "canteen";
+      const zone = pose.zone as "lounge" | "tea" | "canteen" | "gym";
       const base = WALK_ROUTES[zone];
       return {
         pose,
@@ -380,6 +420,49 @@ export const OfficeFloor = memo(function OfficeFloor({
       };
     });
   }, [placements.walking, agentById, colorsById]);
+
+/**
+ * Member figures, seated among the agents by their recent activity and
+ * resolved to floor spots, sprite colors and the pill that floats above
+ * each head. The pill geometry (not just the text) is derived here so the
+ * editor can anchor to the same box the renderer paints.
+ */
+const memberSprites = useMemo(() => {
+  const perZone = new Map<MemberSeatZone, number>();
+  return users.map((user) => {
+    const i = perZone.get(user.zone) ?? 0;
+    perZone.set(user.zone, i + 1);
+    const spot = humanSpot(user.zone, i);
+    const hx = spot.x;
+    const hy = spot.y - 6;
+    // Above the name label: see HumanFigure for the label baseline.
+    const labelTop = hy - HUMAN_LABEL_DY - 8;
+    const showSet = user.isSelf && user.status === "";
+    const text = showSet
+      ? t("status.set")
+      : user.status !== ""
+        ? fitText(user.status, 58, 7)
+        : "";
+    const inkW = text === "" ? 0 : estimateTextWidth(text, 7);
+    const pillW = text === "" ? 0 : inkW + 12;
+    return {
+      user,
+      spot,
+      hx,
+      hy,
+      label: fitText(user.name, 46, NAME_FONT),
+      // Same guard as avatarOf: an office of avatar-less members never
+      // asks the API client for a base URL it does not need.
+      avatarUrl: user.avatarUrl ? resolvePublicFileUrl(user.avatarUrl) : null,
+      colors: {
+        clothes: pick(CLOTHES, user.userId),
+        skin: pick(SKINS, `${user.userId}-skin`),
+        hair: pick(HAIRS, `${user.userId}-hair`),
+      } satisfies SpriteColors,
+      pill: text === "" ? null : { text, set: showSet, x: hx - pillW / 2, y: labelTop - 15, w: pillW, h: 13 },
+    };
+  });
+}, [users, t]);
 
   /** Desk slot → who took it, so the desktop can carry their nameplate. */
   const deskNames = useMemo(() => {
@@ -424,8 +507,11 @@ export const OfficeFloor = memo(function OfficeFloor({
       const nameW = estimateTextWidth(name, 10);
       const countW = count > 0 ? estimateTextWidth(String(count), 8.5) + 12 : 0;
       const hintW = hint ? estimateTextWidth(hint, 8) + 6 : 0;
-      const { x, y } = ZONE_TAG[zone];
-      return { zone, name, hint, count, nameW, countW, x, y, w: 12 + nameW + countW + hintW + 10 };
+      const z = ZONES[zone];
+      const w = 12 + nameW + countW + hintW + 10;
+      // Centred on the zone's top edge: the caption names the whole field,
+      // not whichever aisle an explicit coordinate happened to sit beside.
+      return { zone, name, hint, count, nameW, countW, x: z.x + (z.w - w) / 2, y: z.y + 3, w };
     });
   }, [t, zoneCounts]);
 
@@ -433,6 +519,7 @@ export const OfficeFloor = memo(function OfficeFloor({
     const squad = floor.meetings[0];
     return squad ? fitText(squad.squadName, MEETING_BOARD.w - 28, 12) : null;
   }, [floor.meetings]);
+
 
   // ---- The painter's list -------------------------------------------------
   const drawn = useMemo(() => {
@@ -470,6 +557,12 @@ export const OfficeFloor = memo(function OfficeFloor({
 
     // Tea corner.
     add("tea-counter", TEA_COUNTER.y + TEA_COUNTER.d, <TeaCounter {...TEA_COUNTER} />);
+    add(
+      "reception-counter",
+      RECEPTION_COUNTER.y + RECEPTION_COUNTER.d,
+      <ReceptionCounter {...RECEPTION_COUNTER} />,
+    );
+    add("plant-reception", 252, <Plant x={1140} y={248} scale={0.85} />);
     TEA_SEATS.forEach((s, i) => add(`stool-${i}`, s.y - 1, <Stool x={s.x} y={s.y} />));
 
     // Lounge.
@@ -490,6 +583,16 @@ export const OfficeFloor = memo(function OfficeFloor({
     add("plant-wait", 574, <Plant x={296} y={572} scale={0.85} />);
     add("plant-se", 620, <Plant x={922} y={618} scale={0.9} />);
 
+    // Gym: mirror on the east edge, rack and machines, bench and mat. The
+    // mirror sorts with the wall band it stands on.
+    add("gym-mirror", 636, <GlassWall x={1146} y={382} w={7} d={250} h={88} />);
+    add("gym-rack", GYM_RACK.y + GYM_RACK.d, <DumbbellRack x={GYM_RACK.x} y={GYM_RACK.y} w={GYM_RACK.w} />);
+    GYM_TREADMILLS.forEach((tm, i) => add(`gym-treadmill-${i}`, tm.y + 52, <Treadmill x={tm.x} y={tm.y} />));
+    add("gym-bench", GYM_BENCH.y + 11, <WorkoutBench x={GYM_BENCH.x} y={GYM_BENCH.y} />);
+    add("gym-mat", GYM_MAT.y + GYM_MAT.d, <YogaMat x={GYM_MAT.x} y={GYM_MAT.y} />);
+    add("plant-gym", 372, <Plant x={1140} y={368} scale={0.75} />);
+
+
     for (const s of sprites) {
       add(
         `p-${s.pose.agentId}`,
@@ -498,6 +601,7 @@ export const OfficeFloor = memo(function OfficeFloor({
           agentId={s.pose.agentId}
           name={s.name}
           label={s.label}
+          badge={s.badge}
           x={s.seat.x}
           y={s.seat.y}
           posture={s.standing ? "standing" : "sitting"}
@@ -524,13 +628,34 @@ export const OfficeFloor = memo(function OfficeFloor({
       );
     }
 
+for (const m of memberSprites) {
+  add(
+    `u-${m.user.userId}`,
+    m.spot.y,
+    <HumanFigure
+      id={m.user.userId}
+      name={m.user.name}
+      label={m.label}
+      x={m.spot.x}
+      y={m.spot.y}
+      colors={m.colors}
+      avatarUrl={m.avatarUrl}
+      onClick={
+        m.user.isSelf && onUserStatusSave
+          ? () => setEditingUserId(m.user.userId)
+          : undefined
+      }
+    />,
+  );
+}
+
     // Stable sort: equal depths keep insertion order, which is furniture
     // before the people who belong to it.
     return list
       .map((item, i) => ({ item, i }))
       .sort((a, b) => a.item.y - b.item.y || a.i - b.i)
       .map(({ item }) => item);
-  }, [sprites, walkers, deskNames, onAgentClick]);
+  }, [sprites, walkers, memberSprites, deskNames, onAgentClick, onUserStatusSave]);
 
   // ---- Bubbles ------------------------------------------------------------
   const bubbles = useMemo(() => {
@@ -562,17 +687,42 @@ export const OfficeFloor = memo(function OfficeFloor({
         maxLift: Math.max(0, seat.y - clearance - 6 - BUBBLE_MAX_H - FLOOR.y0),
       };
     });
-    const reserved = zoneTags.map((g) => ({
+    for (const m of memberSprites) {
+  const zone = m.user.zone;
+  let text = bubbleFor(m.user.userId);
+  if (text) {
+    const heard = said.get(zone) ?? new Set<string>();
+    if (heard.has(text)) text = null;
+    else heard.add(text);
+    said.set(zone, heard);
+  }
+  anchors.push({
+    agentId: m.user.userId,
+    sx: m.spot.x,
+    sy: m.spot.y,
+    clearance: HUMAN_LABEL_DY + 26,
+    labelWidth: Math.max(28, m.label ? estimateTextWidth(m.label, 9.5) : 0),
+    text,
+    maxLift: Math.max(0, m.spot.y - HUMAN_LABEL_DY - 32 - BUBBLE_MAX_H - FLOOR.y0),
+  });
+}
+const reserved = zoneTags.map((g) => ({
       left: g.x - 2,
       top: g.y - 2,
       right: g.x + g.w + 2,
       bottom: g.y + TAG_H + 2,
     }));
     return layoutBubbles(anchors, reserved, { left: 6, right: SCENE_W - 6 });
-  }, [sprites, speaking, bubbleFor, zoneTags]);
+  }, [sprites, memberSprites, speaking, bubbleFor, zoneTags]);
+
+  // The member whose editor is open (null while closed). Resolved from the
+  // id so a users-list swap while open still finds the figure.
+  const editing = memberSprites.find((m) => m.user.userId === editingUserId) ?? null;
+  const editingUser = editing?.user.isSelf === true ? editing : null;
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="relative">
       <svg
         viewBox={`0 0 ${SCENE_W} ${SCENE_H}`}
         className="w-full rounded-xl"
@@ -619,6 +769,7 @@ export const OfficeFloor = memo(function OfficeFloor({
           <Pendant x={168} y={462} r={62} />
           <Pendant x={432} y={476} r={70} />
           <Pendant x={770} y={470} r={80} />
+          <Pendant x={1051} y={500} r={66} />
           {drawn.map((d) => (
             <g key={d.key}>{d.node}</g>
           ))}
@@ -660,6 +811,52 @@ export const OfficeFloor = memo(function OfficeFloor({
               </div>
             </foreignObject>
           ))}
+          {memberSprites.map(({ user, pill }) =>
+            pill ? (
+              <g
+                key={`s-${user.userId}`}
+                className={user.isSelf && onUserStatusSave ? "cursor-pointer" : undefined}
+                onClick={
+                  user.isSelf && onUserStatusSave
+                    ? () => setEditingUserId(user.userId)
+                    : undefined
+                }
+              >
+                <title>{user.status}</title>
+                <rect
+                  x={pill.x}
+                  y={pill.y}
+                  width={pill.w}
+                  height={pill.h}
+                  rx={pill.h / 2}
+                  fill="#ffffff"
+                  opacity={pill.set ? 0.75 : 0.95}
+                />
+                <rect
+                  x={pill.x}
+                  y={pill.y}
+                  width={pill.w}
+                  height={pill.h}
+                  rx={pill.h / 2}
+                  fill="none"
+                  stroke={pill.set ? "#9aa5b3" : "#8b96a5"}
+                  strokeOpacity={pill.set ? 0.8 : 0.6}
+                  strokeWidth={0.9}
+                  strokeDasharray={pill.set ? "2.5 2" : undefined}
+                />
+                <text
+                  x={pill.x + pill.w / 2}
+                  y={pill.y + 9.2}
+                  textAnchor="middle"
+                  fontSize={7}
+                  fontWeight={600}
+                  fill={pill.set ? "#7e8896" : "#3f4854"}
+                >
+                  {pill.text}
+                </text>
+              </g>
+            ) : null,
+          )}
         </g>
         <rect
           x={0.75}
@@ -672,6 +869,16 @@ export const OfficeFloor = memo(function OfficeFloor({
           strokeWidth={1.5}
         />
       </svg>
+      {editingUser && onUserStatusSave ? (
+        <OfficeStatusEditor
+          anchor={{ x: editingUser.hx, y: editingUser.pill?.y ?? editingUser.hy - HUMAN_LABEL_DY - 24 }}
+          current={editingUser.user.status}
+          t={t}
+          onSave={onUserStatusSave}
+          onClose={() => setEditingUserId(null)}
+        />
+      ) : null}
+      </div>
 
       {/* Out of office: nobody to draw on the floor, so they get a strip. */}
       <div className="flex flex-wrap gap-2">

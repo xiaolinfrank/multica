@@ -555,6 +555,8 @@ export interface UpdateMeRequest {
   profile_description?: string;
   /** IANA tz to pin; "" clears back to browser-tz; undefined leaves untouched. */
   timezone?: string;
+  /** Office presence status (max 100 chars). "" clears; undefined leaves untouched. */
+  custom_status?: string;
 }
 
 export interface CreateMemberRequest {

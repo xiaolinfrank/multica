@@ -1474,3 +1474,29 @@ describe("workspace subscription contract", () => {
     );
   });
 });
+
+describe("custom_status presence fields", () => {
+  it("defaults the user's custom_status to empty when the server omits it", async () => {
+    stubFetchJson({ id: "u1", name: "Ada", email: "ada@x.test" });
+    const client = new ApiClient("https://api.example.test");
+    const me = await client.getMe();
+    expect(me.custom_status).toBe("");
+  });
+
+  it("carries member custom_status and defaults it when omitted", async () => {
+    stubFetchJson([
+      { id: "m1", workspace_id: "w1", user_id: "u1", role: "member", name: "Ada", email: "ada@x.test", custom_status: "☕ coffee" },
+      { id: "m2", workspace_id: "w1", user_id: "u2", role: "member", name: "Bo", email: "bo@x.test" },
+    ]);
+    const client = new ApiClient("https://api.example.test");
+    const members = await client.listMembers("w1");
+    expect(members.map((m) => m.custom_status)).toEqual(["☕ coffee", ""]);
+  });
+
+  it("returns [] from listMembers when the response is not an array", async () => {
+    stubFetchJson({ wrong: "shape" });
+    const client = new ApiClient("https://api.example.test");
+    const members = await client.listMembers("w1");
+    expect(members).toEqual([]);
+  });
+});
