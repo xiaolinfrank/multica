@@ -2,11 +2,13 @@ import type { Agent, AgentTask } from "@multica/core/types";
 import type { OfficeScene } from "@multica/core/office";
 import type { AgentPresenceDetail } from "@multica/core/agents";
 import {
-  assignOfficeZones,
+  assignMemberSeat,
+assignOfficeZones,
   buildChatter,
   buildOfficeTimeline,
   mergeTokenRows,
 } from "@multica/core/office";
+import type { SeatedMember } from "./office-users";
 
 // A fully-staffed synthetic office for visual development and screenshot
 // verification (`/{ws}/office?demo=1`). It reuses the real pure builders
@@ -17,6 +19,8 @@ import {
 export interface DemoScene {
   scene: OfficeScene;
   presence: ReadonlyMap<string, AgentPresenceDetail>;
+  /** Stand-in humans for the members corner; the first is "you". */
+  users: SeatedMember[];
 }
 
 const agent = (id: string, name: string): Agent =>
@@ -82,6 +86,7 @@ export function buildDemoScene(phase: number): DemoScene {
         squadId: "sq-demo",
         squadName: "Platform Crew",
         memberAgentIds: ["demo-zeta", "demo-eta"],
+        leaderAgentId: "demo-eta",
       },
     ],
     tasksByAgent: new Map([
@@ -107,7 +112,40 @@ export function buildDemoScene(phase: number): DemoScene {
     phase,
   );
 
-  const scene: OfficeScene = {
+  // Demo member activity: one mid-task, one freshly done, one with queued
+// work — enough to seat all three humans in different areas of the floor.
+const memberActivity = [
+  { userId: "demo-user-0", inProgress: 1, open: 0, recentlyDone: 0 },
+  { userId: "demo-user-1", inProgress: 0, open: 0, recentlyDone: 2 },
+  { userId: "demo-user-2", inProgress: 0, open: 2, recentlyDone: 0 },
+];
+const baseUsers = [
+  {
+    userId: "demo-user-0",
+    name: "You",
+    email: "you@fosunpharma.com",
+    avatarUrl: null,
+    status: "🎧 focusing",
+    isSelf: true,
+  },
+  {
+    userId: "demo-user-1",
+    name: "Dr. Lin",
+    email: "lin@fosunpharma.com",
+    avatarUrl: null,
+    status: "🏋️ at the gym",
+    isSelf: false,
+  },
+  {
+    userId: "demo-user-2",
+    name: "Wang",
+    email: "wang@fosunpharma.com",
+    avatarUrl: null,
+    status: "",
+    isSelf: false,
+  },
+];
+const scene: OfficeScene = {
     agents,
     floor,
     timeline: buildOfficeTimeline(tasks, 12),
@@ -124,5 +162,15 @@ export function buildDemoScene(phase: number): DemoScene {
     ),
   };
 
-  return { scene, presence };
+  return {
+    scene,
+    presence,
+users: baseUsers.map((u, i) => ({
+        ...u,
+        ...assignMemberSeat(
+          memberActivity[i] ?? { userId: u.userId, inProgress: 0, open: 0, recentlyDone: 0 },
+          phase,
+        ),
+      })),
+  };
 }

@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { useAuthStore } from "@multica/core/auth";
+import { api } from "@multica/core/api";
+import { memberListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import type { MemberWithUser } from "@multica/core/types";
 import { useNavigation } from "../../navigation";
 import {
+  assignMemberSeat,
+  memberActivityFromIssues,
   monologueMessage,
   OFFICE_PHASE_MS,
   pickMonologueSlot,
@@ -16,6 +23,7 @@ import { buildDemoScene } from "./office-demo";
 import { OfficeFloor } from "./office-floor";
 import type { OfficeTranslate } from "./office-i18n";
 import { OfficeRail } from "./office-rail";
+import { toOfficeMembers } from "./office-users";
 
 // The Agent Office: one glanceable floor plan of who is working, who is
 // resting and who is out, plus the activity rail, tea-corner chatter and
@@ -63,26 +71,114 @@ export function OfficePage() {
   // `?demo=1` renders a fully-staffed synthetic floor without touching the
   // API — used for visual development and screenshot verification.
   const isDemo = navigation.searchParams.get("demo") === "1";
-  const live = useOfficeScene(wsId, phase);
+  const live = useOfficeScene(isDemo ? undefined : wsId, phase);
   const demo = useMemo(() => buildDemoScene(phase), [phase]);
   const scene = isDemo ? demo.scene : live.scene;
   const presence = isDemo ? demo.presence : live.presence;
   const loading = isDemo ? false : live.loading;
+
+  // Human members on the floor. The list polls gently: a status is exactly
+  // the kind of thing a colleague changes while you are looking at them, and
+  // there is no realtime event for profile fields — the office is the only
+  // surface that wants push-freshness, so it refreshes on its own interval.
+  const selfId = useAuthStore((s) => s.user?.id ?? "");
+  const { data: members = [] } = useQuery({
+    ...memberListOptions(wsId ?? ""),
+    enabled: !!wsId && !isDemo,
+    refetchInterval: 30_000,
+  });
+  const liveUsers = useMemo(() => toOfficeMembers(members, selfId), [members, selfId]);
+// Human seating follows what each member actually has open: the pure
+// classifier in core/office turns issue counts into a zone plus a
+// monologue slot, so people mix into the agents' areas instead of a corner.
+const { data: memberIssues = [] } = useQuery({
+  queryKey: ["workspaces", wsId, "office", "member-issues"],
+  queryFn: () =>
+    api.listIssues({ workspace_id: wsId ?? "", assignee_types: ["member"], limit: 200 }).then((r) => r.issues),
+  enabled: !!wsId && !isDemo,
+  refetchInterval: 60_000,
+});
+const seatedLive = useMemo(() => {
+  const activity = memberActivityFromIssues(
+    liveUsers.map((u) => u.userId),
+    memberIssues,
+  );
+  return liveUsers.map((u) => ({
+    ...u,
+    ...assignMemberSeat(
+      activity.get(u.userId) ?? { userId: u.userId, inProgress: 0, open: 0, recentlyDone: 0 },
+      phase,
+    ),
+  }));
+}, [liveUsers, memberIssues, phase]);
+  // Demo keeps its own local status so the editor is exercisable offline.
+  const [demoStatus, setDemoStatus] = useState<string | null>(null);
+  const users = useMemo(
+    () =>
+      isDemo
+        ? demo.users.map((u, i) => (i === 0 && demoStatus !== null ? { ...u, status: demoStatus } : u))
+        : seatedLive,
+    [isDemo, demo.users, demoStatus, seatedLive],
+  );
+
+  const queryClient = useQueryClient();
+  const statusMutation = useMutation({
+    mutationFn: (status: string) => api.updateMe({ custom_status: status }),
+    // The members list is a determinate cache and the viewer stays on this
+    // screen — patch own row optimistically, roll back on failure.
+    onMutate: async (status) => {
+      if (!wsId) return;
+      await queryClient.cancelQueries({ queryKey: workspaceKeys.members(wsId) });
+      const prev = queryClient.getQueryData<MemberWithUser[]>(workspaceKeys.members(wsId));
+      if (prev) {
+        queryClient.setQueryData(
+          workspaceKeys.members(wsId),
+          prev.map((m) => (m.user_id === selfId ? { ...m, custom_status: status } : m)),
+        );
+      }
+      return { prev };
+    },
+    onError: (_error, _status, ctx) => {
+      if (wsId && ctx?.prev) {
+        queryClient.setQueryData(workspaceKeys.members(wsId), ctx.prev);
+      }
+    },
+  });
+  const onUserStatusSave = useCallback(
+    (status: string) => {
+      if (isDemo) {
+        setDemoStatus(status);
+        return;
+      }
+      statusMutation.mutate(status);
+    },
+    [isDemo, statusMutation],
+  );
 
   const agentById = useMemo(
     () => new Map(scene.agents.map((a) => [a.id, a])),
     [scene.agents],
   );
 
-  const bubbleFor = useMemo(() => {
+  /** Human monologue slots keyed by user id — bubbleFor checks these first. */
+const humanSlots = useMemo(
+  () => new Map(users.map((u) => [u.userId, u.monologue])),
+  [users],
+);
+const bubbleFor = useMemo(() => {
     return (agentId: string): string | null => {
-      const zone = scene.floor.zoneByAgent.get(agentId);
+      const human = humanSlots.get(agentId);
+    if (human) {
+      const msg = monologueMessage(human);
+      return tr(msg.key, msg.params);
+    }
+    const zone = scene.floor.zoneByAgent.get(agentId);
       if (!zone) return null;
       const slot = pickMonologueSlot(agentId, zone, presence, phase);
       const msg = monologueMessage(slot);
       return tr(msg.key, msg.params);
     };
-  }, [scene.floor.zoneByAgent, presence, phase, tr]);
+  }, [humanSlots, scene.floor.zoneByAgent, presence, phase, tr]);
 
   const onAgentClick = (agentId: string) => {
     navigation.push(paths.agentDetail(agentId));
@@ -93,8 +189,8 @@ export function OfficePage() {
     let relaxing = 0;
     let absent = 0;
     for (const zone of scene.floor.zoneByAgent.values()) {
-      if (zone === "desk" || zone === "waiting" || zone === "meeting") working += 1;
-      else if (zone === "lounge" || zone === "tea" || zone === "canteen") relaxing += 1;
+      if (zone === "desk" || zone === "waiting" || zone === "meeting" || zone === "reception") working += 1;
+      else if (zone === "lounge" || zone === "tea" || zone === "canteen" || zone === "gym") relaxing += 1;
       else absent += 1;
     }
     return { working, relaxing, absent, present: working + relaxing };
@@ -140,6 +236,8 @@ export function OfficePage() {
             t={tr}
             bubbleFor={bubbleFor}
             onAgentClick={onAgentClick}
+            users={users}
+            onUserStatusSave={onUserStatusSave}
           />
           <OfficeRail
             scene={scene}

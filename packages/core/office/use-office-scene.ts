@@ -51,7 +51,7 @@ function squadInputs(squads: readonly Squad[], agentIds: Set<string>): OfficeSqu
       .filter((m) => m.member_type === "agent" && agentIds.has(m.member_id))
       .map((m) => m.member_id);
     if (members.length === 0) continue;
-    out.push({ squadId: s.id, squadName: s.name, memberAgentIds: members });
+    out.push({ squadId: s.id, squadName: s.name, memberAgentIds: members, leaderAgentId: s.leader_id });
   }
   return out;
 }

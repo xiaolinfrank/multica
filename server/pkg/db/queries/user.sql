@@ -41,6 +41,7 @@ UPDATE "user" SET
         WHEN sqlc.narg('timezone')::text = ''    THEN NULL
         ELSE sqlc.narg('timezone')::text
     END,
+    custom_status = COALESCE(sqlc.narg('custom_status'), custom_status),
     updated_at = now()
 WHERE id = $1
 RETURNING *;

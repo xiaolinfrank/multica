@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enOffice from "../../locales/en/office.json";
-import type { Agent } from "@multica/core/types";
+import type { Agent, MemberWithUser, Squad } from "@multica/core/types";
 // The zone matrix, timeline ordering and chatter pairing are pinned in
 // packages/core/office/*.test.ts (node suites); this file keeps the happy
 // path: the page composes data into zones, rails and the leaderboard.
@@ -14,6 +14,12 @@ vi.mock("@multica/core/hooks", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({ agentDetail: (id: string) => `/ws/agents/${id}` }),
+}));
+
+// Zustand callable-store shape per the testing rules: selectorFn + getState.
+const authState = { user: { id: "user-self", name: "Self", email: "self@fosunpharma.com" } };
+vi.mock("@multica/core/auth", () => ({
+  useAuthStore: (selector: (s: typeof authState) => unknown) => selector(authState),
 }));
 
 // Same shape as settings-page.test.tsx: the page navigates to the agent
@@ -35,6 +41,10 @@ vi.mock("@multica/core/api", () => ({
     getAgentTaskSnapshot: vi.fn().mockResolvedValue([]),
     listSquads: vi.fn().mockResolvedValue([]),
     getDashboardUsageByAgent: vi.fn().mockResolvedValue([]),
+    listMembers: vi.fn().mockResolvedValue([]),
+    updateMe: vi.fn().mockResolvedValue({}),
+      listIssues: vi.fn().mockResolvedValue([]),
+    getBaseUrl: vi.fn().mockReturnValue("https://api.example.test"),
   },
 }));
 
@@ -76,12 +86,18 @@ beforeEach(() => {
     getAgentTaskSnapshot: ReturnType<typeof vi.fn>;
     listSquads: ReturnType<typeof vi.fn>;
     getDashboardUsageByAgent: ReturnType<typeof vi.fn>;
+    listMembers: ReturnType<typeof vi.fn>;
+    updateMe: ReturnType<typeof vi.fn>;
+    listIssues: ReturnType<typeof vi.fn>;
   };
   mockedApi.listAgents.mockResolvedValue([]);
   mockedApi.listRuntimes.mockResolvedValue([]);
   mockedApi.getAgentTaskSnapshot.mockResolvedValue([]);
   mockedApi.listSquads.mockResolvedValue([]);
   mockedApi.getDashboardUsageByAgent.mockResolvedValue([]);
+  mockedApi.listMembers.mockResolvedValue([]);
+  mockedApi.updateMe.mockResolvedValue({});
+mockedApi.listIssues.mockResolvedValue([]);
 });
 
 describe("OfficePage", () => {
@@ -137,7 +153,7 @@ describe("OfficePage", () => {
     expect(screen.getByText("Desks")).toBeInTheDocument();
     expect(screen.getByText("Token leaderboard")).toBeInTheDocument();
     expect(screen.getByText("1K")).toBeInTheDocument(); // 900 + 100 compact
-    // Alpha runs a task so the desk caption reads "Running 1/…".
+    // Alpha runs a task so the desk caption reads "Running 1/...".
     expect(screen.getByText(/Running/)).toBeInTheDocument();
   });
 
@@ -145,5 +161,159 @@ describe("OfficePage", () => {
     renderPage();
     expect(await screen.findByText(/Every desk is free/)).toBeInTheDocument();
     expect(screen.getByText(/The sofa is free/)).toBeInTheDocument();
+  });
+
+  it("renders member figures with their statuses, scoped to the office domain", async () => {
+    const mocked = api as unknown as {
+    listMembers: ReturnType<typeof vi.fn>;
+    listIssues: ReturnType<typeof vi.fn>;
+  };
+    mocked.listMembers.mockResolvedValue([
+      {
+        id: "mem-1",
+        workspace_id: "ws-1",
+        user_id: "user-self",
+        role: "member",
+        created_at: "2026-01-01T00:00:00Z",
+        name: "Self",
+        email: "self@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "🎧 focusing",
+      },
+      {
+        id: "mem-2",
+        workspace_id: "ws-1",
+        user_id: "user-lin",
+        role: "member",
+        created_at: "2026-01-02T00:00:00Z",
+        name: "Lin",
+        email: "lin@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "",
+      },
+      {
+        id: "mem-3",
+        workspace_id: "ws-1",
+        user_id: "user-bot",
+        role: "member",
+        created_at: "2026-01-03T00:00:00Z",
+        name: "Service Bot",
+        email: "bot@example.com",
+        avatar_url: null,
+        custom_status: "should not appear",
+      },
+    ] satisfies MemberWithUser[]);
+    // Self has work in progress (desk), Lin has queued work (waiting): the
+    // issue counts decide where each human stands, not a dedicated corner.
+    mocked.listIssues.mockResolvedValue({
+      total: 2,
+      issues: [
+      {
+        id: "issue-1",
+        assignee_type: "member",
+        assignee_id: "user-self",
+        status: "Doing",
+        status_category: "in_progress",
+      },
+      {
+        id: "issue-2",
+        assignee_type: "member",
+        assignee_id: "user-lin",
+        status: "Todo",
+        status_category: "todo",
+      },
+      ],
+    });
+
+    renderPage();
+
+    // Employees get figures with a status pill (title + drawn text); the
+    // non-office account does not appear on the floor at all.
+    expect(await screen.findAllByText("🎧 focusing")).not.toHaveLength(0);
+    expect(document.querySelector('[data-member="user-self"]')).not.toBeNull();
+    expect(document.querySelector('[data-member="user-lin"]')).not.toBeNull();
+    expect(document.querySelector('[data-member="user-bot"]')).toBeNull();
+    expect(screen.queryByText("should not appear")).not.toBeInTheDocument();
+    // A self with a status has no "set status" pill, but Lin (empty status,
+    // not self) has no pill at all.
+    expect(screen.queryByText("Set status")).not.toBeInTheDocument();
+  });
+
+  it("opens the status editor above the viewer's own head and saves a custom status", async () => {
+    const mockedApi = api as unknown as {
+      listMembers: ReturnType<typeof vi.fn>;
+      updateMe: ReturnType<typeof vi.fn>;
+    };
+    mockedApi.listMembers.mockResolvedValue([
+      {
+        id: "mem-1",
+        workspace_id: "ws-1",
+        user_id: "user-self",
+        role: "member",
+        created_at: "2026-01-01T00:00:00Z",
+        name: "Self",
+        email: "self@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "",
+      },
+    ] satisfies MemberWithUser[]);
+
+    renderPage();
+
+    // Empty own status → a "Set status" pill above the own head.
+    const setPill = await screen.findByText("Set status");
+    fireEvent.click(setPill);
+
+    const input = await screen.findByPlaceholderText("Type a custom status...");
+    fireEvent.change(input, { target: { value: "reviewing PRs" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await vi.waitFor(() => {
+      expect(mockedApi.updateMe).toHaveBeenCalledWith({ custom_status: "reviewing PRs" });
+    });
+    // The editor closes after saving.
+    expect(screen.queryByPlaceholderText("Type a custom status...")).not.toBeInTheDocument();
+  });
+
+  it("counts an idle squad captain staffing the reception as present and working", async () => {
+    const mocked = api as unknown as {
+      listAgents: ReturnType<typeof vi.fn>;
+      listRuntimes: ReturnType<typeof vi.fn>;
+      listSquads: ReturnType<typeof vi.fn>;
+    };
+    mocked.listAgents.mockResolvedValue([agent("a1", "Captain", "rt-1")]);
+    mocked.listRuntimes.mockResolvedValue([
+      { id: "rt-1", status: "online", last_seen_at: new Date().toISOString() },
+    ]);
+    // Idle leader of a squad with nothing in flight: zones.ts seats them at
+    // the reception desk, and the header stats must count them as on duty.
+    mocked.listSquads.mockResolvedValue([
+      {
+        id: "sq-1",
+        workspace_id: "ws-1",
+        name: "Review squad",
+        description: "",
+        instructions: "",
+        avatar_url: null,
+        leader_id: "a1",
+        creator_id: "u1",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+        archived_at: null,
+        archived_by: null,
+        member_preview: [{ member_type: "agent", member_id: "a1", role: "lead" }],
+      } satisfies Squad,
+    ]);
+
+    renderPage();
+
+    const stat = (label: string) =>
+      screen.getByText(label).parentElement?.querySelector("dd")?.textContent;
+    await vi.waitFor(() => {
+      expect(stat(enOffice.stats.working)).toBe("1");
+    });
+    expect(stat(enOffice.stats.present)).toBe("1");
+    // Not absent: standing at the front desk is being on duty.
+    expect(stat(enOffice.stats.absent)).toBe("0");
   });
 });

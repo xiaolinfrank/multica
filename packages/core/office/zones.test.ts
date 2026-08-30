@@ -38,6 +38,69 @@ function allZones(floor: ReturnType<typeof assignOfficeZones>): ReadonlyMap<stri
 }
 
 describe("assignOfficeZones", () => {
+  it("stands an idle squad captain at the reception desk", () => {
+    const floor = assignOfficeZones({
+      agents: [agent("cap"), agent("crew")],
+      presence: new Map([
+        ["cap", presence("online", "idle")],
+        ["crew", presence("online", "idle")],
+      ]),
+      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "crew"], leaderAgentId: "cap" }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.reception).toEqual(["cap"]);
+    expect(allZones(floor).get("cap")).toBe("reception");
+    expect(allZones(floor).get("crew")).not.toBe("reception");
+  });
+
+  it("keeps a working captain at their desk", () => {
+    const floor = assignOfficeZones({
+      agents: [agent("cap"), agent("mate")],
+      presence: new Map([
+        ["cap", presence("online", "working")],
+        ["mate", presence("online", "working")],
+      ]),
+      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "mate"], leaderAgentId: "cap" }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.reception).toEqual([]);
+    expect(allZones(floor).get("cap")).toBe("desk");
+  });
+
+  it("sends an idle captain to their squad meeting before the reception desk", () => {
+    const floor = assignOfficeZones({
+      agents: [agent("cap"), agent("mate")],
+      presence: new Map([
+        ["cap", presence("online", "idle")],
+        ["mate", presence("online", "working")],
+      ]),
+      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "mate"], leaderAgentId: "cap" }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.reception).toEqual([]);
+    expect(allZones(floor).get("cap")).toBe("meeting");
+  });
+
+  it("fields no reception captain when the squad leader is a human", () => {
+    const floor = assignOfficeZones({
+      agents: [agent("mate")],
+      presence: new Map([["mate", presence("online", "idle")]]),
+      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["mate"], leaderAgentId: "human-1" }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.reception).toEqual([]);
+    expect(allZones(floor).get("mate")).not.toBe("reception");
+  });
+
+  it("picks the captain monologue for the reception desk", () => {
+    const slot = pickMonologueSlot("cap", "reception", new Map(), 0);
+    expect(slot).toEqual({ kind: "captain", variant: expect.any(Number) });
+  });
+
   it("seats working agents at desks with their task counts", () => {
     const floor = assignOfficeZones({
       agents: [agent("a1")],
@@ -147,6 +210,7 @@ describe("assignOfficeZones", () => {
         ...floor.lounge,
         ...floor.tea,
         ...floor.canteen,
+        ...floor.gym,
         ...floor.absent.map((a) => a.agentId),
       ];
       expect(seated).toHaveLength(agents.length);
@@ -172,7 +236,7 @@ describe("assignOfficeZones", () => {
 
 describe("pickMonologueSlot", () => {
   it("maps every zone to a slot kind within its variant budget", () => {
-    const zones: OfficeZoneId[] = ["desk", "meeting", "waiting", "lounge", "tea", "canteen", "absent"];
+    const zones: OfficeZoneId[] = ["desk", "meeting", "waiting", "lounge", "tea", "canteen", "gym", "absent"];
     const presenceMap = new Map<string, AgentPresenceDetail>([
       ["x", presence("online", "working", { runningCount: 2, queuedCount: 3 })],
       ["y", presence("online", "queued", { queuedCount: 3 })],
@@ -181,6 +245,7 @@ describe("pickMonologueSlot", () => {
     for (const zone of zones) {
       for (const agentId of ["x", "y", "z"]) {
         const slot = pickMonologueSlot(agentId, zone, presenceMap, 7);
+        if (slot.kind === "human") continue; // human slots are budgeted separately
         expect(slot.variant).toBeLessThan(MONOLOGUE_VARIANTS[slot.kind]);
       }
     }
@@ -191,7 +256,7 @@ describe("pickMonologueSlot", () => {
 });
 
 describe("RELAX_ZONES", () => {
-  it("lists exactly the three leisure zones", () => {
-    expect([...RELAX_ZONES]).toEqual(["lounge", "tea", "canteen"]);
+  it("lists exactly the four leisure zones", () => {
+    expect([...RELAX_ZONES]).toEqual(["lounge", "tea", "canteen", "gym"]);
   });
 });

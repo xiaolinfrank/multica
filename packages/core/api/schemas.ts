@@ -2406,6 +2406,7 @@ export const UserSchema = z.object({
   language: z.string().nullable().default(null),
   profile_description: z.string().default(""),
   timezone: z.string().nullable().default(null),
+  custom_status: z.string().default(""),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
@@ -2421,6 +2422,7 @@ export const EMPTY_USER: User = {
   language: null,
   profile_description: "",
   timezone: null,
+  custom_status: "",
   created_at: "",
   updated_at: "",
 };
@@ -3556,6 +3558,7 @@ export const MemberWithUserSchema = z.object({
   name: z.string().optional().default(""),
   email: z.string().optional().default(""),
   avatar_url: z.string().nullable().optional().default(null),
+  custom_status: z.string().optional().default(""),
 }).loose();
 
 export const JoinShareLinkResponseSchema = z.object({
@@ -3563,6 +3566,8 @@ export const JoinShareLinkResponseSchema = z.object({
   workspace_id: z.string(),
   workspace_slug: z.string().optional().default(""),
 }).loose();
+
+export const MemberWithUserListSchema = z.array(MemberWithUserSchema);
 
 export const EMPTY_JOIN_SHARE_LINK_RESPONSE: {
   member: MemberWithUser;

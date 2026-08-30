@@ -521,6 +521,8 @@ type MemberWithUserResponse struct {
 	Name        string  `json:"name"`
 	Email       string  `json:"email"`
 	AvatarURL   *string `json:"avatar_url"`
+	// User's office presence status (see UpdateMe); empty when unset.
+	CustomStatus string `json:"custom_status"`
 }
 
 func (h *Handler) ListMembersWithUser(w http.ResponseWriter, r *http.Request) {
@@ -539,14 +541,15 @@ func (h *Handler) ListMembersWithUser(w http.ResponseWriter, r *http.Request) {
 	resp := make([]MemberWithUserResponse, len(members))
 	for i, m := range members {
 		resp[i] = MemberWithUserResponse{
-			ID:          uuidToString(m.ID),
-			WorkspaceID: uuidToString(m.WorkspaceID),
-			UserID:      uuidToString(m.UserID),
-			Role:        m.Role,
-			CreatedAt:   timestampToString(m.CreatedAt),
-			Name:        m.UserName,
-			Email:       m.UserEmail,
-			AvatarURL:   h.resolveAvatarURLPtr(textToPtr(m.UserAvatarUrl)),
+			ID:           uuidToString(m.ID),
+			WorkspaceID:  uuidToString(m.WorkspaceID),
+			UserID:       uuidToString(m.UserID),
+			Role:         m.Role,
+			CreatedAt:    timestampToString(m.CreatedAt),
+			Name:         m.UserName,
+			Email:        m.UserEmail,
+			AvatarURL:    h.resolveAvatarURLPtr(textToPtr(m.UserAvatarUrl)),
+			CustomStatus: m.UserCustomStatus,
 		}
 	}
 
@@ -560,14 +563,15 @@ type CreateMemberRequest struct {
 
 func (h *Handler) memberWithUserResponse(member db.Member, user db.User) MemberWithUserResponse {
 	return MemberWithUserResponse{
-		ID:          uuidToString(member.ID),
-		WorkspaceID: uuidToString(member.WorkspaceID),
-		UserID:      uuidToString(member.UserID),
-		Role:        member.Role,
-		CreatedAt:   timestampToString(member.CreatedAt),
-		Name:        user.Name,
-		Email:       user.Email,
-		AvatarURL:   h.resolveAvatarURLPtr(textToPtr(user.AvatarUrl)),
+		ID:           uuidToString(member.ID),
+		WorkspaceID:  uuidToString(member.WorkspaceID),
+		UserID:       uuidToString(member.UserID),
+		Role:         member.Role,
+		CreatedAt:    timestampToString(member.CreatedAt),
+		Name:         user.Name,
+		Email:        user.Email,
+		AvatarURL:    h.resolveAvatarURLPtr(textToPtr(user.AvatarUrl)),
+		CustomStatus: user.CustomStatus,
 	}
 }
 

@@ -63,8 +63,11 @@ type UserResponse struct {
 	OnboardingQuestionnaire json.RawMessage `json:"onboarding_questionnaire"`
 	StarterContentState     *string         `json:"starter_content_state"`
 	ProfileDescription      string          `json:"profile_description"`
-	CreatedAt               string          `json:"created_at"`
-	UpdatedAt               string          `json:"updated_at"`
+	// Free-form presence status shown above the user's figure in the Agent
+	// Office. Empty string = none set. Global to the user, not per workspace.
+	CustomStatus string `json:"custom_status"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 // MaxProfileDescriptionLen caps the user-supplied profile_description body.
@@ -72,6 +75,11 @@ type UserResponse struct {
 // preferences, short enough that injecting it into every agent brief
 // doesn't move the needle on prompt cost.
 const MaxProfileDescriptionLen = 2000
+
+// MaxCustomStatusLen caps the office presence status: it has to fit in the
+// pill drawn above a figure's head, so anything longer would only ever render
+// truncated.
+const MaxCustomStatusLen = 100
 
 func (h *Handler) userToResponse(u db.User) UserResponse {
 	// JSONB column is []byte with DEFAULT '{}', so it's never nil at the DB
@@ -92,6 +100,7 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 		OnboardingQuestionnaire: json.RawMessage(q),
 		StarterContentState:     textToPtr(u.StarterContentState),
 		ProfileDescription:      u.ProfileDescription,
+		CustomStatus:            u.CustomStatus,
 		CreatedAt:               timestampToString(u.CreatedAt),
 		UpdatedAt:               timestampToString(u.UpdatedAt),
 	}
@@ -538,6 +547,8 @@ type UpdateMeRequest struct {
 	ProfileDescription *string `json:"profile_description"`
 	// IANA tz to pin; "" clears back to NULL; nil leaves untouched.
 	Timezone *string `json:"timezone"`
+	// Office presence status; "" clears; nil leaves untouched.
+	CustomStatus *string `json:"custom_status"`
 }
 
 type GoogleLoginRequest struct {
@@ -826,6 +837,17 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		params.Timezone = pgtype.Text{String: tz, Valid: true}
+	}
+	if req.CustomStatus != nil {
+		// Same rune-counting rationale as profile_description: a status
+		// may be entirely CJK. "" clears the status (NOT NULL column,
+		// no three-way semantics needed).
+		status := strings.TrimSpace(*req.CustomStatus)
+		if utf8.RuneCountInString(status) > MaxCustomStatusLen {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("custom_status exceeds %d characters", MaxCustomStatusLen))
+			return
+		}
+		params.CustomStatus = pgtype.Text{String: status, Valid: true}
 	}
 
 	updatedUser, err := h.Queries.UpdateUser(r.Context(), params)

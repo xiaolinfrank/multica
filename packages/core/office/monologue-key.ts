@@ -23,6 +23,8 @@ export function monologueMessage(slot: MonologueSlot): MonologueMessage {
       return { key: `monologue.idle.${slot.zone}.${slot.variant}` };
     case "meeting":
       return { key: `monologue.meeting.${slot.variant}` };
+    case "captain":
+      return { key: `monologue.captain.${slot.variant}` };
     case "completed":
       return { key: `monologue.completed.${slot.variant}`, params: { count: slot.count } };
     case "failed":
@@ -31,5 +33,9 @@ export function monologueMessage(slot: MonologueSlot): MonologueMessage {
       return { key: `monologue.offline.${slot.variant}` };
     case "unbound":
       return { key: `monologue.unbound.${slot.variant}` };
+    case "human":
+      return slot.mood === "idle"
+        ? { key: `monologue.human.idle.${slot.zone ?? "lounge"}.${slot.variant}` }
+        : { key: `monologue.human.${slot.mood}.${slot.variant}` };
   }
 }

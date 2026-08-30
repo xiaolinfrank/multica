@@ -8,3 +8,4 @@ export {
   FLOOR_SEATS,
 } from "./postures";
 export type { AgentPose, OfficePosture } from "./postures";
+export * from "./humans";
