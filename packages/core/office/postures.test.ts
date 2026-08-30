@@ -11,6 +11,7 @@ const plan = (over: Partial<OfficeFloorPlan>): OfficeFloorPlan => ({
   canteen: [],
   gym: [],
   waiting: [],
+  reception: [],
   absent: [],
   zoneByAgent: new Map(),
   ...over,
@@ -77,6 +78,11 @@ describe("assignPoses", () => {
     expect(poses.map((p) => p.agentId)).toEqual(["on"]);
   });
 
+  it("stands every reception captain at the front desk", () => {
+    const poses = assignPoses(plan({ reception: ["c0", "c1"] }), 3);
+    expect(poses).toHaveLength(2);
+    expect(poses.every((p) => p.zone === "reception" && p.posture === "standing")).toBe(true);
+  });
   it("seats the waiting bench and stands only once it overflows", () => {
     const ids = Array.from({ length: 5 }, (_, i) => `w${i}`);
     const poses = assignPoses(plan({ waiting: ids }), 0);

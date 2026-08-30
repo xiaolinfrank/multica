@@ -18,6 +18,10 @@
       "supporting": "{{count}} members supporting from their desks",
       "room": "Squad room"
     },
+    "reception": {
+      "name": "Reception",
+      "empty": "No captain on duty"
+    },
     "lounge": {
       "name": "Lounge",
       "empty": "The sofa is free"
@@ -165,6 +169,12 @@
     },
     "unbound": {
       "0": "No runtime bound yet — taking the day off"
+    },
+    "captain": {
+      "0": "Front desk — which agent can I call for you?",
+      "1": "I'm the captain on duty; the squad's work is on track.",
+      "2": "Visitors, please sign in and I will page the agent you need.",
+      "3": "The squad is in a meeting, so I'm holding the fort up here."
     }
   },
   "status": {
@@ -181,5 +191,8 @@
       "away": "🚪 Away",
       "vacation": "🏖 On vacation"
     }
+  },
+  "captain": {
+    "label": "Captain"
   }
 }

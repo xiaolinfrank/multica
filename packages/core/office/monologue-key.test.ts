@@ -14,6 +14,7 @@ describe("monologueMessage", () => {
       [{ kind: "waiting", variant: 0, queuedCount: 1 }, "monologue.waiting.0", { count: 1 }],
       [{ kind: "idle", variant: 2, zone: "tea" }, "monologue.idle.tea.2", undefined],
       [{ kind: "meeting", variant: 1 }, "monologue.meeting.1", undefined],
+    [{ kind: "captain", variant: 2 }, "monologue.captain.2", undefined],
       [{ kind: "completed", variant: 0, count: 5 }, "monologue.completed.0", { count: 5 }],
       [{ kind: "failed", variant: 1 }, "monologue.failed.1", undefined],
       [{ kind: "offline", variant: 0 }, "monologue.offline.0", undefined],

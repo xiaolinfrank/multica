@@ -11,7 +11,8 @@ import type { AgentPresenceDetail } from "../agents/types";
 /** One section of the office floor plan. */
 export type OfficeZoneId =
   | "desk" // working — at a desk with tasks running
-  | "meeting" // squad room — idle member of a squad with work in flight
+  | "meeting" // squad room — idle member of a squad with work in flight — idle member of a squad with work in flight
+  | "reception" // front desk — idle captain of a squad, greeting visitors
   | "lounge" // idle — sofa area
   | "tea" // idle — tea corner
   | "canteen" // idle — cafeteria
@@ -55,6 +56,8 @@ export interface OfficeFloorPlan {
   desks: DeskAssignment[];
   meetings: MeetingAssignment[];
   waiting: string[];
+  /** Idle squad captains, standing at the reception desk. */
+  reception: string[];
   lounge: string[];
   tea: string[];
   canteen: string[];
@@ -74,6 +77,7 @@ export type MonologueSlot =
   | { kind: "queued"; variant: number; queuedCount: number }
   | { kind: "idle"; variant: number; zone: RelaxZone }
   | { kind: "meeting"; variant: number }
+  | { kind: "captain"; variant: number }
   | { kind: "waiting"; variant: number; queuedCount: number }
   | { kind: "completed"; variant: number; count: number }
   | { kind: "failed"; variant: number }

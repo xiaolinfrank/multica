@@ -82,5 +82,10 @@ export function assignPoses(floor: OfficeFloorPlan, phase: number): AgentPose[] 
     });
   });
 
+  // Reception: captains idle with no meeting stand at the front desk.
+  for (const id of floor.reception) {
+    out.push({ agentId: id, zone: "reception", posture: "standing" });
+  }
+  
   return out;
 }

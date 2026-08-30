@@ -86,6 +86,7 @@ export function buildDemoScene(phase: number): DemoScene {
         squadId: "sq-demo",
         squadName: "Platform Crew",
         memberAgentIds: ["demo-zeta", "demo-eta"],
+        leaderAgentId: "demo-eta",
       },
     ],
     tasksByAgent: new Map([

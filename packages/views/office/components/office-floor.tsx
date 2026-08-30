@@ -57,6 +57,7 @@ HUMAN_LABEL_DY,
   Sofa,
   Stool,
   TaskChair,
+  ReceptionCounter,
   TeaCounter,
   Treadmill,
   Walker,
@@ -124,25 +125,12 @@ const ZONES: Record<furn, Rect> = {
   canteen: { x: 622, y: 372, w: 292, d: 226 },
   gym: { x: 952, y: 376, w: 198, d: 262 },
   waiting: { x: 40, y: 562, w: 258, d: 84 },
+  reception: { x: 952, y: 150, w: 198, d: 220 },
 };
 
-const ZONE_ORDER = ["desk", "meeting", "tea", "lounge", "canteen", "gym", "waiting"] as const;
+const ZONE_ORDER = ["desk", "meeting", "reception", "tea", "lounge", "canteen", "gym", "waiting"] as const;
 
 /**
- * Where each zone's caption is printed on the boards. Positions are explicit
- * rather than derived from the rectangle: the aisle a zone can spare is on a
- * different side for each one, and a caption that lands under a name label is
- * exactly the "text covering the agents" problem this layer exists to avoid.
- */
-const ZONE_TAG: Record<furn, { x: number; y: number }> = {
-  desk: { x: 44, y: 394 },
-  meeting: { x: 560, y: 346 },
-  tea: { x: 44, y: 519 },
-  lounge: { x: 330, y: 591 },
-  canteen: { x: 626, y: 601 },
-  gym: { x: 956, y: 612 },
-  waiting: { x: 44, y: 624 },
-};
 
 
 /** One place a sprite can be, and how much label room it has there. */
@@ -183,6 +171,8 @@ const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((tb) => [
 ]);
 
 const WAITING_BENCH: Rect = { x: 56, y: 584, w: 226, d: 30 };
+// Reception: the counter captains stand behind, set into the top-right bay.
+const RECEPTION_COUNTER: Rect = { x: 972, y: 300, w: 158, d: 36 };
 const WAITING_SEATS = Array.from({ length: 4 }, (_, i) => ({
   x: WAITING_BENCH.x + (i + 0.5) * (WAITING_BENCH.w / 4),
   y: 600,
@@ -210,6 +200,7 @@ const SEATS: Record<furn, Seat[]> = {
     { x: GYM_BENCH.x + 40, y: GYM_BENCH.y + 12, slot: 34 },
   ],
   waiting: WAITING_SEATS.map((s) => ({ ...s, slot: 52 })),
+  reception: [],
 };
 
 /**
@@ -218,6 +209,14 @@ const SEATS: Record<furn, Seat[]> = {
  * show; past that the floor is so full that the rail reads better anyway.
  */
 function standSpot(zone: furn, n: number): Seat {
+  if (zone === "reception") {
+    // Captains line up behind the counter, one per stretch of it.
+    return {
+      x: RECEPTION_COUNTER.x + ((n % 3) + 0.5) * (RECEPTION_COUNTER.w / 3),
+      y: RECEPTION_COUNTER.y - 4,
+      slot: RECEPTION_COUNTER.w / 3 - 12,
+    };
+  }
   const z = ZONES[zone];
   return {
     x: z.x + ((n % 4) + 0.5) * (z.w / 4),
@@ -242,6 +241,7 @@ const BUBBLE_CAP: Record<furn, number> = {
   canteen: 2,
   gym: 2,
   waiting: 1,
+  reception: 2,
 };
 
 /** Tallest bubble the layout can produce, plus its border. */
@@ -303,6 +303,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       canteen: floor.canteen.length,
       gym: floor.gym.length,
       waiting: floor.waiting.length,
+      reception: floor.reception.length,
     }),
     [floor],
   );
@@ -339,6 +340,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       canteen: 0,
       gym: 0,
       waiting: 0,
+      reception: 0,
     };
     const nextStand: Record<furn, number> = { ...nextSeat };
     const seated: Placement[] = [];
@@ -397,13 +399,14 @@ export const OfficeFloor = memo(function OfficeFloor({
         seatIndex,
         standing,
         headZ: standing ? HEAD_Z : SIT_HEAD_Z,
+        badge: pose.zone === "reception" ? t("captain.label") : null,
         name,
         label: labelled ? fitText(name, seat.slot, NAME_FONT) : null,
         avatarUrl: avatarOf(agent),
         colors: colorsById.get(pose.agentId) as SpriteColors,
       };
     });
-  }, [placements.seated, agentById, colorsById]);
+  }, [placements.seated, agentById, colorsById, t]);
 
   const walkers = useMemo(() => {
     return placements.walking.map((pose) => {
@@ -507,8 +510,11 @@ const memberSprites = useMemo(() => {
       const nameW = estimateTextWidth(name, 10);
       const countW = count > 0 ? estimateTextWidth(String(count), 8.5) + 12 : 0;
       const hintW = hint ? estimateTextWidth(hint, 8) + 6 : 0;
-      const { x, y } = ZONE_TAG[zone];
-      return { zone, name, hint, count, nameW, countW, x, y, w: 12 + nameW + countW + hintW + 10 };
+      const z = ZONES[zone];
+      const w = 12 + nameW + countW + hintW + 10;
+      // Centred on the zone's top edge: the caption names the whole field,
+      // not whichever aisle an explicit coordinate happened to sit beside.
+      return { zone, name, hint, count, nameW, countW, x: z.x + (z.w - w) / 2, y: z.y + 3, w };
     });
   }, [t, zoneCounts]);
 
@@ -554,6 +560,12 @@ const memberSprites = useMemo(() => {
 
     // Tea corner.
     add("tea-counter", TEA_COUNTER.y + TEA_COUNTER.d, <TeaCounter {...TEA_COUNTER} />);
+    add(
+      "reception-counter",
+      RECEPTION_COUNTER.y + RECEPTION_COUNTER.d,
+      <ReceptionCounter {...RECEPTION_COUNTER} />,
+    );
+    add("plant-reception", 252, <Plant x={1140} y={248} scale={0.85} />);
     TEA_SEATS.forEach((s, i) => add(`stool-${i}`, s.y - 1, <Stool x={s.x} y={s.y} />));
 
     // Lounge.
@@ -592,6 +604,7 @@ const memberSprites = useMemo(() => {
           agentId={s.pose.agentId}
           name={s.name}
           label={s.label}
+          badge={s.badge}
           x={s.seat.x}
           y={s.seat.y}
           posture={s.standing ? "standing" : "sitting"}

@@ -85,6 +85,7 @@ const SHADOW = "#5a6472";
 export const ZONE_FLOOR: Record<string, string> = {
   desk: "#dce3ec",
   meeting: "#d2dae6",
+  reception: "#d6e2de",
   tea: "#d3e7dd",
   lounge: "#e8dcc6",
   canteen: "#eee5df",
@@ -545,6 +546,23 @@ export const TeaCounter = memo(function TeaCounter({ x, y, w, d }: { x: number; 
   );
 });
 
+
+/** The reception counter: a white front desk with a terminal and the
+ * sign-in sheet, captains standing behind it. */
+export const ReceptionCounter = memo(function ReceptionCounter({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
+  return (
+    <Box x={x} y={y} w={w} d={d} h={38} top={WHITE.lit} front={WHITE.face} side={WHITE.deep} radius={2}>
+      {/* The one bit of branding a front desk needs. */}
+      <rect x={x} y={y + d - 7} width={w} height={3} fill={TERRA} opacity={0.75} />
+      {/* Terminal and the visitor sign-in sheet on the desktop. */}
+      <rect x={x + 12} y={y + 7} width={22} height={15} rx={2} fill={METAL.face} />
+      <rect x={x + 14} y={y + 9} width={18} height={8} rx={1} fill="#7fb4ef" opacity={0.6} />
+      <rect x={x + w - 42} y={y + 8} width={28} height={16} rx={2} fill={WHITE.lit} stroke={WHITE.deep} strokeWidth={0.7} />
+      <line x1={x + w - 38} y1={y + 13} x2={x + w - 18} y2={y + 13} stroke={METAL.lit} strokeWidth={1} />
+      <line x1={x + w - 38} y1={y + 17} x2={x + w - 22} y2={y + 17} stroke={METAL.lit} strokeWidth={1} />
+    </Box>
+  );
+});
 /** Long meeting table with laptops laid out along it. */
 export const MeetingTable = memo(function MeetingTable({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
   return (
@@ -934,6 +952,8 @@ export interface PersonProps {
   avatarUrl: string | null;
   /** Walk-cycle frame; ignored unless walking. */
   frame?: 0 | 1;
+  /** Small pill above the name label, e.g. the captain tag; null for none. */
+  badge?: string | null;
   onClick?: () => void;
 }
 
@@ -943,6 +963,11 @@ export interface PersonProps {
  * with everything else; the head is drawn afterwards as a true circle at its
  * projected centre, because the avatar has to stay round.
  */
+/** Rough width of the badge text at its 6.5px size: CJK glyphs run
+ * full-width, everything else about two-thirds. Only the pill needs it. */
+const badgeTextW = (text: string): number =>
+  [...text].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e7f ? 6.5 : 4.3), 0);
+
 export const Person = memo(function Person({
   agentId,
   name,
@@ -953,6 +978,7 @@ export const Person = memo(function Person({
   colors,
   avatarUrl,
   frame = 0,
+  badge,
   onClick,
 }: PersonProps) {
   const sitting = posture === "sitting";
@@ -963,6 +989,7 @@ export const Person = memo(function Person({
   const swing = walking ? (frame === 0 ? 3.4 : -3.4) : 0;
   const hx = px(x, headZ);
   const hy = py(y, headZ);
+  const badgeW = badge ? badgeTextW(badge) : 0;
   return (
     <g data-agent={agentId} className={onClick ? "cursor-pointer" : undefined} onClick={onClick}>
       <title>{name}</title>
@@ -1000,6 +1027,30 @@ export const Person = memo(function Person({
         >
           {label}
         </text>
+      ) : null}
+      {badge ? (
+        <g pointerEvents="none">
+          <rect
+            x={hx - badgeW / 2 - 7}
+            y={hy - HEAD_R - 27}
+            width={badgeW + 14}
+            height={13}
+            rx={6.5}
+            fill="#ffffff"
+            opacity={0.96}
+          />
+          <circle cx={hx - badgeW / 2 - 1} cy={hy - HEAD_R - 20.5} r={2} fill={TERRA} />
+          <text
+            x={hx + 3}
+            y={hy - HEAD_R - 17.5}
+            textAnchor="middle"
+            fontSize={6.5}
+            fontWeight={700}
+            fill={METAL.deep}
+          >
+            {badge}
+          </text>
+        </g>
       ) : null}
     </g>
   );

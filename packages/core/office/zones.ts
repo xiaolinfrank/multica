@@ -6,7 +6,8 @@
 //   2. workload "working"                          → desk
 //   3. workload "queued"                           → waiting (printer corner)
 //   4. idle + member of a squad with work in flight→ meeting (that squad's room)
-//   5. idle otherwise                              → lounge / tea / canteen /
+//   5. idle + captain of a squad                   → reception (the front desk)
+//   6. idle otherwise                              → lounge / tea / canteen /
 //      gym, picked by hash(agent.id + phase) so the cast visibly "walks
 //      around" every phase without any server-side state.
 //
@@ -50,6 +51,9 @@ export interface OfficeSquadInput {
   squadName: string;
   /** Member agent ids, already intersected with the workspace agent list. */
   memberAgentIds: readonly string[];
+  /** The squad's leader agent id; empty or missing when the leader is a
+   * human member, in which case the squad fields no captain at the desk. */
+  leaderAgentId?: string;
 }
 
 export interface AssignOfficeZonesInput {
@@ -102,6 +106,7 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
   const waiting: string[] = [];
   const relax: Record<RelaxZone, string[]> = { lounge: [], tea: [], canteen: [], gym: [] };
   const absent: AbsentAssignment[] = [];
+  const reception: string[] = [];
   const zoneByAgent = new Map<string, OfficeZoneId>();
 
   const activeSquads = activeSquadIds(squads, presence);
@@ -115,6 +120,14 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     }
   }
 
+  // Agent ids leading at least one squad. A human leader never matches an
+  // agent id, so human-led squads simply field no captain at the desk.
+  const captainIds = new Set<string>();
+  for (const squad of squads) {
+    const leader = squad.leaderAgentId ?? "";
+    if (leader !== "") captainIds.add(leader);
+  }
+  
   for (const agent of agents) {
     // Archived agents left the company — they do not get a seat.
     if (agent.archived_at !== null) continue;
@@ -153,6 +166,9 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
           meetings.push(room);
         }
         room.attendeeAgentIds.push(agent.id);
+      } else if (captainIds.has(agent.id)) {
+        zone = "reception";
+        reception.push(agent.id);
       } else {
         const seat = RELAX_ZONES[(hashString(agent.id) + phase) % RELAX_ZONES.length] ?? "lounge";
         zone = seat;
@@ -179,6 +195,7 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     desks,
     meetings,
     waiting,
+    reception,
     lounge: relax.lounge,
     tea: relax.tea,
     canteen: relax.canteen,
@@ -195,6 +212,7 @@ export const MONOLOGUE_VARIANTS = {
   queued: 4,
   idle: 4,
   meeting: 4,
+  captain: 4,
   waiting: 5,
   completed: 4,
   failed: 3,
@@ -230,6 +248,8 @@ export function pickMonologueSlot(
       };
     case "meeting":
       return { kind: "meeting", variant: variant(agentId, phase, "meeting") };
+    case "reception":
+      return { kind: "captain", variant: variant(agentId, phase, "captain") };
     case "lounge":
     case "tea":
     case "canteen":
