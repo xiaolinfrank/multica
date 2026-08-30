@@ -70,6 +70,7 @@ const navigationAdapter: NavigationAdapter = {
   back: vi.fn(),
   pathname: "/test",
   searchParams: new URLSearchParams(),
+  hash: "",
   getShareableUrl: (path: string) => `https://test.local${path}`,
 };
 
