@@ -24,6 +24,7 @@ import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { GraphCanvas } from "./graph-canvas";
+import { demoGraph } from "./graph-demo";
 import {
   ALL_EDGE_GROUPS,
   GraphToolbar,
@@ -85,10 +86,14 @@ export function GraphPage(props: { projectId?: string | null }) {
   const { t } = useT("graph");
   const navigation = useNavigation();
   const wsPaths = useWorkspacePaths();
+  // `?demo=1` renders a synthetic graph without touching the API — used for
+  // visual development and screenshot verification (same escape hatch as the
+  // Agent Office).
+  const isDemo = navigation.searchParams.get("demo") === "1";
 
   const graphQuery = useQuery({
     ...issueGraphOptions(wsId ?? "", projectId),
-    enabled: wsId !== null,
+    enabled: wsId !== null && !isDemo,
   });
   const projectsQuery = useQuery({
     ...projectListOptions(wsId ?? ""),
@@ -106,7 +111,10 @@ export function GraphPage(props: { projectId?: string | null }) {
   const [collapsedRoots, setCollapsedRoots] = useState<Set<string>>(new Set());
   const [centerOn, setCenterOn] = useState<{ id: string; nonce: number } | null>(null);
 
-  const data = graphQuery.data ?? { nodes: [], edges: [] };
+  const data = useMemo(
+    () => (isDemo ? demoGraph() : graphQuery.data ?? { nodes: [], edges: [] }),
+    [isDemo, graphQuery.data],
+  );
 
   const fullModel = useMemo(
     () =>
@@ -168,7 +176,7 @@ export function GraphPage(props: { projectId?: string | null }) {
     [navigation, wsPaths],
   );
 
-  if (wsId === null || graphQuery.isLoading) {
+  if (!isDemo && (wsId === null || graphQuery.isLoading)) {
     return (
       <div className="flex h-full flex-col gap-4 p-4 md:p-6">
         <Skeleton className="h-8 w-48" />

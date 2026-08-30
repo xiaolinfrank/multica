@@ -216,6 +216,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
+    // World-space elements draw under the pan/zoom view transform, so wheel
+    // zoom and drag panning move them; labels are drawn later in screen space
+    // to keep a constant font size regardless of zoom (the Obsidian look).
+    ctx.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.x, dpr * view.y);
 
     const hovered = hoverRef.current;
     const selected = selectedId;
@@ -281,7 +285,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
     }
     ctx.globalAlpha = 1;
 
-    // Nodes and labels.
+    // Nodes are drawn in world space (inside the view transform above);
+    // labels are collected and drawn afterwards in screen space so their font
+    // size stays constant while zooming.
+    const labels: Array<{ x: number; y: number; text: string; alpha: number }> = [];
     const showAllLabels = view.k >= 1.1;
     const showHubLabels = view.k >= 0.6;
     for (const n of nodes) {
@@ -326,15 +333,26 @@ export function GraphCanvas(props: GraphCanvasProps) {
         (showAllLabels && degree > 0) ||
         (showHubLabels && degree >= 4);
       if (labelWanted) {
-        ctx.globalAlpha = inFocus ? 0.9 : 0.1;
-        ctx.font = `${view.k >= 1.1 ? 12 : 11}px ui-sans-serif, system-ui, sans-serif`;
-        ctx.fillStyle = p.foreground;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillText(n.label, x, y + n.radius + 3);
+        labels.push({
+          x: x * view.k + view.x,
+          y: (y + n.radius + 3) * view.k + view.y,
+          text: n.label,
+          alpha: inFocus ? 0.9 : 0.1,
+        });
       }
       ctx.globalAlpha = 1;
     }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = `${view.k >= 1.1 ? 12 : 11}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.fillStyle = p.foreground;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const l of labels) {
+      ctx.globalAlpha = l.alpha;
+      ctx.fillText(l.text, l.x, l.y);
+    }
+    ctx.globalAlpha = 1;
   }, [model, searchQuery, selectedId]);
 
   // Keep a ref of the palette so draw() always reads the current one without
