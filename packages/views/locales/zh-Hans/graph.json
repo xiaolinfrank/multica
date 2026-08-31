@@ -38,6 +38,11 @@
     "dismiss": "关闭",
     "open": "打开任务"
   },
+  "menu": {
+    "open": "打开任务",
+    "preview": "预览任务",
+    "isolate": "仅保留关联任务"
+  },
   "fields": {
     "status": "状态",
     "priority": "优先级",

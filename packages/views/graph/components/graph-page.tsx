@@ -24,7 +24,6 @@ import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { GraphCanvas } from "./graph-canvas";
-import { formatGraphTimestamp, statusDotClass } from "./graph-format";
 import { demoGraph } from "./graph-demo";
 import {
   ALL_EDGE_GROUPS,
@@ -159,10 +158,24 @@ export function GraphPage(props: { projectId?: string | null }) {
     return fullModel.nodes.filter((n) => matchesQuery(n, q)).slice(0, SEARCH_RESULT_LIMIT);
   }, [fullModel, searchQuery]);
 
-  const onPickResult = useCallback((id: string) => {
-    setSelectedId(id);
-    setCenterOn((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }));
-  }, []);
+  const onPickResult = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      setCenterOn((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }));
+      // Search results come from the pre-collapse model; a picked result may
+      // sit inside a folded branch. Expand the roots hiding it so the
+      // selection (menu, highlight) lands on something visible.
+      setCollapsedRoots((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        for (const root of prev) {
+          if (collectSubtree(root, fullModel.children).has(id)) next.delete(root);
+        }
+        return next;
+      });
+    },
+    [fullModel],
+  );
 
   const onToggleCollapse = useCallback(
     (id: string) => {
@@ -192,6 +205,13 @@ export function GraphPage(props: { projectId?: string | null }) {
     },
     [navigation, wsPaths],
   );
+
+  // Menu action "keep related only": the toolbar's 1-hop focus already
+  // expresses it; re-centering makes the trimmed graph readable at once.
+  const onFocusNeighbors = useCallback((id: string) => {
+    setFocusDepth(1);
+    setCenterOn((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
 
   if (!isDemo && (wsId === null || graphQuery.isLoading)) {
     return (
@@ -257,96 +277,11 @@ export function GraphPage(props: { projectId?: string | null }) {
               onToggleCollapse={onToggleCollapse}
               centerOn={centerOn}
               searchQuery={searchQuery}
+              onOpenIssue={openIssue}
+              onFocusNeighbors={onFocusNeighbors}
+              selectedEdgeCounts={selectedEdgeCounts}
             />
             <GraphLegend colorBy={colorBy} projects={projects} edgeGroups={edgeGroups} />
-            {selectedNode ? (
-              <div
-                className="absolute bottom-3 right-3 z-10 w-72 rounded-lg border bg-popover p-3 shadow-[var(--floating-shadow)]"
-                data-testid="graph-node-card"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-mono text-micro text-muted-foreground">
-                    {selectedNode.identifier}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground"
-                    aria-label={t(($) => $.card.dismiss)}
-                    onClick={() => setSelectedId(null)}
-                  >
-                    ×
-                  </button>
-                </div>
-                <p className="mt-0.5 text-body font-medium text-foreground">{selectedNode.title}</p>
-                <dl className="mt-2 space-y-1 text-caption text-muted-foreground">
-                  <div className="flex items-center justify-between gap-2">
-                    <dt>{t(($) => $.fields.status)}</dt>
-                    <dd className="flex items-center gap-1.5 text-foreground">
-                      <span
-                        className={`inline-block size-2 rounded-full ${statusDotClass(selectedNode.status_category)}`}
-                        aria-hidden
-                      />
-                      {selectedNode.status}
-                    </dd>
-                  </div>
-                  {selectedNode.priority && selectedNode.priority !== "none" ? (
-                    <div className="flex justify-between gap-2">
-                      <dt>{t(($) => $.fields.priority)}</dt>
-                      <dd className="text-foreground">{selectedNode.priority}</dd>
-                    </div>
-                  ) : null}
-                  {selectedNode.assignee_name ? (
-                    <div className="flex justify-between gap-2">
-                      <dt>{t(($) => $.fields.assignee)}</dt>
-                      <dd className="truncate text-foreground">{selectedNode.assignee_name}</dd>
-                    </div>
-                  ) : null}
-                  {(() => {
-                    const project = projects.find((p) => p.id === selectedNode.project_id);
-                    if (!project) return null;
-                    return (
-                      <div className="flex justify-between gap-2">
-                        <dt>{t(($) => $.fields.project)}</dt>
-                        <dd className="truncate text-foreground">
-                          {project.icon ? `${project.icon} ${project.title}` : project.title}
-                        </dd>
-                      </div>
-                    );
-                  })()}
-                  {selectedNode.updated_at ? (
-                    <div className="flex justify-between gap-2">
-                      <dt>{t(($) => $.fields.updated)}</dt>
-                      <dd className="text-foreground">
-                        {formatGraphTimestamp(selectedNode.updated_at)}
-                      </dd>
-                    </div>
-                  ) : null}
-                  {selectedEdgeCounts ? (
-                    <div className="flex justify-between gap-2">
-                      <dt>{t(($) => $.fields.links)}</dt>
-                      <dd className="flex flex-wrap justify-end gap-x-2 tabular-nums text-foreground">
-                        <span style={{ color: "var(--graph-edge-child)" }}>
-                          {t(($) => $.fields.sub_issues, { count: selectedEdgeCounts.child })}
-                        </span>
-                        <span style={{ color: "var(--graph-edge-dependency)" }}>
-                          {t(($) => $.fields.dependencies, { count: selectedEdgeCounts.dependency })}
-                        </span>
-                        <span style={{ color: "var(--graph-edge-mention)" }}>
-                          {t(($) => $.fields.references, { count: selectedEdgeCounts.mention })}
-                        </span>
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-                <button
-                  type="button"
-                  className="mt-2 w-full rounded-md bg-primary px-2 py-1.5 text-caption font-medium text-primary-foreground hover:bg-primary/90"
-                  onClick={() => openIssue(selectedNode.id)}
-                >
-                  {t(($) => $.card.open)}
-                </button>
-              </div>
-            ) : null}
           </>
         )}
       </div>

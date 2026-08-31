@@ -38,6 +38,11 @@
     "dismiss": "閉じる",
     "open": "タスクを開く"
   },
+  "menu": {
+    "open": "タスクを開く",
+    "preview": "プレビュー",
+    "isolate": "関連のみ表示"
+  },
   "fields": {
     "status": "ステータス",
     "priority": "優先度",

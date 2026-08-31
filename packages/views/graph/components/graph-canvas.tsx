@@ -11,6 +11,7 @@
 // re-reads the palette when the theme class flips.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, Eye, Focus } from "lucide-react";
 import {
   forceCollide,
   forceLink,
@@ -31,7 +32,7 @@ import {
 } from "@multica/core/graph/build-graph-model";
 import type { Project } from "@multica/core/types";
 import { useT } from "../../i18n";
-import { formatGraphTimestamp } from "./graph-format";
+import { formatGraphTimestamp, statusDotClass } from "./graph-format";
 
 export interface GraphCanvasProps {
   model: GraphModel;
@@ -44,6 +45,13 @@ export interface GraphCanvasProps {
   centerOn: { id: string; nonce: number } | null;
   /** Search query: matching nodes keep their labels even when zoomed out. */
   searchQuery: string;
+  /** Menu action: open the issue's detail page. */
+  onOpenIssue: (id: string) => void;
+  /** Menu action: keep only the node's relatives (focus 1 hop) and center it. */
+  onFocusNeighbors: (id: string) => void;
+  /** Per-group edge counts for the selected node (computed on the full model
+   *  so the counts survive focus filtering); null when nothing is selected. */
+  selectedEdgeCounts: { child: number; dependency: number; mention: number } | null;
 }
 
 interface SimNode extends SimulationNodeDatum {
@@ -124,8 +132,19 @@ function readPalette(): Palette {
 }
 
 export function GraphCanvas(props: GraphCanvasProps) {
-  const { model, projects, colorBy, selectedId, onSelect, onToggleCollapse, centerOn, searchQuery } =
-    props;
+  const {
+    model,
+    projects,
+    colorBy,
+    selectedId,
+    onSelect,
+    onToggleCollapse,
+    centerOn,
+    searchQuery,
+    onOpenIssue,
+    onFocusNeighbors,
+    selectedEdgeCounts,
+  } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null);
@@ -143,8 +162,82 @@ export function GraphCanvas(props: GraphCanvasProps) {
   }>({ id: null, moved: false, panning: false, lastX: 0, lastY: 0 });
   const [palette, setPalette] = useState<Palette | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: GraphNode } | null>(null);
+  // Node the preview card is pinned to; cleared whenever the selection moves.
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
+
+  const menuOpen = selectedId !== null && model.nodes.some((n) => n.id === selectedId);
+  // The preview card is derived, not cleared in an effect: a selection change
+  // must never paint one frame with the old card still pinned to its node.
+  const previewNode =
+    previewId !== null && previewId === selectedId
+      ? model.nodes.find((n) => n.id === previewId) ?? null
+      : null;
+
+  // Keep the radial menu and the preview card glued to their node across pan,
+  // zoom, simulation ticks and node drags: draw() calls this every frame it
+  // paints, and the layout effect below covers the frame an overlay appears
+  // on. Positions are written straight to the DOM — the overlays must not
+  // re-render React on every tick.
+  const positionOverlays = useCallback(() => {
+    const view = viewRef.current;
+    const place = (
+      el: HTMLElement | null,
+      id: string | null,
+      layout: (sx: number, sy: number, radius: number, k: number) => { x: number; y: number },
+    ) => {
+      if (!el || !id) return;
+      const n = nodesRef.current.find((x) => x.id === id);
+      if (!n) {
+        el.style.display = "none";
+        return;
+      }
+      el.style.display = "";
+      const sx = (n.x ?? 0) * view.k + view.x;
+      const sy = (n.y ?? 0) * view.k + view.y;
+      const o = layout(sx, sy, n.radius, view.k);
+      el.style.transform = `translate(${sx + o.x}px, ${sy + o.y}px)`;
+    };
+    place(menuRef.current, selectedId, () => ({ x: 0, y: 0 }));
+    const wrapW = wrapRef.current?.clientWidth ?? 800;
+    const wrapH = wrapRef.current?.clientHeight ?? 600;
+    place(previewRef.current, previewId, (sx, sy, radius, k) => {
+      // Anchor beside the node, flipping to the left / above when the card
+      // would spill past the canvas edge, then clamping on both axes so a
+      // tiny canvas still shows the card instead of flipping it off-screen.
+      const gap = radius * k + 12;
+      const w = previewRef.current?.offsetWidth || PREVIEW_WIDTH;
+      const h = previewRef.current?.offsetHeight || 220;
+      const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(hi, lo));
+      const x = clamp(
+        sx + gap + w <= wrapW - 8 ? gap : -(gap + w),
+        8 - sx,
+        Math.max(wrapW - w - 8, 8) - sx,
+      );
+      const y = clamp(
+        sy + gap + h <= wrapH - 8 ? gap : -(gap + h),
+        8 - sy,
+        Math.max(wrapH - h - 8, 8) - sy,
+      );
+      return { x, y };
+    });
+  }, [selectedId, previewId]);
+
+  useLayoutEffect(() => {
+    positionOverlays();
+  }, [positionOverlays]);
+
+  // Indirection so long-lived handlers (simulation ticks, wheel, center-on)
+  // always run the latest draw. draw's identity changes with search/selection
+  // state; the simulation effect intentionally does not rebuild on those.
+  const drawRef = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    drawRef.current = draw;
+  });
+
 
   const nodeColor = useCallback(
     (n: GraphNode, p: Palette): string => {
@@ -217,10 +310,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
       .alphaDecay(0.03);
     sim.on("tick", () => {
       for (const n of nodes) posRef.current.set(n.id, { x: n.x ?? 0, y: n.y ?? 0 });
-      draw();
+      drawRef.current();
     });
     simRef.current = sim;
-    draw();
+    drawRef.current();
     return () => {
       sim.stop();
       simRef.current = null;
@@ -252,7 +345,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
     ctx.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.x, dpr * view.y);
 
     const hovered = hoverRef.current;
-    const selected = selectedId;
+    // A selection can outlive the node's presence in the scoped model
+    // (toolbar filters, collapse, a refetch). Treat it as absent — keeping a
+    // ghost id would dim every node out of an empty highlight set.
+    const selected = selectedId !== null && model.nodes.some((n) => n.id === selectedId) ? selectedId : null;
     // Highlight set: the hovered (or selected) node plus its neighbors.
     let focusSet: Set<string> | null = null;
     const focusId = hovered ?? selected;
@@ -389,7 +485,9 @@ export function GraphCanvas(props: GraphCanvasProps) {
       ctx.fillText(l.text, l.x, l.y);
     }
     ctx.globalAlpha = 1;
-  }, [model, searchQuery, selectedId]);
+
+    positionOverlays();
+  }, [model, searchQuery, selectedId, positionOverlays]);
 
   // Keep a ref of the palette so draw() always reads the current one without
   // being a dependency that rebuilds the simulation. The recolor effect below
@@ -434,7 +532,9 @@ export function GraphCanvas(props: GraphCanvasProps) {
     draw();
   }, [palette, recolor, draw]);
 
-  // Center-on request (search pick): translate the hovered node to center.
+  // Center-on request (search pick): translate the picked node to center.
+  // Keyed on the request only — re-running it on a draw identity change would
+  // re-snap the viewport whenever unrelated view state updates.
   useEffect(() => {
     if (!centerOn) return;
     const n = nodesRef.current.find((x) => x.id === centerOn.id);
@@ -444,8 +544,8 @@ export function GraphCanvas(props: GraphCanvasProps) {
     const width = canvas.width / dpr;
     const height = canvas.height / dpr;
     viewRef.current = { k: Math.max(viewRef.current.k, 1), x: width / 2 - (n.x ?? 0) * viewRef.current.k, y: height / 2 - (n.y ?? 0) * viewRef.current.k };
-    draw();
-  }, [centerOn, draw]);
+    drawRef.current();
+  }, [centerOn]);
 
   const nodeAt = useCallback((sx: number, sy: number): SimNode | null => {
     const view = viewRef.current;
@@ -483,6 +583,9 @@ export function GraphCanvas(props: GraphCanvasProps) {
       if (hit) {
         const sim = simRef.current;
         if (sim) sim.alphaTarget(0.25).restart();
+        // The press starts a possible node drag — the hover tooltip under the
+        // pointer would otherwise linger for the whole drag.
+        setTooltip(null);
       }
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -518,14 +621,15 @@ export function GraphCanvas(props: GraphCanvasProps) {
         drag.lastY = pt.y;
         return;
       }
-      // Hover detection with an HTML tooltip.
+      // Hover detection with an HTML tooltip. The selected node shows the
+      // radial menu instead — the tooltip would only duplicate it.
       const hit = nodeAt(pt.x, pt.y);
       const hitId = hit?.id ?? null;
       if (hitId !== hoverRef.current) {
         hoverRef.current = hitId;
         draw();
       }
-      if (hit) {
+      if (hit && hit.id !== selectedId) {
         const byId = new Map(model.nodes.map((n) => [n.id, n]));
         const n = byId.get(hit.id);
         if (n) {
@@ -537,7 +641,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
         setTooltip(null);
       }
     },
-    [draw, localPoint, model, nodeAt],
+    [draw, localPoint, model, nodeAt, selectedId],
   );
 
   const onPointerUp = useCallback(
@@ -547,6 +651,9 @@ export function GraphCanvas(props: GraphCanvasProps) {
       if (drag.id && !drag.moved) {
         // A clean click selects (clicking the selected node again clears).
         onSelect(drag.id === selectedId ? null : drag.id);
+        // The pointer rarely moves between press and release, so the tooltip
+        // under it would linger next to the menu — drop it here.
+        setTooltip(null);
       } else if (drag.panning && !drag.moved) {
         onSelect(null);
       }
@@ -568,13 +675,15 @@ export function GraphCanvas(props: GraphCanvasProps) {
     [localPoint, nodeAt, onToggleCollapse],
   );
 
-  // Non-react wheel: zoom around the cursor.
+  // Non-react wheel: zoom around the cursor. Attached to the wrap (not the
+  // canvas element) so wheel events over the menu buttons and the preview
+  // card still zoom the graph instead of dying in a dead zone.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
+      const rect = wrap.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       const view = viewRef.current;
@@ -584,11 +693,11 @@ export function GraphCanvas(props: GraphCanvasProps) {
         x: sx - ((sx - view.x) / view.k) * k,
         y: sy - ((sy - view.y) / view.k) * k,
       };
-      draw();
+      drawRef.current();
     };
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    return () => canvas.removeEventListener("wheel", onWheel);
-  }, [draw]);
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", onWheel);
+  }, []);
 
   return (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden rounded-lg border bg-background">
@@ -615,11 +724,209 @@ export function GraphCanvas(props: GraphCanvasProps) {
           degree={model.degree.get(tooltip.node.id) ?? 0}
         />
       ) : null}
+      {menuOpen && selectedId ? (
+        <GraphNodeMenu
+          anchorRef={menuRef}
+          nodeId={selectedId}
+          previewOpen={previewId === selectedId}
+          onOpen={() => onOpenIssue(selectedId)}
+          onPreview={() => setPreviewId((prev) => (prev === selectedId ? null : selectedId))}
+          onIsolate={() => onFocusNeighbors(selectedId)}
+        />
+      ) : null}
+      {previewNode ? (
+        <GraphNodePreview
+          anchorRef={previewRef}
+          node={previewNode}
+          projects={projects}
+          edgeCounts={selectedEdgeCounts}
+          onClose={() => setPreviewId(null)}
+          onOpen={() => onOpenIssue(previewNode.id)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// Radial menu around the selected node: three round action buttons evenly
+// spread on a circle (open / preview / keep-relatives-only). The container is
+// a zero-size anchor translated onto the node; buttons position themselves
+// around it in screen space, so the menu keeps its size at every zoom level.
+const MENU_RADIUS = 46;
+
+function GraphNodeMenu(props: {
+  anchorRef: React.RefObject<HTMLDivElement | null>;
+  nodeId: string;
+  previewOpen: boolean;
+  onOpen: () => void;
+  onPreview: () => void;
+  onIsolate: () => void;
+}) {
+  const { t } = useT("graph");
+  const actions: Array<{
+    key: string;
+    testId: string;
+    angle: number;
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    active?: boolean;
+  }> = [
+    {
+      key: "open",
+      testId: "graph-menu-open",
+      angle: -Math.PI / 2,
+      label: t(($) => $.menu.open),
+      icon: <ExternalLink className="size-4" />,
+      onClick: props.onOpen,
+    },
+    {
+      key: "preview",
+      testId: "graph-menu-preview",
+      angle: Math.PI / 6,
+      label: t(($) => $.menu.preview),
+      icon: <Eye className="size-4" />,
+      onClick: props.onPreview,
+      active: props.previewOpen,
+    },
+    {
+      key: "isolate",
+      testId: "graph-menu-isolate",
+      angle: (5 * Math.PI) / 6,
+      label: t(($) => $.menu.isolate),
+      icon: <Focus className="size-4" />,
+      onClick: props.onIsolate,
+    },
+  ];
+  return (
+    <div
+      ref={props.anchorRef}
+      className="pointer-events-none absolute left-0 top-0 z-10 h-0 w-0"
+      data-testid="graph-node-menu"
+      data-node-id={props.nodeId}
+    >
+      {actions.map((a) => (
+        <button
+          key={a.key}
+          type="button"
+          className={`pointer-events-auto absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-popover text-foreground shadow-[var(--floating-shadow)] transition-colors hover:bg-accent hover:text-accent-foreground ${
+            a.active === true ? "border-primary text-primary" : ""
+          }`}
+          style={{ left: Math.cos(a.angle) * MENU_RADIUS, top: Math.sin(a.angle) * MENU_RADIUS }}
+          aria-label={a.label}
+          title={a.label}
+          data-testid={a.testId}
+          onClick={a.onClick}
+        >
+          {a.icon}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Preview card pinned next to a node: the selected node's "at a glance" info
+// (status, priority, assignee, project, updated, per-group link counts) with
+// a direct open action — a compact stand-in for the issue page.
+function GraphNodePreview(props: {
+  anchorRef: React.RefObject<HTMLDivElement | null>;
+  node: GraphNode;
+  projects: Project[];
+  edgeCounts: { child: number; dependency: number; mention: number } | null;
+  onClose: () => void;
+  onOpen: () => void;
+}) {
+  const { node, projects, edgeCounts } = props;
+  const { t } = useT("graph");
+  const project = projects.find((p) => p.id === node.project_id) ?? null;
+  const updated = formatGraphTimestamp(node.updated_at);
+  return (
+    <div
+      ref={props.anchorRef}
+      className="absolute left-0 top-0 z-10 w-72 rounded-lg border bg-popover p-3 shadow-[var(--floating-shadow)]"
+      data-testid="graph-node-preview"
+      data-node-id={node.id}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-mono text-micro text-muted-foreground">{node.identifier}</span>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground"
+          aria-label={t(($) => $.card.dismiss)}
+          onClick={props.onClose}
+        >
+          ×
+        </button>
+      </div>
+      <p className="mt-0.5 text-body font-medium text-foreground">{node.title}</p>
+      <dl className="mt-2 space-y-1 text-caption text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <dt>{t(($) => $.fields.status)}</dt>
+          <dd className="flex items-center gap-1.5 text-foreground">
+            <span
+              className={`inline-block size-2 rounded-full ${statusDotClass(node.status_category)}`}
+              aria-hidden
+            />
+            {node.status}
+          </dd>
+        </div>
+        {node.priority && node.priority !== "none" ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.priority)}</dt>
+            <dd className="text-foreground">{node.priority}</dd>
+          </div>
+        ) : null}
+        {node.assignee_name ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.assignee)}</dt>
+            <dd className="truncate text-foreground">{node.assignee_name}</dd>
+          </div>
+        ) : null}
+        {project ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.project)}</dt>
+            <dd className="truncate text-foreground">
+              {project.icon ? `${project.icon} ${project.title}` : project.title}
+            </dd>
+          </div>
+        ) : null}
+        {updated ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.updated)}</dt>
+            <dd className="text-foreground">{updated}</dd>
+          </div>
+        ) : null}
+        {edgeCounts ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.links)}</dt>
+            <dd className="flex flex-wrap justify-end gap-x-2 tabular-nums text-foreground">
+              <span style={{ color: "var(--graph-edge-child)" }}>
+                {t(($) => $.fields.sub_issues, { count: edgeCounts.child })}
+              </span>
+              <span style={{ color: "var(--graph-edge-dependency)" }}>
+                {t(($) => $.fields.dependencies, { count: edgeCounts.dependency })}
+              </span>
+              <span style={{ color: "var(--graph-edge-mention)" }}>
+                {t(($) => $.fields.references, { count: edgeCounts.mention })}
+              </span>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      <button
+        type="button"
+        className="mt-2 w-full rounded-md bg-primary px-2 py-1.5 text-caption font-medium text-primary-foreground hover:bg-primary/90"
+        onClick={props.onOpen}
+      >
+        {t(($) => $.card.open)}
+      </button>
     </div>
   );
 }
 
 const TOOLTIP_WIDTH = 256;
+// w-72 preview card; the fallback used before the element can be measured.
+const PREVIEW_WIDTH = 288;
 
 function GraphTooltip(props: {
   x: number;

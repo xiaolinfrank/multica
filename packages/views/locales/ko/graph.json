@@ -38,6 +38,11 @@
     "dismiss": "닫기",
     "open": "이슈 열기"
   },
+  "menu": {
+    "open": "이슈 열기",
+    "preview": "미리 보기",
+    "isolate": "관련 항목만 보기"
+  },
   "fields": {
     "status": "상태",
     "priority": "우선순위",

@@ -42,6 +42,11 @@
     "dismiss": "Close",
     "open": "Open issue"
   },
+  "menu": {
+    "open": "Open issue",
+    "preview": "Preview",
+    "isolate": "Keep related only"
+  },
   "fields": {
     "status": "Status",
     "priority": "Priority",
