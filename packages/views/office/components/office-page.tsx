@@ -228,7 +228,20 @@ const bubbleFor = useMemo(() => {
           <p className="text-caption text-muted-foreground">{tr("figure.loading")}</p>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 items-start gap-4 @3xl:grid-cols-[minmax(0,1fr)_320px]">
+        // Two columns only once the container can give the scene a useful
+        // width. Below that the rail would squeeze the drawing into a strip
+        // and the row would take its height from the rail, letterboxing the
+        // scene inside a column of dead space.
+        //
+        // The height mode switches with the layout. Side by side, `flex-1`
+        // claims the leftover viewport height and the single 1fr row clamps
+        // to it, so the stage gets a definite height and the rail scrolls
+        // inside itself. Stacked, the grid must stay auto-height: `flex-1`
+        // there would pin it to the viewport, the rail's cards would hold
+        // the second row at its min-content height, and the aspect-ratio
+        // stage would be squeezed into what was left and overflow on top of
+        // the rail.
+        <div className="grid gap-4 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[minmax(0,1fr)_320px] @5xl:grid-rows-[minmax(0,1fr)]">
           <OfficeFloor
             scene={scene}
             phase={phase}

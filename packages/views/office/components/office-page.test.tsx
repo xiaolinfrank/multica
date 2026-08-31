@@ -157,6 +157,26 @@ describe("OfficePage", () => {
     expect(screen.getByText(/Running/)).toBeInTheDocument();
   });
 
+  it("lists absent agents in the rail, not on the floor", async () => {
+    // An absent agent is the one part of the cast the scene cannot draw. It
+    // used to be a bare strip of chips under the room; this pins it to the
+    // rail so it cannot drift back.
+    const mocked = api as unknown as {
+      listAgents: ReturnType<typeof vi.fn>;
+      listRuntimes: ReturnType<typeof vi.fn>;
+    };
+    mocked.listAgents.mockResolvedValue([agent("a9", "Omega", "rt-9")]);
+    mocked.listRuntimes.mockResolvedValue([
+      { id: "rt-9", status: "offline", last_seen_at: new Date().toISOString() },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText("Omega")).toBeInTheDocument();
+    expect(screen.getByText(enOffice.zones.absent.name)).toBeInTheDocument();
+    expect(document.querySelector("svg")?.textContent ?? "").not.toContain("Omega");
+  });
+
   it("shows zone empty states when the office is empty", async () => {
     renderPage();
     expect(await screen.findByText(/Every desk is free/)).toBeInTheDocument();

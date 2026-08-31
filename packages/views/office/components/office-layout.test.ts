@@ -184,6 +184,22 @@ describe("layoutBubbles", () => {
     expect(box.x + box.width).toBeLessThanOrEqual(900);
   });
 
+  it("refuses a bubble that would rise above the room's ceiling", () => {
+    // A back-row seat: its preferred bottom is sy - clearance - GAP = 140, so
+    // a one-line box wants to start at 140 - 21.25 ≈ 118.75 — inside the wall.
+    const back = anchor({ agentId: "a", sx: 400, sy: 202, clearance: 56, text: "短句" });
+    expect(layoutBubbles([back], [], { left: 6, right: 900 })).toHaveLength(1);
+    expect(layoutBubbles([back], [], { left: 6, right: 900, top: 128 })).toEqual([]);
+  });
+
+  it("applies the ceiling to the clamped box, not to the wished-for one", () => {
+    // Pinned to the left margin, this bubble ends up over a blocker it would
+    // have missed unclamped; the lift that dodges it then breaks the ceiling.
+    const speaker = anchor({ agentId: "a", sx: 4, sy: 220, clearance: 56, text: "这条任务有点意思，快理清思路了" });
+    const blocker = { left: 6, top: 120, right: 160, bottom: 190 };
+    expect(layoutBubbles([speaker], [blocker], { left: 6, right: 900, top: 118 })).toEqual([]);
+  });
+
   it("dodges a neighbour using the clamped position, not the wished-for one", () => {
     // Both bubbles get pinned to the left margin, so they overlap there even
     // though their sprites are far enough apart to have been clear.

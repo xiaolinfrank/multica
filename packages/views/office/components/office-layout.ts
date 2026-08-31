@@ -144,14 +144,16 @@ function hits(box: Rect, others: readonly Rect[]): Rect | null {
  * monologues beats stacking eight into an unreadable column.
  *
  * `reserved` holds anything else in the scene a bubble must not cover, such as
- * the running-capacity badge. `bounds` is the horizontal strip a bubble has to
- * stay inside — without it the leftmost and rightmost sprites push their
- * bubbles off the edge of the scene, where the frame clips them mid-sentence.
+ * the running-capacity badge. `bounds` is the box a bubble has to stay inside:
+ * without its sides the leftmost and rightmost sprites push their bubbles off
+ * the edge of the scene, where the frame clips them mid-sentence, and without
+ * `top` a sprite in the back row lifts its bubble straight through the north
+ * wall — `maxLift` caps how far a bubble climbs, not where it ends up.
  */
 export function layoutBubbles(
   anchors: readonly SpriteAnchor[],
   reserved: readonly Rect[] = [],
-  bounds?: { left: number; right: number },
+  bounds?: { left: number; right: number; top?: number },
 ): BubbleBox[] {
   // A bubble is centred on its sprite, and the sprites at the far ends of the
   // scene sit closer to the edge than half a bubble is wide. Slide it back
@@ -191,7 +193,12 @@ export function layoutBubbles(
     // strictly upwards past one blocker, so this terminates; the guard only
     // covers pathological input.
     for (let guard = 0; guard <= blockers.length + placed.length + 1; guard++) {
-      const box: Rect = { left, top: bottom - m.height, right: left + m.width, bottom };
+      const top = bottom - m.height;
+      // The ceiling is tested before the blockers: a box that has already left
+      // the room cannot be rescued by moving it further up, and leaving
+      // `settled` false is what drops it.
+      if (top < (bounds?.top ?? -Infinity)) break;
+      const box: Rect = { left, top, right: left + m.width, bottom };
       const hit = hits(box, blockers) ?? hits(box, placed);
       if (!hit) {
         settled = true;

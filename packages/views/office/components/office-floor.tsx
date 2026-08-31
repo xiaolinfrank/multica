@@ -1,9 +1,8 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { OfficeTranslate } from "./office-i18n";
 import type { Agent } from "@multica/core/types";
-import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import {
   assignPoses,
   hashString,
@@ -20,9 +19,11 @@ import {
   formatTokenCount,
   layoutBubbles,
   NAME_FONT,
+  type Rect as BlockedRect,
   type SpriteAnchor,
 } from "./office-layout";
-import { humanSpot, type SeatedMember } from "./office-users";
+import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
+import { agentAvatarUrl as avatarOf, humanSpot, type SeatedMember } from "./office-users";
 import { OfficeStatusEditor } from "./office-status-editor";
 import {
   Armchair,
@@ -30,6 +31,7 @@ import {
   CLOTHES,
   CoffeeTable,
   Desk,
+  DESK_H,
   DumbbellRack,
   FLOOR,
   FloorEdges,
@@ -37,9 +39,13 @@ import {
   GlassWall,
   HAIRS,
   headClearance,
+  badgePillW,
   HumanFigure,
   HUMAN_LABEL_DY,
   HEAD_Z,
+  LEAN,
+  LIFT,
+  MEMBER_CLOTHES,
   MeetingTable,
   NorthWall,
   Pendant,
@@ -52,6 +58,7 @@ import {
   SCENE_H,
   SCENE_W,
   SceneDefs,
+  SEAT_H,
   SIT_HEAD_Z,
   SKINS,
   Sofa,
@@ -66,6 +73,7 @@ import {
   WorkoutBench,
   YogaMat,
   ZONE_FLOOR,
+  type PersonMood,
   type SpriteColors,
   type WalkRoute,
 } from "./office-view";
@@ -118,17 +126,24 @@ interface Rect {
  * row, not just the furniture's own footprint.
  */
 const ZONES: Record<furn, Rect> = {
-  desk: { x: 40, y: 160, w: 468, d: 230 },
-  meeting: { x: 556, y: 124, w: 384, d: 216 },
-  tea: { x: 40, y: 418, w: 258, d: 98 },
-  lounge: { x: 326, y: 414, w: 272, d: 174 },
-  canteen: { x: 622, y: 372, w: 292, d: 226 },
-  gym: { x: 952, y: 376, w: 198, d: 262 },
-  waiting: { x: 40, y: 562, w: 258, d: 84 },
-  reception: { x: 952, y: 150, w: 198, d: 220 },
+  desk: { x: 40, y: 172, w: 468, d: 328 },
+  meeting: { x: 556, y: 124, w: 384, d: 290 },
+  tea: { x: 40, y: 540, w: 258, d: 132 },
+  lounge: { x: 326, y: 532, w: 272, d: 228 },
+  canteen: { x: 622, y: 458, w: 292, d: 304 },
+  gym: { x: 952, y: 463, w: 198, d: 352 },
+  waiting: { x: 40, y: 706, w: 258, d: 120 },
+  reception: { x: 952, y: 159, w: 198, d: 270 },
 };
 
 const ZONE_ORDER = ["desk", "meeting", "reception", "tea", "lounge", "canteen", "gym", "waiting"] as const;
+
+/**
+ * Zones that get a caption printed on their carpet. The meeting room is left
+ * out on purpose: it has its own display on the north wall, and captioning it
+ * twice said "Meeting rooms / no squad is meeting" in two places at once.
+ */
+const TAGGED_ZONES = ZONE_ORDER.filter((z) => z !== "meeting");
 
 /** One place a sprite can be, and how much label room it has there. */
 interface Seat {
@@ -145,45 +160,45 @@ interface Seat {
 const DESK_W = 100;
 const DESK_D = 52;
 /** Two rows of four, each occupant seated on the north side of their desk. */
-const DESKS = [222, 332].flatMap((rowY) =>
+const DESKS = [248, 380].flatMap((rowY) =>
   Array.from({ length: 4 }, (_, i) => ({ x: 50 + i * 118, y: rowY })),
 );
 
-const MEETING_TABLE: Rect = { x: 600, y: 198, w: 300, d: 68 };
-const MEETING_SEATS = [176, 288].flatMap((y) => [660, 750, 840].map((x) => ({ x, y })));
+const MEETING_TABLE: Rect = { x: 600, y: 224, w: 300, d: 68 };
+const MEETING_SEATS = [202, 314].flatMap((y) => [660, 750, 840].map((x) => ({ x, y })));
 
-const TEA_COUNTER: Rect = { x: 50, y: 422, w: 230, d: 34 };
-const TEA_SEATS = [92, 165, 238].map((x) => ({ x, y: 488 }));
+const TEA_COUNTER: Rect = { x: 50, y: 580, w: 230, d: 34 };
+const TEA_SEATS = [92, 165, 238].map((x) => ({ x, y: 618 }));
 
-const LOUNGE_SOFA: Rect = { x: 348, y: 424, w: 168, d: 58 };
-const LOUNGE_ARMCHAIR: Rect = { x: 530, y: 428, w: 56, d: 56 };
-const LOUNGE_TABLE: Rect = { x: 390, y: 508, w: 100, d: 48 };
-const LOUNGE_SEATS = [390, 432, 474].map((x) => ({ x, y: 458 })).concat({ x: 558, y: 458 });
+const LOUNGE_SOFA: Rect = { x: 348, y: 584, w: 168, d: 58 };
+const LOUNGE_ARMCHAIR: Rect = { x: 530, y: 589, w: 56, d: 56 };
+const LOUNGE_TABLE: Rect = { x: 390, y: 672, w: 100, d: 48 };
+const LOUNGE_SEATS = [390, 432, 474].map((x) => ({ x, y: 618 })).concat({ x: 558, y: 618 });
 
-const CANTEEN_TABLES = [700, 838].map((cx) => ({ cx, cy: 470, r: 46 }));
+const CANTEEN_TABLES = [700, 838].map((cx) => ({ cx, cy: 589, r: 46 }));
 const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((tb) => [
-  { x: tb.cx, y: 408 },
-  { x: tb.cx - 48, y: 522 },
-  { x: tb.cx + 48, y: 522 },
+  { x: tb.cx, y: 527 },
+  { x: tb.cx - 48, y: 641 },
+  { x: tb.cx + 48, y: 641 },
 ]);
 
-const WAITING_BENCH: Rect = { x: 56, y: 584, w: 226, d: 30 };
+const WAITING_BENCH: Rect = { x: 56, y: 752, w: 226, d: 30 };
 // Reception: the counter captains stand behind, set into the top-right bay.
-const RECEPTION_COUNTER: Rect = { x: 972, y: 300, w: 158, d: 36 };
+const RECEPTION_COUNTER: Rect = { x: 972, y: 361, w: 158, d: 36 };
 const WAITING_SEATS = Array.from({ length: 4 }, (_, i) => ({
   x: WAITING_BENCH.x + (i + 0.5) * (WAITING_BENCH.w / 4),
-  y: 600,
+  y: 768,
 }));
 
 // Gym: a rack along the north edge, two treadmills against the east mirror,
 // a bench to sit at between sets, and a mat on the rubber.
-const GYM_RACK: Rect = { x: 962, y: 386, w: 118, d: 17 };
+const GYM_RACK: Rect = { x: 962, y: 496, w: 118, d: 17 };
 const GYM_TREADMILLS = [
-  { x: 1102, y: 420 },
-  { x: 1102, y: 486 },
+  { x: 1102, y: 522 },
+  { x: 1102, y: 611 },
 ];
-const GYM_BENCH: Rect = { x: 986, y: 470, w: 56, d: 17 };
-const GYM_MAT: Rect = { x: 1016, y: 552, w: 46, d: 22 };
+const GYM_BENCH: Rect = { x: 986, y: 589, w: 56, d: 17 };
+const GYM_MAT: Rect = { x: 1016, y: 700, w: 46, d: 22 };
 
 
 const SEATS: Record<furn, Seat[]> = {
@@ -223,10 +238,10 @@ function standSpot(zone: furn, n: number): Seat {
 }
 
 const WALK_ROUTES: Record<"lounge" | "tea" | "canteen" | "gym", WalkRoute> = {
-  tea: { x0: 62, x1: 276, y: 508, speed: 16, offset: 0 },
-  lounge: { x0: 340, x1: 584, y: 574, speed: 18, offset: 3 },
-  canteen: { x0: 636, x1: 900, y: 582, speed: 20, offset: 6 },
-  gym: { x0: 966, x1: 1136, y: 592, speed: 22, offset: 9 },
+  tea: { x0: 62, x1: 276, y: 640, speed: 16, offset: 0 },
+  lounge: { x0: 340, x1: 584, y: 729, speed: 18, offset: 3 },
+  canteen: { x0: 636, x1: 900, y: 740, speed: 20, offset: 6 },
+  gym: { x0: 966, x1: 1136, y: 753, speed: 22, offset: 9 },
 };
 
 /** How many monologues a zone floats at once. */
@@ -245,19 +260,33 @@ const BUBBLE_CAP: Record<furn, number> = {
 const BUBBLE_MAX_H = 34;
 /** Height of a zone caption pill. */
 const TAG_H = 17;
+/**
+ * Space between a caption's name and the hint that follows it. The name is
+ * measured, not laid out, and {@link estimateTextWidth} rounds latin text
+ * down as often as up — at a three-unit gap "Gym" and its hint printed as one
+ * word. This is wide enough that a bad estimate still reads as two phrases.
+ */
+const TAG_GAP = 8;
+/**
+ * Bare floor kept north of every zone, for its caption to be printed in.
+ *
+ * Every zone is set far enough from its northern neighbour to leave this lane
+ * clear. On a plate this deep it costs nothing, and it is the only place in
+ * the room where a caption can neither be walked over by the people in the
+ * zone nor hidden under the furniture at its north edge — a zone rectangle is
+ * sized to contain its occupants' heads, so its own top edge *is* the head
+ * band. Reception stops short of the gym for the same reason: the two used to
+ * meet with eight units between them.
+ */
+const AISLE = TAG_H + 5;
 
 /** The office's big board, and the meeting room's own display. */
-const BOARD = { x: 88, base: 18, w: 384, h: 96 } as const;
-const MEETING_BOARD = { x: 636, base: 60, w: 214, h: 52 } as const;
-
-/**
- * The agent's own avatar, as an absolute URL. Resolving is skipped entirely
- * when there is nothing to resolve, so an office of avatar-less agents never
- * asks the API client for a base URL it does not need.
- */
-function avatarOf(agent: Agent | undefined): string | null {
-  return agent?.avatar_url ? resolvePublicFileUrl(agent.avatar_url) : null;
-}
+// The two wall displays. The token board used to run 384 units wide with the
+// meeting board tucked beside it, which made a navy slab the heaviest thing on
+// a white page — the subject of this view is the people on the floor. Both are
+// now sized like signage: readable from across the room, and no louder.
+const BOARD = { x: 96, base: 20, w: 344, h: 84 } as const;
+const MEETING_BOARD = { x: 690, base: 64, w: 224, h: 52 } as const;
 
 /** A pose resolved to a place on the floor. */
 interface Placement {
@@ -285,9 +314,28 @@ export const OfficeFloor = memo(function OfficeFloor({
   onUserStatusSave,
 }: OfficeFloorProps) {
   const { floor } = scene;
-  // Which member's status editor is open; only the viewer's own figure can
-  // open one, so the id is only ever a self id in practice.
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  // Which member's status editor is open, and where over the stage it opened.
+  // Only the viewer's own figure can open one, so the id is only ever a self
+  // id in practice. The point is measured off the clicked node rather than
+  // derived from scene units: the scene is fitted inside its box, so scene
+  // coordinates and stage pixels are no longer the same grid.
+  const [editing, setEditing] = useState<{ userId: string; x: number; y: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const openEditor = useCallback(
+    (userId: string) => (e: { currentTarget: Element }) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const box = e.currentTarget.getBoundingClientRect();
+      const host = stage.getBoundingClientRect();
+      setEditing({
+        userId,
+        x: box.left + box.width / 2 - host.left,
+        y: box.top - host.top - 6,
+      });
+    },
+    [],
+  );
+  const closeEditor = useCallback(() => setEditing(null), []);
 
   const poses = useMemo(() => assignPoses(floor, phase), [floor, phase]);
 
@@ -390,11 +438,21 @@ export const OfficeFloor = memo(function OfficeFloor({
       const name = agent?.name ?? "";
       const standing = seatIndex < 0;
       const labelled = standing || seat.plate !== true;
+      // What they are doing, not whether they are on duty: office-page.tsx
+      // counts the waiting corner under "working" because that answers a
+      // different question. See PersonMood.
+      const mood: PersonMood =
+        pose.zone === "desk" || pose.zone === "meeting" || pose.zone === "reception"
+          ? "working"
+          : pose.zone === "waiting"
+            ? "idle"
+            : "resting";
       return {
         pose,
         seat,
         seatIndex,
         standing,
+        mood,
         headZ: standing ? HEAD_Z : SIT_HEAD_Z,
         badge: pose.zone === "reception" ? t("captain.label") : null,
         name,
@@ -455,7 +513,7 @@ const memberSprites = useMemo(() => {
       // asks the API client for a base URL it does not need.
       avatarUrl: user.avatarUrl ? resolvePublicFileUrl(user.avatarUrl) : null,
       colors: {
-        clothes: pick(CLOTHES, user.userId),
+        clothes: pick(MEMBER_CLOTHES, user.userId),
         skin: pick(SKINS, `${user.userId}-skin`),
         hair: pick(HAIRS, `${user.userId}-hair`),
       } satisfies SpriteColors,
@@ -495,23 +553,33 @@ const memberSprites = useMemo(() => {
    * floor covers the caption, and both are text.
    */
   const zoneTags = useMemo(() => {
-    return ZONE_ORDER.map((zone) => {
-      const name = t(`zones.${zone}.name`);
+    return TAGGED_ZONES.map((zone) => {
+      const z = ZONES[zone];
+      // The name is fitted too, not only the hint. Without this a long zone
+      // name with a count and no hint produced an unbounded pill, and a name
+      // beside a hint pushed the algebra into `w = z.w - 8` regardless.
+      const name = fitText(t(`zones.${zone}.name`), z.w - 34, 10);
       const count = zoneCounts[zone];
-      const hint =
-        zone === "waiting"
-          ? t("zones.waiting.hint")
-          : count === 0
-            ? t(`zones.${zone}.empty`)
-            : null;
       const nameW = estimateTextWidth(name, 10);
       const countW = count > 0 ? estimateTextWidth(String(count), 8.5) + 12 : 0;
-      const hintW = hint ? estimateTextWidth(hint, 8) + 6 : 0;
-      const z = ZONES[zone];
-      const w = 12 + nameW + countW + hintW + 10;
-      // Centred on the zone's top edge: the caption names the whole field,
-      // not whichever aisle an explicit coordinate happened to sit beside.
-      return { zone, name, hint, count, nameW, countW, x: z.x + (z.w - w) / 2, y: z.y + 3, w };
+      const hintRaw =
+        zone === "waiting" ? t("zones.waiting.hint") : count === 0 ? t(`zones.${zone}.empty`) : null;
+      // A caption may run the width of its own aisle and no further. English
+      // zone names and hints run half again as long as the Chinese ones this
+      // layout was drawn against, and "Waiting corner · Tasks on the plate,
+      // waiting for a runtime" is wider than the corner it names.
+      const hint = hintRaw
+        ? fitText(hintRaw, Math.max(0, z.w - 30 - TAG_GAP - nameW - countW), 8) || null
+        : null;
+      const hintW = hint ? estimateTextWidth(hint, 8) + TAG_GAP : 0;
+      // Clamped to the zone it captions, not to the room: a pill wider than
+      // its own carpet points at the wrong floor.
+      const w = Math.min(12 + nameW + countW + hintW + 10, z.w);
+      // Centred on the zone, in the lane of bare floor above it, then held
+      // inside the room: a caption that runs past the west wall reads as a
+      // clipping bug rather than as a label.
+      const x = Math.min(Math.max(z.x + (z.w - w) / 2, FLOOR.x0 + 6), FLOOR.x1 - 6 - w);
+      return { zone, name, hint, count, nameW, countW, x, y: z.y - AISLE, w };
     });
   }, [t, zoneCounts]);
 
@@ -532,7 +600,14 @@ const memberSprites = useMemo(() => {
       const desk = DESKS[i];
       if (!desk) return;
       const taken = deskNames.get(i);
-      add(`chair-desk-${i}`, seat.y - 1, <TaskChair x={seat.x} y={seat.y} />);
+      // An unclaimed chair is pushed in under its worktop, and sorts behind
+      // the desktop rather than in front of it, so an empty bank of desks
+      // reads as tidy rather than as eight abandoned seats.
+      add(
+        `chair-desk-${i}`,
+        taken ? seat.y - 1 : seat.y + 7,
+        <TaskChair x={seat.x} y={seat.y} tucked={!taken} />,
+      );
       add(
         `desk-${i}`,
         desk.y + DESK_D,
@@ -542,6 +617,7 @@ const memberSprites = useMemo(() => {
           w={DESK_W}
           d={DESK_D}
           busy={taken?.busy === true}
+          occupied={taken !== undefined}
           name={taken ? fitText(taken.name, DESK_W - 18, 7) : null}
         />,
       );
@@ -605,6 +681,7 @@ const memberSprites = useMemo(() => {
           x={s.seat.x}
           y={s.seat.y}
           posture={s.standing ? "standing" : "sitting"}
+          mood={s.mood}
           colors={s.colors}
           avatarUrl={s.avatarUrl}
           onClick={onAgentClick ? () => onAgentClick(s.pose.agentId) : undefined}
@@ -641,9 +718,7 @@ for (const m of memberSprites) {
       colors={m.colors}
       avatarUrl={m.avatarUrl}
       onClick={
-        m.user.isSelf && onUserStatusSave
-          ? () => setEditingUserId(m.user.userId)
-          : undefined
+        m.user.isSelf && onUserStatusSave ? openEditor(m.user.userId) : undefined
       }
     />,
   );
@@ -655,7 +730,7 @@ for (const m of memberSprites) {
       .map((item, i) => ({ item, i }))
       .sort((a, b) => a.item.y - b.item.y || a.i - b.i)
       .map(({ item }) => item);
-  }, [sprites, walkers, memberSprites, deskNames, onAgentClick, onUserStatusSave]);
+  }, [sprites, walkers, memberSprites, deskNames, onAgentClick, onUserStatusSave, openEditor]);
 
   // ---- Bubbles ------------------------------------------------------------
   const bubbles = useMemo(() => {
@@ -664,9 +739,12 @@ for (const m of memberSprites) {
     // enough to notice. One of them stays quiet rather than echoing their
     // colleague word for word.
     const said = new Map<furn, Set<string>>();
-    const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, headZ, label }) => {
+    const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, headZ, label, badge }) => {
       const zone = pose.zone as furn;
-      const clearance = headClearance(headZ, label !== null && label !== "");
+      // A badge pill is the tallest and often the widest ink a sprite draws,
+      // so both budgets have to know about it — otherwise a visitor's bubble
+      // parks on the reception captain's tag.
+      const clearance = headClearance(headZ, label !== null && label !== "", badge !== null);
       let text = speaking.has(pose.agentId) ? bubbleFor(pose.agentId) : null;
       if (text) {
         const heard = said.get(zone) ?? new Set<string>();
@@ -679,7 +757,11 @@ for (const m of memberSprites) {
         sx: px(seat.x, headZ),
         sy: seat.y,
         clearance,
-        labelWidth: Math.max(28, label ? estimateTextWidth(label, NAME_FONT) : 0),
+        labelWidth: Math.max(
+          28,
+          label ? estimateTextWidth(label, NAME_FONT) : 0,
+          badge ? badgePillW(badge) : 0,
+        ),
         text,
         // Nothing may climb into the wall: above the skirting a bubble covers
         // the big board, which is the one thing on this floor that has to
@@ -700,32 +782,77 @@ for (const m of memberSprites) {
     agentId: m.user.userId,
     sx: m.spot.x,
     sy: m.spot.y,
-    clearance: HUMAN_LABEL_DY + 26,
-    labelWidth: Math.max(28, m.label ? estimateTextWidth(m.label, 9.5) : 0),
+    // Derived from the pill the renderer will actually paint. A constant
+    // here drifts the moment the pill's own geometry moves, and a bubble
+    // lands on somebody's status.
+    clearance: m.pill ? m.spot.y - m.pill.y + 3 : HUMAN_LABEL_DY + 20,
+    labelWidth: Math.max(
+      28,
+      m.label ? estimateTextWidth(m.label, 9.5) : 0,
+      m.pill?.w ?? 0,
+    ),
     text,
     maxLift: Math.max(0, m.spot.y - HUMAN_LABEL_DY - 32 - BUBBLE_MAX_H - FLOOR.y0),
   });
 }
-const reserved = zoneTags.map((g) => ({
+const reserved: BlockedRect[] = zoneTags.map((g) => ({
       left: g.x - 2,
       top: g.y - 2,
       right: g.x + g.w + 2,
       bottom: g.y + TAG_H + 2,
     }));
-    return layoutBubbles(anchors, reserved, { left: 6, right: SCENE_W - 6 });
+    // Tall props block as well as captions. A desktop carries the nameplate of
+    // whoever owns that desk, which is the only place the room answers "whose
+    // seat is that"; the counters and the sofa back are simply tall enough
+    // that a bubble parked on one stops reading as floating.
+    //
+    // Only solids around 30 units or taller, or ones carrying printed text,
+    // are reserved. Reserving every prop starves a full room — layoutBubbles
+    // drops a bubble it cannot place rather than stacking it — so the meeting
+    // and round tables, the coffee table, the treadmills, the dumbbell rack
+    // and the mats stay open on purpose.
+    const solidBox = (r: Rect, h: number): BlockedRect => ({
+      left: r.x - 2,
+      top: r.y - h * LIFT - 2,
+      right: r.x + r.w + h * LEAN + 2,
+      bottom: r.y + r.d,
+    });
+    for (const d of DESKS) {
+      reserved.push(solidBox({ ...d, w: DESK_W, d: DESK_D }, DESK_H));
+    }
+    reserved.push(solidBox(TEA_COUNTER, 34));
+    reserved.push(solidBox(RECEPTION_COUNTER, 38));
+    reserved.push(solidBox(WAITING_BENCH, SEAT_H + 22));
+    reserved.push(solidBox(LOUNGE_SOFA, 42));
+    // Bubbles are clamped to the room, not to the SVG: the walls are where the
+    // scene stops being floor, and a bubble hanging over the west wall — or
+    // lifted through the ceiling onto the north wall's boards — reads as a
+    // rendering bug rather than as somebody thinking.
+    return layoutBubbles(anchors, reserved, {
+      left: FLOOR.x0 + 4,
+      right: FLOOR.x1 - 4,
+      top: FLOOR.y0 + 4,
+    });
   }, [sprites, memberSprites, speaking, bubbleFor, zoneTags]);
 
   // The member whose editor is open (null while closed). Resolved from the
   // id so a users-list swap while open still finds the figure.
-  const editing = memberSprites.find((m) => m.user.userId === editingUserId) ?? null;
-  const editingUser = editing?.user.isSelf === true ? editing : null;
+  const editingUser = editing
+    ? (memberSprites.find((m) => m.user.userId === editing.userId && m.user.isSelf) ?? null)
+    : null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative">
+    // Two height modes, because the page has two layouts. Beside the rail
+    // the grid row is clamped to the viewport, so the stage takes the height
+    // it is given and the drawing letterboxes by a few pixels at most.
+    // Stacked above the rail there is no such row, so the stage carries the
+    // scene's own aspect ratio — otherwise it would inherit the rail's
+    // height and float in the middle of an empty column.
+    <div ref={stageRef} className="relative aspect-[10/7] w-full min-h-0 @5xl:aspect-auto @5xl:size-full">
       <svg
         viewBox={`0 0 ${SCENE_W} ${SCENE_H}`}
-        className="w-full rounded-xl"
+        className="size-full rounded-xl"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={t("title")}
       >
@@ -734,7 +861,7 @@ const reserved = zoneTags.map((g) => ({
           <rect x={0} y={0} width={SCENE_W} height={SCENE_H} rx={10} />
         </clipPath>
         <g clipPath="url(#office-frame)">
-          <rect x={0} y={0} width={SCENE_W} height={SCENE_H} fill="#20242b" />
+          <rect x={0} y={0} width={SCENE_W} height={SCENE_H} fill="var(--office-backdrop)" />
           <FloorSlab />
           {ZONE_ORDER.map((zone) => (
             <Rug
@@ -759,20 +886,35 @@ const reserved = zoneTags.map((g) => ({
             />
           </WallScreen>
           <WallScreen {...MEETING_BOARD}>
-            <text x={14} y={-MEETING_BOARD.h + 18} fontSize={9} fontWeight={600} fill="#7f9dc4">
+            <text x={14} y={-MEETING_BOARD.h + 18} fontSize={9} fontWeight={600} fill="var(--office-screen-mute)">
               {t("zones.meeting.name")}
             </text>
-            <text x={14} y={-MEETING_BOARD.h + 36} fontSize={12} fontWeight={700} fill="#dce9ff">
+            {zoneCounts.meeting > 0 ? (
+              <text
+                x={MEETING_BOARD.w - 14}
+                y={-MEETING_BOARD.h + 18}
+                textAnchor="end"
+                fontSize={9}
+                fontWeight={700}
+                fill="var(--office-screen-good)"
+              >
+                {zoneCounts.meeting}
+              </text>
+            ) : null}
+            <text x={14} y={-MEETING_BOARD.h + 36} fontSize={12} fontWeight={700} fill="var(--office-screen-ink)">
               {meetingLine ?? t("zones.meeting.empty")}
             </text>
           </WallScreen>
-          <Pendant x={168} y={462} r={62} />
-          <Pendant x={432} y={476} r={70} />
-          <Pendant x={770} y={470} r={80} />
-          <Pendant x={1051} y={500} r={66} />
+          <Pendant x={168} y={590} r={62} />
+          <Pendant x={432} y={604} r={70} />
+          <Pendant x={770} y={598} r={80} />
+          <Pendant x={1051} y={640} r={66} />
           {drawn.map((d) => (
             <g key={d.key}>{d.node}</g>
           ))}
+          {/* Captions sit in the empty lane north of their zone, so nothing
+              stands where they are printed and they can be drawn over the
+              paint without ever landing on a head. */}
           {zoneTags.map((g) => (
             <ZoneTag key={g.zone} {...g} />
           ))}
@@ -817,9 +959,7 @@ const reserved = zoneTags.map((g) => ({
                 key={`s-${user.userId}`}
                 className={user.isSelf && onUserStatusSave ? "cursor-pointer" : undefined}
                 onClick={
-                  user.isSelf && onUserStatusSave
-                    ? () => setEditingUserId(user.userId)
-                    : undefined
+                  user.isSelf && onUserStatusSave ? openEditor(user.userId) : undefined
                 }
               >
                 <title>{user.status}</title>
@@ -829,7 +969,7 @@ const reserved = zoneTags.map((g) => ({
                   width={pill.w}
                   height={pill.h}
                   rx={pill.h / 2}
-                  fill="#ffffff"
+                  fill="var(--office-plate)"
                   opacity={pill.set ? 0.75 : 0.95}
                 />
                 <rect
@@ -839,7 +979,7 @@ const reserved = zoneTags.map((g) => ({
                   height={pill.h}
                   rx={pill.h / 2}
                   fill="none"
-                  stroke={pill.set ? "#9aa5b3" : "#8b96a5"}
+                  stroke="var(--office-plate-line)"
                   strokeOpacity={pill.set ? 0.8 : 0.6}
                   strokeWidth={0.9}
                   strokeDasharray={pill.set ? "2.5 2" : undefined}
@@ -850,7 +990,7 @@ const reserved = zoneTags.map((g) => ({
                   textAnchor="middle"
                   fontSize={7}
                   fontWeight={600}
-                  fill={pill.set ? "#7e8896" : "#3f4854"}
+                  fill={pill.set ? "var(--office-ink-faint)" : "var(--office-ink)"}
                 >
                   {pill.text}
                 </text>
@@ -869,44 +1009,15 @@ const reserved = zoneTags.map((g) => ({
           strokeWidth={1.5}
         />
       </svg>
-      {editingUser && onUserStatusSave ? (
+      {editing && editingUser && onUserStatusSave ? (
         <OfficeStatusEditor
-          anchor={{ x: editingUser.hx, y: editingUser.pill?.y ?? editingUser.hy - HUMAN_LABEL_DY - 24 }}
+          anchor={{ x: editing.x, y: editing.y }}
           current={editingUser.user.status}
           t={t}
           onSave={onUserStatusSave}
-          onClose={() => setEditingUserId(null)}
+          onClose={closeEditor}
         />
       ) : null}
-      </div>
-
-      {/* Out of office: nobody to draw on the floor, so they get a strip. */}
-      <div className="flex flex-wrap gap-2">
-        {floor.absent.map((a) => {
-          const agent = agentById.get(a.agentId);
-          if (!agent) return null;
-          const avatar = avatarOf(agent);
-          return (
-            <span
-              key={a.agentId}
-              className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pl-1 pr-2.5 text-caption text-muted-foreground"
-            >
-              <span className="flex size-6 items-center justify-center overflow-hidden rounded-full bg-muted text-micro">
-                {avatar ? (
-                  <img src={avatar} alt="" className="size-full object-cover opacity-60 grayscale" />
-                ) : (
-                  (agent.name || "?").trim().charAt(0).toUpperCase()
-                )}
-              </span>
-              <span className="max-w-28 truncate" title={agent.name}>
-                {agent.name}
-              </span>
-              <span>·</span>
-              <span>{t(`zones.absent.${a.reason}`)}</span>
-            </span>
-          );
-        })}
-      </div>
     </div>
   );
 });
@@ -932,45 +1043,45 @@ function TokenBoard({
   w: number;
   h: number;
 }) {
-  const shown = rows.slice(0, 5);
+  const shown = rows.slice(0, 4);
   const max = shown.length > 0 ? Math.max(...shown.map((r) => r.totalTokens)) : 1;
   const title = t("tokens.title");
-  const barX = 168;
-  const barW = 112;
+  const barX = 132;
+  const barW = 88;
   return (
     <g>
-      <text x={14} y={-h + 20} fontSize={12} fontWeight={700} fill="#dce9ff">
+      <text x={14} y={-h + 20} fontSize={12} fontWeight={700} fill="var(--office-screen-ink)">
         {title}
       </text>
-      <text x={20 + estimateTextWidth(title, 12)} y={-h + 20} fontSize={8} fill="#6f8db4">
+      <text x={20 + estimateTextWidth(title, 12)} y={-h + 20} fontSize={8} fill="var(--office-screen-mute)">
         {t("tokens.window")}
       </text>
       {running ? (
-        <text x={w - 14} y={-h + 20} textAnchor="end" fontSize={10} fontWeight={600} fill="#8fd6a8">
+        <text x={w - 14} y={-h + 20} textAnchor="end" fontSize={10} fontWeight={600} fill="var(--office-screen-good)">
           {running}
         </text>
       ) : null}
-      <line x1={14} y1={-h + 28} x2={w - 14} y2={-h + 28} stroke="#3d5a86" strokeWidth={1} />
+      <line x1={14} y1={-h + 27} x2={w - 14} y2={-h + 27} stroke="var(--office-screen-line)" strokeWidth={1} />
       {shown.length === 0 ? (
-        <text x={14} y={-h + 48} fontSize={9.5} fill="#6f8db4">
+        <text x={14} y={-h + 48} fontSize={9.5} fill="var(--office-screen-mute)">
           {t("tokens.empty")}
         </text>
       ) : (
         shown.map((row, i) => {
-          const y = -h + 41 + i * 12;
+          const y = -h + 39 + i * 11.4;
           const agent = agentById.get(row.agentId);
           const pct = Math.max(0.06, row.totalTokens / max);
           return (
             <g key={row.agentId}>
-              <text x={14} y={y} fontSize={8} fill="#6f8db4">
+              <text x={14} y={y} fontSize={8} fill="var(--office-screen-mute)">
                 {i + 1}
               </text>
-              <text x={26} y={y} fontSize={9.5} fontWeight={600} fill="#dce9ff">
+              <text x={26} y={y} fontSize={9.5} fontWeight={600} fill="var(--office-screen-ink)">
                 {fitText(agent?.name ?? row.agentId.slice(0, 8), barX - 36, 9.5)}
               </text>
-              <rect x={barX} y={y - 6.4} width={barW} height={6} rx={3} fill="#26385a" />
-              <rect x={barX} y={y - 6.4} width={barW * pct} height={6} rx={3} fill="#5f9bea" />
-              <text x={barX + barW + 10} y={y} fontSize={8} fill="#6f8db4">
+              <rect x={barX} y={y - 6.4} width={barW} height={6} rx={3} fill="var(--office-screen-bar)" />
+              <rect x={barX} y={y - 6.4} width={barW * pct} height={6} rx={3} fill="var(--office-screen-fill)" />
+              <text x={barX + barW + 10} y={y} fontSize={8} fill="var(--office-screen-mute)">
                 {t("tokens.tasks", { count: row.taskCount })}
               </text>
               <text
@@ -978,7 +1089,7 @@ function TokenBoard({
                 y={y}
                 textAnchor="end"
                 fontSize={9}
-                fill="#a9c4e6"
+                fill="var(--office-screen-num)"
                 fontFamily="ui-monospace, monospace"
               >
                 {formatTokenCount(row.totalTokens)}
@@ -1018,7 +1129,7 @@ function ZoneTag({
 }) {
   return (
     <g pointerEvents="none">
-      <rect x={x} y={y} width={w} height={TAG_H} rx={TAG_H / 2} fill="#ffffff" opacity={0.94} />
+      <rect x={x} y={y} width={w} height={TAG_H} rx={TAG_H / 2} fill="var(--office-plate)" opacity={0.94} />
       <rect
         x={x}
         y={y}
@@ -1026,20 +1137,20 @@ function ZoneTag({
         height={TAG_H}
         rx={TAG_H / 2}
         fill="none"
-        stroke="#98a3b1"
+        stroke="var(--office-plate-line)"
         strokeOpacity={0.55}
         strokeWidth={0.9}
       />
-      <text x={x + 11} y={y + 12} fontSize={10} fontWeight={700} fill="#333b46">
+      <text x={x + 11} y={y + 12} fontSize={10} fontWeight={700} fill="var(--office-ink)">
         {name}
       </text>
       {count > 0 ? (
-        <text x={x + 11 + nameW + 6} y={y + 11.6} fontSize={8.5} fontWeight={600} fill="#6a7482">
+        <text x={x + 11 + nameW + 7} y={y + 11.6} fontSize={8.5} fontWeight={600} fill="var(--office-ink-mute)">
           {count}
         </text>
       ) : null}
       {hint ? (
-        <text x={x + 11 + nameW + countW + 3} y={y + 11.6} fontSize={8} fill="#7e8896">
+        <text x={x + 11 + nameW + countW + TAG_GAP} y={y + 11.6} fontSize={8} fill="var(--office-ink-faint)">
           {hint}
         </text>
       ) : null}

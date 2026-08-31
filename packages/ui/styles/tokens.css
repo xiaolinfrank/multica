@@ -371,3 +371,215 @@
     --scrollbar-thumb: oklch(0.8 0.08 220 / 14%);
     --scrollbar-thumb-hover: oklch(0.8 0.1 220 / 26%);
 }
+
+/* ============================== Agent Office ===============================
+ * Illustration palette for the Agent Office scene (packages/views/office).
+ *
+ * The office is a drawing, not a UI surface: it needs oak, brushed steel and
+ * bouclé, which the semantic tokens cannot express. It still has to follow the
+ * theme, so the geometry is written once and the colour is read from here —
+ * exactly the --fleet-* arrangement, with the TSX carrying no colour literals.
+ *
+ * Every material is a four-step value ramp, and the ramp is what makes a flat
+ * SVG read as a solid: `lit` is the top face, `face` the south face, `dark`
+ * the east face, `deep` the deepest edge. The light comes from the north-west
+ * in both themes, so the west edge of anything is always the brighter one.
+ *
+ * Light is a warm daylight studio: white plaster, pale oak, cool tile.
+ * Dark is the same office at night — slate-blue plaster, warmer wood under the
+ * pendants, and the screens becoming the brightest things in the room. Same
+ * geometry, two sets of values.
+ * ========================================================================= */
+:root {
+    /* Plaster, paint and white joinery — most of the room. */
+    --office-shell-lit: #ffffff;
+    --office-shell-face: #f3f1ed;
+    --office-shell-dark: #e0dcd5;
+    --office-shell-deep: #c6c0b6;
+    /* Pale oak: worktops, the meeting table, benches and soft-seat frames. */
+    --office-wood-lit: #f1e0c2;
+    --office-wood-face: #e2cba3;
+    --office-wood-dark: #c2a377;
+    --office-wood-deep: #9a7f56;
+    /* Charcoal. Screens, chair columns, gym kit — the only true dark. */
+    --office-metal-lit: #97a0ac;
+    --office-metal-face: #5e6773;
+    --office-metal-dark: #373e48;
+    --office-metal-deep: #22262e;
+    /* Task-chair mesh, so a chair never melts into the floor behind it. */
+    --office-fabric-lit: #b6bec9;
+    --office-fabric-face: #97a1ae;
+    --office-fabric-dark: #7b8593;
+    --office-fabric-deep: #636d7b;
+    /* Soft seating in off-white bouclé. */
+    --office-soft-lit: #fbf8f3;
+    --office-soft-face: #f1ece4;
+    --office-soft-dark: #d9d2c6;
+    --office-soft-deep: #b7afa1;
+    /* Planting and the greener upholstery. */
+    --office-moss-lit: #c2d9b9;
+    --office-moss-face: #97ba90;
+    --office-moss-dark: #6f9670;
+    --office-moss-deep: #4f7154;
+    /* The single warm accent: mugs, lanyards, the reception stripe. */
+    --office-accent: #d8805c;
+    --office-accent-deep: #a85a3d;
+    /* Colour-agnostic edge treatment: a catch-light along the two edges a
+       north-west light actually reaches, and the crease under an overhang.
+       These sit on top of whatever material a solid is made of, so one pair
+       gives every prop the same chamfer without a token per material. */
+    --office-edge-light: rgb(255 255 255 / 0.55);
+    --office-edge-shade: rgb(34 38 46 / 0.10);
+
+    /* Floor plate, its grout grid, and the daylight pooling off the glazing.
+       The daylight carries its own alpha so the night scene can wash the floor
+       in cool moonlight at a completely different strength. */
+    --office-floor-lit: #f5f4f1;
+    --office-floor-deep: #e3e2de;
+    --office-grout: #cbc8c2;
+    --office-daylight: rgb(255 255 255 / 0.42);
+    /* Whatever is outside the room, seen past the walls. It reads as the
+       frame the plate sits in, so it stays dark in both themes. */
+    --office-backdrop: #2a2f38;
+    /* Contact shadows, alpha included: on a dark floor a 13%-black shadow is
+       invisible, so the strength is part of the token, not the drawing. */
+    --office-shadow: rgb(75 83 100 / 0.15);
+
+    /* Glazed partitions. */
+    --office-glass-lit: rgb(219 233 242 / 0.5);
+    --office-glass-deep: rgb(182 205 220 / 0.28);
+    --office-glass-frame: #a6b3bd;
+    --office-glass-rail: #b4c1cd;
+    /* Displays. A screen is a light source, so it stays dark-on-glow in both
+       themes; only its surround follows the room. By day it is a lit slate
+       panel, not a hole: near-black here made the wall board the heaviest
+       field on the whole page. At night it is meant to be the brightest
+       thing in the room, so the dark block keeps its deeper values. */
+    --office-screen-lit: #40536f;
+    --office-screen-deep: #2b3a52;
+    --office-screen-edge: rgb(127 180 239 / 0.28);
+    --office-screen-off: #373e48;
+    --office-screen-ink: #dce9ff;
+    --office-screen-mute: #9db6d6;
+    --office-screen-line: #6a83a8;
+    --office-screen-bar: #53688a;
+    --office-screen-fill: #7fb4ef;
+    --office-screen-good: #8fd6a8;
+    --office-screen-num: #a9c4e6;
+    /* A powered panel seen from above: laptop lids, the treadmill console. */
+    --office-screen-live: #7fb4ef;
+    /* Specular sheen across glass and screens — white in either theme. */
+    --office-sheen: rgb(255 255 255 / 0.06);
+    /* Second accent, for the things one terracotta cannot carry alone. */
+    --office-accent-2: #d8a2b4;
+    /* Monitor spill on a busy desktop, and the pendant pool below a fitting. */
+    --office-glow: rgb(143 196 255 / 0.34);
+    --office-lamp: rgb(255 238 203 / 0.28);
+    --office-bulb: #ffe9bd;
+
+    /* Ink printed into the scene: floor captions, name labels, badge pills.
+       `halo` is the stroke behind a label that keeps it legible over whatever
+       it floats across, so it is always the opposite end of the value range. */
+    /* Rim light around a figure's silhouette. Agent and member colours are
+       identity, not palette — they go through shade() and cannot follow the
+       theme — so the separation from the floor is drawn, not tinted. */
+    --office-figure-rim: rgb(34 38 46 / 0.22);
+    --office-ink: #22262e;
+    --office-ink-mute: #626b78;
+    --office-ink-faint: #77808c;
+    --office-halo: #ffffff;
+    --office-plate: #ffffff;
+    --office-plate-line: #a9b0ba;
+
+    /* Zone carpets. Hue tells the zones apart; the value spread keeps them
+       apart in a screenshot, in greyscale and for anyone who cannot use the
+       hue — the darkest and lightest field are a third of the range apart. */
+    --office-zone-desk: #dfe6f0;
+    --office-zone-meeting: #ccd8e9;
+    --office-zone-reception: #dcebe3;
+    --office-zone-tea: #cde8d8;
+    --office-zone-lounge: #f0dcbe;
+    --office-zone-canteen: #f7e9dd;
+    --office-zone-waiting: #ded8ee;
+    --office-zone-gym: #bcc5d1;
+}
+
+/* Night values. The selector is the `.dark` class only: next-themes stamps it
+ * on <html> before first paint, and a `prefers-color-scheme` block here would
+ * fight it inside the Electron renderer — see components/ui/sonner.tsx. */
+.dark {
+    --office-shell-lit: #414b5b;
+    --office-shell-face: #363f4d;
+    --office-shell-dark: #2b3340;
+    --office-shell-deep: #1f2531;
+    --office-wood-lit: #8f7048;
+    --office-wood-face: #77593b;
+    --office-wood-dark: #5b452f;
+    --office-wood-deep: #40311f;
+    --office-metal-lit: #7d8794;
+    --office-metal-face: #4e5661;
+    --office-metal-dark: #2f353e;
+    --office-metal-deep: #1b1f26;
+    --office-fabric-lit: #6b7481;
+    --office-fabric-face: #555d69;
+    --office-fabric-dark: #434a56;
+    --office-fabric-deep: #333944;
+    --office-soft-lit: #545e6d;
+    --office-soft-face: #46505e;
+    --office-soft-dark: #3a4250;
+    --office-soft-deep: #2d3440;
+    --office-moss-lit: #7fa47b;
+    --office-moss-face: #628764;
+    --office-moss-dark: #4a684b;
+    --office-moss-deep: #354c38;
+    --office-accent: #e08a63;
+    --office-accent-deep: #ab5f3e;
+    --office-edge-light: rgb(255 255 255 / 0.13);
+    --office-edge-shade: rgb(0 0 0 / 0.26);
+
+    --office-floor-lit: #2b323f;
+    --office-floor-deep: #1e2430;
+    --office-grout: #3b4453;
+    --office-daylight: rgb(150 190 255 / 0.07);
+    --office-backdrop: #12161d;
+    --office-shadow: rgb(0 0 0 / 0.34);
+
+    --office-glass-lit: rgb(126 168 204 / 0.22);
+    --office-glass-deep: rgb(60 96 130 / 0.16);
+    --office-glass-frame: #5d6b79;
+    --office-glass-rail: #55636f;
+    --office-screen-lit: #17253f;
+    --office-screen-deep: #0a1020;
+    --office-screen-edge: rgb(127 180 239 / 0.4);
+    --office-screen-off: #262c35;
+    --office-screen-ink: #dce9ff;
+    --office-screen-mute: #7d9ac2;
+    --office-screen-line: #3d5a86;
+    --office-screen-bar: #26385a;
+    --office-screen-fill: #6ba6f0;
+    --office-screen-good: #8fd6a8;
+    --office-screen-num: #b6cdea;
+    --office-screen-live: #6ea8e8;
+    --office-sheen: rgb(255 255 255 / 0.07);
+    --office-accent-2: #c08698;
+    --office-glow: rgb(143 196 255 / 0.62);
+    --office-lamp: rgb(255 226 163 / 0.16);
+    --office-bulb: #ffe0a5;
+
+    --office-figure-rim: rgb(255 255 255 / 0.30);
+    --office-ink: #eaeef4;
+    --office-ink-mute: #a8b2be;
+    --office-ink-faint: #8e97a3;
+    --office-halo: #171c25;
+    --office-plate: #2c3440;
+    --office-plate-line: #4d5766;
+
+    --office-zone-desk: #2b3550;
+    --office-zone-meeting: #23304a;
+    --office-zone-reception: #223129;
+    --office-zone-tea: #1f3a30;
+    --office-zone-lounge: #3b352c;
+    --office-zone-canteen: #3c342e;
+    --office-zone-waiting: #2e2a40;
+    --office-zone-gym: #2a2f38;
+}

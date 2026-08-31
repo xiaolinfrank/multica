@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SCENE_H, SCENE_W } from "./office-view";
 import type { OfficeTranslate } from "./office-i18n";
 
 // The little popover that opens above the viewer's own head: pick a preset
 // or type something custom. It is plain absolutely-positioned HTML over the
-// scene (not SVG) because it needs a real input; the anchor is passed in
-// scene units and converted to percentages, so it tracks the fluid-width
-// svg without any measurement.
+// scene (not SVG) because it needs a real input.
+//
+// The anchor arrives already in stage pixels, measured off the figure's own
+// DOM node at click time. It used to be scene units divided by SCENE_W/H,
+// which silently assumed the svg's element box and its viewBox were the same
+// rectangle — true only while the svg had no height of its own. Once the
+// scene is allowed to fit inside a taller box, preserveAspectRatio centres
+// the drawing and that assumption puts the popover somewhere else entirely.
 
 /** Preset keys under `status.presets` in the office bundle. The localized
  * label is also the stored status text — a preset is just a shortcut for
@@ -23,7 +27,7 @@ export const STATUS_PRESET_KEYS = [
 ] as const;
 
 export interface OfficeStatusEditorProps {
-  /** Anchor point in scene units (the pill's top centre). */
+  /** Anchor point in stage pixels (the figure's top centre). */
   anchor: { x: number; y: number };
   current: string;
   t: OfficeTranslate;
@@ -65,10 +69,7 @@ export function OfficeStatusEditor({ anchor, current, t, onSave, onClose }: Offi
     <div
       ref={rootRef}
       className="absolute z-10 w-60 -translate-x-1/2 -translate-y-full rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"
-      style={{
-        left: `${(anchor.x / SCENE_W) * 100}%`,
-        top: `${(anchor.y / SCENE_H) * 100}%`,
-      }}
+      style={{ left: `${anchor.x}px`, top: `${anchor.y}px` }}
       role="dialog"
       aria-label={t("status.title")}
     >
