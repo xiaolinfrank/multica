@@ -18,11 +18,11 @@ import {
 // n5 isolated with status in_review and no project.
 const graph: IssueGraphResponse = {
   nodes: [
-    { id: "n1", identifier: "TES-1", number: 1, title: "Alpha", status: "todo", status_category: "todo", priority: "none", project_id: "p1", updated_at: "" },
-    { id: "n2", identifier: "TES-2", number: 2, title: "Beta", status: "in_progress", status_category: "in_progress", priority: "none", project_id: "p1", updated_at: "" },
-    { id: "n3", identifier: "TES-3", number: 3, title: "Gamma", status: "todo", status_category: "todo", priority: "none", project_id: "p2", updated_at: "" },
-    { id: "n4", identifier: "TES-4", number: 4, title: "Delta", status: "todo", status_category: "todo", priority: "none", project_id: "p2", updated_at: "" },
-    { id: "n5", identifier: "TES-5", number: 5, title: "Orphan", status: "in_review", status_category: "in_review", priority: "none", project_id: null, updated_at: "" },
+    { id: "n1", identifier: "TES-1", number: 1, title: "Alpha", status: "todo", status_category: "todo", priority: "none", project_id: "p1", updated_at: "", assignee_name: "" },
+    { id: "n2", identifier: "TES-2", number: 2, title: "Beta", status: "in_progress", status_category: "in_progress", priority: "none", project_id: "p1", updated_at: "", assignee_name: "" },
+    { id: "n3", identifier: "TES-3", number: 3, title: "Gamma", status: "todo", status_category: "todo", priority: "none", project_id: "p2", updated_at: "", assignee_name: "" },
+    { id: "n4", identifier: "TES-4", number: 4, title: "Delta", status: "todo", status_category: "todo", priority: "none", project_id: "p2", updated_at: "", assignee_name: "" },
+    { id: "n5", identifier: "TES-5", number: 5, title: "Orphan", status: "in_review", status_category: "in_review", priority: "none", project_id: null, updated_at: "", assignee_name: "" },
   ],
   edges: [
     { source: "n1", target: "n2", kind: "child" },

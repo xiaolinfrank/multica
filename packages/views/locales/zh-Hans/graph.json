@@ -36,9 +36,18 @@
   },
   "card": {
     "dismiss": "关闭",
-    "status": "状态",
-    "links": "关联数",
     "open": "打开任务"
+  },
+  "fields": {
+    "status": "状态",
+    "priority": "优先级",
+    "assignee": "负责人",
+    "project": "项目",
+    "updated": "更新于",
+    "links": "关联数",
+    "sub_issues_other": "{{count}} 个子任务",
+    "dependencies_other": "{{count}} 个依赖",
+    "references_other": "{{count}} 个引用"
   },
   "empty": {
     "title": "还没有可展示的关系",

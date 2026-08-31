@@ -36,9 +36,18 @@
   },
   "card": {
     "dismiss": "閉じる",
-    "status": "ステータス",
-    "links": "リンク数",
     "open": "タスクを開く"
+  },
+  "fields": {
+    "status": "ステータス",
+    "priority": "優先度",
+    "assignee": "担当者",
+    "project": "プロジェクト",
+    "updated": "更新日時",
+    "links": "リンク数",
+    "sub_issues_other": "サブタスク{{count}}件",
+    "dependencies_other": "依存{{count}}件",
+    "references_other": "参照{{count}}件"
   },
   "empty": {
     "title": "表示できる関係はまだありません",

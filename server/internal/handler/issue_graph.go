@@ -35,6 +35,10 @@ type IssueGraphNodeResponse struct {
 	Priority       string  `json:"priority"`
 	ProjectID      *string `json:"project_id"`
 	UpdatedAt      string  `json:"updated_at"`
+	// AssigneeName is the display name of the member or agent the issue is
+	// assigned to, resolved through the workspace member/agent lists. Empty
+	// when the issue is unassigned (or the assignee row is gone).
+	AssigneeName string `json:"assignee_name"`
 }
 
 type IssueGraphEdgeResponse struct {
@@ -70,8 +74,32 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	prefix := h.getIssuePrefix(ctx, wsUUID)
+
+	// Assignee display names: members resolve through their user profile
+	// (member rows carry no name), agents carry their own. Both lists are
+	// workspace-scoped and small; building one lookup per snapshot beats a
+	// per-node query and reuses the list endpoints' canonical queries.
+	assigneeNames := make(map[pgtype.UUID]string)
+	members, err := h.Queries.ListMembersWithUser(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	for _, m := range members {
+		assigneeNames[m.ID] = m.UserName
+	}
+	// AnyKind on purpose: this only resolves a display name, never builds a
+	// picker, so a system carrier that somehow owns an assignment still
+	// resolves instead of silently rendering as unassigned.
+	agents, err := h.Queries.ListAllAgentsAnyKind(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	for _, a := range agents {
+		assigneeNames[a.ID] = a.Name
+	}
 
 	nodeByID := make(map[pgtype.UUID]int, len(nodes))
 	respNodes := make([]IssueGraphNodeResponse, len(nodes))
@@ -88,6 +116,7 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 			Priority:       n.Priority,
 			ProjectID:      uuidToPtr(n.ProjectID),
 			UpdatedAt:      timestampToString(n.UpdatedAt),
+			AssigneeName:   assigneeNames[n.AssigneeID],
 		}
 	}
 

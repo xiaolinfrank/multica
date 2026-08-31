@@ -8,10 +8,16 @@ import type { Project } from "@multica/core/types";
 import { projectColorIndex } from "@multica/core/graph/build-graph-model";
 import type { ColorDimension, EdgeGroupToggles } from "./graph-toolbar";
 
-const EDGE_STYLES: Array<{ kind: keyof EdgeGroupToggles; className: string }> = [
-  { kind: "child", className: "border-t border-foreground/60" },
-  { kind: "dependency", className: "border-t border-foreground/60" },
-  { kind: "mention", className: "border-t border-dashed border-foreground/60" },
+// Edge sample lines mirror the canvas: one hue per relation group (tokens from
+// tokens.css), plus the dash pattern the canvas draws for that group.
+const EDGE_STYLES: Array<{
+  kind: keyof EdgeGroupToggles;
+  className: string;
+  color: string;
+}> = [
+  { kind: "child", className: "", color: "var(--graph-edge-child)" },
+  { kind: "dependency", className: "", color: "var(--graph-edge-dependency)" },
+  { kind: "mention", className: "border-t border-dashed", color: "var(--graph-edge-mention)" },
 ];
 
 const CHART_COLOR_VARS = [
@@ -57,7 +63,11 @@ export function GraphLegend(props: {
         <ul className="mb-2 space-y-1.5">
           {visibleEdges.map((edge) => (
             <li key={edge.kind} className="flex items-center gap-2">
-              <span className={`inline-block w-6 ${edge.className}`} aria-hidden />
+              <span
+                className={`inline-block h-0 w-6 border-t-2 ${edge.className}`}
+                style={{ borderTopColor: edge.color }}
+                aria-hidden
+              />
               {t(($) =>
                 edge.kind === "child"
                   ? $.filter.edge_group_child

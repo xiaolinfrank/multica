@@ -30,6 +30,7 @@ export function demoGraph(): IssueGraphResponse {
       priority: i % 5 === 0 ? "high" : "none",
       project_id: i === 23 ? null : PROJECTS[i % PROJECTS.length] ?? null,
       updated_at: "",
+      assignee_name: i % 3 === 0 ? "Research Agent" : i % 3 === 1 ? "Lin Wei" : "",
     });
   }
 

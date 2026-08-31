@@ -85,7 +85,8 @@ func (q *Queries) ListIssueGraphDependencies(ctx context.Context, workspaceID pg
 const listIssueGraphNodes = `-- name: ListIssueGraphNodes :many
 
 SELECT i.id, i.number, i.title, i.description, i.status, i.priority,
-       i.project_id, i.parent_issue_id, i.updated_at
+       i.project_id, i.parent_issue_id, i.updated_at,
+       i.assignee_type, i.assignee_id
 FROM issue i
 WHERE i.workspace_id = $1
   AND ($2::uuid IS NULL OR i.project_id = $2::uuid)
@@ -107,6 +108,8 @@ type ListIssueGraphNodesRow struct {
 	ProjectID     pgtype.UUID        `json:"project_id"`
 	ParentIssueID pgtype.UUID        `json:"parent_issue_id"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	AssigneeType  pgtype.Text        `json:"assignee_type"`
+	AssigneeID    pgtype.UUID        `json:"assignee_id"`
 }
 
 // Read-side queries for the issue graph endpoint (GET /api/issues/graph).
@@ -123,7 +126,9 @@ type ListIssueGraphNodesRow struct {
 // only useful as the full picture, and workspace issue counts stay in the
 // thousands (the same bet ListOpenIssues makes). An optional project_id narrows
 // the snapshot to one project; cross-project edges are dropped in the handler.
-// description rides along only to extract mention references.
+// description rides along only to extract mention references. assignee_type
+// and assignee_id ride along to label nodes with their assignee display name
+// (resolved in the handler through the workspace member/agent lists).
 func (q *Queries) ListIssueGraphNodes(ctx context.Context, arg ListIssueGraphNodesParams) ([]ListIssueGraphNodesRow, error) {
 	rows, err := q.db.Query(ctx, listIssueGraphNodes, arg.WorkspaceID, arg.ProjectID)
 	if err != nil {
@@ -143,6 +148,8 @@ func (q *Queries) ListIssueGraphNodes(ctx context.Context, arg ListIssueGraphNod
 			&i.ProjectID,
 			&i.ParentIssueID,
 			&i.UpdatedAt,
+			&i.AssigneeType,
+			&i.AssigneeID,
 		); err != nil {
 			return nil, err
 		}

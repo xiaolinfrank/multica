@@ -426,6 +426,43 @@ describe("ApiClient server Table query", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain("project_id=");
   });
 
+  it("defaults per-node graph fields when a backend omits them", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        // One fully-shaped node and one carrying only the always-present
+        // fields — an older backend without assignee_name: the schema keeps
+        // the node and defaults every missing field instead of dropping it.
+        new Response(
+          JSON.stringify({
+            nodes: [
+              {
+                id: "ok",
+                identifier: "BIO-1",
+                title: "Fine",
+                assignee_name: "Research Agent",
+              },
+              { id: "bare", identifier: "BIO-2", title: "Sparse" },
+            ],
+            edges: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    const graph = await client.getIssueGraph();
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.nodes[0]).toMatchObject({ id: "ok", assignee_name: "Research Agent" });
+    expect(graph.nodes[1]).toMatchObject({
+      id: "bare",
+      assignee_name: "",
+      priority: "none",
+      updated_at: "",
+    });
+  });
+
   it("falls back safely when Table responses are malformed", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(

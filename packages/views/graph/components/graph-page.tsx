@@ -24,6 +24,7 @@ import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { GraphCanvas } from "./graph-canvas";
+import { formatGraphTimestamp, statusDotClass } from "./graph-format";
 import { demoGraph } from "./graph-demo";
 import {
   ALL_EDGE_GROUPS,
@@ -136,6 +137,22 @@ export function GraphPage(props: { projectId?: string | null }) {
     [model, selectedId],
   );
 
+  // Per-group edge counts for the selected node, mirroring the toolbar's
+  // relation groups (child / dependency / mention).
+  const selectedEdgeCounts = useMemo(() => {
+    if (!selectedNode) return null;
+    let child = 0;
+    let dependency = 0;
+    let mention = 0;
+    for (const e of fullModel.edges) {
+      if (e.source !== selectedNode.id && e.target !== selectedNode.id) continue;
+      if (e.kind === "child") child += 1;
+      else if (e.kind === "mention") mention += 1;
+      else dependency += 1;
+    }
+    return { child, dependency, mention };
+  }, [fullModel, selectedNode]);
+
   const searchResults = useMemo(() => {
     const q = searchQuery.trim();
     if (!q) return [];
@@ -244,7 +261,7 @@ export function GraphPage(props: { projectId?: string | null }) {
             <GraphLegend colorBy={colorBy} projects={projects} edgeGroups={edgeGroups} />
             {selectedNode ? (
               <div
-                className="absolute bottom-3 right-3 z-10 w-64 rounded-lg border bg-popover p-3 shadow-[var(--floating-shadow)]"
+                className="absolute bottom-3 right-3 z-10 w-72 rounded-lg border bg-popover p-3 shadow-[var(--floating-shadow)]"
                 data-testid="graph-node-card"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -262,16 +279,64 @@ export function GraphPage(props: { projectId?: string | null }) {
                 </div>
                 <p className="mt-0.5 text-body font-medium text-foreground">{selectedNode.title}</p>
                 <dl className="mt-2 space-y-1 text-caption text-muted-foreground">
-                  <div className="flex justify-between gap-2">
-                    <dt>{t(($) => $.card.status)}</dt>
-                    <dd className="text-foreground">{selectedNode.status}</dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt>{t(($) => $.card.links)}</dt>
-                    <dd className="tabular-nums text-foreground">
-                      {fullModel.degree.get(selectedNode.id) ?? 0}
+                  <div className="flex items-center justify-between gap-2">
+                    <dt>{t(($) => $.fields.status)}</dt>
+                    <dd className="flex items-center gap-1.5 text-foreground">
+                      <span
+                        className={`inline-block size-2 rounded-full ${statusDotClass(selectedNode.status_category)}`}
+                        aria-hidden
+                      />
+                      {selectedNode.status}
                     </dd>
                   </div>
+                  {selectedNode.priority && selectedNode.priority !== "none" ? (
+                    <div className="flex justify-between gap-2">
+                      <dt>{t(($) => $.fields.priority)}</dt>
+                      <dd className="text-foreground">{selectedNode.priority}</dd>
+                    </div>
+                  ) : null}
+                  {selectedNode.assignee_name ? (
+                    <div className="flex justify-between gap-2">
+                      <dt>{t(($) => $.fields.assignee)}</dt>
+                      <dd className="truncate text-foreground">{selectedNode.assignee_name}</dd>
+                    </div>
+                  ) : null}
+                  {(() => {
+                    const project = projects.find((p) => p.id === selectedNode.project_id);
+                    if (!project) return null;
+                    return (
+                      <div className="flex justify-between gap-2">
+                        <dt>{t(($) => $.fields.project)}</dt>
+                        <dd className="truncate text-foreground">
+                          {project.icon ? `${project.icon} ${project.title}` : project.title}
+                        </dd>
+                      </div>
+                    );
+                  })()}
+                  {selectedNode.updated_at ? (
+                    <div className="flex justify-between gap-2">
+                      <dt>{t(($) => $.fields.updated)}</dt>
+                      <dd className="text-foreground">
+                        {formatGraphTimestamp(selectedNode.updated_at)}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {selectedEdgeCounts ? (
+                    <div className="flex justify-between gap-2">
+                      <dt>{t(($) => $.fields.links)}</dt>
+                      <dd className="flex flex-wrap justify-end gap-x-2 tabular-nums text-foreground">
+                        <span style={{ color: "var(--graph-edge-child)" }}>
+                          {t(($) => $.fields.sub_issues, { count: selectedEdgeCounts.child })}
+                        </span>
+                        <span style={{ color: "var(--graph-edge-dependency)" }}>
+                          {t(($) => $.fields.dependencies, { count: selectedEdgeCounts.dependency })}
+                        </span>
+                        <span style={{ color: "var(--graph-edge-mention)" }}>
+                          {t(($) => $.fields.references, { count: selectedEdgeCounts.mention })}
+                        </span>
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
                 <button
                   type="button"

@@ -41,9 +41,9 @@ import { GraphPage } from "./graph-page";
 
 const graphFixture = {
   nodes: [
-    { id: "a", identifier: "TES-1", number: 1, title: "Alpha issue", status: "todo", status_category: "todo", priority: "none", project_id: null, updated_at: "" },
-    { id: "b", identifier: "TES-2", number: 2, title: "Beta issue", status: "in_progress", status_category: "in_progress", priority: "none", project_id: null, updated_at: "" },
-    { id: "c", identifier: "TES-3", number: 3, title: "Gamma issue", status: "todo", status_category: "todo", priority: "none", project_id: null, updated_at: "" },
+    { id: "a", identifier: "TES-1", number: 1, title: "Alpha issue", status: "todo", status_category: "todo", priority: "none", project_id: null, updated_at: "", assignee_name: "" },
+    { id: "b", identifier: "TES-2", number: 2, title: "Beta issue", status: "in_progress", status_category: "in_progress", priority: "none", project_id: null, updated_at: "", assignee_name: "" },
+    { id: "c", identifier: "TES-3", number: 3, title: "Gamma issue", status: "todo", status_category: "todo", priority: "none", project_id: null, updated_at: "", assignee_name: "" },
   ],
   edges: [
     { source: "a", target: "b", kind: "child" },

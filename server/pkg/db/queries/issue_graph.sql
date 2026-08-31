@@ -12,9 +12,12 @@
 -- only useful as the full picture, and workspace issue counts stay in the
 -- thousands (the same bet ListOpenIssues makes). An optional project_id narrows
 -- the snapshot to one project; cross-project edges are dropped in the handler.
--- description rides along only to extract mention references.
+-- description rides along only to extract mention references. assignee_type
+-- and assignee_id ride along to label nodes with their assignee display name
+-- (resolved in the handler through the workspace member/agent lists).
 SELECT i.id, i.number, i.title, i.description, i.status, i.priority,
-       i.project_id, i.parent_issue_id, i.updated_at
+       i.project_id, i.parent_issue_id, i.updated_at,
+       i.assignee_type, i.assignee_id
 FROM issue i
 WHERE i.workspace_id = $1
   AND (sqlc.narg('project_id')::uuid IS NULL OR i.project_id = sqlc.narg('project_id')::uuid)

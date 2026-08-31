@@ -30,6 +30,8 @@ import {
   type GraphNode,
 } from "@multica/core/graph/build-graph-model";
 import type { Project } from "@multica/core/types";
+import { useT } from "../../i18n";
+import { formatGraphTimestamp } from "./graph-format";
 
 export interface GraphCanvasProps {
   model: GraphModel;
@@ -65,6 +67,23 @@ interface Palette {
   accent: string;
   chart: string[];
   status: Record<string, string>;
+  edges: Record<EdgeColorGroup, string>;
+}
+
+// Edge colour groups mirror the toolbar's relation toggles: one hue per group
+// (sub-issue / dependency / reference), independent of the node palette.
+type EdgeColorGroup = "child" | "dependency" | "mention";
+
+const EDGE_COLOR_VARS: Record<EdgeColorGroup, string> = {
+  child: "--graph-edge-child",
+  dependency: "--graph-edge-dependency",
+  mention: "--graph-edge-mention",
+};
+
+function edgeColorGroup(kind: string): EdgeColorGroup {
+  if (kind === "child") return "child";
+  if (kind === "blocks" || kind === "blocked_by" || kind === "related") return "dependency";
+  return "mention";
 }
 
 const STATUS_CATEGORY_VARS: Record<string, string> = {
@@ -90,6 +109,9 @@ function readPalette(): Palette {
     status: Object.fromEntries(
       Object.entries(STATUS_CATEGORY_VARS).map(([k, name]) => [k, v(name)]),
     ),
+    edges: Object.fromEntries(
+      Object.entries(EDGE_COLOR_VARS).map(([k, name]) => [k, v(name)]),
+    ) as Record<EdgeColorGroup, string>,
   };
 }
 
@@ -233,16 +255,22 @@ export function GraphCanvas(props: GraphCanvasProps) {
     const toWorld = (sx: number, sy: number) => ({ x: (sx - view.x) / view.k, y: (sy - view.y) / view.k });
     void toWorld;
 
-    // Edges. Style by kind: child=solid, mention=dashed, related=dotted,
-    // blocks/blocked_by=solid with an arrowhead at the target.
+    // Edges. One hue per relation group (independent of the node palette),
+    // styled by kind: child=solid, mention=dashed, related=dotted,
+    // blocks/blocked_by=solid with an arrowhead at the target. Strokes live in
+    // world space, so a screen-space floor keeps zoomed-out edges from
+    // thinning into invisibility — the whole point of an overview graph.
     for (const link of links) {
       const s = link.source as SimNode;
       const t = link.target as SimNode;
       if (!s || !t) continue;
       const inFocus = !focusSet || (focusSet.has(s.id) && focusSet.has(t.id));
-      ctx.globalAlpha = inFocus ? 0.75 : 0.12;
-      ctx.strokeStyle = inFocus && focusSet ? p.accent : p.border;
-      ctx.lineWidth = inFocus && focusSet ? 1.5 : 1;
+      const color = p.edges[edgeColorGroup(link.kind)];
+      ctx.globalAlpha = inFocus ? 0.95 : 0.32;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      const width = inFocus ? 2 : 1.25;
+      ctx.lineWidth = Math.max(width * view.k, 0.8);
       const x1 = s.x ?? 0;
       const y1 = s.y ?? 0;
       const x2 = t.x ?? 0;
@@ -279,7 +307,6 @@ export function GraphCanvas(props: GraphCanvasProps) {
         ctx.lineTo(x2 - ux * (t.radius + 2 + arrow) - uy * arrow * 0.6, y2 - uy * (t.radius + 2 + arrow) + ux * arrow * 0.6);
         ctx.lineTo(x2 - ux * (t.radius + 2 + arrow) + uy * arrow * 0.6, y2 - uy * (t.radius + 2 + arrow) - ux * arrow * 0.6);
         ctx.closePath();
-        ctx.fillStyle = inFocus && focusSet ? p.accent : p.border;
         ctx.fill();
       }
     }
@@ -322,6 +349,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
           priority: "none",
           project_id: null,
           updated_at: "",
+          assignee_name: "",
         },
         searchQuery,
       );
@@ -492,7 +520,11 @@ export function GraphCanvas(props: GraphCanvasProps) {
       if (hit) {
         const byId = new Map(model.nodes.map((n) => [n.id, n]));
         const n = byId.get(hit.id);
-        if (n) setTooltip({ x: pt.x, y: pt.y, node: n });
+        if (n) {
+          // Clamp so the card never spills past the canvas's right edge.
+          const wrapWidth = wrapRef.current?.clientWidth ?? 800;
+          setTooltip({ x: Math.min(pt.x + 14, wrapWidth - TOOLTIP_WIDTH - 8), y: pt.y + 14, node: n });
+        }
       } else {
         setTooltip(null);
       }
@@ -565,21 +597,78 @@ export function GraphCanvas(props: GraphCanvasProps) {
         }}
         onDoubleClick={onDoubleClick}
       />
-      {tooltip ? <GraphTooltip x={tooltip.x} y={tooltip.y} node={tooltip.node} /> : null}
+      {tooltip ? (
+        <GraphTooltip
+          x={tooltip.x}
+          y={tooltip.y}
+          node={tooltip.node}
+          projects={projects}
+          statusColor={palette ? palette.status[tooltip.node.status_category] ?? palette.muted : undefined}
+          degree={model.degree.get(tooltip.node.id) ?? 0}
+        />
+      ) : null}
     </div>
   );
 }
 
-function GraphTooltip({ x, y, node }: { x: number; y: number; node: GraphNode }) {
+const TOOLTIP_WIDTH = 256;
+
+function GraphTooltip(props: {
+  x: number;
+  y: number;
+  node: GraphNode;
+  projects: Project[];
+  statusColor: string | undefined;
+  degree: number;
+}) {
+  const { x, y, node, projects, statusColor, degree } = props;
+  const { t } = useT("graph");
+  const project = projects.find((p) => p.id === node.project_id) ?? null;
+  const rows: Array<[string, React.ReactNode]> = [];
+  const updated = formatGraphTimestamp(node.updated_at);
+  if (node.priority && node.priority !== "none") {
+    rows.push([t(($) => $.fields.priority), node.priority]);
+  }
+  if (node.assignee_name) {
+    rows.push([t(($) => $.fields.assignee), node.assignee_name]);
+  }
+  if (project) {
+    rows.push([
+      t(($) => $.fields.project),
+      project.icon ? `${project.icon} ${project.title}` : project.title,
+    ]);
+  }
+  if (updated) {
+    rows.push([t(($) => $.fields.updated), updated]);
+  }
+  rows.push([t(($) => $.fields.links), degree]);
+
   return (
     <div
-      className="pointer-events-none absolute z-10 max-w-64 rounded-md border bg-popover px-2.5 py-2 text-caption shadow-[var(--floating-shadow)]"
-      style={{ left: Math.min(x + 12, 9999), top: y + 12 }}
+      className="pointer-events-none absolute z-10 w-64 rounded-md border bg-popover px-2.5 py-2 text-caption shadow-[var(--floating-shadow)]"
+      style={{ left: x, top: y }}
+      data-testid="graph-tooltip"
     >
       <div className="flex items-center gap-1.5">
         <span className="font-mono text-micro text-muted-foreground">{node.identifier}</span>
+        {statusColor ? (
+          <span
+            className="inline-block size-2 rounded-full"
+            style={{ backgroundColor: statusColor }}
+            aria-hidden
+          />
+        ) : null}
+        <span className="truncate text-micro text-muted-foreground">{node.status}</span>
       </div>
-      <div className="mt-0.5 truncate text-body font-medium text-foreground">{node.title}</div>
+      <div className="mt-0.5 line-clamp-2 text-body font-medium text-foreground">{node.title}</div>
+      <dl className="mt-1.5 space-y-0.5 text-micro text-muted-foreground">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-2">
+            <dt>{label}</dt>
+            <dd className="truncate text-foreground">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

@@ -1536,6 +1536,7 @@ const IssueGraphNodeSchema = z.object({
   priority: z.string().default("none"),
   project_id: z.string().nullable().default(null),
   updated_at: z.string().default(""),
+  assignee_name: z.string().default(""),
 }).loose();
 
 export const IssueGraphResponseSchema = z.object({

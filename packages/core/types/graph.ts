@@ -18,6 +18,10 @@ export interface GraphNode {
   priority: string;
   project_id: string | null;
   updated_at: string;
+  // Display name of the member or agent the issue is assigned to. Empty when
+  // unassigned; resolved server-side so the graph never needs per-assignee
+  // lookups.
+  assignee_name: string;
 }
 
 // Edge kinds the server emits today. `kind` is typed as string (not a union)

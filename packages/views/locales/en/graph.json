@@ -40,9 +40,21 @@
   },
   "card": {
     "dismiss": "Close",
-    "status": "Status",
-    "links": "Links",
     "open": "Open issue"
+  },
+  "fields": {
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "project": "Project",
+    "updated": "Updated",
+    "links": "Links",
+    "sub_issues_one": "{{count}} sub-issue",
+    "sub_issues_other": "{{count}} sub-issues",
+    "dependencies_one": "{{count}} dependency",
+    "dependencies_other": "{{count}} dependencies",
+    "references_one": "{{count}} reference",
+    "references_other": "{{count}} references"
   },
   "empty": {
     "title": "Nothing to map yet",

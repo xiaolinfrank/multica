@@ -59,16 +59,32 @@ func TestGetIssueGraphAssemblesNodesAndEdges(t *testing.T) {
 	wsID := graphFixture(t, "Graph assembly")
 	projectID := dbfx.Project(t, "Graph project", testutil.Cols{"workspace_id": wsID})
 
+	// Assignees for the name-resolution assertions: an agent (own name) and a
+	// member (name resolved through the user profile). The agent must live in
+	// THIS workspace — the graph resolves names from workspace-scoped lists.
+	assignedAgent := dbfx.Agent(t, "graph-assigned-agent", "", testutil.Cols{
+		"workspace_id": wsID,
+	})
+	assigneeUser := dbfx.User(t, "Graph Assignee", "graph-assignee@example.com")
+	assigneeMember := dbfx.Member(t, wsID, assigneeUser, "member")
+
 	// Numbers: parent=TES-1, child=TES-2, referenced=TES-3, mentioning=TES-4.
-	parent := dbfx.Issue(t, "Parent", testutil.Cols{"workspace_id": wsID, "project_id": projectID})
+	parent := dbfx.Issue(t, "Parent", testutil.Cols{
+		"workspace_id":  wsID,
+		"project_id":    projectID,
+		"assignee_type": "agent",
+		"assignee_id":   assignedAgent,
+	})
 	child := dbfx.Issue(t, "Child", testutil.Cols{
 		"workspace_id":    wsID,
 		"project_id":      projectID,
 		"parent_issue_id": parent,
 	})
 	referenced := dbfx.Issue(t, "Referenced", testutil.Cols{
-		"workspace_id": wsID,
-		"status":       "in_review",
+		"workspace_id":  wsID,
+		"status":        "in_review",
+		"assignee_type": "member",
+		"assignee_id":   assigneeMember,
 	})
 	mentioning := dbfx.Issue(t, "Mentioning", testutil.Cols{
 		"workspace_id": wsID,
@@ -104,6 +120,15 @@ func TestGetIssueGraphAssemblesNodesAndEdges(t *testing.T) {
 	}
 	if n := nodes[referenced]; n.ProjectID != nil {
 		t.Errorf("referenced project_id = %v, want nil", n.ProjectID)
+	}
+	if n := nodes[parent]; n.AssigneeName != "graph-assigned-agent" {
+		t.Errorf("parent assignee_name = %q, want graph-assigned-agent", n.AssigneeName)
+	}
+	if n := nodes[referenced]; n.AssigneeName != "Graph Assignee" {
+		t.Errorf("referenced assignee_name = %q, want Graph Assignee", n.AssigneeName)
+	}
+	if n := nodes[child]; n.AssigneeName != "" {
+		t.Errorf("child assignee_name = %q, want empty for unassigned", n.AssigneeName)
 	}
 
 	edges := edgeKeys(g)

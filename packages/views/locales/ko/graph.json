@@ -36,9 +36,18 @@
   },
   "card": {
     "dismiss": "닫기",
-    "status": "상태",
-    "links": "연결 수",
     "open": "이슈 열기"
+  },
+  "fields": {
+    "status": "상태",
+    "priority": "우선순위",
+    "assignee": "담당자",
+    "project": "프로젝트",
+    "updated": "업데이트",
+    "links": "연결 수",
+    "sub_issues_other": "하위 이슈 {{count}}개",
+    "dependencies_other": "종속성 {{count}}개",
+    "references_other": "참조 {{count}}개"
   },
   "empty": {
     "title": "아직 표시할 관계가 없습니다",
