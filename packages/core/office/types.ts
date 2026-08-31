@@ -12,7 +12,7 @@ import type { AgentPresenceDetail } from "../agents/types";
 export type OfficeZoneId =
   | "desk" // working — at a desk with tasks running
   | "meeting" // squad room — idle member of a squad with work in flight
-  | "reception" // front desk — idle captain of a squad, greeting visitors
+  | "pmo" // project office — the PMO squad's own room
   | "lounge" // idle — sofa area
   | "tea" // idle — tea corner
   | "canteen" // idle — cafeteria
@@ -43,6 +43,13 @@ export interface MeetingAssignment {
   supportingAgentIds: string[];
 }
 
+/** The squad the project office belongs to, for the room's board. */
+export interface PmoSquadRef {
+  name: string;
+  /** Empty when the squad is led by a human, who never appears on the floor. */
+  leaderAgentId: string;
+}
+
 /** Why an agent is not in the office. Drives the door plaque copy. */
 export type AbsentReason = "offline" | "unstable" | "unbound";
 
@@ -56,8 +63,11 @@ export interface OfficeFloorPlan {
   desks: DeskAssignment[];
   meetings: MeetingAssignment[];
   waiting: string[];
-  /** Idle squad captains, standing at the reception desk. */
-  reception: string[];
+  /** Everyone on the PMO squad — the project office is their room, so they
+   * are here whether they are heads-down or between tasks. */
+  pmo: string[];
+  /** The squad that claimed the project office, or null when none is named. */
+  pmoSquad: PmoSquadRef | null;
   lounge: string[];
   tea: string[];
   canteen: string[];
@@ -77,7 +87,7 @@ export type MonologueSlot =
   | { kind: "queued"; variant: number; queuedCount: number }
   | { kind: "idle"; variant: number; zone: RelaxZone }
   | { kind: "meeting"; variant: number }
-  | { kind: "captain"; variant: number }
+  | { kind: "pmo"; variant: number }
   | { kind: "waiting"; variant: number; queuedCount: number }
   | { kind: "completed"; variant: number; count: number }
   | { kind: "failed"; variant: number }

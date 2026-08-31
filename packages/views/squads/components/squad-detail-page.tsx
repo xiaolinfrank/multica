@@ -81,7 +81,9 @@ export function SquadDetailPage() {
   });
 
   const { data: members = [], refetch: refetchMembers } = useQuery<SquadMember[]>({
-    queryKey: [...workspaceKeys.squads(wsId), squadId, "members"],
+    // Shared with the office floor, which draws the project office off the
+    // same roster — see workspaceKeys.squadMembers.
+    queryKey: workspaceKeys.squadMembers(wsId, squadId),
     queryFn: () => api.listSquadMembers(squadId),
     enabled: !!workspace?.id && !!squadId,
   });

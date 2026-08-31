@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configStore } from "../config";
 import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, clientErrorMessage } from "./client";
-import { EMPTY_PLUGIN_PACKAGE_LIST, EMPTY_PLUGIN_PREVIEW, EMPTY_PLUGIN_SURFACE_LAUNCH } from "./schemas";
+import {
+  EMPTY_PLUGIN_PACKAGE_LIST,
+  EMPTY_PLUGIN_PREVIEW,
+  EMPTY_PLUGIN_SURFACE_LAUNCH,
+  EMPTY_SQUAD_MEMBER_LIST,
+} from "./schemas";
 
 afterEach(() => {
   configStore.getState().setAgentConversationStartersSupported(false);
@@ -2069,6 +2074,52 @@ describe("ApiClient explicit workspace targeting", () => {
       workspace_id: "ws-2",
     });
     expect(slugHeaderOf(fetchMock)).toBeUndefined();
+  });
+});
+
+describe("ApiClient squad roster response schema", () => {
+  function stubJSON(body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  it("keeps a roster entry whose decorative fields are missing", async () => {
+    // The office seats the project office's squad off this roster, so an
+    // older backend that omits `id`/`created_at` must still fill the room.
+    stubJSON([{ member_type: "agent", member_id: "agent-1" }]);
+
+    await expect(new ApiClient("https://api.example.test").listSquadMembers("squad-1"))
+      .resolves.toEqual([
+        {
+          id: "",
+          squad_id: "",
+          member_type: "agent",
+          member_id: "agent-1",
+          role: "",
+          created_at: "",
+        },
+      ]);
+  });
+
+  it("falls back to an empty roster when the response is malformed", async () => {
+    stubJSON({ members: [{ member_type: "agent", member_id: "agent-1" }] });
+
+    await expect(new ApiClient("https://api.example.test").listSquadMembers("squad-1"))
+      .resolves.toEqual(EMPTY_SQUAD_MEMBER_LIST);
+  });
+
+  it("falls back to an empty roster when an entry has no member identity", async () => {
+    stubJSON([{ id: "sm-1", squad_id: "squad-1" }]);
+
+    await expect(new ApiClient("https://api.example.test").listSquadMembers("squad-1"))
+      .resolves.toEqual(EMPTY_SQUAD_MEMBER_LIST);
   });
 });
 

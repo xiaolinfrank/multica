@@ -25,6 +25,7 @@ export const FLOOR_SEATS = {
   canteen: 6,
   gym: 2,
   waiting: 4,
+  pmo: 4,
 } as const;
 
 export function assignPoses(floor: OfficeFloorPlan, phase: number): AgentPose[] {
@@ -82,10 +83,14 @@ export function assignPoses(floor: OfficeFloorPlan, phase: number): AgentPose[] 
     });
   });
 
-  // Reception: captains idle with no meeting stand at the front desk.
-  for (const id of floor.reception) {
-    out.push({ agentId: id, zone: "reception", posture: "standing" });
-  }
+  // Project office: four places at the planning table, the rest stand.
+  floor.pmo.forEach((id, i) => {
+    out.push({
+      agentId: id,
+      zone: "pmo",
+      posture: i < FLOOR_SEATS.pmo ? "sitting" : "standing",
+    });
+  });
 
   return out;
 }

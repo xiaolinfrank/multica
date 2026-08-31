@@ -89,6 +89,7 @@ import type {
   Skill,
   SkillImportResult,
   Squad,
+  SquadMember,
   TimelineEntry,
   User,
   WebhookDelivery,
@@ -2110,6 +2111,24 @@ export const SquadSchema = z.object({
 }).loose();
 
 export const SquadListSchema = z.array(SquadSchema);
+
+// A squad's full roster. `member_preview` on the list response is capped at
+// three entries, which is enough for an avatar stack but not for the office
+// floor, where the project office draws a whole squad.
+// `member_type` + `member_id` identify the row and every consumer needs them;
+// the rest only decorate it, so they default rather than taking the whole
+// roster down with them — one odd row must not empty a squad's room.
+export const SquadMemberSchema = z.object({
+  id: z.string().default(""),
+  squad_id: z.string().default(""),
+  member_type: z.string(),
+  member_id: z.string(),
+  role: z.string().default(""),
+  created_at: z.string().default(""),
+}).loose();
+
+export const SquadMemberListSchema = z.array(SquadMemberSchema);
+export const EMPTY_SQUAD_MEMBER_LIST: SquadMember[] = [];
 export const EMPTY_SQUAD_LIST: Squad[] = [];
 export const EMPTY_SQUAD: Squad = {
   id: "",

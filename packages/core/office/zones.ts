@@ -3,10 +3,10 @@
 // Mapping rules (one zone per non-archived agent, decided in this order):
 //
 //   1. unbound / offline / unstable runtime        → absent (door plaque)
-//   2. workload "working"                          → desk
-//   3. workload "queued"                           → waiting (printer corner)
-//   4. idle + member of a squad with work in flight→ meeting (that squad's room)
-//   5. idle + captain of a squad                   → reception (the front desk)
+//   2. member of the PMO squad                     → pmo (the project office)
+//   3. workload "working"                          → desk
+//   4. workload "queued"                           → waiting (printer corner)
+//   5. idle + member of a squad with work in flight→ meeting (that squad's room)
 //   6. idle otherwise                              → lounge / tea / canteen /
 //      gym, picked by hash(agent.id + phase) so the cast visibly "walks
 //      around" every phase without any server-side state.
@@ -24,8 +24,27 @@ import {
   type MonologueSlot,
   type OfficeFloorPlan,
   type OfficeZoneId,
+  type PmoSquadRef,
   type RelaxZone,
 } from "./types";
+
+/**
+ * Squad names that claim the project office. The squad table carries no type
+ * column and its names are free text (084_squad even dropped the uniqueness
+ * constraint), so the room is claimed by name: rename the squad and the room
+ * changes hands with it, which is the behaviour a name-driven rule should
+ * have. First match in list order wins.
+ */
+export const PMO_SQUAD_PATTERNS: readonly RegExp[] = [
+  /\bPMO\b/i,
+  /项目管理/,
+  /project\s*management/i,
+];
+
+/** Whether a squad's name claims the project office. */
+export function isPmoSquad(name: string): boolean {
+  return PMO_SQUAD_PATTERNS.some((p) => p.test(name));
+}
 
 /** FNV-1a 32-bit. Stable across sessions (unlike Math.random), cheap, and
  * enough entropy for seating a few dozen agents. */
@@ -52,7 +71,7 @@ export interface OfficeSquadInput {
   /** Member agent ids, already intersected with the workspace agent list. */
   memberAgentIds: readonly string[];
   /** The squad's leader agent id; empty or missing when the leader is a
-   * human member, in which case the squad fields no captain at the desk. */
+   * human member, who never appears on the floor. */
   leaderAgentId?: string;
 }
 
@@ -106,8 +125,19 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
   const waiting: string[] = [];
   const relax: Record<RelaxZone, string[]> = { lounge: [], tea: [], canteen: [], gym: [] };
   const absent: AbsentAssignment[] = [];
-  const reception: string[] = [];
+  const pmo: string[] = [];
   const zoneByAgent = new Map<string, OfficeZoneId>();
+
+  // The project office is a squad's own room rather than a duty rota, so its
+  // roster is resolved before anything else: a PMO agent running a task is
+  // still in the PMO, not at a desk in the open-plan bank.
+  const pmoSquad = squads.find((s) => isPmoSquad(s.squadName)) ?? null;
+  const pmoRef: PmoSquadRef | null = pmoSquad
+    ? { name: pmoSquad.squadName, leaderAgentId: pmoSquad.leaderAgentId ?? "" }
+    : null;
+  const pmoIds = new Set<string>(pmoSquad?.memberAgentIds ?? []);
+  // A squad's leader is not always listed among its members.
+  if (pmoSquad?.leaderAgentId) pmoIds.add(pmoSquad.leaderAgentId);
 
   const activeSquads = activeSquadIds(squads, presence);
   // agent.id → first active squad they belong to. First match wins; an agent
@@ -118,14 +148,6 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     for (const id of squad.memberAgentIds) {
       if (!meetingSquadByAgent.has(id)) meetingSquadByAgent.set(id, squad);
     }
-  }
-
-  // Agent ids leading at least one squad. A human leader never matches an
-  // agent id, so human-led squads simply field no captain at the desk.
-  const captainIds = new Set<string>();
-  for (const squad of squads) {
-    const leader = squad.leaderAgentId ?? "";
-    if (leader !== "") captainIds.add(leader);
   }
 
   for (const agent of agents) {
@@ -140,6 +162,9 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     } else if (p.availability === "offline" || p.availability === "unstable") {
       zone = "absent";
       absent.push({ agentId: agent.id, reason: p.availability });
+    } else if (pmoIds.has(agent.id)) {
+      zone = "pmo";
+      pmo.push(agent.id);
     } else if (p.workload === "working") {
       zone = "desk";
       desks.push({
@@ -166,9 +191,6 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
           meetings.push(room);
         }
         room.attendeeAgentIds.push(agent.id);
-      } else if (captainIds.has(agent.id)) {
-        zone = "reception";
-        reception.push(agent.id);
       } else {
         const seat = RELAX_ZONES[(hashString(agent.id) + phase) % RELAX_ZONES.length] ?? "lounge";
         zone = seat;
@@ -195,7 +217,8 @@ export function assignOfficeZones(input: AssignOfficeZonesInput): OfficeFloorPla
     desks,
     meetings,
     waiting,
-    reception,
+    pmo,
+    pmoSquad: pmoRef,
     lounge: relax.lounge,
     tea: relax.tea,
     canteen: relax.canteen,
@@ -212,7 +235,7 @@ export const MONOLOGUE_VARIANTS = {
   queued: 4,
   idle: 4,
   meeting: 4,
-  captain: 4,
+  pmo: 4,
   waiting: 5,
   completed: 4,
   failed: 3,
@@ -248,8 +271,8 @@ export function pickMonologueSlot(
       };
     case "meeting":
       return { kind: "meeting", variant: variant(agentId, phase, "meeting") };
-    case "reception":
-      return { kind: "captain", variant: variant(agentId, phase, "captain") };
+    case "pmo":
+      return { kind: "pmo", variant: variant(agentId, phase, "pmo") };
     case "lounge":
     case "tea":
     case "canteen":

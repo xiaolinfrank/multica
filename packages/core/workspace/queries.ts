@@ -18,6 +18,8 @@ export const workspaceKeys = {
   // `["workspaces", wsId, "squads"]` invalidation covers it.
   squadMemberStatus: (wsId: string, squadId: string) =>
     ["workspaces", wsId, "squads", squadId, "members-status"] as const,
+  squadMembers: (wsId: string, squadId: string) =>
+    ["workspaces", wsId, "squads", squadId, "members"] as const,
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
   env: (wsId: string) => ["workspaces", wsId, "env"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,

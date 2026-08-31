@@ -3,19 +3,20 @@
 // Data composition for the Agent Office page (`/{ws}/office`).
 //
 // The office deliberately rides the same caches every other agent surface
-// uses — presence map + agent list + task snapshot — and adds exactly two
-// fetches of its own: the squad list and the 7-day usage-by-agent rollup
-// (the token leaderboard). WebSocket task events keep presence and the
-// snapshot fresh exactly as they do on the agents list.
+// uses — presence map + agent list + task snapshot — and adds a few fetches
+// of its own: the squad list, the 7-day usage-by-agent rollup (the token
+// leaderboard), and the PMO squad's roster when a workspace has one.
+// WebSocket task events keep presence and the snapshot fresh exactly as they
+// do on the agents list.
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import { agentListOptions, squadListOptions } from "../workspace/queries";
+import { agentListOptions, squadListOptions, workspaceKeys } from "../workspace/queries";
 import { agentTaskSnapshotOptions } from "../agents/queries";
 import { useWorkspacePresenceMap } from "../agents/use-agent-presence";
 import type { AgentPresenceDetail } from "../agents/types";
-import { assignOfficeZones, type OfficeSquadInput } from "./zones";
+import { assignOfficeZones, isPmoSquad, type OfficeSquadInput } from "./zones";
 import { buildChatter, buildOfficeTimeline, type ChatterAgentFacts } from "./timeline";
 import type {
   OfficeChatter,
@@ -23,10 +24,14 @@ import type {
   OfficeTimelineEntry,
   OfficeTokenRow,
 } from "./types";
-import type { Agent, AgentTask, Squad } from "../types";
+import type { Agent, AgentTask, Squad, SquadMember } from "../types";
 
 /** How often idle agents rotate between the lounge / tea corner / canteen. */
 export const OFFICE_PHASE_MS = 30_000;
+
+/** Stable empty default: most workspaces have no PMO squad, and a fresh `[]`
+ * per render would rebuild the whole scene on every render of the page. */
+const NO_SQUAD_MEMBERS: readonly SquadMember[] = [];
 
 /** Timeline rail length — enough to fill the column without scrolling far. */
 const TIMELINE_LIMIT = 12;
@@ -42,15 +47,31 @@ export interface OfficeScene {
   tokenBoard: OfficeTokenRow[];
 }
 
-function squadInputs(squads: readonly Squad[], agentIds: Set<string>): OfficeSquadInput[] {
+function squadInputs(
+  squads: readonly Squad[],
+  agentIds: Set<string>,
+  /** Full roster for the project office's squad; empty for every other squad. */
+  pmoRoster: readonly SquadMember[],
+): OfficeSquadInput[] {
   const out: OfficeSquadInput[] = [];
+  const pmoAgentIds = pmoRoster
+    .filter((m) => m.member_type === "agent" && agentIds.has(m.member_id))
+    .map((m) => m.member_id);
   for (const s of squads) {
     // Archived squads keep their room off the floor plan.
     if (s.archived_at !== null) continue;
-    const members = (s.member_preview ?? [])
-      .filter((m) => m.member_type === "agent" && agentIds.has(m.member_id))
-      .map((m) => m.member_id);
-    if (members.length === 0) continue;
+    // `member_preview` stops at three entries, which is enough for a meeting
+    // room's "and N supporting" line but would leave most of a PMO squad off
+    // its own floor. That one squad is resolved from its real roster.
+    const isPmo = isPmoSquad(s.name);
+    const members = isPmo && pmoAgentIds.length > 0
+      ? pmoAgentIds
+      : (s.member_preview ?? [])
+          .filter((m) => m.member_type === "agent" && agentIds.has(m.member_id))
+          .map((m) => m.member_id);
+    // The project office keeps its room even while its roster is all human:
+    // the squad still names the room, and its agent leader still sits in it.
+    if (members.length === 0 && !isPmo) continue;
     out.push({ squadId: s.id, squadName: s.name, memberAgentIds: members, leaderAgentId: s.leader_id });
   }
   return out;
@@ -144,6 +165,17 @@ export function useOfficeScene(wsId: string | undefined, phase: number): {
     enabled: !!wsId,
   });
   const { data: squads = [] } = useQuery(squadListOptions(wsId ?? ""));
+  // Only the project office's squad needs its full roster — see squadInputs.
+  const pmoSquadId = useMemo(
+    () => squads.find((s) => s.archived_at === null && isPmoSquad(s.name))?.id ?? "",
+    [squads],
+  );
+  const { data: pmoRoster = NO_SQUAD_MEMBERS } = useQuery({
+    queryKey: workspaceKeys.squadMembers(wsId ?? "", pmoSquadId),
+    queryFn: () => api.listSquadMembers(pmoSquadId),
+    enabled: !!wsId && pmoSquadId !== "",
+    staleTime: 60_000,
+  });
   const { data: usage = [] } = useQuery({
     queryKey: ["workspaces", wsId ?? "", "office", "usage-by-agent", "7d"],
     queryFn: () => api.getDashboardUsageByAgent({ days: 7 }),
@@ -158,7 +190,7 @@ export function useOfficeScene(wsId: string | undefined, phase: number): {
     const floor = assignOfficeZones({
       agents: agentList,
       presence: byAgent,
-      squads: squadInputs(squads, agentIds),
+      squads: squadInputs(squads, agentIds, pmoRoster),
       tasksByAgent,
       phase,
     });
@@ -170,7 +202,7 @@ export function useOfficeScene(wsId: string | undefined, phase: number): {
     );
     const tokenBoard = mergeTokenRows(usage, TOKEN_BOARD_LIMIT);
     return { agents: agentList, floor, timeline, chatter, tokenBoard };
-  }, [agents, snapshot, squads, usage, byAgent, phase]);
+  }, [agents, snapshot, squads, pmoRoster, usage, byAgent, phase]);
 
   return {
     scene,

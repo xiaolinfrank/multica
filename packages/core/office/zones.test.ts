@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, AgentTask } from "../types";
 import type { AgentPresenceDetail } from "../agents/types";
-import { assignOfficeZones, MONOLOGUE_VARIANTS, pickMonologueSlot } from "./zones";
+import { assignOfficeZones, isPmoSquad, MONOLOGUE_VARIANTS, pickMonologueSlot } from "./zones";
 import { RELAX_ZONES, type OfficeZoneId } from "./types";
 
 const agent = (id: string, extra: Partial<Agent> = {}): Agent =>
@@ -38,67 +38,94 @@ function allZones(floor: ReturnType<typeof assignOfficeZones>): ReadonlyMap<stri
 }
 
 describe("assignOfficeZones", () => {
-  it("stands an idle squad captain at the reception desk", () => {
+  it("puts the whole PMO squad in the project office, leader included", () => {
     const floor = assignOfficeZones({
-      agents: [agent("cap"), agent("crew")],
+      agents: [agent("lead"), agent("crew"), agent("other")],
       presence: new Map([
-        ["cap", presence("online", "idle")],
+        ["lead", presence("online", "idle")],
         ["crew", presence("online", "idle")],
+        ["other", presence("online", "idle")],
       ]),
-      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "crew"], leaderAgentId: "cap" }],
+      // The leader is deliberately absent from memberAgentIds: the squad list
+      // does not always carry them among the members.
+      squads: [{ squadId: "sq1", squadName: "PMO", memberAgentIds: ["crew"], leaderAgentId: "lead" }],
       tasksByAgent: new Map(),
       phase: 0,
     });
-    expect(floor.reception).toEqual(["cap"]);
-    expect(allZones(floor).get("cap")).toBe("reception");
-    expect(allZones(floor).get("crew")).not.toBe("reception");
+    expect(floor.pmo).toEqual(["lead", "crew"]);
+    expect(floor.pmoSquad).toEqual({ name: "PMO", leaderAgentId: "lead" });
+    expect(allZones(floor).get("other")).not.toBe("pmo");
   });
 
-  it("keeps a working captain at their desk", () => {
+  it("keeps a working PMO agent in the project office rather than at a desk", () => {
     const floor = assignOfficeZones({
-      agents: [agent("cap"), agent("mate")],
+      agents: [agent("crew"), agent("other")],
       presence: new Map([
-        ["cap", presence("online", "working")],
-        ["mate", presence("online", "working")],
+        ["crew", presence("online", "working")],
+        ["other", presence("online", "working")],
       ]),
-      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "mate"], leaderAgentId: "cap" }],
+      squads: [{ squadId: "sq1", squadName: "项目管理办公室", memberAgentIds: ["crew"], leaderAgentId: "" }],
       tasksByAgent: new Map(),
       phase: 0,
     });
-    expect(floor.reception).toEqual([]);
-    expect(allZones(floor).get("cap")).toBe("desk");
+    expect(allZones(floor).get("crew")).toBe("pmo");
+    expect(floor.desks.map((d) => d.agentId)).toEqual(["other"]);
   });
 
-  it("sends an idle captain to their squad meeting before the reception desk", () => {
+  it("still sends an absent PMO agent to the door plaque", () => {
     const floor = assignOfficeZones({
-      agents: [agent("cap"), agent("mate")],
+      agents: [agent("crew")],
+      presence: new Map([["crew", presence("offline", "idle")]]),
+      squads: [{ squadId: "sq1", squadName: "PMO", memberAgentIds: ["crew"] }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.pmo).toEqual([]);
+    expect(allZones(floor).get("crew")).toBe("absent");
+  });
+
+  it("leaves the project office empty when no squad name claims it", () => {
+    const floor = assignOfficeZones({
+      agents: [agent("crew")],
+      presence: new Map([["crew", presence("online", "idle")]]),
+      squads: [{ squadId: "sq1", squadName: "Platform Crew", memberAgentIds: ["crew"], leaderAgentId: "crew" }],
+      tasksByAgent: new Map(),
+      phase: 0,
+    });
+    expect(floor.pmo).toEqual([]);
+    expect(floor.pmoSquad).toBeNull();
+    expect(allZones(floor).get("crew")).not.toBe("pmo");
+  });
+
+  it("claims the project office by name, in list order", () => {
+    expect(isPmoSquad("PMO")).toBe(true);
+    expect(isPmoSquad("pmo 值班组")).toBe(true);
+    expect(isPmoSquad("项目管理办公室")).toBe(true);
+    expect(isPmoSquad("Project Management Office")).toBe(true);
+    // A word that merely contains the letters is not the PMO.
+    expect(isPmoSquad("Compmodel")).toBe(false);
+    expect(isPmoSquad("生物医药情报组")).toBe(false);
+
+    const floor = assignOfficeZones({
+      agents: [agent("a"), agent("b")],
       presence: new Map([
-        ["cap", presence("online", "idle")],
-        ["mate", presence("online", "working")],
+        ["a", presence("online", "idle")],
+        ["b", presence("online", "idle")],
       ]),
-      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["cap", "mate"], leaderAgentId: "cap" }],
+      squads: [
+        { squadId: "s1", squadName: "PMO 一组", memberAgentIds: ["a"] },
+        { squadId: "s2", squadName: "PMO 二组", memberAgentIds: ["b"] },
+      ],
       tasksByAgent: new Map(),
       phase: 0,
     });
-    expect(floor.reception).toEqual([]);
-    expect(allZones(floor).get("cap")).toBe("meeting");
+    expect(floor.pmo).toEqual(["a"]);
+    expect(floor.pmoSquad?.name).toBe("PMO 一组");
   });
 
-  it("fields no reception captain when the squad leader is a human", () => {
-    const floor = assignOfficeZones({
-      agents: [agent("mate")],
-      presence: new Map([["mate", presence("online", "idle")]]),
-      squads: [{ squadId: "sq1", squadName: "Squad", memberAgentIds: ["mate"], leaderAgentId: "human-1" }],
-      tasksByAgent: new Map(),
-      phase: 0,
-    });
-    expect(floor.reception).toEqual([]);
-    expect(allZones(floor).get("mate")).not.toBe("reception");
-  });
-
-  it("picks the captain monologue for the reception desk", () => {
-    const slot = pickMonologueSlot("cap", "reception", new Map(), 0);
-    expect(slot).toEqual({ kind: "captain", variant: expect.any(Number) });
+  it("picks the project-office monologue", () => {
+    const slot = pickMonologueSlot("cap", "pmo", new Map(), 0);
+    expect(slot).toEqual({ kind: "pmo", variant: expect.any(Number) });
   });
 
   it("seats working agents at desks with their task counts", () => {

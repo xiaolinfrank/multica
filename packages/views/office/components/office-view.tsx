@@ -36,7 +36,8 @@ const LEAN_DEG = 9.09;
 export const WALL_H = 190;
 
 /** The interior floor, in world units on the z = 0 plane. The plate carries
- * an east strip beyond the canteen: reception up north and the gym down south.
+ * an east strip beyond the canteen: the project office up north and the gym
+ * down south.
  *
  * The room is deep rather than wide on purpose. A shallow plate gave the scene
  * a 20:11 aspect that no page column ever matches, so a third of the page sat
@@ -96,7 +97,7 @@ const FABRIC = ramp("fabric");
 const UPHOLSTERY = ramp("soft");
 /** Planting, and the greener of the two soft-seating fabrics. */
 const MOSS = ramp("moss");
-/** The single warm accent: mugs, lanyards, the reception stripe. */
+/** The single warm accent: mugs, lanyards, kanban cards. */
 const TERRA = "var(--office-accent)";
 const TERRA_DEEP = "var(--office-accent-deep)";
 const SCREEN_OFF = "var(--office-screen-off)";
@@ -131,7 +132,7 @@ const FIGURE_RIM = "var(--office-figure-rim)";
 export const ZONE_FLOOR: Record<string, string> = {
   desk: "var(--office-zone-desk)",
   meeting: "var(--office-zone-meeting)",
-  reception: "var(--office-zone-reception)",
+  pmo: "var(--office-zone-pmo)",
   tea: "var(--office-zone-tea)",
   lounge: "var(--office-zone-lounge)",
   canteen: "var(--office-zone-canteen)",
@@ -779,27 +780,86 @@ export const TeaCounter = memo(function TeaCounter({ x, y, w, d }: { x: number; 
 });
 
 
-/** The reception counter: a white front desk with a terminal and the
- * sign-in sheet, captains standing behind it. */
-export const ReceptionCounter = memo(function ReceptionCounter({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
+/**
+ * The project office's kanban board: a standing whiteboard on castored legs,
+ * with three columns of cards. It carries no lettering — the board's face is
+ * a vertical plane, and this projection leaves only horizontal surfaces
+ * undistorted, so the squad's name is printed in the zone caption instead of
+ * being squashed to 62% across the board.
+ */
+export const KanbanBoard = memo(function KanbanBoard({
+  x,
+  y,
+  w,
+  h = 58,
+  base = 18,
+}: {
+  /** World x of the board's left edge and the floor line it stands on. */
+  x: number;
+  y: number;
+  w: number;
+  /** Panel height, and how high off the floor its bottom edge sits. */
+  h?: number;
+  base?: number;
+}) {
+  const top = base + h;
+  /** A point on the board's face: `u` along it, `z` above the floor. */
+  const p = (u: number, z: number): [number, number] => [px(x + u, z), py(y, z)];
+  const quad = (u0: number, u1: number, z0: number, z1: number) =>
+    pts(p(u0, z0), p(u1, z0), p(u1, z1), p(u0, z1));
+  // Three columns of cards, thinning left to right: the backlog is always
+  // fuller than the done column, and that gradient is what makes the board
+  // read as a board rather than as decorative confetti.
+  const columns = [3, 2, 1];
+  const colW = (w - 16) / 3;
   return (
-    <Box x={x} y={y} w={w} d={d} h={38} top={SHELL.lit} front={SHELL.face} side={SHELL.deep} radius={2}>
-      {/* The one bit of branding a front desk needs. */}
-      <rect x={x} y={y + d - 7} width={w} height={3} fill={TERRA} opacity={0.75} />
-      {/* Terminal and the visitor sign-in sheet on the desktop. */}
-      <rect x={x + 12} y={y + 7} width={22} height={15} rx={2} fill={METAL.face} />
-      <rect x={x + 14} y={y + 9} width={18} height={8} rx={1} fill={SCREEN_LIVE} opacity={0.6} />
-      <rect x={x + w - 42} y={y + 8} width={28} height={16} rx={2} fill={SHELL.lit} stroke={SHELL.deep} strokeWidth={0.7} />
-      <line x1={x + w - 38} y1={y + 13} x2={x + w - 18} y2={y + 13} stroke={METAL.lit} strokeWidth={1} />
-      <line x1={x + w - 38} y1={y + 17} x2={x + w - 22} y2={y + 17} stroke={METAL.lit} strokeWidth={1} />
-    </Box>
+    <g>
+      <ellipse cx={x + w / 2} cy={y + 2} rx={w * 0.44} ry={5} fill={SHADOW} />
+      {[9, w - 9].map((u) => (
+        <polygon key={u} points={quad(u - 2, u + 2, 0, base + 6)} fill={METAL.dark} />
+      ))}
+      <polygon points={quad(0, w, base, top)} fill={SHELL.lit} stroke={METAL.dark} strokeWidth={1.2} />
+      {/* Marker tray along the bottom rail. */}
+      <polygon points={quad(6, w - 6, base - 3, base + 1)} fill={METAL.face} />
+      {columns.map((count, c) => {
+        const u0 = 8 + c * colW;
+        return (
+          <g key={c}>
+            <polygon points={quad(u0, u0 + colW - 6, top - 8, top - 3)} fill={METAL.lit} opacity={0.8} />
+            {Array.from({ length: count }, (_, r) => (
+              <polygon
+                key={r}
+                points={quad(u0 + 3, u0 + colW - 11, top - 16 - r * 12, top - 24 - r * 12)}
+                fill={[TERRA, BULB, MOSS.lit][(c + r) % 3]}
+                opacity={0.9}
+              />
+            ))}
+          </g>
+        );
+      })}
+    </g>
   );
 });
+
 /** Long meeting table with laptops laid out along it. */
-export const MeetingTable = memo(function MeetingTable({ x, y, w, d }: { x: number; y: number; w: number; d: number }) {
+export const MeetingTable = memo(function MeetingTable({
+  x,
+  y,
+  w,
+  d,
+  seats = 3,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  /** Places per side. The laptops land on the seats, so this has to match the
+   * seat table the floor lays out around the same rectangle. */
+  seats?: number;
+}) {
   return (
     <Box x={x} y={y} w={w} d={d} h={DESK_H} top={OAK.lit} front={OAK.face} side={OAK.dark} radius={4}>
-      {[0.16, 0.5, 0.84].map((t) => (
+      {Array.from({ length: seats }, (_, i) => (i + 0.5) / seats).map((t) => (
         <g key={t}>
           <rect x={x + w * t - 13} y={y + 8} width={26} height={13} rx={1.6} fill={METAL.face} />
           <rect x={x + w * t - 11} y={y + 10} width={22} height={9} rx={1} fill={SCREEN_LIVE} opacity={0.6} />

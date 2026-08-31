@@ -421,7 +421,7 @@
     --office-moss-face: #97ba90;
     --office-moss-dark: #6f9670;
     --office-moss-deep: #4f7154;
-    /* The single warm accent: mugs, lanyards, the reception stripe. */
+    /* The single warm accent: mugs, lanyards, kanban cards. */
     --office-accent: #d8805c;
     --office-accent-deep: #a85a3d;
     /* Colour-agnostic edge treatment: a catch-light along the two edges a
@@ -496,7 +496,7 @@
        hue — the darkest and lightest field are a third of the range apart. */
     --office-zone-desk: #dfe6f0;
     --office-zone-meeting: #ccd8e9;
-    --office-zone-reception: #dcebe3;
+    --office-zone-pmo: #dcebe3;
     --office-zone-tea: #cde8d8;
     --office-zone-lounge: #f0dcbe;
     --office-zone-canteen: #f7e9dd;
@@ -576,7 +576,7 @@
 
     --office-zone-desk: #2b3550;
     --office-zone-meeting: #23304a;
-    --office-zone-reception: #223129;
+    --office-zone-pmo: #223129;
     --office-zone-tea: #1f3a30;
     --office-zone-lounge: #3b352c;
     --office-zone-canteen: #3c342e;

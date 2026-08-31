@@ -64,7 +64,7 @@ import {
   Sofa,
   Stool,
   TaskChair,
-  ReceptionCounter,
+  KanbanBoard,
   TeaCounter,
   Treadmill,
   Walker,
@@ -133,10 +133,10 @@ const ZONES: Record<furn, Rect> = {
   canteen: { x: 622, y: 458, w: 292, d: 304 },
   gym: { x: 952, y: 463, w: 198, d: 352 },
   waiting: { x: 40, y: 706, w: 258, d: 120 },
-  reception: { x: 952, y: 159, w: 198, d: 270 },
+  pmo: { x: 952, y: 159, w: 198, d: 270 },
 };
 
-const ZONE_ORDER = ["desk", "meeting", "reception", "tea", "lounge", "canteen", "gym", "waiting"] as const;
+const ZONE_ORDER = ["desk", "meeting", "pmo", "tea", "lounge", "canteen", "gym", "waiting"] as const;
 
 /**
  * Zones that get a caption printed on their carpet. The meeting room is left
@@ -183,8 +183,15 @@ const CANTEEN_SEATS = CANTEEN_TABLES.flatMap((tb) => [
 ]);
 
 const WAITING_BENCH: Rect = { x: 56, y: 752, w: 226, d: 30 };
-// Reception: the counter captains stand behind, set into the top-right bay.
-const RECEPTION_COUNTER: Rect = { x: 972, y: 361, w: 158, d: 36 };
+// The project office, set into the top-right bay: a kanban board against the
+// north edge and a planning table with two places a side. The whole group
+// hangs off the board's floor line. A sitting sprite reaches about 40 units
+// up the screen and carries a name plus a leader badge above that, so the
+// north row sits 74 south of the board rather than tucked under it; the rest
+// follows the meeting room's spacing of 22 units between a row and the table.
+const PMO_BOARD = { x: 970, y: 214, w: 142 } as const;
+const PMO_TABLE: Rect = { x: 966, y: 310, w: 168, d: 58 };
+const PMO_SEATS = [288, 390].flatMap((y) => [1008, 1092].map((x) => ({ x, y })));
 const WAITING_SEATS = Array.from({ length: 4 }, (_, i) => ({
   x: WAITING_BENCH.x + (i + 0.5) * (WAITING_BENCH.w / 4),
   y: 768,
@@ -201,6 +208,19 @@ const GYM_BENCH: Rect = { x: 986, y: 589, w: 56, d: 17 };
 const GYM_MAT: Rect = { x: 1016, y: 700, w: 46, d: 22 };
 
 
+/**
+ * The squad's name printed beside the room's, unless it only repeats it: a
+ * squad literally called "PMO" captioned inside the PMO reads as a rendering
+ * bug rather than as a label.
+ */
+function squadHint(squadName: string | undefined, zoneName: string): string | null {
+  const squad = (squadName ?? "").trim();
+  if (squad === "") return null;
+  const a = squad.toLowerCase();
+  const b = zoneName.toLowerCase();
+  return a === b || a.includes(b) || b.includes(a) ? null : squad;
+}
+
 const SEATS: Record<furn, Seat[]> = {
   desk: DESKS.map((d) => ({ x: d.x + DESK_W / 2, y: d.y - 22, slot: DESK_W - 12, plate: true })),
   meeting: MEETING_SEATS.map((s) => ({ ...s, slot: 84 })),
@@ -212,7 +232,7 @@ const SEATS: Record<furn, Seat[]> = {
     { x: GYM_BENCH.x + 40, y: GYM_BENCH.y + 12, slot: 34 },
   ],
   waiting: WAITING_SEATS.map((s) => ({ ...s, slot: 52 })),
-  reception: [],
+  pmo: PMO_SEATS.map((s) => ({ ...s, slot: 76 })),
 };
 
 /**
@@ -221,15 +241,16 @@ const SEATS: Record<furn, Seat[]> = {
  * show; past that the floor is so full that the rail reads better anyway.
  */
 function standSpot(zone: furn, n: number): Seat {
-  if (zone === "reception") {
-    // Captains line up behind the counter, one per stretch of it.
+  const z = ZONES[zone];
+  if (zone === "pmo") {
+    // The project office is half the width of the other rooms, so its aisle
+    // takes two abreast rather than four.
     return {
-      x: RECEPTION_COUNTER.x + ((n % 3) + 0.5) * (RECEPTION_COUNTER.w / 3),
-      y: RECEPTION_COUNTER.y - 4,
-      slot: RECEPTION_COUNTER.w / 3 - 12,
+      x: z.x + ((n % 2) + 0.5) * (z.w / 2),
+      y: z.y + z.d - 2,
+      slot: z.w / 2 - 12,
     };
   }
-  const z = ZONES[zone];
   return {
     x: z.x + ((n % 4) + 0.5) * (z.w / 4),
     y: z.y + z.d - 2,
@@ -253,7 +274,7 @@ const BUBBLE_CAP: Record<furn, number> = {
   canteen: 2,
   gym: 2,
   waiting: 1,
-  reception: 2,
+  pmo: 2,
 };
 
 /** Tallest bubble the layout can produce, plus its border. */
@@ -275,8 +296,8 @@ const TAG_GAP = 8;
  * the room where a caption can neither be walked over by the people in the
  * zone nor hidden under the furniture at its north edge — a zone rectangle is
  * sized to contain its occupants' heads, so its own top edge *is* the head
- * band. Reception stops short of the gym for the same reason: the two used to
- * meet with eight units between them.
+ * band. The project office stops short of the gym for the same reason: the
+ * two used to meet with eight units between them.
  */
 const AISLE = TAG_H + 5;
 
@@ -348,7 +369,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       canteen: floor.canteen.length,
       gym: floor.gym.length,
       waiting: floor.waiting.length,
-      reception: floor.reception.length,
+      pmo: floor.pmo.length,
     }),
     [floor],
   );
@@ -385,7 +406,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       canteen: 0,
       gym: 0,
       waiting: 0,
-      reception: 0,
+      pmo: 0,
     };
     const nextStand: Record<furn, number> = { ...nextSeat };
     const seated: Placement[] = [];
@@ -431,6 +452,10 @@ export const OfficeFloor = memo(function OfficeFloor({
     return out;
   }, [placements.seated, phase]);
 
+  // The badge marks the squad's leader, not everyone in their room. A
+  // human-led squad reports an empty id, which no agent can match.
+  const pmoLeaderId = floor.pmoSquad?.leaderAgentId ?? "";
+
   /** Everything the sprite layer needs, resolved once per agent. */
   const sprites = useMemo(() => {
     return placements.seated.map(({ pose, seat, seatIndex }) => {
@@ -442,7 +467,7 @@ export const OfficeFloor = memo(function OfficeFloor({
       // counts the waiting corner under "working" because that answers a
       // different question. See PersonMood.
       const mood: PersonMood =
-        pose.zone === "desk" || pose.zone === "meeting" || pose.zone === "reception"
+        pose.zone === "desk" || pose.zone === "meeting" || pose.zone === "pmo"
           ? "working"
           : pose.zone === "waiting"
             ? "idle"
@@ -454,14 +479,14 @@ export const OfficeFloor = memo(function OfficeFloor({
         standing,
         mood,
         headZ: standing ? HEAD_Z : SIT_HEAD_Z,
-        badge: pose.zone === "reception" ? t("captain.label") : null,
+        badge: pose.zone === "pmo" && pose.agentId === pmoLeaderId ? t("captain.label") : null,
         name,
         label: labelled ? fitText(name, seat.slot, NAME_FONT) : null,
         avatarUrl: avatarOf(agent),
         colors: colorsById.get(pose.agentId) as SpriteColors,
       };
     });
-  }, [placements.seated, agentById, colorsById, t]);
+  }, [placements.seated, agentById, colorsById, pmoLeaderId, t]);
 
   const walkers = useMemo(() => {
     return placements.walking.map((pose) => {
@@ -535,6 +560,15 @@ const memberSprites = useMemo(() => {
     return out;
   }, [sprites, deskRunning]);
 
+  /** Which places at the planning table are taken, so the rest tuck in. */
+  const pmoTaken = useMemo(() => {
+    const out = new Set<number>();
+    for (const s of sprites) {
+      if (s.pose.zone === "pmo" && s.seatIndex >= 0) out.add(s.seatIndex);
+    }
+    return out;
+  }, [sprites]);
+
   /** The floor's live load, shown on the big board beside the leaderboard. */
   const runningLine = useMemo(() => {
     if (floor.desks.length === 0) return null;
@@ -558,12 +592,22 @@ const memberSprites = useMemo(() => {
       // The name is fitted too, not only the hint. Without this a long zone
       // name with a count and no hint produced an unbounded pill, and a name
       // beside a hint pushed the algebra into `w = z.w - 8` regardless.
-      const name = fitText(t(`zones.${zone}.name`), z.w - 34, 10);
+      const zoneName = t(`zones.${zone}.name`);
+      const name = fitText(zoneName, z.w - 34, 10);
       const count = zoneCounts[zone];
       const nameW = estimateTextWidth(name, 10);
       const countW = count > 0 ? estimateTextWidth(String(count), 8.5) + 12 : 0;
+      // The project office belongs to a squad, and the caption is the only
+      // place on the floor that can say which one: its board carries no
+      // lettering, because a vertical face in this projection squashes text.
       const hintRaw =
-        zone === "waiting" ? t("zones.waiting.hint") : count === 0 ? t(`zones.${zone}.empty`) : null;
+        zone === "waiting"
+          ? t("zones.waiting.hint")
+          : zone === "pmo" && count > 0
+            ? squadHint(floor.pmoSquad?.name, zoneName)
+            : count === 0
+              ? t(`zones.${zone}.empty`)
+              : null;
       // A caption may run the width of its own aisle and no further. English
       // zone names and hints run half again as long as the Chinese ones this
       // layout was drawn against, and "Waiting corner · Tasks on the plate,
@@ -581,7 +625,7 @@ const memberSprites = useMemo(() => {
       const x = Math.min(Math.max(z.x + (z.w - w) / 2, FLOOR.x0 + 6), FLOOR.x1 - 6 - w);
       return { zone, name, hint, count, nameW, countW, x, y: z.y - AISLE, w };
     });
-  }, [t, zoneCounts]);
+  }, [t, zoneCounts, floor.pmoSquad]);
 
   const meetingLine = useMemo(() => {
     const squad = floor.meetings[0];
@@ -633,12 +677,15 @@ const memberSprites = useMemo(() => {
 
     // Tea corner.
     add("tea-counter", TEA_COUNTER.y + TEA_COUNTER.d, <TeaCounter {...TEA_COUNTER} />);
-    add(
-      "reception-counter",
-      RECEPTION_COUNTER.y + RECEPTION_COUNTER.d,
-      <ReceptionCounter {...RECEPTION_COUNTER} />,
+    // Project office: the board against the north edge, then the table with a
+    // chair at each place. An unclaimed chair is tucked in, exactly as in the
+    // desk bank, so an empty room reads as tidy rather than as walked out of.
+    add("pmo-board", PMO_BOARD.y, <KanbanBoard {...PMO_BOARD} />);
+    PMO_SEATS.forEach((seat, i) =>
+      add(`chair-pmo-${i}`, pmoTaken.has(i) ? seat.y - 1 : seat.y + 7, <TaskChair x={seat.x} y={seat.y} tucked={!pmoTaken.has(i)} />),
     );
-    add("plant-reception", 252, <Plant x={1140} y={248} scale={0.85} />);
+    add("pmo-table", PMO_TABLE.y + PMO_TABLE.d, <MeetingTable {...PMO_TABLE} seats={2} />);
+    add("plant-pmo", 252, <Plant x={1140} y={248} scale={0.85} />);
     TEA_SEATS.forEach((s, i) => add(`stool-${i}`, s.y - 1, <Stool x={s.x} y={s.y} />));
 
     // Lounge.
@@ -666,7 +713,6 @@ const memberSprites = useMemo(() => {
     GYM_TREADMILLS.forEach((tm, i) => add(`gym-treadmill-${i}`, tm.y + 52, <Treadmill x={tm.x} y={tm.y} />));
     add("gym-bench", GYM_BENCH.y + 11, <WorkoutBench x={GYM_BENCH.x} y={GYM_BENCH.y} />);
     add("gym-mat", GYM_MAT.y + GYM_MAT.d, <YogaMat x={GYM_MAT.x} y={GYM_MAT.y} />);
-    add("plant-gym", 372, <Plant x={1140} y={368} scale={0.75} />);
 
 
     for (const s of sprites) {
@@ -742,8 +788,8 @@ for (const m of memberSprites) {
     const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, headZ, label, badge }) => {
       const zone = pose.zone as furn;
       // A badge pill is the tallest and often the widest ink a sprite draws,
-      // so both budgets have to know about it — otherwise a visitor's bubble
-      // parks on the reception captain's tag.
+      // so both budgets have to know about it — otherwise a colleague's bubble
+      // parks on the PMO leader's tag.
       const clearance = headClearance(headZ, label !== null && label !== "", badge !== null);
       let text = speaking.has(pose.agentId) ? bubbleFor(pose.agentId) : null;
       if (text) {
@@ -821,7 +867,8 @@ const reserved: BlockedRect[] = zoneTags.map((g) => ({
       reserved.push(solidBox({ ...d, w: DESK_W, d: DESK_D }, DESK_H));
     }
     reserved.push(solidBox(TEA_COUNTER, 34));
-    reserved.push(solidBox(RECEPTION_COUNTER, 38));
+    reserved.push(solidBox(PMO_TABLE, DESK_H));
+    reserved.push(solidBox({ ...PMO_BOARD, d: 4 }, 76));
     reserved.push(solidBox(WAITING_BENCH, SEAT_H + 22));
     reserved.push(solidBox(LOUNGE_SOFA, 42));
     // Bubbles are clamped to the room, not to the SVG: the walls are where the

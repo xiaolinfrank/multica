@@ -189,7 +189,7 @@ const bubbleFor = useMemo(() => {
     let relaxing = 0;
     let absent = 0;
     for (const zone of scene.floor.zoneByAgent.values()) {
-      if (zone === "desk" || zone === "waiting" || zone === "meeting" || zone === "reception") working += 1;
+      if (zone === "desk" || zone === "waiting" || zone === "meeting" || zone === "pmo") working += 1;
       else if (zone === "lounge" || zone === "tea" || zone === "canteen" || zone === "gym") relaxing += 1;
       else absent += 1;
     }

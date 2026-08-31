@@ -53,6 +53,9 @@ export function buildDemoScene(phase: number): DemoScene {
     agent("demo-eta", "Eta"),
     agent("demo-theta", "Theta"),
     agent("demo-iota", "Iota"),
+    agent("demo-kappa", "Kappa"),
+    agent("demo-lambda", "Lambda"),
+    agent("demo-mu", "Mu"),
   ];
 
   const presence = new Map<string, AgentPresenceDetail>([
@@ -66,6 +69,9 @@ export function buildDemoScene(phase: number): DemoScene {
     ["demo-eta", { availability: "online", workload: "idle", runningCount: 0, queuedCount: 0, capacity: 2 }],
     ["demo-theta", { availability: "offline", workload: "idle", runningCount: 0, queuedCount: 0, capacity: 2 }],
     ["demo-iota", { availability: "unstable", workload: "idle", runningCount: 0, queuedCount: 0, capacity: 2 }],
+    ["demo-kappa", { availability: "online", workload: "working", runningCount: 1, queuedCount: 0, capacity: 3 }],
+    ["demo-lambda", { availability: "online", workload: "idle", runningCount: 0, queuedCount: 0, capacity: 2 }],
+    ["demo-mu", { availability: "online", workload: "idle", runningCount: 0, queuedCount: 0, capacity: 2 }],
   ]);
 
   const tasks: AgentTask[] = [
@@ -76,6 +82,7 @@ export function buildDemoScene(phase: number): DemoScene {
     task("t5", "demo-beta", "completed", "2026-08-27T04:10:00Z"),
     task("t6", "demo-zeta", "failed", "2026-08-27T03:45:00Z"),
     task("t7", "demo-mika", "completed", "2026-08-26T21:12:00Z"),
+    task("t8", "demo-kappa", "running", "2026-08-27T07:50:00Z"),
   ];
 
   const floor = assignOfficeZones({
@@ -88,12 +95,21 @@ export function buildDemoScene(phase: number): DemoScene {
         memberAgentIds: ["demo-zeta", "demo-eta"],
         leaderAgentId: "demo-eta",
       },
+      // Claims the project office by name — one working, two between tasks,
+      // all three in their own room rather than scattered over the floor.
+      {
+        squadId: "sq-pmo",
+        squadName: "PMO",
+        memberAgentIds: ["demo-kappa", "demo-lambda", "demo-mu"],
+        leaderAgentId: "demo-kappa",
+      },
     ],
     tasksByAgent: new Map([
       ["demo-mika", [tasks[0]!, tasks[1]!, tasks[6]!]],
       ["demo-alpha", [tasks[2]!, tasks[4] as AgentTask]],
       ["demo-zeta", [tasks[5] as AgentTask]],
       ["demo-beta", []],
+      ["demo-kappa", [tasks[7] as AgentTask]],
     ]),
     phase,
   });

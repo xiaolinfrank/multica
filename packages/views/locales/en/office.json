@@ -18,9 +18,9 @@
       "supporting": "{{count}} members supporting from their desks",
       "room": "Squad room"
     },
-    "reception": {
-      "name": "Reception",
-      "empty": "No captain on duty"
+    "pmo": {
+      "name": "PMO",
+      "empty": "No squad has claimed the project office"
     },
     "lounge": {
       "name": "Lounge",
@@ -170,11 +170,11 @@
     "unbound": {
       "0": "No runtime bound yet — taking the day off"
     },
-    "captain": {
-      "0": "Front desk — which agent can I call for you?",
-      "1": "I'm the captain on duty; the squad's work is on track.",
-      "2": "Visitors, please sign in and I will page the agent you need.",
-      "3": "The squad is in a meeting, so I'm holding the fort up here."
+    "pmo": {
+      "0": "Sequencing this week's work — the board is up to date.",
+      "1": "Two things are blocked; I'm chasing the owners.",
+      "2": "Replanning the milestone — the estimate had drifted.",
+      "3": "Standup notes are on the board if anyone needs them."
     }
   },
   "status": {

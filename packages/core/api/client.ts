@@ -332,6 +332,8 @@ import {
   SearchProjectsResponseSchema,
   SquadSchema,
   SquadListSchema,
+  SquadMemberListSchema,
+  EMPTY_SQUAD_MEMBER_LIST,
   SquadMemberStatusListResponseSchema,
   SubscribersListSchema,
   TimelineEntriesSchema,
@@ -4317,7 +4319,10 @@ export class ApiClient {
   }
 
   async listSquadMembers(squadId: string): Promise<SquadMember[]> {
-    return this.fetch(`/api/squads/${squadId}/members`);
+    const raw = await this.fetch<unknown>(`/api/squads/${squadId}/members`);
+    return parseWithFallback(raw, SquadMemberListSchema, EMPTY_SQUAD_MEMBER_LIST, {
+      endpoint: "GET /api/squads/:id/members",
+    }) as SquadMember[];
   }
 
   async addSquadMember(squadId: string, data: { member_type: string; member_id: string; role?: string }): Promise<SquadMember> {

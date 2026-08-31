@@ -40,6 +40,7 @@ vi.mock("@multica/core/api", () => ({
     listRuntimes: vi.fn().mockResolvedValue([]),
     getAgentTaskSnapshot: vi.fn().mockResolvedValue([]),
     listSquads: vi.fn().mockResolvedValue([]),
+    listSquadMembers: vi.fn().mockResolvedValue([]),
     getDashboardUsageByAgent: vi.fn().mockResolvedValue([]),
     listMembers: vi.fn().mockResolvedValue([]),
     updateMe: vi.fn().mockResolvedValue({}),
@@ -85,6 +86,7 @@ beforeEach(() => {
     listRuntimes: ReturnType<typeof vi.fn>;
     getAgentTaskSnapshot: ReturnType<typeof vi.fn>;
     listSquads: ReturnType<typeof vi.fn>;
+    listSquadMembers: ReturnType<typeof vi.fn>;
     getDashboardUsageByAgent: ReturnType<typeof vi.fn>;
     listMembers: ReturnType<typeof vi.fn>;
     updateMe: ReturnType<typeof vi.fn>;
@@ -94,6 +96,7 @@ beforeEach(() => {
   mockedApi.listRuntimes.mockResolvedValue([]);
   mockedApi.getAgentTaskSnapshot.mockResolvedValue([]);
   mockedApi.listSquads.mockResolvedValue([]);
+  mockedApi.listSquadMembers.mockResolvedValue([]);
   mockedApi.getDashboardUsageByAgent.mockResolvedValue([]);
   mockedApi.listMembers.mockResolvedValue([]);
   mockedApi.updateMe.mockResolvedValue({});
@@ -295,23 +298,28 @@ describe("OfficePage", () => {
     expect(screen.queryByPlaceholderText("Type a custom status...")).not.toBeInTheDocument();
   });
 
-  it("counts an idle squad captain staffing the reception as present and working", async () => {
+  it("counts the PMO squad's full roster in the project office as present and working", async () => {
     const mocked = api as unknown as {
       listAgents: ReturnType<typeof vi.fn>;
       listRuntimes: ReturnType<typeof vi.fn>;
       listSquads: ReturnType<typeof vi.fn>;
+      listSquadMembers: ReturnType<typeof vi.fn>;
     };
-    mocked.listAgents.mockResolvedValue([agent("a1", "Captain", "rt-1")]);
+    mocked.listAgents.mockResolvedValue([
+      agent("a1", "Planner", "rt-1"),
+      agent("a2", "Scheduler", "rt-2"),
+    ]);
     mocked.listRuntimes.mockResolvedValue([
       { id: "rt-1", status: "online", last_seen_at: new Date().toISOString() },
+      { id: "rt-2", status: "online", last_seen_at: new Date().toISOString() },
     ]);
-    // Idle leader of a squad with nothing in flight: zones.ts seats them at
-    // the reception desk, and the header stats must count them as on duty.
+    // Idle members of a squad whose name claims the project office: zones.ts
+    // keeps them in their own room, and the header stats count them on duty.
     mocked.listSquads.mockResolvedValue([
       {
         id: "sq-1",
         workspace_id: "ws-1",
-        name: "Review squad",
+        name: "PMO",
         description: "",
         instructions: "",
         avatar_url: null,
@@ -321,8 +329,14 @@ describe("OfficePage", () => {
         updated_at: "2026-01-01T00:00:00Z",
         archived_at: null,
         archived_by: null,
-        member_preview: [{ member_type: "agent", member_id: "a1", role: "lead" }],
+        // Deliberately short of the roster below: `member_preview` stops at
+        // three entries, so the room has to come from listSquadMembers.
+        member_preview: [],
       } satisfies Squad,
+    ]);
+    mocked.listSquadMembers.mockResolvedValue([
+      { member_type: "agent", member_id: "a1", role: "lead" },
+      { member_type: "agent", member_id: "a2", role: "member" },
     ]);
 
     renderPage();
@@ -330,10 +344,12 @@ describe("OfficePage", () => {
     const stat = (label: string) =>
       screen.getByText(label).parentElement?.querySelector("dd")?.textContent;
     await vi.waitFor(() => {
-      expect(stat(enOffice.stats.working)).toBe("1");
+      expect(stat(enOffice.stats.working)).toBe("2");
     });
-    expect(stat(enOffice.stats.present)).toBe("1");
-    // Not absent: standing at the front desk is being on duty.
+    expect(stat(enOffice.stats.present)).toBe("2");
+    // Not absent: being in the project office is being on duty.
     expect(stat(enOffice.stats.absent)).toBe("0");
+    // The roster came from the squad's own endpoint, not `member_preview`.
+    expect(mocked.listSquadMembers).toHaveBeenCalledWith("sq-1");
   });
 });
