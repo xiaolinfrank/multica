@@ -211,6 +211,26 @@
     --fleet-mem: oklch(0.58 0.13 195);
     --fleet-disk: oklch(0.62 0.14 70);
     --fleet-net: oklch(0.58 0.17 345);
+    /* Issue-graph edge identity hues. Edges are 1-2px strokes, not filled
+       areas, so they need more visual weight than the fleet metrics at the
+       same role: each steps darker in light mode (~0.52) than the fleet
+       family (~0.58) to stay legible on white, and the node palette
+       (chart ramp / status semantics) stays a separate colour system — the
+       three relation kinds get distinct hues (blue = sub-issue, amber =
+       dependency, violet = reference), never node colours. */
+    --graph-edge-child: oklch(0.50 0.15 255);
+    --graph-edge-dependency: oklch(0.58 0.14 70);
+    --graph-edge-mention: oklch(0.52 0.17 305);
+    /* Per-project node identity hues. The --chart-* ramp is an intentional
+       monochrome brand gradient and cannot encode "which project"; nodes take
+       the fleet metric family's hue assignments (blue → violet → teal → amber
+       → magenta, same lightness/chroma) so up to five projects stay separable
+       at a glance. No-project nodes stay muted. */
+    --graph-node-1: oklch(0.55 0.16 255);
+    --graph-node-2: oklch(0.55 0.18 305);
+    --graph-node-3: oklch(0.58 0.13 195);
+    --graph-node-4: oklch(0.62 0.14 70);
+    --graph-node-5: oklch(0.58 0.17 345);
     --radius: 0.625rem;
     --sidebar: oklch(0.964435 0.001327 286.375);
     --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -290,6 +310,15 @@
     --fleet-mem: oklch(0.74 0.13 195);
     --fleet-disk: oklch(0.78 0.14 70);
     --fleet-net: oklch(0.72 0.16 345);
+    /* Same hue assignments as light mode, lifted for the dark canvas. */
+    --graph-edge-child: oklch(0.74 0.15 255);
+    --graph-edge-dependency: oklch(0.80 0.14 75);
+    --graph-edge-mention: oklch(0.76 0.15 305);
+    --graph-node-1: oklch(0.72 0.16 255);
+    --graph-node-2: oklch(0.72 0.17 305);
+    --graph-node-3: oklch(0.74 0.13 195);
+    --graph-node-4: oklch(0.78 0.14 70);
+    --graph-node-5: oklch(0.72 0.16 345);
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);

@@ -61,6 +61,7 @@
     "icon_tooltip": "アイコンを変更",
     "pin_tooltip": "サイドバーに固定",
     "unpin_tooltip": "サイドバーの固定を解除",
+    "graph_tooltip": "プロジェクトグラフを開く",
     "sidebar_tooltip": "右サイドバーの開閉",
     "copy_link": "リンクをコピー",
     "delete_action": "プロジェクトを削除",

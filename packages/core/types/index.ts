@@ -200,6 +200,12 @@ export type {
   UpdateProjectResourceRequest,
   ListProjectResourcesResponse,
 } from "./project";
+export type {
+  GraphNode,
+  GraphEdge,
+  GraphEdgeKind,
+  IssueGraphResponse,
+} from "./graph";
 export type { PinnedItem, PinnedItemType, CreatePinRequest, ReorderPinsRequest } from "./pin";
 export type {
   GitHubInstallation,

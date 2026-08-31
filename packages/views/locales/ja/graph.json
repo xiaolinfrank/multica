@@ -1,0 +1,61 @@
+{
+  "page": {
+    "title": "グラフ",
+    "subtitle": "タスク間のつながり：サブタスク、依存、参照"
+  },
+  "toolbar": {
+    "search_placeholder": "タスクを検索…",
+    "filter": "絞り込み",
+    "color_by": "色分け",
+    "color_project": "プロジェクト別",
+    "color_status": "ステータス別",
+    "focus_depth": "フォーカス",
+    "focus_off": "すべて",
+    "focus_1": "1ホップ",
+    "focus_2": "2ホップ",
+    "reset": "リセット",
+    "no_results": "一致するタスクはありません"
+  },
+  "filter": {
+    "edge_kinds": "関係",
+    "edge_group_child": "サブタスク",
+    "edge_group_dependency": "依存",
+    "edge_group_mention": "参照",
+    "statuses": "ステータス",
+    "projects": "プロジェクト",
+    "no_project": "プロジェクトなし"
+  },
+  "legend": {
+    "status_misc": "その他",
+    "more_projects_other": "他{{count}}件のプロジェクト"
+  },
+  "counts": {
+    "nodes_other": "{{count}}件のタスク",
+    "edges_other": "{{count}}件のリンク",
+    "collapsed_other": "{{count}}件折りたたみ"
+  },
+  "card": {
+    "dismiss": "閉じる",
+    "open": "タスクを開く"
+  },
+  "menu": {
+    "open": "タスクを開く",
+    "preview": "プレビュー",
+    "isolate": "関連のみ表示"
+  },
+  "fields": {
+    "status": "ステータス",
+    "priority": "優先度",
+    "assignee": "担当者",
+    "project": "プロジェクト",
+    "updated": "更新日時",
+    "links": "リンク数",
+    "sub_issues_other": "サブタスク{{count}}件",
+    "dependencies_other": "依存{{count}}件",
+    "references_other": "参照{{count}}件"
+  },
+  "empty": {
+    "title": "表示できる関係はまだありません",
+    "body": "タスクとそのサブタスク、依存、参照の関係がグラフとしてここに表示されます。"
+  }
+}

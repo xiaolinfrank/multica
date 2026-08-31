@@ -26,6 +26,7 @@ import enFleet from "./en/fleet.json";
 import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
 import enOffice from "./en/office.json";
+import enGraph from "./en/graph.json";
 import enBilling from "./en/billing.json";
 import enWorkspaces from "./en/workspaces.json";
 import zhHansCommon from "./zh-Hans/common.json";
@@ -55,6 +56,7 @@ import zhHansFleet from "./zh-Hans/fleet.json";
 import zhHansUi from "./zh-Hans/ui.json";
 import zhHansSquads from "./zh-Hans/squads.json";
 import zhHansOffice from "./zh-Hans/office.json";
+import zhHansGraph from "./zh-Hans/graph.json";
 import zhHansBilling from "./zh-Hans/billing.json";
 import zhHansWorkspaces from "./zh-Hans/workspaces.json";
 import koCommon from "./ko/common.json";
@@ -84,6 +86,7 @@ import koFleet from "./ko/fleet.json";
 import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
 import koOffice from "./ko/office.json";
+import koGraph from "./ko/graph.json";
 import koBilling from "./ko/billing.json";
 import koWorkspaces from "./ko/workspaces.json";
 import jaCommon from "./ja/common.json";
@@ -113,6 +116,7 @@ import jaFleet from "./ja/fleet.json";
 import jaUi from "./ja/ui.json";
 import jaSquads from "./ja/squads.json";
 import jaOffice from "./ja/office.json";
+import jaGraph from "./ja/graph.json";
 import jaBilling from "./ja/billing.json";
 import jaWorkspaces from "./ja/workspaces.json";
 
@@ -148,6 +152,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: enUi,
     squads: enSquads,
     office: enOffice,
+    graph: enGraph,
     billing: enBilling,
     workspaces: enWorkspaces,
   },
@@ -179,6 +184,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: zhHansUi,
     squads: zhHansSquads,
     office: zhHansOffice,
+    graph: zhHansGraph,
     billing: zhHansBilling,
     workspaces: zhHansWorkspaces,
   },
@@ -210,6 +216,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: koUi,
     squads: koSquads,
     office: koOffice,
+    graph: koGraph,
     billing: koBilling,
     workspaces: koWorkspaces,
   },
@@ -241,6 +248,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     ui: jaUi,
     squads: jaSquads,
     office: jaOffice,
+    graph: jaGraph,
     billing: jaBilling,
     workspaces: jaWorkspaces,
   },

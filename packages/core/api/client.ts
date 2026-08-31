@@ -12,6 +12,7 @@ import type {
   MoveIssueRequest,
   UpdateIssueRequest,
   GroupedIssuesResponse,
+  IssueGraphResponse,
   ListIssuesResponse,
   SearchAttachmentsResponse,
   SearchIssuesResponse,
@@ -262,6 +263,8 @@ import {
   StartMikaOnboardingResponseSchema,
   ChildIssuesResponseSchema,
   ChildIssueProgressResponseSchema,
+  IssueGraphResponseSchema,
+  EMPTY_ISSUE_GRAPH,
   CommentsListSchema,
   CommentTriggerPreviewSchema,
   IssueTriggerPreviewSchema,
@@ -1297,6 +1300,19 @@ export class ApiClient {
     );
     return parseWithFallback(raw, ChildIssuesResponseSchema, { issues: [] }, {
       endpoint: "GET /api/issues/children",
+    });
+  }
+
+  /** Whole-workspace (or single-project) issue graph snapshot for the graph
+   *  view: nodes are issues, edges are child / dependency / mention relations.
+   *  One request per scope; filtering and layout happen client-side. */
+  async getIssueGraph(params?: { project_id?: string }): Promise<IssueGraphResponse> {
+    const search = new URLSearchParams();
+    if (params?.project_id) search.set("project_id", params.project_id);
+    const qs = search.toString();
+    const raw = await this.fetch<unknown>(`/api/issues/graph${qs ? `?${qs}` : ""}`);
+    return parseWithFallback(raw, IssueGraphResponseSchema, EMPTY_ISSUE_GRAPH, {
+      endpoint: "GET /api/issues/graph",
     });
   }
 

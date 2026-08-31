@@ -28,6 +28,7 @@ describe("paths.workspace() shape", () => {
         "chat",
         "office",
         "squads",
+        "graph",
         "inbox",
         "myIssues",
         "runtimes",

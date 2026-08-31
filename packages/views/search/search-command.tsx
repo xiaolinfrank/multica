@@ -96,6 +96,7 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   autopilots: ["autopilot", "autopilots", "automation", "schedule", "cron", "webhook", "自动化", "定时"],
   agents: ["agents", "bots", "ai", "智能体"],
   office: ["office", "floor", "status", "办公室", "工位", "状态"],
+  graph: ["graph", "graph view", "relations", "图谱", "关系图", "关联"],
   squads: ["squads", "teams", "小队", "团队"],
   usage: ["usage", "analytics", "stats", "metrics", "统计", "分析", "用量"],
   runtimes: ["runtimes", "environments", "machines", "运行时"],
