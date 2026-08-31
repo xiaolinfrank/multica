@@ -65,7 +65,7 @@ interface Palette {
   muted: string;
   border: string;
   accent: string;
-  chart: string[];
+  projects: string[];
   status: Record<string, string>;
   edges: Record<EdgeColorGroup, string>;
 }
@@ -96,6 +96,14 @@ const STATUS_CATEGORY_VARS: Record<string, string> = {
   cancelled: "--muted-foreground",
 };
 
+const PROJECT_COLOR_VARS = [
+  "--graph-node-1",
+  "--graph-node-2",
+  "--graph-node-3",
+  "--graph-node-4",
+  "--graph-node-5",
+];
+
 function readPalette(): Palette {
   const cs = getComputedStyle(document.documentElement);
   const v = (name: string) => cs.getPropertyValue(name).trim() || "gray";
@@ -105,7 +113,7 @@ function readPalette(): Palette {
     muted: v("--muted-foreground"),
     border: v("--border"),
     accent: v("--accent"),
-    chart: ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"].map(v),
+    projects: PROJECT_COLOR_VARS.map(v),
     status: Object.fromEntries(
       Object.entries(STATUS_CATEGORY_VARS).map(([k, name]) => [k, v(name)]),
     ),
@@ -145,7 +153,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
       }
       const idx = projectColorIndex(n.project_id, projectIds);
       if (n.project_id === null) return p.muted;
-      return p.chart[idx % p.chart.length] ?? p.muted;
+      return p.projects[idx % p.projects.length] ?? p.muted;
     },
     [colorBy, projectIds],
   );

@@ -20,12 +20,12 @@ const EDGE_STYLES: Array<{
   { kind: "mention", className: "border-t border-dashed", color: "var(--graph-edge-mention)" },
 ];
 
-const CHART_COLOR_VARS = [
-  "bg-chart-1",
-  "bg-chart-2",
-  "bg-chart-3",
-  "bg-chart-4",
-  "bg-chart-5",
+const PROJECT_COLOR_VARS = [
+  "var(--graph-node-1)",
+  "var(--graph-node-2)",
+  "var(--graph-node-3)",
+  "var(--graph-node-4)",
+  "var(--graph-node-5)",
 ];
 
 export function GraphLegend(props: {
@@ -37,14 +37,14 @@ export function GraphLegend(props: {
 
   const visibleEdges = EDGE_STYLES.filter((e) => props.edgeGroups[e.kind]);
 
-  const colorRows: Array<{ key: string; label: string; dot: string }> =
+  const colorRows: Array<{ key: string; label: string; dot: string; dotStyle?: string }> =
     props.colorBy === "project"
       ? props.projects.slice(0, 5).map((p) => ({
           key: p.id,
           label: p.icon ? `${p.icon} ${p.title}` : p.title,
-          dot:
-            CHART_COLOR_VARS[projectColorIndex(p.id, props.projects.map((x) => x.id)) % 5] ??
-            "bg-muted-foreground",
+          dot: "",
+          dotStyle:
+            PROJECT_COLOR_VARS[projectColorIndex(p.id, props.projects.map((x) => x.id)) % 5],
         }))
       : [
           { key: "in_progress", label: "In Progress", dot: "bg-warning" },
@@ -85,7 +85,11 @@ export function GraphLegend(props: {
       <ul className="flex flex-wrap gap-x-3 gap-y-1 max-w-56">
         {colorRows.map((row) => (
           <li key={row.key} className="flex items-center gap-1.5">
-            <span className={`inline-block size-2.5 rounded-full ${row.dot}`} aria-hidden />
+            <span
+              className={`inline-block size-2.5 rounded-full ${row.dot}`}
+              style={row.dotStyle ? { backgroundColor: row.dotStyle } : undefined}
+              aria-hidden
+            />
             <span className="max-w-32 truncate">{row.label}</span>
           </li>
         ))}
