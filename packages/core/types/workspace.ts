@@ -86,6 +86,12 @@ export interface User {
    * returns a string — NOT NULL DEFAULT '' at the column level.
    */
   custom_status: string;
+  /**
+   * Preset key behind the status ("" = free text). Routes the figure to a
+   * floor zone; the server resolves the 2h expiry, so an expired status
+   * reads back as "" here too.
+   */
+  custom_status_key: string;
   created_at: string;
   updated_at: string;
 }
@@ -101,6 +107,8 @@ export interface MemberWithUser {
   avatar_url: string | null;
   /** User's office presence status; empty string when unset. */
   custom_status?: string;
+  /** Preset key behind the status ("" = free text); empty when unset/expired. */
+  custom_status_key?: string;
 }
 
 export interface Invitation {

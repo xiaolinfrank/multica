@@ -16,13 +16,14 @@ import type { OfficeTranslate } from "./office-i18n";
 
 /** Preset keys under `status.presets` in the office bundle. The localized
  * label is also the stored status text — a preset is just a shortcut for
- * typing it. */
+ * typing it. The key rides along to the server (custom_status_key) and is
+ * what routes the figure to a floor zone; mirrors STATUS_PRESET_ZONES in
+ * core/office and CustomStatusPresetKeys server-side. */
 export const STATUS_PRESET_KEYS = [
   "focus",
   "meeting",
   "gym",
   "coffee",
-  "away",
   "vacation",
 ] as const;
 
@@ -31,8 +32,8 @@ export interface OfficeStatusEditorProps {
   anchor: { x: number; y: number };
   current: string;
   t: OfficeTranslate;
-  /** Fired with the new status text; "" clears. */
-  onSave: (status: string) => void;
+  /** Fired with the new status text and preset key ("" = free text); "" text clears. */
+  onSave: (status: string, key?: string) => void;
   onClose: () => void;
 }
 
@@ -60,8 +61,8 @@ export function OfficeStatusEditor({ anchor, current, t, onSave, onClose }: Offi
     };
   }, [onClose]);
 
-  const save = (status: string) => {
-    onSave(status.trim());
+  const save = (status: string, key = "") => {
+    onSave(status.trim(), status.trim() === "" ? "" : key);
     onClose();
   };
 
@@ -80,7 +81,7 @@ export function OfficeStatusEditor({ anchor, current, t, onSave, onClose }: Offi
             key={key}
             type="button"
             className="truncate rounded-lg border px-2 py-1.5 text-caption transition-colors hover:bg-accent"
-            onClick={() => save(t(`status.presets.${key}`))}
+            onClick={() => save(t(`status.presets.${key}`), key)}
             title={t(`status.presets.${key}`)}
           >
             {t(`status.presets.${key}`)}

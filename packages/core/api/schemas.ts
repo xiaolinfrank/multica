@@ -2455,6 +2455,7 @@ export const UserSchema = z.object({
   profile_description: z.string().default(""),
   timezone: z.string().nullable().default(null),
   custom_status: z.string().default(""),
+  custom_status_key: z.string().default(""),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
@@ -2471,6 +2472,7 @@ export const EMPTY_USER: User = {
   profile_description: "",
   timezone: null,
   custom_status: "",
+  custom_status_key: "",
   created_at: "",
   updated_at: "",
 };
@@ -3607,6 +3609,7 @@ export const MemberWithUserSchema = z.object({
   email: z.string().optional().default(""),
   avatar_url: z.string().nullable().optional().default(null),
   custom_status: z.string().optional().default(""),
+  custom_status_key: z.string().optional().default(""),
 }).loose();
 
 export const JoinShareLinkResponseSchema = z.object({

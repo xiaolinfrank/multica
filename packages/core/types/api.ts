@@ -182,6 +182,13 @@ export interface ListIssuesParams {
    * disjoint result sets by construction.
    */
   involves_user_id?: string;
+  /**
+   * Narrow to issues the given member is subscribed to (any reason —
+   * including subscriptions an agent created on their behalf). The Agent
+   * Office uses this as its "is this human actually working" signal, since
+   * an issue's assignee can be an agent while the human still follows it.
+   */
+  watched_by_user_id?: string;
   /** JSONB containment filter on `issue.metadata`. AND across keys. */
   metadata?: IssueMetadata;
   /** Custom-property filter: definition id → accepted values (option ids or
@@ -557,6 +564,12 @@ export interface UpdateMeRequest {
   timezone?: string;
   /** Office presence status (max 100 chars). "" clears; undefined leaves untouched. */
   custom_status?: string;
+  /**
+   * Preset key behind the status ("focus" | "meeting" | "gym" | "coffee" |
+   * "away" | "vacation"; "" = free text). Only valid alongside custom_status;
+   * the server stamps a 2h expiry on every write.
+   */
+  custom_status_key?: string;
 }
 
 export interface CreateMemberRequest {

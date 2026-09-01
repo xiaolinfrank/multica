@@ -29,16 +29,20 @@ export interface OfficeMemberFigure {
   name: string;
   email: string;
   avatarUrl: string | null;
-  /** Current custom status; empty string when unset. */
+  /** Current custom status; empty string when unset or expired. */
   status: string;
+  /** Preset key behind the status ("" = free text); routes the seat zone. */
+  statusKey: string;
   /** True for the signed-in viewer — only their own bubble is editable. */
   isSelf: boolean;
 }
 
-/** An office member plus the zone and monologue their recent activity puts them in. */
+/** An office member plus the zone and monologue their recent activity puts
+ * them in. monologue is null for absent members (away / vacation presets)
+ * — they are not on the floor and get no bubble. */
 export type SeatedMember = OfficeMemberFigure & {
   zone: MemberSeatZone;
-  monologue: MonologueSlot;
+  monologue: MonologueSlot | null;
 };
 
 /** Filters the workspace member list down to office-eligible users. */
@@ -54,6 +58,7 @@ export function toOfficeMembers(
       email: m.email,
       avatarUrl: m.avatar_url ?? null,
       status: m.custom_status ?? "",
+      statusKey: m.custom_status_key ?? "",
       isSelf: m.user_id === selfUserId,
     }));
 }
@@ -98,6 +103,14 @@ export const HUMAN_SPOTS: Record<string, ReadonlyArray<{ x: number; y: number }>
     { x: 1000, y: 760 },
     { x: 1120, y: 790 },
     { x: 1060, y: 690 },
+  ],
+  // Head and foot of the meeting table (x 600-900, y 224-292), clear of the
+  // six agent chairs at x 660/750/840 on rows y 202/314 — members in a
+  // manual "meeting" status stand at the table ends like late arrivals
+  // claiming the last seats.
+  meeting: [
+    { x: 578, y: 258 },
+    { x: 922, y: 258 },
   ],
 };
 

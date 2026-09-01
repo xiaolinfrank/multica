@@ -93,7 +93,7 @@ export type MonologueSlot =
   | { kind: "failed"; variant: number }
   | { kind: "offline"; variant: number }
   | { kind: "unbound"; variant: number }
-  | { kind: "human"; variant: number; mood: "working" | "waiting" | "idle"; zone?: RelaxZone };
+  | { kind: "human"; variant: number; mood: "working" | "waiting" | "idle" | "meeting"; zone?: RelaxZone };
 
 /** One row of the recent-activity rail, derived from the task snapshot. */
 export interface OfficeTimelineEntry {

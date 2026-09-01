@@ -80,6 +80,10 @@
         "0": "Scheduling has not landed yet",
         "1": "The request is still in review..."
       },
+      "meeting": {
+        "0": "In a meeting, back on the floor soon",
+        "1": "Syncing with the squad right now"
+      },
       "idle": {
         "lounge": {
           "0": "Five-minute breather",
@@ -188,7 +192,6 @@
       "meeting": "🗣 In a meeting",
       "gym": "🏋️ At the gym",
       "coffee": "☕ Coffee break",
-      "away": "🚪 Away",
       "vacation": "🏖 On vacation"
     }
   },

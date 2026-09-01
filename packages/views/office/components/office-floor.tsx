@@ -512,7 +512,10 @@ export const OfficeFloor = memo(function OfficeFloor({
  */
 const memberSprites = useMemo(() => {
   const perZone = new Map<MemberSeatZone, number>();
-  return users.map((user) => {
+  // An absent member (away / vacation preset) is off the floor entirely —
+  // no figure, no pill. They keep their seat in the members list and come
+  // back the moment the 2h status lapses.
+  return users.filter((user) => user.zone !== "absent").map((user) => {
     const i = perZone.get(user.zone) ?? 0;
     perZone.set(user.zone, i + 1);
     const spot = humanSpot(user.zone, i);
@@ -784,7 +787,10 @@ for (const m of memberSprites) {
     // lines, so two neighbours in the same mood land on the same one often
     // enough to notice. One of them stays quiet rather than echoing their
     // colleague word for word.
-    const said = new Map<furn, Set<string>>();
+    // Keyed loosely (agent zone ids and member seat zones share values like
+    // "meeting") — it only exists to stop two figures in one room repeating
+    // the same line.
+    const said = new Map<string, Set<string>>();
     const anchors: SpriteAnchor[] = sprites.map(({ pose, seat, headZ, label, badge }) => {
       const zone = pose.zone as furn;
       // A badge pill is the tallest and often the widest ink a sprite draws,

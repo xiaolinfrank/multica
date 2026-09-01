@@ -66,8 +66,11 @@ type UserResponse struct {
 	// Free-form presence status shown above the user's figure in the Agent
 	// Office. Empty string = none set. Global to the user, not per workspace.
 	CustomStatus string `json:"custom_status"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	// Preset key behind the status ("" = free text). Drives the office floor
+	// zone the figure is seated in; also empty once the status has expired.
+	CustomStatusKey string `json:"custom_status_key"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // MaxProfileDescriptionLen caps the user-supplied profile_description body.
@@ -81,6 +84,33 @@ const MaxProfileDescriptionLen = 2000
 // truncated.
 const MaxCustomStatusLen = 100
 
+// CustomStatusTTL is how long a manually set office status stays in force.
+// After it lapses the status reads back as empty everywhere (read-side
+// resolution), so the figure falls back to issue-driven seating without any
+// client-side expiry logic.
+const CustomStatusTTL = 2 * time.Hour
+
+// CustomStatusPresetKeys mirrors STATUS_PRESET_KEYS in the office status
+// editor. Only these route the figure to a floor zone; any other non-empty
+// key is a client bug and is rejected rather than silently free-texted.
+var CustomStatusPresetKeys = map[string]struct{}{
+	"focus":    {},
+	"meeting":  {},
+	"gym":      {},
+	"coffee":   {},
+	"vacation": {},
+}
+
+// resolveCustomStatus applies the status TTL: once expires_at has lapsed the
+// status reads back as if never set — text and key both — so an expired
+// status neither renders a pill nor routes the figure to a manual zone.
+func resolveCustomStatus(status, key string, expiresAt pgtype.Timestamptz) (string, string) {
+	if expiresAt.Valid && expiresAt.Time.Before(time.Now()) {
+		return "", ""
+	}
+	return status, key
+}
+
 func (h *Handler) userToResponse(u db.User) UserResponse {
 	// JSONB column is []byte with DEFAULT '{}', so it's never nil at the DB
 	// level. Defensive coalesce just in case a future ALTER makes the column
@@ -89,6 +119,10 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 	if len(q) == 0 {
 		q = []byte("{}")
 	}
+	// An expired status reads back as if never set — one resolution point,
+	// so every client (web/desktop/mobile) sees the same effective value
+	// without trusting their own clocks.
+	status, statusKey := resolveCustomStatus(u.CustomStatus, u.CustomStatusKey, u.CustomStatusExpiresAt)
 	return UserResponse{
 		ID:                      uuidToString(u.ID),
 		Name:                    u.Name,
@@ -100,7 +134,8 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 		OnboardingQuestionnaire: json.RawMessage(q),
 		StarterContentState:     textToPtr(u.StarterContentState),
 		ProfileDescription:      u.ProfileDescription,
-		CustomStatus:            u.CustomStatus,
+		CustomStatus:            status,
+		CustomStatusKey:         statusKey,
 		CreatedAt:               timestampToString(u.CreatedAt),
 		UpdatedAt:               timestampToString(u.UpdatedAt),
 	}
@@ -549,6 +584,10 @@ type UpdateMeRequest struct {
 	Timezone *string `json:"timezone"`
 	// Office presence status; "" clears; nil leaves untouched.
 	CustomStatus *string `json:"custom_status"`
+	// Preset key behind the status ("" = free text); nil leaves untouched.
+	// Clients send it together with custom_status; a key without a status is
+	// rejected rather than half-applied.
+	CustomStatusKey *string `json:"custom_status_key"`
 }
 
 type GoogleLoginRequest struct {
@@ -847,7 +886,25 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("custom_status exceeds %d characters", MaxCustomStatusLen))
 			return
 		}
+		key := ""
+		if req.CustomStatusKey != nil {
+			key = strings.TrimSpace(*req.CustomStatusKey)
+		}
+		// "" is free text; anything else must be a known preset.
+		if _, ok := CustomStatusPresetKeys[key]; key != "" && !ok {
+			writeError(w, http.StatusBadRequest, "invalid custom_status_key")
+			return
+		}
 		params.CustomStatus = pgtype.Text{String: status, Valid: true}
+		params.CustomStatusKey = pgtype.Text{String: key, Valid: true}
+		// The 2h expiry is stamped by the UpdateUser CASE (mirrors the
+		// timezone sentinel shape): set → now + CustomStatusTTL, cleared →
+		// NULL, omitted → untouched.
+	} else if req.CustomStatusKey != nil {
+		// A key without a status would leave a zone binding with no pill to
+		// explain it — reject instead of half-applying.
+		writeError(w, http.StatusBadRequest, "custom_status_key requires custom_status")
+		return
 	}
 
 	updatedUser, err := h.Queries.UpdateUser(r.Context(), params)

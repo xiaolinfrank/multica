@@ -292,10 +292,46 @@ describe("OfficePage", () => {
     fireEvent.click(screen.getByText("Save"));
 
     await vi.waitFor(() => {
-      expect(mockedApi.updateMe).toHaveBeenCalledWith({ custom_status: "reviewing PRs" });
+      expect(mockedApi.updateMe).toHaveBeenCalledWith({ custom_status: "reviewing PRs", custom_status_key: "" });
     });
     // The editor closes after saving.
     expect(screen.queryByPlaceholderText("Type a custom status...")).not.toBeInTheDocument();
+  });
+
+  // Wiring only: preset buttons must send the KEY (which routes the floor
+  // zone server-side), not just the localized label. The key→zone matrix
+  // itself is pinned in packages/core/office/humans.test.ts.
+  it("saves a preset status with its key so the floor zone follows it", async () => {
+    const mockedApi = api as unknown as {
+      listMembers: ReturnType<typeof vi.fn>;
+      updateMe: ReturnType<typeof vi.fn>;
+    };
+    mockedApi.listMembers.mockResolvedValue([
+      {
+        id: "mem-1",
+        workspace_id: "ws-1",
+        user_id: "user-self",
+        role: "member",
+        created_at: "2026-01-01T00:00:00Z",
+        name: "Self",
+        email: "self@fosunpharma.com",
+        avatar_url: null,
+        custom_status: "",
+        custom_status_key: "",
+      },
+    ] satisfies MemberWithUser[]);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByText("Set status"));
+    fireEvent.click(await screen.findByText("🗣 In a meeting"));
+
+    await vi.waitFor(() => {
+      expect(mockedApi.updateMe).toHaveBeenCalledWith({
+        custom_status: "🗣 In a meeting",
+        custom_status_key: "meeting",
+      });
+    });
   });
 
   it("counts the PMO squad's full roster in the project office as present and working", async () => {

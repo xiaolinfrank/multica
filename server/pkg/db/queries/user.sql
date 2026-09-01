@@ -42,6 +42,17 @@ UPDATE "user" SET
         ELSE sqlc.narg('timezone')::text
     END,
     custom_status = COALESCE(sqlc.narg('custom_status'), custom_status),
+    -- Office status binding: the preset key routes the user's figure to a
+    -- floor zone. The expiry joins the same sentinel shape as `timezone`:
+    -- NULL status → leave both untouched, '' → clear the binding entirely,
+    -- non-empty → stamp now + 2h (CustomStatusTTL server-side). An unrelated
+    -- profile patch can therefore never resurrect or extend a status.
+    custom_status_key = COALESCE(sqlc.narg('custom_status_key'), custom_status_key),
+    custom_status_expires_at = CASE
+        WHEN sqlc.narg('custom_status')::text IS NULL THEN custom_status_expires_at
+        WHEN sqlc.narg('custom_status')::text = ''    THEN NULL
+        ELSE now() + interval '2 hours'
+    END,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

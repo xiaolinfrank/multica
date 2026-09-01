@@ -128,12 +128,19 @@ export function buildDemoScene(phase: number): DemoScene {
     phase,
   );
 
-  // Demo member activity: one mid-task, one freshly done, one with queued
-// work — enough to seat all three humans in different areas of the floor.
+  // Demo member activity: one subscribed to running work, one freshly done,
+  // one with queued assignments — enough to seat all three humans in
+  // different areas of the floor. Dr. Lin carries a manual gym preset so
+  // the status→zone routing is exercisable offline.
 const memberActivity = [
-  { userId: "demo-user-0", inProgress: 1, open: 0, recentlyDone: 0 },
-  { userId: "demo-user-1", inProgress: 0, open: 0, recentlyDone: 2 },
-  { userId: "demo-user-2", inProgress: 0, open: 2, recentlyDone: 0 },
+  { userId: "demo-user-0", open: 0, recentlyDone: 0 },
+  { userId: "demo-user-1", open: 0, recentlyDone: 2 },
+  { userId: "demo-user-2", open: 2, recentlyDone: 0 },
+];
+const memberSubscriptions = [
+  { inProgress: 1, lingering: 0 },
+  { inProgress: 0, lingering: 0 },
+  { inProgress: 0, lingering: 0 },
 ];
 const baseUsers = [
   {
@@ -142,6 +149,7 @@ const baseUsers = [
     email: "you@fosunpharma.com",
     avatarUrl: null,
     status: "🎧 focusing",
+    statusKey: "",
     isSelf: true,
   },
   {
@@ -150,6 +158,7 @@ const baseUsers = [
     email: "lin@fosunpharma.com",
     avatarUrl: null,
     status: "🏋️ at the gym",
+    statusKey: "gym",
     isSelf: false,
   },
   {
@@ -158,6 +167,7 @@ const baseUsers = [
     email: "wang@fosunpharma.com",
     avatarUrl: null,
     status: "",
+    statusKey: "",
     isSelf: false,
   },
 ];
@@ -184,8 +194,9 @@ const scene: OfficeScene = {
 users: baseUsers.map((u, i) => ({
         ...u,
         ...assignMemberSeat(
-          memberActivity[i] ?? { userId: u.userId, inProgress: 0, open: 0, recentlyDone: 0 },
+          memberActivity[i] ?? { userId: u.userId, open: 0, recentlyDone: 0 },
           phase,
+          { subscriptions: memberSubscriptions[i] ?? { inProgress: 0, lingering: 0 }, statusKey: u.statusKey },
         ),
       })),
   };

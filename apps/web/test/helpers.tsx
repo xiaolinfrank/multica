@@ -17,6 +17,7 @@ export const mockUser: User = {
   language: null,
   timezone: null,
   custom_status: "",
+  custom_status_key: "",
   profile_description: "",
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",

@@ -957,6 +957,7 @@ export class ApiClient {
     // (nothing running), while an absent param means no restriction.
     if (params?.ids) search.set("ids", params.ids.join(","));
     if (params?.involves_user_id) search.set("involves_user_id", params.involves_user_id);
+    if (params?.watched_by_user_id) search.set("watched_by_user_id", params.watched_by_user_id);
     if (params?.metadata && Object.keys(params.metadata).length > 0) {
       search.set("metadata", JSON.stringify(params.metadata));
     }

@@ -523,6 +523,9 @@ type MemberWithUserResponse struct {
 	AvatarURL   *string `json:"avatar_url"`
 	// User's office presence status (see UpdateMe); empty when unset.
 	CustomStatus string `json:"custom_status"`
+	// Preset key behind the status ("" = free text); routes the office
+	// floor zone. Also empty once the status has expired.
+	CustomStatusKey string `json:"custom_status_key"`
 }
 
 func (h *Handler) ListMembersWithUser(w http.ResponseWriter, r *http.Request) {
@@ -540,16 +543,19 @@ func (h *Handler) ListMembersWithUser(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]MemberWithUserResponse, len(members))
 	for i, m := range members {
+		status, statusKey := resolveCustomStatus(
+			m.UserCustomStatus, m.UserCustomStatusKey, m.UserCustomStatusExpiresAt)
 		resp[i] = MemberWithUserResponse{
-			ID:           uuidToString(m.ID),
-			WorkspaceID:  uuidToString(m.WorkspaceID),
-			UserID:       uuidToString(m.UserID),
-			Role:         m.Role,
-			CreatedAt:    timestampToString(m.CreatedAt),
-			Name:         m.UserName,
-			Email:        m.UserEmail,
-			AvatarURL:    h.resolveAvatarURLPtr(textToPtr(m.UserAvatarUrl)),
-			CustomStatus: m.UserCustomStatus,
+			ID:              uuidToString(m.ID),
+			WorkspaceID:     uuidToString(m.WorkspaceID),
+			UserID:          uuidToString(m.UserID),
+			Role:            m.Role,
+			CreatedAt:       timestampToString(m.CreatedAt),
+			Name:            m.UserName,
+			Email:           m.UserEmail,
+			AvatarURL:       h.resolveAvatarURLPtr(textToPtr(m.UserAvatarUrl)),
+			CustomStatus:    status,
+			CustomStatusKey: statusKey,
 		}
 	}
 
@@ -562,16 +568,18 @@ type CreateMemberRequest struct {
 }
 
 func (h *Handler) memberWithUserResponse(member db.Member, user db.User) MemberWithUserResponse {
+	status, statusKey := resolveCustomStatus(user.CustomStatus, user.CustomStatusKey, user.CustomStatusExpiresAt)
 	return MemberWithUserResponse{
-		ID:           uuidToString(member.ID),
-		WorkspaceID:  uuidToString(member.WorkspaceID),
-		UserID:       uuidToString(member.UserID),
-		Role:         member.Role,
-		CreatedAt:    timestampToString(member.CreatedAt),
-		Name:         user.Name,
-		Email:        user.Email,
-		AvatarURL:    h.resolveAvatarURLPtr(textToPtr(user.AvatarUrl)),
-		CustomStatus: user.CustomStatus,
+		ID:              uuidToString(member.ID),
+		WorkspaceID:     uuidToString(member.WorkspaceID),
+		UserID:          uuidToString(member.UserID),
+		Role:            member.Role,
+		CreatedAt:       timestampToString(member.CreatedAt),
+		Name:            user.Name,
+		Email:           user.Email,
+		AvatarURL:       h.resolveAvatarURLPtr(textToPtr(user.AvatarUrl)),
+		CustomStatus:    status,
+		CustomStatusKey: statusKey,
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO "user" (name, email, avatar_url)
 VALUES ($1, $2, $3)
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 type CreateUserParams struct {
@@ -42,12 +42,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status FROM "user"
+SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at FROM "user"
 WHERE id = $1
 `
 
@@ -70,12 +72,14 @@ func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (User, error) {
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status FROM "user"
+SELECT id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at FROM "user"
 WHERE email = $1
 `
 
@@ -98,6 +102,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
@@ -148,7 +154,7 @@ UPDATE "user" SET
     cloud_waitlist_reason = $3,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 type JoinCloudWaitlistParams struct {
@@ -179,6 +185,8 @@ func (q *Queries) JoinCloudWaitlist(ctx context.Context, arg JoinCloudWaitlistPa
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
@@ -188,7 +196,7 @@ UPDATE "user" SET
     onboarded_at = COALESCE(onboarded_at, now()),
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 func (q *Queries) MarkUserOnboarded(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -210,6 +218,8 @@ func (q *Queries) MarkUserOnboarded(ctx context.Context, id pgtype.UUID) (User, 
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
@@ -219,7 +229,7 @@ UPDATE "user" SET
     onboarding_questionnaire = COALESCE($1, onboarding_questionnaire),
     updated_at = now()
 WHERE id = $2
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 type PatchUserOnboardingParams struct {
@@ -250,6 +260,8 @@ func (q *Queries) PatchUserOnboarding(ctx context.Context, arg PatchUserOnboardi
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
@@ -259,7 +271,7 @@ UPDATE "user" SET
     starter_content_state = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 type SetStarterContentStateParams struct {
@@ -291,6 +303,8 @@ func (q *Queries) SetStarterContentState(ctx context.Context, arg SetStarterCont
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }
@@ -307,9 +321,20 @@ UPDATE "user" SET
         ELSE $6::text
     END,
     custom_status = COALESCE($7, custom_status),
+    -- Office status binding: the preset key routes the user's figure to a
+    -- floor zone. The expiry joins the same sentinel shape as ` + "`" + `timezone` + "`" + `:
+    -- NULL status → leave both untouched, '' → clear the binding entirely,
+    -- non-empty → stamp now + 2h (CustomStatusTTL server-side). An unrelated
+    -- profile patch can therefore never resurrect or extend a status.
+    custom_status_key = COALESCE($8, custom_status_key),
+    custom_status_expires_at = CASE
+        WHEN $7::text IS NULL THEN custom_status_expires_at
+        WHEN $7::text = ''    THEN NULL
+        ELSE now() + interval '2 hours'
+    END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status
+RETURNING id, name, email, avatar_url, created_at, updated_at, onboarded_at, onboarding_questionnaire, cloud_waitlist_email, cloud_waitlist_reason, starter_content_state, language, profile_description, timezone, custom_status, custom_status_key, custom_status_expires_at
 `
 
 type UpdateUserParams struct {
@@ -320,6 +345,7 @@ type UpdateUserParams struct {
 	ProfileDescription pgtype.Text `json:"profile_description"`
 	Timezone           pgtype.Text `json:"timezone"`
 	CustomStatus       pgtype.Text `json:"custom_status"`
+	CustomStatusKey    pgtype.Text `json:"custom_status_key"`
 }
 
 // Patches the user-controlled profile fields. Each parameter follows
@@ -343,6 +369,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		arg.ProfileDescription,
 		arg.Timezone,
 		arg.CustomStatus,
+		arg.CustomStatusKey,
 	)
 	var i User
 	err := row.Scan(
@@ -361,6 +388,8 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.ProfileDescription,
 		&i.Timezone,
 		&i.CustomStatus,
+		&i.CustomStatusKey,
+		&i.CustomStatusExpiresAt,
 	)
 	return i, err
 }

@@ -121,7 +121,9 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID pgtype.UUID) ([]M
 const listMembersWithUser = `-- name: ListMembersWithUser :many
 SELECT m.id, m.workspace_id, m.user_id, m.role, m.created_at,
        u.name as user_name, u.email as user_email, u.avatar_url as user_avatar_url,
-       u.custom_status as user_custom_status
+       u.custom_status as user_custom_status,
+       u.custom_status_key as user_custom_status_key,
+       u.custom_status_expires_at as user_custom_status_expires_at
 FROM member m
 JOIN "user" u ON u.id = m.user_id
 WHERE m.workspace_id = $1
@@ -129,15 +131,17 @@ ORDER BY m.created_at ASC
 `
 
 type ListMembersWithUserRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
-	UserID           pgtype.UUID        `json:"user_id"`
-	Role             string             `json:"role"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UserName         string             `json:"user_name"`
-	UserEmail        string             `json:"user_email"`
-	UserAvatarUrl    pgtype.Text        `json:"user_avatar_url"`
-	UserCustomStatus string             `json:"user_custom_status"`
+	ID                        pgtype.UUID        `json:"id"`
+	WorkspaceID               pgtype.UUID        `json:"workspace_id"`
+	UserID                    pgtype.UUID        `json:"user_id"`
+	Role                      string             `json:"role"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UserName                  string             `json:"user_name"`
+	UserEmail                 string             `json:"user_email"`
+	UserAvatarUrl             pgtype.Text        `json:"user_avatar_url"`
+	UserCustomStatus          string             `json:"user_custom_status"`
+	UserCustomStatusKey       string             `json:"user_custom_status_key"`
+	UserCustomStatusExpiresAt pgtype.Timestamptz `json:"user_custom_status_expires_at"`
 }
 
 func (q *Queries) ListMembersWithUser(ctx context.Context, workspaceID pgtype.UUID) ([]ListMembersWithUserRow, error) {
@@ -159,6 +163,8 @@ func (q *Queries) ListMembersWithUser(ctx context.Context, workspaceID pgtype.UU
 			&i.UserEmail,
 			&i.UserAvatarUrl,
 			&i.UserCustomStatus,
+			&i.UserCustomStatusKey,
+			&i.UserCustomStatusExpiresAt,
 		); err != nil {
 			return nil, err
 		}

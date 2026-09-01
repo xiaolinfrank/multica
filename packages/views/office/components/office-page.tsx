@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useAuthStore } from "@multica/core/auth";
@@ -15,6 +15,7 @@ import {
   monologueMessage,
   OFFICE_PHASE_MS,
   pickMonologueSlot,
+  subscriptionActivity,
   useOfficeScene,
 } from "@multica/core/office";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
@@ -98,19 +99,49 @@ const { data: memberIssues = [] } = useQuery({
   enabled: !!wsId && !isDemo,
   refetchInterval: 60_000,
 });
+// Subscribed-issue window per member — the "actually working" signal. The
+// assignee on an issue is often an agent while the human still works
+// alongside it, so participation comes from subscriptions, not assignment.
+// updated_at-desc keeps both ends of the signal in one page: fresh
+// in_progress rows and rows that just left in_progress (the 30-minute
+// linger at the desk).
+const subscriptionQueries = useQueries({
+  queries: liveUsers.map((u) => ({
+    queryKey: ["workspaces", wsId ?? "", "office", "member-subs", u.userId],
+    queryFn: () =>
+      api
+        .listIssues({
+          workspace_id: wsId ?? "",
+          watched_by_user_id: u.userId,
+          sort_by: "updated_at",
+          sort_direction: "desc",
+          limit: 50,
+        })
+        .then((r) => r.issues),
+    enabled: !!wsId && !isDemo,
+    refetchInterval: 60_000,
+  })),
+});
 const seatedLive = useMemo(() => {
   const activity = memberActivityFromIssues(
     liveUsers.map((u) => u.userId),
     memberIssues,
   );
-  return liveUsers.map((u) => ({
+  // The phase tick doubles as the linger clock: it recomputes every 30s,
+  // precise enough for a 30-minute window and deterministic within a phase.
+  const now = phase * OFFICE_PHASE_MS;
+  return liveUsers.map((u, i) => ({
     ...u,
     ...assignMemberSeat(
-      activity.get(u.userId) ?? { userId: u.userId, inProgress: 0, open: 0, recentlyDone: 0 },
+      activity.get(u.userId) ?? { userId: u.userId, open: 0, recentlyDone: 0 },
       phase,
+      {
+        subscriptions: subscriptionActivity(subscriptionQueries[i]?.data ?? [], now),
+        statusKey: u.statusKey,
+      },
     ),
   }));
-}, [liveUsers, memberIssues, phase]);
+}, [liveUsers, memberIssues, phase, subscriptionQueries]);
   // Demo keeps its own local status so the editor is exercisable offline.
   const [demoStatus, setDemoStatus] = useState<string | null>(null);
   const users = useMemo(
@@ -123,34 +154,39 @@ const seatedLive = useMemo(() => {
 
   const queryClient = useQueryClient();
   const statusMutation = useMutation({
-    mutationFn: (status: string) => api.updateMe({ custom_status: status }),
+    mutationFn: (input: { status: string; key: string }) =>
+      api.updateMe({ custom_status: input.status, custom_status_key: input.key }),
     // The members list is a determinate cache and the viewer stays on this
     // screen — patch own row optimistically, roll back on failure.
-    onMutate: async (status) => {
+    onMutate: async (input) => {
       if (!wsId) return;
       await queryClient.cancelQueries({ queryKey: workspaceKeys.members(wsId) });
       const prev = queryClient.getQueryData<MemberWithUser[]>(workspaceKeys.members(wsId));
       if (prev) {
         queryClient.setQueryData(
           workspaceKeys.members(wsId),
-          prev.map((m) => (m.user_id === selfId ? { ...m, custom_status: status } : m)),
+          prev.map((m) =>
+            m.user_id === selfId
+              ? { ...m, custom_status: input.status, custom_status_key: input.key }
+              : m,
+          ),
         );
       }
       return { prev };
     },
-    onError: (_error, _status, ctx) => {
+    onError: (_error, _input, ctx) => {
       if (wsId && ctx?.prev) {
         queryClient.setQueryData(workspaceKeys.members(wsId), ctx.prev);
       }
     },
   });
   const onUserStatusSave = useCallback(
-    (status: string) => {
+    (status: string, key = "") => {
       if (isDemo) {
         setDemoStatus(status);
         return;
       }
-      statusMutation.mutate(status);
+      statusMutation.mutate({ status, key });
     },
     [isDemo, statusMutation],
   );

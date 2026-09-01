@@ -1510,4 +1510,21 @@ describe("custom_status presence fields", () => {
     const members = await client.listMembers("w1");
     expect(members).toEqual([]);
   });
+
+  it("carries custom_status_key and defaults it when an older server omits it", async () => {
+    stubFetchJson([
+      { id: "m1", workspace_id: "w1", user_id: "u1", role: "member", name: "Ada", email: "ada@x.test", custom_status_key: "meeting" },
+      { id: "m2", workspace_id: "w1", user_id: "u2", role: "member", name: "Bo", email: "bo@x.test" },
+    ]);
+    const client = new ApiClient("https://api.example.test");
+    const members = await client.listMembers("w1");
+    expect(members.map((m) => m.custom_status_key)).toEqual(["meeting", ""]);
+  });
+
+  it("defaults the user's custom_status_key when the server omits it", async () => {
+    stubFetchJson({ id: "u1", name: "Ada", email: "ada@x.test", custom_status: "🎧" });
+    const client = new ApiClient("https://api.example.test");
+    const me = await client.getMe();
+    expect(me.custom_status_key).toBe("");
+  });
 });

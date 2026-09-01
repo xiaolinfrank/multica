@@ -1101,6 +1101,19 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 		involvesUserFilter = id
 	}
 
+	// watched_by_user_id narrows the list to issues the given member is
+	// subscribed to (any subscription reason, agent-created work included).
+	// The Agent Office uses it as the "is this human actually working" signal:
+	// an issue's assignee may be an agent while the human follows it here.
+	var watchedByUserFilter pgtype.UUID
+	if u := r.URL.Query().Get("watched_by_user_id"); u != "" {
+		id, ok := parseUUIDOrBadRequest(w, u, "watched_by_user_id")
+		if !ok {
+			return
+		}
+		watchedByUserFilter = id
+	}
+
 	metadataFilter, ok := parseMetadataFilterParam(w, r.URL.Query().Get("metadata"))
 	if !ok {
 		return
@@ -1451,6 +1464,16 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
           AND a.workspace_id = $1
           AND a.owner_id     = %[1]s::uuid
     ))
+)`, ref))
+	}
+	if watchedByUserFilter.Valid {
+		ref := addArg(watchedByUserFilter)
+		where = append(where, fmt.Sprintf(`EXISTS (
+    SELECT 1 FROM issue_subscriber s
+     WHERE s.issue_id = i.id
+       AND s.user_type = 'member'
+       AND s.user_id   = %[1]s::uuid
+       AND s.unsubscribed_at IS NULL
 )`, ref))
 	}
 
