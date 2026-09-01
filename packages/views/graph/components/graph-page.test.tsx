@@ -132,6 +132,22 @@ describe("GraphPage", () => {
     expect(screen.queryByTestId("graph-legend")).not.toBeInTheDocument();
   });
 
+  it("opens the Filter dropdown without unmounting the page", async () => {
+    // Regression: Base UI 1.3.0 GroupLabel requires <Menu.Group>; a bare
+    // DropdownMenuLabel threw on render and took the whole tree down, which
+    // read as "every toolbar control except search does nothing". The label
+    // now self-wraps in packages/ui/dropdown-menu.tsx.
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/ }));
+    // The menu renders its labelled sections AND the page survives.
+    expect(await screen.findAllByText("Sub-issues")).not.toHaveLength(0);
+    expect(screen.getByTestId("graph-page")).toBeInTheDocument();
+    expect(screen.getByTestId("graph-toolbar")).toBeInTheDocument();
+  });
+
   it("shows the radial action menu around a selected node", async () => {
     vi.mocked(api.getIssueGraph).mockResolvedValue(graphFixture);
     renderPage();

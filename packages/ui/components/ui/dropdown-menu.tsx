@@ -72,16 +72,23 @@ function DropdownMenuLabel({
 }: MenuPrimitive.GroupLabel.Props & {
   inset?: boolean
 }) {
+  // Base UI 1.3.0 requires GroupLabel to live inside <Menu.Group> — a bare
+  // label throws on render ("MenuGroupRootContext is missing") and takes the
+  // whole React tree down the moment a menu opens. Wrapping here keeps every
+  // existing call site (label and items as popup siblings) working; callers
+  // that want full label→items association can use DropdownMenuGroup.
   return (
-    <MenuPrimitive.GroupLabel
-      data-slot="dropdown-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-caption font-medium text-muted-foreground data-inset:pl-7",
-        className
-      )}
-      {...props}
-    />
+    <MenuPrimitive.Group data-slot="dropdown-menu-group">
+      <MenuPrimitive.GroupLabel
+        data-slot="dropdown-menu-label"
+        data-inset={inset}
+        className={cn(
+          "px-1.5 py-1 text-caption font-medium text-muted-foreground data-inset:pl-7",
+          className
+        )}
+        {...props}
+      />
+    </MenuPrimitive.Group>
   )
 }
 
