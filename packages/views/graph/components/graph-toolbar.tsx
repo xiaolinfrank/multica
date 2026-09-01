@@ -153,7 +153,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
               onCheckedChange={(checked) =>
                 props.onEdgeGroupsChange({ ...props.edgeGroups, [group]: checked === true })
               }
-              onSelect={(e) => e.preventDefault()}
+              closeOnClick={false}
             >
               {t(($) =>
                 group === "child"
@@ -177,7 +177,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
                     toggleInSet(props.statusFilter, category, Object.keys(STATUS_CONFIG)),
                   )
                 }
-                onSelect={(e) => e.preventDefault()}
+                closeOnClick={false}
               >
                 <span className={config.iconColor}>{config.label}</span>
               </DropdownMenuCheckboxItem>
@@ -192,7 +192,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
                 onCheckedChange={() =>
                   props.onProjectFilterChange(toggleInSet(props.projectFilter, "", projectUniverse))
                 }
-                onSelect={(e) => e.preventDefault()}
+                closeOnClick={false}
               >
                 {t(($) => $.filter.no_project)}
               </DropdownMenuCheckboxItem>
@@ -207,7 +207,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
                         toggleInSet(props.projectFilter, p.id, projectUniverse),
                       )
                     }
-                    onSelect={(e) => e.preventDefault()}
+                    closeOnClick={false}
                     className="max-w-56"
                   >
                     <span className="truncate">
@@ -234,10 +234,10 @@ export function GraphToolbar(props: GraphToolbarProps) {
           }
         />
         <DropdownMenuContent align="start">
-          <DropdownMenuItem onSelect={() => props.onColorByChange("project")}>
+          <DropdownMenuItem onClick={() => props.onColorByChange("project")}>
             {t(($) => $.toolbar.color_project)}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => props.onColorByChange("status")}>
+          <DropdownMenuItem onClick={() => props.onColorByChange("status")}>
             {t(($) => $.toolbar.color_status)}
           </DropdownMenuItem>
         </DropdownMenuContent>

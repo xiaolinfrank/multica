@@ -148,6 +148,22 @@ describe("GraphPage", () => {
     expect(screen.getByTestId("graph-toolbar")).toBeInTheDocument();
   });
 
+  it("switches the color dimension from the Color dropdown", async () => {
+    // Regression: Base UI 1.3.0 Menu.Item exposes onClick (not onSelect) —
+    // the old prop was silently ignored, so "Color: Status" did nothing.
+    // The legend is the DOM-visible mirror of the color dimension.
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    fireEvent.click(screen.getByRole("button", { name: /Color/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Status" }));
+
+    const legend = await screen.findByTestId("graph-legend");
+    expect(legend).toHaveTextContent("In Progress");
+    expect(legend).toHaveTextContent("Blocked");
+  });
+
   it("shows the radial action menu around a selected node", async () => {
     vi.mocked(api.getIssueGraph).mockResolvedValue(graphFixture);
     renderPage();
