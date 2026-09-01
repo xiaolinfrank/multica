@@ -20,8 +20,8 @@
 {
 	# 关掉管理端口，避免与其它本地服务抢占；也不需要热更新 API。
 	admin off
-	# 自签名证书由 Caddy 内部 CA 签发，有效期短、自动续期。
-	local_certs
+	# 证书由 mkcert 本地 CA 签发（见 Caddyfile 站点块 tls 指令），已加入本机信任库。
+	# 不再使用 Caddy 内部 CA 自签名（local_certs）。
 
 	# 同一端口上嗅探协议：明文 HTTP 请求（旧 http:// 书签）308 跳转到 https，
 	# TLS 连接正常走 HTTPS/HTTP2。http_redirect 必须在 tls 之前。
@@ -36,7 +36,7 @@
 # 两块网卡的地址都监听，用户从哪个网段来都能访问。
 # 明文 http:// 请求会被 Caddy 自动 308 跳转到 https://（同端口）。
 https://10.35.178.181:13000, https://10.35.182.19:13000, https://localhost:13000, https://fosun-main-agentdeMac-mini.local:13000 {
-	tls internal
+	tls /Users/fosun_main_agent/.bayclaw-certs/bayclaw-cert.pem /Users/fosun_main_agent/.bayclaw-certs/bayclaw-key.pem
 
 	# 反代到 Next.js 生产服务（已挪到 13001，仅监听回环）。
 	# 2026-08-06: 上游地址必须用 [::1] 而不是 127.0.0.1 —— 本机的 Cisco
