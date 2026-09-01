@@ -16,7 +16,7 @@
     "settings": "设置",
     "fleet": "算力池",
     "environment": "环境变量",
-    "workspaces": "工作区"
+    "workspaces": "任务文件管理"
   },
   "tab": {
     "issue": "任务",

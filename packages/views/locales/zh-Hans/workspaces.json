@@ -4,7 +4,7 @@
   "summary": {
     "used": "NAS 已用",
     "reclaimable": "可回收",
-    "count": "{{count}} 个工作区"
+    "count": "{{count}} 个任务"
   },
   "empty": {
     "title": "还没有工作区",
