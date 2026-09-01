@@ -111,6 +111,7 @@ const SHEEN = "var(--office-sheen)";
  * the far end of the value range from the ink, so a name stays readable over
  * whatever it happens to float across. */
 const INK = "var(--office-ink)";
+const INK_HUMAN = "var(--office-ink-human)";
 const HALO = "var(--office-halo)";
 /** Warm filament: the pendant bulbs and the coffee machine's ready light. */
 const BULB = "var(--office-bulb)";
@@ -1539,7 +1540,7 @@ export const HumanFigure = memo(function HumanFigure({
           textAnchor="middle"
           fontSize={9.5}
           fontWeight={700}
-          fill={INK}
+          fill={INK_HUMAN}
           stroke={HALO}
           strokeWidth={2.8}
           strokeOpacity={0.85}

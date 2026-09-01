@@ -516,6 +516,12 @@
     --office-ink: #22262e;
     --office-ink-mute: #626b78;
     --office-ink-faint: #77808c;
+    /* Human members' name labels. This floor is overwhelmingly agents, so the
+       few people on it carry the warm accent rather than plain ink and can be
+       picked out without a second shape or a legend. Deep by day, light by
+       night: the halo behind a label flips with the theme and the accent has
+       to stay readable against both. */
+    --office-ink-human: #a85a3d;
     --office-halo: #ffffff;
     --office-plate: #ffffff;
     --office-plate-line: #a9b0ba;
@@ -599,6 +605,7 @@
     --office-ink: #eaeef4;
     --office-ink-mute: #a8b2be;
     --office-ink-faint: #8e97a3;
+    --office-ink-human: #e08a63;
     --office-halo: #171c25;
     --office-plate: #2c3440;
     --office-plate-line: #4d5766;
