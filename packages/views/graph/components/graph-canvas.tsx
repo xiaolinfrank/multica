@@ -60,6 +60,8 @@ interface SimNode extends SimulationNodeDatum {
   title: string;
   statusCategory: string;
   radius: number;
+  /** Filtered degree; isolated nodes (0) get a stronger center pull. */
+  degree: number;
   color: string;
 }
 
@@ -269,13 +271,16 @@ export function GraphCanvas(props: GraphCanvasProps) {
       const degree = model.degree.get(n.id) ?? 0;
       const p = prev.get(n.id);
       const angle = (2 * Math.PI * i) / Math.max(model.nodes.length, 1);
-      const ring = 120 + ((i * 37) % 160);
+      // Isolated nodes start near the center: nothing anchors them, so an
+      // outer-ring start plus repulsion leaves them stranded at the rim.
+      const ring = degree === 0 ? 24 + ((i * 53) % 80) : 120 + ((i * 37) % 160);
       return {
         id: n.id,
         label: n.identifier,
         title: n.title,
         statusCategory: n.status_category,
         radius: nodeRadius(degree),
+        degree,
         color: palette ? nodeColor(n, palette) : "gray",
         x: p?.x ?? width / 2 + ring * Math.cos(angle),
         y: p?.y ?? height / 2 + ring * Math.sin(angle),
@@ -304,8 +309,12 @@ export function GraphCanvas(props: GraphCanvasProps) {
       )
       .force("charge", forceManyBody<SimNode>().strength(-160))
       .force("collide", forceCollide<SimNode>((d) => d.radius + 6))
-      .force("x", forceX<SimNode>(width / 2).strength(0.04))
-      .force("y", forceY<SimNode>(height / 2).strength(0.06))
+      // Linked nodes only need a weak centering bias — their links shape the
+      // layout — but isolated ones have nothing holding them, so they get a
+      // several-times stronger pull to cluster around the center instead of
+      // drifting to the canvas rim.
+      .force("x", forceX<SimNode>(width / 2).strength((d) => (d.degree === 0 ? 0.18 : 0.04)))
+      .force("y", forceY<SimNode>(height / 2).strength((d) => (d.degree === 0 ? 0.22 : 0.06)))
       .alpha(0.9)
       .alphaDecay(0.03);
     sim.on("tick", () => {
