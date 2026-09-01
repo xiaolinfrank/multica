@@ -91,7 +91,7 @@ import {
   CollectionPageHeaderAction,
   CollectionPageState,
 } from "../../layout/collection-page";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 import { PAGE_TOOLBAR } from "../../layout/page-header";
 
 // Column template — the simplest member of the ListGrid family (squads are
@@ -774,6 +774,7 @@ function SquadListToolbar({
 
 export function SquadsPage() {
   const { t } = useT("squads");
+  const locale = useLocale();
   const workspace = useCurrentWorkspace();
   const wsId = workspace?.id ?? "";
   const p = useWorkspacePaths();
@@ -1015,7 +1016,7 @@ export function SquadsPage() {
                     )}
                     {isColVisible("created") ? (
                       <ListGridCell className="hidden whitespace-nowrap text-caption tabular-nums text-muted-foreground @2xl:flex">
-                        {new Date(squad.created_at).toLocaleDateString()}
+                        {new Date(squad.created_at).toLocaleDateString(locale)}
                       </ListGridCell>
                     ) : (
                       <ListGridCell className="hidden px-0 @2xl:flex" />

@@ -61,7 +61,8 @@
     "eyebrow": "顺便问一句",
     "lede": "一个小问题——能帮我们更了解像你一样的用户。答完立刻回到你正在做的事。",
     "submit": "提交",
-    "hint_ready": "看起来不错，准备好就点提交。"
+    "hint_ready": "看起来不错，准备好就点提交。",
+    "save_failed_toast": "保存失败"
   },
   "questions": {
     "about_you": {

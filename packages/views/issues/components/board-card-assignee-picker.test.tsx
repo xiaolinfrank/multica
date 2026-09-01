@@ -70,6 +70,7 @@ vi.mock("@multica/core/workspace/hooks", () => ({
 }));
 
 vi.mock("../../i18n", () => ({
+  useLocale: () => "en",
   useT: () => ({ t: () => "Translated" }),
   useTimeAgo: () => () => "now",
 }));
