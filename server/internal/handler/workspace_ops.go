@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/util"
 )
 
@@ -353,7 +354,7 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 	// The routed runtime must be online or the daemon never picks up the op and
 	// the client just waits out the timeout. Fail fast instead.
 	if ru, err := util.ParseUUID(runtimeID); err == nil {
-		if rt, err := h.Queries.GetAgentRuntime(r.Context(), ru); err == nil && rt.Status != "online" {
+		if rt, err := h.getAgentRuntime(r.Context(), obsmetrics.RuntimeLookupSourceRuntimeAPI, ru); err == nil && rt.Status != "online" {
 			writeError(w, http.StatusServiceUnavailable, "the daemon holding this workspace is offline")
 			return
 		}
