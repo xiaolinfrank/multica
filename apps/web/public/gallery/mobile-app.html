@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手机端 · 复星医药科研协作</title>
+<style>
+/* ============================================================
+   手机端 · 复星医药科研协作
+   绿色主题 · 与「复星医药科研管理平台」同源 Token
+   用户：张三 · 复星医药 AI 平台产品负责人
+   视图1：会话列表；视图2：群聊详情（生物医药内容）
+   ============================================================ */
+:root {
+  --primary: #10B981;
+  --primary-50: #ECFDF5;
+  --primary-100: #D1FAE5;
+  --primary-200: #A7F3D0;
+  --primary-600: #059669;
+  --primary-700: #047857;
+  --danger: #EF4444;
+  --text-1: #111827;
+  --text-2: #374151;
+  --text-3: #6B7280;
+  --text-4: #9CA3AF;
+  --border: #E5E7EB;
+  --border-light: #F3F4F6;
+  --bg-hover: #F9FAFB;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: #E8EEF0; color: var(--text-1); font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 20px 0;
+}
+button { font-family: inherit; }
+svg { display: block; }
+[hidden] { display: none !important; }
+
+/* ========== 手机壳 ========== */
+.phone {
+  width: 390px; min-height: 782px; max-height: 92vh;
+  background: #F5F7F8; border-radius: 30px;
+  box-shadow: 0 24px 70px rgba(6,78,59,.22), 0 4px 18px rgba(0,0,0,.10);
+  border: 1px solid rgba(16,185,129,.12);
+  position: relative; overflow: hidden;
+}
+
+/* ========== 状态栏 ========== */
+.statusbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 44px; z-index: 60;
+  display: flex; align-items: center; gap: 10px; padding: 0 20px;
+  background: #ECFDF5; color: var(--primary-700); font-size: 13px; font-weight: 600;
+}
+.statusbar .time { font-variant-numeric: tabular-nums; }
+.statusbar .spacer { flex: 1; }
+.statusbar .net { display: flex; align-items: center; gap: 4px; opacity: .95; font-size: 12px; font-weight: 500; }
+
+/* ========== 视图切换 ========== */
+.view { position: absolute; top: 44px; bottom: 0; left: 0; right: 0; display: flex; flex-direction: column; }
+.view.hidden { display: none; }
+
+/* ========== 视图1：会话列表 ========== */
+.v1 { background: #fff; }
+.v1-head { flex-shrink: 0; background: #ECFDF5; border-bottom: 1px solid var(--primary-100); }
+.entbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 18px 6px; }
+.ent-title { font-size: 20px; font-weight: 700; color: var(--primary-700); letter-spacing: 1px; flex: 1; text-align: center; }
+.ent-avatar {
+  width: 32px; height: 32px; border-radius: 10px; border: none; cursor: pointer;
+  background: linear-gradient(135deg, var(--primary), #34D399);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 8px rgba(16,185,129,.28); flex-shrink: 0;
+}
+.ent-avatar:hover { filter: brightness(1.05); }
+.ent-bar-right { width: 32px; flex-shrink: 0; }
+.ent-bar-left { width: 32px; flex-shrink: 0; }
+/* 头部用户头像按钮（纯展示） */
+.head-userbtn {
+  width: 32px; height: 32px; border-radius: 10px; border: none; cursor: pointer;
+  background: linear-gradient(135deg, var(--primary), #34D399);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 8px rgba(16,185,129,.28); flex-shrink: 0;
+  font-size: 13px; font-weight: 700;
+  transition: filter .15s;
+}
+.head-userbtn:hover { filter: brightness(1.05); }
+/* 通讯录/资源市场标题三栏：左头像 / 中标题 / 右占位 */
+.cb-titlebar { display: flex; align-items: center; padding: 10px 18px 6px; }
+.cb-titlebar .cb-title { padding: 0; flex: 1; text-align: center; }
+.cb-titlebar .cb-bar-right { width: 32px; flex-shrink: 0; }
+.searchbar {
+  display: flex; align-items: center; gap: 6px; margin: 0 16px 10px; padding: 0 12px; height: 36px;
+  background: #fff; border: 1px solid var(--primary-100); border-radius: 10px; color: var(--text-4);
+  transition: border-color .15s, box-shadow .15s;
+}
+.searchbar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
+.searchbar svg { color: var(--text-4); flex-shrink: 0; }
+.searchbar input { flex: 1; border: none; outline: none; background: transparent; font-size: 13px; color: var(--text-1); }
+.searchbar input::placeholder { color: var(--text-4); }
+
+.list { flex: 1; overflow-y: auto; padding: 6px 10px 90px; }
+.item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 8px; border-radius: var(--radius-lg);
+  cursor: pointer; transition: background .12s;
+}
+.item:hover { background: #F3F6F5; }
+.avatar {
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 17px; font-weight: 700;
+}
+.avatar.team { background: linear-gradient(135deg, #6366F1, #8B5CF6); }
+.avatar.indigo { background: linear-gradient(135deg, #60A5FA, #6366F1); }
+.avatar.green { background: linear-gradient(135deg, var(--primary), #34D399); }
+.avatar.teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.avatar.amber { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.bodymeta { flex: 1; min-width: 0; }
+.line1 { display: flex; align-items: center; gap: 6px; }
+.title { font-size: 14px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.time { margin-left: auto; flex-shrink: 0; font-size: 11px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.badge { flex-shrink: 0; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: #EF4444; color: #fff; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; line-height: 1; }
+.badge:empty, .badge[data-n="0"] { display: none; }
+.line2 { margin-top: 4px; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line2 .mention { color: var(--primary-700); }
+
+/* ========== 任务列表（分组：主线 + 子任务） ========== */
+.task-block { margin: 0 0 4px; }
+.task-item { position: relative; }
+.task-item .task-caret {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-4); cursor: pointer; margin-left: 2px;
+  transition: background .15s, color .15s;
+}
+.task-item .task-caret:hover { background: var(--primary-50); color: var(--primary); }
+.task-item .task-caret svg { transition: transform .18s; }
+.task-item .task-caret.open svg { transform: rotate(90deg); color: var(--primary); }
+.task-subs { position: relative; }
+.task-sub { padding: 9px 8px 9px 22px; }
+.task-sub:hover { background: var(--primary-50); }
+.task-sub .sub-ic {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--primary-600);
+  background: var(--primary-50); border: 1px solid var(--primary-100);
+}
+.task-sub .title.sub-title { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.task-status.sm { font-size: 9.5px; }
+.task-status.sm { padding: 0 6px; }
+/* 父任务详情里子任务标题分隔 */
+.task-section {
+  display: flex; align-items: center; justify-content: center; margin: 14px 0 10px;
+}
+.task-section span {
+  font-size: 12px; font-weight: 600; color: var(--primary-700);
+  background: var(--primary-50); border: 1px solid var(--primary-100);
+  padding: 4px 14px; border-radius: 10px; letter-spacing: .5px;
+}
+.tag {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; font-weight: 500; line-height: 1.5;
+  border: 1px solid transparent; flex-shrink: 0;
+}
+.tag.ai { background: #EEF2FF; color: #4F46E5; border-color: #C7D2FE; }
+.tag.official { background: #FEF2F2; color: #DC2626; border-color: #FCA5A5; }
+.task-status {
+  display: inline-block; padding: 1px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; line-height: 1.6;
+  border: 1px solid transparent; flex-shrink: 0; white-space: nowrap;
+  background: transparent;
+}
+
+/* ========== 底部导航 ========== */
+.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 68px; z-index: 55; background: #fff; border-top: 1px solid var(--border); display: flex; box-shadow: 0 -6px 18px rgba(0,0,0,.04); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--text-4); font-size: 10.5px; font-weight: 500; transition: color .15s; }
+.tab:hover { color: var(--text-2); }
+.tab .ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab .ic .ln { fill: none; stroke: currentColor; }
+.tab.active { color: var(--primary); font-weight: 600; }
+.tab.active .ic { fill: currentColor; stroke: currentColor; stroke-width: 1.6; }
+.tab.active .ic .ln { stroke: #fff; }
+.ic-box { position: relative; display: inline-flex; }
+.tab .dot {
+  position: absolute; top: -3px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: #EF4444; color: #fff; font-size: 10px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums; pointer-events: none; border: 2px solid #fff;
+}
+.tab .dot.zero { display: none; }
+
+/* ========== 视图3：通讯录 ========== */
+.v3 { background: #fff; }
+.v3-head { flex-shrink: 0; background: #ECFDF5; border-bottom: 1px solid var(--primary-100); }
+.cb-title { font-size: 20px; font-weight: 700; color: var(--primary-700); letter-spacing: 1px; padding: 10px 18px 6px; }
+.cb-search {
+  display: flex; align-items: center; gap: 6px; margin: 0 16px 10px; padding: 0 12px; height: 38px;
+  background: #fff; border: 1px solid var(--primary-100); border-radius: 10px; color: var(--text-4);
+  transition: border-color .15s, box-shadow .15s;
+}
+.cb-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
+.cb-search svg { color: var(--text-4); flex-shrink: 0; }
+.cb-search input { flex: 1; border: none; outline: none; background: transparent; font-size: 13px; color: var(--text-1); }
+.cb-search input::placeholder { color: var(--text-4); }
+
+/* 分段：全部 / AI / 人类 */
+.cb-seg { display: flex; background: #EEF1F0; border-radius: 10px; padding: 3px; margin: 0 16px 10px; }
+.cb-seg-btn { flex: 1; height: 34px; border: none; background: transparent; border-radius: 8px; font-size: 13px; color: var(--text-3); cursor: pointer; transition: all .15s; }
+.cb-seg-btn:hover { color: var(--primary-700); }
+.cb-seg-btn.active { background: #fff; color: var(--text-1); font-weight: 600; box-shadow: var(--shadow-sm); }
+
+/* 功能项：新朋友 / 群聊 / 已添加AI */
+.cb-func { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-light); }
+.cb-func:hover { background: #F9FBFA; }
+.cb-func-ic { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; }
+.cb-func-ic.purple { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+.cb-func-ic.indigo { background: linear-gradient(135deg, #6366F1, #818CF8); }
+.cb-func-ic.teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.cb-func-name { font-size: 14px; font-weight: 500; color: var(--text-1); }
+
+/* 联系人列表 */
+.cb-list { flex: 1; overflow-y: auto; padding-bottom: 90px; }
+/* 列表内容居中容器（通讯录/资源市场共用） */
+.centered-wrap { max-width: 520px; margin: 0 auto; width: 100%; }
+.cb-letter { padding: 8px 16px 4px; font-size: 11.5px; color: var(--text-4); font-weight: 500; }
+.cb-person { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border-light); }
+.cb-person:hover { background: #F9FBFA; }
+.cb-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 700; }
+.cb-avatar.purple { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+.cb-avatar.magenta { background: linear-gradient(135deg, #DB2777, #EC4899); }
+.cb-avatar.green { background: linear-gradient(135deg, var(--primary), #34D399); }
+.cb-avatar.indigo { background: linear-gradient(135deg, #6366F1, #818CF8); }
+.cb-avatar.amber { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.cb-avatar.teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.cb-person-name { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-1); }
+.cb-person-name .tag.ai { font-size: 10px; }
+
+/* ========== 资源市场 ========== */
+.mk-seg .cb-seg-btn { font-size: 12.5px; }
+.mk-list { flex: 1; overflow-y: auto; padding-bottom: 90px; }
+.mk-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border-light); cursor: pointer;
+  transition: background .12s;
+}
+.mk-card:hover { background: #F9FBFA; }
+.mk-thumb {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 17px; font-weight: 700;
+}
+.mk-thumb.data { background: linear-gradient(135deg, #6366F1, #818CF8); }
+.mk-thumb.agent { background: linear-gradient(135deg, #10B981, #34D399); }
+.mk-thumb.tool { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.mk-thumb.pkg { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.mk-body { flex: 1; min-width: 0; }
+.mk-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.mk-desc { font-size: 12px; color: var(--text-3); margin-top: 3px; line-height: 1.5; }
+.mk-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.mk-price { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--primary-600); }
+.mk-price.owned { color: var(--text-4); font-weight: 500; }
+.mk-price .coin { width: 12px; height: 12px; display: inline-flex; }
+.mk-price.owned .coin { color: var(--primary); }
+.mk-use { font-size: 11px; color: var(--text-4); display: flex; align-items: center; gap: 4px; }
+.mk-use svg { opacity: .7; }
+.cb-index { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.cb-index span { font-size: 10px; color: var(--text-3); line-height: 1.2; cursor: pointer; padding: 0 4px; }
+.cb-index span:hover { color: var(--primary); font-weight: 600; }
+
+/* ========== 视图4：个人名片 ========== */
+.v4 { background: #fff; }
+.v4-head { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; background: #ECFDF5; border-bottom: 1px solid var(--primary-100); }
+.v4-head .nav-back { color: var(--primary-700); }
+.v4-title { flex: 1; text-align: center; font-size: 16px; font-weight: 700; color: var(--primary-700); }
+.v4-right { width: 28px; flex-shrink: 0; }
+.card-info { display: flex; align-items: center; gap: 14px; padding: 20px 16px 16px; }
+.card-avatar { width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; font-weight: 700; }
+.card-avatar.purple { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+.card-avatar.magenta { background: linear-gradient(135deg, #DB2777, #EC4899); }
+.card-avatar.green { background: linear-gradient(135deg, var(--primary), #34D399); }
+.card-avatar.indigo { background: linear-gradient(135deg, #6366F1, #818CF8); }
+.card-avatar.amber { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.card-avatar.teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.card-meta { flex: 1; min-width: 0; }
+.card-name { font-size: 17px; font-weight: 700; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-line { font-size: 12.5px; color: var(--text-4); margin-top: 4px; }
+.card-row { display: flex; align-items: center; justify-content: space-between; padding: 16px; font-size: 14px; color: var(--text-1); border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.card-row:hover { background: #F9FBFA; }
+.card-row .arw { color: var(--text-4); }
+.card-btn-wrap { padding: 24px 16px; }
+.card-btn { height: 44px; border-radius: 10px; background: var(--primary); color: #fff; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .15s; }
+.card-btn:hover { background: var(--primary-600); }
+/* 名片页隐藏底部 tabbar 时输入区不显示，这里无输入区，靠 JS 控制 */
+
+/* 其他 Tab 占位（复用视图1内） */
+.placeholder { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-4); padding-bottom: 60px; }
+.placeholder svg { opacity: .3; }
+.placeholder .p-title { font-size: 14px; color: var(--text-2); font-weight: 600; }
+.placeholder .p-sub { font-size: 12px; }
+.v1.tab-pl .placeholder { display: flex; }
+
+/* ========== 「我的」左侧抽屉 ========== */
+.profile-mask { position: absolute; inset: 0; z-index: 100; background: rgba(17,24,39,.42); opacity: 0; pointer-events: none; transition: opacity .22s; }
+.profile { position: absolute; top: 0; bottom: 0; left: 0; width: 288px; z-index: 101; background: #fff; display: flex; flex-direction: column; box-shadow: 12px 0 40px rgba(0,0,0,.18); transform: translateX(-100%); transition: transform .26s cubic-bezier(.4,0,.2,1); }
+.profile-mask.open { opacity: 1; pointer-events: auto; }
+.profile.open { transform: translateX(0); }
+.profile-head { padding: 26px 20px 18px; flex-shrink: 0; background: linear-gradient(135deg, var(--primary), #34D399); color: #fff; }
+.pf-top { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 14px; }
+.pf-close { width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer; background: rgba(255,255,255,.22); color: #fff; display: flex; align-items: center; justify-content: center; }
+.pf-close:hover { background: rgba(255,255,255,.34); }
+.pf-user { display: flex; align-items: center; gap: 14px; }
+.pf-avatar { width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0; background: rgba(255,255,255,.24); color: #fff; font-size: 22px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(255,255,255,.55); }
+.pf-name { font-size: 17px; font-weight: 700; }
+.pf-dept { font-size: 11.5px; opacity: .9; margin-top: 4px; line-height: 1.5; }
+.pf-menu { flex: 1; overflow-y: auto; padding: 6px 0 14px; }
+.pf-item { display: flex; align-items: center; gap: 12px; padding: 13px 20px; cursor: pointer; transition: background .12s; font-size: 13.5px; color: var(--text-2); }
+.pf-item:hover { background: var(--primary-50); }
+.pf-item .ic { color: var(--text-4); flex-shrink: 0; }
+.pf-item.danger { color: var(--danger); }
+.pf-item.danger .ic { color: var(--danger); }
+.pf-item .arw { margin-left: auto; color: var(--text-4); }
+.pf-version { padding: 10px 20px; font-size: 11px; color: var(--text-4); border-top: 1px solid var(--border-light); }
+
+/* ========== 视图2：群聊详情 ========== */
+.v2 { background: #F5F7F8; }
+.v2-head { flex-shrink: 0; background: #ECFDF5; border-bottom: 1px solid var(--primary-100); }
+.navbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px 12px; }
+.nav-back { width: 30px; height: 30px; border: none; background: none; cursor: pointer; color: var(--primary-700); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.nav-back:hover { color: var(--primary-600); }
+.nav-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; background: #fff; border: 2px solid var(--primary-100); color: var(--primary); font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.nav-info { flex: 1; min-width: 0; }
+.nav-title { font-size: 15px; font-weight: 700; color: var(--primary-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-sub { font-size: 11px; color: var(--primary-600); margin-top: 1px; }
+.nav-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.nav-act { width: 30px; height: 30px; border: none; background: none; cursor: pointer; color: var(--primary-700); display: flex; align-items: center; justify-content: center; }
+.nav-act:hover { color: var(--primary-600); }
+
+.chat-body { flex: 1; overflow-y: auto; padding: 14px 14px 140px; }
+.divider { display: flex; align-items: center; justify-content: center; margin: 12px 0; }
+.divider span { font-size: 11px; color: var(--text-3); background: #E6E9E8; padding: 2px 10px; border-radius: 8px; font-weight: 500; }
+.msg-row { display: flex; margin-bottom: 14px; }
+.msg-row.right { justify-content: flex-end; }
+.avatar-sm { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 700; margin-right: 8px; }
+.avatar-sm.green { background: linear-gradient(135deg, var(--primary), #34D399); }
+.avatar-sm.orange { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.avatar-sm.indigo { background: linear-gradient(135deg, #60A5FA, #6366F1); }
+.avatar-sm.teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+.msg-col { max-width: 78%; display: flex; flex-direction: column; }
+.sender { font-size: 11px; color: var(--text-3); margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
+.sender .src { color: var(--text-4); }
+.bubble { position: relative; padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.6; word-break: break-word; }
+.msg-row.left .bubble { background: #fff; color: var(--text-1); border: 1px solid var(--border-light); border-top-left-radius: 3px; }
+.msg-row.right .bubble { background: var(--primary-50); color: var(--text-1); border: 1px solid var(--primary-100); border-top-right-radius: 3px; }
+.bubble .time-inline { font-size: 10px; color: var(--text-4); margin-left: 6px; white-space: nowrap; }
+.bubble .read { color: var(--primary-600); font-size: 10px; margin-left: 4px; vertical-align: middle; }
+.bubble .read svg { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; }
+.mention { color: #4F46E5; font-weight: 500; }
+.mention.purple { color: #7C3AED; }
+.mention.blue { color: #2563EB; }
+.mention.green { color: var(--primary-600); }
+.sys-note { display: flex; align-items: center; justify-content: center; margin: 12px 0; }
+.sys-note span { font-size: 11px; color: var(--text-2); background: #DDE1E0; padding: 3px 12px; border-radius: 8px; }
+.card-inline { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; max-width: 88%; margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,.03); }
+.card-inline .ci-avatar { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, var(--primary), #34D399); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.card-inline .ci-body { flex: 1; min-width: 0; }
+.card-inline .ci-top { font-size: 12px; color: var(--text-2); }
+.card-inline .ci-top b { color: var(--text-1); font-weight: 600; }
+.card-inline .ci-sub { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.card-inline .ci-sub .quot { color: var(--primary-700); }
+.card-inline .ci-count { font-size: 11.5px; color: var(--primary-600); flex-shrink: 0; display: flex; align-items: center; gap: 3px; }
+
+/* 底部输入区（抬高至底部Tab上方） */
+.input-bar { position: absolute; left: 0; right: 0; bottom: 68px; z-index: 50; background: #fff; border-top: 1px solid var(--border); padding: 8px 12px; }
+.ib-row { display: flex; align-items: center; gap: 10px; }
+.ib-voice { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); flex-shrink: 0; background: #fff; color: var(--text-2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.ib-voice:hover { color: var(--primary); border-color: var(--primary-200); }
+.ib-input { flex: 1; height: 36px; background: var(--bg-hover); border-radius: 18px; display: flex; align-items: center; padding: 0 14px; }
+.ib-input input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 13px; color: var(--text-1); }
+.ib-plus {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+  background: #fff; color: var(--text-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ib-plus:hover { color: var(--primary); border-color: var(--primary-200); }
+/* 有输入文字时切换为发送 */
+.ib-plus.send { background: var(--primary); border-color: var(--primary); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="phone" id="phone">
+  <!-- 状态栏 -->
+  <div class="statusbar">
+    <span class="time" id="clock">18:12</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2 2"/></svg>
+    <span class="spacer"></span>
+    <span class="net">5G <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h.01M5 13a10 10 0 0 1 14 0M8 16a6 6 0 0 1 8 0"/></svg> 78</span>
+  </div>
+
+  <!-- ========== 视图1：会话列表 ========== -->
+  <div class="view v1" id="viewList">
+    <div class="v1-head">
+      <div class="entbar">
+        <button class="ent-avatar" id="entbar" title="我的" aria-label="我的" style="font-size:13px;font-weight:700;">张</button>
+        <div class="ent-title">会话</div>
+        <span class="ent-bar-right"></span>
+      </div>
+      <div class="searchbar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="搜索" aria-label="搜索">
+      </div>
+    </div>
+
+    <div class="list" id="chatList">
+      <div class="item" data-chat="1">
+        <div class="avatar team">群</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">ADC 新药研发技术交流群</span><span class="time">上午 11:05</span></div>
+          <div class="line2"><span class="mention">李博士:</span> ⚠️🧪 ADC 偶联效率验证失败，亟待复跑</div>
+        </div>
+      </div>
+      <div class="item" data-chat="2">
+        <div class="avatar team">群</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">肿瘤免疫临床试验协调组</span><span class="time">上午 11:01</span></div>
+          <div class="line2">王主任邀请你加入患者入组群聊</div>
+        </div>
+      </div>
+      <div class="item" data-chat="3">
+        <div class="avatar amber">T</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">靶点验证组</span><span class="time">上午 09:14</span></div>
+          <div class="line2"><span class="mention">陈科研:</span> @张三 药代动力学数据已上传</div>
+        </div>
+      </div>
+      <div class="item" data-chat="4">
+        <div class="avatar team">群</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">蛋白组学分析协作组</span><span class="time">上午 09:13</span></div>
+          <div class="line2">赵博士 创建了子区「质谱图谱库」</div>
+        </div>
+      </div>
+      <div class="item" data-chat="5">
+        <div class="avatar indigo">B</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">BioGPT 药物研发助手</span><span class="tag ai">AI</span><span class="time">8月26日</span></div>
+          <div class="line2">🧬 你好！我是 BioGPT，可协助靶点挖掘与分子设计。…</div>
+        </div>
+      </div>
+      <div class="item" data-chat="6">
+        <div class="avatar indigo">C</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">ChemLLM 合成路径助手</span><span class="tag ai">AI</span><span class="time">8月26日</span></div>
+          <div class="line2">⚗️ 我是 ChemLLM，可预测化合物合成路线与反应条件。…</div>
+        </div>
+      </div>
+      <div class="item" data-chat="7">
+        <div class="avatar teal">S</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">系统通知</span><span class="tag official">官方</span><span class="tag ai">AI</span></div>
+          <div class="line2">科研数据安全策略更新提醒</div>
+        </div>
+      </div>
+      <div class="item" data-chat="8">
+        <div class="avatar indigo">助</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">实验提醒助手</span><span class="tag ai">AI</span></div>
+          <div class="line2">今天的细胞培养与样本送检提醒</div>
+        </div>
+      </div>
+      <div class="item" data-chat="9">
+        <div class="avatar green">文</div>
+        <div class="bodymeta">
+          <div class="line1"><span class="title">文献传输助手</span><span class="tag official">官方</span><span class="time">8月26日</span></div>
+          <div class="line2">本周新增《Nature》抗肿瘤文献 12 篇</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 其他 Tab 占位 -->
+    <div class="placeholder"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><div class="p-title">模块待设计</div><div class="p-sub" id="pSub"></div></div>
+  </div>
+
+  <!-- ========== 视图2：群聊详情 ========== -->
+  <div class="view v2 hidden" id="viewDetail">
+    <div class="v2-head">
+      <div class="navbar">
+        <button class="nav-back" id="backBtn" aria-label="返回"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg></button>
+        <div class="nav-avatar" id="detailAvatar">测</div>
+        <div class="nav-info">
+          <div class="nav-title" id="detailTitle">测试群聊-lt</div>
+          <div class="nav-sub" id="detailSub">3 个成员 · 1 人在线</div>
+        </div>
+        <div class="nav-actions">
+          <button class="nav-act" aria-label="置顶"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2 6h4l-5 7v5l-3-2v-3l-5-7h4z"/></svg></button>
+          <button class="nav-act" aria-label="更多"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-body" id="chatBody">
+      <!-- 消息由 JS 动态渲染 -->
+    </div>
+
+    <!-- 底部输入区 -->
+    <div class="input-bar">
+      <div class="ib-row">
+        <button class="ib-voice" aria-label="语音"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg></button>
+        <div class="ib-input">
+          <input placeholder="输入消息…" id="msgInput">
+        </div>
+        <button class="ib-plus" id="plusBtn" aria-label="上传文件">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" id="plusIcon"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 视图5：任务列表（复用会话设计） ========== -->
+  <div class="view v1 hidden" id="viewTasks">
+    <div class="v1-head">
+      <div class="entbar">
+        <button class="head-userbtn" aria-label="我的">张</button>
+        <div class="ent-title">任务</div>
+        <span class="ent-bar-right"></span>
+      </div>
+      <div class="searchbar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="搜索任务" aria-label="搜索任务">
+      </div>
+    </div>
+
+    <div class="list" id="taskList"></div>
+  </div>
+
+  <!-- ========== 视图6：任务详情（复用聊天区设计） ========== -->
+  <div class="view v2 hidden" id="viewTaskDetail">
+    <div class="v2-head">
+      <div class="navbar">
+        <button class="nav-back" id="taskBackBtn" aria-label="返回"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg></button>
+        <div class="nav-avatar" id="taskDetailAvatar">研</div>
+        <div class="nav-info">
+          <div class="nav-title" id="taskDetailTitle">任务</div>
+          <div class="nav-sub" id="taskDetailSub">子任务 · 问答记录</div>
+        </div>
+        <div class="nav-actions">
+          <button class="nav-act" aria-label="更多"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-body" id="taskChatBody"></div>
+
+    <!-- 底部输入区（复用聊天样式） -->
+    <div class="input-bar">
+      <div class="ib-row">
+        <button class="ib-voice" aria-label="语音"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg></button>
+        <div class="ib-input"><input placeholder="向 AI 提问…" id="taskInput"></div>
+        <button class="ib-plus" id="taskPlusBtn" aria-label="提问">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" id="taskPlusIcon"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 视图7：资源市场（数据/智能体/工具/软件包） ========== -->
+  <div class="view v3 hidden" id="viewMarket">
+    <div class="v3-head">
+      <div class="cb-titlebar">
+        <button class="head-userbtn" aria-label="我的">张</button>
+        <div class="cb-title">资源市场</div>
+        <span class="cb-bar-right"></span>
+      </div>
+      <div class="cb-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="搜索资源" aria-label="搜索资源市场">
+      </div>
+      <div class="cb-seg mk-seg">
+        <button class="cb-seg-btn active" data-mk="data">数据</button>
+        <button class="cb-seg-btn" data-mk="agent">智能体</button>
+        <button class="cb-seg-btn" data-mk="tool">工具</button>
+        <button class="cb-seg-btn" data-mk="pkg">软件包</button>
+      </div>
+    </div>
+
+    <div class="mk-list centered-wrap" id="mkList"></div>
+  </div>
+
+  <!-- ========== 视图3：通讯录 ========== -->
+  <div class="view v3 hidden" id="viewContacts">
+    <div class="v3-head">
+      <div class="cb-titlebar">
+        <button class="head-userbtn" aria-label="我的">张</button>
+        <div class="cb-title">通讯录</div>
+        <span class="cb-bar-right"></span>
+      </div>
+      <div class="cb-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="搜索联系人、AI、群聊" aria-label="搜索通讯录">
+      </div>
+      <div class="cb-seg">
+        <button class="cb-seg-btn active" data-seg="all">全部 · 18</button>
+        <button class="cb-seg-btn" data-seg="ai">AI · 4</button>
+        <button class="cb-seg-btn" data-seg="human">人类 · 14</button>
+      </div>
+    </div>
+
+    <div class="cb-list">
+      <div class="centered-wrap">
+      <div class="cb-func" id="cbGroups" onclick="openGroups()">
+        <div class="cb-func-ic indigo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/></svg></div>
+        <div class="cb-func-name">群聊 <span style="color:var(--text-4);font-size:12px;">(3)</span></div>
+      </div>
+      <div class="cb-func" id="cbAIs" onclick="openAIs()">
+        <div class="cb-func-ic teal"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M9 12h6"/></svg></div>
+        <div class="cb-func-name">已添加 AI <span style="color:var(--text-4);font-size:12px;">(0)</span></div>
+      </div>
+      <div id="cbPeople"></div>
+      </div>
+    </div>
+
+    <!-- 右侧字母索引 -->
+    <div class="cb-index" id="cbIndex"></div>
+  </div>
+
+  <!-- ========== 视图4：个人名片 ========== -->
+  <div class="view v4 hidden" id="viewCard">
+    <div class="v4-head">
+      <button class="nav-back" id="cardBack" aria-label="返回"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg></button>
+      <div class="v4-title">个人名片</div>
+      <span class="v4-right"></span>
+    </div>
+    <div class="card-info">
+      <div class="card-avatar" id="cardAvatar">和</div>
+      <div class="card-meta">
+        <div class="card-name" id="cardName">董和佳</div>
+        <div class="card-line"><span id="cardTag">Octo 号</span>：<span id="cardNo">27XvqX7lmnR</span></div>
+      </div>
+    </div>
+    <div class="card-row" onclick="alert('设置备注功能演示')">设置备注<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+    <div class="card-btn-wrap">
+      <div class="card-btn" id="sendMsgBtn">发消息</div>
+    </div>
+  </div>
+
+  <!-- 底部导航 -->
+  <div class="tabbar">
+    <div class="tab active" data-tab="chat">
+      <span class="ic-box">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 3C7 3 3 6.9 3 11.7c0 2.6 1.2 4.9 3.2 6.5-.2.9-.8 2.1-1.9 2.9 1.7.2 3.4-.5 4.4-1.2 1 .3 2.1.4 3.2.4 5 0 9-3.9 9-8.6S17 3 12 3z"/></svg>
+        <span class="dot" id="chatBadge">3</span>
+      </span>会话
+    </div>
+    <div class="tab" data-tab="contacts"><span class="ic-box"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><circle class="ln" cx="12" cy="10" r="3"/><path class="ln" d="M7 17.5a5 5 0 0 1 10 0"/></svg></span>通讯录</div>
+    <div class="tab" data-tab="tasks"><span class="ic-box"><svg class="ic" viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="18" rx="2.5"/><path class="ln" d="M9 9h6M9 13h6M9 17h3"/></svg></span>任务</div>
+    <div class="tab" data-tab="market"><span class="ic-box"><svg class="ic" viewBox="0 0 24 24"><path d="M4 8.5h16l-1.6 11h-12.8z"/><path class="ln" d="M8.5 8.5a3.5 3.5 0 0 1 7 0"/></svg></span>资源市场</div>
+  </div>
+
+  <!-- 「我的」左侧抽屉 -->
+  <div class="profile-mask" id="pfMask" onclick="toggleProfile(false)"></div>
+  <div class="profile" id="pfPanel">
+    <div class="profile-head">
+      <div class="pf-top"><button class="pf-close" onclick="toggleProfile(false)" aria-label="关闭"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="pf-user">
+        <div class="pf-avatar">张</div>
+        <div>
+          <div class="pf-name">张三</div>
+          <div class="pf-dept">复星医药产业发展（深圳）有限公司<br>AI 平台 · 产品负责人</div>
+        </div>
+      </div>
+    </div>
+    <div class="pf-menu">
+      <div class="pf-item"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 16 0v1"/></svg></span>个人资料<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+      <div class="pf-item"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>账号与安全<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+      <div class="pf-item"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>通知设置<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+      <div class="pf-item"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span>偏好设置<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+      <div class="pf-item"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2 2"/><path d="M12 3a9 9 0 0 1 0 18"/></svg></span>关于<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+      <div class="pf-item danger"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>退出登录<span class="arw"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span></div>
+    </div>
+    <div class="pf-version">复星医药产业发展 · v1.0.0</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var phone = document.getElementById('phone');
+  var clock = document.getElementById('clock');
+  var viewList = document.getElementById('viewList');
+  var viewDetail = document.getElementById('viewDetail');
+  var chatBody = document.getElementById('chatBody');
+
+  // 实时时钟
+  function tick(){ var d=new Date(); clock.textContent = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); }
+  tick(); setInterval(tick, 30000);
+
+  // 生物医药群聊消息数据（张三 = 我方）
+  var chats = {
+    1: {
+      title:'ADC 新药研发技术交流群', sub:'12 个成员 · 5 人在线', avatar:'群',
+      msgs:[
+        {t:'day', label:'08-27'},
+        {t:'right', html:'@<span class="mention blue">李博士</span> 合成路线已更新<span class="time-inline">08-27 09:29</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'right', html:'@<span class="mention purple">所有 AI</span> 请分析该靶点可成药性<span class="time-inline">08-27 09:31</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'left', name:'李博士', src:'/Web', cls:'green', av:'李', html:'@<span class="mention green">张三</span> 偶联效率数据已上传<span class="time-inline">08-27 09:40</span>'},
+        {t:'right', html:'⚠️🧪 ADC 偶联效率验证失败，亟待复跑<span class="time-inline">08-27 09:42</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'sys', label:'张三邀请王主任 加入群聊'},
+        {t:'day', label:'08-28'},
+        {t:'right', html:'@<span class="mention blue">王主任</span> 请确认患者入组标准<span class="time-inline">08-28 10:05</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'left', name:'王主任', src:'/Web', cls:'orange', av:'王', html:'已确认，按最新入排标准执行<span class="time-inline">08-28 10:12</span>'}
+      ]
+    },
+    2: {
+      title:'肿瘤免疫临床试验协调组', sub:'8 个成员 · 3 人在线', avatar:'群',
+      msgs:[
+        {t:'day', label:'08-28'},
+        {t:'left', name:'王主任', src:'/Web', cls:'green', av:'王', html:'@<span class="mention green">张三</span> 患者入组名单已同步<span class="time-inline">08-28 11:01</span>'},
+        {t:'right', html:'收到，我会同步给统计组<span class="time-inline">08-28 11:03</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'sys', label:'王主任邀请你加入患者入组群聊'},
+        {t:'day', label:'08-29'},
+        {t:'left', name:'林统计', src:'/Web', cls:'orange', av:'林', html:'本周入组 3 例，均已完成基线评估<span class="time-inline">08-29 15:20</span>'}
+      ]
+    },
+    3: {
+      title:'靶点验证组', sub:'6 个成员 · 2 人在线', avatar:'T',
+      msgs:[
+        {t:'day', label:'08-28'},
+        {t:'left', name:'陈科研', src:'/Web', cls:'green', av:'陈', html:'@<span class="mention green">张三</span> 药代动力学数据已上传<span class="time-inline">08-28 09:14</span>'},
+        {t:'right', html:'已收到，正在核对曲线拟合<span class="time-inline">08-28 09:16</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'right', html:'@<span class="mention purple">所有 AI</span> 比对已知靶点谱<span class="time-inline">08-28 09:20</span><span class="read">'+svgRead(2)+'</span>'}
+      ]
+    },
+    4: {
+      title:'蛋白组学分析协作组', sub:'9 个成员 · 4 人在线', avatar:'群',
+      msgs:[
+        {t:'day', label:'08-27'},
+        {t:'right', html:'@<span class="mention blue">赵博士</span> 质谱数据已上传<span class="time-inline">08-27 16:40</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'card', by:'赵博士', sub:'「<span class="quot">质谱图谱库</span>」', count:'2条'},
+        {t:'day', label:'08-28'},
+        {t:'left', name:'赵博士', src:'/Web', cls:'orange', av:'赵', html:'图谱注释已完成，可核查<span class="time-inline">08-28 09:13</span>'}
+      ]
+    },
+    5: {
+      title:'BioGPT 药物研发助手', sub:'AI 科研助手 · 1 人在线', avatar:'B',
+      msgs:[
+        {t:'right', html:'🧬 你好！我是 BioGPT，可协助靶点挖掘与分子设计。'},
+        {t:'left', name:'BioGPT', src:'/AI', cls:'indigo', av:'B', html:'@<span class="mention green">张三</span> 帮您分析 CDK4/6 抑制剂潜在耐药位点<span class="time-inline">08-26 10:02</span>'},
+        {t:'right', html:'请输出候选分子的 ADMET 预测<span class="time-inline">08-26 10:05</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'left', name:'BioGPT', src:'/AI', cls:'indigo', av:'B', html:'已生成 5 个候选分子及排序，详见子区<span class="time-inline">08-26 10:08</span>'}
+      ]
+    },
+    6: {
+      title:'ChemLLM 合成路径助手', sub:'AI 科研助手 · 1 人在线', avatar:'C',
+      msgs:[
+        {t:'right', html:'⚗️ 我是 ChemLLM，可预测化合物合成路线与反应条件。'},
+        {t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'@<span class="mention green">张三</span> 已为化合物 XF-317 规划 3 条逆合成路线<span class="time-inline">08-26 11:30</span>'},
+        {t:'right', html:'优先选择路线 A，给出条件阈值<span class="time-inline">08-26 11:33</span><span class="read">'+svgRead(2)+'</span>'}
+      ]
+    },
+    7: {
+      title:'系统通知', sub:'官方 · AI 系统消息', avatar:'S',
+      msgs:[
+        {t:'sys', label:'系统通知 · 科研数据安全策略更新提醒'},
+        {t:'left', name:'系统通知', src:'/官方', cls:'teal', av:'S', html:'科研数据脱敏与访问审计策略已于 08-26 生效<span class="time-inline">08-26 09:00</span>'}
+      ]
+    },
+    8: {
+      title:'实验提醒助手', sub:'AI 提醒 · 1 人在线', avatar:'助',
+      msgs:[
+        {t:'left', name:'实验提醒助手', src:'/AI', cls:'indigo', av:'助', html:'今天 14:00 有细胞培养与样本送检任务<span class="time-inline">08-31 08:00</span>'},
+        {t:'right', html:'已确认，按时执行<span class="time-inline">08-31 08:05</span><span class="read">'+svgRead(2)+'</span>'}
+      ]
+    },
+    9: {
+      title:'文献传输助手', sub:'官方 · 文档同步', avatar:'文',
+      msgs:[
+        {t:'left', name:'文献传输助手', src:'/官方', cls:'green', av:'文', html:'本周新增《Nature》抗肿瘤文献 12 篇，已归档至文献库<span class="time-inline">08-26 18:00</span>'},
+        {t:'right', html:'收到，请同步至团队阅读区<span class="time-inline">08-26 18:05</span><span class="read">'+svgRead(2)+'</span>'}
+      ]
+    }
+  };
+
+  // 已读双勾
+  function svgRead(n){ var s=''; for(var i=0;i<n;i++) s+='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12l5 5L20 6"/></svg>'; return '<span class="read">'+s+'</span>'; }
+
+  // 渲染消息
+  function renderChat(chat){
+    var html='';
+    chat.msgs.forEach(function(m){
+      if(m.t==='day'){ html+='<div class="divider"><span>'+m.label+'</span></div>'; }
+      else if(m.t==='sys'){ html+='<div class="sys-note"><span>'+m.label+'</span></div>'; }
+      else if(m.t==='card'){ html+='<div class="card-inline"><div class="ci-avatar">熊</div><div class="ci-body"><div class="ci-top"><b>'+m.by+'</b> 发起了子区</div><div class="ci-sub">'+m.sub+'</div></div><div class="ci-count">'+m.count+' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg></div></div>'; }
+      else if(m.t==='right'){ html+='<div class="msg-row right"><div class="bubble">'+m.html+'</div></div>'; }
+      else if(m.t==='left'){ html+='<div class="msg-row left"><div class="avatar-sm '+m.cls+'">'+m.av+'</div><div class="msg-col"><div class="sender">'+m.name+'<span class="src">'+m.src+'</span></div><div class="bubble">'+m.html+'</div></div></div>'; }
+    });
+    chatBody.innerHTML = html;
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
+
+  // 会话未读角标：各会话未读消息条数（未读消息总条数方案）
+  var chatUnread = { 1:1, 2:2, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0 };
+  var chatBadge = document.getElementById('chatBadge');
+  var TOTAL_UNREAD = 0;
+  var currChatId = null;
+  function refreshBadge(){
+    var total = 0;
+    for(var k in chatUnread){ total += chatUnread[k]; }
+    TOTAL_UNREAD = total;
+    document.querySelectorAll('#chatList .item').forEach(function(it){
+      var cid = it.getAttribute('data-chat');
+      var n = chatUnread[cid] || 0;
+      var b = it.querySelector('.badge');
+      if(b){ b.textContent = n; b.setAttribute('data-n', n); }
+    });
+    if(chatBadge){
+      chatBadge.textContent = total;
+      chatBadge.classList.toggle('zero', total === 0); // 未读为0时隐藏底部红点
+    }
+  }
+  // 为列表项注入未读角标（放在 time 之后）
+  document.querySelectorAll('#chatList .item').forEach(function(it){
+    var ln1 = it.querySelector('.line1');
+    if(ln1){ ln1.insertAdjacentHTML('beforeend', '<span class="badge"></span>'); }
+  });
+  refreshBadge();
+  // 点击会话 → 清除该会话未读并刷新红点
+  function clearUnread(cid){
+    if(chatUnread[cid]){ chatUnread[cid] = 0; refreshBadge(); }
+  }
+
+  // 点击会话 → 进入详情
+  document.querySelectorAll('#chatList .item').forEach(function(it){
+    it.addEventListener('click', function(){
+      document.querySelectorAll('#chatList .item').forEach(function(x){x.classList.remove('active');});
+      it.classList.add('active');
+      var cid = it.getAttribute('data-chat');
+      clearUnread(cid);
+      currChatId = cid;
+      var chat = chats[cid];
+      if(chat){
+        document.getElementById('detailTitle').textContent = chat.title;
+        document.getElementById('detailSub').textContent = chat.sub;
+        document.getElementById('detailAvatar').textContent = chat.avatar;
+        renderChat(chat);
+      }
+      viewList.classList.add('hidden');
+      viewDetail.classList.remove('hidden');
+    });
+  });
+
+  // 返回（根据详情来源回到对应上级视图）
+  var detailFrom = 'list'; // 'list' | 'card' | 'contacts'
+  document.getElementById('backBtn').addEventListener('click', function(){
+    viewDetail.classList.add('hidden');
+    if(detailFrom === 'card'){
+      viewCard.classList.remove('hidden');
+      detailFrom = 'contacts';
+    } else if(detailFrom === 'contacts'){
+      viewContacts.classList.remove('hidden');
+    } else {
+      viewList.classList.remove('hidden');
+    }
+  });
+
+  // 底部导航切换
+  var pSub = document.getElementById('pSub');
+  var viewContacts = document.getElementById('viewContacts');
+  var viewCard = document.getElementById('viewCard');
+  var viewTasks = document.getElementById('viewTasks');
+  var viewTaskDetail = document.getElementById('viewTaskDetail');
+  var viewMarket = document.getElementById('viewMarket');
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      var name = t.dataset.tab;
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      viewCard.classList.add('hidden');
+      if(name==='chat'){
+        viewList.classList.remove('hidden');
+        viewDetail.classList.add('hidden');
+        viewContacts.classList.add('hidden');
+        viewTasks.classList.add('hidden');
+        viewTaskDetail.classList.add('hidden');
+        viewMarket.classList.add('hidden');
+        viewList.classList.remove('tab-pl');
+      } else if(name==='contacts'){
+        viewList.classList.add('hidden');
+        viewDetail.classList.add('hidden');
+        viewContacts.classList.remove('hidden');
+        viewTasks.classList.add('hidden');
+        viewTaskDetail.classList.add('hidden');
+        viewMarket.classList.add('hidden');
+      } else if(name==='tasks'){
+        viewList.classList.add('hidden');
+        viewDetail.classList.add('hidden');
+        viewContacts.classList.add('hidden');
+        viewTaskDetail.classList.add('hidden');
+        viewMarket.classList.add('hidden');
+        viewTasks.classList.remove('hidden');
+      } else if(name==='market'){
+        viewList.classList.add('hidden');
+        viewDetail.classList.add('hidden');
+        viewContacts.classList.add('hidden');
+        viewTasks.classList.add('hidden');
+        viewTaskDetail.classList.add('hidden');
+        viewMarket.classList.remove('hidden');
+        if(!window.__marketRendered){ renderMarket('data'); window.__marketRendered=true; }
+      } else {
+        viewList.classList.add('hidden');
+        viewDetail.classList.add('hidden');
+        viewContacts.classList.add('hidden');
+        viewTasks.classList.add('hidden');
+        viewTaskDetail.classList.add('hidden');
+        viewMarket.classList.add('hidden');
+        viewList.classList.add('tab-pl');
+      }
+      if(name!=='chat' && name!=='contacts' && name!=='tasks' && name!=='market'){
+        var labels={market:'资源市场'};
+        pSub.textContent = labels[name] + '（待设计）';
+      }
+    });
+  });
+
+  // ========== 任务模块（复用会话设计，任务/子任务分级） ==========
+  var taskListEl = document.getElementById('taskList');
+  var taskChatBody = document.getElementById('taskChatBody');
+
+  // 生物医学研究任务数据：主线任务 + 子任务（open=默认展开子任务）
+  var tasks = [
+    {
+      id:1, title:'ADC 偶联工艺优化', avatar:'ADC', cls:'green', st:'进行中', time:'14:20', open:true,
+      subs:[
+        { title:'pH 对偶联效率影响评估', st:'进行中' },
+        { title:'毒素-连接子稳定性验证', st:'已完成' },
+        { title:'游离毒素残留回收方案', st:'待开始' }
+      ]
+    },
+    {
+      id:2, title:'KRAS G12C 抑制剂耐药机制', avatar:'K', cls:'indigo', st:'进行中', time:'11:05', open:false,
+      subs:[
+        { title:'NGS 基线突变图谱', st:'进行中' },
+        { title:'RTK 旁路激活筛查', st:'待开始' },
+        { title:'耐药细胞系构建', st:'进行中' },
+        { title:'协同用药组合验证', st:'待开始' }
+      ]
+    },
+    {
+      id:3, title:'肿瘤微环境单细胞图谱构建', avatar:'T', cls:'amber', st:'已完成', time:'昨天', open:false,
+      subs:[
+        { title:'样本解离与 QC', st:'已完成' },
+        { title:'批次效应校正', st:'已完成' },
+        { title:'细胞类型注释', st:'已完成' },
+        { title:'细胞通讯分析', st:'已完成' },
+        { title:'图谱可视化上传', st:'进行中' }
+      ]
+    },
+    {
+      id:4, title:'双抗 BsAb 药效学评价', avatar:'B', cls:'teal', st:'待开始', time:'08-29', open:false,
+      subs:[
+        { title:'双靶点细胞系建立', st:'待开始' },
+        { title:'PBMC 杀伤实验设计', st:'待开始' }
+      ]
+    },
+    {
+      id:5, title:'PBMC 样本批次质控', avatar:'P', cls:'green', st:'已完成', time:'08-28', open:false,
+      subs:[
+        { title:'活率与细胞计数', st:'已完成' },
+        { title:'IFN-γ 分泌检测', st:'已完成' }
+      ]
+    }
+  ];
+
+  // 每个任务/子任务的问答数据（用户提问 → AI 回复）
+  var taskQA = {
+    '1': [
+      { t:'day', label:'14:12' },
+      { t:'right', name:'张三', html:'关于 ADC 偶联工艺，pH 值在 8.0 时偶联效率为何偏低？' },
+      { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'pH 8.0 下偶联效率偏低通常与抗体表面赖氨酸 ε-氨基质子化状态及毒素活性酯水解速率相关。建议在 7.8-8.2 区间做梯度实验，并配合 DSC 监测构象变化。' },
+      { t:'right', name:'张三', html:'能否给出一组优化后的缓冲液配方？' },
+      { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'推荐 0.1M PB 缓冲液 pH 8.0，含 10% 乙腈助溶、2mM EDTA 螯合金属，反应浓度 2mg/mL，37℃ 下孵育 90 分钟。' }
+    ],
+    '1-1': [
+      { t:'day', label:'14:18' },
+      { t:'right', name:'张三', html:'pH 8.0 时抗体结构是否稳定？' },
+      { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'多数 IgG1 在 pH 7.0-8.5 之间结构稳定，但需关注 Lys-Asp 异构化风险。建议控温并做 24h 热稳定性验证。' }
+    ],
+    '2': [
+      { t:'day', label:'11:02' },
+      { t:'right', name:'张三', html:'KRAS G12C 抑制剂常见的耐药突变位点有哪些？' },
+      { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'常见耐药机制包括 G12X 二次突变、RTK 旁路激活（EGFR/MET）、以及 YAP/TAZ 通路异常激活。可结合 NGS 基线筛查。' }
+    ],
+    '3': [
+      { t:'day', label:'昨天' },
+      { t:'right', name:'张三', html:'单细胞分析中，如何校正去除批次效应？' },
+      { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐使用 Harmony 或 Seurat CCA 整合，辅以 scVI 深度模型。建议先做 QC 去除低质量细胞，再用批次标签做 Anchor 校正。' }
+    ],
+    '4': [
+      { t:'day', label:'08-29' },
+      { t:'right', name:'张三', html:'双抗 BsAb 的药效学评价应如何设计？' },
+      { t:'left', name:'ProteinAI', src:'/AI', cls:'purple', av:'P', html:'建议采用双靶点细胞系（如 CD3×HER2）联合 PBMC 杀伤实验，配合体内 CDX 模型评价药效与半衰期。' }
+    ],
+    '5': [
+      { t:'day', label:'08-28' },
+      { t:'right', name:'张三', html:'PBMC 批次差异如何做质控判定？' },
+      { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'建议以活率 >85%、CD3+ 比例、以及经 PHA 刺激后的 IFN-γ 分泌量作为核心 QC 指标。' }
+    ],
+    // —— 子任务问答 ——
+    '1-2': [
+      { t:'day', label:'14:25' },
+      { t:'right', name:'张三', html:'毒素-连接子在血浆中的稳定性数据趋势如何？' },
+      { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'血浆中该连接子在 37℃ 下 24h 内释放量 <5%，具备良好的循环稳定性，可支持后续 PK 研究。' }
+    ],
+    '1-3': [
+      { t:'day', label:'14:30' },
+      { t:'right', name:'张三', html:'游离毒素残留如何高效回收以降低毒性？' },
+      { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'建议采用疏水相互作用层析（HIC）或离心超滤，配合 0.1% Tween-80 助洗，可回收率提升至 90% 以上。' }
+    ],
+    '2-1': [
+      { t:'day', label:'11:08' },
+      { t:'right', name:'张三', html:'NGS 基线检测需覆盖哪些突变位点？' },
+      { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'建议覆盖 G12C/D/V、G13D、Q61L 及 KRAS 扩增，并纳入 EGFR/MET/ALK 旁路基因以实现耐药预警。' }
+    ],
+    '2-3': [
+      { t:'day', label:'11:12' },
+      { t:'right', name:'张三', html:'耐药细胞系构建需要注意什么？' },
+      { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'建议采用剂量递增法诱导 6-8 周，定期用 IC50 复测确证耐药倍数，并保存早中晚期细胞株样本。' }
+    ],
+    '3-1': [
+      { t:'day', label:'昨天' },
+      { t:'right', name:'张三', html:'样本解离后如何控制细胞活率？' },
+      { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐低温和含 2% FBS 的缓冲液操作，配合 DNase 与胶原酶低浓度消化，活率可稳定在 90% 以上。' }
+    ],
+    '3-5': [
+      { t:'day', label:'昨天' },
+      { t:'right', name:'张三', html:'细胞通讯分析有没有推荐的软件工具？' },
+      { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐 CellPhoneDB 或 NicheNet 用于配受体互作推断，结合 CellChat 的通讯网络可视化工具成图。' }
+    ],
+    '4-1': [
+      { t:'day', label:'08-29' },
+      { t:'right', name:'张三', html:'双靶点细胞系选择哪两种靶点组合合适？' },
+      { t:'left', name:'ProteinAI', src:'/AI', cls:'purple', av:'P', html:'建议 CD3×HER2 或 CD3×PSMA，能兼顾 T 细胞募集与肿瘤特异性，并预留低表达对照细胞系。' }
+    ],
+    '5-2': [
+      { t:'day', label:'08-28' },
+      { t:'right', name:'张三', html:'IFN-γ 分泌检测推荐什么方法？' },
+      { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'推荐 ELISpot 或流式胞内染色，ELISpot 灵敏度更高，可用于低频特异性 T 细胞应答的定量分析。' }
+    ]
+  };
+
+  // 渲染任务列表：主线任务 + 子任务分组
+  function renderTasks(){
+    var html='';
+    tasks.forEach(function(t){
+      var st = t.st;
+      var stColor = st==='已完成' ? '#10B981' : st==='进行中' ? '#F59E0B' : '#9CA3AF';
+      // 主线任务行
+      html += '<div class="task-block" data-block="'+t.id+'">'
+        + '<div class="item task-item" data-task="'+t.id+'">'
+        + '<div class="avatar '+t.cls+'">'+t.avatar+'</div>'
+        + '<div class="bodymeta">'
+        + '<div class="line1"><span class="title">'+t.title+'</span>'
+        + '<span class="task-status" style="color:'+stColor+';border-color:'+stColor+';background:'+stColor+'1A;">'+st+'</span>'
+        + '<span class="time">'+t.time+'</span></div>'
+        + '<div class="line2">'+t.subs.length+' 个子任务 · 用户提问 + AI 回复</div>'
+        + '</div>'
+        + '<span class="task-caret '+(t.open?'open':'')+'" data-caret="'+t.id+'">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>'
+        + '</span></div>'
+        // 子任务分组（默认收起）
+        + '<div class="task-subs" id="taskSubs-'+t.id+'"'+(t.open?'':' style="display:none"')+'>'
+        + t.subs.map(function(s,i){
+            var ss = s.st;
+            var sc = ss==='已完成' ? '#10B981' : ss==='进行中' ? '#F59E0B' : '#9CA3AF';
+            return '<div class="item task-sub" data-task="'+t.id+'-'+(i+1)+'">'
+              + '<div class="sub-ic">⊳</div>'
+              + '<div class="bodymeta">'
+              + '<div class="line1"><span class="title sub-title">'+s.title+'</span>'
+              + '<span class="task-status sm" style="color:'+sc+';border-color:'+sc+';background:'+sc+'1A;">'+ss+'</span></div>'
+              + '<div class="line2">子任务 · 用户提问 + AI 回复</div>'
+              + '</div></div>';
+          }).join('')
+        + '</div></div>';
+    });
+    taskListEl.innerHTML = html;
+    // 展开/收缩子任务（右侧箭头点击，可靠状态跟踪）
+    function toggleSubs(id){
+      var block = document.querySelector('#taskList .task-block[data-block="'+id+'"]');
+      if(!block) return;
+      var subs = block.querySelector('.task-subs');
+      var caret = block.querySelector('.task-caret');
+      if(!subs) return;
+      var open = caret && caret.classList.contains('open');
+      subs.style.display = open ? 'none' : '';
+      if(caret) caret.classList.toggle('open', !open);
+    }
+    // 父任务点击 → 进入父任务详情（多个子任务详情的合集）
+    document.querySelectorAll('#taskList .task-item').forEach(function(it){
+      it.addEventListener('click', function(){
+        openTask(it.getAttribute('data-task'));
+      });
+    });
+    // 右侧向下拓展箭头点击 → 展开/收缩子任务（stopPropagation 不触发父行）
+    document.querySelectorAll('#taskList .task-caret').forEach(function(c){
+      c.addEventListener('click', function(e){
+        e.stopPropagation();
+        toggleSubs(c.getAttribute('data-caret'));
+      });
+    });
+    // 子任务点击 → 进入当前任务内容
+    document.querySelectorAll('#taskList .task-sub').forEach(function(s){
+      s.addEventListener('click', function(){ openTask(s.getAttribute('data-task')); });
+    });
+  }
+
+  // 进入任务详情（支持主线 id 与子任务 id='main-subIndex'）
+  function openTask(id){
+    var parts = String(id).split('-');
+    var mainId = parts[0];
+    var t = tasks.filter(function(x){ return String(x.id)===mainId; })[0];
+    if(!t) return;
+    var title, st, avatar;
+    if(parts.length===2){
+      // 子任务
+      var sub = t.subs[+parts[1]-1];
+      if(!sub){ return; }
+      title = sub.title; st = sub.st; avatar = '子';
+    } else {
+      title = t.title; st = t.st;
+      // avatar 用主线缩写（多字母取首字符，中文取首字）
+      avatar = /^[A-Za-z]/.test(t.avatar) ? t.avatar.charAt(0) : t.title.charAt(0);
+    }
+    document.getElementById('taskDetailTitle').textContent = title;
+    document.getElementById('taskDetailSub').textContent = st + (parts.length===2 ? ' · 子任务' : ' · '+t.subs.length+' 个子任务');
+    document.getElementById('taskDetailAvatar').textContent = avatar;
+    var chat;
+    if(parts.length===2){
+      // 子任务详情：单独该子任务的问答
+      chat = taskQA[id] || [];
+    } else {
+      // 父任务详情：多个子任务详情的合集
+      chat = buildParentQA(t, id);
+    }
+    renderTaskChat(chat);
+    viewTasks.classList.add('hidden');
+    viewTaskDetail.classList.remove('hidden');
+  }
+
+  // 构建父任务详情 = 各子任务问答合集（主线问答 + 每个子任务标题分隔 + 子任务问答）
+  function buildParentQA(t, mainId){
+    var arr = [];
+    // 主线自身问答（若有）
+    if(taskQA[mainId]){ arr = arr.concat(taskQA[mainId]); }
+    // 每个子任务：标题分隔 + 其问答
+    t.subs.forEach(function(s, i){
+      var sid = mainId + '-' + (i+1);
+      var qa = taskQA[sid];
+      if(qa && qa.length){
+        arr.push({ t:'section', label:s.title });
+        arr = arr.concat(qa);
+      }
+    });
+    return arr;
+  }
+
+  // 渲染任务问答区（用户右 / AI 左，复用聊天样式）
+  function renderTaskChat(msgs){
+    var html='';
+    msgs.forEach(function(m){
+      if(m.t==='day'){ html+='<div class="divider"><span>'+m.label+'</span></div>'; }
+      else if(m.t==='section'){ html+='<div class="task-section"><span>'+m.label+'</span></div>'; }
+      else if(m.t==='right'){ html+='<div class="msg-row right"><div class="bubble">'+m.html+'</div></div>'; }
+      else if(m.t==='left'){ html+='<div class="msg-row left"><div class="avatar-sm '+m.cls+'">'+m.av+'</div><div class="msg-col"><div class="sender">'+m.name+'<span class="src">'+m.src+'</span></div><div class="bubble">'+m.html+'</div></div></div>'; }
+    });
+    taskChatBody.innerHTML = html;
+    taskChatBody.scrollTop = taskChatBody.scrollHeight;
+  }
+
+  // 任务详情返回
+  document.getElementById('taskBackBtn').addEventListener('click', function(){
+    viewTaskDetail.classList.add('hidden');
+    viewTasks.classList.remove('hidden');
+  });
+
+  // 任务详情：向 AI 提问
+  var taskInput = document.getElementById('taskInput');
+  var taskPlusBtn = document.getElementById('taskPlusBtn');
+  var taskPlusIcon = document.getElementById('taskPlusIcon');
+  function sendTaskMsg(){
+    if(!taskInput.value.trim()) return;
+    var val = taskInput.value;
+    var html = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + ' <span class="time-inline">刚刚</span>';
+    var row = document.createElement('div');
+    row.className = 'msg-row right';
+    row.innerHTML = '<div class="bubble">'+html+'</div>';
+    taskChatBody.appendChild(row);
+    taskChatBody.scrollTop = taskChatBody.scrollHeight;
+    taskInput.value='';
+    taskPlusBtn.classList.remove('send');
+    taskPlusIcon.classList.remove('send');
+    taskPlusIcon.innerHTML = '<path d="M12 5v14M5 12h14"/>';
+    // 模拟 AI 回复
+    setTimeout(function(){
+      var ai = document.createElement('div');
+      ai.className = 'msg-row left';
+      ai.innerHTML = '<div class="avatar-sm indigo">A</div><div class="msg-col"><div class="sender">BioGPT<span class="src">/AI</span></div><div class="bubble">已收到您的提问，正在整合相关实验数据与文献，稍后给出分析结论。</div></div>';
+      taskChatBody.appendChild(ai);
+      taskChatBody.scrollTop = taskChatBody.scrollHeight;
+    }, 900);
+  }
+  taskInput.addEventListener('input', function(){
+    var has = taskInput.value.trim().length > 0;
+    taskPlusBtn.classList.toggle('send', has);
+    taskPlusIcon.classList.toggle('send', has);
+    taskPlusBtn.setAttribute('aria-label', has ? '发送' : '提问');
+    taskPlusIcon.innerHTML = has ? '<path d="M4 12l5 5L20 6"/>' : '<path d="M12 5v14M5 12h14"/>';
+  });
+  taskInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ sendTaskMsg(); } });
+  taskPlusBtn.addEventListener('click', function(){
+    if(taskPlusBtn.classList.contains('send')){ sendTaskMsg(); }
+    else { taskInput.focus(); }
+  });
+
+  // 初始化任务列表
+  renderTasks();
+
+  // ========== 资源市场（数据/智能体/工具/软件包） ==========
+  var mkListEl = document.getElementById('mkList');
+  // 资源数据：name 名称 / desc 简介 / price 购买积分 / owned 是否已购买 / usage 使用量
+  var resources = {
+    data: [
+      { name:'单细胞转录组图谱数据集', thumb:'单', desc:'覆盖 12 类肿瘤微环境免疫细胞，含注释与批次校正', price:260, owned:true,  usage:'1.2万次调用' },
+      { name:'临床基因组变异数据库', thumb:'基', desc:'整合 TCGA / 临床队列的 SNV·CNV·融合变异注释', price:180, owned:false, usage:'8,600次调用' },
+      { name:'蛋白-配体结合亲和力基准集', thumb:'亲', desc:'含 PDBbind 与 CASF 评估，用于分子对接模型验证', price:150, owned:false, usage:'5,300次调用' },
+      { name:'药物不良反应信号集', thumb:'号', desc:'FAERS 去重后的安全信号，支持因果推断与报表', price:90,  owned:false, usage:'2,100次调用' }
+    ],
+    agent: [
+      { name:'BioGPT 靶点挖掘', thumb:'B', desc:'基于文献与组学数据的潜在靶点发现与优先级排序', price:120, owned:true,  usage:'9,400次调用' },
+      { name:'ProteinAI 蛋白折叠', thumb:'P', desc:'AlphaFold 级结构预测与结合位点分析智能体', price:200, owned:false, usage:'6,800次调用' },
+      { name:'ChemLLM 分子推理', thumb:'C', desc:'合成路线设计与物化性质预测的化学推理助手', price:160, owned:false, usage:'7,100次调用' },
+      { name:'CellChat 细胞通讯', thumb:'T', desc:'配受体互作推断与细胞通讯网络可视化智能体', price:130, owned:false, usage:'4,500次调用' }
+    ],
+    tool: [
+      { name:'分子对接工具', thumb:'对', desc:'AutoDock Vina 引擎的高通量蛋白-配体批量对接', price:95, owned:true,  usage:'3,900次调用' },
+      { name:'质谱数据分析工具', thumb:'谱', desc:'MS/MS 峰识别、肽段鉴定与定量差异分析', price:140, owned:false, usage:'2,800次调用' },
+      { name:'流式细胞分析工具', thumb:'流', desc:'多通道门控、聚类与免疫表型统计一体化', price:85, owned:false, usage:'3,200次调用' },
+      { name:'NGS 变异注释工具', thumb:'N', desc:'基于 dbSNP / ClinVar 的变异功能注释与致病性分级', price:110, owned:false, usage:'5,000次调用' }
+    ],
+    pkg: [
+      { name:'Seurat 单细胞分析包', thumb:'S', desc:'R 语言单细胞流程化分析，含 QC·整合·注释·可视化', price:70, owned:true,  usage:'1.6万次调用' },
+      { name:'DESeq2 差异表达包', thumb:'D', desc:'RNA-seq 差异表达与多重检验校正的标准封装', price:55, owned:false, usage:'7,400次调用' },
+      { name:'scVI 深度整合包', thumb:'V', desc:'基于深度模型的批次整合与潜空间嵌入', price:88, owned:false, usage:'4,100次调用' },
+      { name:'统计模拟软件包', thumb:'T', desc:'临床试验样本量与功效计算的通用统计仿真', price:60, owned:false, usage:'2,700次调用' }
+    ]
+  };
+  var mkCls = { data:'data', agent:'agent', tool:'tool', pkg:'pkg' };
+  // 渲染指定分类的资源卡片
+  function renderMarket(cat){
+    var list = resources[cat] || [];
+    var html = list.map(function(r){
+      var priceHtml = r.owned
+        ? '<div class="mk-price owned">已购买<span class="coin"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 2l2.4 5 5.6.6-4.2 3.8 1.2 5.6L12 15l-5 2.9 1.2-5.6L4 8.5 9.6 8z"/></svg></span></div>'
+        : '<div class="mk-price">'+r.price+'<span class="coin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h3.5a1.8 1.8 0 0 1 0 3.6h-3"/></svg></span>积分</div>';
+      return '<div class="mk-card" data-mk="'+cat+'">'
+        + '<div class="mk-thumb '+mkCls[cat]+'">'+r.thumb+'</div>'
+        + '<div class="mk-body">'
+        + '<div class="mk-name">'+r.name+'</div>'
+        + '<div class="mk-desc">'+r.desc+'</div>'
+        + '<div class="mk-meta">'+priceHtml
+        + '<div class="mk-use"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v12H4z"/><path d="M2 19h20"/></svg>'+r.usage+'</div>'
+        + '</div></div></div>';
+    }).join('');
+    mkListEl.innerHTML = html;
+  }
+  renderMarket('data');
+
+  // 分段控制：切换资源分类
+  document.querySelectorAll('.mk-seg .cb-seg-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.mk-seg .cb-seg-btn').forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+      renderMarket(b.getAttribute('data-mk'));
+    });
+  });
+
+  // ========== 通讯录数据驱动 ==========
+  // 随机生物医药风格联系人（AI / 人类）
+  var people = [
+    // —— AI 助手 ——
+    { name:'BioGPT 研究助手', en:'B', isAI:true, cls:'green', sub:'AI 助手', no:'08aQb3Xz7mN' },
+    { name:'ChemLLM 分子推理', en:'C', isAI:true, cls:'indigo', sub:'AI 助手', no:'75uMqWlP2gK' },
+    { name:'CellChat 细胞通讯', en:'C', isAI:true, cls:'teal', sub:'AI 助手', no:'39RtXpYd4sV' },
+    { name:'ProteinAI 蛋白折叠', en:'P', isAI:true, cls:'purple', sub:'AI 助手', no:'61VbJnLhC8e' },
+    // —— 人类成员 ——
+    { name:'陈以宁', en:'C', isAI:false, cls:'amber', sub:'研发工程师', no:'12FdWgQrT5u' },
+    { name:'张三', en:'G', isAI:false, cls:'green', sub:'AI 平台产品负责人', no:'9aHkNuPlMx1' },
+    { name:'韩雪松', en:'H', isAI:false, cls:'indigo', sub:'药物化学研究员', no:'44TsYcBmWq8' },
+    { name:'李胜男', en:'L', isAI:false, cls:'magenta', sub:'临床数据科学家', no:'22PvRgXkLc3' },
+    { name:'宋泽宇', en:'S', isAI:false, cls:'purple', sub:'生物信息分析师', no:'77DfZhJMnB6' },
+    { name:'王悦', en:'W', isAI:false, cls:'indigo', sub:'抗体工程研究员', no:'35KqWsXeVd9' },
+    { name:'吴哲', en:'W', isAI:false, cls:'green', sub:'转化医学经理', no:'18NpLtYfRg4' },
+    { name:'周雨婷', en:'Z', isAI:false, cls:'amber', sub:'分子实验员', no:'56GlMwXcHs2' }
+  ];
+
+  var cbPeople = document.getElementById('cbPeople');
+  var cbIndex = document.getElementById('cbIndex');
+  // 仅作用于通讯录视图内的分段按钮，避免影响资源市场 .mk-seg
+  var segBtns = document.querySelectorAll('#viewContacts .cb-seg-btn');
+
+  // 更新分段数字
+  function updateSegCount(){
+    var ai = people.filter(function(p){return p.isAI;}).length;
+    var human = people.length - ai;
+    segBtns[0].textContent = '全部 · ' + people.length;
+    segBtns[1].textContent = 'AI · ' + ai;
+    segBtns[2].textContent = '人类 · ' + human;
+  }
+
+  // 渲染联系人与字母索引
+  function renderContacts(){
+    var html = '';
+    var letters = [];
+    // 先获取服务人员头像 class
+    var i;
+    people.forEach(function(p){
+      if(letters.indexOf(p.en) === -1) letters.push(p.en);
+    });
+    letters.sort();
+    cbIndex.innerHTML = letters.map(function(l){ return '<span>'+l+'</span>'; }).join('');
+    letters.forEach(function(l){
+      var group = people.filter(function(p){ return p.en === l; });
+      if(!group.length) return;
+      html += '<div class="cb-letter">' + l + '</div>';
+      group.forEach(function(p){
+        html += '<div class="cb-person" data-name="'+p.name+'" data-en="'+p.en+'" data-isai="'+p.isAI+'" data-cls="'+p.cls+'" data-sub="'+p.sub+'" data-no="'+p.no+'">'
+          + '<div class="cb-avatar '+p.cls+'">'+p.name.charAt(0)+'</div>'
+          + '<div class="cb-person-name">'+p.name
+          + (p.isAI ? ' <span class="tag ai">AI</span>' : '')
+          + '<span style="color:var(--text-3);font-size:12px;font-weight:400;">'+p.sub+'</span>'
+          + '</div></div>';
+      });
+    });
+    cbPeople.innerHTML = html;
+  }
+
+  // 分段筛选（整组隐藏）
+  function applySeg(seg){
+    people.forEach(function(p){
+      var show = seg==='ai' ? p.isAI : seg==='human' ? !p.isAI : true;
+      document.querySelectorAll('#cbPeople .cb-person').forEach(function(el){
+        if(el.dataset.en===p.en && el.dataset.name===p.name){
+          el.style.display = show ? '' : 'none';
+        }
+      });
+    });
+    // 隐藏无联系人的字母分组
+    document.querySelectorAll('#viewContacts .cb-letter').forEach(function(lb){
+      var g = people.filter(function(p){ return p.en===lb.textContent.trim() && (seg==='ai'?p.isAI:seg==='human'?!p.isAI:true); });
+      lb.style.display = g.length ? '' : 'none';
+    });
+  }
+
+  // 分段点击
+  segBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      segBtns.forEach(function(x){x.classList.remove('active');});
+      b.classList.add('active');
+      applySeg(b.dataset.seg);
+    });
+  });
+
+  // 字母索引点击 → 滚动定位
+  document.querySelectorAll('.cb-index span').forEach(function(s){
+    s.addEventListener('click', function(){
+      var target = s.textContent;
+      var letters = document.querySelectorAll('#viewContacts .cb-letter');
+      for(var i=0;i<letters.length;i++){
+        if(letters[i].textContent.trim()===target){
+          document.querySelector('#viewContacts .cb-list').scrollTop = letters[i].offsetTop - 120;
+          break;
+        }
+      }
+    });
+  });
+
+  // 点击联系人 → 打开个人名片
+  cbPeople.addEventListener('click', function(e){
+    var person = e.target.closest('.cb-person');
+    if(!person) return;
+    var p = people.filter(function(x){ return x.name===person.dataset.name; })[0];
+    if(!p) return;
+    openCard(p);
+  });
+
+  // 打开名片
+  function openCard(p){
+    document.getElementById('cardAvatar').textContent = p.name.charAt(0);
+    document.getElementById('cardAvatar').className = 'card-avatar ' + p.cls;
+    document.getElementById('cardName').textContent = p.name;
+    document.getElementById('cardTag').textContent = p.isAI ? 'AI 助手' : 'Octo 号';
+    document.getElementById('cardNo').textContent = p.no;
+    document.getElementById('sendMsgBtn').setAttribute('data-name', p.name);
+    // 明确设背景色避免渐变丢失
+    document.getElementById('cardAvatar').style.background = '';
+    viewContacts.classList.add('hidden');
+    viewCard.classList.remove('hidden');
+  }
+
+  // 名片返回
+  document.getElementById('cardBack').addEventListener('click', function(){
+    viewCard.classList.add('hidden');
+    viewContacts.classList.remove('hidden');
+  });
+
+  // 发消息 → 跳转会话详情
+  document.getElementById('sendMsgBtn').addEventListener('click', function(){
+    var name = this.getAttribute('data-name');
+    var cid = ensureChat(name);
+    var chat = chats[cid];
+    document.getElementById('detailTitle').textContent = chat.title;
+    document.getElementById('detailSub').textContent = chat.sub;
+    document.getElementById('detailAvatar').textContent = chat.avatar;
+    renderChat(chat);
+    viewCard.classList.add('hidden');
+    viewContacts.classList.add('hidden');
+    viewList.classList.add('hidden');
+    viewDetail.classList.remove('hidden');
+    detailFrom = 'card';
+    // 同步会话列表高亮 & 未读角标
+    document.querySelectorAll('#chatList .item').forEach(function(x){ x.classList.remove('active'); });
+    var target = document.querySelector('#chatList .item[data-chat="'+cid+'"]');
+    if(target){ target.classList.add('active'); }
+    // 底部导航：从通讯录发起会话 → 高亮切到「会话」
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
+    document.querySelector('.tab[data-tab="chat"]').classList.add('active');
+  });
+
+  // 为联系人创建/复用单聊会话 entry
+  function ensureChat(name){
+    var found = null;
+    for(var cid in chats){ if(chats[cid].title === name){ found = cid; break; } }
+    if(found) return found;
+    var p = people.filter(function(x){ return x.name === name; })[0];
+    var cid = 'c_' + name;
+    chats[cid] = {
+      title: name, sub: p ? p.sub + ' · 在线' : '在线', avatar: (p?p.name.charAt(0):name.charAt(0)),
+      msgs: [
+        { t:'day', label:'今天' },
+        { t:'left', name:name, src:p&&p.isAI?'/AI':'/在线', cls:p?p.cls:'green', av:name.charAt(0),
+          html:'你好，我是'+name+'。很高兴和你建立联系<span class="time-inline">17:00</span>'}
+      ]
+    };
+    return cid;
+  }
+
+  // 初始化：渲染 + 更新数字
+  updateSegCount();
+  renderContacts();
+
+  // 字母索引点击 → 滚动定位
+  document.querySelectorAll('.cb-index span').forEach(function(s){
+    s.addEventListener('click', function(){
+      var target = s.textContent;
+      var letters = document.querySelectorAll('#viewContacts .cb-letter');
+      for(var i=0;i<letters.length;i++){
+        if(letters[i].textContent.trim()===target){
+          document.querySelector('#viewContacts .cb-list').scrollTop = letters[i].offsetTop - 120;
+          break;
+        }
+      }
+    });
+  });
+
+  // 发送消息
+  var msgInput = document.getElementById('msgInput');
+  var plusBtn = document.getElementById('plusBtn');
+  var plusIcon = document.getElementById('plusIcon');
+  function sendMsg(){
+    if(!msgInput.value.trim()) return;
+    var html = msgInput.value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/@(\S+)/g,'@<span class="mention blue">$1</span>')
+      + '<span class="time-inline">刚刚</span><span class="read">' + svgRead(2) + '</span>';
+    var row = document.createElement('div');
+    row.className = 'msg-row right';
+    row.innerHTML = '<div class="bubble">'+html+'</div>';
+    chatBody.appendChild(row);
+    chatBody.scrollTop = chatBody.scrollHeight;
+    msgInput.value = '';
+    plusBtn.classList.remove('send');
+    plusIcon.classList.remove('send');
+    plusIcon.innerHTML = '<path d="M12 5v14M5 12h14"/>';
+  }
+  // 输入时：有文字 → + 变为发送按钮
+  msgInput.addEventListener('input', function(){
+    var has = msgInput.value.trim().length > 0;
+    plusBtn.classList.toggle('send', has);
+    plusIcon.classList.toggle('send', has);
+    plusBtn.setAttribute('aria-label', has ? '发送' : '上传文件');
+    plusIcon.innerHTML = has ? '<path d="M4 12l5 5L20 6"/>' : '<path d="M12 5v14M5 12h14"/>';
+  });
+  msgInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ sendMsg(); } });
+  plusBtn.addEventListener('click', function(){
+    if(plusBtn.classList.contains('send')){ sendMsg(); }
+    else { msgInput.focus(); }
+  });
+
+  // 「我的」左侧抽屉
+  window.toggleProfile = function(open){
+    document.getElementById('pfMask').classList.toggle('open', open);
+    document.getElementById('pfPanel').classList.toggle('open', open);
+  };
+  document.getElementById('entbar').addEventListener('click', function(){ toggleProfile(true); });
+  // 通讯录/任务/资源市场页头部用户头像同样可点击（打开「我的」抽屉）
+  document.querySelectorAll('.head-userbtn').forEach(function(btn){
+    btn.addEventListener('click', function(){ toggleProfile(true); });
+  });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') toggleProfile(false); });
+})();
+</script>
+</body>
+</html>

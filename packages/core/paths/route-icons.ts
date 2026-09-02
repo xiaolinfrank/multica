@@ -37,6 +37,7 @@ export type RouteIconName =
   | "FolderGit2"
   | "BookOpenText"
   | "Settings"
+  | "Images"
   | "File"
   | "FileText"
   | "FileImage"
@@ -58,6 +59,7 @@ export type NavLabelKey =
   | "office"
   | "squads"
   | "graph"
+  | "gallery"
   | "usage"
   | "runtimes"
   | "fleet"
@@ -78,6 +80,7 @@ export type WorkspacePageKey =
   | "office"
   | "squads"
   | "graph"
+  | "gallery"
   | "usage"
   | "runtimes"
   | "fleet"
@@ -110,6 +113,7 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   office: { segment: "office", icon: "Building2", navKey: "office" },
   squads: { segment: "squads", icon: "Users", navKey: "squads" },
   graph: { segment: "graph", icon: "Network", navKey: "graph" },
+  gallery: { segment: "gallery", icon: "Images", navKey: "gallery" },
   usage: { segment: "usage", icon: "BarChart3", navKey: "usage" },
   runtimes: { segment: "runtimes", icon: "Monitor", navKey: "runtimes" },
   // BayClaw-only pages. They must be registered here, not just routed: this

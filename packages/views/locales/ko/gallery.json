@@ -1,0 +1,20 @@
+{
+  "page": {
+    "title": "성과 갤러리",
+    "description": "이 워크스페이스가 제공한 제품과 인터랙티브 프로토타입"
+  },
+  "empty": {
+    "title": "아직 전시할 성과가 없습니다",
+    "description": "성과를 갤러리에 추가하면 여기에 표시됩니다."
+  },
+  "work": {
+    "open": "프로토타입 열기",
+    "open_screen": "「{{screen}}」 프로토타입 열기",
+    "credentials": "데모 계정 — 계정 {{account}}, 비밀번호 {{password}}"
+  },
+  "viewer": {
+    "reload": "다시 시작",
+    "screens_label": "프로토타입 화면",
+    "credentials": "{{account}} / {{password}}"
+  }
+}

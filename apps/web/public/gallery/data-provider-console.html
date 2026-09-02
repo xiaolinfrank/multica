@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>供数方数据管理平台</title>
+  <style>
+/* ============================================================
+   供数方数据管理平台 · 完整重建版
+   绿色主题 · 单文件实现 · 2 大功能模块
+   ============================================================ */
+:root {
+  --primary: #10B981;
+  --primary-50: #ECFDF5;
+  --primary-100: #D1FAE5;
+  --primary-200: #A7F3D0;
+  --primary-600: #059669;
+  --primary-700: #047857;
+  --danger: #EF4444;
+  --text-1: #111827;
+  --text-2: #374151;
+  --text-3: #6B7280;
+  --text-4: #9CA3AF;
+  --border: #E5E7EB;
+  --border-light: #F3F4F6;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F9FAFB;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --topbar-h: 56px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; background: #F5F7F8; color: var(--text-1); font-size: 14px; }
+button { font-family: inherit; }
+[hidden] { display: none !important; }
+
+.icon { width: 16px; height: 16px; flex-shrink: 0; vertical-align: -2px; }
+.mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.tag {
+  display: inline-block; padding: 1px 8px; border-radius: 4px;
+  font-size: 11.5px; background: var(--primary-50); color: var(--primary-700);
+  border: 1px solid var(--primary-100); white-space: nowrap;
+}
+.text-3 { color: var(--text-3); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 16px; border-radius: var(--radius);
+  border: 1px solid transparent; cursor: pointer;
+  font-size: 13px; transition: all .15s; white-space: nowrap;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-600); }
+.btn-ghost { background: #fff; border-color: var(--border); color: var(--text-2); }
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.field {
+  width: 100%; height: 34px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 13px; color: var(--text-1); background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
+.field.error { border-color: var(--danger); box-shadow: 0 0 0 3px #FEE2E2; }
+textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
+.select-wrap { position: relative; }
+.select-wrap select { appearance: none; padding-right: 28px; cursor: pointer; }
+.select-wrap::after {
+  content: ''; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  border: 5px solid transparent; border-top-color: var(--text-4);
+}
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.form-item label { display: block; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; }
+.form-item .req { color: var(--danger); margin-right: 2px; }
+.form-msg { display: none; font-size: 11.5px; color: var(--danger); margin-top: 4px; }
+.form-item.error .form-msg { display: block; }
+.attach-row { display: flex; align-items: center; gap: 10px; }
+.attach-name { font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-name.has { color: var(--primary-700); font-weight: 500; }
+
+.page-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 20px 24px 16px;
+}
+.page-title { font-size: 18px; font-weight: 600; color: var(--text-1); margin: 0 0 16px; }
+
+/* ========== 抽屉（数据上传） ========== */
+.drawer-mask {
+  position: fixed; inset: 0; z-index: 1100; background: rgba(17, 24, 39, .45);
+  display: none; align-items: stretch; justify-content: flex-end;
+}
+.drawer-mask.open { display: flex; }
+.drawer {
+  width: 560px; max-width: 92vw; background: #fff; height: 100%;
+  display: flex; flex-direction: column;
+  box-shadow: -12px 0 40px rgba(0,0,0,.18);
+  animation: drawerIn .22s ease-out;
+}
+@keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border-light); flex-shrink: 0;
+}
+.drawer-title { font-size: 15px; font-weight: 600; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+.drawer-foot {
+  display: flex; justify-content: flex-end; align-items: center; gap: 12px;
+  padding: 14px 20px; border-top: 1px solid var(--border-light);
+  flex-shrink: 0; background: #FAFBFC;
+}
+.drawer-close {
+  border: none; background: none; cursor: pointer; color: var(--text-4);
+  padding: 4px; border-radius: 6px; display: flex; transition: all .15s;
+}
+.drawer-close:hover { background: var(--bg-hover); color: var(--text-2); }
+
+/* ========== 趋势折线图弹窗 ========== */
+.trend-wrap { padding: 4px 0 12px; }
+.trend-legend { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); margin-bottom: 10px; }
+.trend-legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.trend-stat { display: flex; align-items: baseline; gap: 8px; }
+.trend-stat .num { font-size: 22px; font-weight: 600; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.trend-stat .unit { font-size: 12px; color: var(--text-4); }
+.trend-range {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 12.5px; color: var(--text-3);
+}
+.trend-chart { width: 100%; height: auto; }
+
+/* ========== 行内趋势（已上架展开区） ========== */
+.cat-row-live { cursor: pointer; }
+.trend-row td { background: #F9FAFB; padding: 16px 20px; }
+.detail-table tbody tr.trend-row:hover td { background: #F9FAFB; }
+.row-trend { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.trend-grid { display: flex; gap: 28px; flex-wrap: wrap; }
+.trend-left { flex: 1 1 400px; min-width: 320px; }
+.trend-right { flex: 1 1 300px; min-width: 260px; border-left: 1px solid var(--border-light); padding-left: 24px; }
+.trend-block-title { font-size: 13.5px; font-weight: 700; color: var(--text-1); margin-bottom: 8px; }
+.row-range { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); }
+.row-range select { width: 150px; }
+.trend-range-bar { margin-bottom: 16px; }
+.trend-stat { margin: 2px 0 10px; }
+.trend-stat .num { font-size: 30px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.trend-stat .unit { font-size: 12.5px; color: var(--text-3); margin-left: 6px; }
+.trend-legend { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.trend-legend .dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+/* 组织使用统计（凸起饼状图） */
+.org-pie-wrap { position: relative; display: flex; align-items: center; justify-content: center; padding: 6px 0 4px; }
+.org-pie { width: 100%; max-width: 300px; display: block; }
+.org-total { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.org-total .num { font-size: 24px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.org-total .unit { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.org-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; }
+.org-legend .ol { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.org-legend .ol .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
+.org-legend .ol .pv { color: var(--text-3); font-size: 11.5px; }
+/* 数据名称左侧的展开箭头 */
+.collapse-caret { width: 14px; text-align: center; user-select: none; }
+
+
+/* ========== 顶栏 ========== */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h); z-index: 100;
+  display: flex; align-items: center; gap: 20px;
+  background: #fff; border-bottom: 1px solid var(--border); padding: 0 20px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; color: var(--text-1); }
+.brand-logo {
+  width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), #34D399);
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+.topbar-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+.topbar-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #34D399);
+  color: #fff; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.topbar-account { font-size: 13px; color: var(--text-2); display: flex; align-items: center; }
+.topbar-user { display: flex; align-items: center; gap: 10px; }
+.topbar-logout {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  color: var(--text-4); transition: all .15s;
+}
+.topbar-logout:hover { color: var(--danger); background: #FEF2F2; }
+
+/* ========== 登录页 ========== */
+#loginPage {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(1000px 500px at 15% 10%, rgba(16,185,129,.12), transparent 60%),
+    radial-gradient(800px 400px at 85% 90%, rgba(52,211,153,.12), transparent 60%),
+    linear-gradient(160deg, #F0FDF4 0%, #ECFDF5 45%, #F8FAFC 100%);
+}
+.login-card {
+  width: 400px; padding: 40px 38px 28px;
+  background: #fff; border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(6, 78, 59, .14), 0 2px 8px rgba(16,185,129,.06);
+  border: 1px solid rgba(16,185,129,.15);
+  text-align: center;
+}
+.login-logo {
+  width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 14px;
+  background: linear-gradient(135deg, var(--primary), #34D399);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 20px rgba(16,185,129,.35);
+}
+.login-title { font-size: 20px; font-weight: 700; color: var(--text-1); letter-spacing: .5px; }
+.login-sub { font-size: 12.5px; color: var(--text-4); margin: 6px 0 26px; }
+.login-form { text-align: left; }
+.login-field { margin-bottom: 16px; }
+.login-field label { display: block; font-size: 12.5px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
+.login-input {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 0 12px; height: 42px; background: #FBFDFC; transition: all .15s;
+}
+.login-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-100); background: #fff; }
+.login-input svg { color: var(--text-4); flex-shrink: 0; }
+.login-input input { flex: 1; border: none; outline: none; background: transparent; font-size: 13.5px; color: var(--text-1); }
+.login-input input::placeholder { color: var(--text-4); }
+.login-error {
+  min-height: 20px; font-size: 12px; color: var(--danger);
+  margin: -6px 0 8px; display: none;
+}
+.login-error.show { display: block; }
+.login-btn {
+  width: 100%; height: 42px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), #10B981);
+  color: #fff; font-size: 14.5px; font-weight: 600; letter-spacing: 4px;
+  cursor: pointer; transition: all .18s; box-shadow: 0 6px 16px rgba(16,185,129,.3);
+}
+.login-btn:hover { filter: brightness(1.05); box-shadow: 0 8px 22px rgba(16,185,129,.4); }
+.login-btn:active { transform: translateY(1px); }
+.login-foot { margin-top: 30px; font-size: 11px; color: var(--text-4); }
+
+/* ========== 主布局 ========== */
+.layout { padding-top: var(--topbar-h); min-height: 100vh; display: block; }
+
+/* ========== 主内容 ========== */
+.content { flex: 1; padding: 20px; min-width: 0; }
+
+/* ========== 表格 ========== */
+.table-wrap {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: #fff;
+}
+.detail-table { width: 100%; border-collapse: collapse; }
+.detail-table th {
+  background: #F9FAFB; color: var(--text-2); font-weight: 500; font-size: 13px;
+  text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.detail-table td {
+  padding: 11px 14px; border-bottom: 1px solid var(--border-light);
+  font-size: 13px; color: var(--text-1);
+}
+.detail-table tbody tr:hover { background: var(--primary-50); }
+.detail-table tbody tr:last-child td { border-bottom: none; }
+.empty-row td { text-align: center; color: var(--text-4); padding: 40px 0 !important; font-size: 13px; }
+
+/* ========== 分页 ========== */
+.pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; flex-wrap: wrap; gap: 10px; }
+.pagination-info { font-size: 12.5px; color: var(--text-3); }
+.pagination-info b { color: var(--primary); font-size: 14px; }
+.pager { display: flex; gap: 6px; align-items: center; }
+.pager-btn {
+  min-width: 30px; height: 30px; border: 1px solid var(--border);
+  background: #fff; border-radius: 6px; cursor: pointer;
+  font-size: 12.5px; color: var(--text-2); display: inline-flex;
+  align-items: center; justify-content: center; transition: all .15s; padding: 0 6px;
+}
+.pager-btn:hover { border-color: var(--primary); color: var(--primary); }
+.pager-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pager-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ========== Tab ========== */
+.detail-tabs { display: flex; gap: 4px; padding: 14px 24px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.detail-tab {
+  padding: 8px 18px; font-size: 13.5px; color: var(--text-2);
+  cursor: pointer; border-radius: var(--radius) var(--radius) 0 0;
+  transition: all .15s; position: relative; border: none; background: transparent;
+}
+.detail-tab:hover { color: var(--primary); background: var(--primary-50); }
+.detail-tab.active { color: var(--primary); font-weight: 600; background: var(--primary-50); }
+.detail-tab.active::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--primary); border-radius: 2px 2px 0 0;
+}
+
+/* ========== 工具条（搜索区） ========== */
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.search-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.search-filters .field { width: 200px; }
+.chat-search-wrap {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; color: var(--text-4);
+}
+.chat-search { border: none; background: none; outline: none; font-size: 12px; width: 90px; }
+
+/* ========== 上传 / 附件 ========== */
+.upload-box {
+  border: 1.5px dashed var(--primary-200); border-radius: var(--radius-lg);
+  background: var(--primary-50); padding: 22px 18px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  color: var(--primary-700); cursor: pointer; transition: all .15s; text-align: center;
+}
+.upload-box:hover { border-color: var(--primary); background: var(--primary-100); }
+.upload-box .ub-icon { color: var(--primary-600); display: flex; }
+.upload-box .ub-title { font-size: 13.5px; font-weight: 600; }
+.upload-box .ub-hint { font-size: 12px; color: var(--text-3); }
+.upload-box.has-file { border-style: solid; background: #fff; }
+.upload-box.has-file:hover { background: var(--primary-50); }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  max-width: 100%; background: #fff; border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 12px; font-size: 12.5px; color: var(--text-1);
+}
+.file-chip .fc-icon { color: var(--primary-600); display: flex; flex-shrink: 0; }
+.file-chip .fc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.file-chip .fc-x { color: var(--text-4); cursor: pointer; display: flex; flex-shrink: 0; }
+.file-chip .fc-x:hover { color: var(--danger); }
+
+/* ========== 弹窗 ========== */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(17, 24, 39, .45); display: none;
+  align-items: flex-start; justify-content: center; padding: 60px 16px;
+  overflow-y: auto;
+}
+.modal-mask.open { display: flex; }
+.modal {
+  width: 100%; max-width: 560px; background: #fff;
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  display: flex; flex-direction: column;
+  animation: modalIn .2s ease-out;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border-light);
+}
+.modal-title { font-size: 15px; font-weight: 600; color: var(--text-1); }
+.modal-close {
+  border: none; background: none; cursor: pointer; color: var(--text-4);
+  padding: 4px; border-radius: 6px; display: flex; transition: all .15s;
+}
+.modal-close:hover { background: var(--bg-hover); color: var(--text-2); }
+.modal-body { padding: 20px; overflow-y: auto; }
+.modal-foot {
+  display: flex; justify-content: flex-end; align-items: center; gap: 12px;
+  padding: 14px 20px; border-top: 1px solid var(--border-light);
+  flex-shrink: 0; background: #FAFBFC; border-radius: 0 0 12px 12px;
+}
+
+/* ========== 详情信息 ========== */
+.detail-user { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--border-light); }
+.avatar-lg {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #34D399);
+  color: #fff; font-size: 18px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.detail-user-name { font-size: 16px; font-weight: 600; color: var(--text-1); }
+.detail-user-id { font-size: 12px; color: var(--text-4); margin-top: 2px; }
+
+/* ========== 成功提示 ========== */
+.success-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--primary-50); border: 1px solid var(--primary-100);
+  color: var(--primary-700); border-radius: var(--radius);
+  padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+}
+@keyframes rowFlash {
+  0% { background: var(--primary-100); }
+  100% { background: transparent; }
+}
+.row-new { animation: rowFlash 2.4s ease-out; }
+
+@media (max-width: 900px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<!-- ========== 登录页 ========== -->
+<div id="loginPage">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div class="login-title">供数方数据管理平台</div>
+    <div class="login-sub">医疗科研 · 数据统一管理与安全上传</div>
+    <div class="login-form">
+      <div class="login-field">
+        <label>账号</label>
+        <div class="login-input">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input id="loginAccount" placeholder="请输入账号" autocomplete="username" />
+        </div>
+      </div>
+      <div class="login-field">
+        <label>密码</label>
+        <div class="login-input">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input id="loginPassword" type="password" placeholder="请输入密码" autocomplete="current-password" />
+        </div>
+      </div>
+      <div class="login-error" id="loginError"></div>
+      <button class="login-btn" onclick="doLogin()">登 录</button>
+    </div>
+    <div class="login-foot">© 2026 供数方数据管理平台 · 仅供内部使用</div>
+  </div>
+</div>
+
+<div class="layout" hidden>
+
+  <!-- ========== 顶栏 ========== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      供数方数据管理平台
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user" id="topbarUser">
+        <div class="topbar-avatar" id="topbarAvatar">供</div>
+        <span class="topbar-account" id="topbarAccount">-</span>
+        <a class="topbar-logout" href="javascript:;" onclick="logout()" title="退出登录">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== 主内容 ========== -->
+  <main class="content">
+
+    <!-- ========== 数据目录 ========== -->
+    <div id="catalogView">
+      <div class="page-card">
+        <h2 class="page-title">数据目录</h2>
+        <!-- 状态筛选 Tab -->
+        <div class="detail-tabs" id="catalogStatusTabs" style="padding:0 0 14px;border:none;">
+          <button class="detail-tab active" data-status="已上架" onclick="switchCatalogStatus('已上架')">已上架(<b class="mono" id="tabCount-live">0</b>)</button>
+          <button class="detail-tab" data-status="待上架" onclick="switchCatalogStatus('待上架')">待上架(<b class="mono" id="tabCount-pending">0</b>)</button>
+        </div>
+        <!-- 已上架 筛选区（默认展示） -->
+        <div class="toolbar" id="filterLive">
+          <div class="search-filters">
+            <div class="chat-search-wrap" style="width:220px;">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="chat-search" id="liveKw" placeholder="按名称 / 研究领域搜索" oninput="renderCatalog()" style="width:100%;" />
+            </div>
+            <select class="field" id="liveTagF" style="width:130px;" onchange="renderCatalog()"><option value="">全部数据标签</option></select>
+            <select class="field" id="liveFormatF" style="width:130px;" onchange="renderCatalog()"><option value="">全部数据格式</option></select>
+            <div class="search-filters" style="align-items:center;gap:6px;">
+              <span style="font-size:12.5px;color:var(--text-3);">累计使用量</span>
+              <input class="field" id="liveUsageMin" type="number" min="0" placeholder="最小" style="width:80px;" oninput="renderCatalog()" />
+              <span style="color:var(--text-4);">—</span>
+              <input class="field" id="liveUsageMax" type="number" min="0" placeholder="最大" style="width:80px;" oninput="renderCatalog()" />
+            </div>
+          </div>
+          <div style="margin-left:auto;">
+            <button class="btn btn-primary" onclick="openUploadDrawer()">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              数据上传
+            </button>
+          </div>
+        </div>
+        <!-- 待上架 筛选区 -->
+        <div class="toolbar" id="filterPending" hidden>
+          <div class="search-filters">
+            <div class="chat-search-wrap" style="width:220px;">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="chat-search" id="catalogKw" placeholder="按名称 / 研究领域搜索" oninput="renderCatalog()" style="width:100%;" />
+            </div>
+            <select class="field" id="pendingTagF" style="width:130px;" onchange="renderCatalog()"><option value="">全部数据标签</option></select>
+            <select class="field" id="pendingFormatF" style="width:130px;" onchange="renderCatalog()"><option value="">全部数据格式</option></select>
+            <select class="field" id="pendingAuditF" style="width:130px;" onchange="renderCatalog()"><option value="">全部审核状态</option></select>
+          </div>
+          <div style="margin-left:auto;">
+            <button class="btn btn-primary" onclick="openUploadDrawer()">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              数据上传
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="detail-table">
+            <thead id="catalogHead">
+              <tr>
+                <th>数据名称</th>
+                <th>数据标签</th>
+                <th>数据简介</th>
+                <th>研究领域</th>
+                <th>数据格式</th>
+                <th>上传时间</th>
+                <th style="width:90px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="catalogTbody"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <div class="pagination-info">共 <strong id="catalogCount">0</strong> 条数据</div>
+          <div class="pager" id="catalogPager"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 数据上传 ========== -->
+<!-- ========== 数据上传（右侧抽屉） ========== -->
+<div class="drawer-mask" id="uploadDrawer">
+  <div class="drawer">
+    <div class="drawer-head">
+      <div class="drawer-title">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        数据上传
+      </div>
+      <button class="drawer-close" onclick="closeUploadDrawer()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="drawer-body">
+        <div class="success-banner" id="uploadSuccess" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>数据上传成功，已同步至数据目录。</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-item" style="grid-column:1 / -1;">
+            <label><span class="req">*</span>数据文件上传框</label>
+            <div class="upload-box" id="dataFileBox" onclick="document.getElementById('dataFileInput').click()">
+              <span class="ub-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+              <span class="ub-title" id="dataFileTitle">点击上传数据文件</span>
+              <span class="ub-hint" id="dataFileHint">支持 CSV / Excel / 压缩包等，用于同步数据目录</span>
+              <input type="file" id="dataFileInput" hidden accept=".csv,.xlsx,.xls,.zip,.gz,.7z" />
+            </div>
+            <div class="form-msg" id="dataFileMsg">请上传数据文件</div>
+          </div>
+
+          <div class="form-item" style="grid-column:1 / -1;">
+            <label>附件文件上传框</label>
+            <div class="upload-box" id="attachFileBox" onclick="document.getElementById('attachFileInput').click()">
+              <span class="ub-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+              <span class="ub-title" id="attachFileTitle">点击上传附件文件</span>
+              <span class="ub-hint" id="attachFileHint">支持说明书 / 元数据文档等附件（选填）</span>
+              <input type="file" id="attachFileInput" hidden accept=".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.zip" />
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>数据名称</label>
+            <input class="field" id="upName" placeholder="请输入数据名称" />
+            <div class="form-msg">请输入数据名称</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>数据标签</label>
+            <select class="field select-wrap" id="upTags" style="appearance:none;">
+              <option value="">请选择数据标签</option>
+            </select>
+            <div class="form-msg">请选择数据标签</div>
+          </div>
+
+          <div class="form-item" style="grid-column:1 / -1;">
+            <label><span class="req">*</span>数据简介</label>
+            <textarea class="field" id="upBrief" rows="3" placeholder="请描述数据的内容、用途与特征"></textarea>
+            <div class="form-msg">请输入数据简介</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>研究领域</label>
+            <select class="field select-wrap" id="upField" style="appearance:none;">
+              <option value="">请选择研究领域</option>
+            </select>
+            <div class="form-msg">请选择研究领域</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>疾病类型</label>
+            <select class="field select-wrap" id="upDisease" style="appearance:none;">
+              <option value="">请选择疾病类型</option>
+            </select>
+            <div class="form-msg">请选择疾病类型</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>数据所属组织</label>
+            <select class="field select-wrap" id="upOrg" style="appearance:none;">
+              <option value="">请选择数据所属组织</option>
+            </select>
+            <div class="form-msg">请选择数据所属组织</div>
+          </div>
+
+          <div class="form-item">
+            <label>样本组织来源</label>
+            <input class="field" id="upTissue" placeholder="请输入样本组织来源（选填）" />
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>样本健康状态</label>
+            <select class="field select-wrap" id="upHealth" style="appearance:none;">
+              <option value="">请选择样本健康状态</option>
+            </select>
+            <div class="form-msg">请选择样本健康状态</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>数据格式</label>
+            <select class="field select-wrap" id="upFormat" style="appearance:none;">
+              <option value="">请选择数据格式</option>
+            </select>
+            <div class="form-msg">请选择数据格式</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>伦理审批</label>
+            <select class="field select-wrap" id="upEthic" style="appearance:none;">
+              <option value="">请选择伦理审批状态</option>
+            </select>
+            <div class="form-msg">请选择伦理审批状态</div>
+          </div>
+
+          <div class="form-item">
+            <label><span class="req">*</span>许可协议</label>
+            <select class="field select-wrap" id="upLicense" style="appearance:none;">
+              <option value="">请选择许可协议</option>
+            </select>
+            <div class="form-msg">请选择许可协议</div>
+          </div>
+        </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn btn-ghost" onclick="resetUpload()" style="height:36px;">重置</button>
+      <button class="btn btn-primary" onclick="submitUpload()" style="height:36px;min-width:110px;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        提交上传
+      </button>
+    </div>
+  </div>
+</div>
+
+  </main>
+</div>
+
+<!-- ========== 详情弹窗 ========== -->
+<div class="modal-mask" id="detailMask">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div class="modal-title">数据详情</div>
+      <button class="modal-close" onclick="closeDetail()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div class="detail-user">
+        <div class="avatar-lg" id="detailAvatar">数</div>
+        <div>
+          <div class="detail-user-name" id="detailName">-</div>
+          <div class="detail-user-id" id="detailMeta">-</div>
+        </div>
+      </div>
+      <div style="padding:18px 20px;">
+        <div id="detailFields"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeDetail()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   工具函数
+   ============================================================ */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function fmtTime(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function toggleGroup(el) {
+  el.closest('.menu-group').classList.toggle('collapsed');
+}
+
+/* ============================================================
+   视图切换
+   ============================================================ */
+const VIEW_ORDER = ['catalog', 'upload'];
+function currentViewKey() {
+  let cur = 'catalog';
+  VIEW_ORDER.forEach(v => { if (!document.getElementById(v + 'View').hidden) cur = v; });
+  return cur;
+}
+function switchView(view) {
+  document.getElementById('catalogView').hidden = (view !== 'catalog');
+  if (view === 'catalog') { fillCatalogFilters(); updateCatalogTabCounts(); renderCatalog(); }
+}
+
+/* ============================================================
+   选项 / 常量
+   ============================================================ */
+const DATA_TAGS = ['基因组数据', '蛋白质组数据', '临床数据', '影像数据', '转录组数据', '表观遗传数据', '药物研发数据', '多组学数据', '微生物组', '免疫遗传', '中药组学', '重症医学', '检验医学'];
+const RESEARCH_FIELDS = ['基因测序', '蛋白质测序', '临床数据分析', '医学影像AI', '药物研发', '肿瘤早筛', '免疫治疗', '细胞治疗', '生物信息学', '流行病学'];
+const HEALTH_STATES = ['健康', '患病', '混合', '未知'];
+const DATA_FORMATS = ['CSV', 'Excel', 'FASTA', 'BAM', 'VCF', 'JSON', 'HDF5', 'ZIP'];
+const ETHIC_STATUS = ['已通过伦理审批', '待伦理审批', '无需审批'];
+const LICENSES = ['公有领域', 'CC BY', 'CC BY-SA', 'CC BY-NC', '数据许可协议（定制）'];
+const ORG_SOURCES = ['瑞金医院', '华山医院', '北京协和医院', '上海肿瘤医院', '复星医药研究院', '中山医院', '仁济医院', '华西医院'];
+const DISEASE_TYPES = ['肺癌', '肿瘤', '心血管疾病', '神经系统疾病', '感染性疾病', '神经退行性疾病', '免疫性疾病', '代谢性疾病', '呼吸系统疾病', '血液疾病', '精神疾病', '罕见病', '健康人群', '通用'];
+const ORG_NAMES = ['复星医药研究院', '华东临床中心', '南方生物实验室', '康桥数据部', '浦江医疗中心'];
+
+/* ============================================================
+   数据存储
+   ============================================================ */
+let datasets = [];
+let catalogPage = 1;
+let catalogStatus = '已上架';
+let expandedTrendId = null;
+const CATALOG_PAGE_SIZE = 10;
+function formatNum(n) {
+  return String(n == null ? 0 : n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function seedCatalog() {
+  const rows = [
+    { id: 1, name: '肺癌样本基因测序数据', tags: ['基因组数据', '临床数据'], brief: '包含 200 例肺癌患者肿瘤组织与癌旁组织的全外显子测序数据，附临床分期、生存期等元数据。', field: '基因测序', disease: '肺癌', org: '复星医药研究院', pub: 'Nature Genetics, 2025', tissue: '肺组织', health: '患病', format: 'VCF', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.08.12 10:24', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 2, name: '健康人群转录组基线数据', tags: ['转录组数据'], brief: '来自 80 名健康志愿者的外周血 RNA-seq 基线数据，用于建立多组学正常参考区间。', field: '生物信息学', disease: '健康人群', org: '华东临床中心', pub: '—', tissue: '外周血', health: '健康', format: 'FASTA', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.08.05 14:02', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 3, name: '肿瘤早筛影像数据集', tags: ['影像数据'], brief: '含 5000 例低剂量 CT 胸部扫描影像及 AI 标注结果，用于肺结节早期筛查模型训练。', field: '医学影像AI', disease: '肿瘤', org: '南方生物实验室', pub: 'Radiology, 2024', tissue: '胸部CT', health: '混合', format: 'HDF5', ethic: '已通过伦理审批', license: '数据许可协议（定制）', time: '2026.07.28 09:41', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 4, name: '免疫治疗疗效随访数据', tags: ['临床数据'], brief: '100 例接受 PD-1 免疫治疗患者的疗效评估与随访数据，包含影像学评估与实验室指标。', field: '免疫治疗', disease: '免疫性疾病', org: '康桥数据部', pub: 'Cancer Cell, 2025', tissue: '外周血', health: '患病', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.07.20 16:18', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 5, name: '蛋白质组定量分析数据', tags: ['蛋白质组数据'], brief: '血清蛋白质组 LC-MS/MS 定量结果，覆盖 1500 个蛋白，用于生物标志物发现。', field: '蛋白质测序', disease: '肿瘤', org: '复星医药研究院', pub: '—', tissue: '血清', health: '患病', format: 'Excel', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.07.15 11:30', status: '已上架', audit: '待上架', usage: 286 },
+    { id: 6, name: '药物研发分子对接数据集', tags: ['药物研发数据'], brief: '针对 300 个靶点的小分子对接打分与结合模式数据，用于虚拟筛选与先导化合物优化。', field: '药物研发', disease: '通用', org: '华东临床中心', pub: 'J Med Chem, 2026', tissue: '—', health: '未知', format: 'JSON', ethic: '无需审批', license: '数据许可协议（定制）', time: '2026.07.09 08:55', status: '已上架', audit: '待上架', usage: 512 },
+    { id: 7, name: '多组学联合分析数据', tags: ['多组学数据', '临床数据'], brief: '基因组、转录组、蛋白质组与代谢组的多组学联合分析样本数据，用于系统生物学研究。', field: '生物信息学', disease: '通用', org: '南方生物实验室', pub: 'Nature, 2026', tissue: '组织样本', health: '混合', format: 'HDF5', ethic: '已通过伦理审批', license: 'CC BY-SA', time: '2026.06.30 15:47', status: '已上架', audit: '待上架', usage: 134 },
+    { id: 8, name: '表观遗传甲基化数据', tags: ['表观遗传数据'], brief: '覆盖 60 个肿瘤样本的 DNA 甲基化芯片数据，用于甲基化位点差异分析。', field: '肿瘤早筛', disease: '肿瘤', org: '康桥数据部', pub: '—', tissue: '肿瘤组织', health: '患病', format: 'BAM', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.06.18 10:12', status: '已上架', audit: '待上架', usage: 78 },
+    { id: 9, name: '流行病学队列基线数据', tags: ['临床数据'], brief: '某地区 5000 人慢性病流行病学队列基线数据，含生活方式与体格检查指标。', field: '流行病学', disease: '代谢性疾病', org: '浦江医疗中心', pub: 'Lancet, 2023', tissue: '外周血', health: '混合', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.06.05 13:33', status: '已上架', audit: '待上架', usage: 431 },
+    { id: 10, name: '细胞治疗培养过程数据', tags: ['基因组数据'], brief: 'CAR-T 细胞培养过程的基因表达谱与增殖数据，用于工艺优化与质控。', field: '细胞治疗', disease: '血液疾病', org: '复星医药研究院', pub: '—', tissue: '细胞样本', health: '健康', format: 'Excel', ethic: '已通过伦理审批', license: '数据许可协议（定制）', time: '2026.05.26 09:58', status: '已上架', audit: '待上架', usage: 355 },
+    { id: 11, name: 'R 语言单细胞测序数据', tags: ['基因组数据', '转录组数据'], brief: '10 万级单细胞转录组原始矩阵与降维聚类结果，用于细胞亚群鉴定与图谱构建。', field: '生物信息学', disease: '通用', org: '华东临床中心', pub: 'Cell, 2026', tissue: '外周血', health: '混合', format: 'HDF5', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.05.18 11:05', status: '已上架', audit: '待上架', usage: 602 },
+    { id: 12, name: '抗生素耐药基因检测数据', tags: ['基因组数据'], brief: '临床分离菌株的全基因组测序与耐药基因注释数据，用于耐药机制流行病学调查。', field: '流行病学', disease: '感染性疾病', org: '南方生物实验室', pub: 'J Antimicrob Chemother, 2025', tissue: '菌株', health: '未知', format: 'FASTA', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.05.09 15:27', status: '已上架', audit: '待上架', usage: 198 },
+    { id: 13, name: '代谢组质谱原始数据', tags: ['多组学数据'], brief: '血浆代谢组 UPLC-QTOF 原始谱图与峰表，覆盖 500 个代谢特征物。', field: '生物信息学', disease: '代谢性疾病', org: '康桥数据部', pub: '—', tissue: '血浆', health: '健康', format: 'HDF5', ethic: '已通过伦理审批', license: '数据许可协议（定制）', time: '2026.04.28 09:16', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 14, name: '脑卒中影像分割数据集', tags: ['影像数据'], brief: '含 800 例脑部 MRI 影像及卒中病灶人工分割标注，用于影像分割模型训练。', field: '医学影像AI', disease: '神经系统疾病', org: '复星医药研究院', pub: 'Stroke, 2025', tissue: '脑组织', health: '患病', format: 'BAM', ethic: '待伦理审批', license: 'CC BY-SA', time: '2026.04.20 10:39', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 15, name: '肿瘤免疫微环境数据', tags: ['转录组数据', '临床数据'], brief: '肿瘤组织转录组与免疫浸润评分数据，用于免疫微环境特征分析。', field: '免疫治疗', disease: '肿瘤', org: '华东临床中心', pub: 'Cancer Immunol Res, 2026', tissue: '肿瘤组织', health: '患病', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.04.12 14:52', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 16, name: '真实世界处方用药数据', tags: ['临床数据'], brief: '脱敏后的门诊处方与用药记录，用于真实世界药物评价与用药规律研究。', field: '流行病学', disease: '通用', org: '浦江医疗中心', pub: 'BMJ, 2024', tissue: '—', health: '混合', format: 'Excel', ethic: '无需审批', license: '数据许可协议（定制）', time: '2026.04.03 08:48', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 17, name: '罕见病基因组变异数据集', tags: ['基因组数据'], brief: '200 例罕见病家系全外显子测序与变异注释数据，支持致病基因鉴定。', field: '基因测序', disease: '罕见病', org: '南方生物实验室', pub: '—', tissue: '外周血', health: '患病', format: 'VCF', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.03.28 10:12', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 18, name: '正常肺组织 scRNA 图谱', tags: ['转录组数据'], brief: '健康肺组织单细胞转录组图谱，覆盖多种细胞类型，用于组织参考构建。', field: '生物信息学', disease: '健康人群', org: '康桥数据部', pub: 'Cell, 2025', tissue: '肺组织', health: '健康', format: 'HDF5', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.03.21 09:33', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 19, name: '心肌梗死影像标注数据', tags: ['影像数据'], brief: '500 例心脏 MRI 影像及梗死区域标注，用于心脏影像分析模型。', field: '医学影像AI', disease: '心血管疾病', org: '华东临床中心', pub: 'JACC, 2025', tissue: '心肌', health: '患病', format: 'BAM', ethic: '已通过伦理审批', license: 'CC BY-SA', time: '2026.03.15 14:47', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 20, name: '抑郁症队列多模态数据', tags: ['临床数据', '多组学数据'], brief: '抑郁症患者队列的临床评分、影像与血液指标多模态数据。', field: '流行病学', disease: '精神疾病', org: '复星医药研究院', pub: '—', tissue: '外周血', health: '患病', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.03.09 08:56', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 21, name: '菌群16S测序多样性数据', tags: ['基因组数据'], brief: '肠道菌群 16S rRNA 测序与多样性分析结果，覆盖 300 例样本。', field: '微生物组', disease: '代谢性疾病', org: '浦江医疗中心', pub: 'Nature Micro, 2024', tissue: '粪便', health: '健康', format: 'FASTA', ethic: '已通过伦理审批', license: '数据许可协议（定制）', time: '2026.02.28 11:22', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 22, name: '药物不良反应自发报告数据', tags: ['临床数据'], brief: '脱敏的药物不良反应报告与因果评估数据，用于药物警戒研究。', field: '流行病学', disease: '通用', org: '华东临床中心', pub: 'Drug Saf, 2025', tissue: '—', health: '混合', format: 'Excel', ethic: '无需审批', license: '数据许可协议（定制）', time: '2026.02.21 15:03', status: '待上架', audit: '待上架', usage: 0 },
+    { id: 23, name: 'HLA 等位基因频率数据', tags: ['基因组数据'], brief: '中国人群 HLA 等位基因频率与单倍型数据，用于移植配型研究。', field: '免疫遗传', disease: '免疫性疾病', org: '南方生物实验室', pub: '—', tissue: '外周血', health: '健康', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY-NC', time: '2026.02.14 09:40', status: '待上架', audit: '待审核', usage: 0 },
+    { id: 24, name: '阿尔茨海默影像纵向数据', tags: ['影像数据'], brief: 'AD 患者及对照的脑部 MRI/PET 纵向随访影像，用于神经退行性疾病研究。', field: '医学影像AI', disease: '神经退行性疾病', org: '康桥数据部', pub: 'Alz & Dem, 2026', tissue: '脑组织', health: '患病', format: 'BAM', ethic: '已通过伦理审批', license: 'CC BY-SA', time: '2026.02.06 10:28', status: '已上架', audit: '待上架', usage: 245 },
+    { id: 25, name: '纳米药物递送表征数据', tags: ['药物研发数据'], brief: '纳米脂质体药物的粒径、包封率与释放曲线表征数据。', field: '药物研发', disease: '肿瘤', org: '复星医药研究院', pub: 'Adv Mater, 2025', tissue: '—', health: '未知', format: 'Excel', ethic: '无需审批', license: '数据许可协议（定制）', time: '2026.01.29 13:15', status: '已上架', audit: '待上架', usage: 189 },
+    { id: 26, name: '重症监护生命体征数据', tags: ['临床数据'], brief: 'ICU 患者连续生命体征监测与 SOFA 评分时序数据，用于危重症预警。', field: '重症医学', disease: '呼吸系统疾病', org: '华东临床中心', pub: 'Crit Care, 2025', tissue: '外周血', health: '患病', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.01.22 08:37', status: '已上架', audit: '待上架', usage: 320 },
+    { id: 27, name: '中药复方作用网络数据', tags: ['药物研发数据'], brief: '中药复方成分-靶点-通路网络关系数据，用于网络药理学分析。', field: '中药组学', disease: '通用', org: '南方生物实验室', pub: '—', tissue: '—', health: '未知', format: 'JSON', ethic: '无需审批', license: 'CC BY-NC', time: '2026.01.15 11:44', status: '已上架', audit: '待上架', usage: 156 },
+    { id: 28, name: '体外诊断试剂临床验证数据', tags: ['临床数据'], brief: '体外诊断试剂与金标准对照的灵敏度和特异性验证数据。', field: '检验医学', disease: '感染性疾病', org: '浦江医疗中心', pub: 'Clin Chem, 2025', tissue: '外周血', health: '混合', format: 'Excel', ethic: '已通过伦理审批', license: '数据许可协议（定制）', time: '2026.01.08 09:52', status: '已上架', audit: '待上架', usage: 88 },
+    { id: 29, name: '出生队列生长曲线数据', tags: ['临床数据'], brief: '0-6 岁儿童生长指标纵向队列数据，用于生长发育标准制定。', field: '流行病学', disease: '健康人群', org: '康桥数据部', pub: 'Pediatrics, 2024', tissue: '外周血', health: '健康', format: 'CSV', ethic: '已通过伦理审批', license: 'CC BY', time: '2026.01.02 10:08', status: '已上架', audit: '待上架', usage: 410 },
+    { id: 30, name: '蛋白质结构预测数据集', tags: ['蛋白质组数据'], brief: 'AI 预测蛋白质结构的置信度与质量评估数据，用于结构生物学研究。', field: '蛋白质测序', disease: '通用', org: '华东临床中心', pub: 'Nature, 2025', tissue: '—', health: '未知', format: 'JSON', ethic: '无需审批', license: 'CC BY', time: '2025.12.26 14:31', status: '已上架', audit: '待上架', usage: 267 }
+  ];
+  datasets = rows.slice();
+}
+
+/* ============================================================
+   数据目录
+   ============================================================ */
+function fillCatalogFilters() {
+  // 数据标签
+  const tagSels = [document.getElementById('pendingTagF'), document.getElementById('liveTagF')];
+  tagSels.forEach(sel => {
+    if (sel && sel.options.length <= 1) DATA_TAGS.forEach(t => sel.add(new Option(t, t)));
+  });
+  // 数据格式
+  const fmtSels = [document.getElementById('pendingFormatF'), document.getElementById('liveFormatF')];
+  fmtSels.forEach(sel => {
+    if (sel && sel.options.length <= 1) DATA_FORMATS.forEach(f => sel.add(new Option(f, f)));
+  });
+  // 审核状态（仅待上架）
+  const auditSel = document.getElementById('pendingAuditF');
+  if (auditSel && auditSel.options.length <= 1) ['待审核', '待上架'].forEach(a => auditSel.add(new Option(a, a)));
+}
+function filteredCatalog() {
+  const base = datasets.filter(d => d.status === catalogStatus);
+  if (catalogStatus === '待上架') {
+    const kw = (document.getElementById('catalogKw').value || '').trim().toLowerCase();
+    const tag = document.getElementById('pendingTagF').value;
+    const fmt = document.getElementById('pendingFormatF').value;
+    const audit = document.getElementById('pendingAuditF').value;
+    return base.filter(d => {
+      const okKw = !kw || (d.name.toLowerCase().includes(kw) || d.field.toLowerCase().includes(kw) || d.brief.toLowerCase().includes(kw));
+      const okTag = !tag || d.tags.includes(tag);
+      const okFmt = !fmt || d.format === fmt;
+      const okAudit = !audit || d.audit === audit;
+      return okKw && okTag && okFmt && okAudit;
+    });
+  } else {
+    const kw = (document.getElementById('liveKw').value || '').trim().toLowerCase();
+    const tag = document.getElementById('liveTagF').value;
+    const fmt = document.getElementById('liveFormatF').value;
+    const minRaw = (document.getElementById('liveUsageMin').value || '').trim();
+    const maxRaw = (document.getElementById('liveUsageMax').value || '').trim();
+    const min = minRaw === '' ? null : Number(minRaw);
+    const max = maxRaw === '' ? null : Number(maxRaw);
+    return base.filter(d => {
+      const okKw = !kw || (d.name.toLowerCase().includes(kw) || d.field.toLowerCase().includes(kw) || d.brief.toLowerCase().includes(kw));
+      const okTag = !tag || d.tags.includes(tag);
+      const okFmt = !fmt || d.format === fmt;
+      const okUsage = (min === null || d.usage >= min) && (max === null || d.usage <= max);
+      return okKw && okTag && okFmt && okUsage;
+    });
+  }
+}
+function renderCatalogHead() {
+  const head = document.getElementById('catalogHead');
+  let cols = `<th>数据名称</th><th>数据标签</th><th>数据简介</th><th>研究领域</th><th>疾病类型</th><th>数据格式</th>`;
+  if (catalogStatus === '待上架') {
+    cols += `<th>审核状态</th><th>上传时间</th>`;
+  } else {
+    cols += `<th>累计使用量</th><th>上传时间</th>`;
+  }
+  cols += `<th style="width:130px;">操作</th>`;
+  head.innerHTML = '<tr>' + cols + '</tr>';
+}
+function renderCatalog() {
+  renderCatalogHead();
+  const list = filteredCatalog();
+  const total = list.length;
+  const maxPage = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
+  if (catalogPage > maxPage) catalogPage = maxPage;
+  const start = (catalogPage - 1) * CATALOG_PAGE_SIZE;
+  const pageRows = list.slice(start, start + CATALOG_PAGE_SIZE);
+
+    document.getElementById('catalogCount').textContent = total;
+  const tbody = document.getElementById('catalogTbody');
+  if (!pageRows.length) {
+    const colSpan = 9;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${colSpan}">暂无数据</td></tr>`;
+  } else {
+    tbody.innerHTML = pageRows.map(d => {
+      let extraCol;
+      if (catalogStatus === '待上架') {
+        const isReject = d.audit === '待审核';
+        const tagStyle = isReject
+          ? 'background:#FEF3C7;color:#92400E;border-color:#FDE68A;'
+          : 'background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB;';
+        const stateLabel = d.audit || '待上架';
+        extraCol = `<td><span class="tag" style="${tagStyle}">${esc(stateLabel)}</span></td>`;
+      } else {
+        extraCol = `<td class="mono">${esc(formatNum(d.usage))}</td>`;
+      }
+      let ops = `<button class="btn-link" style="color:var(--primary);cursor:pointer;text-decoration:none;font-size:12.5px;background:none;border:none;" onclick="openDetail(${d.id});event.stopPropagation();">详情</button>`;
+
+      let expand = '';
+      if (catalogStatus === '已上架') {
+        const expanded = (expandedTrendId === d.id);
+        // 整行可点击展开趋势，「▼」箭头置于数据名称左侧
+        expand += `<tr class="cat-row-live" data-id="${d.id}" onclick="toggleTrend(${d.id})">
+          <td><span class="collapse-caret" data-id="${d.id}" style="display:inline-block;margin-right:8px;font-size:11px;color:var(--text-4);cursor:pointer;transform:${expanded ? 'rotate(180deg)' : 'rotate(0)'};transition:transform .15s;">▼</span><span class="col-name">${esc(d.name)}</span></td>
+          <td>${d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join(' ')}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.brief)}</td>
+          <td>${esc(d.field)}</td>
+          <td><span class="tag tag-gray" style="background:#F0FDF4;color:#047857;border-color:#BBF7D0;">${esc(d.disease || '—')}</span></td>
+          <td><span class="tag tag-gray" style="background:#F3F4F6;color:var(--text-3);border-color:var(--border);">${esc(d.format)}</span></td>
+          ${extraCol}
+          <td class="mono text-3">${esc(d.time)}</td>
+          <td>${ops}</td>
+        </tr>`;
+        if (expanded) {
+          const rangeSel = renderRangeSelect(d.id);
+          expand += `<tr class="trend-row"><td colspan="9">
+            <div class="row-trend">
+              <!-- 时间范围筛选：左上角，并行控制左/右两个统计 -->
+              <div class="row-range trend-range-bar">
+                <span>时间范围</span>
+                ${rangeSel}
+              </div>
+              <div class="trend-grid">
+                <!-- 左栏：累计使用统计 + 折线图 -->
+                <div class="trend-left">
+                  <div class="trend-block-title">累计使用统计</div>
+                  <div class="trend-stat">
+                    <span class="num" id="liveTotal_${d.id}">-</span>
+                    <span class="unit">累计使用量</span>
+                  </div>
+                  <div class="trend-legend">
+                    <span class="dot" style="background:#10B981;"></span>
+                    <span>月度使用量（次）</span>
+                  </div>
+                  <svg class="trend-chart" id="liveChart_${d.id}" viewBox="0 0 600 260" role="img" style="max-height:210px;"></svg>
+                </div>
+                <!-- 右栏：组织使用统计（凸起饼状图） -->
+                <div class="trend-right">
+                  <div class="trend-block-title">组织使用统计</div>
+                  <div class="org-pie-wrap">
+                    <svg class="org-pie" id="orgPie_${d.id}" viewBox="0 0 300 260" role="img"></svg>
+                    <div class="org-total"><span class="num" id="orgTotal_${d.id}">-</span><span class="unit">组织累计使用</span></div>
+                  </div>
+                  <div class="org-legend" id="orgLegend_${d.id}"></div>
+                </div>
+              </div>
+            </div>
+          </td></tr>`;
+        }
+      } else {
+        expand += `<tr>
+          <td><span class="col-name">${esc(d.name)}</span></td>
+          <td>${d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join(' ')}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(d.brief)}</td>
+          <td>${esc(d.field)}</td>
+          <td><span class="tag tag-gray" style="background:#F0FDF4;color:#047857;border-color:#BBF7D0;">${esc(d.disease || '—')}</span></td>
+          <td><span class="tag tag-gray" style="background:#F3F4F6;color:var(--text-3);border-color:var(--border);">${esc(d.format)}</span></td>
+          ${extraCol}
+          <td class="mono text-3">${esc(d.time)}</td>
+          <td>${ops}</td>
+        </tr>`;
+      }
+      return expand;
+    }).join('');
+  }
+  renderPagination(CATALOG_PAGE_SIZE, total, 'catalogPager', goCatalogPage);
+  // 绘制已展开行的折线图（如当前页正好含该行）
+  if (catalogStatus === '已上架' && expandedTrendId !== null) {
+    renderLiveTrend(expandedTrendId);
+  }
+}
+function switchCatalogStatus(s) {
+  catalogStatus = s;
+  catalogPage = 1;
+  expandedTrendId = null;
+  document.querySelectorAll('#catalogStatusTabs .detail-tab').forEach(t => {
+    t.classList.toggle('active', t.getAttribute('data-status') === s);
+  });
+  const pending = document.getElementById('filterPending');
+  const live = document.getElementById('filterLive');
+  if (pending) pending.hidden = (s !== '待上架');
+  if (live) live.hidden = (s !== '已上架');
+  // 已上架默认展开第一个已上架数据
+  if (s === '已上架') {
+    const first = datasets.filter(d => d.status === '已上架')[0];
+    if (first) expandedTrendId = first.id;
+  }
+  renderCatalog();
+}
+function updateCatalogTabCounts() {
+  const list = datasets.filter(d => d.status === '待上架').length;
+  const live = datasets.filter(d => d.status === '已上架').length;
+  const pa = document.getElementById('tabCount-pending');
+  const pb = document.getElementById('tabCount-live');
+  if (pa) pa.textContent = list;
+  if (pb) pb.textContent = live;
+}
+function goCatalogPage(n) { catalogPage = n; renderCatalog(); }
+function renderPagination(pageSize, total, containerId, goFn) {
+  const container = document.getElementById(containerId);
+  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+  if (maxPage <= 1) { container.innerHTML = ''; return; }
+  let html = '';
+  html += `<button class="pager-btn" ${catalogPage <= 1 ? 'disabled' : ''} onclick="goFnWrapper(1,'${containerId}')">«</button>`;
+  const pages = [];
+  for (let i = 1; i <= maxPage; i++) pages.push(i);
+  pages.forEach(p => {
+    html += `<button class="pager-btn ${p === catalogPage ? 'active' : ''}" onclick="goFnWrapper(${p},'${containerId}')">${p}</button>`;
+  });
+  html += `<button class="pager-btn" ${catalogPage >= maxPage ? 'disabled' : ''} onclick="goFnWrapper(${maxPage},'${containerId}')">»</button>`;
+  container.innerHTML = html;
+}
+function goFnWrapper(n, cid) {
+  if (cid === 'catalogPager') goCatalogPage(n);
+}
+
+/* ============================================================
+   数据详情
+   ============================================================ */
+function openDetail(id) {
+  const d = datasets.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('detailAvatar').textContent = d.name.charAt(0);
+  document.getElementById('detailName').textContent = d.name;
+  document.getElementById('detailMeta').textContent = d.field + ' · ' + d.format + ' · ' + d.time;
+  const rows = [
+    ['数据标签', d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join(' ')],
+    ['数据简介', d.brief],
+    ['研究领域', d.field],
+    ['疾病类型', d.disease || '—'],
+    ['数据所属组织', d.org || '—'],
+    ['样本组织来源', d.tissue],
+    ['样本健康状态', d.health],
+    ['数据格式', d.format],
+    ['伦理审批', d.ethic],
+    ['许可协议', d.license],
+    ['上传时间', d.time]
+  ];
+  document.getElementById('detailFields').innerHTML = rows.map(([k, v]) => `
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px dashed var(--border-light);">
+      <div style="width:100px;font-size:12.5px;color:var(--text-4);flex-shrink:0;">${k}</div>
+      <div style="font-size:13.5px;color:var(--text-1);flex:1;min-width:0;word-break:break-word;">${v}</div>
+    </div>`).join('');
+  document.getElementById('detailMask').classList.add('open');
+}
+function closeDetail() { document.getElementById('detailMask').classList.remove('open'); }
+
+/* ============================================================
+   使用量趋势（折线图）
+   ============================================================ */
+function genMonthlyUsage(id) {
+  // 基于 id 生成稳定的月度使用量数据（近 12 个月）
+  let seed = id * 37 + 13;
+  const months = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    seed = (seed * 9301 + 49297) % 233280;
+    const base = 20 + (seed / 233280) * 260;
+    months.push({ label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, value: Math.round(base) });
+  }
+  return months;
+}
+/* 已上架行点击：展开/收起行内趋势 */
+function toggleTrend(id) {
+  expandedTrendId = (expandedTrendId === id) ? null : id;
+  renderCatalog();
+}
+/* 年度月份选项：从当前自然年 1 月 到 当前月 */
+function monthOptions() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const curMonth = now.getMonth(); // 0-based
+  const opts = [];
+  for (let m = 0; m <= curMonth; m++) {
+    opts.push(`${year}-${String(m + 1).padStart(2, '0')}`);
+  }
+  return opts;
+}
+/* 生成时间范围下拉（起始年月 & 结束年月） */
+function renderRangeSelect(id) {
+  const opts = monthOptions();
+  // 默认范围：当年 1 月 至 当前月
+  const startDefault = opts[0];
+  const endDefault = opts[opts.length - 1];
+  const startOpts = opts.map(m => `<option value="${m}" ${m === startDefault ? 'selected' : ''}>${m}</option>`).join('');
+  const endOpts = opts.map(m => `<option value="${m}" ${m === endDefault ? 'selected' : ''}>${m}</option>`).join('');
+  return `
+    <select class="field" id="rangeStart_${id}" onchange="renderLiveTrend(${id})">${startOpts}</select>
+    <span style="color:var(--text-4);">至</span>
+    <select class="field" id="rangeEnd_${id}" onchange="renderLiveTrend(${id})">${endOpts}</select>`;
+}
+/* 绘制行内趋势图（带时间段筛选） */
+function renderLiveTrend(id) {
+  const svg = document.getElementById('liveChart_' + id);
+  if (!svg) return;
+  const startSel = document.getElementById('rangeStart_' + id);
+  const endSel = document.getElementById('rangeEnd_' + id);
+  const start = startSel ? startSel.value : null;
+  const end = endSel ? endSel.value : null;
+  const all = genMonthlyUsage(id);
+  let months = all;
+  if (start && end) {
+    months = all.filter(m => m.label >= start && m.label <= end);
+  }
+  if (!months.length) months = all.slice(-3);
+  const W = 600, H = 260, padL = 46, padR = 20, padT = 26, padB = 36;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const maxV = Math.max(...months.map(m => m.value), 1);
+  const niceMax = Math.ceil(maxV / 100) * 100 || 100;
+  const stepX = innerW / Math.max(months.length - 1, 1);
+  const pts = months.map((m, i) => ({
+    x: padL + i * stepX,
+    y: padT + innerH - (m.value / niceMax) * innerH
+  }));
+  const sum = months.reduce((a, b) => a + b.value, 0);
+  const totalEl = document.getElementById('liveTotal_' + id);
+  if (totalEl) totalEl.textContent = formatNum(sum);
+
+  let g = '';
+  const gridN = 4;
+  for (let i = 0; i <= gridN; i++) {
+    const y = padT + innerH - (i / gridN) * innerH;
+    const val = niceMax * i / gridN;
+    g += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#EEF1F4" stroke-width="0.5"/>`;
+    g += `<text x="${padL - 8}" y="${y}" text-anchor="end" dominant-baseline="central" style="font-size:11px;fill:#9CA3AF;">${val}</text>`;
+  }
+  pts.forEach((p, i) => {
+    const m = months[i].label;
+    g += `<text x="${p.x}" y="${padT + innerH + 18}" text-anchor="middle" style="font-size:11px;fill:#9CA3AF;">${m}</text>`;
+  });
+  const linePath = 'M' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
+  const areaPath = linePath + ` L${pts[pts.length - 1].x.toFixed(1)} ${padT + innerH} L${pts[0].x.toFixed(1)} ${padT + innerH} Z`;
+  pts.forEach(p => {
+    g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#fff" stroke="#10B981" stroke-width="2"/>`;
+  });
+  // 每个数据点上方显示当月使用量数值（不显示时间）
+  pts.forEach((p, i) => {
+    const v = months[i].value;
+    g += `<text x="${p.x.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="middle" style="font-size:10.5px;font-weight:600;fill:#047857;">${v}</text>`;
+  });
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="liveArea_${id}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(16,185,129,0.22)"/>
+        <stop offset="1" stop-color="rgba(16,185,129,0)"/>
+      </linearGradient>
+    </defs>
+    ${g}
+    <path d="${areaPath}" fill="url(#liveArea_${id})"/>
+    <path d="${linePath}" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#fff" stroke="#10B981" stroke-width="2"/>`).join('')}
+  `;
+  renderOrgPie(id, months);
+}
+/* 渲染组织使用统计（凸起饼状图），orgs 按所选时间段的月度使用量分摊 */
+const ORG_PALETTE = ['#10B981', '#0EA5E9', '#F59E0B', '#8B5CF6', '#EF4444', '#14B8A6'];
+function renderOrgPie(id, months) {
+  const svg = document.getElementById('orgPie_' + id);
+  if (!svg) return;
+  const d = datasets.find(x => x.id === id);
+  if (!d) return;
+  // 基于 id 确定性地取 5 个使用组织
+  const orgs = ['复星医药研究院', '华东临床中心', '南方生物实验室', '康桥数据部', '浦江医疗中心'];
+  let seed = id * 97 + 19;
+  const periodTotal = months.reduce((a, b) => a + b.value, 0); // 所选时间段总使用量
+  let weights = orgs.map(() => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return 8 + Math.floor((seed / 233280) * 24);
+  });
+  const wSum = weights.reduce((a, b) => a + b, 0);
+  const items = orgs.map((name, i) => ({
+    name,
+    value: Math.round((weights[i] / wSum) * periodTotal)
+  }));
+  const total = items.reduce((a, b) => a + b.value, 0);
+  const totalEl = document.getElementById('orgTotal_' + id);
+  if (totalEl) totalEl.textContent = formatNum(total);
+
+  // 绘制饼图扇区（甜甜圈 + 凸起描边）
+  const cx = 150, cy = 128, R = 96, innerR = 58;
+  let startAngle = -Math.PI / 2;
+  let paths = '';
+  const slices = items.filter(x => x.value > 0);
+  // 若全为 0（periodTotal=0），显示等分占位
+  const useSlices = slices.length ? slices : items.map((x, i) => ({ name: x.name, value: 1, _ph: true }));
+  const sSum = useSlices.reduce((a, b) => a + b.value, 0);
+  useSlices.forEach((s, i) => {
+    const angle = (s.value / sSum) * Math.PI * 2;
+    const endAngle = startAngle + angle;
+    const color = ORG_PALETTE[i % ORG_PALETTE.length];
+    // 外弧
+    const x1 = cx + R * Math.cos(startAngle), y1 = cy + R * Math.sin(startAngle);
+    const x2 = cx + R * Math.cos(endAngle), y2 = cy + R * Math.sin(endAngle);
+    // 内弧（反向）
+    const x3 = cx + innerR * Math.cos(endAngle), y3 = cy + innerR * Math.sin(endAngle);
+    const x4 = cx + innerR * Math.cos(startAngle), y4 = cy + innerR * Math.sin(startAngle);
+    const largeArc = (angle > Math.PI) ? 1 : 0;
+    const dash = angle > Math.PI * 0.995 ? '' : '';
+    const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${R} ${R} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} L ${x3.toFixed(1)} ${y3.toFixed(1)} A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4.toFixed(1)} ${y4.toFixed(1)} Z`;
+    paths += `<path d="${path}" fill="${color}" stroke="#fff" stroke-width="2.5" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.12));"/>`;
+    // 记录扇区角度用于图例颜色
+    s._color = color;
+    startAngle = endAngle;
+  });
+
+  svg.innerHTML = `
+    <defs>
+      <radialGradient id="orgStripe_${id}" cx="38%" cy="34%" r="72%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.35)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+      </radialGradient>
+    </defs>
+    ${paths}
+    <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#fff"/>
+    <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="url(#orgStripe_${id})" opacity="0.5"/>
+  `;
+
+  // 图例
+  const legend = document.getElementById('orgLegend_' + id);
+  if (legend) {
+    legend.innerHTML = items.map((it, i) => `
+      <span class="ol"><span class="sw" style="background:${ORG_PALETTE[i % ORG_PALETTE.length]};"></span>${esc(it.name)}<span class="pv">${formatNum(it.value)}</span></span>
+    `).join('');
+  }
+}
+
+/* ============================================================
+   数据上传
+   ============================================================ */
+let upFile = null;
+let upAttach = null;
+
+function fillUploadOptions() {
+  const tagsSel = document.getElementById('upTags');
+  const fieldSel = document.getElementById('upField');
+  const diseaseSel = document.getElementById('upDisease');
+  const orgSel = document.getElementById('upOrg');
+  const healthSel = document.getElementById('upHealth');
+  const formatSel = document.getElementById('upFormat');
+  const ethicSel = document.getElementById('upEthic');
+  const licenseSel = document.getElementById('upLicense');
+  if (tagsSel.options.length > 1) return;
+  DATA_TAGS.forEach(t => tagsSel.add(new Option(t, t)));
+  RESEARCH_FIELDS.forEach(f => fieldSel.add(new Option(f, f)));
+  DISEASE_TYPES.forEach(d => diseaseSel.add(new Option(d, d)));
+  ORG_NAMES.forEach(o => orgSel.add(new Option(o, o)));
+  HEALTH_STATES.forEach(h => healthSel.add(new Option(h, h)));
+  DATA_FORMATS.forEach(f => formatSel.add(new Option(f, f)));
+  ETHIC_STATUS.forEach(e => ethicSel.add(new Option(e, e)));
+  LICENSES.forEach(l => licenseSel.add(new Option(l, l)));
+}
+function setDataFile() {
+  const input = document.getElementById('dataFileInput');
+  const box = document.getElementById('dataFileBox');
+  const title = document.getElementById('dataFileTitle');
+  const hint = document.getElementById('dataFileHint');
+  if (input.files && input.files.length) {
+    upFile = { name: input.files[0].name, size: input.files[0].size };
+    box.classList.add('has-file');
+    title.textContent = upFile.name;
+    hint.textContent = '点击可重新选择数据文件';
+    document.getElementById('dataFileMsg').style.display = 'none';
+  }
+}
+function setAttachFile() {
+  const input = document.getElementById('attachFileInput');
+  const box = document.getElementById('attachFileBox');
+  const title = document.getElementById('attachFileTitle');
+  const hint = document.getElementById('attachFileHint');
+  if (input.files && input.files.length) {
+    upAttach = { name: input.files[0].name, size: input.files[0].size };
+    box.classList.add('has-file');
+    title.textContent = upAttach.name;
+    hint.textContent = '点击可重新选择附件文件';
+  }
+}
+function clearUploadErrors() {
+  document.querySelectorAll('#uploadDrawer .form-item').forEach(it => it.classList.remove('error'));
+}
+function resetUpload() {
+  upFile = null; upAttach = null;
+  document.getElementById('dataFileInput').value = '';
+  document.getElementById('attachFileInput').value = '';
+  document.getElementById('dataFileBox').classList.remove('has-file');
+  document.getElementById('attachFileBox').classList.remove('has-file');
+  document.getElementById('dataFileTitle').textContent = '点击上传数据文件';
+  document.getElementById('dataFileHint').textContent = '支持 CSV / Excel / 压缩包等，用于同步数据目录';
+  document.getElementById('attachFileTitle').textContent = '点击上传附件文件';
+  document.getElementById('attachFileHint').textContent = '支持说明书 / 元数据文档等附件（选填）';
+  ['upName', 'upTags', 'upBrief', 'upField', 'upDisease', 'upOrg', 'upTissue', 'upHealth', 'upFormat', 'upEthic', 'upLicense'].forEach(id => document.getElementById(id).value = '');
+  clearUploadErrors();
+  document.getElementById('uploadSuccess').hidden = true;
+}
+function submitUpload() {
+  clearUploadErrors();
+  let valid = true;
+  const req = [
+    ['dataFileBox', !upFile, 'dataFileMsg'],
+    ['upName', !document.getElementById('upName').value.trim()],
+    ['upTags', !document.getElementById('upTags').value],
+    ['upBrief', !document.getElementById('upBrief').value.trim()],
+    ['upField', !document.getElementById('upField').value],
+    ['upDisease', !document.getElementById('upDisease').value],
+    ['upOrg', !document.getElementById('upOrg').value],
+    ['upHealth', !document.getElementById('upHealth').value],
+    ['upFormat', !document.getElementById('upFormat').value],
+    ['upEthic', !document.getElementById('upEthic').value],
+    ['upLicense', !document.getElementById('upLicense').value]
+  ];
+  req.forEach(([itemId, invalid, msgId]) => {
+    const item = document.getElementById(itemId).closest('.form-item');
+    if (invalid) { item.classList.add('error'); valid = false; }
+  });
+  if (!valid) { document.getElementById('uploadSuccess').hidden = true; return; }
+
+  const d = {
+    id: Math.max(0, ...datasets.map(x => x.id)) + 1,
+    name: document.getElementById('upName').value.trim(),
+    tags: [document.getElementById('upTags').value],
+    brief: document.getElementById('upBrief').value.trim(),
+    field: document.getElementById('upField').value,
+    disease: document.getElementById('upDisease').value,
+    org: document.getElementById('upOrg').value,
+    tissue: document.getElementById('upTissue').value.trim() || '—',
+    health: document.getElementById('upHealth').value,
+    format: document.getElementById('upFormat').value,
+    ethic: document.getElementById('upEthic').value,
+    license: document.getElementById('upLicense').value,
+    time: fmtTime(new Date()),
+    status: '待上架',
+    audit: '待审核',
+    usage: 0
+  };
+  datasets.unshift(d);
+  document.getElementById('uploadSuccess').hidden = false;
+  resetUpload();
+  document.getElementById('uploadSuccess').hidden = false;
+
+  // 自动同步：关闭抽屉，切换到待上架视图并高亮新上传的数据
+  closeUploadDrawer();
+  catalogPage = 1;
+  catalogStatus = '待上架';
+  document.querySelectorAll('#catalogStatusTabs .detail-tab').forEach(t => {
+    t.classList.toggle('active', t.getAttribute('data-status') === '待上架');
+  });
+  document.getElementById('filterPending').hidden = false;
+  document.getElementById('filterLive').hidden = true;
+  document.getElementById('catalogKw').value = '';
+  document.getElementById('pendingTagF').value = '';
+  document.getElementById('pendingFormatF').value = '';
+  document.getElementById('pendingAuditF').value = '';
+  switchView('catalog');
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#catalogTbody tr');
+    if (rows.length) {
+      rows[0].classList.add('row-new');
+      setTimeout(() => rows[0].classList.remove('row-new'), 2500);
+    }
+  }, 60);
+}
+
+/* 数据上传抽屉开关 */
+function openUploadDrawer() {
+  document.getElementById('uploadDrawer').classList.add('open');
+  fillUploadOptions();
+}
+function closeUploadDrawer() {
+  document.getElementById('uploadDrawer').classList.remove('open');
+  resetUpload();
+}
+
+/* ============================================================
+   登录
+   ============================================================ */
+const LOGIN_KEY = 'gongshu_login';
+let loggedUser = null;
+function doLogin() {
+  const acc = document.getElementById('loginAccount').value.trim();
+  const pwd = document.getElementById('loginPassword').value;
+  document.getElementById('loginError').classList.remove('show');
+  if (!acc) { showLoginError('请输入账号'); return; }
+  if (!pwd) { showLoginError('请输入密码'); return; }
+  loggedUser = { account: acc, name: acc.slice(0, 1) };
+  localStorage.setItem(LOGIN_KEY, JSON.stringify(loggedUser));
+  enterSystem();
+}
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function enterSystem() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.querySelector('.layout').hidden = false;
+  document.getElementById('topbarAccount').textContent = loggedUser ? loggedUser.account : '-';
+  document.getElementById('topbarAvatar').textContent = loggedUser ? loggedUser.name.charAt(0) : '供';
+  // 进入系统默认展示已上架，并默认展开第一个已上架数据
+  catalogStatus = '已上架';
+  const first = datasets.filter(d => d.status === '已上架')[0];
+  expandedTrendId = first ? first.id : null;
+  switchView('catalog');
+}
+function logout() {
+  loggedUser = null;
+  localStorage.removeItem(LOGIN_KEY);
+  document.querySelector('.layout').hidden = true;
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('loginAccount').value = '';
+  document.getElementById('loginPassword').value = '';
+  expandedTrendId = null;
+}
+
+/* Esc 关闭弹窗 */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.getElementById('detailMask').classList.remove('open');
+  document.getElementById('uploadDrawer').classList.remove('open');
+});
+
+/* 登录页：密码框按 Enter 直接登录 */
+(function bindLoginEnter() {
+  const pwd = document.getElementById('loginPassword');
+  if (!pwd) return;
+  pwd.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
+  });
+})();
+
+/* ============================================================
+   初始化
+   ============================================================ */
+(function init() {
+  seedCatalog();
+  fillCatalogFilters();
+  fillUploadOptions();
+  updateCatalogTabCounts();
+  // 默认展示已上架，并默认展开第一个已上架数据
+  catalogStatus = '已上架';
+  const first = datasets.filter(d => d.status === '已上架')[0];
+  if (first) expandedTrendId = first.id;
+  switchView('catalog');
+  // 始终显示登录页（原型演示，不保留登录记忆）
+  document.getElementById('loginPage').style.display = 'flex';
+})();
+</script>
+</body>
+</html>

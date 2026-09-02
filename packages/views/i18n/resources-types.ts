@@ -28,6 +28,7 @@ import type layout from "../locales/en/layout.json";
 import type usage from "../locales/en/usage.json";
 import type fleet from "../locales/en/fleet.json";
 import type squads from "../locales/en/squads.json";
+import type gallery from "../locales/en/gallery.json";
 import type graph from "../locales/en/graph.json";
 import type billing from "../locales/en/billing.json";
 import type workspaces from "../locales/en/workspaces.json";
@@ -79,6 +80,7 @@ declare global {
     // bundles stay in structural lockstep via locales/parity.test.ts and
     // core/office/monologue-key.test.ts.
     office: Record<string, string>;
+    gallery: typeof gallery;
     graph: typeof graph;
     billing: typeof billing;
     workspaces: typeof workspaces;

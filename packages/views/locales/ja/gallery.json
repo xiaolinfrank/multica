@@ -1,0 +1,20 @@
+{
+  "page": {
+    "title": "成果ギャラリー",
+    "description": "このワークスペースが提供したプロダクトとインタラクティブなプロトタイプ"
+  },
+  "empty": {
+    "title": "展示できる成果はまだありません",
+    "description": "成果をギャラリーに追加すると、ここに表示されます。"
+  },
+  "work": {
+    "open": "プロトタイプを開く",
+    "open_screen": "「{{screen}}」のプロトタイプを開く",
+    "credentials": "デモ用アカウント — アカウント {{account}}、パスワード {{password}}"
+  },
+  "viewer": {
+    "reload": "最初から",
+    "screens_label": "プロトタイプの画面",
+    "credentials": "{{account}} / {{password}}"
+  }
+}

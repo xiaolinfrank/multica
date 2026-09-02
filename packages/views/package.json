@@ -26,6 +26,7 @@
     "./env": "./env/index.ts",
     "./agents": "./agents/index.ts",
     "./office": "./office/index.ts",
+    "./gallery": "./gallery/index.ts",
     "./graph": "./graph/index.ts",
     "./members": "./members/index.ts",
     "./inbox": "./inbox/index.ts",

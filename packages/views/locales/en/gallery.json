@@ -1,0 +1,20 @@
+{
+  "page": {
+    "title": "Gallery",
+    "description": "Products and interactive prototypes this workspace has delivered"
+  },
+  "empty": {
+    "title": "Nothing on show yet",
+    "description": "Delivered work will appear here once it is added to the gallery."
+  },
+  "work": {
+    "open": "Open prototype",
+    "open_screen": "Open the {{screen}} prototype",
+    "credentials": "Demo sign-in — account {{account}}, password {{password}}"
+  },
+  "viewer": {
+    "reload": "Restart",
+    "screens_label": "Prototype screens",
+    "credentials": "{{account}} / {{password}}"
+  }
+}

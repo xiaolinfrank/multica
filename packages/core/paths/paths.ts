@@ -56,6 +56,7 @@ function workspaceScoped(slug: string) {
     memberDetail: (id: string) => `${ws}/members/${encode(id)}`,
     squads: () => `${ws}/squads`,
     office: () => `${ws}/office`,
+    gallery: () => `${ws}/gallery`,
     squadDetail: (id: string) => `${ws}/squads/${encode(id)}`,
     inbox: () => `${ws}/inbox`,
     chat: () => `${ws}/chat`,
