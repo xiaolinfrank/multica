@@ -9,12 +9,11 @@
   },
   "work": {
     "open": "プロトタイプを開く",
-    "open_screen": "「{{screen}}」のプロトタイプを開く",
-    "credentials": "デモ用アカウント — アカウント {{account}}、パスワード {{password}}"
+    "open_screen": "「{{screen}}」のプロトタイプを開く"
   },
   "viewer": {
     "reload": "最初から",
     "screens_label": "プロトタイプの画面",
-    "credentials": "{{account}} / {{password}}"
+    "credentials": "入力済み {{account}} / {{password}}"
   }
 }

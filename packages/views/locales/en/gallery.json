@@ -9,12 +9,11 @@
   },
   "work": {
     "open": "Open prototype",
-    "open_screen": "Open the {{screen}} prototype",
-    "credentials": "Demo sign-in — account {{account}}, password {{password}}"
+    "open_screen": "Open the {{screen}} prototype"
   },
   "viewer": {
     "reload": "Restart",
     "screens_label": "Prototype screens",
-    "credentials": "{{account}} / {{password}}"
+    "credentials": "Signed in as {{account}} / {{password}}"
   }
 }

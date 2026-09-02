@@ -8,7 +8,7 @@ import { GalleryPage } from "./gallery-page";
 // The src-per-platform matrix is pinned in gallery-asset-src.test.ts (node
 // suite). This file keeps the happy path and the wiring: the catalogue renders,
 // a screen opens the viewer on the screen that was clicked, the frame is
-// pointed at that screen's document, and the demo credentials are visible.
+// pointed at that screen's document, and that screen's own sign-in is shown.
 
 // isDesktopShell() probes window.desktopAPI; jsdom has none, so the whole
 // suite runs on the web branch. That is the branch the assertions below expect.
@@ -44,16 +44,25 @@ describe("GalleryPage", () => {
     }
   });
 
-  it("shows the demo sign-in on the card, so a viewer can get past the login wall", () => {
+  it("shows the opened screen's own sign-in, not one pair standing in for all of them", () => {
+    // The gated prototypes validate differently — the admin console rejects the
+    // portal's account outright — so the viewer has to follow the active screen.
+    // That the catalogue actually holds distinct pairs is asserted in
+    // gallery-asset-src.test.ts; this covers the viewer following the switch.
+    const gated = work.screens.filter((item) => item.credentials);
+    const odd = gated.find((item) => item.credentials!.account !== gated[0]!.credentials!.account)!;
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: odd.name }));
 
-    const credentials = work.screens.find((item) => item.credentials)?.credentials;
-    expect(credentials).toBeDefined();
+    const dialog = screen.getByRole("dialog");
     expect(
-      screen.getByText(
-        `Demo sign-in — account ${credentials!.account}, password ${credentials!.password}`,
+      within(dialog).getByText(
+        `Signed in as ${odd.credentials!.account} / ${odd.credentials!.password}`,
       ),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(new RegExp(gated[0]!.credentials!.account)),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the viewer on the screen that was clicked and frames that document", () => {

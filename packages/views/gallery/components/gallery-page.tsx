@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Images, KeyRound, Play } from "lucide-react";
+import { Images, Play } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { cn } from "@multica/ui/lib/utils";
 import { CollectionPageHeader, CollectionPageState } from "../../layout";
@@ -83,7 +83,6 @@ interface WorkCardProps {
 function WorkCard({ work, onOpen }: WorkCardProps) {
   const { t } = useT("gallery");
   const lead = work.screens[0];
-  const credentials = work.screens.find((screen) => screen.credentials)?.credentials;
 
   return (
     <article className="overflow-hidden rounded-xl border bg-card">
@@ -130,7 +129,7 @@ function WorkCard({ work, onOpen }: WorkCardProps) {
             </ul>
           ) : null}
 
-          <div className="mt-auto flex flex-col gap-3 pt-1">
+          <div className="mt-auto pt-1">
             <div className="flex flex-wrap items-center gap-2">
               {work.screens.map((screen, index) => (
                 <Button
@@ -145,16 +144,6 @@ function WorkCard({ work, onOpen }: WorkCardProps) {
                 </Button>
               ))}
             </div>
-
-            {credentials ? (
-              <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
-                <KeyRound aria-hidden="true" className="size-3.5 shrink-0" />
-                {t(($) => $.work.credentials, {
-                  account: credentials.account,
-                  password: credentials.password,
-                })}
-              </p>
-            ) : null}
           </div>
         </div>
       </div>

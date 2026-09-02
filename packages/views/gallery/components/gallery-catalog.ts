@@ -14,7 +14,18 @@
  * `locales/*\/gallery.json`.
  */
 
-/** Sign-in details a viewer needs before a prototype will let them in. */
+/**
+ * The sign-in a prototype accepts.
+ *
+ * Our copies of the prototypes ship with these already filled into the login
+ * form, so a viewer only has to press the button. They are still surfaced in
+ * the viewer, because the prototypes clear both fields on sign-out and a demo
+ * you cannot get back into is a demo that ends at the first stray click.
+ *
+ * Per screen, not per work: the three gated prototypes validate differently.
+ * Keep an entry in step with the `value=` attributes on that document's
+ * `#loginAccount` / `#loginPassword` inputs.
+ */
 export interface PrototypeCredentials {
   account: string;
   password: string;
@@ -25,11 +36,7 @@ export interface GalleryScreen {
   id: string;
   name: string;
   summary: string;
-  /**
-   * Absent when the prototype drops straight into its main view. Present
-   * entries are surfaced in the viewer, because a demo that opens on a login
-   * wall with no visible credentials is a demo nobody can drive.
-   */
+  /** Absent when the prototype drops straight into its main view. */
   credentials?: PrototypeCredentials;
 }
 
@@ -43,9 +50,6 @@ export interface GalleryWork {
   highlights: string[];
   screens: GalleryScreen[];
 }
-
-/** Any account is accepted by the supplier console, so we suggest one. */
-const DEMO_ACCOUNT: PrototypeCredentials = { account: "admin", password: "123456" };
 
 export const GALLERY_WORKS: GalleryWork[] = [
   {
@@ -68,19 +72,24 @@ export const GALLERY_WORKS: GalleryWork[] = [
         id: "user-portal",
         name: "用户端",
         summary: "科研人员的日常入口：消息、通讯录、项目、任务、自动化、云盘与应用市场。",
-        credentials: DEMO_ACCOUNT,
+        // Hard-coded to this pair: any other account is rejected.
+        credentials: { account: "admin", password: "123456" },
       },
       {
         id: "admin-console",
         name: "管理端",
         summary: "平台运营后台：组织与账号、权限角色、数据安全策略与运营看板。",
-        credentials: DEMO_ACCOUNT,
+        // Validated against the prototype's own user list, where `zhangwei`
+        // (系统管理员) is the only account not forced through a first-login
+        // password change. "admin" does not exist there.
+        credentials: { account: "zhangwei", password: "123456" },
       },
       {
         id: "data-provider-console",
         name: "供数方平台",
         summary: "数据提供方的数据管理台：数据目录维护与对外供数的申请审批。",
-        credentials: DEMO_ACCOUNT,
+        // Accepts any non-empty pair; we prefill the same one as the portal.
+        credentials: { account: "admin", password: "123456" },
       },
       {
         id: "mobile-app",

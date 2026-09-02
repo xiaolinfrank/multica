@@ -9,12 +9,11 @@
   },
   "work": {
     "open": "打开原型",
-    "open_screen": "打开「{{screen}}」原型",
-    "credentials": "演示账号 —— 账号 {{account}}，密码 {{password}}"
+    "open_screen": "打开「{{screen}}」原型"
   },
   "viewer": {
     "reload": "重新开始",
     "screens_label": "原型界面",
-    "credentials": "{{account}} / {{password}}"
+    "credentials": "已填入 {{account}} / {{password}}"
   }
 }

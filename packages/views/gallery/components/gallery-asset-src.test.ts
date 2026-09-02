@@ -56,6 +56,21 @@ describe("GALLERY_WORKS", () => {
     }
   });
 
+  it("gives each gated screen the sign-in its own prototype validates", () => {
+    // Regression: the three gated prototypes were briefly catalogued with one
+    // shared pair, which the admin console rejects outright — it validates
+    // against its own user list, where "admin" does not exist.
+    const gated = GALLERY_WORKS.flatMap((work) =>
+      work.screens.filter((screen) => screen.credentials),
+    );
+    expect(gated.length).toBeGreaterThan(0);
+    for (const screen of gated) {
+      expect(screen.credentials?.account).toBeTruthy();
+      expect(screen.credentials?.password).toBeTruthy();
+    }
+    expect(new Set(gated.map((screen) => screen.credentials!.account)).size).toBeGreaterThan(1);
+  });
+
   it("keeps work ids unique", () => {
     const ids = GALLERY_WORKS.map((work) => work.id);
     expect(new Set(ids).size).toBe(ids.length);
