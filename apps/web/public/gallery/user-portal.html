@@ -1034,6 +1034,44 @@ button { font-family: inherit; }
 .coop-verdict.no { background: #FEF2F2; color: var(--danger); }
 .coop-verdict.fix { background: var(--orange-50); color: #B45309; }
 .coop-note { font-size: 11.5px; color: var(--text-4); line-height: 1.5; }
+/* ========== 任务动态：人机协同记录 ========== */
+.tf-item { display: flex; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.tf-item:last-child { border-bottom: none; }
+.tf-ava { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; }
+.tf-ava.agent { background: #8B5CF6; }
+.tf-ava.human { background: #3B82F6; }
+.tf-ava.sys { background: var(--text-4); border-radius: 50%; }
+.tf-ava.done { background: var(--primary); border-radius: 50%; }
+.tf-col { flex: 1; min-width: 0; }
+.tf-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 3px; }
+.tf-name { font-size: 12.5px; font-weight: 600; color: var(--text-1); }
+.tf-kind { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 4px; }
+.tf-kind.agent { background: #F5F3FF; color: #7C3AED; }
+.tf-kind.human { background: #EFF6FF; color: #2563EB; }
+.tf-time { font-size: 11px; color: var(--text-4); margin-left: auto; }
+.tf-body { font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
+.tf-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 7px; }
+.tf-fact { font-size: 11.5px; color: var(--text-4); }
+.tf-fact b { font-weight: 600; color: var(--text-2); margin-left: 4px; }
+.tf-verdict { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 5px; margin-top: 8px; }
+.tf-verdict.ok { background: var(--primary-50); color: var(--primary-600); }
+.tf-verdict.fix { background: var(--orange-50); color: #B45309; }
+.tf-verdict.sign { background: #EFF6FF; color: #2563EB; }
+/* ========== 群消息：智能体交付卡 ========== */
+.dc { border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; margin-top: 8px; background: var(--bg-card); max-width: 520px; }
+.dc-h { padding: 8px 12px; background: var(--bg-hover); font-size: 12px; font-weight: 600; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.dc-h .dc-tag { margin-left: auto; font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--primary-50); color: var(--primary-600); }
+.dc-h .dc-tag.warn { background: var(--orange-50); color: #B45309; }
+.dc-b { padding: 10px 12px; }
+.dc-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 3px 0; }
+.dc-row .k { color: var(--text-4); flex-shrink: 0; min-width: 78px; }
+.dc-row .v { color: var(--text-1); font-weight: 600; }
+.dc-row .v.mut { font-weight: 400; color: var(--text-2); }
+.dc-foot { padding: 8px 12px; border-top: 1px solid var(--border-light); font-size: 11.5px; color: var(--text-4); line-height: 1.55; }
+.dc-diff { font-size: 12px; padding: 5px 0; display: flex; gap: 8px; align-items: baseline; }
+.dc-diff .old { color: var(--text-4); text-decoration: line-through; }
+.dc-diff .new { color: #B45309; font-weight: 600; }
+.dc-diff .lbl { color: var(--text-4); min-width: 78px; flex-shrink: 0; }
 /* 智能体输入中 */
 .msg-bubble.typing { display: inline-flex; gap: 4px; align-items: center; padding: 12px 14px; }
 .msg-bubble.typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); animation: coopBlink 1.2s infinite; }
@@ -1892,6 +1930,72 @@ const groupAvatars = {
 };
 const convData = [
   {
+    id: 'g5', name: '药物警戒 · 临床运营协同群', count: 7, unread: 2,
+    type: 'group', avatar: 'group', avatarColor: 'green',
+    preview: '李伟：编码一致性 83.2% → 96.8%，省下的时间挪到只有人能做的判断上…', time: '今天 14:28',
+    detailSub: '智能体执行 · 专员把关 · 每一步留痕可追溯',
+    members: ['药物警戒智能体','临床研究智能体','李林','王芳','杨涛','研究护士组','李伟'],
+    tasks: [
+      { name: 'ICSR CN-FOSUN-2026-028471 复核与签发', status: 'done', owner: '李林', ai: false },
+      { name: '入排预筛 v2.1 · 97 例候选确认', status: 'doing', owner: '杨涛', ai: false },
+      { name: '2026 Q3 药物警戒信号检测研判', status: 'doing', owner: '王芳', ai: false },
+    ],
+    docs: [{ name: 'ICSR_028471_E2B(R3).xml', date: '09/03 14:06' }, { name: '复核修正留痕_028471.pdf', date: '09/03 11:33' }, { name: '入排预筛结果_v2.1.xlsx', date: '09/03 11:40' }],
+    messages: [
+      { name: '药物警戒智能体', color: 'purple', ai: true, time: '今天 09:38', mention: '李林',
+        html: '本季第 2,847 份来件已完成抽取与编码，请复核。每个字段都标了来件原文位置，点开可逐项核对。' +
+          '<div class="dc"><div class="dc-h">ICSR CN-FOSUN-2026-028471 · 初判交付<span class="dc-tag">待复核</span></div><div class="dc-b">' +
+          '<div class="dc-row"><span class="k">E2B(R3) 字段</span><span class="v">47 项</span><span class="v mut">· 全部回链原文</span></div>' +
+          '<div class="dc-row"><span class="k">MedDRA 编码</span><span class="v">6 个术语</span><span class="v mut">· LLT → PT → SOC</span></div>' +
+          '<div class="dc-row"><span class="k">严重性（ICH）</span><span class="v">严重 · 导致住院</span></div>' +
+          '<div class="dc-row"><span class="k">关联性初判</span><span class="v">很可能</span><span class="v mut">· WHO-UMC · 去激发阳性</span></div>' +
+          '<div class="dc-row"><span class="k">耗时 / 成本</span><span class="v mut">2 分 51 秒 · ¥0.15</span></div>' +
+          '</div><div class="dc-foot">本例为严重病例，法定时限 15 日；距时限还有 14 天。</div></div>' },
+      { name: '李林', color: 'blue', time: '今天 11:20',
+        html: '复核完了，采纳 52 项，改了 5 处。修正理由都已留痕，回流做模型校准。' +
+          '<div class="dc"><div class="dc-h">人工裁决 · 5 处修正<span class="dc-tag warn">已退回修正</span></div><div class="dc-b">' +
+          '<div class="dc-diff"><span class="lbl">合并用药</span><span class="old">3 种 · 仅院内医嘱</span><span style="color:var(--text-4);">→</span><span class="new">补入何首乌制剂（已知肝毒性）</span></div>' +
+          '<div class="dc-diff"><span class="lbl">报告者身份</span><span class="old">其他</span><span style="color:var(--text-4);">→</span><span class="new">医生</span></div>' +
+          '<div class="dc-diff"><span class="lbl">MedDRA</span><span class="old">瘙痒性皮疹（PT）</span><span style="color:var(--text-4);">→</span><span class="new">药疹（有诊断优先编诊断）</span></div>' +
+          '<div class="dc-diff"><span class="lbl">关联性</span><span class="old">很可能</span><span style="color:var(--text-4);">→</span><span class="new">可能（混杂用药排不掉）</span></div>' +
+          '<div class="dc-diff"><span class="lbl">综合征</span><span class="old">未提示</span><span style="color:var(--text-4);">→</span><span class="new">补充「DRESS 待排」</span></div>' +
+          '</div><div class="dc-foot">皮疹 + 39.2℃ 高热 + 嗜酸粒细胞 18% + ALT 412 同时出现，得按综合征回溯同品种既往病例。智能体把这四个事件编成了四条孤立术语——这一层现在只能靠人。</div></div>' },
+      { name: '药物警戒智能体', color: 'purple', ai: true, time: '今天 11:33', mention: '王芳',
+        html: '已按裁决重写 Narrative 与 E2B(R3) 报文，并按「综合征待排」触发了同品种回溯。等待签署放行。' +
+          '<div class="dc"><div class="dc-h">修正后重交付<span class="dc-tag">待签发</span></div><div class="dc-b">' +
+          '<div class="dc-row"><span class="k">校验规则</span><span class="v">68 项</span><span class="v mut">· 全部通过</span></div>' +
+          '<div class="dc-row"><span class="k">必填完整率</span><span class="v">100%</span></div>' +
+          '<div class="dc-row"><span class="k">触发回溯</span><span class="v">同品种 DRESS 样病例 3 例</span></div>' +
+          '<div class="dc-row"><span class="k">修正留痕</span><span class="v mut">5 条 · 已回流校准</span></div>' +
+          '</div></div>' },
+      { name: '临床研究智能体', color: 'green', ai: true, time: '今天 11:40', mention: '杨涛',
+        html: '入排预筛同步：方案 v2.1 全量重跑完成，候选清单已出，请确认。' +
+          '<div class="dc"><div class="dc-h">入排预筛 v2.1 · 全量重筛<span class="dc-tag">待研究者确认</span></div><div class="dc-b">' +
+          '<div class="dc-row"><span class="k">扫描病历</span><span class="v">12,400 份</span><span class="v mut">· 全量，非抽样</span></div>' +
+          '<div class="dc-row"><span class="k">原子条件</span><span class="v">78 条</span><span class="v mut">· 逐条回链原文</span></div>' +
+          '<div class="dc-row"><span class="k">命中候选</span><span class="v">316 份</span></div>' +
+          '<div class="dc-row"><span class="k">待人工判断</span><span class="v">54 条</span><span class="v mut">· 把握不准的没有猜</span></div>' +
+          '<div class="dc-row"><span class="k">耗时</span><span class="v">3 小时 27 分</span><span class="v mut">· 人工基线 44.7 人时</span></div>' +
+          '</div></div>' },
+      { name: '王芳', color: 'blue', time: '今天 14:05', text: '028471 已签发放行，按 SOP-PV-012 走严重病例流程，签发记录进审计轨迹。' },
+      { name: '药物警戒智能体', color: 'purple', ai: true, time: '今天 14:06',
+        html: 'E2B(R3) 报文已提交国家药品不良反应监测系统并回执确认，全链路证据归档备查。' +
+          '<div class="dc"><div class="dc-h">已提交 · 归档<span class="dc-tag">完成</span></div><div class="dc-b">' +
+          '<div class="dc-row"><span class="k">距法定时限</span><span class="v">余 14 天</span></div>' +
+          '<div class="dc-row"><span class="k">全程耗时</span><span class="v">4 小时 31 分</span><span class="v mut">· 其中人工 16 分钟</span></div>' +
+          '<div class="dc-row"><span class="k">归档证据</span><span class="v mut">来件原文 · AI 初判 · 人工修正理由 · 签发记录</span></div>' +
+          '</div></div>' },
+      { name: '杨涛', color: 'green', time: '今天 14:20',
+        html: '确认合格 97 例，AI 初判纠正了 9 例：8 例补回、1 例误判（既往免疫治疗史记在外院小结里，属排除标准）。' +
+          '<div class="dc"><div class="dc-h">研究者确认<span class="dc-tag">97 例待邀约</span></div><div class="dc-b">' +
+          '<div class="dc-row"><span class="k">候选 → 合格</span><span class="v">316 → 97 例</span></div>' +
+          '<div class="dc-row"><span class="k">人工纠正</span><span class="v">9 例</span><span class="v mut">· 补回 8 · 剔除 1</span></div>' +
+          '<div class="dc-row"><span class="k">人工投入</span><span class="v">12.4 人时</span><span class="v mut">· 纯人工基线 44.7 人时</span></div>' +
+          '</div><div class="dc-foot">补回的 8 例证据只写在病理报告自由文本里，结构化字段没值。按老流程这批人根本进不了名单——人工受工时限制只能阅片 780 份，AI 读的是全部 12,400 份。</div></div>' },
+      { name: '李伟', color: 'green', time: '今天 14:28', text: '这两条线都跑通了：编码一致性从 83.2% 提到 96.8%，严重性判定的双人不一致率压到 0.4%。省下的两千多小时，都挪到了只有人能做的判断上——今天这个 DRESS 就是例子。' },
+    ]
+  },
+  {
     id: 'g1', name: '基因测序联合项目群', count: 16, unread: 0,
     type: 'group', avatar: 'group', avatarColor: 'green',
     preview: '蛋白测序AI：@李伟，已完成结果报告输出...', time: '10:10', active: true,
@@ -1899,8 +2003,8 @@ const convData = [
     members: ['李伟','张三','王五','蛋白测序专家 AI'],
     tasks: [
       { name: '蛋白测序任务', status: 'doing', owner: '蛋白测序专家 AI', ai: true },
-      { name: '蛋白测序数据准备', status: 'done', owner: '李四本' },
-      { name: '关联任务名称XXXXXXXX', status: 'overdue', owner: '李四本' },
+      { name: '蛋白测序数据准备', status: 'done', owner: '李伟' },
+      { name: '结构比对结果复核', status: 'overdue', owner: '杨钧博' },
     ],
     docs: Array.from({length:19}, () => ({ name: 'Data (8)', date: '07/07 12:12' })),
     messages: [
@@ -1962,26 +2066,6 @@ const convData = [
     messages: [
       { name: '医学影像标注工具', color: 'blue', ai: true, time: '周三 11:02', text: '影像病灶标注集已生成，请王五老师质检确认。' },
       { name: '王五', color: 'orange', time: '周三 11:10', text: '收到，我安排质检。' },
-    ]
-  },
-  {
-    id: 'g5', name: 'AI 智能体协作群', count: 7, unread: 0,
-    type: 'group', avatar: 'group', avatarColor: 'green',
-    preview: '药物警戒智能体：已按裁决重写 Narrative，待王芳签署…', time: '今天 11:28',
-    detailSub: '医疗 AI · 智能体协作群',
-    members: ['药物警戒智能体','临床研究智能体','李伟','李林','蛋白测序专家 AI','基因测序专家 AI','文献挖掘专家 AI'],
-    tasks: [
-      { name: '多智能体协同梳理', status: 'done', owner: '基因测序专家 AI', ai: true },
-      { name: 'ICSR CN-FOSUN-2026-028471 · 待签署', status: 'doing', owner: '药物警戒智能体', ai: true },
-      { name: '入排预筛 v2.1 · 97 例待邀约', status: 'doing', owner: '临床研究智能体', ai: true },
-    ],
-    docs: [{ name: 'ICSR_028471_E2B(R3).xml', date: '09/03 11:28' }, { name: '入排预筛结果_v2.1.xlsx', date: '09/01 16:30' }, { name: 'Data (8)', date: '07/03 16:20' }],
-    messages: [
-      { name: '药物警戒智能体', color: 'blue', ai: true, time: '今天 09:37', mention: '李林', text: '本季第 2,847 份来件已完成抽取与编码：47 个 E2B 字段全部回链原文，MedDRA 编码 6 个，严重性判定「是·导致住院」，关联性初判「很可能」。请复核。' },
-      { name: '李林', color: 'blue', time: '今天 11:28', text: '复核完了，改了 3 处：合并用药漏了院外中成药；「皮疹」按皮肤科会诊改成「药疹」；关联性从「很可能」下调到「可能」——患者同期在用另一种肝毒性药，混杂因素排不掉。' },
-      { name: '药物警戒智能体', color: 'blue', ai: true, time: '今天 11:28', mention: '王芳', text: '已按裁决重写 Narrative 与 E2B(R3) 报文，68 项校验全通过，修正理由已留痕并回流校准。等待签署放行，距 15 日法定时限还有 14 天。' },
-      { name: '李伟', color: 'green', time: '今天 11:35', text: '这季度编码一致性从 83.2% 提到 96.8%，严重性判定的双人不一致率压到 0.4%——省下的 2,400 多小时，全花在真正需要人判断的地方了。' },
-      { name: '临床研究智能体', color: 'green', ai: true, time: '今天 11:40', text: '入排预筛同步一下：方案 v2.1 全量重跑 3 小时 27 分完成（人工基线 44.7 人时），研究者确认合格 97 例，其中 8 例是 AI 初判没勾出、研究者在复核里补回的。' },
     ]
   },
   {
@@ -2067,52 +2151,148 @@ const projects = [
 
 /* ---- 任务 ---- */
 const tasks = [
-  { id:'TASK-1', name: '皮肤耐药新靶点数据整理', project: '基因测序联合项目', status: '进行中', priority: '高', due: '2026-09-02', progress: 45,
-    desc: '整理皮肤耐药相关新靶点的测序数据，完成数据清洗、质控与标准化，并输出一份结构化的靶点清单供后续分析使用。',
-    file: '皮肤耐药靶点数据.csv', owner: '李伟', ownerColor: 'green',
-    createdBy: '李伟', createdTime: '2026-08-28 10:00', updatedTime: '2026-08-30 14:12' },
-  { id:'TASK-2', name: '变异位点联合分析', project: '基因测序联合项目', status: '待处理', priority: '高', due: '2026-09-01', progress: 0,
-    desc: '基于已入库的基因测序变异位点数据，搭建联合分析流程，输出样本间的共变异与差异位点报告。',
-    file: '', owner: '杨涛', ownerColor: 'blue',
-    createdBy: '杨涛', createdTime: '2026-08-27 09:20', updatedTime: '2026-08-29 16:45' },
-  { id:'TASK-3', name: '蛋白结构预测报告', project: '蛋白序列课题', status: '待处理', priority: '中', due: '2026-09-03', progress: 0,
-    desc: '对目标蛋白序列进行结构预测，评估预测置信度并生成结构可视化报告。',
-    file: '蛋白结构预测报告.html', owner: '黄沛霖', ownerColor: 'purple',
-    createdBy: '黄沛霖', createdTime: '2026-08-26 11:05', updatedTime: '2026-08-28 10:30' },
-  { id:'TASK-4', name: '影像病灶标注质检', project: '医学影像 AI 辅助', status: '进行中', priority: '中', due: '2026-09-05', progress: 30,
-    desc: '对 AI 预标注的医学影像病灶结果进行人工质检，抽样复核标注准确性，沉淀质检规范。',
-    file: '影像病灶标注集.zip', owner: '李林', ownerColor: 'orange',
-    createdBy: '李林', createdTime: '2026-08-25 14:00', updatedTime: '2026-08-30 18:20' },
-  { id:'TASK-5', name: '多组学特征筛选', project: '肿瘤早筛多组学', status: '已完成', priority: '低', due: '2026-08-20', progress: 100,
-    desc: '完成肿瘤早筛多组学数据的特征工程与筛选，验证关键特征在分类模型中的区分度。',
-    file: '多组学特征清单.xlsx', owner: 'Joe Zhou', ownerColor: 'green',
-    createdBy: 'Joe Zhou', createdTime: '2026-08-15 09:40', updatedTime: '2026-08-20 17:30' },
-  { id:'TASK-6', name: '分子对接批量筛选', project: '药物研发分子对接', status: '已完成', priority: '低', due: '2026-08-18', progress: 100,
-    desc: '对候选化合物库执行靶点分子对接批量筛选，输出 TOP-N 结合能排名。',
-    file: '分子对接结果.xlsx', owner: '杨钧博', ownerColor: 'blue',
-    createdBy: '杨钧博', createdTime: '2026-08-12 10:20', updatedTime: '2026-08-18 15:00' },
+  { id:'PV-284', name: 'ICSR CN-FOSUN-2026-028471 复核与签发', project: '药物警戒', status: '已完成', priority: '高', due: '2026-09-17', progress: 100,
+    desc: '智能体已完成来件解析、E2B(R3) 字段抽取、MedDRA 编码与关联性初判；药物警戒专员逐项复核后由负责人签发，提交国家药品不良反应监测系统。',
+    file: 'ICSR_028471_E2B(R3).xml', owner: '李林', ownerColor: 'blue', coAgent: '药物警戒智能体',
+    createdBy: '药物警戒智能体', createdTime: '2026-09-03 09:35', updatedTime: '2026-09-03 14:06' },
+  { id:'RWE-04', name: '真实世界数据源可行性评估', project: '适应症扩展 RWE', status: '待规划', priority: '中', due: '2026-09-20', progress: 0,
+    desc: '为适应症扩展的真实世界研究评估院内数据源可行性：目标结局变量的可得性、样本量估算与数据质量基线，供立项评审决策。',
+    file: '数据源可行性评估_初稿.docx', owner: '刘主任', ownerColor: 'orange', coAgent: '真实世界研究智能体',
+    createdBy: '刘主任', createdTime: '2026-09-02 16:20', updatedTime: '2026-09-03 10:15' },
+  { id:'DM-208', name: 'EDC 数据核查疑问表生成与复核', project: '肺癌 III 期临床', status: '待办', priority: '高', due: '2026-09-06', progress: 20,
+    desc: '第 3 次期中锁库前，按数据核查计划对新增 CRF 执行全量逻辑核查，智能体生成候选疑问表，数据管理员复核后发往各研究中心。',
+    file: '候选Query清单_C3.xlsx', owner: '李清娇', ownerColor: 'blue', coAgent: '临床数据管理智能体',
+    createdBy: '临床数据管理智能体', createdTime: '2026-09-03 08:40', updatedTime: '2026-09-03 09:06' },
+  { id:'REG-57', name: '注册申报资料 CTD 模块间一致性核查', project: '注册事务', status: '进行中', priority: '高', due: '2026-09-10', progress: 55,
+    desc: '补充申请递交前自检：比对 M2 概要与 M3 / M4 / M5 原始数据的引用一致性，智能体定位不一致项并双向标注页码，注册专员逐项确认。',
+    file: 'CTD一致性核查表.xlsx', owner: '董和佳', ownerColor: 'orange', coAgent: '注册事务智能体',
+    createdBy: '注册事务智能体', createdTime: '2026-09-02 14:00', updatedTime: '2026-09-03 15:10' },
+  { id:'PV-SIG-Q3', name: '2026 Q3 药物警戒信号检测研判', project: '药物警戒', status: '审核中', priority: '高', due: '2026-09-12', progress: 80,
+    desc: '对本季全部个例做比例失衡分析并结合历史库输出待研判信号，医学官逐条研判后由药物警戒负责人签署季度信号检测报告。',
+    file: 'Q3信号检测报告_待签署.pdf', owner: '王芳', ownerColor: 'blue', coAgent: '药物警戒智能体',
+    createdBy: '药物警戒智能体', createdTime: '2026-09-03 07:00', updatedTime: '2026-09-03 13:25' },
+  { id:'LIT-36', name: '上市品种医学文献定期检索', project: '药物警戒', status: '已完成', priority: '中', due: '2026-09-03', progress: 100,
+    desc: '按持有人文献监测 SOP 执行本期中英文数据库检索，智能体初筛可能含个例信息的文献，专员阅读确认后转入个例报告流程。',
+    file: '本期文献检索记录.pdf', owner: '李林', ownerColor: 'blue', coAgent: '药物警戒智能体',
+    createdBy: '药物警戒智能体', createdTime: '2026-09-03 06:00', updatedTime: '2026-09-03 12:40' },
+  { id:'CT-121', name: '入排预筛 v2.1 · 97 例候选确认', project: '肺癌 III 期临床', status: '进行中', priority: '高', due: '2026-09-08', progress: 60,
+    desc: '方案 v2.1 入排标准更新后全量重筛院内 12,400 份病历，智能体逐条标注证据并回链原文，研究者确认合格候选后生成入组邀请清单。',
+    file: '入排预筛结果_v2.1.xlsx', owner: '杨涛', ownerColor: 'green', coAgent: '临床研究智能体',
+    createdBy: '临床研究智能体', createdTime: '2026-09-01 09:00', updatedTime: '2026-09-03 14:20' },
 ];
 
 /* 任务动态 + 评论（任务详情时间线数据） */
 const taskComments = {
-  'TASK-1': [
-    { ava:'设', avaBg:'#10B981', name:'设计风格提取', time:'1 天前', body:'皮肤耐药靶点数据已完成初步整理，样本覆盖 312 例，质控通过率 96.4%。（示例评论内容，用于演示任务详情时间线布局）' },
-    { ava:'李', avaBg:'#3B82F6', name:'fosun-research@fosun.com', time:'49 分钟前', body:'补充了缺失值处理说明，新增字段已同步到数据字典。', reply:'收到，我会在明天的周会上同步这份清单。' }
+  'RWE-04': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'医学部提出适应症扩展研究需求', time:'09/02 16:20', role:'触发',
+      body:'拟用真实世界证据支持适应症扩展，立项评审前需先确认院内数据能不能支撑目标终点。',
+      facts:[['合作医院','3 家'],['目标人群','非小细胞肺癌 · 二线治疗后'],['评审节点','9 月 20 日']] },
+    { kind:'agent', ava:'真', avaBg:'#F59E0B', name:'真实世界研究智能体', time:'09/03 10:15', role:'预评估交付',
+      body:'扫描 3 家医院的数据字典与近三年数据分布，逐个变量给出可得性判定与缺失率，不可得的直接标出来而不是估一个数。',
+      facts:[['结局变量','14 个'],['结构化可得','11 个'],['仅存于自由文本','3 个'],['符合人群估算','约 2,840 例'],['耗时','1 小时 12 分']] },
+    { kind:'human', ava:'刘', avaBg:'#F59E0B', name:'刘主任', role:'医学部', time:'09/03 11:00',
+      body:'3 个只在自由文本里的变量（PS 评分、既往治疗线数、影像缓解评估）是主要终点的组成部分，这决定了要不要追加自然语言抽取的验证工作。已排入下周立项评审。',
+      verdict:{ type:'fix', text:'待立项评审' } },
   ],
-  'TASK-2': [
-    { ava:'杨', avaBg:'#3B82F6', name:'fosun-research@fosun.com', time:'2 小时前', body:'变异位点联合分析的流程已搭建完成，待接入最新一批测序数据。' }
+  'DM-208': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'第 3 次期中锁库前数据核查', time:'09/03 08:40', role:'触发',
+      body:'本轮新增 CRF 进入核查窗口，按数据核查计划（DVP）执行全量逻辑核查。',
+      facts:[['新增 CRF','4,120 页'],['核查规则','214 条'],['锁库节点','9 月 6 日']] },
+    { kind:'agent', ava:'数', avaBg:'#3B82F6', name:'临床数据管理智能体', time:'09/03 09:06', role:'交付',
+      body:'全量跑完 214 条核查规则，候选疑问 386 条按数据点与规则归并去重后为 241 条。每条都附原始数据点、触发规则出处与同一受试者的关联记录，供数据管理员直接判断而不必回查 EDC。',
+      facts:[['候选疑问','386 → 241 条'],['覆盖受试者','512 人'],['耗时','26 分钟'],['人工基线','逐页核查约 60 人时']] },
+    { kind:'human', ava:'李', avaBg:'#3B82F6', name:'李清娇', role:'数据管理员', time:'待复核',
+      body:'待复核后决定实际发出的疑问表。规则误报需要标注例外条件并回流，避免同一临床合理值在后续批次里反复触发。',
+      verdict:{ type:'fix', text:'待人工复核 · 241 条' } },
   ],
-  'TASK-3': [
-    { ava:'黄', avaBg:'#8B5CF6', name:'黄沛霖', time:'昨天', body:'蛋白结构预测模型已复现，置信度分布符合预期，正在整理报告。' }
+  'REG-57': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'补充申请递交前自检', time:'09/02 14:00', role:'触发',
+      body:'CTD 模块间数据引用不一致是发补的常见原因，递交前对 M2 概要与原始数据做全面交叉核对。',
+      facts:[['申报类型','补充申请'],['核查范围','M2 ↔ M3 / M4 / M5'],['计划递交','9 月 10 日']] },
+    { kind:'agent', ava:'注', avaBg:'#8B5CF6', name:'注册事务智能体', time:'09/02 17:36', role:'交付',
+      body:'比对 M2 概要中的每一处数据引用与 M3 质量、M4 非临床、M5 临床原始数据的对应值，不一致项双向定位到两侧文档页码与表号，人工不必再逐页翻找。',
+      facts:[['核对数据点','1,247 处'],['发现不一致','39 处'],['涉及模块','M3 · 18 / M4 · 7 / M5 · 14'],['耗时','3 小时 36 分']] },
+    { kind:'human', ava:'董', avaBg:'#8B5CF6', name:'董和佳', role:'注册专员', time:'09/03 15:10',
+      body:'已复核 39 处中的 37 处。6 处是智能体误判——同一数据在不同单位或不同统计口径下的合理表述（如 mg/mL 与 %(w/v)、ITT 与 PP 集）；这类误判的判定规则已提给智能体补充。剩余 2 处涉及统计结果，待与生物统计确认后回填。',
+      facts:[['已复核','37 / 39 处'],['确认需修订','31 处'],['智能体误判','6 处'],['待统计确认','2 处']],
+      verdict:{ type:'fix', text:'复核中 · 31 处待修订' } },
   ],
-  'TASK-4': [
-    { ava:'李', avaBg:'#F59E0B', name:'李林', time:'3 小时前', body:'首批 200 例影像病灶质检完成，整体标注准确率 94.2%。' }
+  'PV-SIG-Q3': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'季度信号检测周期启动', time:'09/03 07:00', role:'触发',
+      body:'按持有人药物警戒体系文件，对本季累积个例数据执行定期信号检测。',
+      facts:[['个例范围','本季 2,847 份'],['方法','比例失衡分析（PRR / ROR）'],['对照','同品种历史库 3 年']] },
+    { kind:'agent', ava:'警', avaBg:'#8B5CF6', name:'药物警戒智能体', time:'09/03 09:48', role:'交付',
+      body:'完成全品种比例失衡分析，输出 9 条待研判信号。每条附统计量、支持病例清单与时间聚集性描述；统计学信号不等于因果，只做提示不做结论。',
+      facts:[['待研判信号','9 条'],['支持病例','共 214 例'],['最高 ROR','4.7（95%CI 2.9-7.6）'],['耗时','2 小时 48 分'],['人工基线','约 40 人时']] },
+    { kind:'human', ava:'医', avaBg:'#3B82F6', name:'陈医学官', role:'药物警戒医学官', time:'09/03 13:25',
+      body:'逐条研判 9 条信号：3 条确认为需进一步评价的新信号，其中包含由 CN-FOSUN-2026-028471 触发回溯发现的药物超敏反应综合征（DRESS）聚集；4 条判为说明书已收载的已知风险，不构成新信号；2 条支持病例数不足且存在报告偏倚，转入持续观察。',
+      facts:[['新信号','3 条'],['已知风险','4 条'],['持续观察','2 条'],['研判耗时','1.6 人时']],
+      verdict:{ type:'ok', text:'研判完成 · 3 条新信号' },
+      reply:'DRESS 这条是从单个个例的「综合征待排」顺出来的：个例层面专员补了一句判断，季度层面就聚起了 3 例同品种病例。人的那一次纠正，在这里被放大成了一个信号。' },
+    { kind:'human', ava:'王', avaBg:'#3B82F6', name:'王芳', role:'药物警戒负责人', time:'待签署',
+      body:'待审阅医学官研判结论后签署季度信号检测报告；确认为新信号的品种需同步启动风险评估与说明书变更评估。',
+      verdict:{ type:'sign', text:'待签署' } },
   ],
-  'TASK-5': [
-    { ava:'J', avaBg:'#10B981', name:'Joe Zhou', time:'11 天前', body:'多组学特征筛选已全部完成，产出 28 个候选特征。' }
+  'LIT-36': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'本期文献监测周期', time:'09/03 06:00', role:'触发',
+      body:'按持有人文献监测 SOP 对已上市品种执行本期中英文数据库检索。',
+      facts:[['数据库','中英文共 5 个'],['检索周期','本期'],['品种','全部已上市品种']] },
+    { kind:'agent', ava:'警', avaBg:'#8B5CF6', name:'药物警戒智能体', time:'09/03 07:22', role:'交付',
+      body:'按检索式命中 1,432 篇，按纳排规则初筛出可能含可识别个例信息的 87 篇，并对每篇标出触发纳入的原文片段，供专员直接判断而不必通读全文。',
+      facts:[['命中文献','1,432 篇'],['初筛纳入','87 篇'],['标注片段','87 处'],['耗时','1 小时 22 分'],['人工基线','约 16 人时']] },
+    { kind:'human', ava:'李', avaBg:'#3B82F6', name:'李林', role:'药物警戒专员', time:'09/03 11:50',
+      body:'阅读 87 篇，确认 6 篇含可识别个例信息，需按个例报告要求处理。另按 SOP 抽查了 120 篇被判为不纳入的文献，发现 1 篇漏检——个例信息写在一篇综述的补充材料表格里，正文没有出现检索词。',
+      facts:[['确认个例','6 篇'],['抽查','120 篇'],['发现漏检','1 篇']],
+      verdict:{ type:'fix', text:'补回漏检 · 1 篇' } },
+    { kind:'agent', ava:'警', avaBg:'#8B5CF6', name:'药物警戒智能体', time:'09/03 12:10', role:'校准',
+      body:'已补充「综述附表与补充材料」的检索与解析规则，对本期 1,432 篇重跑，未再发现同类漏检；该规则同步至下期检索式。',
+      facts:[['新增规则','1 条'],['重跑范围','1,432 篇'],['新增命中','1 篇'],['耗时','18 分钟']] },
+    { kind:'done', ava:'✓', avaBg:'', name:'7 例转入个例报告流程', time:'09/03 12:40', role:'交付',
+      body:'确认的 7 篇文献个例已建单转入 ICSR 处理流程，检索记录与筛选依据按 SOP 归档备查。',
+      facts:[['转入个例','7 例'],['全程耗时','6 小时 40 分'],['其中人工','2.8 人时']] },
   ],
-  'TASK-6': [
-    { ava:'杨', avaBg:'#3B82F6', name:'杨钧博', time:'13 天前', body:'分子对接批量筛选已完成，TOP-50 结合能结果见附件。' }
+  'PV-284': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'自动化 · 个例安全性报告（ICSR）智能处理', time:'09/03 09:35', role:'触发',
+      body:'医学信息热线转办来件满足最低报告要求（可识别患者、可识别报告者、可疑药品、不良事件），自动建单并派发药物警戒智能体。',
+      facts:[['来件渠道','医学信息热线'],['首次获知日','9月3日'],['时限队列','严重 · 15 日']] },
+    { kind:'agent', ava:'警', avaBg:'#8B5CF6', name:'药物警戒智能体', time:'09/03 09:38', role:'交付',
+      body:'已从 11 页非结构化材料抽取个例字段并完成三级编码：MedDRA 编码 6 个术语，严重性按 ICH 标准判为「严重 · 导致住院」，关联性初判 WHO-UMC「很可能」。每个字段均标注来件原文位置以备稽查追溯。',
+      facts:[['抽取字段','47 项'],['原文定位','47 处'],['编码术语','6 个'],['耗时','2 分 51 秒'],['成本','¥0.15']] },
+    { kind:'human', ava:'李', avaBg:'#3B82F6', name:'李林', role:'药物警戒专员', time:'09/03 11:20',
+      body:'逐项复核完毕。采纳 52 项，修正 / 补充 5 项，修正理由已按质量体系要求留痕，并回流用于模型校准。',
+      facts:[['复核耗时','12.5 分钟'],['采纳','52 项'],['修正 / 补充','5 项'],['AI 初判采纳率','91.2%']],
+      verdict:{ type:'fix', text:'退回修正 · 5 处' },
+      diffs:[['合并用药','3 种 · 仅院内医嘱','补入院外中成药（何首乌制剂）'],['报告者身份','其他','医生'],['MedDRA 编码','瘙痒性皮疹（PT）','药疹（有诊断优先编诊断）'],['关联性评价','很可能','可能（混杂用药排不掉）'],['综合征判断','未提示','补充「DRESS 待排」']],
+      reply:'皮疹 + 39.2℃ 高热 + 嗜酸粒细胞 18% + ALT 412 同时出现，须按综合征回溯同品种既往病例；智能体把这四个事件编成了四条孤立术语，这一层目前只能靠人。' },
+    { kind:'agent', ava:'警', avaBg:'#8B5CF6', name:'药物警戒智能体', time:'09/03 11:33', role:'修正后重交付',
+      body:'以专员裁决为准重新生成 Narrative 与 E2B(R3) 报文，执行 Schema 与业务规则双重校验，并按「综合征待排」触发同品种同类事件回溯。',
+      facts:[['校验规则','68 项 · 全部通过'],['必填字段完整率','100%'],['触发回溯','同品种 DRESS 样病例 3 例'],['耗时','52 秒']] },
+    { kind:'human', ava:'王', avaBg:'#3B82F6', name:'王芳', role:'药物警戒负责人', time:'09/03 14:02',
+      body:'按持有人 SOP 签署放行。本例为严重病例，由负责人签发；签发记录纳入质量体系审计轨迹。',
+      facts:[['签发耗时','3.5 分钟'],['签发依据','SOP-PV-012 严重病例'],['审计轨迹','已归档']],
+      verdict:{ type:'sign', text:'签发放行 · SOP-PV-012' } },
+    { kind:'done', ava:'✓', avaBg:'', name:'提交国家药品不良反应监测系统', time:'09/03 14:06', role:'交付',
+      body:'E2B(R3) 报文经网关提交成功并回执确认。全链路证据（来件原文、AI 初判、人工修正理由、签发记录）一并归档备查。',
+      facts:[['距法定时限','余 14 天'],['全程耗时','4 小时 31 分'],['其中人工','16 分钟']] },
+  ],
+  'CT-121': [
+    { kind:'sys', ava:'⚡', avaBg:'', name:'自动化 · 临床试验受试者入排预筛', time:'09/01 09:00', role:'触发',
+      body:'方案 v2.1 入排标准更新，排除标准新增两条、实验室指标阈值调整一条，自动触发全量重筛。',
+      facts:[['方案版本','v2.1'],['变更条目','3 条'],['重筛范围','全量']] },
+    { kind:'agent', ava:'临', avaBg:'#10B981', name:'临床研究智能体', time:'09/01 12:28', role:'交付',
+      body:'方案入排标准已拆解为 78 条可判定的原子条件；全量扫描院内结构化数据、病理报告、影像报告与检验记录，为每位候选逐条标注符合 / 不符合并回链病历原文，把握不准的条目标记「待人工判断」而不是猜。',
+      facts:[['扫描病历','12,400 份'],['原子条件','78 条'],['命中候选','316 份'],['待人工判断','54 条'],['耗时','3 小时 27 分']] },
+    { kind:'human', ava:'护', avaBg:'#3B82F6', name:'研究护士组', role:'预筛复核', time:'09/02 15:40',
+      body:'复核 316 份候选，另按方案抽查了 200 份 AI 判为不合格的病历。发现 8 例被漏检——证据只写在病理报告的自由文本里，结构化字段没有对应值。',
+      verdict:{ type:'fix', text:'补回漏检 · 8 例' },
+      reply:'这 8 例如果按老流程做，本来也筛不到：人工阅片受工时限制只能覆盖结构化初筛后的 780 份，这批病人根本不在名单里。' },
+    { kind:'agent', ava:'临', avaBg:'#10B981', name:'临床研究智能体', time:'09/02 16:10', role:'校准',
+      body:'已将 8 例漏检的判定依据回流为新的抽取规则（病理自由文本中的组织学分型与分期表述），同一规则在本轮剩余病历上重跑，未再发现同类漏检。',
+      facts:[['新增抽取规则','2 条'],['重跑范围','12,400 份'],['新增命中','8 例'],['耗时','21 分钟']] },
+    { kind:'human', ava:'杨', avaBg:'#10B981', name:'杨涛', role:'主要研究者', time:'09/03 14:20',
+      body:'确认合格 97 例。AI 初判有 9 例需要纠正：8 例补回、1 例误判（既往免疫治疗史被记在外院小结里，属排除标准）。入组邀请清单已生成，交由研究护士组按序邀约。',
+      verdict:{ type:'ok', text:'确认合格 · 97 例' },
+      facts:[['候选','316 份'],['确认合格','97 例'],['人工纠正','9 例'],['人工投入','合计 12.4 人时']] },
   ],
 };
 
@@ -2239,7 +2419,7 @@ const autos = [
       groups: [
         { kind:'eff', title:'效率', metrics:[
           { name:'预筛人工投入', before:'44.7 人时', after:'12.4 人时', delta:'↓ 72%' },
-          { name:'预筛周期', before:'3.5 周', after:'4 天', delta:'↓ 3 周' },
+          { name:'预筛周期', before:'3.5 周', after:'3 天', delta:'↓ 3 周' },
           { name:'首例入组时间（FPI）', before:'第 68 天', after:'第 47 天', delta:'↓ 21 天' },
           { name:'方案修订后重筛', before:'44.7 人时全部重来', after:'3.5 机时 + 约 4 人时增量复核', delta:'↓ 91%' },
         ]},
@@ -2292,10 +2472,10 @@ const autos = [
           { item:'其余 312 例', ai:'批量判定', human:'采纳 305 · 推翻 7', verdict:'ok', note:'推翻集中在院外资料缺失与影像描述歧义两类，已回流为规则改进项' },
         ],
         meta:[['确认合格','97 例'],['AI 判定采纳率','97.2%'],['人工纠正','9 例（补回漏检 8 · 改判排除 1）'],['复核投入','12.4 人时']] },
-      { kind:'deliver', title:'生成入组邀请清单与归档', time:'第 4 日 16:30',
+      { kind:'deliver', title:'生成入组邀请清单与归档', time:'第 3 日 16:30',
         desc:'合格候选生成入组邀请与随访任务并指派到人；不合格候选按排除原因归类归档，供后续方案优化与监管核查调阅。',
         deliverables:[['入组邀请','97 例 · 已发出'],['不合格归档','219 份 · 按原因归类'],['规则改进项','2 条 · 已回流']],
-        meta:[['协同结构','智能体 3 步 · 研究者确认 1 轮'],['全程周期','4 天（人工基线 3.5 周）']] },
+        meta:[['协同结构','智能体 3 步 · 研究者确认 1 轮'],['全程周期','3 天（人工基线 3.5 周）']] },
     ],
   },
   {
@@ -2509,7 +2689,7 @@ function switchModule(m){
 /* ============================================================
    消息模块
    ============================================================ */
-let activeConv = 'g1';
+let activeConv = 'g5';
 function renderConv(filter){
   const kw = (filter||'').trim();
   const list = convData.filter(c=>!kw || c.name.includes(kw));
@@ -3125,6 +3305,7 @@ function renderTaskDetail(){
     <div class="kb-side-h">属性</div>
     <div class="kb-attr-row"><span class="kb-attr-label">状态</span><span class="kb-attr-val"><span class="tag-sm" style="background:var(--primary-50);color:var(--primary-600);border:1px solid var(--primary-100);"><span class="kb-prio-dot" style="background:var(--primary);"></span>${esc(t.status)}</span></span></div>
     <div class="kb-attr-row"><span class="kb-attr-label">负责人</span><span class="kb-attr-val"><div class="kb-card-ava" style="background:${avatarHue(t.ownerColor)};">${(t.owner||'?').charAt(0)}</div>${esc(t.owner)}</span></div>
+    ${t.coAgent? `<div class="kb-attr-row"><span class="kb-attr-label">协同智能体</span><span class="kb-attr-val"><div class="kb-card-ava" style="background:#8B5CF6;">${esc(t.coAgent.charAt(0))}</div>${esc(t.coAgent)}<span class="ai-tag">AI</span></span></div>` : ''}
     <div class="kb-attr-row"><span class="kb-attr-label">项目</span><span class="kb-attr-val"><span class="folder-ico"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h-4a2 2 0 0 0-2 2l-4 0a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-2-2z"/></svg></span>${esc(t.folder)}</span></div>
     <div class="kb-attr-row"><span class="kb-attr-label">优先级</span><span class="kb-attr-val"><span class="tag-sm" style="background:${prioBg};color:${prioColor};border:1px solid ${prioBorder};"><span class="kb-prio-dot" style="background:${prioColor};"></span>${esc(t.priority)}</span></span></div>
     <div class="kb-side-link">+ 添加字段</div>
@@ -3211,8 +3392,8 @@ function renderTaskBoard(){
   if(!board) return;
   let allTasks = collectAllTasks();
   // 分类过滤：成员=非智能体；智能体=智能体任务；全部=不过滤
-  if(taskBoardTab==='member') allTasks = allTasks.filter(t=>!isAiTask(t));
-  else if(taskBoardTab==='ai') allTasks = allTasks.filter(t=>isAiTask(t));
+  if(taskBoardTab==='member') allTasks = allTasks.filter(t=>!isAiTask(t) || t.coAgent);
+  else if(taskBoardTab==='ai') allTasks = allTasks.filter(t=>isAiTask(t) || t.coAgent);
   board.innerHTML = KB_STATUSES.map(st=>{
     const list = allTasks.filter(t=>t.status===st);
     const dot = KB_STATUS_COLOR[st] || '#10B981';
@@ -3226,6 +3407,16 @@ function renderTaskBoard(){
   }).join('');
 }
 // 任务模块的卡片：点击区分来源（项目任务→项目详情；全局任务→任务详情）
+// 把 '2026-09-03 14:06' 显示为「今天 14:06」/「09/03 14:06」
+function fmtUpdated(v){
+  if(!v) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/.exec(v);
+  if(!m) return v;
+  const today = new Date();
+  const pad = n=>String(n).padStart(2,'0');
+  const isToday = Number(m[1])===today.getFullYear() && m[2]===pad(today.getMonth()+1) && m[3]===pad(today.getDate());
+  return isToday ? `今天 ${m[4]}` : `${m[2]}/${m[3]} ${m[4]}`;
+}
 function taskMineCardHtml(t){
   const sn = t.sn ? `<div class="kb-card-sn"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${esc(t.sn)}</div>` : '';
   const folder = (t.folder||t.project||'') ? `<div class="kb-card-folder"><span class="folder-ico"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h-4a2 2 0 0 0-2 2l-4 0a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-2-2z"/></svg></span>${esc(t.folder||t.project)}</div>` : '';
@@ -3239,8 +3430,8 @@ function taskMineCardHtml(t){
     ${folder}
     <div class="kb-card-foot">
       <div class="kb-card-ava" style="background:${avatarHue(t.ownerColor)};">${(t.owner||'?').charAt(0)}</div>
-      ${isAiTask(t)?'<span class="ai-tag">AI</span>':''}
-      <span class="kb-card-upd">更新于 ${esc(t.updated||'刚刚')}</span>
+      ${t.coAgent? `<div class="kb-card-ava" style="background:#8B5CF6;margin-left:-5px;border:1.5px solid #fff;" title="${esc(t.coAgent)}">${esc(t.coAgent.charAt(0))}</div><span class="ai-tag" title="${esc(t.coAgent)} 执行 · ${esc(t.owner)} 把关">人机协同</span>` : (isAiTask(t)?'<span class="ai-tag">AI</span>':'')}
+      <span class="kb-card-upd">更新于 ${esc(t.updated||fmtUpdated(t.updatedTime)||'刚刚')}</span>
     </div>
     ${isAiTask(t)&&t.execLog&&!/^0M\b/.test(t.execLog)?`<span class="kb-card-exec"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${t.aiCount||1} 次执行 · ${esc(t.execLog.replace(/\s+/g,' · '))}</span>`:''}
   </div>`;
@@ -3248,13 +3439,7 @@ function taskMineCardHtml(t){
 // 聚合所有任务：每个任务统一补 sn / folder，并支持点击打开任务详情
 function collectAllTasks(){
   const all = [];
-  // 各项目任务（如生医科研）
-  projects.forEach(p=>{
-    (p.tasks||[]).forEach(t=>{
-      all.push(Object.assign({}, t, { sn: t.sn || '', folder: t.folder || p.name, _src:'board', _proj:p.name }));
-    });
-  });
-  // 全局任务（TASK-1~6）
+  // 人机协同任务：智能体执行、人工把关，每条都带可追溯的协同动态
   tasks.forEach((t,index)=>{
     // 状态归一化：全局任务的「待处理」→ 看板列「待规划」，保证所有任务可被看板展示
     const norm = t.status==='待处理' ? '待规划' : t.status;
@@ -3452,6 +3637,27 @@ function backToTaskList(){
   lv.style.flexDirection = 'column';
   renderTasks();
 }
+/* 任务动态：人机协同记录条目（智能体执行 / 人工裁决 / 系统触发） */
+function taskFeedItemHtml(c){
+  const avaCls = c.kind==='agent' ? 'agent' : (c.kind==='human' ? 'human' : (c.kind==='done' ? 'done' : 'sys'));
+  const kindTag = c.kind==='agent' ? '<span class="tf-kind agent">智能体</span>'
+    : (c.kind==='human' ? '<span class="tf-kind human">人工</span>' : '');
+  const role = c.role ? `<span class="tf-fact" style="margin:0;">${esc(c.role)}</span>` : '';
+  const facts = (c.facts||[]).map(f=>`<span class="tf-fact">${esc(f[0])}<b>${esc(f[1])}</b></span>`).join('');
+  const diffs = (c.diffs||[]).map(d=>`<div class="dc-diff"><span class="lbl">${esc(d[0])}</span><span class="old">${esc(d[1])}</span><span style="color:var(--text-4);">→</span><span class="new">${esc(d[2])}</span></div>`).join('');
+  const verdict = c.verdict ? `<div><span class="tf-verdict ${esc(c.verdict.type)}">${esc(c.verdict.text)}</span></div>` : '';
+  return `<div class="tf-item">
+    <div class="tf-ava ${avaCls}"${c.avaBg? ` style="background:${c.avaBg};"` : ''}>${esc(c.ava)}</div>
+    <div class="tf-col">
+      <div class="tf-head"><span class="tf-name">${esc(c.name)}</span>${kindTag}${role}<span class="tf-time">${esc(c.time)}</span></div>
+      <div class="tf-body">${esc(c.body)}</div>
+      ${facts? `<div class="tf-facts">${facts}</div>` : ''}
+      ${diffs? `<div style="margin-top:8px;">${diffs}</div>` : ''}
+      ${verdict}
+      ${c.reply? `<div class="td-comment-reply" style="margin-top:9px;">${esc(c.reply)}</div>` : ''}
+    </div>
+  </div>`;
+}
 function renderTaskDetailBody(){
   const t = currentTaskList;
   if(!t) return;
@@ -3476,6 +3682,7 @@ function renderTaskDetailBody(){
     <div class="kb-side-h">属性</div>
     <div class="kb-attr-row"><span class="kb-attr-label">状态</span><span class="kb-attr-val"><span class="tag-sm" style="background:${stBg};color:${stColor};border:1px solid ${stBorder};"><span class="kb-prio-dot" style="background:${stColor};"></span>${esc(t.status)}</span></span></div>
     <div class="kb-attr-row"><span class="kb-attr-label">负责人</span><span class="kb-attr-val"><div class="kb-card-ava" style="background:${avatarHue(t.ownerColor)};">${(t.owner||'?').charAt(0)}</div>${esc(t.owner)}</span></div>
+    ${t.coAgent? `<div class="kb-attr-row"><span class="kb-attr-label">协同智能体</span><span class="kb-attr-val"><div class="kb-card-ava" style="background:#8B5CF6;">${esc(t.coAgent.charAt(0))}</div>${esc(t.coAgent)}<span class="ai-tag">AI</span></span></div>` : ''}
     <div class="kb-attr-row"><span class="kb-attr-label">项目</span><span class="kb-attr-val"><span class="folder-ico"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h-4a2 2 0 0 0-2 2l-4 0a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-2-2z"/></svg></span>${esc(t.project)}</span></div>
     <div class="kb-attr-row"><span class="kb-attr-label">优先级</span><span class="kb-attr-val"><span class="tag-sm" style="background:${prioBg};color:${prioColor};border:1px solid ${prioBorder};"><span class="kb-prio-dot" style="background:${prioColor};"></span>${esc(t.priority)}</span></span></div>
     <div class="kb-attr-row"><span class="kb-attr-label">截止时间</span><span class="kb-attr-val">${esc(t.due)}</span></div>
@@ -3489,7 +3696,7 @@ function renderTaskDetailBody(){
     </div>`;
   // 动态时间线（可折叠）
   const comments = taskComments[t.id] || [];
-  const feedHtml = comments.map(c=>`
+  const feedHtml = comments.map(c=> c.kind ? taskFeedItemHtml(c) : `
     <div class="td-comment-card" style="margin-bottom:10px;">
       <div class="td-comment-head"><span class="td-comment-pos">⌄</span><span class="td-comment-ava" style="background:${c.avaBg};">${c.ava}</span><span class="td-comment-name">${esc(c.name)}</span><span class="td-comment-time">${esc(c.time)}</span><span class="td-comment-more">⋯</span></div>
       <div class="td-comment-body">${esc(c.body)}</div>
@@ -4043,7 +4250,7 @@ window.onload = function(){
   document.getElementById('userAvatar').textContent = CURRENT_USER.short;
   document.getElementById('chatLeftSearchHref');
   renderConv();
-  renderDetail(convData.find(c=>c.id==='g1'));
+  renderDetail(convData.find(c=>c.id==='g5'));
   updateNavBadge();
   renderOrg();
   renderProjects();
