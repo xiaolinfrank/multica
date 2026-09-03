@@ -45,6 +45,15 @@ const SCALE = [
 
 const scanRoots = ["packages/ui", "packages/views", "apps/web", "apps/desktop/src"];
 const skipDirs = new Set(["node_modules", ".next", "dist", "out", "build", ".turbo"]);
+
+/**
+ * A deploy swaps `.next` aside as `.next.prev-<stamp>`, so build output can sit
+ * in the tree under a name the skip list does not spell out. Built CSS is never
+ * source, and reporting it would bury the real violations in hundreds of lines.
+ */
+function isBuildOutput(entry: string): boolean {
+  return skipDirs.has(entry) || entry.startsWith(".next");
+}
 const sourceExtensions = [".ts", ".tsx", ".css"];
 
 /**
@@ -133,7 +142,7 @@ function stripComments(source: string): string {
 
 function collectSourceFiles(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
-    if (skipDirs.has(entry)) continue;
+    if (isBuildOutput(entry)) continue;
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) {
       collectSourceFiles(path, found);
