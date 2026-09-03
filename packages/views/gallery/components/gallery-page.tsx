@@ -8,6 +8,7 @@ import { CollectionPageHeader, CollectionPageState } from "../../layout";
 import { PAGE_GUTTER } from "../../layout/page-header";
 import { useT } from "../../i18n";
 import { GALLERY_WORKS, type GalleryWork } from "./gallery-catalog";
+import { GalleryHeroCarousel } from "./gallery-hero-carousel";
 import { PrototypeThumbnail } from "./prototype-frame";
 import { PrototypeViewer } from "./prototype-viewer";
 
@@ -28,6 +29,10 @@ export function GalleryPage() {
   const { t } = useT("gallery");
   const [target, setTarget] = useState<OpenTarget | null>(null);
   const works = GALLERY_WORKS;
+  // The page opens on whichever work was delivered with plates. Found rather
+  // than pinned to an index so reordering the catalogue cannot silently empty
+  // the spread.
+  const plated = works.find((work) => (work.diagrams?.length ?? 0) > 0);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -47,6 +52,7 @@ export function GalleryPage() {
       ) : (
         <div className={cn("min-h-0 flex-1 overflow-y-auto py-4", PAGE_GUTTER)}>
           <div className="flex flex-col gap-4">
+            {plated ? <GalleryHeroCarousel work={plated} /> : null}
             {works.map((work) => (
               <WorkCard
                 key={work.id}

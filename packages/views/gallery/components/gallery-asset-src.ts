@@ -1,11 +1,14 @@
 /**
- * Where the gallery's prototype documents live, per platform.
+ * Where the gallery's static assets live, per platform.
  *
- * The prototypes are large self-contained HTML files (~750 KB together), so
- * they ship as static files an iframe streams on demand rather than as strings
- * bundled into JS. That puts one copy under each platform's own static root:
+ * The prototypes are large self-contained HTML files — ~10 MB together, most of
+ * it the overview's nine embedded photographs and the JIA deck's three 4K
+ * slides — and the hero diagrams are full-width JPEGs, so both ship as static
+ * files the browser streams on demand
+ * rather than as strings bundled into JS. That puts one copy under each
+ * platform's own static root:
  *
- *   apps/web/public/gallery/                 -> served at /gallery/<id>.html
+ *   apps/web/public/gallery/                 -> served at /gallery/<file>
  *   apps/desktop/src/renderer/public/gallery -> copied to out/renderer/gallery
  *
  * The two need different `src` forms, and no single expression covers both:
@@ -35,16 +38,22 @@
 
 import { isDesktopShell } from "../../platform/local-directory";
 
-/** Directory both platforms expose their copy of the prototypes under. */
+/** Directory both platforms expose their copy of the assets under. */
 export const GALLERY_ASSET_DIR = "gallery";
 
 /**
- * Resolve a prototype's iframe `src` for the platform currently rendering.
+ * Resolve any file in the gallery's asset directory for the platform currently
+ * rendering.
  *
- * Exported separately from the component so the two-branch rule has one home
+ * Exported separately from the components so the two-branch rule has one home
  * and can be asserted directly, rather than through a DOM mount.
  */
-export function galleryAssetSrc(screenId: string, desktop = isDesktopShell()): string {
+export function galleryAssetUrl(fileName: string, desktop = isDesktopShell()): string {
   const prefix = desktop ? `./${GALLERY_ASSET_DIR}/` : `/${GALLERY_ASSET_DIR}/`;
-  return `${prefix}${screenId}.html`;
+  return `${prefix}${fileName}`;
+}
+
+/** Resolve a prototype's iframe `src`. Its id is also its file stem. */
+export function galleryAssetSrc(screenId: string, desktop = isDesktopShell()): string {
+  return galleryAssetUrl(`${screenId}.html`, desktop);
 }

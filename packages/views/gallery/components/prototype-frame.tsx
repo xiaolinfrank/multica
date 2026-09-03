@@ -6,14 +6,15 @@
  * This is deliberately NOT `HtmlPreviewBody` / `CodeBlockIframe`. Those exist
  * for *untrusted* HTML — attachment bodies and model-authored code blocks —
  * and so pin `sandbox="allow-scripts"` without `allow-same-origin`, which
- * leaves the framed document on an opaque origin. Three of the four gallery
- * prototypes call `localStorage.setItem` unguarded on sign-in, and on an
+ * leaves the framed document on an opaque origin. Four of the seven gallery
+ * documents call `localStorage.setItem` unguarded on sign-in, and on an
  * opaque origin that throws a SecurityError and the demo dies at the login
  * screen. They are also served from a URL rather than as a `srcDoc` string.
  *
  * These documents are first-party: committed to this repo, reviewed, entirely
- * self-contained (no network calls, no external URLs) and free of any
- * `target=` anchor, so they cannot navigate the shell away. That is the same
+ * self-contained (no network calls, no external URLs) and carrying no `target=`
+ * attribute — every anchor in them is either `javascript:;` or an in-page
+ * fragment — so they cannot navigate the shell away. That is the same
  * posture plugins/plugin-surface-frame.tsx takes for its host-authored
  * wrapper, and the sandbox still buys us blocked top-level navigation.
  */
@@ -48,6 +49,11 @@ export function PrototypeFrame({ screen, title, className, reloadToken = 0 }: Pr
       src={galleryAssetSrc(screen.id)}
       title={title}
       sandbox={PROTOTYPE_SANDBOX}
+      // The slide deck letters "F 全屏" into its own footer, and a sandboxed
+      // frame is denied fullscreen unless the embedder delegates it — the call
+      // rejects silently, so the affordance would just look broken. Delegated
+      // only here: a thumbnail has no business going fullscreen.
+      allow="fullscreen"
       className={cn("h-full w-full border-0 bg-background", className)}
     />
   );
@@ -106,6 +112,16 @@ export function PrototypeThumbnail({ screen, title, className }: PrototypeThumbn
           aria-hidden="true"
           tabIndex={-1}
           scrolling="no"
+          // A cover is decoration, and the documents behind these run from 70 KB
+          // to 5 MB — the overview carries nine embedded photographs, the JIA
+          // deck three 4K slides — so the catalogue should not fetch every one
+          // of them to paint thumbnails
+          // nobody has scrolled to. The hint is not a guarantee: browsers load
+          // lazily-flagged frames well before they enter the viewport, so the
+          // first card's document is still likely to be fetched on arrival. It
+          // is the cards further down this saves. The full-size `PrototypeFrame`
+          // stays eager — that one the reader asked for.
+          loading="lazy"
           sandbox={PROTOTYPE_SANDBOX}
           className="pointer-events-none absolute top-0 left-0 origin-top-left border-0"
           style={{

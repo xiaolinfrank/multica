@@ -3,6 +3,18 @@
     "title": "Gallery",
     "description": "Products and interactive prototypes this workspace has delivered"
   },
+  "hero": {
+    "roledescription": "carousel",
+    "label": "Architecture diagrams",
+    "picker_label": "Choose a diagram",
+    "previous": "Previous diagram",
+    "next": "Next diagram",
+    "position": "{{index}} / {{total}}",
+    "status": "Diagram {{index}} of {{total}}: {{title}}",
+    "figure": "Fig. {{index}}",
+    "enlarge": "View full size",
+    "open_diagram": "View {{title}} full size"
+  },
   "empty": {
     "title": "Nothing on show yet",
     "description": "Delivered work will appear here once it is added to the gallery."

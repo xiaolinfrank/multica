@@ -3,6 +3,18 @@
     "title": "성과 갤러리",
     "description": "이 워크스페이스가 제공한 제품과 인터랙티브 프로토타입"
   },
+  "hero": {
+    "roledescription": "캐러셀",
+    "label": "아키텍처 다이어그램",
+    "picker_label": "다이어그램 선택",
+    "previous": "이전 다이어그램",
+    "next": "다음 다이어그램",
+    "position": "{{index}} / {{total}}",
+    "status": "{{total}}개 중 {{index}}번째: {{title}}",
+    "figure": "그림 {{index}}",
+    "enlarge": "크게 보기",
+    "open_diagram": "{{title}} 크게 보기"
+  },
   "empty": {
     "title": "아직 전시할 성과가 없습니다",
     "description": "성과를 갤러리에 추가하면 여기에 표시됩니다."

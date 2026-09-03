@@ -3,6 +3,18 @@
     "title": "成果画廊",
     "description": "本工作区交付的产品成果与可交互原型"
   },
+  "hero": {
+    "roledescription": "轮播图",
+    "label": "架构图解",
+    "picker_label": "切换架构图",
+    "previous": "上一张",
+    "next": "下一张",
+    "position": "{{index}} / {{total}}",
+    "status": "第 {{index}} / {{total}} 张：{{title}}",
+    "figure": "图 {{index}}",
+    "enlarge": "看大图",
+    "open_diagram": "放大查看：{{title}}"
+  },
   "empty": {
     "title": "还没有可展示的成果",
     "description": "成果加入画廊后会显示在这里。"

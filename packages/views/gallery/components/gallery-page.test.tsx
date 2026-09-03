@@ -22,7 +22,17 @@ function renderPage() {
   );
 }
 
-const work = GALLERY_WORKS[0]!;
+// The work the switching assertions below drive, found by shape rather than by
+// index: they need more than two screens and two screens whose sign-ins
+// actually differ, and catalogue order is editorial — reordering it must not
+// fail this file with an "undefined" that reads as an unrelated bug.
+const work = GALLERY_WORKS.find((entry) => {
+  if (entry.screens.length <= 2) return false;
+  const accounts = entry.screens
+    .filter((item) => item.credentials)
+    .map((item) => item.credentials!.account);
+  return new Set(accounts).size > 1;
+})!;
 
 describe("GalleryPage", () => {
   it("renders the page chrome with the catalogue count", () => {

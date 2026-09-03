@@ -3,6 +3,18 @@
     "title": "成果ギャラリー",
     "description": "このワークスペースが提供したプロダクトとインタラクティブなプロトタイプ"
   },
+  "hero": {
+    "roledescription": "カルーセル",
+    "label": "アーキテクチャ図",
+    "picker_label": "図を選択",
+    "previous": "前の図",
+    "next": "次の図",
+    "position": "{{index}} / {{total}}",
+    "status": "{{total}} 枚中 {{index}} 枚目：{{title}}",
+    "figure": "図 {{index}}",
+    "enlarge": "拡大表示",
+    "open_diagram": "{{title}} を拡大表示"
+  },
   "empty": {
     "title": "展示できる成果はまだありません",
     "description": "成果をギャラリーに追加すると、ここに表示されます。"
