@@ -49,7 +49,7 @@ export function StatusChip({ status, className }: { status: string; className?: 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-1.5 py-px text-micro whitespace-nowrap",
+        "inline-flex max-w-full items-center truncate rounded-full border px-1.5 py-px text-micro whitespace-nowrap",
         TONE_CLASS[statusTone(status)],
         className,
       )}

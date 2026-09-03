@@ -12,6 +12,8 @@ import { chatKeys } from "../chat/queries";
 import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { cockpitKeys } from "../cockpit/queries";
+import type { CockpitBoard } from "../types";
 import {
   markWorkspaceDeletePending,
   unmarkWorkspaceDeletePending,
@@ -239,6 +241,47 @@ describe("useRealtimeSync — ws instance change", () => {
       queryKey: issueKeys.attachments("issue-1"),
     });
   });
+  // The cockpit board is edited by several people at once, and by agents
+  // through the CLI. A frame carries the row that moved, so this must patch the
+  // cached board in place — a refetch would fight whoever is mid-edit elsewhere
+  // on the same board. (The patch matrix itself lives in
+  // packages/core/cockpit/ws-updaters.test.ts; this pins the hook's wiring.)
+  it("patches the cockpit board in place when someone else edits a node", async () => {
+    const board: CockpitBoard = {
+      cockpit: {
+        id: "cp", workspace_id: "ws-1", title: "", goal_title: "", goal_date: null,
+        summary_overall: "", summary_next: "", summary_support: "", basis: "",
+        created_at: "", updated_at: "",
+      },
+      nodes: [{
+        id: "n1", cockpit_id: "cp", parent_id: null, code: "L3-01-08", name: "Sign it",
+        position: 0, color: "", owner: "Li", collaborators: "", start_date: null,
+        end_date: null, status: "未开始", progress: 0, deliverable: "", dependencies: "",
+        note: "", current_progress: "", vendor: "", budget_category: "",
+        budget_amount: null, exec_status: "", contract: "", source: "",
+        updated_by_type: "", updated_by_id: null, created_at: "", updated_at: "",
+      }],
+      payments: [], issue_links: [], milestones: [], meetings: [],
+    };
+    qc.setQueryData(cockpitKeys.board("ws-1"), board);
+
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+
+    const handler = vi.mocked(ws.on).mock.calls.find(([type]) => type === "cockpit:changed")?.[1];
+    expect(handler).toBeDefined();
+
+    handler!({
+      scope: "node",
+      action: "updated",
+      entity: { ...board.nodes[0], progress: 66, status: "进行中" },
+    } as never);
+
+    const patched = qc.getQueryData<CockpitBoard>(cockpitKeys.board("ws-1"));
+    expect(patched?.nodes[0]).toMatchObject({ progress: 66, status: "进行中" });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+  });
+
   it("refetches the status catalog after an admin changes it elsewhere", async () => {
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {

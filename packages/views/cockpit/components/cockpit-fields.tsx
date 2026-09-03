@@ -10,7 +10,7 @@
 // Escape reverts and gives focus back to the display. Nothing autosaves
 // mid-keystroke, so a half-typed value never reaches other people's screens.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@multica/ui/lib/utils";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
@@ -344,7 +344,7 @@ export function EditableSuggest({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const listId = useRef(`cockpit-suggest-${Math.random().toString(36).slice(2)}`).current;
+  const listId = useId();
 
   useEffect(() => {
     if (!editing) setDraft(value);

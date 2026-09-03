@@ -176,6 +176,10 @@ export function CockpitPage() {
 
   const linkIssue = useCallback(
     (nodeId: string, issueId: string) => {
+      // Sent as a replace of the full set rather than as an append, so the
+      // server writes the order this client is showing. Both clients derive
+      // that set from the same realtime-synced board, so the last write wins
+      // on a set that already agrees.
       const existing = (linksByNode.get(nodeId) ?? []).map((l) => l.issue_id);
       setNodeIssues.mutate(
         { nodeId, issueIds: [...existing, issueId], replace: true },

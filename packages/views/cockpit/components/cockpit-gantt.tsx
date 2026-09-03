@@ -37,7 +37,7 @@ import { StatusChip } from "./cockpit-status";
 export type CockpitZoom = "month" | "week";
 
 const DAY_WIDTH: Record<CockpitZoom, number> = { month: 2.6, week: 9 };
-const TREE_WIDTH = 560;
+const TREE_WIDTH = 600;
 const ROW_HEIGHT = 34;
 
 export interface CockpitGanttProps {
@@ -204,9 +204,9 @@ export function CockpitGantt({
         >
           <div className="sticky top-0 z-10 flex h-9 items-center gap-2 border-b border-border bg-background px-3 text-caption font-medium text-muted-foreground">
             <span className="flex-1">{t(($) => $.gantt.column_task)}</span>
-            <span className="w-16 text-right">{t(($) => $.gantt.column_owner)}</span>
-            <span className="w-20 text-right">{t(($) => $.gantt.column_status)}</span>
-            <span className="w-24 text-right">{t(($) => $.gantt.column_progress)}</span>
+            <span className="w-16 shrink-0 text-right">{t(($) => $.gantt.column_owner)}</span>
+            <span className="w-24 shrink-0 text-right">{t(($) => $.gantt.column_status)}</span>
+            <span className="w-28 shrink-0 text-right">{t(($) => $.gantt.column_progress)}</span>
           </div>
           {rows.map((entry) => {
             const { node, depth, children } = entry;
@@ -225,7 +225,7 @@ export function CockpitGantt({
                   // through the background hover also paints.
                   isSelected
                     ? "bg-accent font-medium shadow-[inset_2px_0_0_0_var(--color-brand)]"
-                    : "hover:bg-accent/50",
+                    : hoveredId === node.id && "bg-accent/50",
                 )}
                 style={{ height: ROW_HEIGHT }}
               >
@@ -278,7 +278,7 @@ export function CockpitGantt({
                     displayClassName="text-caption"
                   />
                 </div>
-                <div className="flex w-20 shrink-0 justify-end">
+                <div className="flex w-24 shrink-0 justify-end overflow-hidden">
                   <EditableSuggest
                     value={node.status}
                     onCommit={(status) => onPatchNode(node.id, { status })}
@@ -289,7 +289,7 @@ export function CockpitGantt({
                     renderDisplay={(value) => <StatusChip status={value} />}
                   />
                 </div>
-                <div className="flex w-24 shrink-0 justify-end">
+                <div className="flex w-28 shrink-0 justify-end">
                   <ProgressField
                     value={isBranch ? Math.round(rollup?.progress ?? node.progress) : node.progress}
                     onCommit={(progress) => onPatchNode(node.id, { progress })}
