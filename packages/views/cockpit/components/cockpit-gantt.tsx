@@ -410,7 +410,11 @@ export function CockpitGantt({
                       <TooltipTrigger
                         render={
                           <span
-                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-budget"
+                            // A marker lands either on the bar or on the bare
+                            // track, so it carries its own disc of page
+                            // background — gold on brand blue alone is too
+                            // close in lightness to find at a glance.
+                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-background text-budget"
                             style={{ left: daysBetween(axis.start, date) * dayWidth }}
                           >
                             <CircleDollarSign className="size-3" />
