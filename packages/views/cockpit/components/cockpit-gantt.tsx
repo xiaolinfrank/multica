@@ -410,7 +410,7 @@ export function CockpitGantt({
                       <TooltipTrigger
                         render={
                           <span
-                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-brand"
+                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-budget"
                             style={{ left: daysBetween(axis.start, date) * dayWidth }}
                           >
                             <CircleDollarSign className="size-3" />

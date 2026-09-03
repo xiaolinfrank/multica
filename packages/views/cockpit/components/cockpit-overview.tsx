@@ -257,9 +257,7 @@ export function CockpitOverview({
                   {(rollup?.budget ?? 0) > 0 && (
                     <div className="flex gap-1">
                       <dt>{t(($) => $.overview.budget)}</dt>
-                      <dd className="font-medium text-foreground">
-                        {formatAmount(rollup!.budget)}
-                      </dd>
+                      <dd className="font-medium text-budget">{formatAmount(rollup!.budget)}</dd>
                     </div>
                   )}
                   {(rollup?.lateCount ?? 0) > 0 && (
@@ -279,14 +277,36 @@ export function CockpitOverview({
       <Section title={t(($) => $.overview.finance)} hint={t(($) => $.overview.finance_hint)}>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { key: "budget", label: t(($) => $.finance.budget), value: finance.budget },
-            { key: "paid", label: t(($) => $.finance.paid), value: finance.paid },
-            { key: "contracted", label: t(($) => $.finance.contracted), value: finance.contracted },
-            { key: "unplanned", label: t(($) => $.finance.unplanned), value: finance.unplanned },
+            // The budget is the figure the other three are measured against,
+            // so it carries the gold the board reserves for budget.
+            {
+              key: "budget",
+              label: t(($) => $.finance.budget),
+              value: finance.budget,
+              gold: true,
+            },
+            { key: "paid", label: t(($) => $.finance.paid), value: finance.paid, gold: false },
+            {
+              key: "contracted",
+              label: t(($) => $.finance.contracted),
+              value: finance.contracted,
+              gold: false,
+            },
+            {
+              key: "unplanned",
+              label: t(($) => $.finance.unplanned),
+              value: finance.unplanned,
+              gold: false,
+            },
           ].map((cell) => (
             <div key={cell.key} className="rounded-md border border-border p-3">
               <dt className="text-caption text-muted-foreground">{cell.label}</dt>
-              <dd className="mt-1 text-title font-semibold tabular-nums">
+              <dd
+                className={cn(
+                  "mt-1 text-title font-semibold tabular-nums",
+                  cell.gold && "text-budget",
+                )}
+              >
                 {formatAmount(cell.value)}
               </dd>
             </div>
