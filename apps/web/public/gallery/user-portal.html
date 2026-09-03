@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>复星医疗科研平台 · 用户端首页</title>
+<title>AI + 医药数据智能体工作平台 · 用户端首页</title>
 <style>
 /* ============================================================
-   复星医疗科研平台 · 用户端首页
+   AI + 医药数据智能体工作平台 · 用户端首页
    绿色主题 · 单文件实现 · 8 大模块（消息/通讯录/项目/任务/自动化/云盘/市场）
    ============================================================ */
 :root {
@@ -968,6 +968,86 @@ button { font-family: inherit; }
 .ad-run-status .ck { width: 18px; height: 18px; border-radius: 50%; background: var(--primary-50); color: var(--primary-600); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .ad-run-time { margin-left: auto; color: var(--text-4); font-size: 12.5px; }
 
+
+/* ========== 效率与质量对比 ========== */
+.cmp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 16px 24px; }
+.cmp-group { border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; }
+.cmp-group-h { display: flex; align-items: center; gap: 7px; padding: 9px 12px; background: var(--bg-hover); font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.cmp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
+.cmp-dot.qua { background: var(--purple); }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cmp-table th { text-align: left; font-weight: 500; color: var(--text-4); padding: 7px 12px; border-bottom: 1px solid var(--border-light); font-size: 11px; white-space: nowrap; }
+.cmp-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-light); color: var(--text-2); vertical-align: top; line-height: 1.55; }
+.cmp-table tr:last-child td { border-bottom: none; }
+.cmp-table .mname { color: var(--text-1); font-weight: 500; }
+.cmp-table .mbase { color: var(--text-4); }
+.cmp-table .mnow { color: var(--text-1); font-weight: 600; }
+.cmp-delta { display: inline-block; padding: 1px 7px; border-radius: 9px; background: var(--primary-50); color: var(--primary-700); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.cmp-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px 24px; margin-top: 16px; }
+.cmp-side { border: 1px solid var(--border-light); border-radius: 10px; padding: 12px 14px; }
+.cmp-side-h { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.cmp-side.agent .cmp-side-h { color: var(--purple); }
+.cmp-side.human .cmp-side-h { color: var(--blue); }
+.cmp-side ul { margin: 0; padding: 0; list-style: none; }
+.cmp-side li { position: relative; padding: 3px 0 3px 15px; font-size: 12.5px; line-height: 1.65; color: var(--text-2); }
+.cmp-side li::before { content: ''; position: absolute; left: 3px; top: 11px; width: 5px; height: 5px; border-radius: 50%; }
+.cmp-side.agent li::before { background: var(--purple); }
+.cmp-side.human li::before { background: var(--blue); }
+.cmp-why { margin-top: 12px; padding: 10px 13px; border-radius: 8px; background: var(--bg-hover); border-left: 3px solid var(--primary); font-size: 12px; color: var(--text-3); line-height: 1.75; }
+
+/* ========== 人机协同时间线 ========== */
+.coop-sec { margin-top: 26px; }
+.coop-hint { font-size: 12px; color: var(--text-4); font-weight: 400; }
+.coop-flow { display: flex; flex-direction: column; }
+.coop-node { display: flex; gap: 12px; position: relative; padding-bottom: 18px; }
+.coop-node::before { content: ''; position: absolute; left: 15px; top: 36px; bottom: 2px; width: 2px; background: var(--border-light); }
+.coop-node:last-child { padding-bottom: 0; }
+.coop-node:last-child::before { display: none; }
+.coop-ava { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; z-index: 1; }
+.coop-ava.human { background: var(--blue); }
+.coop-ava.sys { background: var(--text-3); }
+.coop-ava.done { background: var(--primary); }
+.coop-body { flex: 1; min-width: 0; padding-top: 3px; }
+.coop-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.coop-actor { font-size: 13px; font-weight: 600; color: var(--text-1); }
+.coop-step-badge { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 9px; font-size: 10.5px; font-weight: 500; background: var(--purple-50); color: var(--purple); border: 1px solid var(--purple-100); }
+.coop-step-badge.human { background: var(--blue-50); color: var(--blue); border-color: #DBEAFE; }
+.coop-step-badge.done { background: var(--primary-50); color: var(--primary-600); border-color: var(--primary-100); }
+.coop-time { margin-left: auto; font-size: 11.5px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.coop-title { font-size: 13.5px; color: var(--text-1); font-weight: 500; margin-top: 3px; }
+.coop-desc { font-size: 12.5px; color: var(--text-3); line-height: 1.7; margin-top: 3px; }
+.coop-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 7px; font-size: 11.5px; color: var(--text-4); }
+.coop-meta b { color: var(--text-2); font-weight: 600; }
+.coop-out { margin-top: 9px; border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; }
+.coop-out summary { list-style: none; cursor: pointer; padding: 9px 12px; font-size: 12.5px; color: var(--text-2); background: var(--bg-hover); display: flex; align-items: center; gap: 7px; user-select: none; }
+.coop-out summary::-webkit-details-marker { display: none; }
+.coop-out summary:hover { color: var(--primary); }
+.coop-out summary .arr { margin-left: auto; transition: transform .15s; color: var(--text-4); display: flex; }
+.coop-out[open] summary .arr { transform: rotate(90deg); }
+.coop-out .inner { padding: 4px 12px 10px; overflow-x: auto; }
+.coop-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.coop-table th { text-align: left; font-weight: 600; color: var(--text-3); padding: 7px 8px; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
+.coop-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-2); line-height: 1.5; vertical-align: top; }
+.coop-table tr:last-child td { border-bottom: none; }
+.coop-verdict { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.coop-verdict.ok { background: var(--primary-50); color: var(--primary-700); }
+.coop-verdict.no { background: #FEF2F2; color: var(--danger); }
+.coop-verdict.fix { background: var(--orange-50); color: #B45309; }
+.coop-note { font-size: 11.5px; color: var(--text-4); line-height: 1.5; }
+/* 智能体输入中 */
+.msg-bubble.typing { display: inline-flex; gap: 4px; align-items: center; padding: 12px 14px; }
+.msg-bubble.typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); animation: coopBlink 1.2s infinite; }
+.msg-bubble.typing span:nth-child(2) { animation-delay: .2s; }
+.msg-bubble.typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes coopBlink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+/* 智能体回复卡片 */
+.ai-reply-plan { margin: 6px 0 0; padding: 0; list-style: none; }
+.ai-reply-plan li { position: relative; padding: 2px 0 2px 18px; font-size: 12.5px; line-height: 1.6; color: var(--text-2); }
+.ai-reply-plan li::before { content: ''; position: absolute; left: 4px; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.ai-reply-foot { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-light); font-size: 11px; color: var(--text-4); }
+/* 任务卡上的智能体执行证据 */
+.kb-card-exec { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; height: 18px; margin-top: 6px; padding: 0 7px; border-radius: 9px; background: var(--purple-50); color: var(--purple); font-size: 10px; font-weight: 500; border: 1px solid var(--purple-100); white-space: nowrap; max-width: 100%; overflow: hidden; }
+
 /* 新建自动化弹窗 */
 .auto-modal { width: 560px; max-width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.2); display: flex; flex-direction: column; animation: gcIn .2s ease-out; max-height: 92vh; }
 .auto-modal .gc-body { padding: 6px 20px 8px; }
@@ -1177,8 +1257,8 @@ button { font-family: inherit; }
     <div class="login-logo">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div class="login-title">复星生物医药科研平台</div>
-    <div class="login-sub">生物医药科研 · 智能体与数据协同平台</div>
+    <div class="login-title">AI + 医药数据智能体工作平台</div>
+    <div class="login-sub">医药数据 · 智能体与科研协同平台</div>
     <div class="login-form">
       <div class="login-field">
         <label>账号</label>
@@ -1197,7 +1277,7 @@ button { font-family: inherit; }
       <div class="login-error" id="loginError"></div>
       <button class="login-btn" onclick="doLogin()">登 录</button>
     </div>
-    <div class="login-foot">© 2026 复星生物医药科研平台 · 仅供内部使用</div>
+    <div class="login-foot">© 2026 AI + 医药数据智能体工作平台 · 仅供内部使用</div>
   </div>
 </div>
 
@@ -1266,7 +1346,7 @@ button { font-family: inherit; }
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input">
-          <input class="field" id="chatInput" placeholder="输入消息..." />
+          <input class="field" id="chatInput" placeholder="输入消息..." oncompositionend="this._ce=Date.now()" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229&&!event.ctrlKey&&!event.metaKey&&(!this._ce||Date.now()-this._ce>100)){event.preventDefault();sendMsg();}" />
           <button class="btn btn-primary" onclick="sendMsg()">发送</button>
         </div>
       </div>
@@ -1423,7 +1503,7 @@ button { font-family: inherit; }
             </div>
             <!-- 评论输入框（独立，参照截图） -->
             <div class="td-comment-box">
-              <div class="td-comment-input" contenteditable="true" data-placeholder="发送给 test"></div>
+              <div class="td-comment-input" contenteditable="true" data-placeholder="添加评论，@成员或智能体可通知对方"></div>
               <div class="td-comment-tools">
                 <button class="cc-tool" title="表情"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                 <button class="cc-tool" title="提及"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg></button>
@@ -1491,7 +1571,7 @@ button { font-family: inherit; }
         </div>
         <!-- 评论输入框（独立，参照截图） -->
         <div class="td-comment-box">
-          <div class="td-comment-input" contenteditable="true" data-placeholder="发送给 test"></div>
+          <div class="td-comment-input" contenteditable="true" data-placeholder="添加评论，@成员或智能体可通知对方"></div>
           <div class="td-comment-tools">
             <button class="cc-tool" title="表情"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
             <button class="cc-tool" title="提及"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg></button>
@@ -1885,17 +1965,23 @@ const convData = [
     ]
   },
   {
-    id: 'g5', name: 'AI 智能体协作群', count: 4, unread: 0,
+    id: 'g5', name: 'AI 智能体协作群', count: 7, unread: 0,
     type: 'group', avatar: 'group', avatarColor: 'green',
-    preview: '基因测序AI：本群已接入 3 个智能体...', time: '周二 09:00',
+    preview: '药物警戒智能体：已按裁决重写 Narrative，待王芳签署…', time: '今天 11:28',
     detailSub: '医疗 AI · 智能体协作群',
-    members: ['李伟','蛋白测序专家 AI','基因测序专家 AI'],
+    members: ['药物警戒智能体','临床研究智能体','李伟','李林','蛋白测序专家 AI','基因测序专家 AI','文献挖掘专家 AI'],
     tasks: [
       { name: '多智能体协同梳理', status: 'done', owner: '基因测序专家 AI', ai: true },
+      { name: 'ICSR CN-FOSUN-2026-028471 · 待签署', status: 'doing', owner: '药物警戒智能体', ai: true },
+      { name: '入排预筛 v2.1 · 97 例待邀约', status: 'doing', owner: '临床研究智能体', ai: true },
     ],
-    docs: [{ name: 'Data (8)', date: '07/03 16:20' }],
+    docs: [{ name: 'ICSR_028471_E2B(R3).xml', date: '09/03 11:28' }, { name: '入排预筛结果_v2.1.xlsx', date: '09/01 16:30' }, { name: 'Data (8)', date: '07/03 16:20' }],
     messages: [
-      { name: '基因测序专家 AI', color: 'green', ai: true, time: '周二 09:05', text: '本群已接入基因测序、蛋白测序两个智能体，可进行协同任务分发。' },
+      { name: '药物警戒智能体', color: 'blue', ai: true, time: '今天 09:37', mention: '李林', text: '本季第 2,847 份来件已完成抽取与编码：47 个 E2B 字段全部回链原文，MedDRA 编码 6 个，严重性判定「是·导致住院」，关联性初判「很可能」。请复核。' },
+      { name: '李林', color: 'blue', time: '今天 11:28', text: '复核完了，改了 3 处：合并用药漏了院外中成药；「皮疹」按皮肤科会诊改成「药疹」；关联性从「很可能」下调到「可能」——患者同期在用另一种肝毒性药，混杂因素排不掉。' },
+      { name: '药物警戒智能体', color: 'blue', ai: true, time: '今天 11:28', mention: '王芳', text: '已按裁决重写 Narrative 与 E2B(R3) 报文，68 项校验全通过，修正理由已留痕并回流校准。等待签署放行，距 15 日法定时限还有 14 天。' },
+      { name: '李伟', color: 'green', time: '今天 11:35', text: '这季度编码一致性从 83.2% 提到 96.8%，严重性判定的双人不一致率压到 0.4%——省下的 2,400 多小时，全花在真正需要人判断的地方了。' },
+      { name: '临床研究智能体', color: 'green', ai: true, time: '今天 11:40', text: '入排预筛同步一下：方案 v2.1 全量重跑 3 小时 27 分完成（人工基线 44.7 人时），研究者确认合格 97 例，其中 8 例是 AI 初判没勾出、研究者在复核里补回的。' },
     ]
   },
   {
@@ -1912,11 +1998,13 @@ const convData = [
   {
     id: 'p2', name: '蛋白测序专家 AI', count: 0, unread: 0,
     type: 'user', avatar: '蛋', color: 'purple', ai: true,
-    preview: '近期遗传影像结果挺好的', time: '周三 10:1',
+    preview: '好的，正在筛选 EGFR 相关记录…', time: '周三 10:1',
     detailSub: '医疗 AI 专家 · 蛋白测序方向',
     members: ['李伟','蛋白测序专家 AI'],
     messages: [
       { name: '蛋白测序专家 AI', color: 'purple', ai: true, time: '周三 10:15', text: '给您推送了最新的蛋白结构预测报告。' },
+      { self: true, time: '周三 10:18', text: '收到，帮我把和 EGFR 耐药相关的部分整理出来' },
+      { name: '蛋白测序专家 AI', color: 'purple', ai: true, time: '周三 10:19', text: '好的，正在筛选 EGFR T790M 耐药旁路相关记录，预计 20 分钟内完成；整理好后会创建任务并 @您。' },
     ]
   },
   {
@@ -1965,15 +2053,15 @@ const contactListData = [
 /* ---- 项目 ---- */
 const projects = [
   { name: '生医科研', status: '进行中', priority: '低', progressNum: 0, progressDen: 1, owner: '', ownerColor: 'gray', created: '刚刚', desc: '蛋白序列功能预测与结构比对，支持药物研发方向的靶点筛选。', tasks: [
-    { sn: 'PRODUCT-11', name: '基因编辑平台可行性调研', status: '待规划', priority: '中', owner: '基因测序专家 AI', ownerColor: 'purple', desc: '调研 CRISPR 基因编辑平台在肿瘤精准治疗中的应用可行性与合规要求。', folder: '生医科研', tag: '基因编辑', updated: '今天 10:00', aiCount: 1, file: '调研提纲.docx', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 31', updatedTime: 'Aug 31', execLog: '0M  $0.00', progressNum: 0, progressDen: 1 },
-    { sn: 'PRODUCT-3', name: '新药候选分子脱靶效应评估', status: '待办', priority: '高', owner: '张教授', ownerColor: 'orange', desc: '对候选小分子进行脱靶效应初步评估，收集已知靶点相互作用数据。', folder: '生医科研', tag: '药物研发', updated: '今天 09:10', aiCount: 1, file: '候选分子清单.xlsx', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 29', updatedTime: 'Aug 31', execLog: '3.2M  $0.00', progressNum: 0, progressDen: 1 },
-    { sn: 'PRODUCT-4', name: '蛋白结构预测模型复现验证', status: '进行中', priority: '中', owner: '蛋白测序专家 AI', ownerColor: 'purple', desc: '复现蛋白结构预测模型，对 124 个候选位点进行结构比对验证。', folder: '生医科研', tag: '蛋白序列', updated: '今天 08:30', aiCount: 2, file: '蛋白序列数据.fasta', createdBy: '张教授', createdTime: 'Aug 27', updatedTime: 'Aug 31', execLog: '6.7M  $0.45', progressNum: 1, progressDen: 2 },
-    { sn: 'PRODUCT-5', name: '医学影像病灶标注质检', status: '审核中', priority: '中', owner: '王五', ownerColor: 'blue', desc: '对 AI 辅助标注的病灶结果进行人工质检与抽检复核，确保标注质量。', folder: '生医科研', tag: '医学影像', updated: '昨天 14:20', aiCount: 1, file: '病灶标注集.zip', createdBy: '王五', createdTime: 'Aug 26', updatedTime: 'Aug 30', execLog: '1.8M  $0.00', progressNum: 1, progressDen: 1 },
-    { sn: 'PRODUCT-6', name: '肿瘤早筛模型多组学特征筛选', status: '已完成', priority: '低', owner: '刘主任', ownerColor: 'orange', desc: '基于多组学数据完成肿瘤早筛模型特征筛选，模型已验证并归档。', folder: '生医科研', tag: '临床数据', updated: '上周', aiCount: 1, file: '特征筛选报告.pdf', createdBy: '刘主任', createdTime: 'Aug 20', updatedTime: 'Aug 24', execLog: '4.5M  $0.22', progressNum: 1, progressDen: 1 },
-    { sn: 'PRODUCT-7', name: '靶向药物分子对接批量筛选', status: '已阻塞', priority: '高', owner: '李伟', ownerColor: 'green', desc: '分子对接批量筛选，等待上游蛋白结构数据补全后继续，当前已阻塞。', folder: '生医科研', tag: '药物研发', updated: '前天 16:00', aiCount: 2, file: '对接平台参数.yml', createdBy: '李伟', createdTime: 'Aug 21', updatedTime: 'Aug 29', execLog: '0M  $0.00', progressNum: 0, progressDen: 2 },
-    { sn: 'PRODUCT-8', name: '文献自动采集定时任务', status: '已取消', priority: '低', owner: '基因测序专家 AI', ownerColor: 'purple', desc: '定时抓取目标领域文献的自动采集任务已取消，改为按需触发。', folder: '生医科研', tag: '文献挖掘', updated: '8/15', aiCount: 1, file: '采集规则.json', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 10', updatedTime: 'Aug 15', execLog: '0.5M  $0.00', progressNum: 0, progressDen: 1 },
-    { sn: 'PRODUCT-9', name: '药物靶点数据集结构校验', status: '待办', priority: '中', owner: '临床数据清洗工具', ownerColor: 'blue', desc: '对药物靶点结构化数据集进行字段完整性校验与清洗前预处理。', folder: '生医科研', tag: '数据治理', updated: '今天 11:05', aiCount: 1, file: '靶点数据集.csv', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 30', updatedTime: 'Aug 31', execLog: '1.2M  $0.08', progressNum: 0, progressDen: 1 },
-    { sn: 'PRODUCT-10', name: '影像预标注模型调参实验', status: '已阻塞', priority: '中', owner: '影像标注工具', ownerColor: 'blue', desc: '影像预标注模型调参，训练算力申请未批复，任务已阻塞。', folder: '生医科研', tag: '医学影像', updated: '8/22', aiCount: 1, file: '实验配置.yaml', createdBy: '王五', createdTime: 'Aug 22', updatedTime: 'Aug 25', execLog: '0M  $0.00', progressNum: 0, progressDen: 2 },
+    { sn: 'PRODUCT-11', name: '基因编辑平台可行性调研', status: '待规划', priority: '中', owner: '基因测序专家 AI', ownerColor: 'purple', desc: '调研 CRISPR 基因编辑平台在肿瘤精准治疗中的应用可行性与合规要求。', folder: '生医科研', tag: '基因编辑', updated: '今天 10:00', aiCount: 1, file: '调研提纲.docx', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 31', updatedTime: 'Aug 31', execLog: '0M  ¥0.0', progressNum: 0, progressDen: 1 },
+    { sn: 'PRODUCT-3', name: '新药候选分子脱靶效应评估', status: '待办', priority: '高', owner: '张教授', ownerColor: 'orange', desc: '对候选小分子进行脱靶效应初步评估，收集已知靶点相互作用数据。', folder: '生医科研', tag: '药物研发', updated: '今天 09:10', aiCount: 1, file: '候选分子清单.xlsx', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 29', updatedTime: 'Aug 31', execLog: '3.2M  ¥0.0', progressNum: 0, progressDen: 1 },
+    { sn: 'PRODUCT-4', name: '蛋白结构预测模型复现验证', status: '进行中', priority: '中', owner: '蛋白测序专家 AI', ownerColor: 'purple', desc: '复现蛋白结构预测模型，对 124 个候选位点进行结构比对验证。', folder: '生医科研', tag: '蛋白序列', updated: '今天 08:30', aiCount: 2, file: '蛋白序列数据.fasta', createdBy: '张教授', createdTime: 'Aug 27', updatedTime: 'Aug 31', execLog: '6.7M  ¥3.2', progressNum: 1, progressDen: 2 },
+    { sn: 'PRODUCT-5', name: '医学影像病灶标注质检', status: '审核中', priority: '中', owner: '王五', ownerColor: 'blue', desc: '对 AI 辅助标注的病灶结果进行人工质检与抽检复核，确保标注质量。', folder: '生医科研', tag: '医学影像', updated: '昨天 14:20', aiCount: 1, file: '病灶标注集.zip', createdBy: '王五', createdTime: 'Aug 26', updatedTime: 'Aug 30', execLog: '1.8M  ¥0.0', progressNum: 1, progressDen: 1 },
+    { sn: 'PRODUCT-6', name: '肿瘤早筛模型多组学特征筛选', status: '已完成', priority: '低', owner: '刘主任', ownerColor: 'orange', desc: '基于多组学数据完成肿瘤早筛模型特征筛选，模型已验证并归档。', folder: '生医科研', tag: '临床数据', updated: '上周', aiCount: 1, file: '特征筛选报告.pdf', createdBy: '刘主任', createdTime: 'Aug 20', updatedTime: 'Aug 24', execLog: '4.5M  ¥1.6', progressNum: 1, progressDen: 1 },
+    { sn: 'PRODUCT-7', name: '靶向药物分子对接批量筛选', status: '已阻塞', priority: '高', owner: '李伟', ownerColor: 'green', desc: '分子对接批量筛选，等待上游蛋白结构数据补全后继续，当前已阻塞。', folder: '生医科研', tag: '药物研发', updated: '前天 16:00', aiCount: 2, file: '对接平台参数.yml', createdBy: '李伟', createdTime: 'Aug 21', updatedTime: 'Aug 29', execLog: '0M  ¥0.0', progressNum: 0, progressDen: 2 },
+    { sn: 'PRODUCT-8', name: '文献自动采集定时任务', status: '已取消', priority: '低', owner: '基因测序专家 AI', ownerColor: 'purple', desc: '定时抓取目标领域文献的自动采集任务已取消，改为按需触发。', folder: '生医科研', tag: '文献挖掘', updated: '8/15', aiCount: 1, file: '采集规则.json', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 10', updatedTime: 'Aug 15', execLog: '0.5M  ¥0.0', progressNum: 0, progressDen: 1 },
+    { sn: 'PRODUCT-9', name: '药物靶点数据集结构校验', status: '待办', priority: '中', owner: '临床数据清洗工具', ownerColor: 'blue', desc: '对药物靶点结构化数据集进行字段完整性校验与清洗前预处理。', folder: '生医科研', tag: '数据治理', updated: '今天 11:05', aiCount: 1, file: '靶点数据集.csv', createdBy: 'fosun-research@fosun.com', createdTime: 'Aug 30', updatedTime: 'Aug 31', execLog: '1.2M  ¥0.6', progressNum: 0, progressDen: 1 },
+    { sn: 'PRODUCT-10', name: '影像预标注模型调参实验', status: '已阻塞', priority: '中', owner: '影像标注工具', ownerColor: 'blue', desc: '影像预标注模型调参，训练算力申请未批复，任务已阻塞。', folder: '生医科研', tag: '医学影像', updated: '8/22', aiCount: 1, file: '实验配置.yaml', createdBy: '王五', createdTime: 'Aug 22', updatedTime: 'Aug 25', execLog: '0M  ¥0.0', progressNum: 0, progressDen: 2 },
   ] },
 ];
 
@@ -2030,6 +2118,186 @@ const taskComments = {
 
 /* ---- 自动化 ---- */
 const autos = [
+  {
+    name: '个例安全性报告（ICSR）智能处理', desc: '多渠道来件自动解析、MedDRA 编码与关联性初判，药物警戒专员逐项复核后按 SOP 签发提交', status: '已启用',
+    icon: 'purple', agent: '药物警戒智能体', agentColor: 'purple', creator: 'xiongwei7874',
+    mode: '创建任务', project: '药物警戒', subscribers: '李林、王芳（药物警戒负责人）',
+    prompt: [
+      '监听医学信息热线、医院上报邮箱、文献监测与市场部转办四个来件渠道',
+      '死亡病例进即时通道；其他严重病例进 15 日队列，非严重进 30 日队列',
+      '按 ICH E2B(R3) 抽取个例字段，每个字段回链来件原文位置',
+      '对不良事件做 MedDRA LLT/PT/SOC 三级编码，有明确诊断时优先编诊断',
+      '按 ICH 标准逐事件判定严重性，按 WHO-UMC 六级标准初判关联性',
+      '检索同品种历史病例，识别重复报告并提示聚集信号',
+      '暂停，移交药物警戒专员逐项复核并记录修正理由',
+      '按复核结论生成 Narrative 与 E2B(R3) XML，执行 Schema 与业务规则校验',
+      '暂停，按持有人 SOP 由授权人员签发；严重与死亡病例由药物警戒负责人签署放行',
+      '提交国家药品不良反应监测系统并归档全链路证据',
+    ],
+    trigger: { name: '来件监听', meta: ['监听 4 个来件渠道的 new_case 事件', '符合最低报告要求即触发', '死亡即时通道 · 严重 15 日 · 非严重 30 日'] },
+    history: [
+      { status: '已完成', tag: '来件监听', ref: '专员复核 · 修正补充 5 项 · 已签发提交', time: '今天 14:06' },
+      { status: '已完成', tag: '来件监听', ref: '专员复核 · 无修正 · 已签发提交', time: '今天 08:12' },
+      { status: '已完成', tag: '文献监测', ref: '判定为重复报告 · 已合并归档', time: '昨天 16:35' },
+    ],
+    runs: 9431, rate: 99, updated: '今天 14:06',
+    compare: {
+      scope: '2026 年 4-6 月 · 2,847 份个例报告；质量指标在 200 份双人复核抽样集上校验',
+      groups: [
+        { kind:'eff', title:'效率', metrics:[
+          { name:'单份平均人工工时', before:'68 分钟', after:'16 分钟', delta:'↓ 76%' },
+          { name:'季度处理总工时', before:'3,227 小时', after:'759 小时', delta:'↓ 2,468 小时' },
+          { name:'严重病例提交时距法定时限余量', before:'2.8 天', after:'11.4 天', delta:'+8.6 天' },
+          { name:'提交前返工率', before:'11.2%', after:'2.1%', delta:'↓ 9.1 pt' },
+        ]},
+        { kind:'qua', title:'质量', metrics:[
+          { name:'MedDRA 编码双人一致性（PT 级）', before:'83.2%', after:'96.8%', delta:'+13.6 pt' },
+          { name:'严重性判定双人复核不一致率', before:'6.1%', after:'0.4%', delta:'↓ 5.7 pt' },
+          { name:'E2B(R3) 必填字段完整率', before:'91.4%', after:'99.2%', delta:'+7.8 pt' },
+          { name:'跨病例聚集信号提示', before:'人工难以覆盖', after:'9 条 / 季', delta:'新增能力' },
+        ]},
+      ],
+      division: {
+        agent: [
+          '四个来件渠道的非结构化材料解析与 E2B(R3) 字段抽取，每项回链原文',
+          'MedDRA LLT / PT / SOC 三级编码建议，跨病例保持术语一致',
+          '逐事件 ICH 严重性初判、WHO-UMC 关联性初判',
+          '同品种历史病例检索：重复报告识别与聚集信号提示',
+          'Narrative 起草与 E2B(R3) Schema / 业务规则自检',
+        ],
+        human: [
+          '逐项复核抽取与编码，修正临床判断偏差并留痕理由',
+          '综合征层面的判断：把孤立体征读成一个临床诊断',
+          '关联性最终评定：混杂因素、原患疾病进展、合并用药',
+          '按 SOP 签发；严重与死亡病例由药物警戒负责人签署放行',
+        ],
+        why: '《药物警戒质量管理规范》要求持有人对报告的真实性、准确性、完整性负责。智能体做抽取、编码与初判，签发与放行由授权人员按持有人 SOP 完成——效率提升不是把人替掉，而是把人从机械录入中解放出来，专注在只有人能做的临床判断上；本例中专员补上的「综合征待排」正是智能体没能给出的那一层。',
+      },
+    },
+    steps: [
+      { kind:'trigger', title:'新来件接入 · 本季第 412 份', time:'09:35:00',
+        meta:[['来件渠道','医学信息热线转办'],['首次获知日','9月3日'],['时限队列','严重 · 15 日'],['最低报告要求','4 项齐全']] },
+      { kind:'agent', actor:'药物警戒智能体', color:'purple', title:'来件解析与 E2B(R3) 字段抽取', time:'09:35:12', dur:'96s',
+        desc:'从 11 页非结构化材料（电话记录、门诊病历扫描件、检验单）抽取个例字段，每个字段标注来件原文位置以备核查追溯。',
+        meta:[['抽取字段','47 项'],['原文定位','47 处'],['消耗 Tokens','32K'],['本轮成本','¥0.15']] },
+      { kind:'agent', actor:'药物警戒智能体', color:'purple', title:'MedDRA 编码与逐事件严重性判定', time:'09:36:48', dur:'41s',
+        desc:'不良事件术语按 LLT → PT → SOC 三级编码；严重性依 ICH 标准在事件层逐条判定（本例四个事件共同导致住院，均标记为严重）——严重性属病例评价，不是 MedDRA 词典属性。',
+        codes:[
+          { raw:'全身皮疹伴瘙痒', llt:'瘙痒性皮疹', pt:'瘙痒性皮疹', soc:'皮肤及皮下组织类疾病', serious:'是' },
+          { raw:'寒战、发热 39.2℃', llt:'发热伴寒战', pt:'发热', soc:'全身性疾病及给药部位各种反应', serious:'是' },
+          { raw:'嗜酸性粒细胞 18%', llt:'嗜酸性粒细胞计数增高', pt:'嗜酸性粒细胞增多症', soc:'血液及淋巴系统类疾病', serious:'是' },
+          { raw:'转氨酶升高 ALT 412 U/L', llt:'丙氨酸氨基转移酶升高', pt:'丙氨酸氨基转移酶升高', soc:'各类检查', serious:'是' },
+        ],
+        meta:[['编码术语','6 个 · 表中列出 4 条主要'],['命中历史编码库','4 个'],['严重性标准','导致住院']] },
+      { kind:'agent', actor:'药物警戒智能体', color:'purple', title:'关联性初判与历史病例检索', time:'09:37:29', dur:'34s',
+        desc:'按 WHO-UMC 六级标准初判用药与事件的关联性；检索同品种既往病例，识别重复报告并提示聚集信号。',
+        meta:[['关联性初判','很可能'],['去激发','阳性'],['同品种既往同类事件','14 例'],['重复报告','否']] },
+      { kind:'human', actor:'李林（药物警戒专员）', title:'逐项复核 · 47 项抽取 + 6 个编码 + 4 项判定', time:'11:20:00', dur:'12.5 分钟',
+        desc:'对智能体的每一项判定作出采纳或修正，修正必须填写理由并留痕，作为后续模型校准与质量审计的依据。',
+        reviews:[
+          { item:'E2B 字段抽取（47 项）', ai:'抽取完成', human:'采纳 45 · 修正 2', verdict:'fix', note:'合并用药漏了院外中成药（何首乌制剂，已知肝毒性品种）；报告者身份由「其他」更正为「医生」' },
+          { item:'MedDRA 编码（6 个）', ai:'瘙痒性皮疹（PT）', human:'修正为 药疹', verdict:'fix', note:'皮肤科诊断明确为药物性皮疹；按「有诊断优先编诊断」改到更贴切的 PT' },
+          { item:'综合征层面判断', ai:'未提示', human:'补充「药物超敏反应综合征（DRESS）待排」', verdict:'fix', note:'皮疹 + 高热 + 嗜酸粒细胞增多 + 肝损同时出现，须按综合征回溯同品种既往病例——智能体把四个事件编成了四条孤立术语' },
+          { item:'严重性判定', ai:'严重 · 导致住院', human:'采纳', verdict:'ok', note:'符合 ICH 严重性标准，四个事件共同促成住院，无异议' },
+          { item:'关联性评价', ai:'很可能', human:'下调为 可能', verdict:'fix', note:'补入的院外中成药为已知肝毒性品种，混杂因素不能排除，按 WHO-UMC 判据落到「可能」' },
+          { item:'重复报告识别', ai:'非重复', human:'采纳', verdict:'ok', note:'与既往 14 例按患者标识与事件时间比对，确非重复' },
+        ],
+        meta:[['复核耗时','12.5 分钟'],['采纳','52 项'],['修正 / 补充','5 项'],['AI 初判采纳率','91.2%']] },
+      { kind:'agent', actor:'药物警戒智能体', color:'purple', title:'按复核结论重写 Narrative 与 E2B(R3) 校验', time:'11:32:40', dur:'52s',
+        desc:'以专员裁决为准重新生成叙述性描述与 E2B(R3) XML，执行 Schema 与业务规则双重校验，并按「综合征待排」触发同品种同类事件回溯。',
+        meta:[['校验规则','68 项 · 全部通过'],['必填字段完整率','100%'],['触发回溯','同品种 DRESS 样病例 3 例']] },
+      { kind:'human', actor:'王芳（药物警戒负责人）', title:'签发放行', time:'14:02:00', dur:'3.5 分钟',
+        desc:'按持有人 SOP，严重与死亡病例由药物警戒负责人签署放行；一般病例由授权的药物警戒专业人员签发。签发记录纳入质量体系审计轨迹。',
+        meta:[['签发人','王芳 · 药物警戒负责人'],['签发依据','SOP-PV-012 严重病例'],['审计轨迹','已归档']] },
+      { kind:'deliver', title:'提交国家药品不良反应监测系统', time:'14:06:12',
+        desc:'E2B(R3) 报文经网关提交成功并回执确认；全链路证据（来件原文、AI 初判、人工修正理由、签发记录）一并归档备查。',
+        deliverables:[['报告编号','CN-FOSUN-2026-028471'],['提交渠道','E2B(R3) 网关'],['距法定时限','剩余 14 天']],
+        meta:[['协同结构','智能体 4 步 · 人工复核 1 轮 + 签发 1 次'],['全程耗时','4 小时 31 分（其中人工 16 分钟）']] },
+    ],
+  },
+  {
+    name: '临床试验受试者入排预筛', desc: '方案入排标准转为可判定规则，全量扫描院内病历并逐条标注证据，研究者确认后生成入组清单', status: '已启用',
+    icon: 'green', agent: '临床研究智能体', agentColor: 'green', creator: 'xiongwei7874',
+    mode: '创建任务', project: '肺癌 III 期临床', subscribers: '杨涛、研究护士组',
+    prompt: [
+      '解析方案入排标准，拆解为可判定的原子条件并标注数据来源类型',
+      '全量扫描院内结构化数据、病理报告、影像报告与检验记录',
+      '为每位候选逐条标注符合 / 不符合，并回链病历原文出处',
+      '对证据不足的条目显式标记「待人工判断」，不做猜测',
+      '暂停，移交研究者与研究护士确认候选名单',
+      '生成入组邀请清单与不合格原因归档，回写至试验管理系统',
+    ],
+    trigger: { name: '方案变更监听', meta: ['监听方案版本更新事件', '入排标准变更即触发全量重筛', '每周一 06:00 增量筛查新入院病历'] },
+    history: [
+      { status: '已完成', tag: '方案变更', ref: '研究者确认 · 合格 97 例', time: '9月1日 16:30' },
+      { status: '已完成', tag: '增量筛查', ref: '研究者确认 · 新增合格 6 例', time: '8月24日 06:44' },
+      { status: '已完成', tag: '增量筛查', ref: '研究者确认 · 新增合格 4 例', time: '8月17日 06:41' },
+    ],
+    runs: 34, rate: 97, updated: '9月1日 16:30',
+    compare: {
+      scope: '某 III 期非小细胞肺癌试验 · 院内 12,400 份病历；敏感性在 1,200 份双人阅片验证集上测得',
+      groups: [
+        { kind:'eff', title:'效率', metrics:[
+          { name:'预筛人工投入', before:'44.7 人时', after:'12.4 人时', delta:'↓ 72%' },
+          { name:'预筛周期', before:'3.5 周', after:'4 天', delta:'↓ 3 周' },
+          { name:'首例入组时间（FPI）', before:'第 68 天', after:'第 47 天', delta:'↓ 21 天' },
+          { name:'方案修订后重筛', before:'44.7 人时全部重来', after:'3.5 机时 + 约 4 人时增量复核', delta:'↓ 91%' },
+        ]},
+        { kind:'qua', title:'质量', metrics:[
+          { name:'阅片覆盖范围', before:'结构化初筛后 780 份', after:'全量 12,400 份', delta:'15.9 倍' },
+          { name:'合格患者检出敏感性', before:'68.4%', after:'91.2%', delta:'+22.8 pt' },
+          { name:'AI 初判漏检', before:'—', after:'8 例 · 复核已全部补回', delta:'最终 0 例' },
+          { name:'预筛推荐 → 成功入组转化率', before:'38%', after:'73%', delta:'+35 pt' },
+          { name:'入排判定可追溯性', before:'纸质记录 · 抽查', after:'关键条件 100% 回链原文', delta:'全量可追溯' },
+        ]},
+      ],
+      division: {
+        agent: [
+          '方案入排标准拆解为可判定的原子条件（含数据来源类型标注）',
+          '全量扫描结构化数据与病理 / 影像 / 检验等非结构化文本',
+          '逐条标注符合性并回链病历原文，供研究者一眼核查',
+          '证据不足时显式标记「待人工判断」，不做猜测式判定',
+          '方案修订后按新规则重跑，无需重新组织人力从头阅片',
+        ],
+        human: [
+          '确认候选名单，对 AI 判定作出采纳 / 推翻并留痕理由',
+          '处理「待人工判断」条目：会诊、调阅院外资料、补充检查',
+          '受试者适格性的临床最终判断与知情同意',
+          '入组决策与伦理合规责任',
+        ],
+        why: '人工预筛受工时所限只能在结构化条件初筛后阅片 780 份，证据只写在病理或影像文本里的患者因此被漏掉——受试者失去治疗机会，试验也因此延期。智能体的价值不只是快，而是把「抽样检查」变成「全量检查」，敏感性反而高于人工基线；而适格性的最终判断与入组决策始终由研究者承担。',
+      },
+    },
+    steps: [
+      { kind:'trigger', title:'方案 v2.1 入排标准更新 · 触发全量重筛', time:'第 1 日 09:00:00',
+        meta:[['变更内容','入选新增 1 条 · 排除修订 2 条'],['影响范围','全量 12,400 份病历'],['人工重筛需','44.7 人时']] },
+      { kind:'agent', actor:'临床研究智能体', color:'green', title:'方案解析 · 入排标准转可判定规则', time:'09:00:22', dur:'3m18s',
+        desc:'将 v2.1 方案的入选与排除标准拆解为可机器判定的原子条件，并按所需数据类型分流：结构化字段直接取值，非结构化文本需语义判读，主观条目直接标为需人工判断。',
+        sources:[['入选标准','12 条'],['排除标准','19 条'],['原子条件','78 条'],['需人工判断','6 条']],
+        meta:[['消耗 Tokens','0.9M'],['本轮成本','¥4.2']] },
+      { kind:'agent', actor:'临床研究智能体', color:'green', title:'全量扫描院内病历', time:'09:03:40', dur:'3h06m',
+        desc:'并行读取结构化数据与非结构化报告文本，对每位患者执行 78 条原子条件判定。',
+        sources:[['患者病历','12,400 份'],['病理报告','9,860 份'],['影像报告','24,100 份'],['检验记录','186,000 条']],
+        meta:[['命中候选','316 份'],['消耗 Tokens','52M'],['本轮成本','¥245'],['同口径人工','44.7 人时']] },
+      { kind:'agent', actor:'临床研究智能体', color:'green', title:'逐条证据标注与不确定项标记', time:'12:09:52', dur:'18m',
+        desc:'为每位候选的关键入排条件标注判定结果与病历原文出处；证据不足或表述含糊的条目显式标记「待人工判断」，交由研究者裁决而非猜测。',
+        meta:[['关键条件回链','4,108 处'],['待人工判断','68 例'],['平均每候选证据','13 条']] },
+      { kind:'human', actor:'杨涛（主要研究者）与研究护士组', title:'确认 316 份候选', time:'第 2 日 09:00', dur:'跨 2 个工作日 · 合计 12.4 人时',
+        desc:'研究者对 AI 判定逐例确认。AI 的漏判与误判都在这一步被纠正，纠正理由回流为下一轮规则校准的依据。',
+        reviews:[
+          { item:'候选 #0142', ai:'符合', human:'确认符合', verdict:'ok', note:'EGFR 19del、ECOG 1、未接受一线治疗，证据链完整' },
+          { item:'候选 #0287', ai:'符合', human:'推翻 · 排除', verdict:'fix', note:'病理报告提示合并小细胞成分，属方案排除标准（AI 误判）' },
+          { item:'候选 #0451', ai:'待人工判断', human:'确认符合', verdict:'ok', note:'影像报告对可测量病灶描述含糊，经影像科会诊确认符合 RECIST 1.1' },
+          { item:'候选 #0663', ai:'存疑不符合', human:'推翻 · 符合', verdict:'fix', note:'院外基因检测报告未入院内系统，患者补交后判定合格（AI 漏判）' },
+          { item:'其余 312 例', ai:'批量判定', human:'采纳 305 · 推翻 7', verdict:'ok', note:'推翻集中在院外资料缺失与影像描述歧义两类，已回流为规则改进项' },
+        ],
+        meta:[['确认合格','97 例'],['AI 判定采纳率','97.2%'],['人工纠正','9 例（补回漏检 8 · 改判排除 1）'],['复核投入','12.4 人时']] },
+      { kind:'deliver', title:'生成入组邀请清单与归档', time:'第 4 日 16:30',
+        desc:'合格候选生成入组邀请与随访任务并指派到人；不合格候选按排除原因归类归档，供后续方案优化与监管核查调阅。',
+        deliverables:[['入组邀请','97 例 · 已发出'],['不合格归档','219 份 · 按原因归类'],['规则改进项','2 条 · 已回流']],
+        meta:[['协同结构','智能体 3 步 · 研究者确认 1 轮'],['全程周期','4 天（人工基线 3.5 周）']] },
+    ],
+  },
   {
     name: '每周进度报告', desc: '每周围绕项目进度自动汇总并生成结构化周报', status: '已启用',
     icon: 'purple', agent: '原型UI设计专家', agentColor: 'purple', creator: 'xiongwei7874',
@@ -2262,7 +2530,7 @@ function renderConv(filter){
       ${avatarHtml}
       <div class="conv-meta">
         <div class="conv-name"><span class="nm">${c.name}</span>${nameExtra}</div>
-        <div class="conv-sub">${c.preview}</div>
+        <div class="conv-sub">${esc(c.preview)}</div>
       </div>
       <div class="conv-time-wrap"><div class="conv-time">${c.time}</div>${badge}</div>
     </div>`;
@@ -2287,7 +2555,7 @@ function renderDetail(c){
       return `<div class="msg-row user">
         <div class="msg-col">
           <div class="msg-head"><span class="msg-time">${m.time}</span></div>
-          <div class="msg-bubble">${m.text}</div>
+          <div class="msg-bubble">${esc(m.text)}</div>
         </div>
         <div class="avatar-round avatar-sm" style="background:${avatarHue('green')};">${CURRENT_USER.short}</div>
       </div>`;
@@ -2298,7 +2566,7 @@ function renderDetail(c){
       <div class="avatar-round" style="background:${avatarHue(m.color)};">${m.name.charAt(0)}</div>
       <div class="msg-col">
         <div class="msg-head"><span class="msg-name">${esc(m.name)}</span>${aiTag}<span class="msg-time">${m.time}</span></div>
-        <div class="msg-bubble">${mention}${esc(m.text)}</div>
+        ${m.typing ? '<div class="msg-bubble typing"><span></span><span></span><span></span></div>' : `<div class="msg-bubble">${mention}${m.html || esc(m.text)}</div>`}
       </div>
     </div>`;
   }).join('');
@@ -2351,9 +2619,77 @@ function sendMsg(){
   if(c){
     c.messages.push({ self:true, time:'刚刚', text:t });
     c.preview = '我：'+t;
+    c.time = '刚刚';
     renderDetail(c);
     input.value='';
+    renderConv();
+    scheduleAiReply(c, t);
   }
+}
+/* ---- 智能体回复：会话里有智能体时，先"输入中"，再给出带计划的答复 ---- */
+function agentColorOf(c, name){
+  // Reuse the colour that agent already renders with in this thread.
+  const prev = (c.messages||[]).filter(m=>m.ai && m.name===name).pop();
+  return (prev && prev.color) || 'purple';
+}
+/* 会话里有多个智能体时，按提问领域挑应答者；挑不出再退回最后发言的那个。 */
+const AGENT_DOMAINS = [
+  { name:'药物警戒智能体', re:/不良反应|不良事件|警戒|icsr|meddra|编码|个例/i },
+  { name:'临床研究智能体', re:/入排|入组|受试者|试验|方案|预筛/i },
+];
+function convAgentName(c, text){
+  const members = (c.members||[]);
+  const hit = AGENT_DOMAINS.find(d=>d.re.test(text||'') && members.includes(d.name));
+  if(hit) return hit.name;
+  const lastAi = (c.messages||[]).filter(m=>m.ai && m.name).pop();
+  if(lastAi) return lastAi.name;
+  const ai = (c.members||[]).find(n=>/AI|智能|专家|工具/.test(n));
+  if(ai) return ai;
+  if(c.ai || /AI|智能体|专家/.test(c.name||'')) return c.name;
+  return null;
+}
+function aiReplyFor(text){
+  const has = kw => (text||'').toLowerCase().includes(kw);
+  let lead, plan;
+  if(has('不良反应')||has('不良事件')||has('警戒')||has('icsr')||has('meddra')||has('编码')){
+    lead = '收到，我来处理这份个例安全性报告。';
+    plan = ['按 E2B(R3) 抽取个例字段并回链来件原文','MedDRA 三级编码 + ICH 严重性判定','WHO-UMC 关联性初判并检索重复报告','移交您复核，签署后提交监测系统'];
+  } else if(has('入排')||has('入组')||has('受试者')||has('试验')){
+    lead = '好的，我来跑一轮入排预筛。';
+    plan = ['解析方案入排标准为可判定的原子条件','全量扫描院内病历与病理/影像/检验报告','逐条标注符合性并回链原文，存疑项标「待人工判断」','输出候选名单交研究者确认'];
+  } else if(has('报告')||has('周报')||has('汇总')){
+    lead = '收到，我来汇总最新一期报告。';
+    plan = ['拉取本周关联任务与数据产出','按「进展 / 风险 / 下一步」结构成稿','写入云盘并回链到关联任务'];
+  } else if(has('文献')||has('检索')||has('查')||has('找')){
+    lead = '好的，开始检索相关文献与数据资产。';
+    plan = ['并行检索内部课题库与外部文献库','去重、聚类并按证据等级排序','生成结构化摘要与候选清单'];
+  } else if(has('比对')||has('序列')||has('蛋白')){
+    lead = '收到，启动序列比对流程。';
+    plan = ['从数据仓库取最新序列记录','与参考数据库做多序列比对','标记显著匹配与潜在突变位点','推送比对摘要与结果'];
+  } else if(has('任务')){
+    lead = '明白，我来创建并跟踪这项任务。';
+    plan = ['解析任务目标与验收标准','拆解执行步骤并预估耗时','创建任务后 @相关成员'];
+  } else {
+    lead = '收到。我先梳理一下执行计划：';
+    plan = ['理解需求并确认边界条件','检索相关数据与文献证据','给出方案后等您审核再执行'];
+  }
+  return `${esc(lead)}<ul class="ai-reply-plan">${plan.map(p=>`<li>${esc(p)}</li>`).join('')}</ul><div class="ai-reply-foot"><span>预计 20–30 分钟</span><span>约 4–6M tokens</span><span>成本约 ¥25</span><span>完成后创建任务并 @您</span></div>`;
+}
+function scheduleAiReply(c, userText){
+  const agent = convAgentName(c, userText);
+  if(!agent) return;
+  const color = agentColorOf(c, agent);
+  const typingMsg = { name:agent, color, ai:true, time:'刚刚', typing:true };
+  c.messages.push(typingMsg);
+  renderDetail(c);
+  setTimeout(()=>{
+    const idx = c.messages.indexOf(typingMsg);
+    if(idx < 0) return;
+    c.messages[idx] = { name:agent, color, ai:true, time:'刚刚', html: aiReplyFor(userText) };
+    c.preview = agent+'：已收到，正在执行…';
+    if(activeConv===c.id){ renderDetail(c); }
+    renderConv();
+  }, 1100);
 }
 function updateNavBadge(){
   const total = convData.reduce((a,b)=>a+b.unread,0);
@@ -2676,8 +3012,10 @@ function kbCardHtml(t){
     <div class="kb-card-folder"><span class="folder-ico"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h-4a2 2 0 0 0-2 2l-4 0a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-2-2z"/></svg></span>${esc(t.folder)}</div>
     <div class="kb-card-foot">
       <div class="kb-card-ava" style="background:${avatarHue(t.ownerColor)};">${(t.owner||'?').charAt(0)}</div>
+      ${isAiTask(t)?'<span class="ai-tag">AI</span>':''}
       <span class="kb-card-upd">更新于 ${esc(t.updated)}</span>
     </div>
+    ${isAiTask(t)&&t.execLog&&!/^0M\b/.test(t.execLog)?`<span class="kb-card-exec"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${t.aiCount||1} 次执行 · ${esc(t.execLog.replace(/\s+/g,' · '))}</span>`:''}
   </div>`;
 }
 function renderKbSide(){
@@ -2901,8 +3239,10 @@ function taskMineCardHtml(t){
     ${folder}
     <div class="kb-card-foot">
       <div class="kb-card-ava" style="background:${avatarHue(t.ownerColor)};">${(t.owner||'?').charAt(0)}</div>
+      ${isAiTask(t)?'<span class="ai-tag">AI</span>':''}
       <span class="kb-card-upd">更新于 ${esc(t.updated||'刚刚')}</span>
     </div>
+    ${isAiTask(t)&&t.execLog&&!/^0M\b/.test(t.execLog)?`<span class="kb-card-exec"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>${t.aiCount||1} 次执行 · ${esc(t.execLog.replace(/\s+/g,' · '))}</span>`:''}
   </div>`;
 }
 // 聚合所有任务：每个任务统一补 sn / folder，并支持点击打开任务详情
@@ -3232,6 +3572,108 @@ function backToAutoList(){
   lv.style.flexDirection = 'column';
   renderAutos();
 }
+/* ---- 效率与质量对比（纯人工基线 vs 人机协同） ---- */
+function renderCompare(a){
+  const c = a.compare;
+  if(!c) return '';
+  const ICO_A = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16h6"/></svg>';
+  const ICO_H = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+  const div = c.division;
+  return `<div class="ad-section coop-sec">
+    <div class="ad-sec-h"><span class="ad-sec-title">效率与质量对比</span><span class="coop-hint">${esc(c.scope)}</span></div>
+    <div class="cmp-grid">
+      ${c.groups.map(g=>`<div class="cmp-group">
+        <div class="cmp-group-h"><span class="cmp-dot ${g.kind==='qua'?'qua':''}"></span>${esc(g.title)}</div>
+        <table class="cmp-table">
+          <thead><tr><th>指标</th><th>纯人工</th><th>人机协同</th><th>变化</th></tr></thead>
+          <tbody>${g.metrics.map(m=>`<tr>
+            <td class="mname">${esc(m.name)}</td>
+            <td class="mbase">${esc(m.before)}</td>
+            <td class="mnow">${esc(m.after)}</td>
+            <td><span class="cmp-delta">${esc(m.delta)}</span></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`).join('')}
+    </div>
+    ${div ? `<div class="cmp-split">
+      <div class="cmp-side agent"><div class="cmp-side-h">${ICO_A}智能体承担</div><ul>${div.agent.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div class="cmp-side human"><div class="cmp-side-h">${ICO_H}人工把关</div><ul>${div.human.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+    </div>${div.why?`<div class="cmp-why">${esc(div.why)}</div>`:''}` : ''}
+  </div>`;
+}
+/* ---- 人机协同执行过程 ---- */
+function coopNodeAva(step){
+  if(step.kind==='human'){
+    return `<div class="coop-ava human">${esc((step.actor||'人').charAt(0))}</div>`;
+  }
+  if(step.kind==='trigger'){
+    return `<div class="coop-ava sys"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>`;
+  }
+  if(step.kind==='deliver'){
+    return `<div class="coop-ava done"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>`;
+  }
+  const c = {purple:'var(--purple)',green:'var(--primary)',blue:'var(--blue)',orange:'var(--orange)'}[step.color]||'var(--purple)';
+  return `<div class="coop-ava" style="background:${c};"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 16h6"/></svg></div>`;
+}
+function coopKindBadge(kind){
+  const m = { trigger:['运行',''], agent:['智能体',''], human:['人审','human'], deliver:['交付','done'] }[kind] || ['步骤',''];
+  return `<span class="coop-step-badge ${m[1]}">${m[0]}</span>`;
+}
+function coopMetaHtml(pairs){
+  if(!pairs || !pairs.length) return '';
+  return `<div class="coop-meta">${pairs.map(kv=>`<span>${esc(kv[0])} <b>${esc(kv[1])}</b></span>`).join('')}</div>`;
+}
+function renderCoopSteps(a){
+  return `<div class="ad-section coop-sec">
+    <div class="ad-sec-h"><span class="ad-sec-title">协同执行过程</span><span class="coop-hint">智能体执行 · 人工把关 · 每一步可追溯</span></div>
+    <div class="coop-flow">
+      ${a.steps.map(st=>{
+        const actor = st.actor ? `<span class="coop-actor">${esc(st.actor)}</span>` : '';
+        const timeHtml = `<span class="coop-time">${esc(st.time||'')}${st.dur?` · ${esc(st.dur)}`:''}</span>`;
+        let extra = '';
+        if(st.sources){ extra += coopMetaHtml(st.sources); }
+        if(st.codes){
+          extra += `<details class="coop-out">
+            <summary><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>MedDRA 编码明细 · ${st.codes.length} 条（点击展开）<span class="arr"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></summary>
+            <div class="inner"><table class="coop-table">
+              <thead><tr><th>事件原文</th><th>LLT</th><th>PT</th><th>SOC</th><th>严重性（ICH）</th></tr></thead>
+              <tbody>${st.codes.map(cd=>`<tr>
+                <td style="font-weight:500;color:var(--text-1);">${esc(cd.raw)}</td>
+                <td>${esc(cd.llt)}</td><td>${esc(cd.pt)}</td><td>${esc(cd.soc)}</td>
+                <td><span class="coop-verdict ${cd.serious==='是'?'fix':'ok'}">${esc(cd.serious)}</span></td>
+              </tr>`).join('')}</tbody>
+            </table></div>
+          </details>`;
+        }
+        if(st.reviews){
+          extra += `<details class="coop-out">
+            <summary><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>复核明细 · ${st.reviews.length} 项（点击展开）<span class="arr"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></summary>
+            <div class="inner"><table class="coop-table">
+              <thead><tr><th>复核项</th><th>智能体判定</th><th>人工裁决</th><th>理由 / 说明</th></tr></thead>
+              <tbody>${st.reviews.map(rv=>`<tr>
+                <td style="font-weight:500;color:var(--text-1);white-space:nowrap;">${esc(rv.item)}</td>
+                <td>${esc(rv.ai)}</td>
+                <td><span class="coop-verdict ${rv.verdict==='fix'?'fix':'ok'}">${rv.verdict==='fix'?'✎ ':'✓ '}${esc(rv.human)}</span></td>
+                <td><span class="coop-note">${esc(rv.note)}</span></td>
+              </tr>`).join('')}</tbody>
+            </table></div>
+          </details>`;
+        }
+        if(st.deliverables){ extra += coopMetaHtml(st.deliverables); }
+        return `<div class="coop-node">
+          ${coopNodeAva(st)}
+          <div class="coop-body">
+            <div class="coop-head">${actor}${coopKindBadge(st.kind)}${timeHtml}</div>
+            <div class="coop-title">${esc(st.title)}</div>
+            ${st.desc?`<div class="coop-desc">${esc(st.desc)}</div>`:''}
+            ${extra}
+            ${coopMetaHtml(st.meta)}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
 function renderAutoDetail(){
   const a = currentAuto;
   if(!a) return;
@@ -3269,6 +3711,9 @@ function renderAutoDetail(){
       </div>
     </div>
 
+    ${renderCompare(a)}
+    ${a.steps ? renderCoopSteps(a) : ''}
+
     <div class="ad-section">
       <div class="ad-sec-h"><span class="ad-sec-title">运行历史</span></div>
       ${a.history.length ? a.history.map(h=>`<div class="ad-run-row">
@@ -3287,9 +3732,14 @@ function editAuto(){ openNewAuto(currentAuto); }
 
 /* ---- 新建自动化弹窗 ---- */
 let amFreqSel = 'daily';
-let amAgents = ['原型UI设计专家','蛋白测序专家 AI','文献挖掘专家 AI','数据治理工具','影像标注工具'];
-let amProjects = ['复星医药','生医科研','基因测序联合项目','医学影像 AI 辅助','肿瘤早筛多组学'];
+let amEditing = null;
+let amAgentSel = null;
+let amProjSel = null;
+const amAgentColors = { '药物警戒智能体':'blue', '临床研究智能体':'green', '原型UI设计专家':'purple', '蛋白测序专家 AI':'green', '文献挖掘专家 AI':'blue', '数据治理工具':'orange', '影像标注工具':'orange' };
+let amAgents = ['药物警戒智能体','临床研究智能体','蛋白测序专家 AI','文献挖掘专家 AI','数据治理工具','影像标注工具','原型UI设计专家'];
+let amProjects = ['药物警戒','生医科研','基因测序联合项目','医学影像 AI 辅助','肿瘤早筛多组学'];
 function openNewAuto(edit){
+  amEditing = edit || null;
   // 重置表单
   document.getElementById('amName').value = edit ? edit.name : '';
   document.getElementById('amPrompt').value = edit ? (edit.prompt||[]).map(p=> (edit.prompt.indexOf(p)+1)+'. '+p).join('\n') : '';
@@ -3317,6 +3767,7 @@ function setAmFreq(f){
 }
 function amFreq(btn){ setAmFreq(btn.dataset.freq); }
 function setAmAgent(name){
+  amAgentSel = name || null;
   if(name){
     document.getElementById('amAgentText').innerHTML = `<span id="amAgentIcon" style="color:var(--primary);">✦</span> ${esc(name)}`;
   } else {
@@ -3325,6 +3776,7 @@ function setAmAgent(name){
   document.querySelectorAll('#amAgentMenu .opt').forEach(o=>o.classList.toggle('sel', name && o.dataset.name===name));
 }
 function setAmProj(name){
+  amProjSel = name || null;
   if(name){
     document.getElementById('amProjText').innerHTML = `<span class="proj-ico" style="display:inline-flex;color:#F5A623;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h-4a2 2 0 0 0-2 2l-4 0a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-2-2z"/></svg></span> ${esc(name)}`;
   } else {
@@ -3355,11 +3807,28 @@ function confirmNewAuto(){
   const prompt = document.getElementById('amPrompt').value.trim();
   if(!name){ alert('请填写自动化名称。'); return; }
   const freq = amFreqSel;
+  const ag = amAgentSel || amAgents[0];
+  if(amEditing){
+    // 编辑：原地更新表单可控字段，保留运行历史与协同执行过程（克隆会按名字遮蔽原卡片）
+    Object.assign(amEditing, {
+      name, agent: ag,
+      agentColor: amAgentColors[ag] || amEditing.agentColor || 'green',
+      project: amProjSel || amEditing.project,
+      icon: amAgentColors[ag] || amEditing.icon || 'green',
+      prompt: prompt.split('\n').filter(Boolean).map(p=>p.replace(/^\d+\.\s*/,'')),
+      updated: '刚刚',
+    });
+    amEditing = null;
+    closeNewAuto();
+    renderAutos();
+    if(currentAuto){ renderAutoDetail(); }
+    return;
+  }
   const trigName = (freq==='daily'?'每天':(freq==='weekly'?'每周':'每月')) + ' 09:00';
   const newAutoItem = {
     name, desc: prompt.split('\n')[0] || '自动执行任务', status: '已启用',
-    icon: 'green', agent: amAgents[0], agentColor: 'green', creator: 'xiongwei7874',
-    mode: '创建任务', project: '', subscribers: '无',
+    icon: amAgentColors[ag] || 'green', agent: ag, agentColor: amAgentColors[ag] || 'green', creator: 'xiongwei7874',
+    mode: '创建任务', project: amProjSel || '', subscribers: '无',
     prompt: prompt.split('\n').filter(Boolean).map(p=>p.replace(/^\d+\.\s*/,'')),
     trigger: { name: '时间表', meta: ['09:00 · 每天 (Asia/Shanghai)', '0 9 * * *', '下次：'+(freq==='daily'?'明天':'下期')+' 09:00'] },
     history: [{ status: '已完成', tag: '时间表', ref: '已创建任务', time: '刚刚' }],
