@@ -29,6 +29,7 @@ import type usage from "../locales/en/usage.json";
 import type fleet from "../locales/en/fleet.json";
 import type squads from "../locales/en/squads.json";
 import type gallery from "../locales/en/gallery.json";
+import type cockpit from "../locales/en/cockpit.json";
 import type graph from "../locales/en/graph.json";
 import type billing from "../locales/en/billing.json";
 import type workspaces from "../locales/en/workspaces.json";
@@ -81,6 +82,7 @@ declare global {
     // core/office/monologue-key.test.ts.
     office: Record<string, string>;
     gallery: typeof gallery;
+    cockpit: typeof cockpit;
     graph: typeof graph;
     billing: typeof billing;
     workspaces: typeof workspaces;

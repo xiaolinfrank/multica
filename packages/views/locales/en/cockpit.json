@@ -1,0 +1,156 @@
+{
+  "header": {
+    "title": "Project Cockpit",
+    "title_placeholder": "Name this board"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "gantt": "Gantt"
+  },
+  "toolbar": {
+    "search": "Search the board",
+    "search_placeholder": "Task, code, owner, vendor…",
+    "scope": "Scope",
+    "scope_all": "Whole board",
+    "zoom": "Timeline density",
+    "zoom_month": "Month",
+    "zoom_week": "Week",
+    "expand_all": "Expand all",
+    "collapse_all": "Collapse all",
+    "add_node": "New item"
+  },
+  "overview": {
+    "annual_goal": "Annual objective",
+    "annual_goal_placeholder": "What this year has to prove",
+    "target_date": "Target date",
+    "days_left": "{{days}} days left",
+    "days_over": "{{days}} days over",
+    "milestones": "Milestones",
+    "milestone_count": "{{done}} of {{total}} met",
+    "add_milestone": "Add milestone",
+    "modules": "Modules",
+    "modules_hint": "Progress rolls up from the tasks underneath",
+    "open_module": "Open {{code}} in the gantt",
+    "progress": "Progress",
+    "tasks": "Tasks",
+    "budget": "Budget",
+    "overdue": "Overdue",
+    "finance": "Finance",
+    "finance_hint": "Budget against instalments, month by month",
+    "card_overall": "Recently delivered",
+    "card_next": "Coming up",
+    "card_support": "Needs support",
+    "card_auto": "derived",
+    "card_manual": "written",
+    "card_placeholder": "Write what this card should say",
+    "card_write_manual": "Write this card myself",
+    "card_seed": "…",
+    "meetings": "Meetings",
+    "add_meeting": "Add meeting"
+  },
+  "gantt": {
+    "column_task": "Task / module",
+    "column_owner": "Owner",
+    "column_status": "Status",
+    "column_progress": "Progress",
+    "expand_branch": "Expand {{name}}",
+    "collapse_branch": "Collapse {{name}}",
+    "open_node": "Open {{code}}",
+    "overdue": "overdue",
+    "bar_label": "{{code}} on the timeline"
+  },
+  "node": {
+    "code": "Code",
+    "name": "Name",
+    "name_placeholder": "Untitled item",
+    "owner": "Owner",
+    "collaborators": "Collaborators",
+    "collaborators_placeholder": "Who else is on this",
+    "start_date": "Start",
+    "end_date": "End",
+    "status": "Status",
+    "progress": "Progress",
+    "progress_bar": "{{percent}}% complete",
+    "linked_issues": "Linked issues",
+    "vendor": "Vendor",
+    "budget_category": "Budget category",
+    "budget": "Budget",
+    "exec_status": "Budget status",
+    "contract": "Contract",
+    "payments": "Instalments",
+    "add_payment": "Add",
+    "current_progress": "Current progress",
+    "current_progress_placeholder": "One line on where this stands",
+    "deliverable": "Deliverable",
+    "deliverable_placeholder": "What this produces",
+    "dependencies": "Dependencies",
+    "dependencies_placeholder": "What this waits on",
+    "note": "Note",
+    "note_placeholder": "Anything worth knowing",
+    "source": "Source: {{source}}"
+  },
+  "milestone": {
+    "name": "Milestone",
+    "name_placeholder": "Untitled milestone",
+    "new": "New milestone",
+    "plan": "Plan",
+    "actual": "Actual",
+    "delete": "Delete milestone {{name}}"
+  },
+  "meeting": {
+    "date": "Date",
+    "time": "Time",
+    "title": "Meeting",
+    "title_placeholder": "Untitled meeting",
+    "new": "New meeting",
+    "attendees": "Attendees",
+    "open": "Join",
+    "delete": "Delete meeting {{title}}"
+  },
+  "payment": {
+    "label": "Instalment",
+    "date": "Date",
+    "amount": "Amount",
+    "new_label": "#{{index}}",
+    "delete": "Delete instalment"
+  },
+  "finance": {
+    "budget": "Budgeted",
+    "paid": "Paid",
+    "contracted": "Contracted",
+    "unplanned": "Not yet scheduled",
+    "payment": "Instalment",
+    "payment_count": "{{count}} instalments",
+    "payment_total": "total {{total}}",
+    "month_tasks": "{{done}}/{{total}} tasks done"
+  },
+  "issues": {
+    "link": "Link issue",
+    "search_placeholder": "Search issues by title or identifier…",
+    "search_hint": "Type to search this workspace",
+    "searching": "Searching…",
+    "no_results": "No issue matches",
+    "none": "no issues",
+    "unlink_issue": "Unlink {{identifier}}"
+  },
+  "panel": {
+    "close": "Close panel",
+    "delete_node": "Delete this item",
+    "delete_branch": "Delete this branch"
+  },
+  "empty": {
+    "no_nodes": "This board has no work breakdown yet. Add an item, or import a plan with `multica cockpit import`.",
+    "no_milestones": "No milestones yet.",
+    "no_meetings": "No meetings recorded.",
+    "no_payments": "No instalments.",
+    "no_recent_done": "Nothing finished in the last week.",
+    "no_upcoming": "Nothing due in the next month.",
+    "no_support_needed": "Nothing overdue or blocked."
+  },
+  "common": {
+    "unset": "—"
+  },
+  "errors": {
+    "save_failed": "Could not save that change"
+  }
+}

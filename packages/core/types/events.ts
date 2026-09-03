@@ -7,6 +7,7 @@ import type { TimelineEntry } from "./activity";
 import type { Workspace, MemberWithUser, Invitation } from "./workspace";
 import type { Project } from "./project";
 import type { Label } from "./label";
+import type { CockpitChangedPayload } from "./cockpit";
 
 // WebSocket event types (matching Go server protocol/events.go)
 export type WSEventType =
@@ -79,6 +80,7 @@ export type WSEventType =
   | "property:created"
   | "property:updated"
   | "issue_status:changed"
+  | "cockpit:changed"
   | "pin:created"
   | "pin:deleted"
   | "pin:reordered"
@@ -560,6 +562,10 @@ export interface WSEventPayloadMap {
   "property:created": PropertyChangedPayload;
   "property:updated": PropertyChangedPayload;
   "issue_status:changed": IssueStatusChangedPayload;
+  // Every write to the project cockpit. One event type for the whole board:
+  // `scope` names the collection that moved and `entity` carries the row, so a
+  // client patches exactly what changed instead of re-reading the board.
+  "cockpit:changed": CockpitChangedPayload;
   "issue_reaction:added": IssueReactionAddedPayload;
   "issue_reaction:removed": IssueReactionRemovedPayload;
   "comment:created": CommentCreatedPayload;

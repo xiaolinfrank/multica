@@ -119,6 +119,17 @@ const (
 	// self-describing); nothing routes on it.
 	EventIssueStatusChanged = "issue_status:changed"
 
+	// Project cockpit (BayClaw fork). One event type for every write to the
+	// board, carrying `scope` (which collection moved), `action` and the
+	// changed `entity`.
+	//
+	// One type rather than a family of cockpit_node:*, cockpit_milestone:*,
+	// … because the board is edited as one surface: a client that renders it
+	// wants every frame, and a client that does not wants none of them. The
+	// payload carries the row so a collaborator's keystroke patches one node
+	// instead of re-reading a few hundred.
+	EventCockpitChanged = "cockpit:changed"
+
 	// Pin events
 	EventPinCreated   = "pin:created"
 	EventPinDeleted   = "pin:deleted"

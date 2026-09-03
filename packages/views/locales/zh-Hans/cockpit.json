@@ -1,0 +1,156 @@
+{
+  "header": {
+    "title": "项目驾驶舱",
+    "title_placeholder": "给这块看板起个名字"
+  },
+  "tabs": {
+    "overview": "项目总览",
+    "gantt": "执行甘特图"
+  },
+  "toolbar": {
+    "search": "检索看板",
+    "search_placeholder": "任务、编号、负责人、承担方…",
+    "scope": "范围",
+    "scope_all": "全部板块",
+    "zoom": "时间粒度",
+    "zoom_month": "月",
+    "zoom_week": "周",
+    "expand_all": "展开全部",
+    "collapse_all": "收起全部",
+    "add_node": "新增任务"
+  },
+  "overview": {
+    "annual_goal": "年度目标",
+    "annual_goal_placeholder": "今年要验证的事",
+    "target_date": "目标日期",
+    "days_left": "距目标 {{days}} 天",
+    "days_over": "已超期 {{days}} 天",
+    "milestones": "里程碑",
+    "milestone_count": "共 {{total}} 项 · 已完成 {{done}}",
+    "add_milestone": "新增里程碑",
+    "modules": "板块进展",
+    "modules_hint": "进度由下属任务汇总",
+    "open_module": "在甘特图中打开 {{code}}",
+    "progress": "进度",
+    "tasks": "任务",
+    "budget": "预算",
+    "overdue": "逾期",
+    "finance": "财务板块",
+    "finance_hint": "预算与分期付款按月对照",
+    "card_overall": "近期完成",
+    "card_next": "未来一个月",
+    "card_support": "需要支持",
+    "card_auto": "自动汇总",
+    "card_manual": "手动填写",
+    "card_placeholder": "填写本卡片内容",
+    "card_write_manual": "改为手动填写",
+    "card_seed": "…",
+    "meetings": "会议记录",
+    "add_meeting": "新增会议"
+  },
+  "gantt": {
+    "column_task": "任务 / 模块",
+    "column_owner": "负责人",
+    "column_status": "状态",
+    "column_progress": "进度",
+    "expand_branch": "展开 {{name}}",
+    "collapse_branch": "收起 {{name}}",
+    "open_node": "打开 {{code}}",
+    "overdue": "逾期",
+    "bar_label": "时间轴上的 {{code}}"
+  },
+  "node": {
+    "code": "编号",
+    "name": "任务名称",
+    "name_placeholder": "未命名任务",
+    "owner": "负责人",
+    "collaborators": "协作人",
+    "collaborators_placeholder": "还有谁参与",
+    "start_date": "开始",
+    "end_date": "结束",
+    "status": "状态",
+    "progress": "进度",
+    "progress_bar": "已完成 {{percent}}%",
+    "linked_issues": "关联任务",
+    "vendor": "承担方 / 供应商",
+    "budget_category": "预算归口",
+    "budget": "预算",
+    "exec_status": "预算执行状态",
+    "contract": "对应合同",
+    "payments": "分期付款",
+    "add_payment": "添加",
+    "current_progress": "当前进展",
+    "current_progress_placeholder": "一句话说明当前进展",
+    "deliverable": "交付物 / 成果",
+    "deliverable_placeholder": "本任务产出什么",
+    "dependencies": "依赖",
+    "dependencies_placeholder": "在等什么",
+    "note": "备注",
+    "note_placeholder": "需要记录的信息",
+    "source": "数据来源：{{source}}"
+  },
+  "milestone": {
+    "name": "里程碑",
+    "name_placeholder": "未命名里程碑",
+    "new": "新里程碑",
+    "plan": "计划",
+    "actual": "实际",
+    "delete": "删除里程碑 {{name}}"
+  },
+  "meeting": {
+    "date": "日期",
+    "time": "时间",
+    "title": "会议",
+    "title_placeholder": "未命名会议",
+    "new": "新会议",
+    "attendees": "参会人",
+    "open": "进入会议",
+    "delete": "删除会议 {{title}}"
+  },
+  "payment": {
+    "label": "期次",
+    "date": "支付日期",
+    "amount": "金额",
+    "new_label": "第{{index}}笔",
+    "delete": "删除该期"
+  },
+  "finance": {
+    "budget": "预算总额",
+    "paid": "已支付",
+    "contracted": "合同已定",
+    "unplanned": "尚未排期",
+    "payment": "付款",
+    "payment_count": "{{count}} 笔付款",
+    "payment_total": "合计 {{total}}",
+    "month_tasks": "任务完成 {{done}}/{{total}}"
+  },
+  "issues": {
+    "link": "关联任务",
+    "search_placeholder": "按标题或编号检索任务…",
+    "search_hint": "输入关键字检索本工作区任务",
+    "searching": "检索中…",
+    "no_results": "没有匹配的任务",
+    "none": "未关联",
+    "unlink_issue": "取消关联 {{identifier}}"
+  },
+  "panel": {
+    "close": "关闭详情",
+    "delete_node": "删除该任务",
+    "delete_branch": "删除该分支"
+  },
+  "empty": {
+    "no_nodes": "本看板还没有任务分解。新增一项，或用 `multica cockpit import` 导入既有计划。",
+    "no_milestones": "暂无里程碑。",
+    "no_meetings": "暂无会议记录。",
+    "no_payments": "暂无分期付款。",
+    "no_recent_done": "上周没有完成的任务。",
+    "no_upcoming": "未来一个月没有到期任务。",
+    "no_support_needed": "没有逾期或受阻的任务。"
+  },
+  "common": {
+    "unset": "—"
+  },
+  "errors": {
+    "save_failed": "这次修改没有保存成功"
+  }
+}

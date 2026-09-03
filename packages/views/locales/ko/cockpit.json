@@ -1,0 +1,156 @@
+{
+  "header": {
+    "title": "프로젝트 콕핏",
+    "title_placeholder": "이 보드의 이름"
+  },
+  "tabs": {
+    "overview": "전체 개요",
+    "gantt": "실행 간트차트"
+  },
+  "toolbar": {
+    "search": "보드 검색",
+    "search_placeholder": "작업·코드·담당자·협력사…",
+    "scope": "범위",
+    "scope_all": "보드 전체",
+    "zoom": "타임라인 단위",
+    "zoom_month": "월",
+    "zoom_week": "주",
+    "expand_all": "모두 펼치기",
+    "collapse_all": "모두 접기",
+    "add_node": "항목 추가"
+  },
+  "overview": {
+    "annual_goal": "연간 목표",
+    "annual_goal_placeholder": "올해 증명해야 할 것",
+    "target_date": "목표일",
+    "days_left": "{{days}}일 남음",
+    "days_over": "{{days}}일 초과",
+    "milestones": "마일스톤",
+    "milestone_count": "총 {{total}}개 중 {{done}}개 달성",
+    "add_milestone": "마일스톤 추가",
+    "modules": "모듈 진행",
+    "modules_hint": "진행률은 하위 작업에서 집계됩니다",
+    "open_module": "간트차트에서 {{code}} 열기",
+    "progress": "진행률",
+    "tasks": "작업",
+    "budget": "예산",
+    "overdue": "지연",
+    "finance": "재무",
+    "finance_hint": "예산과 지급을 월별로 대조",
+    "card_overall": "최근 완료",
+    "card_next": "다가오는 일정",
+    "card_support": "지원 필요",
+    "card_auto": "자동 집계",
+    "card_manual": "직접 작성",
+    "card_placeholder": "이 카드의 내용을 작성",
+    "card_write_manual": "직접 작성하기",
+    "card_seed": "…",
+    "meetings": "회의 기록",
+    "add_meeting": "회의 추가"
+  },
+  "gantt": {
+    "column_task": "작업 / 모듈",
+    "column_owner": "담당자",
+    "column_status": "상태",
+    "column_progress": "진행률",
+    "expand_branch": "{{name}} 펼치기",
+    "collapse_branch": "{{name}} 접기",
+    "open_node": "{{code}} 열기",
+    "overdue": "지연",
+    "bar_label": "타임라인의 {{code}}"
+  },
+  "node": {
+    "code": "코드",
+    "name": "작업명",
+    "name_placeholder": "제목 없는 항목",
+    "owner": "담당자",
+    "collaborators": "협업자",
+    "collaborators_placeholder": "함께하는 사람",
+    "start_date": "시작",
+    "end_date": "종료",
+    "status": "상태",
+    "progress": "진행률",
+    "progress_bar": "{{percent}}% 완료",
+    "linked_issues": "연결된 이슈",
+    "vendor": "수행사",
+    "budget_category": "예산 항목",
+    "budget": "예산",
+    "exec_status": "예산 집행 상태",
+    "contract": "계약",
+    "payments": "분할 지급",
+    "add_payment": "추가",
+    "current_progress": "현재 진행",
+    "current_progress_placeholder": "한 줄로 현황 정리",
+    "deliverable": "산출물",
+    "deliverable_placeholder": "무엇을 만들어내는가",
+    "dependencies": "의존 관계",
+    "dependencies_placeholder": "무엇을 기다리는가",
+    "note": "비고",
+    "note_placeholder": "기록해 둘 내용",
+    "source": "출처: {{source}}"
+  },
+  "milestone": {
+    "name": "마일스톤",
+    "name_placeholder": "제목 없는 마일스톤",
+    "new": "새 마일스톤",
+    "plan": "계획",
+    "actual": "실제",
+    "delete": "마일스톤 {{name}} 삭제"
+  },
+  "meeting": {
+    "date": "날짜",
+    "time": "시간",
+    "title": "회의",
+    "title_placeholder": "제목 없는 회의",
+    "new": "새 회의",
+    "attendees": "참석자",
+    "open": "참여",
+    "delete": "회의 {{title}} 삭제"
+  },
+  "payment": {
+    "label": "회차",
+    "date": "지급일",
+    "amount": "금액",
+    "new_label": "{{index}}회차",
+    "delete": "이 회차 삭제"
+  },
+  "finance": {
+    "budget": "예산 총액",
+    "paid": "지급 완료",
+    "contracted": "계약 완료",
+    "unplanned": "미편성",
+    "payment": "지급",
+    "payment_count": "지급 {{count}}건",
+    "payment_total": "합계 {{total}}",
+    "month_tasks": "작업 {{done}}/{{total}} 완료"
+  },
+  "issues": {
+    "link": "이슈 연결",
+    "search_placeholder": "제목 또는 식별자로 검색…",
+    "search_hint": "입력해서 이 워크스페이스를 검색",
+    "searching": "검색 중…",
+    "no_results": "일치하는 이슈가 없습니다",
+    "none": "연결 없음",
+    "unlink_issue": "{{identifier}} 연결 해제"
+  },
+  "panel": {
+    "close": "패널 닫기",
+    "delete_node": "이 항목 삭제",
+    "delete_branch": "이 분기 삭제"
+  },
+  "empty": {
+    "no_nodes": "이 보드에는 아직 작업 분해가 없습니다. 항목을 추가하거나 `multica cockpit import`로 계획을 가져오세요.",
+    "no_milestones": "마일스톤이 없습니다.",
+    "no_meetings": "회의 기록이 없습니다.",
+    "no_payments": "분할 지급이 없습니다.",
+    "no_recent_done": "지난주에 완료된 작업이 없습니다.",
+    "no_upcoming": "다음 한 달간 마감인 작업이 없습니다.",
+    "no_support_needed": "지연되거나 막힌 작업이 없습니다."
+  },
+  "common": {
+    "unset": "—"
+  },
+  "errors": {
+    "save_failed": "변경 사항을 저장하지 못했습니다"
+  }
+}

@@ -99,6 +99,7 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   office: ["office", "floor", "status", "办公室", "工位", "状态"],
   graph: ["graph", "graph view", "relations", "图谱", "关系图", "关联"],
   gallery: ["gallery", "showcase", "demo", "prototype", "成果", "画廊", "成果画廊", "演示", "原型"],
+  cockpit: ["cockpit", "dashboard", "programme", "program", "gantt", "milestone", "budget", "驾驶舱", "项目驾驶舱", "甘特", "甘特图", "里程碑", "预算", "计划"],
   squads: ["squads", "teams", "小队", "团队"],
   usage: ["usage", "analytics", "stats", "metrics", "统计", "分析", "用量"],
   runtimes: ["runtimes", "environments", "machines", "运行时"],

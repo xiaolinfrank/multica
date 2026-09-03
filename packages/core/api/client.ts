@@ -13,6 +13,18 @@ import type {
   UpdateIssueRequest,
   GroupedIssuesResponse,
   IssueGraphResponse,
+  Cockpit,
+  CockpitBoard,
+  CockpitNode,
+  CockpitPayment,
+  CockpitIssueLink,
+  CockpitMilestone,
+  CockpitMeeting,
+  CockpitPatch,
+  CockpitNodePatch,
+  CockpitPaymentPatch,
+  CockpitMilestonePatch,
+  CockpitMeetingPatch,
   ListIssuesResponse,
   SearchAttachmentsResponse,
   SearchIssuesResponse,
@@ -265,6 +277,14 @@ import {
   ChildIssueProgressResponseSchema,
   IssueGraphResponseSchema,
   EMPTY_ISSUE_GRAPH,
+  CockpitSchema,
+  CockpitNodeSchema,
+  CockpitPaymentSchema,
+  CockpitMilestoneSchema,
+  CockpitMeetingSchema,
+  CockpitBoardSchema,
+  CockpitIssueLinksResponseSchema,
+  EMPTY_COCKPIT_BOARD,
   CommentsListSchema,
   CommentTriggerPreviewSchema,
   IssueTriggerPreviewSchema,
@@ -1315,6 +1335,148 @@ export class ApiClient {
     return parseWithFallback(raw, IssueGraphResponseSchema, EMPTY_ISSUE_GRAPH, {
       endpoint: "GET /api/issues/graph",
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Project cockpit
+  //
+  // One read returns the whole board; every write returns just the row it
+  // touched, which is what the realtime event carries too — so a collaborator's
+  // keystroke patches one node rather than re-reading a few hundred.
+  // ---------------------------------------------------------------------
+
+  async getCockpit(): Promise<CockpitBoard> {
+    const raw = await this.fetch<unknown>("/api/cockpit");
+    return parseWithFallback(raw, CockpitBoardSchema, EMPTY_COCKPIT_BOARD, {
+      endpoint: "GET /api/cockpit",
+    });
+  }
+
+  async updateCockpit(patch: CockpitPatch): Promise<Cockpit> {
+    const raw = await this.fetch<unknown>("/api/cockpit", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    return parseWithFallback(raw, CockpitSchema, EMPTY_COCKPIT_BOARD.cockpit, {
+      endpoint: "PATCH /api/cockpit",
+    });
+  }
+
+  async createCockpitNode(body: CockpitNodePatch & { code: string }): Promise<CockpitNode> {
+    const raw = await this.fetch<unknown>("/api/cockpit/nodes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, CockpitNodeSchema, emptyCockpitNode(body.code), {
+      endpoint: "POST /api/cockpit/nodes",
+    });
+  }
+
+  async updateCockpitNode(id: string, patch: CockpitNodePatch): Promise<CockpitNode> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    return parseWithFallback(raw, CockpitNodeSchema, emptyCockpitNode(""), {
+      endpoint: "PATCH /api/cockpit/nodes/:id",
+    });
+  }
+
+  async deleteCockpitNode(id: string): Promise<void> {
+    await this.fetch<void>(`/api/cockpit/nodes/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async setCockpitNodeIssues(
+    nodeId: string,
+    issueIds: string[],
+    options?: { replace?: boolean },
+  ): Promise<{ node_id: string; links: CockpitIssueLink[] }> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/issues`, {
+      method: "PUT",
+      body: JSON.stringify({ issue_ids: issueIds, replace: options?.replace ?? false }),
+    });
+    return parseWithFallback(raw, CockpitIssueLinksResponseSchema, { node_id: nodeId, links: [] }, {
+      endpoint: "PUT /api/cockpit/nodes/:id/issues",
+    });
+  }
+
+  async deleteCockpitNodeIssue(nodeId: string, issueId: string): Promise<void> {
+    await this.fetch<void>(
+      `/api/cockpit/nodes/${encodeURIComponent(nodeId)}/issues/${encodeURIComponent(issueId)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async createCockpitPayment(nodeId: string, body: CockpitPaymentPatch): Promise<CockpitPayment> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/payments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, CockpitPaymentSchema, emptyCockpitPayment(nodeId), {
+      endpoint: "POST /api/cockpit/nodes/:id/payments",
+    });
+  }
+
+  async updateCockpitPayment(id: string, patch: CockpitPaymentPatch): Promise<CockpitPayment> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/payments/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    return parseWithFallback(raw, CockpitPaymentSchema, emptyCockpitPayment(""), {
+      endpoint: "PATCH /api/cockpit/payments/:id",
+    });
+  }
+
+  async deleteCockpitPayment(id: string): Promise<void> {
+    await this.fetch<void>(`/api/cockpit/payments/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async createCockpitMilestone(body: CockpitMilestonePatch): Promise<CockpitMilestone> {
+    const raw = await this.fetch<unknown>("/api/cockpit/milestones", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, CockpitMilestoneSchema, emptyCockpitMilestone(), {
+      endpoint: "POST /api/cockpit/milestones",
+    });
+  }
+
+  async updateCockpitMilestone(id: string, patch: CockpitMilestonePatch): Promise<CockpitMilestone> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/milestones/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    return parseWithFallback(raw, CockpitMilestoneSchema, emptyCockpitMilestone(), {
+      endpoint: "PATCH /api/cockpit/milestones/:id",
+    });
+  }
+
+  async deleteCockpitMilestone(id: string): Promise<void> {
+    await this.fetch<void>(`/api/cockpit/milestones/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async createCockpitMeeting(body: CockpitMeetingPatch): Promise<CockpitMeeting> {
+    const raw = await this.fetch<unknown>("/api/cockpit/meetings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, CockpitMeetingSchema, emptyCockpitMeeting(), {
+      endpoint: "POST /api/cockpit/meetings",
+    });
+  }
+
+  async updateCockpitMeeting(id: string, patch: CockpitMeetingPatch): Promise<CockpitMeeting> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    return parseWithFallback(raw, CockpitMeetingSchema, emptyCockpitMeeting(), {
+      endpoint: "PATCH /api/cockpit/meetings/:id",
+    });
+  }
+
+  async deleteCockpitMeeting(id: string): Promise<void> {
+    await this.fetch<void>(`/api/cockpit/meetings/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async getChildIssueProgress(): Promise<{
@@ -4997,4 +5159,71 @@ export class ApiClient {
       { endpoint: "POST /api/telegram/binding/redeem" },
     );
   }
+}
+
+// Fallback rows for the cockpit writes. parseWithFallback needs a value of the
+// right shape for the case where a newer backend returns something this build
+// cannot read; a row carrying only its own identity renders as "saved, details
+// unknown" and is replaced by the next board read.
+function emptyCockpitNode(code: string): CockpitNode {
+  return {
+    id: "",
+    cockpit_id: "",
+    parent_id: null,
+    code,
+    name: "",
+    position: 0,
+    color: "",
+    owner: "",
+    collaborators: "",
+    start_date: null,
+    end_date: null,
+    status: "",
+    progress: 0,
+    deliverable: "",
+    dependencies: "",
+    note: "",
+    current_progress: "",
+    vendor: "",
+    budget_category: "",
+    budget_amount: null,
+    exec_status: "",
+    contract: "",
+    source: "",
+    updated_by_type: "",
+    updated_by_id: null,
+    created_at: "",
+    updated_at: "",
+  };
+}
+
+function emptyCockpitPayment(nodeId: string): CockpitPayment {
+  return { id: "", node_id: nodeId, label: "", pay_date: null, amount: 0, position: 0 };
+}
+
+function emptyCockpitMilestone(): CockpitMilestone {
+  return {
+    id: "",
+    name: "",
+    plan_date: null,
+    actual_date: null,
+    status: "",
+    node_id: null,
+    condition: "",
+    guard: "",
+    position: 0,
+  };
+}
+
+function emptyCockpitMeeting(): CockpitMeeting {
+  return {
+    id: "",
+    meet_date: null,
+    time_range: "",
+    title: "",
+    attendees: "",
+    meet_no: "",
+    link: "",
+    note: "",
+  };
 }

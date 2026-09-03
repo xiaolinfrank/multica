@@ -1985,6 +1985,38 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
+			// Project cockpit (BayClaw fork). Reads and writes are both open
+			// to any workspace member — a planning board only admins can
+			// correct is a board that goes stale. Import replaces the whole
+			// board and is gated to owner/admin inside the handler.
+			r.Route("/api/cockpit", func(r chi.Router) {
+				r.Get("/", h.GetCockpit)
+				r.Patch("/", h.UpdateCockpit)
+				r.Put("/import", h.ImportCockpit)
+				r.Post("/nodes", h.CreateCockpitNode)
+				r.Route("/nodes/{id}", func(r chi.Router) {
+					r.Patch("/", h.UpdateCockpitNode)
+					r.Delete("/", h.DeleteCockpitNode)
+					r.Put("/issues", h.SetCockpitNodeIssues)
+					r.Delete("/issues/{issueId}", h.DeleteCockpitNodeIssue)
+					r.Post("/payments", h.CreateCockpitPayment)
+				})
+				r.Route("/payments/{paymentId}", func(r chi.Router) {
+					r.Patch("/", h.UpdateCockpitPayment)
+					r.Delete("/", h.DeleteCockpitPayment)
+				})
+				r.Post("/milestones", h.CreateCockpitMilestone)
+				r.Route("/milestones/{milestoneId}", func(r chi.Router) {
+					r.Patch("/", h.UpdateCockpitMilestone)
+					r.Delete("/", h.DeleteCockpitMilestone)
+				})
+				r.Post("/meetings", h.CreateCockpitMeeting)
+				r.Route("/meetings/{meetingId}", func(r chi.Router) {
+					r.Patch("/", h.UpdateCockpitMeeting)
+					r.Delete("/", h.DeleteCockpitMeeting)
+				})
+			})
+
 			// Projects
 			r.Route("/api/projects", func(r chi.Router) {
 				r.Get("/search", h.SearchProjects)

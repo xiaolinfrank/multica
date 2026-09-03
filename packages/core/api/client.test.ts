@@ -431,6 +431,67 @@ describe("ApiClient server Table query", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain("project_id=");
   });
 
+  it("falls back to an empty cockpit board when the response is malformed", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ cockpit: null, nodes: "not-an-array" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    const board = await client.getCockpit();
+    expect(board.nodes).toEqual([]);
+    expect(board.milestones).toEqual([]);
+    expect(board.cockpit.title).toBe("");
+  });
+
+  it("keeps a cockpit node an older backend under-populates", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            cockpit: { id: "cp", title: "Programme" },
+            // One fully-shaped node and one carrying only its id and code —
+            // a backend that predates the later columns. Defaulting keeps the
+            // node on the board instead of dropping the row.
+            nodes: [
+              { id: "full", code: "L1-01", name: "Datasets", progress: 40, budget_amount: 30 },
+              { id: "bare", code: "L1-02" },
+            ],
+            payments: [{ id: "pay", node_id: "full", amount: 15 }],
+            issue_links: [{ id: "l", node_id: "full", issue_id: "i", issue_identifier: "BIO-1" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    const board = await client.getCockpit();
+
+    expect(board.cockpit.title).toBe("Programme");
+    expect(board.nodes).toHaveLength(2);
+    expect(board.nodes[0]).toMatchObject({ id: "full", progress: 40, budget_amount: 30 });
+    expect(board.nodes[1]).toMatchObject({
+      id: "bare",
+      code: "L1-02",
+      name: "",
+      progress: 0,
+      // A node with no budget line is not a node budgeted at zero.
+      budget_amount: null,
+      start_date: null,
+    });
+    expect(board.payments[0]).toMatchObject({ id: "pay", amount: 15, pay_date: null });
+    expect(board.issue_links[0]).toMatchObject({ issue_identifier: "BIO-1", issue_number: 0 });
+    expect(board.milestones).toEqual([]);
+    expect(board.meetings).toEqual([]);
+  });
+
   it("defaults per-node graph fields when a backend omits them", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(

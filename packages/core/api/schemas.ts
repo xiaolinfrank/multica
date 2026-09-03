@@ -51,6 +51,7 @@ import type {
   RedeemTelegramBindingTokenResponse,
   GroupedIssuesResponse,
   IssueGraphResponse,
+  CockpitBoard,
   GitHubConnectResponse,
   GitHubPullRequest,
   InboxItem,
@@ -1550,6 +1551,144 @@ export const IssueGraphResponseSchema = z.object({
 }).loose();
 
 export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [] };
+
+// GET /api/cockpit and every cockpit write. Fields default aggressively for the
+// same reason the graph's do: an installed desktop build talking to a newer
+// backend must render the board it can read rather than fail the whole
+// response. `status`, `exec_status` and `budget_category` stay open strings —
+// they are the programme's own vocabulary, not a server enum.
+export const CockpitSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default(""),
+  title: z.string().default(""),
+  goal_title: z.string().default(""),
+  goal_date: z.string().nullable().default(null),
+  summary_overall: z.string().default(""),
+  summary_next: z.string().default(""),
+  summary_support: z.string().default(""),
+  basis: z.string().default(""),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const CockpitNodeSchema = z.object({
+  id: z.string(),
+  cockpit_id: z.string().default(""),
+  parent_id: z.string().nullable().default(null),
+  code: z.string().default(""),
+  name: z.string().default(""),
+  position: z.number().default(0),
+  color: z.string().default(""),
+  owner: z.string().default(""),
+  collaborators: z.string().default(""),
+  start_date: z.string().nullable().default(null),
+  end_date: z.string().nullable().default(null),
+  status: z.string().default(""),
+  progress: z.number().default(0),
+  deliverable: z.string().default(""),
+  dependencies: z.string().default(""),
+  note: z.string().default(""),
+  current_progress: z.string().default(""),
+  vendor: z.string().default(""),
+  budget_category: z.string().default(""),
+  budget_amount: z.number().nullable().default(null),
+  exec_status: z.string().default(""),
+  contract: z.string().default(""),
+  source: z.string().default(""),
+  updated_by_type: z.string().default(""),
+  updated_by_id: z.string().nullable().default(null),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const CockpitPaymentSchema = z.object({
+  id: z.string(),
+  node_id: z.string().default(""),
+  label: z.string().default(""),
+  pay_date: z.string().nullable().default(null),
+  amount: z.number().default(0),
+  position: z.number().default(0),
+}).loose();
+
+export const CockpitIssueLinkSchema = z.object({
+  id: z.string(),
+  node_id: z.string().default(""),
+  issue_id: z.string().default(""),
+  issue_number: z.number().default(0),
+  issue_identifier: z.string().default(""),
+  issue_title: z.string().default(""),
+  issue_status: z.string().default(""),
+  position: z.number().default(0),
+}).loose();
+
+export const CockpitMilestoneSchema = z.object({
+  id: z.string(),
+  name: z.string().default(""),
+  plan_date: z.string().nullable().default(null),
+  actual_date: z.string().nullable().default(null),
+  status: z.string().default(""),
+  node_id: z.string().nullable().default(null),
+  condition: z.string().default(""),
+  guard: z.string().default(""),
+  position: z.number().default(0),
+}).loose();
+
+export const CockpitMeetingSchema = z.object({
+  id: z.string(),
+  meet_date: z.string().nullable().default(null),
+  time_range: z.string().default(""),
+  title: z.string().default(""),
+  attendees: z.string().default(""),
+  meet_no: z.string().default(""),
+  link: z.string().default(""),
+  note: z.string().default(""),
+}).loose();
+
+export const CockpitBoardSchema = z.object({
+  cockpit: CockpitSchema,
+  nodes: z.array(CockpitNodeSchema).default([]),
+  payments: z.array(CockpitPaymentSchema).default([]),
+  issue_links: z.array(CockpitIssueLinkSchema).default([]),
+  milestones: z.array(CockpitMilestoneSchema).default([]),
+  meetings: z.array(CockpitMeetingSchema).default([]),
+}).loose();
+
+export const CockpitIssueLinksResponseSchema = z.object({
+  node_id: z.string().default(""),
+  links: z.array(CockpitIssueLinkSchema).default([]),
+}).loose();
+
+export const CockpitImportResultSchema = z.object({
+  nodes: z.number().default(0),
+  payments: z.number().default(0),
+  issue_links: z.number().default(0),
+  milestones: z.number().default(0),
+  meetings: z.number().default(0),
+  unresolved_issues: z.array(z.string()).default([]),
+}).loose();
+
+// The board a client falls back to when the response is unreadable: an empty
+// board renders as "nothing planned yet", which is honest and still editable.
+export const EMPTY_COCKPIT_BOARD: CockpitBoard = {
+  cockpit: {
+    id: "",
+    workspace_id: "",
+    title: "",
+    goal_title: "",
+    goal_date: null,
+    summary_overall: "",
+    summary_next: "",
+    summary_support: "",
+    basis: "",
+    created_at: "",
+    updated_at: "",
+  },
+  nodes: [],
+  payments: [],
+  issue_links: [],
+  milestones: [],
+  meetings: [],
+};
 
 export const ChildIssueProgressResponseSchema = z.object({
   progress: z

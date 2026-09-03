@@ -46,6 +46,7 @@ import {
 } from "../issues/cache-coordinator";
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged, onInboxIssueDeleted, onInboxSummaryInvalidate } from "../inbox/ws-updaters";
 import { inboxKeys } from "../inbox/queries";
+import { onCockpitChanged } from "../cockpit/ws-updaters";
 import {
   notificationPreferenceOptions,
   notificationPreferenceKeys,
@@ -78,6 +79,7 @@ import type {
   MemberRemovedPayload,
   IssueUpdatedPayload,
   IssueCreatedPayload,
+  CockpitChangedPayload,
   IssueDeletedPayload,
   IssueAttachmentsChangedPayload,
   IssueLabelsChangedPayload,
@@ -963,6 +965,10 @@ export function useRealtimeSync(
       "issue_reaction:added", "issue_reaction:removed",
       "subscriber:added", "subscriber:removed",
       "daemon:heartbeat",
+      // The cockpit is patched row-by-row by the specific handler below; the
+      // prefix path would re-read the whole board on every keystroke of
+      // someone else's edit.
+      "cockpit:changed",
       // Chat events are handled explicitly below; do not double-invalidate.
       "chat:message", "chat:done", "chat:quick_actions", "chat:cancel_finalized", "chat:session_read",
       "chat:session_created", "chat:session_deleted", "chat:session_updated",
@@ -1005,6 +1011,14 @@ export function useRealtimeSync(
           onInboxIssueStatusChanged(qc, wsId, issue.id, issue.status);
         }
       }
+    });
+
+    // The project cockpit. Multiple people edit the same board at once, so the
+    // frame carries the changed row and this patches it in place — no refetch,
+    // and no flicker on the editor who is mid-keystroke elsewhere on the board.
+    const unsubCockpitChanged = ws.on("cockpit:changed", (p) => {
+      const wsId = getCurrentWsId();
+      if (wsId) onCockpitChanged(qc, wsId, p as CockpitChangedPayload);
     });
 
     const unsubIssueCreated = ws.on("issue:created", (p) => {
@@ -1701,6 +1715,7 @@ export function useRealtimeSync(
     return () => {
       unsubAny();
       unsubIssueUpdated();
+      unsubCockpitChanged();
       unsubIssueCreated();
       unsubIssueDeleted();
       unsubIssueAttachmentsChanged();

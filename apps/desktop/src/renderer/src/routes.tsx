@@ -33,6 +33,7 @@ import {
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { OfficePage } from "@multica/views/office";
 import { GalleryPage } from "@multica/views/gallery";
+import { CockpitPage } from "@multica/views/cockpit";
 import { GraphPage } from "@multica/views/graph";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
@@ -230,6 +231,7 @@ export const appRoutes: RouteObject[] = [
           { path: "office", element: <OfficePage />, handle: { title: "Office" } },
           { path: "graph", element: <GraphPage />, handle: { title: "Graph" } },
           { path: "gallery", element: <GalleryPage />, handle: { title: "Gallery" } },
+          { path: "cockpit", element: <CockpitPage />, handle: { title: "Cockpit" } },
           { path: "squads", element: <SquadsPage />, handle: { title: "Squads" } },
           {
             path: "squads/:id",

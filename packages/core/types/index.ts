@@ -206,6 +206,22 @@ export type {
   GraphEdgeKind,
   IssueGraphResponse,
 } from "./graph";
+export type {
+  Cockpit,
+  CockpitNode,
+  CockpitPayment,
+  CockpitIssueLink,
+  CockpitMilestone,
+  CockpitMeeting,
+  CockpitBoard,
+  CockpitEventScope,
+  CockpitChangedPayload,
+  CockpitPatch,
+  CockpitNodePatch,
+  CockpitPaymentPatch,
+  CockpitMilestonePatch,
+  CockpitMeetingPatch,
+} from "./cockpit";
 export type { PinnedItem, PinnedItemType, CreatePinRequest, ReorderPinsRequest } from "./pin";
 export type {
   GitHubInstallation,

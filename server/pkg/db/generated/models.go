@@ -530,6 +530,103 @@ type ClientUsageDaily struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Cockpit struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	Title          string             `json:"title"`
+	GoalTitle      string             `json:"goal_title"`
+	GoalDate       pgtype.Date        `json:"goal_date"`
+	SummaryOverall string             `json:"summary_overall"`
+	SummaryNext    string             `json:"summary_next"`
+	SummarySupport string             `json:"summary_support"`
+	Basis          string             `json:"basis"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMeeting struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	CockpitID   pgtype.UUID        `json:"cockpit_id"`
+	MeetDate    pgtype.Date        `json:"meet_date"`
+	TimeRange   string             `json:"time_range"`
+	Title       string             `json:"title"`
+	Attendees   string             `json:"attendees"`
+	MeetNo      string             `json:"meet_no"`
+	Link        string             `json:"link"`
+	Note        string             `json:"note"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMilestone struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	CockpitID   pgtype.UUID        `json:"cockpit_id"`
+	Name        string             `json:"name"`
+	PlanDate    pgtype.Date        `json:"plan_date"`
+	ActualDate  pgtype.Date        `json:"actual_date"`
+	Status      string             `json:"status"`
+	NodeID      pgtype.UUID        `json:"node_id"`
+	Condition   string             `json:"condition"`
+	Guard       string             `json:"guard"`
+	Position    float64            `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitNode struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	CockpitID       pgtype.UUID        `json:"cockpit_id"`
+	ParentID        pgtype.UUID        `json:"parent_id"`
+	Code            string             `json:"code"`
+	Name            string             `json:"name"`
+	Position        float64            `json:"position"`
+	Color           string             `json:"color"`
+	Owner           string             `json:"owner"`
+	Collaborators   string             `json:"collaborators"`
+	StartDate       pgtype.Date        `json:"start_date"`
+	EndDate         pgtype.Date        `json:"end_date"`
+	Status          string             `json:"status"`
+	Progress        float64            `json:"progress"`
+	Deliverable     string             `json:"deliverable"`
+	Dependencies    string             `json:"dependencies"`
+	Note            string             `json:"note"`
+	CurrentProgress string             `json:"current_progress"`
+	Vendor          string             `json:"vendor"`
+	BudgetCategory  string             `json:"budget_category"`
+	BudgetAmount    pgtype.Numeric     `json:"budget_amount"`
+	ExecStatus      string             `json:"exec_status"`
+	Contract        string             `json:"contract"`
+	Source          string             `json:"source"`
+	UpdatedByType   string             `json:"updated_by_type"`
+	UpdatedByID     pgtype.UUID        `json:"updated_by_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitNodeIssue struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	NodeID      pgtype.UUID        `json:"node_id"`
+	IssueID     pgtype.UUID        `json:"issue_id"`
+	Position    float64            `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitPayment struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	NodeID      pgtype.UUID        `json:"node_id"`
+	Label       string             `json:"label"`
+	PayDate     pgtype.Date        `json:"pay_date"`
+	Amount      pgtype.Numeric     `json:"amount"`
+	Position    float64            `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Comment struct {
 	ID                pgtype.UUID        `json:"id"`
 	IssueID           pgtype.UUID        `json:"issue_id"`

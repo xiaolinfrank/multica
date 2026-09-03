@@ -1302,6 +1302,17 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		{
+			// The cockpit's six tables carry no foreign keys (repository
+			// rule), so they are swept explicitly. Placed after the issue
+			// deletes because cockpit_node_issue points at issues: sweeping
+			// the board first would leave nothing to point at anyway, and
+			// this ordering keeps the board readable right up to the end.
+			name: "delete cockpit",
+			run: func() error {
+				return qtx.DeleteWorkspaceCockpitData(ctx, requester.WorkspaceID)
+			},
+		},
+		{
 			name: "delete autopilot children",
 			run:  func() error { return qtx.DeleteWorkspaceAutopilotChildren(ctx, requester.WorkspaceID) },
 		},

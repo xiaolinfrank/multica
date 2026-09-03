@@ -27,6 +27,7 @@ import enUi from "./en/ui.json";
 import enSquads from "./en/squads.json";
 import enOffice from "./en/office.json";
 import enGallery from "./en/gallery.json";
+import enCockpit from "./en/cockpit.json";
 import enGraph from "./en/graph.json";
 import enBilling from "./en/billing.json";
 import enWorkspaces from "./en/workspaces.json";
@@ -58,6 +59,7 @@ import zhHansUi from "./zh-Hans/ui.json";
 import zhHansSquads from "./zh-Hans/squads.json";
 import zhHansOffice from "./zh-Hans/office.json";
 import zhHansGallery from "./zh-Hans/gallery.json";
+import zhHansCockpit from "./zh-Hans/cockpit.json";
 import zhHansGraph from "./zh-Hans/graph.json";
 import zhHansBilling from "./zh-Hans/billing.json";
 import zhHansWorkspaces from "./zh-Hans/workspaces.json";
@@ -89,6 +91,7 @@ import koUi from "./ko/ui.json";
 import koSquads from "./ko/squads.json";
 import koOffice from "./ko/office.json";
 import koGallery from "./ko/gallery.json";
+import koCockpit from "./ko/cockpit.json";
 import koGraph from "./ko/graph.json";
 import koBilling from "./ko/billing.json";
 import koWorkspaces from "./ko/workspaces.json";
@@ -120,6 +123,7 @@ import jaUi from "./ja/ui.json";
 import jaSquads from "./ja/squads.json";
 import jaOffice from "./ja/office.json";
 import jaGallery from "./ja/gallery.json";
+import jaCockpit from "./ja/cockpit.json";
 import jaGraph from "./ja/graph.json";
 import jaBilling from "./ja/billing.json";
 import jaWorkspaces from "./ja/workspaces.json";
@@ -157,6 +161,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     squads: enSquads,
     office: enOffice,
     gallery: enGallery,
+    cockpit: enCockpit,
     graph: enGraph,
     billing: enBilling,
     workspaces: enWorkspaces,
@@ -190,6 +195,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     squads: zhHansSquads,
     office: zhHansOffice,
     gallery: zhHansGallery,
+    cockpit: zhHansCockpit,
     graph: zhHansGraph,
     billing: zhHansBilling,
     workspaces: zhHansWorkspaces,
@@ -223,6 +229,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     squads: koSquads,
     office: koOffice,
     gallery: koGallery,
+    cockpit: koCockpit,
     graph: koGraph,
     billing: koBilling,
     workspaces: koWorkspaces,
@@ -256,6 +263,7 @@ export const RESOURCES: Record<SupportedLocale, LocaleResources> = {
     squads: jaSquads,
     office: jaOffice,
     gallery: jaGallery,
+    cockpit: jaCockpit,
     graph: jaGraph,
     billing: jaBilling,
     workspaces: jaWorkspaces,

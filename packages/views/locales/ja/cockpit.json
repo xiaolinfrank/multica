@@ -1,0 +1,156 @@
+{
+  "header": {
+    "title": "プロジェクトコックピット",
+    "title_placeholder": "このボードに名前を付ける"
+  },
+  "tabs": {
+    "overview": "全体概要",
+    "gantt": "実行ガントチャート"
+  },
+  "toolbar": {
+    "search": "ボードを検索",
+    "search_placeholder": "タスク・コード・担当者・委託先…",
+    "scope": "範囲",
+    "scope_all": "ボード全体",
+    "zoom": "時間軸の粒度",
+    "zoom_month": "月",
+    "zoom_week": "週",
+    "expand_all": "すべて展開",
+    "collapse_all": "すべて折りたたむ",
+    "add_node": "項目を追加"
+  },
+  "overview": {
+    "annual_goal": "年間目標",
+    "annual_goal_placeholder": "今年証明すべきこと",
+    "target_date": "目標日",
+    "days_left": "残り {{days}} 日",
+    "days_over": "{{days}} 日超過",
+    "milestones": "マイルストーン",
+    "milestone_count": "全 {{total}} 件中 {{done}} 件達成",
+    "add_milestone": "マイルストーンを追加",
+    "modules": "モジュール進捗",
+    "modules_hint": "進捗は配下のタスクから集計されます",
+    "open_module": "ガントチャートで {{code}} を開く",
+    "progress": "進捗",
+    "tasks": "タスク",
+    "budget": "予算",
+    "overdue": "遅延",
+    "finance": "財務",
+    "finance_hint": "予算と支払いを月次で対照",
+    "card_overall": "直近の完了",
+    "card_next": "今後の予定",
+    "card_support": "支援が必要",
+    "card_auto": "自動集計",
+    "card_manual": "手動入力",
+    "card_placeholder": "このカードの内容を書く",
+    "card_write_manual": "手動で書く",
+    "card_seed": "…",
+    "meetings": "会議記録",
+    "add_meeting": "会議を追加"
+  },
+  "gantt": {
+    "column_task": "タスク / モジュール",
+    "column_owner": "担当者",
+    "column_status": "ステータス",
+    "column_progress": "進捗",
+    "expand_branch": "{{name}} を展開",
+    "collapse_branch": "{{name}} を折りたたむ",
+    "open_node": "{{code}} を開く",
+    "overdue": "遅延",
+    "bar_label": "タイムライン上の {{code}}"
+  },
+  "node": {
+    "code": "コード",
+    "name": "タスク名",
+    "name_placeholder": "無題の項目",
+    "owner": "担当者",
+    "collaborators": "協力者",
+    "collaborators_placeholder": "他に関わる人",
+    "start_date": "開始",
+    "end_date": "終了",
+    "status": "ステータス",
+    "progress": "進捗",
+    "progress_bar": "{{percent}}% 完了",
+    "linked_issues": "関連イシュー",
+    "vendor": "委託先",
+    "budget_category": "予算区分",
+    "budget": "予算",
+    "exec_status": "予算執行状況",
+    "contract": "契約",
+    "payments": "分割払い",
+    "add_payment": "追加",
+    "current_progress": "現在の進捗",
+    "current_progress_placeholder": "現状を一言で",
+    "deliverable": "成果物",
+    "deliverable_placeholder": "何を生み出すか",
+    "dependencies": "依存関係",
+    "dependencies_placeholder": "何を待っているか",
+    "note": "備考",
+    "note_placeholder": "記録しておくこと",
+    "source": "出典: {{source}}"
+  },
+  "milestone": {
+    "name": "マイルストーン",
+    "name_placeholder": "無題のマイルストーン",
+    "new": "新規マイルストーン",
+    "plan": "計画",
+    "actual": "実績",
+    "delete": "マイルストーン {{name}} を削除"
+  },
+  "meeting": {
+    "date": "日付",
+    "time": "時間",
+    "title": "会議",
+    "title_placeholder": "無題の会議",
+    "new": "新規会議",
+    "attendees": "参加者",
+    "open": "参加",
+    "delete": "会議 {{title}} を削除"
+  },
+  "payment": {
+    "label": "回次",
+    "date": "支払日",
+    "amount": "金額",
+    "new_label": "第{{index}}回",
+    "delete": "この回を削除"
+  },
+  "finance": {
+    "budget": "予算額",
+    "paid": "支払済",
+    "contracted": "契約済",
+    "unplanned": "未計画",
+    "payment": "支払い",
+    "payment_count": "{{count}} 件の支払い",
+    "payment_total": "合計 {{total}}",
+    "month_tasks": "タスク {{done}}/{{total}} 完了"
+  },
+  "issues": {
+    "link": "イシューを関連付け",
+    "search_placeholder": "タイトルまたは識別子で検索…",
+    "search_hint": "入力してこのワークスペースを検索",
+    "searching": "検索中…",
+    "no_results": "一致するイシューがありません",
+    "none": "関連なし",
+    "unlink_issue": "{{identifier}} の関連を解除"
+  },
+  "panel": {
+    "close": "パネルを閉じる",
+    "delete_node": "この項目を削除",
+    "delete_branch": "このブランチを削除"
+  },
+  "empty": {
+    "no_nodes": "このボードにはまだ作業分解がありません。項目を追加するか、`multica cockpit import` で計画を取り込んでください。",
+    "no_milestones": "マイルストーンはまだありません。",
+    "no_meetings": "会議記録はありません。",
+    "no_payments": "分割払いはありません。",
+    "no_recent_done": "先週完了したタスクはありません。",
+    "no_upcoming": "今後1か月に期限のタスクはありません。",
+    "no_support_needed": "遅延・ブロック中のタスクはありません。"
+  },
+  "common": {
+    "unset": "—"
+  },
+  "errors": {
+    "save_failed": "この変更を保存できませんでした"
+  }
+}

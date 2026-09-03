@@ -28,6 +28,7 @@
     "./office": "./office/index.ts",
     "./gallery": "./gallery/index.ts",
     "./graph": "./graph/index.ts",
+    "./cockpit": "./cockpit/index.ts",
     "./members": "./members/index.ts",
     "./inbox": "./inbox/index.ts",
     "./runtimes": "./runtimes/index.ts",
