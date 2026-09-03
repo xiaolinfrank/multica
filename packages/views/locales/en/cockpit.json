@@ -5,7 +5,9 @@
   },
   "tabs": {
     "overview": "Overview",
-    "gantt": "Gantt"
+    "gantt": "Gantt",
+    "tasks": "Tasks",
+    "finance": "Spend"
   },
   "toolbar": {
     "search": "Search the board",
@@ -17,7 +19,15 @@
     "zoom_week": "Week",
     "expand_all": "Expand all",
     "collapse_all": "Collapse all",
-    "add_node": "New item"
+    "add_node": "New item",
+    "expand": "Expand",
+    "expand_l2": "Expand to modules",
+    "expand_l3": "Expand to tasks",
+    "show_finance": "Show money",
+    "back_to_today": "Back to today",
+    "export": "Export",
+    "export_tasks": "Task detail CSV",
+    "export_finance": "Spend detail CSV"
   },
   "overview": {
     "annual_goal": "Annual objective",
@@ -57,7 +67,21 @@
     "collapse_branch": "Collapse {{name}}",
     "open_node": "Open {{code}}",
     "overdue": "overdue",
-    "bar_label": "{{code}} on the timeline"
+    "bar_label": "{{code}} on the timeline",
+    "column_finance": "Budget / paid",
+    "legend_rollup": "Roll-up bar",
+    "legend_end_only": "Deadline only",
+    "legend_payment": "Instalment",
+    "legend_today": "Today",
+    "stats": "{{total}} nodes · {{shown}} rows shown ({{branches}} branches / {{leaves}} tasks) · today {{today}}",
+    "hide_legend": "Hide legend",
+    "show_legend": "Show legend",
+    "basis": "Source: {{basis}}",
+    "not_decomposed": "Not broken down",
+    "collaborator_count": "+{{n}}",
+    "should_have_started": "Should have started",
+    "done_of": "{{done}}/{{total}} done",
+    "unscheduled": "Unscheduled"
   },
   "node": {
     "code": "Code",
@@ -122,7 +146,8 @@
     "payment": "Instalment",
     "payment_count": "{{count}} instalments",
     "payment_total": "total {{total}}",
-    "month_tasks": "{{done}}/{{total}} tasks done"
+    "month_tasks": "{{done}}/{{total}} tasks done",
+    "payment_on": "Payment on {{date}}"
   },
   "issues": {
     "link": "Link issue",
@@ -152,5 +177,15 @@
   },
   "errors": {
     "save_failed": "Could not save that change"
+  },
+  "table": {
+    "tasks_hint": "{{rows}} rows · edit any cell in place; changes sync to everyone live",
+    "finance_hint": "{{rows}} rows · budget {{budget}} · paid {{actual}}. Spend dates and actual amounts are derived from the instalments and the execution status.",
+    "module": "Module",
+    "item": "Item",
+    "planned_date": "Planned spend date",
+    "actual_date": "Actual spend date",
+    "planned_amount": "Planned amount",
+    "actual_amount": "Actual amount"
   }
 }

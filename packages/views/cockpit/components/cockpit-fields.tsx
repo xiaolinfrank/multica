@@ -26,6 +26,11 @@ interface EditableProps {
   className?: string;
   displayClassName?: string;
   disabled?: boolean;
+  /**
+   * What the idle state shows, when that differs from what editing edits — a
+   * dense row can only fit "李林" where the field holds "李林（POOL 超饱和）".
+   */
+  displayValue?: string;
 }
 
 /**
@@ -40,6 +45,7 @@ export function EditableText({
   className,
   displayClassName,
   disabled,
+  displayValue,
 }: EditableProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -59,7 +65,7 @@ export function EditableText({
   if (disabled) {
     return (
       <span className={cn("text-body", !value && "text-muted-foreground", displayClassName)}>
-        {value || placeholder}
+        {displayValue || value || placeholder}
       </span>
     );
   }
@@ -77,7 +83,7 @@ export function EditableText({
           displayClassName,
         )}
       >
-        {value || placeholder}
+        {displayValue || value || placeholder}
       </button>
     );
   }

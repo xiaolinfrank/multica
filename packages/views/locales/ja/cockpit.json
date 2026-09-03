@@ -5,7 +5,9 @@
   },
   "tabs": {
     "overview": "全体概要",
-    "gantt": "実行ガントチャート"
+    "gantt": "実行ガントチャート",
+    "tasks": "タスク明細",
+    "finance": "支出明細"
   },
   "toolbar": {
     "search": "ボードを検索",
@@ -17,7 +19,15 @@
     "zoom_week": "週",
     "expand_all": "すべて展開",
     "collapse_all": "すべて折りたたむ",
-    "add_node": "項目を追加"
+    "add_node": "項目を追加",
+    "expand": "展開",
+    "expand_l2": "モジュール層まで展開",
+    "expand_l3": "タスク層まで展開",
+    "show_finance": "金額を表示",
+    "back_to_today": "今日に戻る",
+    "export": "エクスポート",
+    "export_tasks": "タスク明細 CSV",
+    "export_finance": "支出明細 CSV"
   },
   "overview": {
     "annual_goal": "年間目標",
@@ -57,7 +67,21 @@
     "collapse_branch": "{{name}} を折りたたむ",
     "open_node": "{{code}} を開く",
     "overdue": "遅延",
-    "bar_label": "タイムライン上の {{code}}"
+    "bar_label": "タイムライン上の {{code}}",
+    "column_finance": "予算 / 支払",
+    "legend_rollup": "集計バー",
+    "legend_end_only": "期限のみ",
+    "legend_payment": "支払ノード",
+    "legend_today": "今日",
+    "stats": "ノード {{total}} · 表示 {{shown}} 行（モジュール {{branches}} / タスク {{leaves}}）· 今日 {{today}}",
+    "hide_legend": "凡例を隠す",
+    "show_legend": "凡例を表示",
+    "basis": "出典：{{basis}}",
+    "not_decomposed": "未分解",
+    "collaborator_count": "協 {{n}}",
+    "should_have_started": "開始予定",
+    "done_of": "{{done}}/{{total}} 件",
+    "unscheduled": "日程未定"
   },
   "node": {
     "code": "コード",
@@ -122,7 +146,8 @@
     "payment": "支払い",
     "payment_count": "{{count}} 件の支払い",
     "payment_total": "合計 {{total}}",
-    "month_tasks": "タスク {{done}}/{{total}} 完了"
+    "month_tasks": "タスク {{done}}/{{total}} 完了",
+    "payment_on": "{{date}} の支払"
   },
   "issues": {
     "link": "イシューを関連付け",
@@ -152,5 +177,15 @@
   },
   "errors": {
     "save_failed": "この変更を保存できませんでした"
+  },
+  "table": {
+    "tasks_hint": "全 {{rows}} 行 · セルをクリックしてその場で編集でき、変更は全員にリアルタイムで同期されます",
+    "finance_hint": "全 {{rows}} 行 · 予算合計 {{budget}} · 支払済 {{actual}}。支出時期と実績額は分割払いと予算執行状況から導出されます。",
+    "module": "モジュール",
+    "item": "項目",
+    "planned_date": "支出予定時期",
+    "actual_date": "実際の支出時期",
+    "planned_amount": "支出予定額",
+    "actual_amount": "実際の支出額"
   }
 }

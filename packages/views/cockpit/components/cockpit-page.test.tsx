@@ -118,6 +118,7 @@ const board: CockpitBoard = {
       end_date: "2026-09-20",
       budget_amount: 30,
       exec_status: "Contracted",
+      deliverable: "Signed governance agreement",
     }),
   ],
   payments: [
@@ -310,5 +311,64 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
 
     expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
+  });
+});
+
+describe("CockpitPage detail tables", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [], total: 0 });
+  });
+
+  it("puts the deliverable on the task table, where the gantt has no room for it", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+
+    expect(await screen.findByRole("columnheader", { name: "Deliverable" })).toBeInTheDocument();
+    expect(screen.getByText("Signed governance agreement")).toBeInTheDocument();
+  });
+
+  it("edits a table cell in place and sends only that field", async () => {
+    vi.mocked(api.updateCockpitNode).mockResolvedValue({
+      ...board.nodes[1]!,
+      deliverable: "Executed contract",
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+
+    // Both rows carry a deliverable cell; the leaf is the second.
+    const cells = await screen.findAllByRole("button", { name: "Deliverable" });
+    fireEvent.click(cells[1]!);
+    const input = screen.getByRole("textbox", { name: "Deliverable" });
+    fireEvent.change(input, { target: { value: "Executed contract" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(api.updateCockpitNode).toHaveBeenCalledWith("task", {
+        deliverable: "Executed contract",
+      });
+    });
+  });
+
+  it("lists only the rows that carry money on the spend table, with derived dates", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Spend" }));
+
+    const rows = await screen.findAllByRole("row");
+    // Header plus the one budgeted node; the branch carries no money of its own.
+    expect(rows).toHaveLength(2);
+    // Contracted, not paid: the planned date shows and the actual one does not.
+    expect(within(rows[1]!).getAllByText("2026-09-05")).toHaveLength(1);
+  });
+
+  it("shows budget and instalment badges on the gantt only once money is turned on", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    expect(screen.queryByRole("columnheader", { name: "Budget / paid" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show money" }));
+    expect(await screen.findByText("Budget / paid")).toBeInTheDocument();
+    expect(screen.getAllByText("30").length).toBeGreaterThan(0);
   });
 });

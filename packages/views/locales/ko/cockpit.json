@@ -5,7 +5,9 @@
   },
   "tabs": {
     "overview": "전체 개요",
-    "gantt": "실행 간트차트"
+    "gantt": "실행 간트차트",
+    "tasks": "작업 명세",
+    "finance": "지출 명세"
   },
   "toolbar": {
     "search": "보드 검색",
@@ -17,7 +19,15 @@
     "zoom_week": "주",
     "expand_all": "모두 펼치기",
     "collapse_all": "모두 접기",
-    "add_node": "항목 추가"
+    "add_node": "항목 추가",
+    "expand": "펼치기",
+    "expand_l2": "모듈 단계까지 펼치기",
+    "expand_l3": "작업 단계까지 펼치기",
+    "show_finance": "금액 표시",
+    "back_to_today": "오늘로 이동",
+    "export": "내보내기",
+    "export_tasks": "작업 명세 CSV",
+    "export_finance": "지출 명세 CSV"
   },
   "overview": {
     "annual_goal": "연간 목표",
@@ -57,7 +67,21 @@
     "collapse_branch": "{{name}} 접기",
     "open_node": "{{code}} 열기",
     "overdue": "지연",
-    "bar_label": "타임라인의 {{code}}"
+    "bar_label": "타임라인의 {{code}}",
+    "column_finance": "예산 / 지급",
+    "legend_rollup": "집계 막대",
+    "legend_end_only": "마감일만 있음",
+    "legend_payment": "지급 노드",
+    "legend_today": "오늘",
+    "stats": "노드 {{total}} · 표시 {{shown}}행 (모듈 {{branches}} / 작업 {{leaves}}) · 오늘 {{today}}",
+    "hide_legend": "범례 접기",
+    "show_legend": "범례 펼치기",
+    "basis": "근거: {{basis}}",
+    "not_decomposed": "미분해",
+    "collaborator_count": "협 {{n}}",
+    "should_have_started": "시작해야 함",
+    "done_of": "{{done}}/{{total}}건",
+    "unscheduled": "일정 미정"
   },
   "node": {
     "code": "코드",
@@ -122,7 +146,8 @@
     "payment": "지급",
     "payment_count": "지급 {{count}}건",
     "payment_total": "합계 {{total}}",
-    "month_tasks": "작업 {{done}}/{{total}} 완료"
+    "month_tasks": "작업 {{done}}/{{total}} 완료",
+    "payment_on": "{{date}} 지급"
   },
   "issues": {
     "link": "이슈 연결",
@@ -152,5 +177,15 @@
   },
   "errors": {
     "save_failed": "변경 사항을 저장하지 못했습니다"
+  },
+  "table": {
+    "tasks_hint": "총 {{rows}}행 · 셀을 클릭해 바로 수정할 수 있고, 변경은 모두에게 실시간으로 동기화됩니다",
+    "finance_hint": "총 {{rows}}행 · 예산 합계 {{budget}} · 지급 완료 {{actual}}. 지출 시기와 실제 금액은 분할 지급과 예산 집행 상태에서 도출됩니다.",
+    "module": "모듈",
+    "item": "항목",
+    "planned_date": "지출 예정 시기",
+    "actual_date": "실제 지출 시기",
+    "planned_amount": "지출 예정 금액",
+    "actual_amount": "실제 지출 금액"
   }
 }

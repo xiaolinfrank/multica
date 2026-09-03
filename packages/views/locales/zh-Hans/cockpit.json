@@ -5,7 +5,9 @@
   },
   "tabs": {
     "overview": "项目总览",
-    "gantt": "执行甘特图"
+    "gantt": "执行甘特图",
+    "tasks": "任务明细",
+    "finance": "财务支出"
   },
   "toolbar": {
     "search": "检索看板",
@@ -17,7 +19,15 @@
     "zoom_week": "周",
     "expand_all": "展开全部",
     "collapse_all": "收起全部",
-    "add_node": "新增任务"
+    "add_node": "新增任务",
+    "expand": "展开",
+    "expand_l2": "展开到模块层",
+    "expand_l3": "展开到任务层",
+    "show_finance": "显示财务",
+    "back_to_today": "回到今日",
+    "export": "导出",
+    "export_tasks": "任务明细 CSV",
+    "export_finance": "财务支出 CSV"
   },
   "overview": {
     "annual_goal": "年度目标",
@@ -57,7 +67,21 @@
     "collapse_branch": "收起 {{name}}",
     "open_node": "打开 {{code}}",
     "overdue": "逾期",
-    "bar_label": "时间轴上的 {{code}}"
+    "bar_label": "时间轴上的 {{code}}",
+    "column_finance": "预算 / 付款",
+    "legend_rollup": "汇总条",
+    "legend_end_only": "仅有截止日",
+    "legend_payment": "付款节点",
+    "legend_today": "今日",
+    "stats": "节点 {{total}} · 显示 {{shown}} 行（模块 {{branches}} / 任务 {{leaves}}）· 今天 {{today}}",
+    "hide_legend": "收起图例",
+    "show_legend": "展开图例",
+    "basis": "依据：{{basis}}",
+    "not_decomposed": "未拆解",
+    "collaborator_count": "协 {{n}}",
+    "should_have_started": "应开始",
+    "done_of": "{{done}}/{{total}} 项",
+    "unscheduled": "待排期"
   },
   "node": {
     "code": "编号",
@@ -122,7 +146,8 @@
     "payment": "付款",
     "payment_count": "{{count}} 笔付款",
     "payment_total": "合计 {{total}}",
-    "month_tasks": "任务完成 {{done}}/{{total}}"
+    "month_tasks": "任务完成 {{done}}/{{total}}",
+    "payment_on": "{{date}} 的付款"
   },
   "issues": {
     "link": "关联任务",
@@ -152,5 +177,15 @@
   },
   "errors": {
     "save_failed": "这次修改没有保存成功"
+  },
+  "table": {
+    "tasks_hint": "共 {{rows}} 行 · 点单元格即可就地修改，改动实时同步给所有人",
+    "finance_hint": "共 {{rows}} 行 · 预算合计 {{budget}} · 已支付 {{actual}}；支出时间与实际费用由分期付款和预算执行状态推导",
+    "module": "板块",
+    "item": "项目",
+    "planned_date": "预计支出时间",
+    "actual_date": "实际支出时间",
+    "planned_amount": "预计支出费用",
+    "actual_amount": "实际支出费用"
   }
 }

@@ -4,13 +4,18 @@ import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
   buildCockpitTree,
+  cockpitStatusColor,
   computeCockpitAxis,
   computeCockpitDigest,
   computeCockpitFinance,
+  computeCockpitFinanceRows,
   computeCockpitMonths,
   computeCockpitRollups,
   flattenCockpitTree,
+  groupPaymentsByNode,
+  groupSubtreePayments,
   isCockpitMilestoneDone,
+  isCockpitNodeDrifting,
   isCockpitNodeLate,
   sortCockpitMilestones,
 } from "./model";
@@ -328,5 +333,125 @@ describe("computeCockpitDigest", () => {
 
   it("puts overdue and blocked work under support, and drops cancelled work entirely", () => {
     expect(digest.needsSupport.map((n) => n.id)).toEqual(["late", "blocked"]);
+  });
+});
+
+describe("cockpitStatusColor", () => {
+  it("maps the board's own vocabulary onto theme tokens", () => {
+    expect(cockpitStatusColor("进行中")).toBe("var(--brand)");
+    expect(cockpitStatusColor("已完成")).toBe("var(--success)");
+    expect(cockpitStatusColor("受阻")).toBe("var(--destructive)");
+    expect(cockpitStatusColor("  blocked  ")).toBe("var(--destructive)");
+    expect(cockpitStatusColor("In Progress")).toBe("var(--brand)");
+  });
+
+  it("keeps a status nobody here knows visible rather than colourless", () => {
+    expect(cockpitStatusColor("挂起复核中")).toBe("var(--faint-foreground)");
+    expect(cockpitStatusColor("")).toBe("var(--faint-foreground)");
+  });
+});
+
+describe("isCockpitNodeDrifting", () => {
+  const open = { start_date: "2026-01-01", end_date: "2026-12-31" };
+
+  it("flags a row whose window has opened while it still reads as not started", () => {
+    expect(isCockpitNodeDrifting(node({ id: "a", code: "A", ...open, status: "未开始" }), "2026-06-01")).toBe(true);
+    expect(isCockpitNodeDrifting(node({ id: "b", code: "B", ...open, status: "待开始" }), "2026-06-01")).toBe(true);
+  });
+
+  it("stays quiet before the window opens and once work has started", () => {
+    expect(isCockpitNodeDrifting(node({ id: "a", code: "A", ...open, status: "未开始" }), "2025-12-31")).toBe(false);
+    expect(isCockpitNodeDrifting(node({ id: "b", code: "B", ...open, status: "进行中" }), "2026-06-01")).toBe(false);
+  });
+
+  it("defers to late, so one row never claims both", () => {
+    const late = node({ id: "c", code: "C", start_date: "2026-01-01", end_date: "2026-02-01", status: "未开始" });
+    expect(isCockpitNodeLate(late, "2026-06-01")).toBe(true);
+    expect(isCockpitNodeDrifting(late, "2026-06-01")).toBe(false);
+  });
+
+  it("needs both dates: a row with only a deadline is not drifting", () => {
+    expect(
+      isCockpitNodeDrifting(node({ id: "d", code: "D", end_date: "2026-12-31", status: "未开始" }), "2026-06-01"),
+    ).toBe(false);
+  });
+});
+
+describe("groupSubtreePayments", () => {
+  const nodes = [
+    node({ id: "r", code: "L1-01" }),
+    node({ id: "a", code: "01.01", parent_id: "r", exec_status: "未支付" }),
+    node({ id: "b", code: "01.02", parent_id: "r", exec_status: "完全支付" }),
+  ];
+  const payments = [
+    { id: "p1", node_id: "a", label: "首期", pay_date: "2026-03-01", amount: 10, position: 0 },
+    { id: "p2", node_id: "b", label: "首期", pay_date: "2026-03-01", amount: 5, position: 0 },
+    { id: "p3", node_id: "b", label: "尾款", pay_date: "2026-09-01", amount: 7, position: 1 },
+  ];
+
+  it("collapses a branch's instalments onto one marker per calendar day", () => {
+    const tree = buildCockpitTree(nodes);
+    const groups = groupSubtreePayments(
+      tree[0]!,
+      groupPaymentsByNode(payments),
+      new Map(nodes.map((n) => [n.id, n])),
+    );
+    expect(groups.map((g) => [g.date, g.entries.length, g.total])).toEqual([
+      ["2026-03-01", 2, 15],
+      ["2026-09-01", 1, 7],
+    ]);
+  });
+
+  it("colours a mixed day by the most advanced execution status in it", () => {
+    const tree = buildCockpitTree(nodes);
+    const groups = groupSubtreePayments(
+      tree[0]!,
+      groupPaymentsByNode(payments),
+      new Map(nodes.map((n) => [n.id, n])),
+    );
+    expect(groups[0]!.execStatus).toBe("完全支付");
+  });
+
+  it("drops an instalment with no date rather than stacking it at the axis start", () => {
+    const undated = [{ id: "p9", node_id: "a", label: "待定", pay_date: null, amount: 3, position: 0 }];
+    const tree = buildCockpitTree(nodes);
+    expect(
+      groupSubtreePayments(tree[0]!, groupPaymentsByNode(undated), new Map(nodes.map((n) => [n.id, n]))),
+    ).toEqual([]);
+  });
+});
+
+describe("computeCockpitFinanceRows", () => {
+  const nodes = [
+    node({ id: "r", code: "L1-01", color: "#2563eb" }),
+    node({ id: "a", code: "01.01", parent_id: "r", budget_amount: 100, exec_status: "未支付" }),
+    node({ id: "b", code: "01.02", parent_id: "r", budget_amount: 40, exec_status: "完全支付" }),
+    node({ id: "c", code: "01.03", parent_id: "r" }),
+  ];
+  const payments = [
+    { id: "p1", node_id: "a", label: "首期", pay_date: "2026-03-01", amount: 60, position: 0 },
+    { id: "p2", node_id: "b", label: "全款", pay_date: "2026-02-01", amount: 40, position: 0 },
+  ];
+
+  it("lists only the rows that carry money, in board order", () => {
+    const rows = computeCockpitFinanceRows(buildCockpitTree(nodes), payments);
+    expect(rows.map((r) => r.node.code)).toEqual(["01.01", "01.02"]);
+    expect(rows.every((r) => r.rootCode === "L1-01" && r.rootColor === "#2563eb")).toBe(true);
+  });
+
+  it("reports an actual date and amount only once the row reads as paid", () => {
+    const rows = computeCockpitFinanceRows(buildCockpitTree(nodes), payments);
+    expect(rows[0]).toMatchObject({ plannedDate: "2026-03-01", actualDate: null, actualAmount: null });
+    expect(rows[1]).toMatchObject({ plannedDate: "2026-02-01", actualDate: "2026-02-01", actualAmount: 40 });
+  });
+
+  it("keeps a row that has instalments but no budget figure", () => {
+    const withPaymentOnly = [...nodes, node({ id: "d", code: "01.04", parent_id: "r" })];
+    const rows = computeCockpitFinanceRows(buildCockpitTree(withPaymentOnly), [
+      ...payments,
+      { id: "p3", node_id: "d", label: "首期", pay_date: "2026-05-01", amount: 8, position: 0 },
+    ]);
+    expect(rows.map((r) => r.node.code)).toContain("01.04");
+    expect(rows.find((r) => r.node.code === "01.04")!.budget).toBe(0);
   });
 });

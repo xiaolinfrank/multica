@@ -521,3 +521,218 @@ export function computeCockpitDigest(
     needsSupport: needsSupport.sort(byEnd).slice(0, limit),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Status colour
+// ---------------------------------------------------------------------------
+
+/**
+ * The colour a bar paints in, by status.
+ *
+ * A gantt is read status-first: the question at a glance is "what is on fire",
+ * not "which module is this". The module is already carried by the coloured
+ * code in the tree pane, so the bar itself is free to carry the status.
+ *
+ * Values are token references rather than hex, so the chart follows the theme.
+ * A status nobody here knows keeps the neutral colour instead of vanishing.
+ */
+const STATUS_COLOR_VARS = new Map<string, string>([
+  ["进行中", "var(--brand)"],
+  ["执行中", "var(--brand)"],
+  ["in progress", "var(--brand)"],
+  ["in_progress", "var(--brand)"],
+  ["已完成", "var(--success)"],
+  ["完成", "var(--success)"],
+  ["done", "var(--success)"],
+  ["completed", "var(--success)"],
+  ["审查中", "var(--info)"],
+  ["评审中", "var(--info)"],
+  ["review", "var(--info)"],
+  ["受阻", "var(--destructive)"],
+  ["阻塞", "var(--destructive)"],
+  ["blocked", "var(--destructive)"],
+  ["等待期", "var(--warning)"],
+  ["等待中", "var(--warning)"],
+  ["waiting", "var(--warning)"],
+  ["待开始", "var(--faint-foreground)"],
+  ["未开始", "var(--faint-foreground)"],
+  ["not started", "var(--faint-foreground)"],
+  ["已取消", "var(--muted-foreground)"],
+  ["取消", "var(--muted-foreground)"],
+  ["cancelled", "var(--muted-foreground)"],
+]);
+
+export const COCKPIT_STATUS_NEUTRAL = "var(--faint-foreground)";
+
+export function cockpitStatusColor(status: string): string {
+  const key = status.trim();
+  return (
+    STATUS_COLOR_VARS.get(key) ??
+    STATUS_COLOR_VARS.get(key.toLowerCase()) ??
+    COCKPIT_STATUS_NEUTRAL
+  );
+}
+
+/** The legend the gantt prints, in the order a reader scans it. */
+export const COCKPIT_STATUS_LEGEND: { status: string; color: string }[] = [
+  { status: "进行中", color: "var(--brand)" },
+  { status: "已完成", color: "var(--success)" },
+  { status: "审查中", color: "var(--info)" },
+  { status: "受阻", color: "var(--destructive)" },
+  { status: "等待期", color: "var(--warning)" },
+  { status: "未开始", color: "var(--faint-foreground)" },
+  { status: "已取消", color: "var(--muted-foreground)" },
+];
+
+// ---------------------------------------------------------------------------
+// Schedule warnings
+// ---------------------------------------------------------------------------
+
+/** Statuses that mean the row has not been picked up yet. */
+const NOT_STARTED_STATUSES = new Set(["待开始", "未开始", "not started", "not_started", ""]);
+
+/**
+ * "Should have started": the plan window is open and the status still says the
+ * work has not begun. Distinct from late — nothing is overdue yet, but the row
+ * is drifting, and drift is cheaper to fix than a miss.
+ */
+export function isCockpitNodeDrifting(node: CockpitNode, today: string): boolean {
+  if (!node.start_date || !node.end_date) return false;
+  if (isCockpitNodeLate(node, today)) return false;
+  const status = node.status.trim();
+  if (!NOT_STARTED_STATUSES.has(status) && !NOT_STARTED_STATUSES.has(status.toLowerCase())) {
+    return false;
+  }
+  return today >= node.start_date && today <= node.end_date;
+}
+
+// ---------------------------------------------------------------------------
+// Payment grouping
+// ---------------------------------------------------------------------------
+
+/** Execution-status precedence when several instalments land on one day. */
+const EXEC_STATUS_RANK = new Map<string, number>([
+  ["完全支付", 4],
+  ["已支付", 4],
+  ["paid", 4],
+  ["合同已定", 3],
+  ["已签合同", 3],
+  ["contracted", 3],
+  ["未支付", 2],
+  ["unpaid", 2],
+  ["规划中", 1],
+  ["planning", 1],
+]);
+
+function execRank(status: string): number {
+  const key = status.trim();
+  return EXEC_STATUS_RANK.get(key) ?? EXEC_STATUS_RANK.get(key.toLowerCase()) ?? 0;
+}
+
+export interface CockpitPaymentEntry {
+  payment: CockpitPayment;
+  node: CockpitNode;
+}
+
+/** Instalments falling on one calendar day, collapsed into a single marker. */
+export interface CockpitPaymentGroup {
+  date: string;
+  total: number;
+  /** The most advanced execution status in the group — what the marker colours by. */
+  execStatus: string;
+  entries: CockpitPaymentEntry[];
+}
+
+/**
+ * Instalments across a subtree, bucketed by pay date.
+ *
+ * A branch row carries the money of everything under it: on a collapsed board
+ * that is the only place the payment schedule is visible at all, and reading
+ * "when does this module pay out" should not require expanding it.
+ */
+export function groupSubtreePayments(
+  entry: CockpitTreeNode,
+  paymentsByNode: Map<string, CockpitPayment[]>,
+  nodeById: Map<string, CockpitNode>,
+): CockpitPaymentGroup[] {
+  const byDate = new Map<string, CockpitPaymentEntry[]>();
+  for (const id of subtreeIds(entry)) {
+    for (const payment of paymentsByNode.get(id) ?? []) {
+      if (!payment.pay_date) continue;
+      const node = nodeById.get(payment.node_id);
+      if (!node) continue;
+      const bucket = byDate.get(payment.pay_date);
+      if (bucket) bucket.push({ payment, node });
+      else byDate.set(payment.pay_date, [{ payment, node }]);
+    }
+  }
+  return [...byDate.entries()]
+    .map(([date, entries]) => ({
+      date,
+      total: entries.reduce((sum, e) => sum + e.payment.amount, 0),
+      execStatus: entries
+        .map((e) => e.node.exec_status)
+        .sort((a, b) => execRank(b) - execRank(a))[0] ?? "",
+      entries,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// ---------------------------------------------------------------------------
+// Finance detail rows
+// ---------------------------------------------------------------------------
+
+/**
+ * One line of the spend ledger.
+ *
+ * Every field is derived from the node and its instalments — the board this
+ * replaces kept a parallel hand-maintained table for exactly this, and it drifted
+ * from the tasks it was supposed to describe. Here there is one source.
+ */
+export interface CockpitFinanceRow {
+  node: CockpitNode;
+  /** Root branch this line rolls up to, for the module column. */
+  rootCode: string;
+  rootColor: string;
+  budget: number;
+  /** First instalment date — when the money is expected to move. */
+  plannedDate: string | null;
+  /** First instalment date once the node reads as paid; null while it has not. */
+  actualDate: string | null;
+  /** Budget once paid; null while it has not been. */
+  actualAmount: number | null;
+  payments: CockpitPayment[];
+}
+
+/** The spend ledger, in board order, for every node that carries money. */
+export function computeCockpitFinanceRows(
+  tree: CockpitTreeNode[],
+  payments: CockpitPayment[],
+): CockpitFinanceRow[] {
+  const paymentsByNode = groupPaymentsByNode(payments);
+  const rows: CockpitFinanceRow[] = [];
+
+  const walk = (entry: CockpitTreeNode, rootCode: string, rootColor: string) => {
+    const own = paymentsByNode.get(entry.node.id) ?? [];
+    const budget = entry.node.budget_amount ?? 0;
+    if (budget > 0 || own.length > 0) {
+      const status = entry.node.exec_status.trim();
+      const paid = PAID_STATUSES.has(status) || PAID_STATUSES.has(status.toLowerCase());
+      const firstDate = own.find((p) => p.pay_date)?.pay_date ?? null;
+      rows.push({
+        node: entry.node,
+        rootCode,
+        rootColor,
+        budget,
+        plannedDate: firstDate,
+        actualDate: paid ? firstDate : null,
+        actualAmount: paid ? budget : null,
+        payments: own,
+      });
+    }
+    entry.children.forEach((child) => walk(child, rootCode, rootColor));
+  };
+
+  tree.forEach((root) => walk(root, root.node.code, root.color));
+  return rows;
+}

@@ -24,6 +24,8 @@ import type {
 import {
   buildCockpitTree,
   cockpitBoardOptions,
+  cockpitFinanceCsv,
+  cockpitTasksCsv,
   flattenCockpitTree,
   groupIssueLinksByNode,
   groupPaymentsByNode,
@@ -48,6 +50,12 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@multica/ui/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -55,14 +63,25 @@ import {
   SelectValue,
 } from "@multica/ui/components/ui/select";
 import { toast } from "sonner";
-import { ChevronsDownUp, ChevronsUpDown, Plus, Search } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  CircleDollarSign,
+  Crosshair,
+  Download,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
+import { CockpitTable } from "./cockpit-table";
 
-type CockpitTab = "overview" | "gantt";
+type CockpitTab = "overview" | "gantt" | "tasks" | "finance";
+
+const TABS: CockpitTab[] = ["overview", "gantt", "tasks", "finance"];
 
 // Stable empty arrays: an inline `?? []` allocates a fresh array on every
 // render while the board query is loading, which invalidates every memo
@@ -85,6 +104,21 @@ function suggestionsFor(values: string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort();
 }
 
+/** Hands the browser a file. The CSV itself is built in `@multica/core`. */
+function downloadCsv(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Revoked on the next tick rather than immediately: Safari reads the blob
+  // after the click returns.
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 export function CockpitPage() {
   const { t } = useT("cockpit");
   const wsId = useWorkspaceId();
@@ -94,6 +128,8 @@ export function CockpitPage() {
   const [rootId, setRootId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showFinance, setShowFinance] = useState(false);
+  const [scrollToTodayNonce, setScrollToTodayNonce] = useState(0);
   const [today] = useState(todayString);
 
   const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
@@ -198,9 +234,23 @@ export function CockpitPage() {
     });
   }, []);
 
-  const collapseAll = useCallback(() => {
-    setCollapsed(new Set(flat.filter((e) => e.children.length > 0).map((e) => e.node.id)));
-  }, [flat]);
+  /**
+   * Open the tree down to one level and no further. A six-module board with
+   * 226 rows is unreadable fully expanded and useless fully collapsed; the
+   * level someone wants is almost always "modules" or "modules and tasks".
+   */
+  const expandToDepth = useCallback(
+    (maxDepth: number) => {
+      setCollapsed(
+        new Set(
+          flat
+            .filter((e) => e.children.length > 0 && e.depth >= maxDepth)
+            .map((e) => e.node.id),
+        ),
+      );
+    },
+    [flat],
+  );
 
   const addNode = useCallback(() => {
     // A new node lands under whatever is selected, at the end of that branch.
@@ -229,6 +279,19 @@ export function CockpitPage() {
     );
   }, [selectedId, nodeById, nodes, createNode, fail]);
 
+  const exportTasks = useCallback(() => {
+    if (!board) return;
+    downloadCsv(cockpitTasksCsv(board), `${board.cockpit.title || "cockpit"}-${today}-tasks.csv`);
+  }, [board, today]);
+
+  const exportFinance = useCallback(() => {
+    if (!board) return;
+    downloadCsv(
+      cockpitFinanceCsv(board),
+      `${board.cockpit.title || "cockpit"}-${today}-finance.csv`,
+    );
+  }, [board, today]);
+
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
 
@@ -243,6 +306,7 @@ export function CockpitPage() {
   }
 
   const roots = tree.map((entry) => entry.node);
+  const isBoardView = tab !== "overview";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -256,7 +320,7 @@ export function CockpitPage() {
         />
 
         <nav className="ml-2 flex items-center gap-0.5 rounded-md bg-muted p-0.5">
-          {(["overview", "gantt"] as const).map((key) => (
+          {TABS.map((key) => (
             <button
               key={key}
               type="button"
@@ -270,14 +334,20 @@ export function CockpitPage() {
                   : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
               )}
             >
-              {key === "overview" ? t(($) => $.tabs.overview) : t(($) => $.tabs.gantt)}
+              {key === "overview"
+                ? t(($) => $.tabs.overview)
+                : key === "gantt"
+                  ? t(($) => $.tabs.gantt)
+                  : key === "tasks"
+                    ? t(($) => $.tabs.tasks)
+                    : t(($) => $.tabs.finance)}
             </button>
           ))}
         </nav>
 
         <span className="flex-1" />
 
-        {tab === "gantt" && (
+        {isBoardView && (
           <>
             <div className="relative">
               <Search
@@ -315,7 +385,11 @@ export function CockpitPage() {
                 </SelectContent>
               </Select>
             )}
+          </>
+        )}
 
+        {tab === "gantt" && (
+          <>
             <Select
               items={[
                 { value: "month", label: t(($) => $.toolbar.zoom_month) },
@@ -333,21 +407,76 @@ export function CockpitPage() {
               </SelectContent>
             </Select>
 
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
+                    {collapsed.size > 0 ? (
+                      <ChevronsUpDown className="size-3.5" />
+                    ) : (
+                      <ChevronsDownUp className="size-3.5" />
+                    )}
+                    {t(($) => $.toolbar.expand)}
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setCollapsed(new Set())}>
+                  {t(($) => $.toolbar.expand_all)}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => expandToDepth(1)}>
+                  {t(($) => $.toolbar.expand_l2)}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => expandToDepth(2)}>
+                  {t(($) => $.toolbar.expand_l3)}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => expandToDepth(0)}>
+                  {t(($) => $.toolbar.collapse_all)}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              variant={showFinance ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 gap-1 px-2"
+              aria-pressed={showFinance}
+              onClick={() => setShowFinance((on) => !on)}
+            >
+              <CircleDollarSign className="size-3.5" />
+              {t(($) => $.toolbar.show_finance)}
+            </Button>
+
             <Button
               variant="ghost"
               size="sm"
               className="h-7 gap-1 px-2"
-              onClick={() => (collapsed.size > 0 ? setCollapsed(new Set()) : collapseAll())}
+              onClick={() => setScrollToTodayNonce((n) => n + 1)}
             >
-              {collapsed.size > 0 ? (
-                <ChevronsUpDown className="size-3.5" />
-              ) : (
-                <ChevronsDownUp className="size-3.5" />
-              )}
-              {collapsed.size > 0 ? t(($) => $.toolbar.expand_all) : t(($) => $.toolbar.collapse_all)}
+              <Crosshair className="size-3.5" />
+              {t(($) => $.toolbar.back_to_today)}
             </Button>
           </>
         )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
+                <Download className="size-3.5" />
+                {t(($) => $.toolbar.export)}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={exportTasks}>
+              {t(($) => $.toolbar.export_tasks)}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={exportFinance}>
+              {t(($) => $.toolbar.export_finance)}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button size="sm" className="h-7 gap-1 px-2" onClick={addNode}>
           <Plus className="size-3.5" />
@@ -357,7 +486,7 @@ export function CockpitPage() {
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {tab === "overview" ? (
+          {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <CockpitOverview
                 board={board}
@@ -380,19 +509,39 @@ export function CockpitPage() {
                 }}
               />
             </div>
-          ) : (
+          )}
+
+          {tab === "gantt" && (
             <CockpitGantt
-                board={board}
-                today={today}
-                zoom={zoom}
-                query={query}
-                rootId={rootId}
-                collapsed={collapsed}
-                onToggleCollapse={toggleCollapse}
-                onSelect={setSelectedId}
-                selectedId={selectedId}
-                onPatchNode={patchNode}
-                statusSuggestions={statusSuggestions}
+              board={board}
+              today={today}
+              zoom={zoom}
+              query={query}
+              rootId={rootId}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapse}
+              onSelect={setSelectedId}
+              selectedId={selectedId}
+              onPatchNode={patchNode}
+              statusSuggestions={statusSuggestions}
+              showFinance={showFinance}
+              scrollToTodayNonce={scrollToTodayNonce}
+            />
+          )}
+
+          {(tab === "tasks" || tab === "finance") && (
+            <CockpitTable
+              board={board}
+              mode={tab === "tasks" ? "tasks" : "finance"}
+              query={query}
+              rootId={rootId}
+              onSelect={setSelectedId}
+              selectedId={selectedId}
+              onPatchNode={patchNode}
+              statusSuggestions={statusSuggestions}
+              execStatusSuggestions={execStatusSuggestions}
+              budgetCategorySuggestions={budgetCategorySuggestions}
+              ownerSuggestions={ownerSuggestions}
             />
           )}
         </div>
