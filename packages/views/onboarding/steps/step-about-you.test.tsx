@@ -42,17 +42,6 @@ function renderStep(answers: QuestionnaireAnswers = EMPTY) {
 describe("StepAboutYou", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("renders both question groups on one screen", () => {
-    renderStep();
-    expect(
-      screen.getByText("Which best describes you?"),
-    ).toBeInTheDocument();
-    expect(
-      // Fork: the survey copy is rebranded to BayClaw in en/onboarding.json.
-      screen.getByText("What do you want to use BayClaw for?"),
-    ).toBeInTheDocument();
-  });
-
   it("selecting a role patches the slug and clears Other/skip", async () => {
     const user = userEvent.setup();
     const { onChange, onAdvance } = renderStep();

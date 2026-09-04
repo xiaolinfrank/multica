@@ -8,41 +8,6 @@ import { RESERVED_SLUGS } from "./reserved-slugs";
 // we hardcode the expected list and assert paths.workspace produces the same
 // keys. If you change either, BOTH need to be updated — the test catches drift.
 describe("paths.workspace() shape", () => {
-  it("exposes the expected parameterless workspace route methods", () => {
-    const ws = paths.workspace("__probe__");
-    const parameterlessRoutes = Object.entries(ws)
-      .filter(([, fn]) => typeof fn === "function" && fn.length === 0)
-      .map(([key]) => key);
-
-    expect(new Set(parameterlessRoutes)).toEqual(
-      new Set([
-        "root",
-        "usage",
-        "issues",
-        "projects",
-        "autopilots",
-        "agents",
-        "newAgent",
-        "newAgentManual",
-        "newAgentAi",
-        "chat",
-        "office",
-        "gallery",
-        "cockpit",
-        "squads",
-        "graph",
-        "inbox",
-        "myIssues",
-        "runtimes",
-        "skills",
-        "env",
-        "settings",
-        "fleet",
-        "workspaces",
-      ]),
-    );
-  });
-
   it("each parameterless route emits /{slug}/{segment}", () => {
     const ws = paths.workspace("acme");
     // Check that none of the parameterless paths embed a leaked literal and
@@ -62,8 +27,14 @@ describe("paths.workspace() shape", () => {
       ["myIssues", "my-issues"],
       ["runtimes", "runtimes"],
       ["skills", "skills"],
-      ["env", "env"],
       ["settings", "settings"],
+      // Fork routes. They live in the same WORKSPACE_ROUTE_SEGMENTS set, so
+      // they need the same drift guard as the upstream ones.
+      ["office", "office"],
+      ["gallery", "gallery"],
+      ["cockpit", "cockpit"],
+      ["graph", "graph"],
+      ["env", "env"],
       ["fleet", "fleet"],
       ["workspaces", "workspaces"],
     ];

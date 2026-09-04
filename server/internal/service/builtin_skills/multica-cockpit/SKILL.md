@@ -140,8 +140,8 @@ edit a few fields. Nodes name their parent by `parent_code`, so the document
 does not need to be sorted; issue references that do not resolve are reported on
 stderr and skipped rather than failing the import.
 
-See `references/cockpit-source-map.md` for the document shape and the API
-endpoints behind each command.
+See `references/cockpit.md` for the document shape and the API endpoints
+behind each command.
 
 ## Boundaries
 
