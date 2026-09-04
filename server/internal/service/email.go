@@ -39,12 +39,21 @@ var fosunLogoEmailFS embed.FS
 const maxSubjectFieldRunes = 60
 
 // suppressedRecipientDomains lists recipient domains that can never receive
-// mail. bayclaw.cn has no MX record and never did — it is a fictional domain
-// invented during AI-assisted development for test fixtures (demo@,
-// runner-bio@, …). Relays still accept such mail, then retry delivery for days
-// and flood the From inbox with delay notifications, so sends to these domains
-// are dropped silently. Remove the entry if the domain ever gets a real MX.
-var suppressedRecipientDomains = []string{"bayclaw.cn"}
+// mail. Relays still accept such mail, then either hard-bounce it or retry for
+// days, flooding the From inbox with failure and delay notifications and
+// burning the relay's daily send quota — which real login codes share. Sends to
+// these domains are therefore dropped silently. Remove an entry if its domain
+// ever becomes a real, deliverable mailbox for this deployment.
+//
+//   - bayclaw.cn: no MX record and never had one — a fictional domain invented
+//     during AI-assisted development for test fixtures (demo@, runner-bio@, …).
+//   - multica.ai: the upstream vendor's domain, whose MX rejects unknown
+//     mailboxes with a hard 550. This fork is a private on-premise deployment
+//     with no account there, so every address the codebase produces at that
+//     domain is a test fixture (integration-sendcode@, invitation-test@,
+//     e2e-<worker>-<run>@, …). Fork-only entry: carry it across upstream syncs.
+//   - test.local: the mDNS TLD, used by cooldown/probe fixtures. Never resolves.
+var suppressedRecipientDomains = []string{"bayclaw.cn", "multica.ai", "test.local"}
 
 // isSuppressedRecipient reports whether email to this address must be dropped
 // because its domain cannot receive mail. Case-insensitive exact-domain match

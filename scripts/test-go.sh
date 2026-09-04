@@ -44,6 +44,16 @@ if [ -n "${DATABASE_URL:-}" ] && [ "${MULTICA_ALLOW_NON_TEST_DB:-}" != "1" ]; th
   esac
 fi
 
+# Go tests drive real HTTP handlers, and the email service configures itself
+# from the process environment at construction (service.NewEmailService). The
+# Makefile exports every .env variable into this recipe, so a deployment's SMTP
+# relay credentials reach the test binary and the auth/invitation tests send
+# real mail to fixture addresses like integration-sendcode@multica.ai. Those
+# hard-bounce into the relay owner's inbox and consume the relay's daily quota,
+# which real login codes share. Clear the credentials so the email service
+# builds in DEV mode: codes go to stdout and no network send happens.
+unset SMTP_HOST SMTP_USERNAME SMTP_PASSWORD SMTP_FROM_EMAIL RESEND_API_KEY RESEND_FROM_EMAIL
+
 cd "$REPO_ROOT/server"
 packages=$(go list ./...)
 regular_packages=()
