@@ -429,7 +429,7 @@ function PlateArrow({ side, label, onClick }: PlateArrowProps) {
       className={cn(
         "rounded-md p-1.5 text-muted-foreground transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        blocked ? "cursor-default opacity-30" : "hover:bg-secondary hover:text-foreground",
+        blocked ? "cursor-default text-faint-foreground" : "hover:bg-secondary hover:text-foreground",
       )}
     >
       <Icon aria-hidden="true" className="size-4" />
