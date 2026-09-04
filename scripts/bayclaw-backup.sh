@@ -4,12 +4,14 @@
 # Layers:
 #   L1 postgres/  -- per-database pg_dump (custom format), gzip'd
 #   L2 uploads/   -- rsync mirror of LOCAL_UPLOAD_DIR attachments
-#   L3 workspaces/-- rsync copy of agent workspaces (NAS v2/ -> backup dir)
+#   L3 workspaces/-- rsync copy of agent workspaces (NAS v2/ -> backup dir),
+#                   plus workspaces-attic/ for entries the source dropped
 #   L4 config/    -- tar of .env, deploy/, launchd plists, ~/.multica creds
 #   L5 redis/     -- RDB snapshot (session/PAT cache; clearing forces re-auth)
 #
 # Target: /Volumes/虚拟员工工作区/backup/multica
-# Retention: PG dumps kept RETENTION_DAYS (default 30) plus monthly archive.
+# Retention: PG dumps kept RETENTION_DAYS (default 30) plus monthly archive;
+#            retired L3 entries kept RETENTION_DAYS in workspaces-attic/.
 # Scheduling: launchd com.bayclaw.backup, daily 02:00 (see deploy/).
 #
 # Usage:
@@ -50,11 +52,16 @@ fi
 UPLOADS_SRC="${UPLOADS_SRC:-${REPO}/data/uploads}"
 WORKSPACES_SRC="${NAS_SHARE}/v2"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
+# Blast radius for L3 retirement. The mirror holds ~77k entries, so a share
+# that half-mounted would want to retire an order of magnitude more than this;
+# a genuine burst (a whole workspace deleted at once) stays well under it.
+L3_MAX_RETIRE="${L3_MAX_RETIRE:-10000}"
 LOG_FILE="${REPO}/logs/backup.log"          # local log first; NAS copy is best-effort
 
 DATE="$(date +%Y%m%d)"
 PG_DIR="${NAS_BASE}/postgres/${DATE}"
 CONFIG_DIR="${NAS_BASE}/config/${DATE}"
+WS_ATTIC="${NAS_BASE}/workspaces-attic/${DATE}"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/bayclaw-backup.XXXXXX")"
 trap 'rm -rf "${STAGING}"' EXIT
 
@@ -174,6 +181,67 @@ if ! run rsync -a --ignore-errors "${WORKSPACES_SRC}/" "${NAS_BASE}/workspaces/"
   log "L3 workspaces mirror: rsync reported errors (concurrent writes); continuing"
 fi
 
+# 4b. L3 retention. The mirror above stays --delete-free on purpose, so a share
+#     that mounted empty can never turn into mass deletion. The cost is
+#     divergence: runs the platform GC'd stay mirrored forever (405 dead run
+#     dirs / 0.26GB had piled up by 2026-09-04). Reconcile them here, but into
+#     a dated attic instead of deleting outright, so a wrong call stays
+#     recoverable for RETENTION_DAYS.
+#
+#     Compared with find rather than rsync's own delete plan: macOS ships
+#     openrsync, which escapes non-ASCII bytes as \#nnn in that listing (agent
+#     workdirs are full of CJK filenames, so the paths come back unusable), and
+#     whose --backup-dir archives only *updated* files while --backup silently
+#     disables --delete altogether. All three verified 2026-09-04.
+say "L3 retention (retire entries the source no longer has)"
+if (( DRY )); then
+  printf '    compare %s vs %s -> retire mirror-only entries into %s\n' \
+    "${WORKSPACES_SRC}" "${NAS_BASE}/workspaces" "${WS_ATTIC}"
+else
+  SRC_LIST="${STAGING}/l3-src.list"
+  MIRROR_LIST="${STAGING}/l3-mirror.list"
+  ORPHANS="${STAGING}/l3-orphans.list"
+  # C collation on both sides: comm needs a single ordering, and byte order is
+  # the one that puts a directory ahead of everything nested under it.
+  ( cd "${WORKSPACES_SRC}" && find . -mindepth 1 ) 2>/dev/null | LC_ALL=C sort >"${SRC_LIST}"
+  ( cd "${NAS_BASE}/workspaces" && find . -mindepth 1 ) 2>/dev/null | LC_ALL=C sort >"${MIRROR_LIST}"
+  src_n=$(wc -l <"${SRC_LIST}" | tr -d ' ')
+  mirror_n=$(wc -l <"${MIRROR_LIST}" | tr -d ' ')
+  LC_ALL=C comm -13 "${SRC_LIST}" "${MIRROR_LIST}" >"${ORPHANS}"
+  orphan_n=$(wc -l <"${ORPHANS}" | tr -d ' ')
+  if (( src_n == 0 )); then
+    log "L3 retention: skipped, source listing empty (share not readable?)"
+  elif (( orphan_n > L3_MAX_RETIRE )); then
+    log "L3 retention: skipped, ${orphan_n} candidates over L3_MAX_RETIRE=${L3_MAX_RETIRE} (src=${src_n} mirror=${mirror_n})"
+  else
+    retired=0
+    # Byte order guarantees a parent is listed before anything under it, so
+    # retiring the parent takes its children along and their own lines are
+    # simply gone by the time the loop reaches them.
+    while IFS= read -r line; do
+      rel="${line#./}"
+      [[ -n "${rel}" ]] || continue
+      from="${NAS_BASE}/workspaces/${rel}"
+      [[ -e "${from}" || -L "${from}" ]] || continue
+      # The listing is only a candidate generator: the source is a live daemon
+      # workdir, and a file replaced mid-walk can be missing from it. Confirm
+      # against the source as it stands now before retiring anything.
+      if [[ -e "${WORKSPACES_SRC}/${rel}" || -L "${WORKSPACES_SRC}/${rel}" ]]; then
+        continue
+      fi
+      mkdir -p "$(dirname "${WS_ATTIC}/${rel}")"
+      if mv "${from}" "${WS_ATTIC}/${rel}"; then
+        retired=$((retired + 1))
+      else
+        log "L3 retention: could not retire ${rel}"
+      fi
+    done <"${ORPHANS}"
+    if (( retired > 0 )); then
+      log "L3 retention: retired ${retired} of ${orphan_n} candidates into workspaces-attic/${DATE}"
+    fi
+  fi
+fi
+
 # 5. L4 -- config & secrets
 say "L4 config bundle"
 CONFIG_STAGE="${STAGING}/config"
@@ -212,6 +280,12 @@ say "prune older than ${RETENTION_DAYS} days"
 if (( ! DRY )); then
   find "${NAS_BASE}/postgres" -mindepth 1 -maxdepth 1 -type d -mtime +"${RETENTION_DAYS}" \
     ! -name '??????01' -exec rm -rf {} +
+  # The L3 attic gets the same window but no monthly keep: these are retired
+  # copies of files the source itself dropped, not point-in-time snapshots.
+  if [[ -d "${NAS_BASE}/workspaces-attic" ]]; then
+    find "${NAS_BASE}/workspaces-attic" -mindepth 1 -maxdepth 1 -type d \
+      -mtime +"${RETENTION_DAYS}" -exec rm -rf {} +
+  fi
 fi
 
 log "OK ${DATE} dbs=[${DBS//$'\n'/,}]"
