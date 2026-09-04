@@ -15,6 +15,7 @@
 # Usage:
 #   scripts/bayclaw-backup.sh              # run a real backup
 #   scripts/bayclaw-backup.sh --dry-run    # print commands without executing
+#   scripts/bayclaw-backup.sh --if-needed  # skip if today already succeeded
 #   DRY=1 RETENTION_DAYS=7 scripts/bayclaw-backup.sh
 #
 # Never touches running services: pg_dump is online, no restarts.
@@ -40,7 +41,13 @@ NAS_BASE="${NAS_SHARE}/backup/multica"
 PG_CONTAINER="multica-postgres-1"
 REDIS_CONTAINER="multica-redis-1"
 REPO="/Users/fosun_main_agent/var/multica"
-UPLOADS_SRC="${REPO}/data/uploads"          # LOCAL_UPLOAD_DIR=./data/uploads
+# Attachments live wherever LOCAL_UPLOAD_DIR points; it moved to the NAS in
+# 2026-08. Read it from .env so this mirror cannot drift to a stale path again.
+UPLOADS_SRC=""
+if [[ -f "${REPO}/.env" ]]; then
+  UPLOADS_SRC="$(awk -F= '/^LOCAL_UPLOAD_DIR=/ { sub(/^[^=]*=/, ""); print; exit }' "${REPO}/.env")"
+fi
+UPLOADS_SRC="${UPLOADS_SRC:-${REPO}/data/uploads}"
 WORKSPACES_SRC="${NAS_SHARE}/v2"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 LOG_FILE="${REPO}/logs/backup.log"          # local log first; NAS copy is best-effort
@@ -53,10 +60,20 @@ trap 'rm -rf "${STAGING}"' EXIT
 
 # --- helpers ---------------------------------------------------------------
 DRY="${DRY:-0}"
-if [[ "${1:-}" == "--dry-run" ]]; then DRY=1; fi
+IF_NEEDED=0
+for arg in "$@"; do
+  case "${arg}" in
+    --dry-run)   DRY=1 ;;
+    --if-needed) IF_NEEDED=1 ;;
+    *) echo "unknown argument: ${arg}" >&2; exit 2 ;;
+  esac
+done
 
 say() { printf '==> %s\n' "$*"; }
 log() {
+  # A dry run must never touch the real log: an "OK <date>" line there is
+  # indistinguishable from a finished backup and would mask a missed day.
+  if (( DRY )); then printf 'DRY %s\n' "$*"; return 0; fi
   mkdir -p "$(dirname "${LOG_FILE}")"
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${LOG_FILE}"
   # Best-effort mirror to NAS logs/ (never fatal: log must survive NAS down).
@@ -85,9 +102,26 @@ nas_mounted() { /sbin/mount | grep -qF "on ${NAS_SHARE} ("; }
 
 # --- main ------------------------------------------------------------------
 say "BayClaw backup ${DATE} (dry-run=$([ "$DRY" = 1 ] && echo yes || echo no))"
+
+# --if-needed is the catch-up path for a machine that was powered off at 02:00:
+# launchd discards a StartCalendarInterval missed while shut down (only ones
+# missed while asleep are made up), so RunAtLoad re-runs this at every boot.
+# Nothing to do when today already has a completed backup.
+if (( IF_NEEDED )) && grep -q "OK ${DATE} " "${LOG_FILE}" 2>/dev/null; then
+  say "backup for ${DATE} already recorded; nothing to do"
+  exit 0
+fi
 mkdir -p "${STAGING}"
 
-# 1. NAS must be mounted
+# 1. NAS must be mounted. At boot the mount helper (com.fosunpharma.mount-nas,
+#    every 120s) may not have attached the share yet, so a catch-up run waits
+#    for it rather than failing loudly in the log.
+if (( IF_NEEDED )) && (( ! DRY )); then
+  for _ in $(seq 1 30); do
+    nas_mounted && break
+    sleep 10
+  done
+fi
 if ! nas_mounted; then
   fail "NAS share not mounted at ${NAS_SHARE}"
 fi
@@ -123,7 +157,10 @@ for db in ${DBS}; do
 done
 
 # 3. L2 -- attachments (live dir: tolerate transient concurrent-write skips)
-say "L2 uploads mirror"
+say "L2 uploads mirror (${UPLOADS_SRC})"
+# --delete against a missing or wrong source would wipe the mirror, so refuse
+# to run unless the configured source really is a directory.
+[[ -d "${UPLOADS_SRC}" ]] || fail "uploads source not a directory: ${UPLOADS_SRC}"
 if ! run rsync -a --delete --ignore-errors "${UPLOADS_SRC}/" "${NAS_BASE}/uploads/"; then
   log "L2 uploads mirror: rsync reported errors (concurrent writes); continuing"
 fi
@@ -145,7 +182,10 @@ run rsync -a "${REPO}/.env"* "${CONFIG_STAGE}/" 2>/dev/null || true
 run rsync -a "${REPO}/deploy/" "${CONFIG_STAGE}/deploy/"
 run mkdir -p "${CONFIG_STAGE}/launchd"
 run cp ~/Library/LaunchAgents/com.bayclaw.*.plist ~/Library/LaunchAgents/com.fosunpharma.mount-nas.plist ~/Library/LaunchAgents/com.fosun.microsocks.plist "${CONFIG_STAGE}/launchd/" 2>/dev/null || true
-run rsync -a "${HOME}/.multica/" "${CONFIG_STAGE}/multica-home/"
+# ~/.multica also carries Go build caches and daemon logs (dev-tmp/ alone is
+# ~275MB). This bundle is for config and credentials; leave rebuildable and
+# append-only files out so the daily tar stays small.
+run rsync -a --exclude 'dev-tmp/' --exclude '*.log' "${HOME}/.multica/" "${CONFIG_STAGE}/multica-home/"
 run cp "${HOME}/Library/Scripts/mount-nas.sh" "${CONFIG_STAGE}/" 2>/dev/null || true
 run cp "${HOME}/.local/bin/bayclaw-fleet-daemon-wrapper.sh" "${CONFIG_STAGE}/" 2>/dev/null || true
 run tar -czf "${STAGING}/config-${DATE}.tar.gz" -C "${CONFIG_STAGE}" .

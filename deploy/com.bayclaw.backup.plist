@@ -4,7 +4,13 @@
 <dict>
     <!-- Daily Multica backup to NAS: scripts/bayclaw-backup.sh.
          Runs at 02:00; relies on com.fosunpharma.mount-nas (every 120s)
-         keeping /Volumes/虚拟员工工作区 mounted. -->
+         keeping /Volumes/虚拟员工工作区 mounted.
+
+         RunAtLoad covers the one case 02:00 cannot: launchd discards a
+         StartCalendarInterval missed while the machine was shut down (only
+         ones missed while asleep are made up), which is how 2026-08-23 ended
+         up with no backup at all. Every boot therefore re-runs the script,
+         and --if-needed makes that a no-op once the day already succeeded. -->
     <key>Label</key>
     <string>com.bayclaw.backup</string>
     <key>EnvironmentVariables</key>
@@ -16,6 +22,7 @@
     <array>
         <string>/bin/bash</string>
         <string>/Users/fosun_main_agent/var/multica/scripts/bayclaw-backup.sh</string>
+        <string>--if-needed</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -29,6 +36,6 @@
     <key>StandardOutPath</key>
     <string>/Users/fosun_main_agent/Library/Logs/bayclaw-backup.log</string>
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 </dict>
 </plist>
