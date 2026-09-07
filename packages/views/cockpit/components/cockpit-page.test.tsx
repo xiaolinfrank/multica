@@ -178,7 +178,7 @@ describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [], total: 0 });
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
   });
 
   it("renders the overview: goal, milestones, modules and finance", async () => {
@@ -261,7 +261,6 @@ describe("CockpitPage", () => {
           status: "todo",
         } as never,
       ],
-      total: 1,
     });
     vi.mocked(api.setCockpitNodeIssues).mockResolvedValue({ node_id: "task", links: [] });
 
@@ -318,7 +317,7 @@ describe("CockpitPage detail tables", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [], total: 0 });
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
   });
 
   it("puts the deliverable on the task table, where the gantt has no room for it", async () => {
