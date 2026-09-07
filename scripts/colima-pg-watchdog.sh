@@ -18,7 +18,7 @@ ROOT="/Users/fosun_main_agent/var/multica"
 LOG="$ROOT/logs/watchdog.log"
 THRESHOLD=3        # 连续失败次数
 PROBE_INTERVAL=30  # 秒
-COOLDOWN=300       # 重启后冷却秒数
+COOLDOWN=900       # 重启后冷却秒数（一次恢复本身可能跑满 15 分钟）
 LAST_RESTART=0
 FAIL=0
 
@@ -35,8 +35,29 @@ run_timed() {
     kill -0 "$pid" 2>/dev/null || { wait "$pid" 2>/dev/null; return $?; }
     sleep 0.5
   done
-  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+  # 只杀父进程不够：`colima start` 把开机委托给子进程 limactl，父进程被杀后
+  # VM 还在继续启动，下一轮探测面对的是一台半启动的机器，越修越坏。
+  pkill -TERM -P "$pid" 2>/dev/null
+  kill -TERM "$pid" 2>/dev/null
+  sleep 1
+  pkill -KILL -P "$pid" 2>/dev/null
+  kill -KILL "$pid" 2>/dev/null
+  wait "$pid" 2>/dev/null
   return 1
+}
+
+# recover_colima —— 按当前状态决定要不要先 stop，stop 与 start 各给足预算。
+# 2026-09-07 事故：原来是一条 `run_timed 180 colima restart`，但在这台负载高的
+# 机器上光 stop 就要 ~150s、start 又要 ~60s，180s 必然超时；超时又杀不掉正在
+# 开机的 limactl，于是每 5 分钟留下一台半启动的 VM。PG 从 10:42 一直断到 17:45,
+# 看门狗跑了一下午全是在打断自己。
+recover_colima() {
+  if colima status >/dev/null 2>&1; then
+    run_timed 300 colima stop || echo "$(date '+%F %T') colima stop 超时（继续尝试 start）"
+  else
+    echo "$(date '+%F %T') colima 已停，跳过 stop 直接 start"
+  fi
+  run_timed 600 colima start || { echo "$(date '+%F %T') colima start 超时"; return 1; }
 }
 
 # probe_pg —— 真实 PG 查询，15s 内无响应判失败。
@@ -60,8 +81,7 @@ while true; do
         FAIL=0
       else
         echo "$(date '+%F %T') PG unreachable ${THRESHOLD}x — restarting colima (best-effort)" >> "$LOG"
-        # colima restart 正常需 60-120s，给 180s 上限；失败仅记录
-        run_timed 180 colima restart >> "$LOG" 2>&1 || echo "$(date '+%F %T') colima restart failed/timed out" >> "$LOG"
+        recover_colima >> "$LOG" 2>&1 || echo "$(date '+%F %T') colima 恢复失败，留人工介入" >> "$LOG"
         sleep 20
         (cd "$ROOT" && run_timed 60 docker compose up -d) >> "$LOG" 2>&1 || true
         # 等 PG 回来
