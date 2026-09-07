@@ -53,8 +53,22 @@ vi.mock("@multica/core/api", () => ({
     updateCockpitMeeting: vi.fn(),
     deleteCockpitMeeting: vi.fn(),
     searchIssues: vi.fn(),
+    listCockpitSnapshots: vi.fn(),
+    createCockpitSnapshot: vi.fn(),
+    restoreCockpitSnapshot: vi.fn(),
+    deleteCockpitSnapshot: vi.fn(),
+    listMembers: vi.fn(),
   },
 }));
+
+vi.mock("@multica/core/auth", () => {
+  const useAuthStore = Object.assign(
+    (selector?: (state: { user: { id: string } }) => unknown) =>
+      selector ? selector({ user: { id: "user-1" } }) : { user: { id: "user-1" } },
+    { getState: () => ({ user: { id: "user-1" } }) },
+  );
+  return { useAuthStore };
+});
 
 import { api } from "@multica/core/api";
 import { CockpitPage } from "./cockpit-page";
@@ -179,6 +193,17 @@ describe("CockpitPage", () => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
+    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
+    vi.mocked(api.listMembers).mockResolvedValue([
+      {
+        id: "m1",
+        workspace_id: "ws-1",
+        user_id: "user-1",
+        role: "owner" as const,
+        created_at: "",
+        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+      },
+    ]);
   });
 
   it("renders the overview: goal, milestones, modules and finance", async () => {
@@ -318,6 +343,17 @@ describe("CockpitPage detail tables", () => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
+    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
+    vi.mocked(api.listMembers).mockResolvedValue([
+      {
+        id: "m1",
+        workspace_id: "ws-1",
+        user_id: "user-1",
+        role: "owner" as const,
+        created_at: "",
+        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+      },
+    ]);
   });
 
   it("puts the deliverable on the task table, where the gantt has no room for it", async () => {
@@ -369,5 +405,68 @@ describe("CockpitPage detail tables", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show money" }));
     expect(await screen.findByText("Budget / paid")).toBeInTheDocument();
     expect(screen.getAllByText("30").length).toBeGreaterThan(0);
+  });
+});
+
+describe("CockpitPage versions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
+    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
+      {
+        id: "snap-1",
+        trigger_kind: "import",
+        label: "",
+        node_count: 217,
+        created_by_type: "member",
+        created_by_label: "Owner",
+        created_at: "2026-09-07T05:00:00Z",
+      },
+    ]);
+    vi.mocked(api.listMembers).mockResolvedValue([
+      {
+        id: "m1",
+        workspace_id: "ws-1",
+        user_id: "user-1",
+        role: "owner" as const,
+        created_at: "",
+        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+      },
+    ]);
+  });
+
+  it("lists the version history and restores on a confirmed second click", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+    const row = await screen.findByText("217 nodes · Owner");
+
+    // First click arms the confirm; the board must not be touched yet.
+    const restore = within(row.closest("li")!).getByRole("button", { name: "Restore" });
+    fireEvent.click(restore);
+    expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
+
+    fireEvent.click(within(row.closest("li")!).getByRole("button", { name: "Confirm restore" }));
+    await waitFor(() => expect(api.restoreCockpitSnapshot).toHaveBeenCalledWith("snap-1"));
+  });
+
+  it("hides the restore affordance from a plain member, who the server would refuse anyway", async () => {
+    vi.mocked(api.listMembers).mockResolvedValue([
+      {
+        id: "m1",
+        workspace_id: "ws-1",
+        user_id: "user-1",
+        role: "member" as const,
+        created_at: "",
+        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+      },
+    ]);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+    await screen.findByText("217 nodes · Owner");
+    expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
   });
 });

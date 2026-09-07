@@ -302,6 +302,7 @@ var concurrentIndexCleanups = map[string]string{
 	"913_cockpit_node_issue_issue_index":                        "idx_cockpit_node_issue_issue",
 	"915_cockpit_milestone_cockpit_index":                       "idx_cockpit_milestone_cockpit",
 	"917_cockpit_meeting_cockpit_index":                         "idx_cockpit_meeting_cockpit",
+	"919_cockpit_snapshot_cockpit_index":                        "idx_cockpit_snapshot_cockpit",
 	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
 	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
 	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",

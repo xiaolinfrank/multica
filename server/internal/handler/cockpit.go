@@ -1484,7 +1484,7 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
-// Import
+// Import — shared by the HTTP endpoint and snapshot restore
 // ---------------------------------------------------------------------------
 
 // CockpitImportNode is one node of an imported board. Parents are named by
@@ -1555,6 +1555,13 @@ type CockpitImportRequest struct {
 	Nodes      []CockpitImportNode      `json:"nodes"`
 	Milestones []CockpitImportMilestone `json:"milestones"`
 	Meetings   []CockpitImportMeeting   `json:"meetings"`
+	// The three summary cards. Pointers because absent and empty differ here:
+	// an authored plan has no card text and its import must leave whatever the
+	// board already says, while a snapshot always carries the values it froze
+	// so a restore puts the board back exactly.
+	SummaryOverall *string `json:"summary_overall"`
+	SummaryNext    *string `json:"summary_next"`
+	SummarySupport *string `json:"summary_support"`
 }
 
 type CockpitImportResponse struct {
@@ -1568,6 +1575,20 @@ type CockpitImportResponse struct {
 	UnresolvedIssues []string `json:"unresolved_issues"`
 }
 
+// cockpitImportError carries the status a failed import answers with, now that
+// the import body serves both the HTTP endpoint and snapshot restore.
+type cockpitImportError struct {
+	status int
+	msg    string
+}
+
+func (e *cockpitImportError) Error() string { return e.msg }
+
+// cockpitSnapshotKeep bounds how many snapshots a board retains. Imports and
+// restores snapshot automatically, so without a bound a scripted import loop
+// would grow the table without end.
+const cockpitSnapshotKeep = 50
+
 func importDate(s string) (pgtype.Date, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -1576,12 +1597,21 @@ func importDate(s string) (pgtype.Date, error) {
 	return util.ParseCalendarDate(s)
 }
 
+func strPtrToText(s *string) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *s, Valid: true}
+}
+
 // ImportCockpit replaces the entire board in one transaction.
 //
 // Owner/admin only, and destructive by design: this is how a programme board
 // authored elsewhere (a spreadsheet, the standalone HTML the feature replaces)
 // becomes the live one. Partial application would leave a tree half-rewritten
 // with dangling parents, so the whole document commits or none of it does.
+// The board it displaces is frozen into a version snapshot first, so a bad
+// import is undoable from the product rather than from a database backup.
 func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 	workspaceID := h.resolveWorkspaceID(r)
 	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
@@ -1611,6 +1641,23 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp, impErr := h.runCockpitImport(r, cc, req, "import")
+	if impErr != nil {
+		writeError(w, impErr.status, impErr.msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// runCockpitImport replaces the board with `req` atomically. When `trigger` is
+// non-empty it names the operation for the automatic snapshot taken of the
+// outgoing board ("import", "restore") — the caller has already decided this
+// run is allowed to destroy the board. Empty trigger skips the snapshot: it is
+// used by paths that have already frozen the board themselves.
+func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req CockpitImportRequest, trigger string) (CockpitImportResponse, *cockpitImportError) {
+	ctx := r.Context()
+	board := cc.cockpit
+
 	// Resolve every issue reference BEFORE opening the transaction: issue
 	// lookup is a read that does not belong inside a write lock, and an
 	// unresolvable reference should not roll back a whole import.
@@ -1626,7 +1673,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 			if _, done := issueByRef[ref]; done {
 				continue
 			}
-			issue, found := h.resolveCockpitIssue(r.Context(), ref, workspaceID)
+			issue, found := h.resolveCockpitIssue(ctx, ref, uuidToString(cc.workspaceID))
 			if !found {
 				if !seenUnresolved[ref] {
 					seenUnresolved[ref] = true
@@ -1638,32 +1685,37 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tx, err := h.TxStarter.Begin(r.Context())
+	tx, err := h.TxStarter.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to start cockpit import transaction")
-		return
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to start cockpit import transaction"}
 	}
-	defer tx.Rollback(r.Context())
+	defer tx.Rollback(ctx)
 	qtx := h.Queries.WithTx(tx)
-	ctx := r.Context()
+
+	if trigger != "" {
+		if err := h.snapshotCockpitBoard(ctx, qtx, r, cc, trigger, ""); err != nil {
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, err.msg}
+		}
+	}
 
 	goalDate, err := importDate(req.GoalDate)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid goal_date format, expected YYYY-MM-DD")
-		return
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid goal_date format, expected YYYY-MM-DD"}
 	}
 	if _, err := qtx.UpdateCockpit(ctx, db.UpdateCockpitParams{
-		ID:            board.ID,
-		WorkspaceID:   wsUUID,
-		Title:         pgtype.Text{String: req.Title, Valid: true},
-		GoalTitle:     pgtype.Text{String: req.GoalTitle, Valid: true},
-		GoalDate:      goalDate,
-		ClearGoalDate: !goalDate.Valid,
-		Basis:         pgtype.Text{String: req.Basis, Valid: true},
+		ID:             board.ID,
+		WorkspaceID:    cc.workspaceID,
+		Title:          pgtype.Text{String: req.Title, Valid: true},
+		GoalTitle:      pgtype.Text{String: req.GoalTitle, Valid: true},
+		GoalDate:       goalDate,
+		ClearGoalDate:  !goalDate.Valid,
+		SummaryOverall: strPtrToText(req.SummaryOverall),
+		SummaryNext:    strPtrToText(req.SummaryNext),
+		SummarySupport: strPtrToText(req.SummarySupport),
+		Basis:          pgtype.Text{String: req.Basis, Valid: true},
 	}); err != nil {
 		slog.Warn("UpdateCockpit failed during import", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-		return
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 	}
 
 	// Replace order matters: children of the old tree carry payment and issue
@@ -1681,8 +1733,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 	} {
 		if err := del(); err != nil {
 			slog.Warn("cockpit import clear failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
 	}
 
@@ -1694,31 +1745,26 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 	for _, n := range req.Nodes {
 		code := strings.TrimSpace(n.Code)
 		if code == "" {
-			writeError(w, http.StatusBadRequest, "every node needs a code")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "every node needs a code"}
 		}
 		if _, dup := idByCode[code]; dup {
-			writeError(w, http.StatusBadRequest, "duplicate node code: "+code)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "duplicate node code: " + code}
 		}
 		startDate, err := importDate(n.StartDate)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid start_date on node "+code)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid start_date on node " + code}
 		}
 		endDate, err := importDate(n.EndDate)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid end_date on node "+code)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid end_date on node " + code}
 		}
 		progress := n.Progress
 		if progress < 0 || progress > 100 || math.IsNaN(progress) {
-			writeError(w, http.StatusBadRequest, "progress on node "+code+" must be between 0 and 100")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "progress on node " + code + " must be between 0 and 100"}
 		}
 
 		created, err := qtx.CreateCockpitNode(ctx, db.CreateCockpitNodeParams{
-			WorkspaceID:     wsUUID,
+			WorkspaceID:     cc.workspaceID,
 			CockpitID:       board.ID,
 			Code:            code,
 			Name:            n.Name,
@@ -1741,12 +1787,11 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 			Contract:        n.Contract,
 			Source:          n.Source,
 			UpdatedByType:   "member",
-			UpdatedByID:     member.UserID,
+			UpdatedByID:     cc.member.UserID,
 		})
 		if err != nil {
 			slog.Warn("cockpit import node failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
 		idByCode[code] = created.ID
 	}
@@ -1758,34 +1803,30 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		if parentCode := strings.TrimSpace(n.ParentCode); parentCode != "" {
 			parentID, found := idByCode[parentCode]
 			if !found {
-				writeError(w, http.StatusBadRequest, "node "+code+" names an unknown parent_code: "+parentCode)
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "node " + code + " names an unknown parent_code: " + parentCode}
 			}
 			if parentID == nodeID {
-				writeError(w, http.StatusBadRequest, "node "+code+" is its own parent")
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "node " + code + " is its own parent"}
 			}
 			if _, err := qtx.UpdateCockpitNode(ctx, db.UpdateCockpitNodeParams{
 				ID:            nodeID,
-				WorkspaceID:   wsUUID,
+				WorkspaceID:   cc.workspaceID,
 				ParentID:      parentID,
 				UpdatedByType: "member",
-				UpdatedByID:   member.UserID,
+				UpdatedByID:   cc.member.UserID,
 			}); err != nil {
 				slog.Warn("cockpit import parent failed", append(logger.RequestAttrs(r), "error", err)...)
-				writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 			}
 		}
 
 		for i, p := range n.Payments {
 			payDate, err := importDate(p.PayDate)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid payment pay_date on node "+code)
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid payment pay_date on node " + code}
 			}
 			if _, err := qtx.CreateCockpitPayment(ctx, db.CreateCockpitPaymentParams{
-				WorkspaceID: wsUUID,
+				WorkspaceID: cc.workspaceID,
 				NodeID:      nodeID,
 				Label:       p.Label,
 				PayDate:     payDate,
@@ -1793,8 +1834,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 				Position:    float64(i),
 			}); err != nil {
 				slog.Warn("cockpit import payment failed", append(logger.RequestAttrs(r), "error", err)...)
-				writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 			}
 			paymentCount++
 		}
@@ -1806,14 +1846,13 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if _, err := qtx.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{
-				WorkspaceID: wsUUID,
+				WorkspaceID: cc.workspaceID,
 				NodeID:      nodeID,
 				IssueID:     issueID,
 				Position:    float64(position),
 			}); err != nil {
 				slog.Warn("cockpit import issue link failed", append(logger.RequestAttrs(r), "error", err)...)
-				writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 			}
 			position++
 			linkCount++
@@ -1823,20 +1862,17 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 	for i, m := range req.Milestones {
 		planDate, err := importDate(m.PlanDate)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid milestone plan_date: "+m.Name)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid milestone plan_date: " + m.Name}
 		}
 		actualDate, err := importDate(m.ActualDate)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid milestone actual_date: "+m.Name)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid milestone actual_date: " + m.Name}
 		}
 		var nodeID pgtype.UUID
 		if code := strings.TrimSpace(m.NodeCode); code != "" {
 			id, found := idByCode[code]
 			if !found {
-				writeError(w, http.StatusBadRequest, "milestone names an unknown node_code: "+code)
-				return
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "milestone names an unknown node_code: " + code}
 			}
 			nodeID = id
 		}
@@ -1845,7 +1881,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 			position = float64(i)
 		}
 		if _, err := qtx.CreateCockpitMilestone(ctx, db.CreateCockpitMilestoneParams{
-			WorkspaceID: wsUUID,
+			WorkspaceID: cc.workspaceID,
 			CockpitID:   board.ID,
 			Name:        m.Name,
 			PlanDate:    planDate,
@@ -1857,19 +1893,17 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 			Position:    position,
 		}); err != nil {
 			slog.Warn("cockpit import milestone failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
 	}
 
 	for _, m := range req.Meetings {
 		meetDate, err := importDate(m.MeetDate)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid meeting meet_date: "+m.Title)
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid meeting meet_date: " + m.Title}
 		}
 		if _, err := qtx.CreateCockpitMeeting(ctx, db.CreateCockpitMeetingParams{
-			WorkspaceID: wsUUID,
+			WorkspaceID: cc.workspaceID,
 			CockpitID:   board.ID,
 			MeetDate:    meetDate,
 			TimeRange:   m.TimeRange,
@@ -1880,15 +1914,13 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 			Note:        m.Note,
 		}); err != nil {
 			slog.Warn("cockpit import meeting failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-			return
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		slog.Warn("cockpit import commit failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to import cockpit")
-		return
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 	}
 
 	resp := CockpitImportResponse{
@@ -1903,8 +1935,422 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		resp.UnresolvedIssues = []string{}
 	}
 
-	// One board-wide event: an import moved everything, so clients re-read
+	// One board-wide event: the import moved everything, so clients re-read
 	// rather than trying to patch a few hundred rows out of a payload.
-	h.publishCockpit(cc, "board", "imported", map[string]any{"nodes": resp.Nodes})
+	action := "imported"
+	if trigger == "restore" {
+		action = "restored"
+	}
+	h.publishCockpit(cc, "board", action, map[string]any{"nodes": resp.Nodes})
+	h.publishCockpit(cc, "snapshots", action, nil)
+	return resp, nil
+}
+
+// ---------------------------------------------------------------------------
+// Version snapshots
+// ---------------------------------------------------------------------------
+
+type CockpitSnapshotResponse struct {
+	ID             string `json:"id"`
+	TriggerKind    string `json:"trigger_kind"`
+	Label          string `json:"label"`
+	NodeCount      int    `json:"node_count"`
+	CreatedByType  string `json:"created_by_type"`
+	CreatedByLabel string `json:"created_by_label"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// cockpitActor resolves who is acting — a member, or the agent whose task
+// token the CLI presented — with the display name frozen at write time so the
+// version list stays readable after the actor leaves.
+func (h *Handler) cockpitActor(r *http.Request, cc cockpitContext) (actorType, label string) {
+	actorType, actorID := h.resolveActor(r, uuidToString(cc.member.UserID), uuidToString(cc.workspaceID))
+	id, err := util.ParseUUID(actorID)
+	if err != nil {
+		return actorType, ""
+	}
+	if actorType == "agent" {
+		if agent, err := h.Queries.GetAgent(r.Context(), id); err == nil {
+			return actorType, agent.Name
+		}
+		return actorType, ""
+	}
+	if user, err := h.Queries.GetUser(r.Context(), id); err == nil {
+		return actorType, user.Name
+	}
+	return actorType, ""
+}
+
+// snapshotCockpitBoard freezes the board as it stands on `q` into a version
+// snapshot, then prunes. Called from inside the caller transaction: a snapshot
+// of a board the accompanying write then rejected is noise, and committing
+// them together means the undo record can never lag the change it undoes.
+func (h *Handler) snapshotCockpitBoard(ctx context.Context, qtx *db.Queries, r *http.Request, cc cockpitContext, trigger, label string) *cockpitImportError {
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc)
+	if err != nil {
+		slog.Warn("cockpit snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
+		return &cockpitImportError{http.StatusInternalServerError, "failed to freeze cockpit snapshot"}
+	}
+	if !hasContent {
+		return nil
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return &cockpitImportError{http.StatusInternalServerError, "failed to freeze cockpit snapshot"}
+	}
+	actorType, actorLabel := h.cockpitActor(r, cc)
+	if _, err := qtx.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
+		WorkspaceID:    cc.workspaceID,
+		CockpitID:      cc.cockpit.ID,
+		TriggerKind:    trigger,
+		Label:          label,
+		Payload:        payload,
+		NodeCount:      int32(len(doc.Nodes)),
+		CreatedByType:  actorType,
+		CreatedByLabel: actorLabel,
+	}); err != nil {
+		slog.Warn("CreateCockpitSnapshot failed", append(logger.RequestAttrs(r), "error", err)...)
+		return &cockpitImportError{http.StatusInternalServerError, "failed to freeze cockpit snapshot"}
+	}
+	if _, err := qtx.PruneCockpitSnapshots(ctx, db.PruneCockpitSnapshotsParams{
+		CockpitID: cc.cockpit.ID,
+		Keep:      cockpitSnapshotKeep,
+	}); err != nil {
+		slog.Warn("PruneCockpitSnapshots failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
+	return nil
+}
+
+// buildCockpitSnapshotDocument reads the live board through `q` (the caller's
+// transaction, so the freeze is consistent with the write beside it) and
+// renders it as an import document. Issue links serialize as issue UUIDs:
+// identity-stable across project-prefix changes, and the import resolver
+// accepts them exactly as it accepts "BIO-314". The second return is false
+// when the board carries no content at all — freezing an empty board protects
+// nothing and buries the real history.
+func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockpitContext) (CockpitImportRequest, bool, error) {
+	board := cc.cockpit
+	nodes, err := qtx.ListCockpitNodes(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+	payments, err := qtx.ListCockpitPayments(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+	links, err := qtx.ListCockpitNodeIssues(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+	milestones, err := qtx.ListCockpitMilestones(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+	meetings, err := qtx.ListCockpitMeetings(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+
+	empty := len(nodes) == 0 && len(milestones) == 0 && len(meetings) == 0 &&
+		board.Title == "" && board.GoalTitle == "" && !board.GoalDate.Valid &&
+		board.Basis == "" && board.SummaryOverall == "" &&
+		board.SummaryNext == "" && board.SummarySupport == ""
+	if empty {
+		return CockpitImportRequest{}, false, nil
+	}
+
+	codeByID := make(map[pgtype.UUID]string, len(nodes))
+	for _, n := range nodes {
+		codeByID[n.ID] = n.Code
+	}
+	paymentsByNode := make(map[pgtype.UUID][]CockpitImportPayment)
+	for _, p := range payments {
+		date := ""
+		if d := dateToPtr(p.PayDate); d != nil {
+			date = *d
+		}
+		paymentsByNode[p.NodeID] = append(paymentsByNode[p.NodeID], CockpitImportPayment{
+			Label:   p.Label,
+			PayDate: date,
+			Amount:  numericToFloat(p.Amount),
+		})
+	}
+	issuesByNode := make(map[pgtype.UUID][]string)
+	for _, l := range links {
+		issuesByNode[l.NodeID] = append(issuesByNode[l.NodeID], uuidToString(l.IssueID))
+	}
+
+	dateStr := func(d pgtype.Date) string {
+		if s := dateToPtr(d); s != nil {
+			return *s
+		}
+		return ""
+	}
+
+	doc := CockpitImportRequest{
+		Title:          board.Title,
+		GoalTitle:      board.GoalTitle,
+		GoalDate:       dateStr(board.GoalDate),
+		Basis:          board.Basis,
+		SummaryOverall: &board.SummaryOverall,
+		SummaryNext:    &board.SummaryNext,
+		SummarySupport: &board.SummarySupport,
+		Nodes:          make([]CockpitImportNode, 0, len(nodes)),
+		Milestones:     make([]CockpitImportMilestone, 0, len(milestones)),
+		Meetings:       make([]CockpitImportMeeting, 0, len(meetings)),
+	}
+	for _, n := range nodes {
+		parentCode := ""
+		if n.ParentID.Valid {
+			parentCode = codeByID[n.ParentID]
+		}
+		doc.Nodes = append(doc.Nodes, CockpitImportNode{
+			Code:            n.Code,
+			ParentCode:      parentCode,
+			Name:            n.Name,
+			Position:        n.Position,
+			Color:           n.Color,
+			Owner:           n.Owner,
+			Collaborators:   n.Collaborators,
+			StartDate:       dateStr(n.StartDate),
+			EndDate:         dateStr(n.EndDate),
+			Status:          n.Status,
+			Progress:        n.Progress,
+			Deliverable:     n.Deliverable,
+			Dependencies:    n.Dependencies,
+			Note:            n.Note,
+			CurrentProgress: n.CurrentProgress,
+			Vendor:          n.Vendor,
+			BudgetCategory:  n.BudgetCategory,
+			BudgetAmount:    numericToPtr(n.BudgetAmount),
+			ExecStatus:      n.ExecStatus,
+			Contract:        n.Contract,
+			Source:          n.Source,
+			Payments:        paymentsByNode[n.ID],
+			IssueIDs:        issuesByNode[n.ID],
+		})
+	}
+	for _, m := range milestones {
+		nodeCode := ""
+		if m.NodeID.Valid {
+			nodeCode = codeByID[m.NodeID]
+		}
+		doc.Milestones = append(doc.Milestones, CockpitImportMilestone{
+			Name:       m.Name,
+			PlanDate:   dateStr(m.PlanDate),
+			ActualDate: dateStr(m.ActualDate),
+			Status:     m.Status,
+			NodeCode:   nodeCode,
+			Condition:  m.Condition,
+			Guard:      m.Guard,
+			Position:   m.Position,
+		})
+	}
+	for _, m := range meetings {
+		doc.Meetings = append(doc.Meetings, CockpitImportMeeting{
+			MeetDate:  dateStr(m.MeetDate),
+			TimeRange: m.TimeRange,
+			Title:     m.Title,
+			Attendees: m.Attendees,
+			MeetNo:    m.MeetNo,
+			Link:      m.Link,
+			Note:      m.Note,
+		})
+	}
+	return doc, true, nil
+}
+
+// ListCockpitSnapshots returns the version history, newest first. Any member
+// may read it: a board people cannot see the history of is a board people are
+// afraid to edit.
+func (h *Handler) ListCockpitSnapshots(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+	rows, err := h.Queries.ListCockpitSnapshots(r.Context(), cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitSnapshots failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit snapshots")
+		return
+	}
+	resp := make([]CockpitSnapshotResponse, 0, len(rows))
+	for _, s := range rows {
+		resp = append(resp, CockpitSnapshotResponse{
+			ID:             uuidToString(s.ID),
+			TriggerKind:    s.TriggerKind,
+			Label:          s.Label,
+			NodeCount:      int(s.NodeCount),
+			CreatedByType:  s.CreatedByType,
+			CreatedByLabel: s.CreatedByLabel,
+			CreatedAt:      timestampToString(s.CreatedAt),
+		})
+	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type CreateCockpitSnapshotRequest struct {
+	Label string `json:"label"`
+}
+
+// CreateCockpitSnapshot saves the board as it stands, on demand.
+func (h *Handler) CreateCockpitSnapshot(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+	var req CreateCockpitSnapshotRequest
+	// An empty body is a complete request here: the label is optional, and a
+	// bare `POST /snapshots` (the CLI, a quick curl) means "save it now".
+	if r.ContentLength != 0 {
+		if _, ok := decodeCockpitBody(w, r, &req); !ok {
+			return
+		}
+	}
+
+	ctx := r.Context()
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
+		return
+	}
+	defer tx.Rollback(ctx)
+	qtx := h.Queries.WithTx(tx)
+
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc)
+	if err != nil {
+		slog.Warn("cockpit snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
+		return
+	}
+	if !hasContent {
+		writeError(w, http.StatusBadRequest, "the board is empty; there is nothing to save yet")
+		return
+	}
+	payload, marshalErr := json.Marshal(doc)
+	if marshalErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
+		return
+	}
+	actorType, actorLabel := h.cockpitActor(r, cc)
+	snap, err := qtx.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
+		WorkspaceID:    cc.workspaceID,
+		CockpitID:      cc.cockpit.ID,
+		TriggerKind:    "manual",
+		Label:          strings.TrimSpace(req.Label),
+		Payload:        payload,
+		NodeCount:      int32(len(doc.Nodes)),
+		CreatedByType:  actorType,
+		CreatedByLabel: actorLabel,
+	})
+	if err != nil {
+		slog.Warn("CreateCockpitSnapshot failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
+		return
+	}
+	if _, err := qtx.PruneCockpitSnapshots(ctx, db.PruneCockpitSnapshotsParams{
+		CockpitID: cc.cockpit.ID,
+		Keep:      cockpitSnapshotKeep,
+	}); err != nil {
+		slog.Warn("PruneCockpitSnapshots failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
+		return
+	}
+
+	h.publishCockpit(cc, "snapshots", "created", nil)
+	writeJSON(w, http.StatusCreated, CockpitSnapshotResponse{
+		ID:             uuidToString(snap.ID),
+		TriggerKind:    snap.TriggerKind,
+		Label:          snap.Label,
+		NodeCount:      int(snap.NodeCount),
+		CreatedByType:  snap.CreatedByType,
+		CreatedByLabel: snap.CreatedByLabel,
+		CreatedAt:      timestampToString(snap.CreatedAt),
+	})
+}
+
+// RestoreCockpitSnapshot puts a frozen board back. Owner/admin, like import:
+// restore IS an import, one that happens to have been authored by this board's
+// own past. The board being replaced is itself frozen first, so a restore can
+// always be undone by restoring the snapshot it displaced.
+func (h *Handler) RestoreCockpitSnapshot(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	if !ok {
+		return
+	}
+	snapUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "snapshotId"), "snapshot id")
+	if !ok {
+		return
+	}
+	board, err := h.ensureCockpit(r.Context(), wsUUID)
+	if err != nil {
+		slog.Warn("ensureCockpit failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
+	snap, err := h.Queries.GetCockpitSnapshot(r.Context(), db.GetCockpitSnapshotParams{
+		ID:          snapUUID,
+		WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "snapshot not found")
+		return
+	}
+
+	var req CockpitImportRequest
+	if err := json.Unmarshal(snap.Payload, &req); err != nil {
+		// A snapshot we wrote ourselves should always parse; failing here
+		// means the row is corrupt, which no client can fix by retrying.
+		slog.Error("cockpit snapshot payload unreadable", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "snapshot payload is unreadable")
+		return
+	}
+
+	cc := cockpitContext{workspaceID: wsUUID, member: member, cockpit: board}
+	resp, impErr := h.runCockpitImport(r, cc, req, "restore")
+	if impErr != nil {
+		writeError(w, impErr.status, impErr.msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// DeleteCockpitSnapshot removes one version from the history. Owner/admin:
+// history is the board's safety net, and thinning it is not a routine edit.
+func (h *Handler) DeleteCockpitSnapshot(w http.ResponseWriter, r *http.Request) {
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
+	if !ok {
+		return
+	}
+	member, ok := h.requireWorkspaceRole(w, r, workspaceID, "workspace not found", "owner", "admin")
+	if !ok {
+		return
+	}
+	snapUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "snapshotId"), "snapshot id")
+	if !ok {
+		return
+	}
+	board, err := h.ensureCockpit(r.Context(), wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
+	if err := h.Queries.DeleteCockpitSnapshot(r.Context(), db.DeleteCockpitSnapshotParams{
+		ID:          snapUUID,
+		WorkspaceID: wsUUID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete snapshot")
+		return
+	}
+	cc := cockpitContext{workspaceID: wsUUID, member: member, cockpit: board}
+	h.publishCockpit(cc, "snapshots", "deleted", nil)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

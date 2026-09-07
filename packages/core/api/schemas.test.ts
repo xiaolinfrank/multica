@@ -18,6 +18,9 @@ import {
   AutopilotRunSchema,
   FALLBACK_AUTOPILOT_RUN,
   CommentTriggerPreviewSchema,
+  CockpitSnapshotListSchema,
+  CockpitImportResultSchema,
+  EMPTY_COCKPIT_IMPORT_RESULT,
   DashboardAgentRunTimeListSchema,
   DashboardRunTimeDailyListSchema,
   DashboardFailureByAgentListSchema,
@@ -2154,5 +2157,49 @@ describe("issue status catalog schemas", () => {
       { endpoint: "POST /api/issue-statuses" },
     );
     expect(parsed).toEqual(EMPTY_ISSUE_STATUS_ENTRY);
+  });
+});
+
+describe("Cockpit snapshot schemas", () => {
+  it("parses a well-formed version list and keeps unknown future fields", () => {
+    const parsed = CockpitSnapshotListSchema.parse([
+      {
+        id: "s1",
+        trigger_kind: "import",
+        label: "",
+        node_count: 217,
+        created_by_type: "agent",
+        created_by_label: "通用智能体（主）",
+        created_at: "2026-09-07T05:00:00Z",
+        future_field: "keep me",
+      },
+    ]);
+    expect(parsed[0]?.created_by_label).toBe("通用智能体（主）");
+    expect((parsed[0] as unknown as { future_field?: string }).future_field).toBe("keep me");
+  });
+
+  it("rejects a malformed entry, and parseWithFallback serves the empty history", () => {
+    // Wrong-typed fields are drift, not absence: the schema rejects them and
+    // the client's parseWithFallback answers with the fallback — a desktop
+    // build talking to a newer backend renders "no versions" rather than NaNs.
+    expect(CockpitSnapshotListSchema.safeParse([{ id: "s2", node_count: "not-a-number" }]).success).toBe(false);
+    expect(
+      parseWithFallback("not-a-list", CockpitSnapshotListSchema, [], {
+        endpoint: "GET /api/cockpit/snapshots",
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps the restore result honest when the backend drifts", () => {
+    // null is not the empty list; the schema says so and the fallback answers.
+    expect(CockpitImportResultSchema.safeParse({ nodes: 217, unresolved_issues: null }).success).toBe(false);
+    expect(
+      parseWithFallback(
+        { nodes: 217, unresolved_issues: null },
+        CockpitImportResultSchema,
+        EMPTY_COCKPIT_IMPORT_RESULT,
+        { endpoint: "POST /api/cockpit/snapshots/:id/restore" },
+      ).unresolved_issues,
+    ).toEqual([]);
   });
 });

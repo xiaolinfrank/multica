@@ -36,6 +36,45 @@ import {
 // the user looking at a board missing work that still exists.
 
 /**
+ * Version snapshots. None of these are optimistic: a restore replaces the
+ * whole board (never guess at that), and a save or delete only moves history
+ * the server owns. All three await the server and then invalidate what the
+ * `cockpit:changed` frame would have carried anyway — the explicit invalidate
+ * matters for the client that acted, which is allowed to be offline-realtime
+ * edge cases behind a flapping socket.
+ */
+export function useCreateCockpitSnapshot(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (label: string) => api.createCockpitSnapshot(label),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
+    },
+  });
+}
+
+export function useRestoreCockpitSnapshot(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshotId: string) => api.restoreCockpitSnapshot(snapshotId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
+    },
+  });
+}
+
+export function useDeleteCockpitSnapshot(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshotId: string) => api.deleteCockpitSnapshot(snapshotId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
+    },
+  });
+}
+
+/**
  * The shared optimistic write. `optimistic` guesses the new board, `settle`
  * folds the server's own row in — so a value the server normalised (a rounded
  * amount, a trimmed code) still wins over the guess.

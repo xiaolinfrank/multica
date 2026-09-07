@@ -187,5 +187,24 @@
     "actual_date": "실제 지출 시기",
     "planned_amount": "지출 예정 금액",
     "actual_amount": "실제 지출 금액"
+  },
+  "versions": {
+    "button": "버전",
+    "title": "버전 기록",
+    "save_current": "현재 저장",
+    "saved": "현재 보드를 저장했습니다",
+    "empty": "아직 버전이 없습니다. 가져오기·복원 전에 자동 저장되며 언제든 수동 저장할 수 있습니다.",
+    "hint": "보드 전체 가져오기·복원 전에 자동 저장되며 최근 50개를 유지합니다.",
+    "restore": "복원",
+    "confirm_restore": "복원 확인",
+    "cancel": "취소",
+    "restore_done": "복원됨({{nodes}}개 노드)",
+    "restore_skipped": "{{n}}개의 연결 작업이 더 이상 없어 건너뛰었습니다",
+    "delete": "버전 {{label}} 삭제",
+    "trigger_import": "가져오기 전",
+    "trigger_restore": "복원 전",
+    "trigger_manual": "수동",
+    "row_meta": "{{nodes}}개 노드 · {{by}}",
+    "by_unknown": "알 수 없음"
   }
 }

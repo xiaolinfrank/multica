@@ -98,6 +98,8 @@ import type {
   WorkspaceEnvListResponse,
   WorkspaceSharedEnvResponse,
   WorkspaceMcpServer,
+  CockpitSnapshot,
+  CockpitImportResult,
 } from "../types";
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 import type { CreateFeedbackResponse } from "../feedback/types";
@@ -1650,6 +1652,18 @@ export const CockpitBoardSchema = z.object({
   meetings: z.array(CockpitMeetingSchema).default([]),
 }).loose();
 
+export const CockpitSnapshotSchema = z.object({
+  id: z.string(),
+  trigger_kind: z.string().default(""),
+  label: z.string().default(""),
+  node_count: z.number().default(0),
+  created_by_type: z.string().default(""),
+  created_by_label: z.string().default(""),
+  created_at: z.string().default(""),
+}).loose();
+
+export const CockpitSnapshotListSchema = z.array(CockpitSnapshotSchema).default([]);
+
 export const CockpitIssueLinksResponseSchema = z.object({
   node_id: z.string().default(""),
   links: z.array(CockpitIssueLinkSchema).default([]),
@@ -1663,6 +1677,25 @@ export const CockpitImportResultSchema = z.object({
   meetings: z.number().default(0),
   unresolved_issues: z.array(z.string()).default([]),
 }).loose();
+
+export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
+  id: "",
+  trigger_kind: "",
+  label: "",
+  node_count: 0,
+  created_by_type: "",
+  created_by_label: "",
+  created_at: "",
+};
+
+export const EMPTY_COCKPIT_IMPORT_RESULT: CockpitImportResult = {
+  nodes: 0,
+  payments: 0,
+  issue_links: 0,
+  milestones: 0,
+  meetings: 0,
+  unresolved_issues: [],
+};
 
 // The board a client falls back to when the response is unreadable: an empty
 // board renders as "nothing planned yet", which is honest and still editable.

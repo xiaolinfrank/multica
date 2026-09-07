@@ -120,8 +120,8 @@ export interface CockpitBoard {
 
 /**
  * Which collection a `cockpit:changed` event moved. `board` means the whole
- * thing was replaced (an import) and the client should re-read rather than
- * patch.
+ * thing was replaced (an import or restore) and the client should re-read
+ * rather than patch; `snapshots` means only the version history moved.
  */
 export type CockpitEventScope =
   | "cockpit"
@@ -130,7 +130,8 @@ export type CockpitEventScope =
   | "issue_links"
   | "milestone"
   | "meeting"
-  | "board";
+  | "board"
+  | "snapshots";
 
 export interface CockpitChangedPayload {
   scope: CockpitEventScope;
@@ -193,3 +194,32 @@ export type CockpitMilestonePatch = Partial<
 export type CockpitMeetingPatch = Partial<
   Pick<CockpitMeeting, "meet_date" | "time_range" | "title" | "attendees" | "meet_no" | "link" | "note">
 >;
+
+/**
+ * One frozen board version. Payload stays server-side: a version list that
+ * dragged the whole board per row would be the heaviest read on the page.
+ */
+export interface CockpitSnapshot {
+  id: string;
+  /** "import" | "restore" | "manual" — why the version was frozen. */
+  trigger_kind: string;
+  /** Free-text name, manual versions only. */
+  label: string;
+  node_count: number;
+  /** "member" or "agent". */
+  created_by_type: string;
+  /** Display name resolved at write time. */
+  created_by_label: string;
+  created_at: string;
+}
+
+/** What a restore brought back — same shape an import reports. */
+export interface CockpitImportResult {
+  nodes: number;
+  payments: number;
+  issue_links: number;
+  milestones: number;
+  meetings: number;
+  /** Issue references the frozen board names that no issue answers to now. */
+  unresolved_issues: string[];
+}

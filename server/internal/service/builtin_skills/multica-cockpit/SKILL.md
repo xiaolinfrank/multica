@@ -120,6 +120,22 @@ multica cockpit meeting add --title "工作组周例会" --date 2026-09-08 \
 A milestone with an `actual_date` reads as done on the board regardless of its
 status label — set the date when it actually lands.
 
+## Versions
+
+Every import and every restore freezes the board it displaces into a version
+snapshot first, so nothing here is irreversible. You can save and restore
+versions yourself:
+
+```bash
+multica cockpit version list                 # newest first, with ids
+multica cockpit version save --label "评审前"
+multica cockpit version restore <snapshot-id>   # owner/admin; saves the current board first
+```
+
+A restore reports issue references that no longer resolve (the issue was
+deleted after the version was saved); those links are skipped, everything else
+comes back exactly as it was frozen.
+
 ## Board-level fields
 
 ```bash

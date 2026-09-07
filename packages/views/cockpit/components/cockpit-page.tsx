@@ -72,12 +72,15 @@ import {
   Plus,
   Search,
 } from "lucide-react";
+import { useAuthStore } from "@multica/core/auth";
+import { memberListOptions } from "@multica/core/workspace/queries";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
+import { CockpitVersions } from "./cockpit-versions";
 
 type CockpitTab = "overview" | "gantt" | "tasks" | "finance";
 
@@ -133,6 +136,15 @@ export function CockpitPage() {
   const [today] = useState(todayString);
 
   const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
+
+  // Restore replaces the whole board, which the server gates to owner/admin.
+  // The role check here only decides whether the affordance is offered.
+  const currentUserId = useAuthStore((s) => s.user?.id ?? "");
+  const { data: members } = useQuery(memberListOptions(wsId));
+  const canRestore = useMemo(() => {
+    const mine = (members ?? []).find((m) => m.user_id === currentUserId);
+    return mine?.role === "owner" || mine?.role === "admin";
+  }, [members, currentUserId]);
 
   const updateBoard = useUpdateCockpit(wsId);
   const createNode = useCreateCockpitNode(wsId);
@@ -458,6 +470,8 @@ export function CockpitPage() {
             </Button>
           </>
         )}
+
+        <CockpitVersions wsId={wsId} canRestore={canRestore} />
 
         <DropdownMenu>
           <DropdownMenuTrigger

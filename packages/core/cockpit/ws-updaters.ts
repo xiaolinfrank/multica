@@ -55,9 +55,18 @@ export function onCockpitChanged(
 ): void {
   const { scope, action, entity } = payload;
 
-  // An import rewrote the board; nothing here can reconstruct it from a count.
+  // An import or restore rewrote the board; nothing here can reconstruct it
+  // from a count. Both freeze a version on the way in, so history moves too.
   if (scope === "board") {
     qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    qc.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
+    return;
+  }
+
+  // Versions were saved or deleted without the board changing (a manual save,
+  // a history cleanup). The list is metadata-only; re-read it whole.
+  if (scope === "snapshots") {
+    qc.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
     return;
   }
 

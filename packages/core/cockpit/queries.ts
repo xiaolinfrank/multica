@@ -15,12 +15,26 @@ import type {
 export const cockpitKeys = {
   all: (wsId: string) => ["cockpit", wsId] as const,
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
+  snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
 };
 
 export function cockpitBoardOptions(wsId: string) {
   return queryOptions({
     queryKey: cockpitKeys.board(wsId),
     queryFn: () => api.getCockpit(),
+    enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * Version history, newest first. The query exists independently of the board:
+ * snapshots change on imports and restores that did not touch what this client
+ * is looking at, and the history panel should follow them on its own.
+ */
+export function cockpitSnapshotsOptions(wsId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.snapshots(wsId),
+    queryFn: () => api.listCockpitSnapshots(),
     enabled: Boolean(wsId),
   });
 }

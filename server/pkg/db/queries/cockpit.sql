@@ -334,7 +334,9 @@ WHERE node_id IN (SELECT id FROM cockpit_node WHERE cockpit_id = sqlc.arg('cockp
 -- goes in a single round trip; there are no foreign keys to cascade it
 -- (repository rule), and every cockpit table carries workspace_id for exactly
 -- this sweep.
-WITH del_links AS (
+WITH del_snapshots AS (
+    DELETE FROM cockpit_snapshot WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_payments AS (
     DELETE FROM cockpit_payment WHERE workspace_id = sqlc.arg('workspace_id')::uuid
@@ -346,3 +348,52 @@ WITH del_links AS (
     DELETE FROM cockpit_node WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 )
 DELETE FROM cockpit WHERE workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: CreateCockpitSnapshot :one
+INSERT INTO cockpit_snapshot (
+    workspace_id, cockpit_id, trigger_kind, label, payload, node_count,
+    created_by_type, created_by_label
+) VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('cockpit_id')::uuid,
+    sqlc.arg('trigger_kind')::text,
+    sqlc.arg('label')::text,
+    sqlc.arg('payload')::jsonb,
+    sqlc.arg('node_count')::int,
+    sqlc.arg('created_by_type')::text,
+    sqlc.arg('created_by_label')::text
+)
+RETURNING *;
+
+-- name: ListCockpitSnapshots :many
+-- Metadata only: the payload is the whole board as JSON, and a version list
+-- that dragged a few hundred kilobytes per row would be the heaviest read on
+-- the board.
+SELECT
+    id, workspace_id, cockpit_id, trigger_kind, label, node_count,
+    created_by_type, created_by_label, created_at
+FROM cockpit_snapshot
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+ORDER BY created_at DESC, id DESC
+LIMIT 200;
+
+-- name: GetCockpitSnapshot :one
+SELECT * FROM cockpit_snapshot
+WHERE id = sqlc.arg('id')::uuid AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitSnapshot :exec
+DELETE FROM cockpit_snapshot
+WHERE id = sqlc.arg('id')::uuid AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: PruneCockpitSnapshots :execrows
+-- Keeps the newest `keep` rows. Snapshots are taken automatically on every
+-- import and restore, so a scripted loop must not be able to grow the table
+-- without bound.
+DELETE FROM cockpit_snapshot
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+  AND id NOT IN (
+    SELECT id FROM cockpit_snapshot
+    WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+    ORDER BY created_at DESC, id DESC
+    LIMIT sqlc.arg('keep')::int
+  );

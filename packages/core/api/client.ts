@@ -20,6 +20,8 @@ import type {
   CockpitIssueLink,
   CockpitMilestone,
   CockpitMeeting,
+  CockpitSnapshot,
+  CockpitImportResult,
   CockpitPatch,
   CockpitNodePatch,
   CockpitPaymentPatch,
@@ -284,7 +286,12 @@ import {
   CockpitMeetingSchema,
   CockpitBoardSchema,
   CockpitIssueLinksResponseSchema,
+  CockpitImportResultSchema,
+  CockpitSnapshotSchema,
+  CockpitSnapshotListSchema,
   EMPTY_COCKPIT_BOARD,
+  EMPTY_COCKPIT_IMPORT_RESULT,
+  EMPTY_COCKPIT_SNAPSHOT,
   CommentsListSchema,
   CommentTriggerPreviewSchema,
   IssueTriggerPreviewSchema,
@@ -1477,6 +1484,48 @@ export class ApiClient {
 
   async deleteCockpitMeeting(id: string): Promise<void> {
     await this.fetch<void>(`/api/cockpit/meetings/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  // ---------------------------------------------------------------------
+  // Cockpit version snapshots
+  //
+  // Metadata only on the list: the frozen payload lives server-side until a
+  // restore asks for it, so the history panel stays cheap.
+  // ---------------------------------------------------------------------
+
+  async listCockpitSnapshots(): Promise<CockpitSnapshot[]> {
+    const raw = await this.fetch<unknown>("/api/cockpit/snapshots");
+    return parseWithFallback(raw, CockpitSnapshotListSchema, [], {
+      endpoint: "GET /api/cockpit/snapshots",
+    });
+  }
+
+  async createCockpitSnapshot(label: string): Promise<CockpitSnapshot> {
+    const raw = await this.fetch<unknown>("/api/cockpit/snapshots", {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    });
+    return parseWithFallback(raw, CockpitSnapshotSchema, EMPTY_COCKPIT_SNAPSHOT, {
+      endpoint: "POST /api/cockpit/snapshots",
+    });
+  }
+
+  /**
+   * Restore is an owner/admin operation on the server; the response is the
+   * import result, so the caller can surface what came back and what the
+   * document could no longer resolve.
+   */
+  async restoreCockpitSnapshot(id: string): Promise<CockpitImportResult> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/snapshots/${encodeURIComponent(id)}/restore`, {
+      method: "POST",
+    });
+    return parseWithFallback(raw, CockpitImportResultSchema, EMPTY_COCKPIT_IMPORT_RESULT, {
+      endpoint: "POST /api/cockpit/snapshots/:id/restore",
+    });
+  }
+
+  async deleteCockpitSnapshot(id: string): Promise<void> {
+    await this.fetch<void>(`/api/cockpit/snapshots/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async getChildIssueProgress(): Promise<{

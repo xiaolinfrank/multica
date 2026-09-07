@@ -187,5 +187,24 @@
     "actual_date": "Actual spend date",
     "planned_amount": "Planned amount",
     "actual_amount": "Actual amount"
+  },
+  "versions": {
+    "button": "Versions",
+    "title": "Version history",
+    "save_current": "Save current",
+    "saved": "Current board saved",
+    "empty": "No versions yet. Imports and restores save one automatically; you can save one any time.",
+    "hint": "A version is frozen before every whole-board import or restore; the latest 50 are kept.",
+    "restore": "Restore",
+    "confirm_restore": "Confirm restore",
+    "cancel": "Cancel",
+    "restore_done": "Restored ({{nodes}} nodes)",
+    "restore_skipped": "{{n}} linked issues no longer exist and were skipped",
+    "delete": "Delete version {{label}}",
+    "trigger_import": "pre-import",
+    "trigger_restore": "pre-restore",
+    "trigger_manual": "manual",
+    "row_meta": "{{nodes}} nodes · {{by}}",
+    "by_unknown": "unknown"
   }
 }

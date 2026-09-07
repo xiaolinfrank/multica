@@ -188,9 +188,43 @@ var cockpitImportCmd = &cobra.Command{
 	RunE:  runCockpitImport,
 }
 
+var cockpitVersionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Manage board versions (saved snapshots and rollback)",
+}
+
+var cockpitVersionListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List saved board versions, newest first",
+	RunE:  runCockpitVersionList,
+}
+
+var cockpitVersionSaveCmd = &cobra.Command{
+	Use:   "save",
+	Short: "Save the current board as a named version",
+	RunE:  runCockpitVersionSave,
+}
+
+var cockpitVersionRestoreCmd = &cobra.Command{
+	Use:   "restore <snapshot-id>",
+	Short: "Put a saved version back (owner/admin; the current board is saved first)",
+	Args:  exactArgs(1),
+	RunE:  runCockpitVersionRestore,
+}
+
+var cockpitVersionDeleteCmd = &cobra.Command{
+	Use:   "delete <snapshot-id>",
+	Short: "Remove one version from the history (owner/admin)",
+	Args:  exactArgs(1),
+	RunE:  runCockpitVersionDelete,
+}
+
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
-		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd)
+		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
+		cockpitVersionCmd)
+	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
+		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd)
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
 		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd)
 	cockpitPaymentCmd.AddCommand(cockpitPaymentAddCmd, cockpitPaymentUpdateCmd, cockpitPaymentRemoveCmd)
@@ -215,6 +249,9 @@ func init() {
 	cockpitNodeListCmd.Flags().String("status", "", "Only nodes with this status")
 	cockpitNodeListCmd.Flags().Bool("full-id", false, "Show full UUIDs in table output")
 	cockpitNodeGetCmd.Flags().String("output", "json", "Output format: table or json")
+
+	cockpitVersionListCmd.Flags().String("output", "table", "Output format: table or json")
+	cockpitVersionSaveCmd.Flags().String("label", "", "Free-text name for this version")
 
 	for _, c := range []*cobra.Command{cockpitNodeCreateCmd, cockpitNodeUpdateCmd} {
 		c.Flags().String("code", "", "Node code, e.g. L3-01-08")
@@ -918,4 +955,99 @@ func runCockpitImport(cmd *cobra.Command, args []string) error {
 			len(refs), strings.Join(refs, ", "))
 	}
 	return cli.PrintJSON(os.Stdout, result)
+}
+
+// runCockpitVersionList prints the version history. The full UUID is always
+// shown in the table: it is the address every other version verb takes, and a
+// truncated column is a copy-paste trap.
+func runCockpitVersionList(cmd *cobra.Command, _ []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	var snaps []map[string]any
+	if err := client.GetJSON(ctx, "/api/cockpit/snapshots", &snaps); err != nil {
+		return fmt.Errorf("list cockpit versions: %w", err)
+	}
+
+	if output, _ := cmd.Flags().GetString("output"); output == "json" {
+		return cli.PrintJSON(os.Stdout, snaps)
+	}
+	if len(snaps) == 0 {
+		fmt.Fprintln(os.Stdout, "no saved versions yet")
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "%-36s  %-20s  %-8s  %-5s  %-12s  %s\n",
+		"ID", "CREATED", "TRIGGER", "NODES", "BY", "LABEL")
+	for _, s := range snaps {
+		created := strVal(s, "created_at")
+		if len(created) > 19 {
+			created = created[:19]
+		}
+		fmt.Fprintf(os.Stdout, "%-36s  %-20s  %-8s  %-5s  %-12s  %s\n",
+			strVal(s, "id"), created, strVal(s, "trigger_kind"),
+			numVal(s, "node_count"), strVal(s, "created_by_label"), strVal(s, "label"))
+	}
+	return nil
+}
+
+func runCockpitVersionSave(cmd *cobra.Command, _ []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	label, _ := cmd.Flags().GetString("label")
+	var snap map[string]any
+	if err := client.PostJSON(ctx, "/api/cockpit/snapshots", map[string]any{"label": label}, &snap); err != nil {
+		return fmt.Errorf("save cockpit version: %w", err)
+	}
+	return cli.PrintJSON(os.Stdout, snap)
+}
+
+func runCockpitVersionRestore(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	var result map[string]any
+	path := "/api/cockpit/snapshots/" + url.PathEscape(args[0]) + "/restore"
+	if err := client.PostJSON(ctx, path, map[string]any{}, &result); err != nil {
+		return fmt.Errorf("restore cockpit version: %w", err)
+	}
+
+	// Same reporting rule as import: what no longer resolves goes to stderr.
+	if unresolved, _ := result["unresolved_issues"].([]any); len(unresolved) > 0 {
+		refs := make([]string, 0, len(unresolved))
+		for _, u := range unresolved {
+			if ref, ok := u.(string); ok {
+				refs = append(refs, ref)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "%d issue reference(s) no longer resolve and were skipped: %s\n",
+			len(refs), strings.Join(refs, ", "))
+	}
+	return cli.PrintJSON(os.Stdout, result)
+}
+
+func runCockpitVersionDelete(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := cli.APIContext(context.Background())
+	defer cancel()
+
+	if err := client.DeleteJSON(ctx, "/api/cockpit/snapshots/"+url.PathEscape(args[0])); err != nil {
+		return fmt.Errorf("delete cockpit version: %w", err)
+	}
+	return nil
 }

@@ -158,6 +158,28 @@ describe("onCockpitChanged", () => {
     onCockpitChanged(qc, WS, { scope: "board", action: "imported", entity: { nodes: 217 } });
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board(WS) });
+    // The import froze the outgoing board: history moved too.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
+  });
+
+  it("re-reads after a restore, which is an import of a frozen board", () => {
+    const { qc } = seedBoard();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+
+    onCockpitChanged(qc, WS, { scope: "board", action: "restored", entity: { nodes: 217 } });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board(WS) });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
+  });
+
+  it("refreshes only the version list when a snapshot was saved or deleted", () => {
+    const { qc } = seedBoard();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+
+    onCockpitChanged(qc, WS, { scope: "snapshots", action: "created", entity: null });
+
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
   });
 
   it("re-reads on a scope this build does not know rather than guessing", () => {

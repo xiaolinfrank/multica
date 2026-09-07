@@ -394,6 +394,61 @@ func (q *Queries) CreateCockpitPayment(ctx context.Context, arg CreateCockpitPay
 	return i, err
 }
 
+const createCockpitSnapshot = `-- name: CreateCockpitSnapshot :one
+INSERT INTO cockpit_snapshot (
+    workspace_id, cockpit_id, trigger_kind, label, payload, node_count,
+    created_by_type, created_by_label
+) VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::text,
+    $4::text,
+    $5::jsonb,
+    $6::int,
+    $7::text,
+    $8::text
+)
+RETURNING id, workspace_id, cockpit_id, trigger_kind, label, payload, node_count, created_by_type, created_by_label, created_at
+`
+
+type CreateCockpitSnapshotParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	CockpitID      pgtype.UUID `json:"cockpit_id"`
+	TriggerKind    string      `json:"trigger_kind"`
+	Label          string      `json:"label"`
+	Payload        []byte      `json:"payload"`
+	NodeCount      int32       `json:"node_count"`
+	CreatedByType  string      `json:"created_by_type"`
+	CreatedByLabel string      `json:"created_by_label"`
+}
+
+func (q *Queries) CreateCockpitSnapshot(ctx context.Context, arg CreateCockpitSnapshotParams) (CockpitSnapshot, error) {
+	row := q.db.QueryRow(ctx, createCockpitSnapshot,
+		arg.WorkspaceID,
+		arg.CockpitID,
+		arg.TriggerKind,
+		arg.Label,
+		arg.Payload,
+		arg.NodeCount,
+		arg.CreatedByType,
+		arg.CreatedByLabel,
+	)
+	var i CockpitSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.TriggerKind,
+		&i.Label,
+		&i.Payload,
+		&i.NodeCount,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const deleteCockpitMeeting = `-- name: DeleteCockpitMeeting :exec
 DELETE FROM cockpit_meeting
 WHERE id = $1::uuid
@@ -559,8 +614,25 @@ func (q *Queries) DeleteCockpitPaymentsByNode(ctx context.Context, arg DeleteCoc
 	return err
 }
 
+const deleteCockpitSnapshot = `-- name: DeleteCockpitSnapshot :exec
+DELETE FROM cockpit_snapshot
+WHERE id = $1::uuid AND workspace_id = $2::uuid
+`
+
+type DeleteCockpitSnapshotParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteCockpitSnapshot(ctx context.Context, arg DeleteCockpitSnapshotParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitSnapshot, arg.ID, arg.WorkspaceID)
+	return err
+}
+
 const deleteWorkspaceCockpitData = `-- name: DeleteWorkspaceCockpitData :exec
-WITH del_links AS (
+WITH del_snapshots AS (
+    DELETE FROM cockpit_snapshot WHERE workspace_id = $1::uuid
+), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = $1::uuid
 ), del_payments AS (
     DELETE FROM cockpit_payment WHERE workspace_id = $1::uuid
@@ -705,6 +777,34 @@ func (q *Queries) GetCockpitNodeByCode(ctx context.Context, arg GetCockpitNodeBy
 		&i.UpdatedByID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCockpitSnapshot = `-- name: GetCockpitSnapshot :one
+SELECT id, workspace_id, cockpit_id, trigger_kind, label, payload, node_count, created_by_type, created_by_label, created_at FROM cockpit_snapshot
+WHERE id = $1::uuid AND workspace_id = $2::uuid
+`
+
+type GetCockpitSnapshotParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) GetCockpitSnapshot(ctx context.Context, arg GetCockpitSnapshotParams) (CockpitSnapshot, error) {
+	row := q.db.QueryRow(ctx, getCockpitSnapshot, arg.ID, arg.WorkspaceID)
+	var i CockpitSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.TriggerKind,
+		&i.Label,
+		&i.Payload,
+		&i.NodeCount,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -966,6 +1066,88 @@ func (q *Queries) ListCockpitPayments(ctx context.Context, cockpitID pgtype.UUID
 		return nil, err
 	}
 	return items, nil
+}
+
+const listCockpitSnapshots = `-- name: ListCockpitSnapshots :many
+SELECT
+    id, workspace_id, cockpit_id, trigger_kind, label, node_count,
+    created_by_type, created_by_label, created_at
+FROM cockpit_snapshot
+WHERE cockpit_id = $1::uuid
+ORDER BY created_at DESC, id DESC
+LIMIT 200
+`
+
+type ListCockpitSnapshotsRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	CockpitID      pgtype.UUID        `json:"cockpit_id"`
+	TriggerKind    string             `json:"trigger_kind"`
+	Label          string             `json:"label"`
+	NodeCount      int32              `json:"node_count"`
+	CreatedByType  string             `json:"created_by_type"`
+	CreatedByLabel string             `json:"created_by_label"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+// Metadata only: the payload is the whole board as JSON, and a version list
+// that dragged a few hundred kilobytes per row would be the heaviest read on
+// the board.
+func (q *Queries) ListCockpitSnapshots(ctx context.Context, cockpitID pgtype.UUID) ([]ListCockpitSnapshotsRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitSnapshots, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitSnapshotsRow{}
+	for rows.Next() {
+		var i ListCockpitSnapshotsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.CockpitID,
+			&i.TriggerKind,
+			&i.Label,
+			&i.NodeCount,
+			&i.CreatedByType,
+			&i.CreatedByLabel,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pruneCockpitSnapshots = `-- name: PruneCockpitSnapshots :execrows
+DELETE FROM cockpit_snapshot
+WHERE cockpit_id = $1::uuid
+  AND id NOT IN (
+    SELECT id FROM cockpit_snapshot
+    WHERE cockpit_id = $1::uuid
+    ORDER BY created_at DESC, id DESC
+    LIMIT $2::int
+  )
+`
+
+type PruneCockpitSnapshotsParams struct {
+	CockpitID pgtype.UUID `json:"cockpit_id"`
+	Keep      int32       `json:"keep"`
+}
+
+// Keeps the newest `keep` rows. Snapshots are taken automatically on every
+// import and restore, so a scripted loop must not be able to grow the table
+// without bound.
+func (q *Queries) PruneCockpitSnapshots(ctx context.Context, arg PruneCockpitSnapshotsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneCockpitSnapshots, arg.CockpitID, arg.Keep)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateCockpit = `-- name: UpdateCockpit :one

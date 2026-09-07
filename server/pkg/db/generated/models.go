@@ -632,6 +632,19 @@ type CockpitPayment struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CockpitSnapshot struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	CockpitID      pgtype.UUID        `json:"cockpit_id"`
+	TriggerKind    string             `json:"trigger_kind"`
+	Label          string             `json:"label"`
+	Payload        []byte             `json:"payload"`
+	NodeCount      int32              `json:"node_count"`
+	CreatedByType  string             `json:"created_by_type"`
+	CreatedByLabel string             `json:"created_by_label"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Comment struct {
 	ID                pgtype.UUID        `json:"id"`
 	IssueID           pgtype.UUID        `json:"issue_id"`

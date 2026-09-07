@@ -187,5 +187,24 @@
     "actual_date": "实际支出时间",
     "planned_amount": "预计支出费用",
     "actual_amount": "实际支出费用"
+  },
+  "versions": {
+    "button": "版本",
+    "title": "版本历史",
+    "save_current": "保存当前版本",
+    "saved": "已保存当前版本",
+    "empty": "还没有版本。导入或恢复整板前会自动保存；也可以随时手动保存。",
+    "hint": "每次整板导入/恢复前自动存档，保留最近 50 个版本。",
+    "restore": "恢复",
+    "confirm_restore": "确认恢复",
+    "cancel": "取消",
+    "restore_done": "已恢复到该版本（{{nodes}} 个节点）",
+    "restore_skipped": "{{n}} 个关联任务已不存在，未恢复",
+    "delete": "删除版本 {{label}}",
+    "trigger_import": "导入前",
+    "trigger_restore": "恢复前",
+    "trigger_manual": "手动",
+    "row_meta": "{{nodes}} 节点 · {{by}}",
+    "by_unknown": "未知"
   }
 }

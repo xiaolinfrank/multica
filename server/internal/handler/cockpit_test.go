@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/middleware"
@@ -31,6 +32,7 @@ func cockpitFixture(t *testing.T, name string) string {
 	})
 	dbfx.Member(t, wsID, testUserID, "owner")
 	t.Cleanup(func() {
+		dbfx.Exec(t, "DELETE FROM cockpit_snapshot WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_node_issue WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_payment WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_milestone WHERE workspace_id = $1", wsID)
@@ -486,4 +488,260 @@ func TestCockpitRejectsNonMembers(t *testing.T) {
 	)
 	testutil.Call(t, cockpitHandler(testHandler.GetCockpit), req).
 		WantOneOf(http.StatusNotFound, http.StatusForbidden)
+}
+
+// ---------------------------------------------------------------------------
+// Version snapshots
+// ---------------------------------------------------------------------------
+
+func listSnapshots(t *testing.T, wsID string) []CockpitSnapshotResponse {
+	t.Helper()
+	var snaps []CockpitSnapshotResponse
+	testutil.Call(t, cockpitHandler(testHandler.ListCockpitSnapshots),
+		cockpitRequest(http.MethodGet, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&snaps)
+	return snaps
+}
+
+func importBoard(t *testing.T, wsID string, body map[string]any) CockpitImportResponse {
+	t.Helper()
+	var result CockpitImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpit),
+		cockpitRequest(http.MethodPut, "/api/cockpit/import", wsID, body)).
+		Want(http.StatusOK).
+		JSON(&result)
+	return result
+}
+
+func importDoc(title, code string) map[string]any {
+	return map[string]any{
+		"title": title,
+		"nodes": []map[string]any{{"code": code, "name": title}},
+	}
+}
+
+func restoreSnapshot(t *testing.T, wsID, snapID string) *testutil.Response {
+	t.Helper()
+	return testutil.Call(t, cockpitHandler(testHandler.RestoreCockpitSnapshot),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/snapshots/"+snapID+"/restore", wsID, nil),
+			"snapshotId", snapID,
+		))
+}
+
+// An import must freeze the board it displaces, and restoring that snapshot
+// must put the displaced board back — including board-level fields the import
+// document does not usually carry, such as the summary cards.
+func TestCockpitSnapshotRestoreRoundTrip(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit snapshot round trip")
+	dbfx.Issue(t, "Linked issue", testutil.Cols{"workspace_id": wsID})
+	importBoard(t, wsID, map[string]any{
+		"title": "v1 board",
+		"nodes": []map[string]any{{
+			"code": "L1-01", "name": "v1 module", "owner": "李青娇",
+			"status": "进行中", "progress": 40,
+			"issue_ids": []string{"TES-1"},
+			"payments":  []map[string]any{{"label": "第1笔", "pay_date": "2026-09-05", "amount": 15}},
+		}},
+		"milestones": []map[string]any{{"name": "v1 milestone", "plan_date": "2026-11-30"}},
+	})
+
+	// An author card that the import document does not carry: restore must
+	// bring it back, not wipe it.
+	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpit),
+		cockpitRequest(http.MethodPatch, "/api/cockpit", wsID, map[string]any{
+			"summary_overall": "本周完成数据治理",
+		})).
+		Want(http.StatusOK)
+
+	importBoard(t, wsID, importDoc("v2 board", "L2-01"))
+
+	board := getBoard(t, wsID)
+	if board.Cockpit.Title != "v2 board" || len(board.Nodes) != 1 || board.Nodes[0].Code != "L2-01" {
+		t.Fatalf("board after second import = %+v", board)
+	}
+	if board.Cockpit.SummaryOverall != "本周完成数据治理" {
+		// A plain import has no summary keys, so the cards survive it.
+		t.Fatalf("summary card did not survive a summary-less import: %q", board.Cockpit.SummaryOverall)
+	}
+
+	snaps := listSnapshots(t, wsID)
+	if len(snaps) != 1 {
+		t.Fatalf("snapshots = %d, want 1 (the v1 board the second import displaced)", len(snaps))
+	}
+	snap := snaps[0]
+	if snap.TriggerKind != "import" || snap.NodeCount != 1 {
+		t.Errorf("snapshot = %+v, want trigger=import node_count=1", snap)
+	}
+	if snap.CreatedByType != "member" || snap.CreatedByLabel == "" {
+		t.Errorf("snapshot creator = %q/%q, want a named member", snap.CreatedByType, snap.CreatedByLabel)
+	}
+
+	var result CockpitImportResponse
+	restoreSnapshot(t, wsID, snap.ID).Want(http.StatusOK).JSON(&result)
+	if result.Nodes != 1 || result.IssueLinks != 1 || result.Payments != 1 || result.Milestones != 1 {
+		t.Errorf("restore result = %+v", result)
+	}
+
+	board = getBoard(t, wsID)
+	if board.Cockpit.Title != "v1 board" || len(board.Nodes) != 1 || board.Nodes[0].Code != "L1-01" {
+		t.Fatalf("board after restore = %+v", board)
+	}
+	if board.Nodes[0].Status != "进行中" || board.Nodes[0].Progress != 40 {
+		t.Errorf("restored node = %+v", board.Nodes[0])
+	}
+	if len(board.Payments) != 1 || len(board.IssueLinks) != 1 || len(board.Milestones) != 1 {
+		t.Errorf("restored collections: payments=%d links=%d milestones=%d",
+			len(board.Payments), len(board.IssueLinks), len(board.Milestones))
+	}
+	if board.Cockpit.SummaryOverall != "本周完成数据治理" {
+		t.Errorf("summary card after restore = %q, want the frozen value", board.Cockpit.SummaryOverall)
+	}
+
+	// Restoring must itself freeze the board it displaces, so a restore is
+	// always undoable.
+	snaps = listSnapshots(t, wsID)
+	if len(snaps) != 2 || snaps[0].TriggerKind != "restore" {
+		t.Fatalf("snapshots after restore = %+v, want a restore-time snapshot of v2 newest", snaps)
+	}
+}
+
+// A link to an issue that was deleted after the snapshot names it as an
+// unresolvable reference on restore — reported, not fatal.
+func TestCockpitRestoreSkipsDeletedIssue(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit restore deleted issue")
+	issue := dbfx.Issue(t, "Doomed issue", testutil.Cols{"workspace_id": wsID})
+	importBoard(t, wsID, map[string]any{
+		"nodes": []map[string]any{{"code": "L1-01", "issue_ids": []string{issue}}},
+	})
+
+	// Freeze the board while the issue still exists. An import into the empty
+	// board above froze nothing, so this manual save is the version under test.
+	var frozen CockpitSnapshotResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusCreated).
+		JSON(&frozen)
+
+	dbfx.Exec(t, "DELETE FROM cockpit_node_issue WHERE issue_id = $1", issue)
+	dbfx.Exec(t, "DELETE FROM issue WHERE id = $1", issue)
+	importBoard(t, wsID, importDoc("replaced", "X-1"))
+
+	var result CockpitImportResponse
+	restoreSnapshot(t, wsID, frozen.ID).Want(http.StatusOK).JSON(&result)
+	if len(result.UnresolvedIssues) != 1 || result.UnresolvedIssues[0] != issue {
+		t.Errorf("unresolved_issues = %v, want the deleted issue's id", result.UnresolvedIssues)
+	}
+	board := getBoard(t, wsID)
+	if len(board.Nodes) != 1 || len(board.IssueLinks) != 0 {
+		t.Errorf("restored board: nodes=%d links=%d, want 1/0", len(board.Nodes), len(board.IssueLinks))
+	}
+}
+
+// Importing into an empty board freezes nothing: there is no board to lose,
+// and a snapshot of emptiness would bury real history.
+func TestCockpitImportIntoEmptyBoardSnapshotsNothing(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit import empty")
+	importBoard(t, wsID, importDoc("first", "L1-01"))
+	if snaps := listSnapshots(t, wsID); len(snaps) != 0 {
+		t.Errorf("snapshots = %d, want 0", len(snaps))
+	}
+}
+
+func TestCreateCockpitSnapshotManual(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit manual snapshot")
+	createNode(t, wsID, map[string]any{"code": "L1-01", "name": "module"})
+
+	var snap CockpitSnapshotResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, map[string]any{
+			"label": "评审前",
+		})).
+		Want(http.StatusCreated).
+		JSON(&snap)
+	if snap.TriggerKind != "manual" || snap.Label != "评审前" || snap.NodeCount != 1 {
+		t.Errorf("manual snapshot = %+v", snap)
+	}
+
+	// An empty board has nothing worth freezing and is refused.
+	empty := cockpitFixture(t, "Cockpit manual snapshot empty")
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", empty, nil)).
+		Want(http.StatusBadRequest)
+}
+
+func TestCockpitSnapshotPermissions(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit snapshot permissions")
+	createNode(t, wsID, map[string]any{"code": "L1-01"})
+	var snap CockpitSnapshotResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusCreated).
+		JSON(&snap)
+
+	dbfx.Exec(t, "UPDATE member SET role = 'member' WHERE workspace_id = $1 AND user_id = $2", wsID, testUserID)
+
+	// A plain member reads history and saves versions…
+	listSnapshots(t, wsID)
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusCreated)
+
+	// …but restore and delete stay with owner/admin, exactly like import.
+	restoreSnapshot(t, wsID, snap.ID).Want(http.StatusForbidden)
+	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitSnapshot),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodDelete, "/api/cockpit/snapshots/"+snap.ID, wsID, nil),
+			"snapshotId", snap.ID,
+		)).
+		Want(http.StatusForbidden)
+
+	dbfx.Exec(t, "UPDATE member SET role = 'owner' WHERE workspace_id = $1 AND user_id = $2", wsID, testUserID)
+	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitSnapshot),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodDelete, "/api/cockpit/snapshots/"+snap.ID, wsID, nil),
+			"snapshotId", snap.ID,
+		)).
+		Want(http.StatusOK)
+	if snaps := listSnapshots(t, wsID); len(snaps) != 1 {
+		t.Errorf("snapshots after delete = %d, want 1", len(snaps))
+	}
+}
+
+// Retention is bounded: snapshots accumulate automatically on every import
+// and restore, so the oldest beyond the keep window must fall away.
+func TestCockpitSnapshotPrune(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit snapshot prune")
+	createNode(t, wsID, map[string]any{"code": "L1-01"})
+
+	var boardID string
+	dbfx.QueryRow(t, "SELECT id FROM cockpit WHERE workspace_id = $1", wsID).Scan(&boardID)
+	for i := 0; i < cockpitSnapshotKeep+5; i++ {
+		dbfx.Insert(t, "cockpit_snapshot", testutil.Cols{
+			"workspace_id":    wsID,
+			"cockpit_id":      boardID,
+			"trigger_kind":    "manual",
+			"payload":         `{"nodes":[]}`,
+			"node_count":      0,
+			"created_by_type": "member",
+			// Distinct timestamps, oldest first, so the keep window has a
+			// definite boundary to prune against.
+			"created_at": time.Now().Add(-time.Duration(cockpitSnapshotKeep+10-i) * time.Minute),
+		})
+	}
+
+	// Any snapshot write prunes; a manual one is the cheapest to drive.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusCreated)
+
+	snaps := listSnapshots(t, wsID)
+	if len(snaps) != cockpitSnapshotKeep {
+		t.Fatalf("snapshots = %d, want %d", len(snaps), cockpitSnapshotKeep)
+	}
+	// The newest surviving row is the one this test just wrote.
+	if snaps[0].TriggerKind != "manual" || snaps[0].NodeCount != 1 {
+		t.Errorf("newest snapshot = %+v, want the manual save of the live board", snaps[0])
+	}
 }

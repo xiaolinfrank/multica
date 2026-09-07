@@ -24,6 +24,10 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | PATCH | `/api/cockpit/milestones/{milestoneId}` | edit a milestone |
 | DELETE | `/api/cockpit/milestones/{milestoneId}` | delete a milestone |
 | POST | `/api/cockpit/meetings` | add a meeting |
+| GET | `/api/cockpit/snapshots` | list version history (metadata only) |
+| POST | `/api/cockpit/snapshots` | save the current board as a version; body `{label}` optional |
+| POST | `/api/cockpit/snapshots/{id}/restore` | put a frozen board back (owner/admin) |
+| DELETE | `/api/cockpit/snapshots/{id}` | remove one version (owner/admin) |
 | PATCH | `/api/cockpit/meetings/{meetingId}` | edit a meeting |
 | DELETE | `/api/cockpit/meetings/{meetingId}` | delete a meeting |
 
@@ -42,12 +46,27 @@ the workspace issue identifier such as `BIO-314`.
 - Amounts keep four decimal places server-side and travel as plain JSON
   numbers, so a value read back may carry more precision than it was sent with.
 
+## Versions
+
+An import and a restore each freeze the outgoing board into a version snapshot
+inside the same transaction, then replace it. A manual `POST /snapshots` does
+the same without replacing anything. The list keeps the newest 50 per board.
+
+A snapshot payload is an import document (the shape above), with issue links
+serialized as issue UUIDs. Restoring is an import of that payload: the same
+single-transaction semantics, the same unknown-parent rejection, the same
+"unresolvable issue references are skipped and reported" behaviour. The three
+summary cards are carried by the payload — absent on an authored import
+document (which leaves the board's cards alone), always present on a snapshot
+(so a restore brings back exactly what was frozen).
+
 ## Realtime
 
 Every write broadcasts a `cockpit:changed` event carrying
 `{scope, action, entity}`. A client patches the changed row into its cached
-board; a `board` or `imported` scope means the board changed wholesale and has
-to be re-read.
+board; a `board` scope (`imported`, `restored`) means the board changed
+wholesale and has to be re-read; a `snapshots` scope means only the version
+history moved.
 
 ## Import document
 

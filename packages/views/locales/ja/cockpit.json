@@ -187,5 +187,24 @@
     "actual_date": "実際の支出時期",
     "planned_amount": "支出予定額",
     "actual_amount": "実際の支出額"
+  },
+  "versions": {
+    "button": "バージョン",
+    "title": "バージョン履歴",
+    "save_current": "現在を保存",
+    "saved": "現在のボードを保存しました",
+    "empty": "バージョンはまだありません。インポート・復元の前に自動保存されます。手動保存もいつでも可能です。",
+    "hint": "ボード全体のインポート・復元の前に自動保存され、直近 50 件を保持します。",
+    "restore": "復元",
+    "confirm_restore": "復元する",
+    "cancel": "キャンセル",
+    "restore_done": "復元しました（{{nodes}} ノード）",
+    "restore_skipped": "{{n}} 件の関連タスクは既に存在せずスキップしました",
+    "delete": "バージョン {{label}} を削除",
+    "trigger_import": "インポート前",
+    "trigger_restore": "復元前",
+    "trigger_manual": "手動",
+    "row_meta": "{{nodes}} ノード · {{by}}",
+    "by_unknown": "不明"
   }
 }

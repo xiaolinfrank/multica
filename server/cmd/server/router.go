@@ -1997,6 +1997,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.GetCockpit)
 				r.Patch("/", h.UpdateCockpit)
 				r.Put("/import", h.ImportCockpit)
+				r.Get("/snapshots", h.ListCockpitSnapshots)
+				r.Post("/snapshots", h.CreateCockpitSnapshot)
+				r.Route("/snapshots/{snapshotId}", func(r chi.Router) {
+					r.Post("/restore", h.RestoreCockpitSnapshot)
+					r.Delete("/", h.DeleteCockpitSnapshot)
+				})
 				r.Post("/nodes", h.CreateCockpitNode)
 				r.Route("/nodes/{id}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitNode)
