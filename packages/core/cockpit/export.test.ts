@@ -93,7 +93,7 @@ describe("cockpitTasksCsv", () => {
   });
 
   it("starts with a BOM so Excel opens it as UTF-8", () => {
-    expect(cockpitTasksCsv(board({}))).toMatch(/^﻿/);
+    expect(cockpitTasksCsv(board({}))).toMatch(/^\uFEFF/);
   });
 });
 
