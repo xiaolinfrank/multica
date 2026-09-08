@@ -201,7 +201,9 @@ describe("CockpitPage", () => {
         user_id: "user-1",
         role: "owner" as const,
         created_at: "",
-        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+        name: "Owner",
+        email: "owner@example.com",
+        avatar_url: null,
       },
     ]);
   });
@@ -351,7 +353,9 @@ describe("CockpitPage detail tables", () => {
         user_id: "user-1",
         role: "owner" as const,
         created_at: "",
-        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+        name: "Owner",
+        email: "owner@example.com",
+        avatar_url: null,
       },
     ]);
   });
@@ -431,7 +435,9 @@ describe("CockpitPage versions", () => {
         user_id: "user-1",
         role: "owner" as const,
         created_at: "",
-        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+        name: "Owner",
+        email: "owner@example.com",
+        avatar_url: null,
       },
     ]);
   });
@@ -447,6 +453,10 @@ describe("CockpitPage versions", () => {
     fireEvent.click(restore);
     expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
 
+    vi.mocked(api.restoreCockpitSnapshot).mockResolvedValue({
+      nodes: 217, payments: 0, issue_links: 0, milestones: 0, meetings: 0,
+      unresolved_issues: [],
+    });
     fireEvent.click(within(row.closest("li")!).getByRole("button", { name: "Confirm restore" }));
     await waitFor(() => expect(api.restoreCockpitSnapshot).toHaveBeenCalledWith("snap-1"));
   });
@@ -459,7 +469,9 @@ describe("CockpitPage versions", () => {
         user_id: "user-1",
         role: "member" as const,
         created_at: "",
-        user: { id: "user-1", name: "Owner", email: "owner@example.com" },
+        name: "Owner",
+        email: "owner@example.com",
+        avatar_url: null,
       },
     ]);
 

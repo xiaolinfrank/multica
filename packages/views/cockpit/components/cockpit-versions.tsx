@@ -27,7 +27,7 @@ import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
 
 function triggerLabel(
-  t: ReturnType<typeof useT>["t"],
+  t: ReturnType<typeof useT<"cockpit">>["t"],
   trigger: string,
 ): string {
   // Server-driven value; unknown kinds still render, as a literal.
