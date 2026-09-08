@@ -135,6 +135,8 @@ export interface CockpitRollup {
   /** Leaf tasks in this subtree — a branch's own row is not counted as work. */
   leafCount: number;
   doneCount: number;
+  /** Leaves with work underway (in progress or under review). */
+  activeCount: number;
   lateCount: number;
   /** Mean leaf progress, 0-100. A branch with no leaves reports its own progress. */
   progress: number;
@@ -152,6 +154,24 @@ export interface CockpitRollup {
  * progress >= 100 for anything else.
  */
 const DONE_STATUSES = new Set(["已完成", "完成", "done", "completed", "closed"]);
+
+/** Statuses that mean work is underway — counted as "active" in rollups. */
+const ACTIVE_STATUSES = new Set([
+  "进行中",
+  "执行中",
+  "审查中",
+  "评审中",
+  "in progress",
+  "in_progress",
+  "in review",
+  "in_review",
+  "active",
+]);
+
+export function isCockpitNodeActive(node: CockpitNode): boolean {
+  const status = node.status.trim();
+  return ACTIVE_STATUSES.has(status) || ACTIVE_STATUSES.has(status.toLowerCase());
+}
 const CANCELLED_STATUSES = new Set(["已取消", "取消", "cancelled", "canceled"]);
 
 export function isCockpitNodeDone(node: CockpitNode): boolean {
@@ -203,6 +223,7 @@ export function computeCockpitRollups(
     const own: CockpitRollup = {
       leafCount: 0,
       doneCount: 0,
+      activeCount: 0,
       lateCount: 0,
       progress: node.progress,
       budget: node.budget_amount ?? 0,
@@ -213,6 +234,7 @@ export function computeCockpitRollups(
     if (children.length === 0) {
       own.leafCount = 1;
       own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
+      own.activeCount = isCockpitNodeActive(node) ? 1 : 0;
       own.lateCount = isCockpitNodeLate(node, today) ? 1 : 0;
       rollups.set(node.id, own);
       return own;
@@ -223,6 +245,7 @@ export function computeCockpitRollups(
       const childRollup = visit(child);
       own.leafCount += childRollup.leafCount;
       own.doneCount += childRollup.doneCount;
+      own.activeCount += childRollup.activeCount;
       own.lateCount += childRollup.lateCount;
       own.budget += childRollup.budget;
       own.start = minDate(own.start, childRollup.start);
@@ -238,6 +261,51 @@ export function computeCockpitRollups(
 
   tree.forEach(visit);
   return rollups;
+}
+
+/**
+ * The two rows a module's big card quotes next to its numbers: the most
+ * recently finished leaf ("latest result") and the nearest unfinished leaf
+ * ("next key node" — overdue included, since that is the node most worth
+ * looking at). A module with no dated leaves reports nulls, not guesses.
+ */
+export interface CockpitModuleHighlights {
+  recent: CockpitNode | null;
+  next: CockpitNode | null;
+}
+
+export function cockpitModuleHighlights(entry: CockpitTreeNode): CockpitModuleHighlights {
+  let recent: CockpitNode | null = null;
+  let next: CockpitNode | null = null;
+
+  const endKey = (node: CockpitNode): string => node.end_date ?? "";
+
+  const visit = (current: CockpitTreeNode): void => {
+    if (current.children.length === 0) {
+      const { node } = current;
+      if (!node.end_date) return;
+      if (isCockpitNodeDone(node)) {
+        if (
+          !recent ||
+          endKey(node) > endKey(recent) ||
+          (endKey(node) === endKey(recent) && node.code < recent.code)
+        ) {
+          recent = node;
+        }
+      } else if (
+        !next ||
+        endKey(node) < endKey(next) ||
+        (endKey(node) === endKey(next) && node.code < next.code)
+      ) {
+        next = node;
+      }
+      return;
+    }
+    current.children.forEach(visit);
+  };
+  visit(entry);
+
+  return { recent, next };
 }
 
 // ---------------------------------------------------------------------------

@@ -9,11 +9,16 @@
 
 import { cn } from "@multica/ui/lib/utils";
 
-type ChipTone = "done" | "active" | "blocked" | "cancelled" | "neutral";
+// The tones mirror the prototype's status pills: done green, in-progress
+// blue, review teal, waiting/not-started amber or pale, blocked red, and a
+// struck-through grey for cancelled work.
+type ChipTone = "done" | "progress" | "review" | "todo" | "blocked" | "cancelled" | "neutral";
 
 const TONE_CLASS: Record<ChipTone, string> = {
   done: "border-success/30 bg-success/10 text-success",
-  active: "border-warning/30 bg-warning/10 text-warning",
+  progress: "border-brand/30 bg-brand/10 text-brand",
+  review: "border-info/30 bg-info/10 text-info",
+  todo: "border-warning/30 bg-warning/10 text-warning",
   blocked: "border-destructive/30 bg-destructive/10 text-destructive",
   cancelled: "border-border bg-muted text-muted-foreground line-through",
   neutral: "border-border bg-muted text-muted-foreground",
@@ -24,11 +29,21 @@ const TONE_BY_STATUS = new Map<string, ChipTone>([
   ["完成", "done"],
   ["done", "done"],
   ["completed", "done"],
-  ["进行中", "active"],
-  ["执行中", "active"],
-  ["in progress", "active"],
-  ["in_progress", "active"],
-  ["审查中", "active"],
+  ["进行中", "progress"],
+  ["执行中", "progress"],
+  ["in progress", "progress"],
+  ["in_progress", "progress"],
+  ["审查中", "review"],
+  ["评审中", "review"],
+  ["in review", "review"],
+  ["in_review", "review"],
+  ["未开始", "todo"],
+  ["待开始", "todo"],
+  ["待办", "todo"],
+  ["等待期", "todo"],
+  ["todo", "todo"],
+  ["not started", "todo"],
+  ["not_started", "todo"],
   ["受阻", "blocked"],
   ["阻塞", "blocked"],
   ["blocked", "blocked"],
@@ -61,7 +76,7 @@ export function StatusChip({ status, className }: { status: string; className?: 
 
 const EXEC_TONE = new Map<string, ChipTone>([
   ["完全支付", "done"],
-  ["合同已定", "active"],
+  ["合同已定", "review"],
   ["未支付", "neutral"],
   ["规划中", "neutral"],
 ]);

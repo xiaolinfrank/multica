@@ -56,7 +56,13 @@
     "card_write_manual": "手動で書く",
     "card_seed": "…",
     "meetings": "会議記録",
-    "add_meeting": "会議を追加"
+    "add_meeting": "会議を追加",
+    "mvp_label": "年間MVP目標",
+    "clock": "現在時刻",
+    "done_total": "完了/総数",
+    "module_active": "進行中",
+    "module_recent": "直近の成果",
+    "module_next": "次のキーノード"
   },
   "gantt": {
     "column_task": "タスク / モジュール",

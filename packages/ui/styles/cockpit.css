@@ -1,0 +1,173 @@
+/*
+ * The cockpit skin.
+ *
+ * The cockpit board started life as a standalone HTML prototype with its own
+ * recognisable look: a fixed light "programme review" palette, blue accent,
+ * and status colours keyed to the Chinese status vocabulary. That look is part
+ * of what the board's readers expect, so the cockpit page puts `.cockpit-skin`
+ * on its root and this file pins the semantic variables to the prototype's
+ * values inside that container — the board keeps its look in dark mode too,
+ * and nothing outside the board changes.
+ *
+ * Only final semantic variables are overridden here. Portalled overlays
+ * (selects, popovers, tooltips) render outside the container and keep the app
+ * theme; that is accepted — the board surface is what carries the identity.
+ */
+
+.cockpit-skin {
+  color-scheme: light;
+
+  /* Prototype surface ramp: #f5f7fa canvas, white panels, #e6eaf0 hairlines. */
+  --page-canvas: #f5f7fa;
+  --surface: #ffffff;
+  --surface-foreground: #1f2733;
+  --surface-raised: #ffffff;
+  --surface-hover: #eef4ff;
+  --background: #f5f7fa;
+  --foreground: #1f2733;
+  --card: #ffffff;
+  --card-foreground: #1f2733;
+  --popover: #ffffff;
+  --popover-foreground: #1f2733;
+  --border: #e6eaf0;
+  --input: #d4dae3;
+  --muted: #eef1f6;
+  --muted-foreground: #7b8794;
+  --faint-foreground: #cbd5e1;
+  --accent: #eef4ff;
+  --accent-foreground: #334155;
+
+  /* The prototype's blue: primary actions, links, in-progress work. */
+  --primary: #3b6cff;
+  --primary-foreground: #ffffff;
+  --brand: #3b6cff;
+  --brand-foreground: #ffffff;
+  --ring: #3b6cff;
+
+  /* Status family, mapped to the prototype's pills and gantt bars:
+     done green, in-progress blue (via --brand), review teal, waiting amber,
+     blocked red, not-started pale. */
+  --success: #15803d;
+  --warning: #e0a106;
+  --destructive: #ff4d4f;
+  --info: #0891b2;
+
+  /* The prototype is a dense 13px report surface, one step below the app's
+     14px body. */
+  --text-body: 13px;
+  --text-body--line-height: 19px;
+
+  /* Its cards read rounder than the app's default frame. */
+  --radius: 12px;
+}
+
+/*
+ * Annual-objective banner — the board's masthead. Blue gradient with a light
+ * bloom in the top-right corner, the goal riding in a frosted glass strip at
+ * the exact centre, and the clock pinned to the top-right.
+ */
+.cockpit-banner {
+  position: relative;
+  min-height: 116px;
+  border-radius: 16px;
+  padding: 20px 24px;
+  color: #ffffff;
+  background: linear-gradient(115deg, #1e3a8a 0%, #1d4ed8 42%, #2563eb 64%, #0891b2 100%);
+  box-shadow:
+    0 8px 24px rgb(29 78 216 / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.14);
+  overflow: hidden;
+}
+.cockpit-banner::before {
+  content: "";
+  position: absolute;
+  top: -50px;
+  right: -30px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.16), transparent 68%);
+  pointer-events: none;
+}
+.cockpit-banner > * {
+  position: relative;
+  z-index: 1;
+}
+.cockpit-banner-glass {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  background: rgb(255 255 255 / 0.16);
+  border: 1px solid rgb(255 255 255 / 0.34);
+  border-radius: 12px;
+  padding: 9px 18px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 6px 16px rgb(2 32 71 / 0.16);
+  backdrop-filter: blur(3px);
+}
+
+/*
+ * Milestone track. Each milestone is a column: a dot on the track line, its
+ * card below. The connector grows out of every dot except the last one's,
+ * and turns green once that milestone is reached ([data-done]).
+ */
+.cockpit-ms-node {
+  position: relative;
+}
+.cockpit-ms-node:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: calc(50% + 9px);
+  right: calc(-50% + 9px);
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #dbe3ee, #e8edf5);
+}
+.cockpit-ms-node[data-done]:not(:last-child)::before {
+  background: linear-gradient(90deg, #22a06b, #e8edf5);
+}
+.cockpit-ms-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #cbd5e1;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+.cockpit-ms-node[data-done] .cockpit-ms-dot {
+  border-color: #22a06b;
+  background: #22a06b;
+  box-shadow: 0 0 0 4px rgb(34 160 107 / 0.14);
+}
+.cockpit-ms-card {
+  border-color: var(--border);
+  background: #fbfcfe;
+}
+.cockpit-ms-node[data-done] .cockpit-ms-card {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+/*
+ * Narrative cards carry a 3px gradient cap, parameterised per card through
+ * --top-from / --top-to on the element.
+ */
+.cockpit-card-top {
+  position: relative;
+  overflow: hidden;
+  --top-from: #3b6cff;
+  --top-to: #38bdf8;
+}
+.cockpit-card-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--top-from), var(--top-to));
+}

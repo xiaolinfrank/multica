@@ -56,7 +56,13 @@
     "card_write_manual": "改为手动填写",
     "card_seed": "…",
     "meetings": "会议记录",
-    "add_meeting": "新增会议"
+    "add_meeting": "新增会议",
+    "mvp_label": "年度 MVP 目标",
+    "clock": "当前时间",
+    "done_total": "已完成/总数",
+    "module_active": "进行中",
+    "module_recent": "最近成果",
+    "module_next": "下一关键节点"
   },
   "gantt": {
     "column_task": "任务 / 模块",

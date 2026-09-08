@@ -187,6 +187,7 @@ export function EditableDate({
   placeholder,
   disabled,
   className,
+  displayClassName,
 }: {
   value: string | null;
   onCommit: (next: string | null) => void;
@@ -194,6 +195,9 @@ export function EditableDate({
   placeholder: string;
   disabled?: boolean;
   className?: string;
+  /** Display-mode only — lets the value sit on a coloured surface without
+   * recolouring the editing input. */
+  displayClassName?: string;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -209,6 +213,7 @@ export function EditableDate({
           !disabled && "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           !value && "text-muted-foreground italic",
           className,
+          displayClassName,
         )}
       >
         {value || placeholder}

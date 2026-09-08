@@ -8,7 +8,8 @@
 // written an override. A card nobody maintains is still right, and one someone
 // wrote wins until they clear it.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type {
   CockpitBoard,
   CockpitMeeting,
@@ -21,6 +22,7 @@ import type {
 } from "@multica/core/types";
 import {
   buildCockpitTree,
+  cockpitModuleHighlights,
   computeCockpitDigest,
   computeCockpitFinance,
   computeCockpitMonths,
@@ -28,6 +30,8 @@ import {
   isCockpitMilestoneDone,
   parseDay,
   sortCockpitMilestones,
+  type CockpitRollup,
+  type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
@@ -39,6 +43,23 @@ import {
   EditableTextArea,
 } from "./cockpit-fields";
 import { StatusChip } from "./cockpit-status";
+
+/** The banner's live clock. First paint shows the placeholder so server and
+ * client agree; the tick fills it in once mounted. */
+function BannerClock() {
+  const [now, setNow] = useState<string | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(new Date().toLocaleTimeString("zh-Hans-CN", { hour12: false }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="text-display-sm font-semibold tracking-wide tabular-nums">
+      {now ?? "--:--:--"}
+    </span>
+  );
+}
 
 function Section({
   title,
@@ -61,6 +82,185 @@ function Section({
       </header>
       {children}
     </section>
+  );
+}
+
+/** The prototype leads with two large stat cards and runs the remaining
+ * modules compact below them. */
+const MODULE_BIG_COUNT = 2;
+
+interface ModuleCardProps {
+  entry: CockpitTreeNode;
+  rollup: CockpitRollup | undefined;
+  readOnly?: boolean;
+  emptyLabel: string;
+  onOpenBranch: (nodeId: string) => void;
+  onPatchNode: (id: string, patch: CockpitNodePatch) => void;
+}
+
+function ModuleBigCard({
+  entry,
+  rollup,
+  readOnly,
+  emptyLabel,
+  onOpenBranch,
+  onPatchNode,
+}: ModuleCardProps) {
+  const { t } = useT("cockpit");
+  const pct = Math.round(rollup?.progress ?? entry.node.progress);
+  const color = entry.color || "var(--color-brand)";
+  const highlights = useMemo(() => cockpitModuleHighlights(entry), [entry]);
+  return (
+    <article
+      className="rounded-lg border border-border bg-card p-4"
+      style={{ borderTopColor: color, borderTopWidth: 4 }}
+    >
+      <div className="flex items-baseline gap-2">
+        <button
+          type="button"
+          onClick={() => onOpenBranch(entry.node.id)}
+          aria-label={t(($) => $.overview.open_module, { code: entry.node.code })}
+          className="font-mono text-micro font-medium hover:underline"
+          style={{ color }}
+        >
+          {entry.node.code}
+        </button>
+        <EditableText
+          value={entry.node.name}
+          onCommit={(name) => onPatchNode(entry.node.id, { name })}
+          label={t(($) => $.node.name)}
+          placeholder={t(($) => $.node.name_placeholder)}
+          disabled={readOnly}
+          displayClassName="flex-1 font-medium"
+        />
+        <EditableText
+          value={entry.node.owner}
+          onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
+          label={t(($) => $.node.owner)}
+          placeholder={emptyLabel}
+          disabled={readOnly}
+          displayClassName="text-caption text-muted-foreground"
+        />
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-[width] duration-300"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-md bg-muted/50 p-2 text-center">
+          <dd className="text-body font-semibold tabular-nums">
+            {rollup?.doneCount ?? 0}/{rollup?.leafCount ?? 0}
+          </dd>
+          <dt className="text-micro text-muted-foreground">{t(($) => $.overview.done_total)}</dt>
+        </div>
+        <div className="rounded-md bg-muted/50 p-2 text-center">
+          <dd className="text-body font-semibold tabular-nums">{pct}%</dd>
+          <dt className="text-micro text-muted-foreground">{t(($) => $.overview.progress)}</dt>
+        </div>
+        <div className="rounded-md bg-muted/50 p-2 text-center">
+          <dd className="text-body font-semibold tabular-nums">{rollup?.activeCount ?? 0}</dd>
+          <dt className="text-micro text-muted-foreground">{t(($) => $.overview.module_active)}</dt>
+        </div>
+        <div className="rounded-md bg-muted/50 p-2 text-center">
+          <dd className="text-body font-semibold text-budget tabular-nums">
+            {(rollup?.budget ?? 0) > 0 ? formatAmount(rollup!.budget) : "—"}
+          </dd>
+          <dt className="text-micro text-muted-foreground">{t(($) => $.overview.budget)}</dt>
+        </div>
+      </dl>
+      <div className="mt-3 flex flex-col gap-1 border-t border-border pt-2 text-caption">
+        <div className="flex items-baseline gap-2">
+          <span className="w-20 shrink-0 text-micro text-muted-foreground">
+            {t(($) => $.overview.module_recent)}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {highlights.recent?.name ?? "—"}
+          </span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="w-20 shrink-0 text-micro text-muted-foreground">
+            {t(($) => $.overview.module_next)}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {highlights.next
+              ? `${highlights.next.name} · ${highlights.next.end_date}`
+              : "—"}
+          </span>
+          {(rollup?.lateCount ?? 0) > 0 && (
+            <span className="shrink-0 text-micro font-medium text-destructive tabular-nums">
+              {t(($) => $.overview.overdue)} {rollup!.lateCount}
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ModuleSmallCard({
+  entry,
+  rollup,
+  readOnly,
+  emptyLabel,
+  onOpenBranch,
+  onPatchNode,
+}: ModuleCardProps) {
+  const { t } = useT("cockpit");
+  const pct = Math.round(rollup?.progress ?? entry.node.progress);
+  const color = entry.color || "var(--color-brand)";
+  return (
+    <article
+      className="rounded-lg border border-border bg-card p-3"
+      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+    >
+      <div className="flex items-baseline gap-2">
+        <button
+          type="button"
+          onClick={() => onOpenBranch(entry.node.id)}
+          aria-label={t(($) => $.overview.open_module, { code: entry.node.code })}
+          className="font-mono text-micro font-medium hover:underline"
+          style={{ color }}
+        >
+          {entry.node.code}
+        </button>
+        <EditableText
+          value={entry.node.name}
+          onCommit={(name) => onPatchNode(entry.node.id, { name })}
+          label={t(($) => $.node.name)}
+          placeholder={t(($) => $.node.name_placeholder)}
+          disabled={readOnly}
+          displayClassName="flex-1 font-medium"
+        />
+      </div>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-[width] duration-300"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-micro text-muted-foreground tabular-nums">
+        <div className="flex gap-1">
+          <dt>{t(($) => $.overview.tasks)}</dt>
+          <dd className="font-medium text-foreground">
+            {rollup?.doneCount ?? 0}/{rollup?.leafCount ?? 0}
+          </dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>{t(($) => $.overview.progress)}</dt>
+          <dd className="font-medium text-foreground">{pct}%</dd>
+        </div>
+        <EditableText
+          value={entry.node.owner}
+          onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
+          label={t(($) => $.node.owner)}
+          placeholder={emptyLabel}
+          disabled={readOnly}
+          displayClassName="text-micro text-muted-foreground"
+        />
+      </dl>
+    </article>
   );
 }
 
@@ -119,42 +319,42 @@ export function CockpitOverview({
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {/* Annual objective */}
-      <section className="rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
-              {t(($) => $.overview.annual_goal)}
-            </span>
-            <div className="mt-1">
-              <EditableText
-                value={board.cockpit.goal_title}
-                onCommit={(goal_title) => onPatchBoard({ goal_title })}
-                label={t(($) => $.overview.annual_goal)}
-                placeholder={t(($) => $.overview.annual_goal_placeholder)}
-                disabled={readOnly}
-                displayClassName="text-title font-semibold"
-              />
-            </div>
-            {board.cockpit.basis && (
-              <p className="mt-2 text-caption text-muted-foreground">{board.cockpit.basis}</p>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
+      {/* Annual objective — the board's masthead banner, goal in a frosted
+          glass strip at the centre, clock and countdown pinned top-right. */}
+      <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-24 py-5 text-white">
+        <span className="absolute top-3 left-5 text-micro font-bold tracking-widest opacity-85">
+          {t(($) => $.overview.mvp_label)}
+        </span>
+        <div className="cockpit-banner-glass">
+          <span aria-hidden>🎯</span>
+          <EditableText
+            value={board.cockpit.goal_title}
+            onCommit={(goal_title) => onPatchBoard({ goal_title })}
+            label={t(($) => $.overview.annual_goal)}
+            placeholder={t(($) => $.overview.annual_goal_placeholder)}
+            disabled={readOnly}
+            displayClassName="text-title-lg font-extrabold text-white"
+          />
+        </div>
+        {board.cockpit.basis && (
+          <p className="max-w-3xl text-center text-micro opacity-75">{board.cockpit.basis}</p>
+        )}
+        <div className="absolute top-3 right-5 flex flex-col items-end">
+          <span className="text-micro font-bold tracking-widest opacity-85">
+            {t(($) => $.overview.clock)}
+          </span>
+          <BannerClock />
+          <div className="flex items-center gap-2 text-micro opacity-90">
             <EditableDate
               value={board.cockpit.goal_date}
               onCommit={(goal_date) => onPatchBoard({ goal_date })}
               label={t(($) => $.overview.target_date)}
               placeholder={t(($) => $.overview.target_date)}
               disabled={readOnly}
+              displayClassName="text-white"
             />
             {daysLeft !== null && (
-              <span
-                className={cn(
-                  "text-display-sm font-semibold tabular-nums",
-                  daysLeft < 0 ? "text-destructive" : "text-foreground",
-                )}
-              >
+              <span className="font-semibold tabular-nums">
                 {daysLeft >= 0
                   ? t(($) => $.overview.days_left, { days: daysLeft })
                   : t(($) => $.overview.days_over, { days: -daysLeft })}
@@ -183,7 +383,10 @@ export function CockpitOverview({
         {milestones.length === 0 ? (
           <p className="text-body text-muted-foreground">{t(($) => $.empty.no_milestones)}</p>
         ) : (
-          <ol className="flex gap-3 overflow-x-auto pb-1">
+          <ol className="flex items-start overflow-x-auto pb-1">
+            {/* gap-0: the connector spans node to node, so spacing lives in
+                each node's own padding instead of a gap that would break the
+                line. */}
             {milestones.map((milestone) => (
               <MilestoneCard
                 key={milestone.id}
@@ -200,76 +403,31 @@ export function CockpitOverview({
 
       {/* Modules */}
       <Section title={t(($) => $.overview.modules)} hint={t(($) => $.overview.modules_hint)}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {tree.map((entry) => {
-            const rollup = rollups.get(entry.node.id);
-            const pct = Math.round(rollup?.progress ?? entry.node.progress);
-            return (
-              <article
-                key={entry.node.id}
-                className="rounded-md border border-border p-3"
-                style={entry.color ? { borderTopColor: entry.color, borderTopWidth: 2 } : undefined}
-              >
-                <div className="flex items-baseline gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onOpenBranch(entry.node.id)}
-                    aria-label={t(($) => $.overview.open_module, { code: entry.node.code })}
-                    className="font-mono text-micro text-muted-foreground hover:underline"
-                    style={entry.color ? { color: entry.color } : undefined}
-                  >
-                    {entry.node.code}
-                  </button>
-                  <EditableText
-                    value={entry.node.name}
-                    onCommit={(name) => onPatchNode(entry.node.id, { name })}
-                    label={t(($) => $.node.name)}
-                    placeholder={t(($) => $.node.name_placeholder)}
-                    disabled={readOnly}
-                    displayClassName="flex-1 font-medium"
-                  />
-                  <EditableText
-                    value={entry.node.owner}
-                    onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
-                    label={t(($) => $.node.owner)}
-                    placeholder={emptyLabel}
-                    disabled={readOnly}
-                    displayClassName="text-caption text-muted-foreground"
-                  />
-                </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-300"
-                    style={{ width: `${pct}%`, backgroundColor: entry.color || "var(--color-brand)" }}
-                  />
-                </div>
-                <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground tabular-nums">
-                  <div className="flex gap-1">
-                    <dt>{t(($) => $.overview.progress)}</dt>
-                    <dd className="font-medium text-foreground">{pct}%</dd>
-                  </div>
-                  <div className="flex gap-1">
-                    <dt>{t(($) => $.overview.tasks)}</dt>
-                    <dd className="font-medium text-foreground">
-                      {rollup?.doneCount ?? 0}/{rollup?.leafCount ?? 0}
-                    </dd>
-                  </div>
-                  {(rollup?.budget ?? 0) > 0 && (
-                    <div className="flex gap-1">
-                      <dt>{t(($) => $.overview.budget)}</dt>
-                      <dd className="font-medium text-budget">{formatAmount(rollup!.budget)}</dd>
-                    </div>
-                  )}
-                  {(rollup?.lateCount ?? 0) > 0 && (
-                    <div className="flex gap-1 text-destructive">
-                      <dt>{t(($) => $.overview.overdue)}</dt>
-                      <dd className="font-medium">{rollup!.lateCount}</dd>
-                    </div>
-                  )}
-                </dl>
-              </article>
-            );
-          })}
+        <div className="grid gap-3 md:grid-cols-2">
+          {tree.slice(0, MODULE_BIG_COUNT).map((entry) => (
+            <ModuleBigCard
+              key={entry.node.id}
+              entry={entry}
+              rollup={rollups.get(entry.node.id)}
+              readOnly={readOnly}
+              emptyLabel={emptyLabel}
+              onOpenBranch={onOpenBranch}
+              onPatchNode={onPatchNode}
+            />
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {tree.slice(MODULE_BIG_COUNT).map((entry) => (
+            <ModuleSmallCard
+              key={entry.node.id}
+              entry={entry}
+              rollup={rollups.get(entry.node.id)}
+              readOnly={readOnly}
+              emptyLabel={emptyLabel}
+              onOpenBranch={onOpenBranch}
+              onPatchNode={onPatchNode}
+            />
+          ))}
         </div>
       </Section>
 
@@ -347,6 +505,7 @@ export function CockpitOverview({
           emptyLabel={t(($) => $.empty.no_recent_done)}
           onCommit={(summary_overall) => onPatchBoard({ summary_overall })}
           readOnly={readOnly}
+          top={["#3b6cff", "#38bdf8"]}
         />
         <DigestCard
           title={t(($) => $.overview.card_next)}
@@ -355,6 +514,7 @@ export function CockpitOverview({
           emptyLabel={t(($) => $.empty.no_upcoming)}
           onCommit={(summary_next) => onPatchBoard({ summary_next })}
           readOnly={readOnly}
+          top={["#0891b2", "#22d3ee"]}
         />
         <DigestCard
           title={t(($) => $.overview.card_support)}
@@ -364,6 +524,7 @@ export function CockpitOverview({
           onCommit={(summary_support) => onPatchBoard({ summary_support })}
           readOnly={readOnly}
           tone="destructive"
+          top={["#d97706", "#fbbf24"]}
         />
       </div>
 
@@ -415,76 +576,68 @@ function MilestoneCard({
   const { t } = useT("cockpit");
   const done = isCockpitMilestoneDone(milestone);
   return (
+    // The track: a dot on the timeline, the card hanging below it. The
+    // connector between dots lives in cockpit.css on .cockpit-ms-node.
     <li
-      className={cn(
-        "group/ms relative w-64 shrink-0 rounded-md border p-3",
-        done ? "border-success/40 bg-success/5" : "border-border",
-      )}
+      className="cockpit-ms-node group/ms flex min-w-56 flex-1 shrink flex-col items-center px-2"
+      data-done={done || undefined}
     >
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            "mt-1 size-2 shrink-0 rounded-full",
-            done ? "bg-success" : "border-2 border-muted-foreground",
-          )}
-          aria-hidden
+      <span className="cockpit-ms-dot" aria-hidden />
+      <div className="cockpit-ms-card relative mt-2 w-full rounded-lg border p-3 transition-shadow hover:shadow-md">
+        <EditableText
+          value={milestone.name}
+          onCommit={(name) => onPatch({ name })}
+          label={t(($) => $.milestone.name)}
+          placeholder={t(($) => $.milestone.name_placeholder)}
+          disabled={readOnly}
+          displayClassName="font-medium"
         />
-        <div className="min-w-0 flex-1">
-          <EditableText
-            value={milestone.name}
-            onCommit={(name) => onPatch({ name })}
-            label={t(($) => $.milestone.name)}
-            placeholder={t(($) => $.milestone.name_placeholder)}
-            disabled={readOnly}
-            displayClassName="font-medium"
-          />
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            <StatusChip status={milestone.status} />
-            {node && (
-              <span className="font-mono text-micro text-muted-foreground">{node.code}</span>
-            )}
-          </div>
-          <div className="mt-2 flex flex-col gap-0.5">
-            <div className="flex items-center gap-1">
-              <span className="w-8 shrink-0 text-micro text-muted-foreground">
-                {t(($) => $.milestone.plan)}
-              </span>
-              <EditableDate
-                value={milestone.plan_date}
-                onCommit={(plan_date) => onPatch({ plan_date })}
-                label={t(($) => $.milestone.plan)}
-                placeholder={t(($) => $.common.unset)}
-                disabled={readOnly}
-              />
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-8 shrink-0 text-micro text-muted-foreground">
-                {t(($) => $.milestone.actual)}
-              </span>
-              <EditableDate
-                value={milestone.actual_date}
-                onCommit={(actual_date) => onPatch({ actual_date })}
-                label={t(($) => $.milestone.actual)}
-                placeholder={t(($) => $.common.unset)}
-                disabled={readOnly}
-              />
-            </div>
-          </div>
-          {milestone.condition && (
-            <p className="mt-2 text-micro text-muted-foreground">{milestone.condition}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <StatusChip status={milestone.status} />
+          {node && (
+            <span className="font-mono text-micro text-muted-foreground">{node.code}</span>
           )}
         </div>
+        <div className="mt-2 flex flex-col gap-0.5">
+          <div className="flex items-center gap-1">
+            <span className="w-8 shrink-0 text-micro text-muted-foreground">
+              {t(($) => $.milestone.plan)}
+            </span>
+            <EditableDate
+              value={milestone.plan_date}
+              onCommit={(plan_date) => onPatch({ plan_date })}
+              label={t(($) => $.milestone.plan)}
+              placeholder={t(($) => $.common.unset)}
+              disabled={readOnly}
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-8 shrink-0 text-micro text-muted-foreground">
+              {t(($) => $.milestone.actual)}
+            </span>
+            <EditableDate
+              value={milestone.actual_date}
+              onCommit={(actual_date) => onPatch({ actual_date })}
+              label={t(($) => $.milestone.actual)}
+              placeholder={t(($) => $.common.unset)}
+              disabled={readOnly}
+            />
+          </div>
+        </div>
+        {milestone.condition && (
+          <p className="mt-2 text-micro text-muted-foreground">{milestone.condition}</p>
+        )}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label={t(($) => $.milestone.delete, { name: milestone.name })}
+            className="absolute top-2 right-2 rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover/ms:opacity-100 hover:text-destructive focus-visible:opacity-100"
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        )}
       </div>
-      {!readOnly && (
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label={t(($) => $.milestone.delete, { name: milestone.name })}
-          className="absolute top-2 right-2 rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover/ms:opacity-100 hover:text-destructive focus-visible:opacity-100"
-        >
-          <Trash2 className="size-3.5" />
-        </button>
-      )}
     </li>
   );
 }
@@ -497,6 +650,7 @@ function DigestCard({
   onCommit,
   readOnly,
   tone,
+  top,
 }: {
   title: string;
   override: string;
@@ -505,10 +659,18 @@ function DigestCard({
   onCommit: (next: string) => void;
   readOnly?: boolean;
   tone?: "destructive";
+  /** Gradient cap colours [from, to], as in the prototype's narrative cards. */
+  top?: [string, string];
 }) {
   const { t } = useT("cockpit");
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
+    <section
+      className={cn(
+        "rounded-lg border border-border bg-card p-4",
+        top && "cockpit-card-top",
+      )}
+      style={top ? ({ "--top-from": top[0], "--top-to": top[1] } as CSSProperties) : undefined}
+    >
       <header className="mb-2 flex items-baseline gap-2">
         <h2 className="text-title-sm font-semibold">{title}</h2>
         <span className="flex-1" />

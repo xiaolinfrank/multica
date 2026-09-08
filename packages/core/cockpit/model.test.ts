@@ -4,6 +4,7 @@ import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
   buildCockpitTree,
+  cockpitModuleHighlights,
   cockpitStatusColor,
   computeCockpitAxis,
   computeCockpitDigest,
@@ -152,6 +153,20 @@ describe("computeCockpitRollups", () => {
 
   it("counts a task past its end date and not done as late", () => {
     expect(rollups.get("r")!.lateCount).toBe(1);
+  });
+
+  it("counts in-progress and review leaves as active", () => {
+    expect(rollups.get("r")!.activeCount).toBe(0);
+    const active = computeCockpitRollups(
+      buildCockpitTree([
+        node({ id: "r2", code: "R2" }),
+        node({ id: "x", code: "X", parent_id: "r2", status: "进行中" }),
+        node({ id: "y", code: "Y", parent_id: "r2", status: "审查中" }),
+        node({ id: "z", code: "Z", parent_id: "r2", status: "未开始" }),
+      ]),
+      "2026-06-01",
+    );
+    expect(active.get("r2")!.activeCount).toBe(2);
   });
 
   // A branch with 40 tasks must not weigh the same as its sibling with 2.
@@ -453,5 +468,36 @@ describe("computeCockpitFinanceRows", () => {
     ]);
     expect(rows.map((r) => r.node.code)).toContain("01.04");
     expect(rows.find((r) => r.node.code === "01.04")!.budget).toBe(0);
+  });
+});
+
+describe("cockpitModuleHighlights", () => {
+  it("picks the latest finished leaf and the nearest unfinished one", () => {
+    const tree = buildCockpitTree([
+      node({ id: "m", code: "L1-01" }),
+      node({ id: "a", code: "A", parent_id: "m", status: "已完成", end_date: "2026-03-01" }),
+      node({ id: "b", code: "B", parent_id: "m", status: "已完成", end_date: "2026-05-01" }),
+      node({ id: "c", code: "C", parent_id: "m", status: "进行中", end_date: "2026-04-01" }),
+      node({ id: "d", code: "D", parent_id: "m", status: "未开始", end_date: "2026-02-01" }),
+    ]);
+    const highlights = cockpitModuleHighlights(tree[0]!);
+    expect(highlights.recent?.id).toBe("b");
+    expect(highlights.next?.id).toBe("d");
+  });
+
+  it("treats overdue work as the next node and reports nulls without dated leaves", () => {
+    const past = buildCockpitTree([
+      node({ id: "m", code: "L1-02" }),
+      node({ id: "old", code: "OLD", parent_id: "m", status: "进行中", end_date: "2020-01-01" }),
+    ]);
+    expect(cockpitModuleHighlights(past[0]!).next?.id).toBe("old");
+
+    const bare = buildCockpitTree([
+      node({ id: "m", code: "L1-03" }),
+      node({ id: "x", code: "X", parent_id: "m" }),
+    ]);
+    const empty = cockpitModuleHighlights(bare[0]!);
+    expect(empty.recent).toBeNull();
+    expect(empty.next).toBeNull();
   });
 });

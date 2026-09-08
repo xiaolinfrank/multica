@@ -56,7 +56,13 @@
     "card_write_manual": "Write this card myself",
     "card_seed": "…",
     "meetings": "Meetings",
-    "add_meeting": "Add meeting"
+    "add_meeting": "Add meeting",
+    "mvp_label": "Annual MVP goal",
+    "clock": "Local time",
+    "done_total": "Done/total",
+    "module_active": "Active",
+    "module_recent": "Latest result",
+    "module_next": "Next key node"
   },
   "gantt": {
     "column_task": "Task / module",

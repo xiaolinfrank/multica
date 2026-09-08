@@ -309,7 +309,9 @@ export function CockpitPage() {
 
   if (isLoading || !board) {
     return (
-      <div className="flex flex-col gap-3 p-4">
+      // cockpit-skin also on the loading frame so the board never flashes the
+      // app theme while the query resolves.
+      <div className="cockpit-skin flex flex-col gap-3 p-4">
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -321,7 +323,7 @@ export function CockpitPage() {
   const isBoardView = tab !== "overview";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="cockpit-skin flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <EditableText
           value={board.cockpit.title}

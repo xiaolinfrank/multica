@@ -56,7 +56,13 @@
     "card_write_manual": "직접 작성하기",
     "card_seed": "…",
     "meetings": "회의 기록",
-    "add_meeting": "회의 추가"
+    "add_meeting": "회의 추가",
+    "mvp_label": "연간 MVP 목표",
+    "clock": "현재 시각",
+    "done_total": "완료/전체",
+    "module_active": "진행 중",
+    "module_recent": "최근 성과",
+    "module_next": "다음 키 노드"
   },
   "gantt": {
     "column_task": "작업 / 모듈",
