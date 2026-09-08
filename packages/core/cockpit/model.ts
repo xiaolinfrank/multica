@@ -196,6 +196,29 @@ export function isCockpitNodeLate(node: CockpitNode, today: string): boolean {
   return node.end_date < today;
 }
 
+/**
+ * The prototype's field-integrity check: which of the core fields a task
+ * should carry but doesn't. `progress` is not among them — the column is
+ * never empty, and 0% is a real value ("not started"), not a missing one.
+ * The UI maps these keys to its own labels.
+ */
+export const COCKPIT_CORE_CHECK_FIELDS = [
+  "name",
+  "owner",
+  "start_date",
+  "end_date",
+  "status",
+] as const;
+
+export type CockpitCheckField = (typeof COCKPIT_CORE_CHECK_FIELDS)[number];
+
+export function cockpitMissingFields(node: CockpitNode): CockpitCheckField[] {
+  return COCKPIT_CORE_CHECK_FIELDS.filter((field) => {
+    const value = node[field];
+    return value == null || String(value).trim() === "";
+  });
+}
+
 function minDate(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
@@ -360,11 +383,25 @@ export function computeCockpitFinance(board: CockpitBoard): CockpitFinanceSummar
   };
 }
 
+export interface CockpitMonthModuleShare {
+  /** Root module code, e.g. "L1-03". */
+  code: string;
+  /** The colour the root module paints with. */
+  color: string;
+  amount: number;
+}
+
 export interface CockpitMonthCell {
   /** "YYYY-MM". */
   month: string;
   /** Instalments falling in this month, summed. */
   amount: number;
+  /** The same instalments split by root module, for the stacked column. */
+  byModule: CockpitMonthModuleShare[];
+  /** Instalments in this month on nodes whose execution status reads as paid. */
+  paidAmount: number;
+  /** Leaves with work underway whose plan window covers this month. */
+  activeCount: number;
   /** Tasks whose planned end lands in this month. */
   dueCount: number;
   /** How many of those are done. */
@@ -381,16 +418,51 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
   const touch = (month: string): CockpitMonthCell => {
     let cell = cells.get(month);
     if (!cell) {
-      cell = { month, amount: 0, dueCount: 0, doneCount: 0 };
+      cell = {
+        month,
+        amount: 0,
+        byModule: [],
+        paidAmount: 0,
+        activeCount: 0,
+        dueCount: 0,
+        doneCount: 0,
+      };
       cells.set(month, cell);
     }
     return cell;
   };
 
+  // Instalments stack by root module colour, so map each node to its root
+  // and the colour that subtree paints with.
+  const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
+  const rootOf = (id: string): CockpitNode | undefined => {
+    let current = nodeById.get(id);
+    while (current?.parent_id) current = nodeById.get(current.parent_id);
+    return current;
+  };
+  const colorOf = new Map<string, string>();
+  const leaves: CockpitNode[] = [];
+  const walk = (entry: CockpitTreeNode): void => {
+    colorOf.set(entry.node.id, entry.color);
+    if (entry.children.length === 0) leaves.push(entry.node);
+    entry.children.forEach(walk);
+  };
+  buildCockpitTree(board.nodes).forEach(walk);
+
   for (const payment of board.payments) {
     const date = parseDay(payment.pay_date);
     if (!date) continue;
-    touch(monthKey(date)).amount += payment.amount;
+    const cell = touch(monthKey(date));
+    cell.amount += payment.amount;
+    const payer = nodeById.get(payment.node_id);
+    if (payer && PAID_STATUSES.has(payer.exec_status.trim())) cell.paidAmount += payment.amount;
+    const root = payment.node_id ? rootOf(payment.node_id) : undefined;
+    if (root) {
+      const code = root.code;
+      const share = cell.byModule.find((s) => s.code === code);
+      if (share) share.amount += payment.amount;
+      else cell.byModule.push({ code, color: colorOf.get(root.id) || "", amount: payment.amount });
+    }
   }
   for (const node of board.nodes) {
     const date = parseDay(node.end_date);
@@ -398,6 +470,20 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
     const cell = touch(monthKey(date));
     cell.dueCount += 1;
     if (isCockpitNodeDone(node)) cell.doneCount += 1;
+  }
+  // "Work underway this month": an active leaf whose plan window covers the
+  // month, like the prototype's doing count. Month keys compare lexicographically.
+  for (const leaf of leaves) {
+    if (!isCockpitNodeActive(leaf)) continue;
+    const start = leaf.start_date?.slice(0, 7);
+    const end = leaf.end_date?.slice(0, 7);
+    if (!start || !end) continue;
+    for (const cell of cells.values()) {
+      if (cell.month >= start && cell.month <= end) cell.activeCount += 1;
+    }
+  }
+  for (const cell of cells.values()) {
+    cell.byModule.sort((a, b) => b.amount - a.amount || a.code.localeCompare(b.code));
   }
 
   const months = [...cells.keys()].sort();
@@ -411,7 +497,17 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
   const end = new Date(Date.UTC(lastYear!, lastMonth! - 1, 1));
   while (cursor <= end) {
     const key = monthKey(cursor);
-    filled.push(cells.get(key) ?? { month: key, amount: 0, dueCount: 0, doneCount: 0 });
+    filled.push(
+      cells.get(key) ?? {
+        month: key,
+        amount: 0,
+        byModule: [],
+        paidAmount: 0,
+        activeCount: 0,
+        dueCount: 0,
+        doneCount: 0,
+      },
+    );
     cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
   }
   return filled;

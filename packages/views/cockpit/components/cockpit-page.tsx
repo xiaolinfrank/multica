@@ -133,6 +133,11 @@ export function CockpitPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showFinance, setShowFinance] = useState(false);
   const [scrollToTodayNonce, setScrollToTodayNonce] = useState(0);
+  // The gantt locates-and-flashes one row; the nonce makes repeat clicks on
+  // the same digest task re-trigger the effect.
+  const [focusTarget, setFocusTarget] = useState<{ nodeId: string; nonce: number } | null>(
+    null,
+  );
   const [today] = useState(todayString);
 
   const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
@@ -235,6 +240,31 @@ export function CockpitPage() {
       );
     },
     [linksByNode, setNodeIssues, fail],
+  );
+
+  /**
+   * Jump from a digest-card task row into the gantt: expand its ancestors so
+   * the row is rendered, select it (opens the node panel) and flash it.
+   */
+  const openTask = useCallback(
+    (nodeId: string) => {
+      setCollapsed((prev) => {
+        const ancestors = new Set<string>();
+        let cursor = nodeById.get(nodeId);
+        while (cursor?.parent_id) {
+          ancestors.add(cursor.parent_id);
+          cursor = nodeById.get(cursor.parent_id);
+        }
+        if (ancestors.size === 0) return prev;
+        const next = new Set(prev);
+        ancestors.forEach((id) => next.delete(id));
+        return next;
+      });
+      setSelectedId(nodeId);
+      setFocusTarget((prev) => ({ nodeId, nonce: (prev?.nonce ?? 0) + 1 }));
+      setTab("gantt");
+    },
+    [nodeById],
   );
 
   const toggleCollapse = useCallback((nodeId: string) => {
@@ -523,6 +553,7 @@ export function CockpitPage() {
                   setRootId(nodeId);
                   setTab("gantt");
                 }}
+                onOpenTask={openTask}
               />
             </div>
           )}
@@ -542,6 +573,7 @@ export function CockpitPage() {
               statusSuggestions={statusSuggestions}
               showFinance={showFinance}
               scrollToTodayNonce={scrollToTodayNonce}
+              focusTarget={focusTarget}
             />
           )}
 

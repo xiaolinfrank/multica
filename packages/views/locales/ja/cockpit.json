@@ -62,7 +62,8 @@
     "done_total": "完了/総数",
     "module_active": "進行中",
     "module_recent": "直近の成果",
-    "module_next": "次のキーノード"
+    "module_next": "次のキーノード",
+    "open_task": "ガントチャートで {{code}} を表示"
   },
   "gantt": {
     "column_task": "タスク / モジュール",
@@ -153,7 +154,11 @@
     "payment_count": "{{count}} 件の支払い",
     "payment_total": "合計 {{total}}",
     "month_tasks": "タスク {{done}}/{{total}} 完了",
-    "payment_on": "{{date}} の支払"
+    "payment_on": "{{date}} の支払",
+    "month_chart": "月次タスク進捗 × 支出予算",
+    "month_basis": "柱＝当月の支払予定（モジュール別カラー積み上げ）；緑バー＝実払比率",
+    "paid_label": "実払",
+    "month_active": "進行中 {{n}}"
   },
   "issues": {
     "link": "イシューを関連付け",
@@ -192,7 +197,10 @@
     "planned_date": "支出予定時期",
     "actual_date": "実際の支出時期",
     "planned_amount": "支出予定額",
-    "actual_amount": "実際の支出額"
+    "actual_amount": "実際の支出額",
+    "check": "チェック",
+    "check_ok": "正常",
+    "check_warn": "要確認 {{n}}"
   },
   "versions": {
     "button": "バージョン",

@@ -71,6 +71,8 @@ export interface CockpitGanttProps {
   showFinance: boolean;
   /** Bumped by the toolbar to scroll the timeline back to the today line. */
   scrollToTodayNonce: number;
+  /** Locate-and-flash one row; the nonce re-triggers repeat clicks. */
+  focusTarget: { nodeId: string; nonce: number } | null;
   readOnly?: boolean;
 }
 
@@ -285,6 +287,7 @@ export function CockpitGantt({
   statusSuggestions,
   showFinance,
   scrollToTodayNonce,
+  focusTarget,
   readOnly,
 }: CockpitGanttProps) {
   const { t } = useT("cockpit");
@@ -371,6 +374,20 @@ export function CockpitGantt({
     if (!el) return;
     el.scrollTo({ left: Math.max(todayOffset - el.clientWidth / 3, 0), behavior: "smooth" });
   }, [scrollToTodayNonce, todayOffset]);
+
+  // A digest-card task click lands here: locate the row, scroll it into the
+  // middle and flash it, the way the prototype's grid did.
+  useEffect(() => {
+    if (!focusTarget) return;
+    const el = scrollRef.current?.querySelector(
+      `[data-cockpit-node="${focusTarget.nodeId}"]`,
+    );
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("cockpit-flash");
+    const timer = window.setTimeout(() => el.classList.remove("cockpit-flash"), 2600);
+    return () => window.clearTimeout(timer);
+  }, [focusTarget]);
 
   if (board.nodes.length === 0) {
     return (
@@ -488,6 +505,7 @@ export function CockpitGantt({
               return (
                 <div
                   key={node.id}
+                  data-cockpit-node={node.id}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   className={cn(
@@ -770,6 +788,7 @@ export function CockpitGantt({
                 return (
                   <div
                     key={node.id}
+                    data-cockpit-node={node.id}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                     className={cn(

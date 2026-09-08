@@ -280,6 +280,8 @@ export interface CockpitOverviewProps {
   onCreateMeeting: () => void;
   onDeleteMeeting: (id: string) => void;
   onOpenBranch: (nodeId: string) => void;
+  /** Locates and highlights one task row in the gantt. */
+  onOpenTask?: (nodeId: string) => void;
   readOnly?: boolean;
 }
 
@@ -295,6 +297,7 @@ export function CockpitOverview({
   onCreateMeeting,
   onDeleteMeeting,
   onOpenBranch,
+  onOpenTask,
   readOnly,
 }: CockpitOverviewProps) {
   const { t } = useT("cockpit");
@@ -472,27 +475,124 @@ export function CockpitOverview({
         </dl>
 
         {months.length > 0 && (
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {months.map((month) => (
-              <div key={month.month} className="min-w-24 flex-1 rounded-md border border-border p-2">
-                <div className="text-micro text-muted-foreground tabular-nums">{month.month}</div>
-                <div className="mt-0.5 text-body font-semibold tabular-nums">
-                  {month.amount > 0 ? formatAmount(month.amount) : "—"}
+          <>
+            <div className="mt-4 mb-1 text-caption font-medium">
+              {t(($) => $.finance.month_chart)}
+              <span className="ml-2 font-normal text-muted-foreground">
+                {t(($) => $.finance.month_basis)}
+              </span>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {months.map((month) => (
+                <div
+                  key={month.month}
+                  className="flex min-w-28 flex-1 flex-col rounded-md border border-border bg-card p-2.5"
+                >
+                  <div className="text-micro text-muted-foreground tabular-nums">{month.month}</div>
+                  <div className="mt-0.5 text-body font-semibold tabular-nums">
+                    {month.amount > 0 ? formatAmount(month.amount) : "—"}
+                  </div>
+                  {/* The stacked column: instalments of this month by module
+                      colour, one segment per root. */}
+                  <div className="mt-2 flex h-20 items-end justify-center">
+                    {month.amount > 0 ? (
+                      <div className="flex w-6 flex-col-reverse overflow-hidden rounded-t-sm">
+                        {month.byModule.map((share) => (
+                          <div
+                            key={share.code}
+                            title={`${share.code} ${formatAmount(share.amount)}`}
+                            style={{
+                              height: `${(share.amount / maxMonthAmount) * 100}%`,
+                              backgroundColor: share.color || "var(--color-muted-foreground)",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-micro text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 flex flex-col gap-0.5">
+                    {month.byModule.length > 0 ? (
+                      month.byModule.map((share) => (
+                        <div
+                          key={share.code}
+                          className="flex items-center gap-1 text-micro tabular-nums"
+                        >
+                          <span
+                            className="size-1.5 rounded-full"
+                            style={{
+                              backgroundColor: share.color || "var(--color-muted-foreground)",
+                            }}
+                            aria-hidden
+                          />
+                          <span className="text-muted-foreground">{share.code}</span>
+                          <span className="ml-auto font-medium">
+                            {formatAmount(share.amount)}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-micro text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  {/* Paid share: instalments on nodes whose execution status
+                      reads as paid, against the month's plan. */}
+                  <div className="mt-2">
+                    <div className="flex items-baseline justify-between text-micro">
+                      <span className="text-muted-foreground">
+                        {t(($) => $.finance.paid_label)}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-medium tabular-nums",
+                          month.paidAmount > 0 && "text-success",
+                        )}
+                      >
+                        {month.paidAmount > 0 ? formatAmount(month.paidAmount) : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-success transition-[width] duration-300"
+                        style={{
+                          width:
+                            month.amount > 0
+                              ? `${Math.min(100, (month.paidAmount / month.amount) * 100)}%`
+                              : "0%",
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-border pt-1.5">
+                    <div className="text-micro text-muted-foreground tabular-nums">
+                      {t(($) => $.finance.month_tasks, {
+                        done: month.doneCount,
+                        total: month.dueCount,
+                      })}
+                      {month.activeCount > 0 && (
+                        <>
+                          {" · "}
+                          {t(($) => $.finance.month_active, { n: month.activeCount })}
+                        </>
+                      )}
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-success transition-[width] duration-300"
+                        style={{
+                          width:
+                            month.dueCount > 0
+                              ? `${Math.round((month.doneCount / month.dueCount) * 100)}%`
+                              : "0%",
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-brand"
-                    style={{
-                      width: maxMonthAmount > 0 ? `${(month.amount / maxMonthAmount) * 100}%` : "0%",
-                    }}
-                  />
-                </div>
-                <div className="mt-1 text-micro text-muted-foreground tabular-nums">
-                  {t(($) => $.finance.month_tasks, { done: month.doneCount, total: month.dueCount })}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </Section>
 
@@ -504,6 +604,7 @@ export function CockpitOverview({
           nodes={digest.recentlyDone}
           emptyLabel={t(($) => $.empty.no_recent_done)}
           onCommit={(summary_overall) => onPatchBoard({ summary_overall })}
+          onOpenTask={onOpenTask}
           readOnly={readOnly}
           top={["#3b6cff", "#38bdf8"]}
         />
@@ -513,6 +614,7 @@ export function CockpitOverview({
           nodes={digest.upcoming}
           emptyLabel={t(($) => $.empty.no_upcoming)}
           onCommit={(summary_next) => onPatchBoard({ summary_next })}
+          onOpenTask={onOpenTask}
           readOnly={readOnly}
           top={["#0891b2", "#22d3ee"]}
         />
@@ -522,6 +624,7 @@ export function CockpitOverview({
           nodes={digest.needsSupport}
           emptyLabel={t(($) => $.empty.no_support_needed)}
           onCommit={(summary_support) => onPatchBoard({ summary_support })}
+          onOpenTask={onOpenTask}
           readOnly={readOnly}
           tone="destructive"
           top={["#d97706", "#fbbf24"]}
@@ -651,6 +754,7 @@ function DigestCard({
   readOnly,
   tone,
   top,
+  onOpenTask,
 }: {
   title: string;
   override: string;
@@ -661,6 +765,8 @@ function DigestCard({
   tone?: "destructive";
   /** Gradient cap colours [from, to], as in the prototype's narrative cards. */
   top?: [string, string];
+  /** Sends a click on a task row to the gantt, which locates the row. */
+  onOpenTask?: (nodeId: string) => void;
 }) {
   const { t } = useT("cockpit");
   return (
@@ -694,21 +800,56 @@ function DigestCard({
             <p className="text-body text-muted-foreground">{emptyLabel}</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {nodes.map((node) => (
-                <li key={node.id} className="flex items-baseline gap-2">
-                  <span className="shrink-0 font-mono text-micro text-muted-foreground">
-                    {node.code}
-                  </span>
-                  <span className={cn("min-w-0 flex-1 text-body", tone === "destructive" && "text-destructive")}>
-                    {node.name}
-                  </span>
-                  {node.end_date && (
-                    <span className="shrink-0 text-micro text-muted-foreground tabular-nums">
-                      {node.end_date}
+              {nodes.map((node) =>
+                onOpenTask ? (
+                  // A task row is a jump into the gantt, like the prototype's
+                  // "click the card task to locate it on the chart".
+                  <li key={node.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenTask(node.id)}
+                      aria-label={t(($) => $.overview.open_task, { code: node.code })}
+                      className="flex w-full items-baseline gap-2 rounded-sm px-1 py-0.5 text-left hover:bg-accent"
+                    >
+                      <span className="shrink-0 font-mono text-micro text-muted-foreground">
+                        {node.code}
+                      </span>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-body",
+                          tone === "destructive" && "text-destructive",
+                        )}
+                      >
+                        {node.name}
+                      </span>
+                      {node.end_date && (
+                        <span className="shrink-0 text-micro text-muted-foreground tabular-nums">
+                          {node.end_date}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ) : (
+                  <li key={node.id} className="flex items-baseline gap-2">
+                    <span className="shrink-0 font-mono text-micro text-muted-foreground">
+                      {node.code}
                     </span>
-                  )}
-                </li>
-              ))}
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 text-body",
+                        tone === "destructive" && "text-destructive",
+                      )}
+                    >
+                      {node.name}
+                    </span>
+                    {node.end_date && (
+                      <span className="shrink-0 text-micro text-muted-foreground tabular-nums">
+                        {node.end_date}
+                      </span>
+                    )}
+                  </li>
+                ),
+              )}
             </ul>
           )}
           {!readOnly && (

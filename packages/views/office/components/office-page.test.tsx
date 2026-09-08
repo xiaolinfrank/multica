@@ -155,7 +155,10 @@ describe("OfficePage", () => {
     expect(await screen.findAllByText("Beta")).not.toHaveLength(0);
     expect(screen.getByText("Desks")).toBeInTheDocument();
     expect(screen.getByText("Token leaderboard")).toBeInTheDocument();
-    expect(screen.getByText("1K")).toBeInTheDocument(); // 900 + 100 compact
+    // 900 + 100 compact. The compact form is locale-dependent (zh renders
+    // "1000" — its compact scale starts at 万), so accept both shapes rather
+    // than pinning the test to an en-locale machine.
+    expect(screen.getByText(/^(1K|1000)$/)).toBeInTheDocument();
     // Alpha runs a task so the desk caption reads "Running 1/...".
     expect(screen.getByText(/Running/)).toBeInTheDocument();
   });

@@ -171,3 +171,19 @@
   height: 3px;
   background: linear-gradient(90deg, var(--top-from), var(--top-to));
 }
+
+/* A located row flashes once, then fades back out. */
+@keyframes cockpit-gridflash {
+  0% {
+    background: #dbeafe;
+  }
+  60% {
+    background: #e0e7ff;
+  }
+  100% {
+    background: transparent;
+  }
+}
+.cockpit-flash {
+  animation: cockpit-gridflash 2.4s ease-out;
+}

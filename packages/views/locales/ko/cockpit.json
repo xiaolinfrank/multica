@@ -62,7 +62,8 @@
     "done_total": "완료/전체",
     "module_active": "진행 중",
     "module_recent": "최근 성과",
-    "module_next": "다음 키 노드"
+    "module_next": "다음 키 노드",
+    "open_task": "간트에서 {{code}} 위치 보기"
   },
   "gantt": {
     "column_task": "작업 / 모듈",
@@ -153,7 +154,11 @@
     "payment_count": "지급 {{count}}건",
     "payment_total": "합계 {{total}}",
     "month_tasks": "작업 {{done}}/{{total}} 완료",
-    "payment_on": "{{date}} 지급"
+    "payment_on": "{{date}} 지급",
+    "month_chart": "월간 작업 진행 × 지출 예산",
+    "month_basis": "기둥＝당월 지불 예정(모듈 색상 스택); 초록 막대＝실지불 비율",
+    "paid_label": "실지불",
+    "month_active": "진행 {{n}}"
   },
   "issues": {
     "link": "이슈 연결",
@@ -192,7 +197,10 @@
     "planned_date": "지출 예정 시기",
     "actual_date": "실제 지출 시기",
     "planned_amount": "지출 예정 금액",
-    "actual_amount": "실제 지출 금액"
+    "actual_amount": "실제 지출 금액",
+    "check": "점검",
+    "check_ok": "정상",
+    "check_warn": "확인 {{n}}"
   },
   "versions": {
     "button": "버전",

@@ -18,10 +18,12 @@ import type {
 } from "@multica/core/types";
 import {
   buildCockpitTree,
+  cockpitMissingFields,
   computeCockpitFinanceRows,
   flattenCockpitTree,
   groupIssueLinksByNode,
   groupPaymentsByNode,
+  type CockpitCheckField,
   type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
@@ -87,6 +89,30 @@ function Derived({ value }: { value: string }) {
   return (
     <span className={cn("text-caption tabular-nums", !value && "text-faint-foreground")}>
       {value || "—"}
+    </span>
+  );
+}
+
+/**
+ * The prototype's field-integrity verdict: green "OK" when every core field
+ * carries a value, amber "remind N" naming what is missing on hover.
+ */
+function CheckBadge({ missing }: { missing: CockpitCheckField[] }) {
+  const { t } = useT("cockpit");
+  if (missing.length === 0) {
+    return (
+      <span className="whitespace-nowrap text-micro font-medium text-success">
+        {t(($) => $.table.check_ok)}
+      </span>
+    );
+  }
+  const labels = missing.map((field) => t(($) => $.node[field]));
+  return (
+    <span
+      title={labels.join(" / ")}
+      className="inline-flex items-center whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-micro font-medium text-warning"
+    >
+      {t(($) => $.table.check_warn, { n: missing.length })}
     </span>
   );
 }
@@ -348,6 +374,7 @@ export function CockpitTable({
               <Th>{t(($) => $.node.end_date)}</Th>
               <Th>{t(($) => $.node.status)}</Th>
               <Th className="text-right">{t(($) => $.node.progress)}</Th>
+              <Th>{t(($) => $.table.check)}</Th>
               <Th>{t(($) => $.node.dependencies)}</Th>
               <Th>{t(($) => $.node.linked_issues)}</Th>
               <Th>{t(($) => $.node.vendor)}</Th>
@@ -481,6 +508,9 @@ export function CockpitTable({
                       disabled={readOnly || isBranch}
                       className="text-right"
                     />
+                  </Td>
+                  <Td>
+                    <CheckBadge missing={cockpitMissingFields(node)} />
                   </Td>
                   <Td className="max-w-64">
                     <EditableText

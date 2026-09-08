@@ -4,6 +4,7 @@ import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
   buildCockpitTree,
+  cockpitMissingFields,
   cockpitModuleHighlights,
   cockpitStatusColor,
   computeCockpitAxis,
@@ -259,6 +260,85 @@ describe("computeCockpitMonths", () => {
 
   it("returns nothing for a board with no dates at all", () => {
     expect(computeCockpitMonths(board({ nodes: [node({ id: "a", code: "A" })] }))).toEqual([]);
+  });
+
+  it("stacks instalments by root module colour and marks the paid share", () => {
+    const cells = computeCockpitMonths(
+      board({
+        nodes: [
+          node({ id: "r1", code: "L1-01", color: "#2563eb" }),
+          node({ id: "r2", code: "L1-02", color: "#0891b2" }),
+          node({
+            id: "a",
+            code: "A",
+            parent_id: "r1",
+            exec_status: "完全支付",
+            end_date: "2026-01-20",
+          }),
+          node({ id: "b", code: "B", parent_id: "r2", end_date: "2026-01-25" }),
+        ],
+        payments: [
+          { id: "1", node_id: "a", label: "", pay_date: "2026-01-05", amount: 10, position: 0 },
+          { id: "2", node_id: "b", label: "", pay_date: "2026-01-15", amount: 5, position: 0 },
+        ],
+      }),
+    );
+    const jan = cells.find((c) => c.month === "2026-01")!;
+    expect(jan.amount).toBe(15);
+    expect(jan.paidAmount).toBe(10);
+    expect(jan.byModule).toEqual([
+      { code: "L1-01", color: "#2563eb", amount: 10 },
+      { code: "L1-02", color: "#0891b2", amount: 5 },
+    ]);
+  });
+
+  it("counts active leaves whose plan window covers the month", () => {
+    const cells = computeCockpitMonths(
+      board({
+        nodes: [
+          node({
+            id: "a",
+            code: "A",
+            status: "进行中",
+            start_date: "2026-01-10",
+            end_date: "2026-03-20",
+          }),
+          node({ id: "b", code: "B", status: "已完成", end_date: "2026-02-01" }),
+          node({ id: "c", code: "C", end_date: "2026-04-01" }),
+        ],
+        payments: [
+          { id: "1", node_id: "a", label: "", pay_date: "2026-01-05", amount: 3, position: 0 },
+        ],
+      }),
+    );
+    expect(cells.find((c) => c.month === "2026-01")!.activeCount).toBe(1);
+    expect(cells.find((c) => c.month === "2026-02")!.activeCount).toBe(1);
+    expect(cells.find((c) => c.month === "2026-03")!.activeCount).toBe(1);
+    expect(cells.find((c) => c.month === "2026-04")!.activeCount).toBe(0);
+  });
+});
+
+describe("cockpitMissingFields", () => {
+  it("names the empty core fields and passes a complete task", () => {
+    // The fixture fills name from code, so only the other four are missing.
+    expect(cockpitMissingFields(node({ id: "x", code: "X" }))).toEqual([
+      "owner",
+      "start_date",
+      "end_date",
+      "status",
+    ]);
+    expect(
+      cockpitMissingFields(
+        node({
+          id: "y",
+          code: "Y",
+          owner: "W",
+          start_date: "2026-01-01",
+          end_date: "2026-02-01",
+          status: "进行中",
+        }),
+      ),
+    ).toEqual([]);
   });
 });
 

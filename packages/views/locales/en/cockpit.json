@@ -62,7 +62,8 @@
     "done_total": "Done/total",
     "module_active": "Active",
     "module_recent": "Latest result",
-    "module_next": "Next key node"
+    "module_next": "Next key node",
+    "open_task": "Locate {{code}} on the gantt"
   },
   "gantt": {
     "column_task": "Task / module",
@@ -153,7 +154,11 @@
     "payment_count": "{{count}} instalments",
     "payment_total": "total {{total}}",
     "month_tasks": "{{done}}/{{total}} tasks done",
-    "payment_on": "Payment on {{date}}"
+    "payment_on": "Payment on {{date}}",
+    "month_chart": "Monthly task progress × spend budget",
+    "month_basis": "column = the month's instalments (stacked by module colour); green bar = paid share",
+    "paid_label": "Paid",
+    "month_active": "Active {{n}}"
   },
   "issues": {
     "link": "Link issue",
@@ -192,7 +197,10 @@
     "planned_date": "Planned spend date",
     "actual_date": "Actual spend date",
     "planned_amount": "Planned amount",
-    "actual_amount": "Actual amount"
+    "actual_amount": "Actual amount",
+    "check": "Check",
+    "check_ok": "OK",
+    "check_warn": "Remind {{n}}"
   },
   "versions": {
     "button": "Versions",

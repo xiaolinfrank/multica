@@ -62,7 +62,8 @@
     "done_total": "已完成/总数",
     "module_active": "进行中",
     "module_recent": "最近成果",
-    "module_next": "下一关键节点"
+    "module_next": "下一关键节点",
+    "open_task": "在甘特图中定位 {{code}}"
   },
   "gantt": {
     "column_task": "任务 / 模块",
@@ -153,7 +154,11 @@
     "payment_count": "{{count}} 笔付款",
     "payment_total": "合计 {{total}}",
     "month_tasks": "任务完成 {{done}}/{{total}}",
-    "payment_on": "{{date}} 的付款"
+    "payment_on": "{{date}} 的付款",
+    "month_chart": "月度任务进度 × 财务支出预算",
+    "month_basis": "柱＝当月付款计划（按板块分色堆叠）；绿条＝实付占比",
+    "paid_label": "实付",
+    "month_active": "在办 {{n}}"
   },
   "issues": {
     "link": "关联任务",
@@ -192,7 +197,10 @@
     "planned_date": "预计支出时间",
     "actual_date": "实际支出时间",
     "planned_amount": "预计支出费用",
-    "actual_amount": "实际支出费用"
+    "actual_amount": "实际支出费用",
+    "check": "校验",
+    "check_ok": "正常",
+    "check_warn": "提醒 {{n}}"
   },
   "versions": {
     "button": "版本",
