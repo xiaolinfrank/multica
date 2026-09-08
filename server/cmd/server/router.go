@@ -1995,6 +1995,15 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// board and is gated to owner/admin inside the handler.
 			r.Route("/api/cockpit", func(r chi.Router) {
 				r.Get("/", h.GetCockpit)
+				r.Get("/changes", h.ListCockpitChanges)
+				r.Post("/changes", h.CreateCockpitChange)
+				// Batch funnel for agent write-backs; see cockpit_changes.go.
+				r.Post("/changes/ingest", h.IngestCockpitChanges)
+				r.Route("/changes/{changeId}", func(r chi.Router) {
+					r.Post("/apply", h.ApplyCockpitChange)
+					r.Post("/reject", h.RejectCockpitChange)
+					r.Post("/withdraw", h.WithdrawCockpitChange)
+				})
 				r.Patch("/", h.UpdateCockpit)
 				r.Put("/import", h.ImportCockpit)
 				r.Get("/snapshots", h.ListCockpitSnapshots)

@@ -394,6 +394,74 @@ func (q *Queries) CreateCockpitPayment(ctx context.Context, arg CreateCockpitPay
 	return i, err
 }
 
+const createCockpitPendingChange = `-- name: CreateCockpitPendingChange :one
+INSERT INTO cockpit_pending_change (
+    workspace_id, cockpit_id, node_id, field, old_value, new_value,
+    source, reason, created_by_type, created_by_label
+) VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::uuid,
+    $4::text,
+    $5::text,
+    $6::text,
+    $7::text,
+    $8::text,
+    $9::text,
+    $10::text
+)
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+`
+
+type CreateCockpitPendingChangeParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	CockpitID      pgtype.UUID `json:"cockpit_id"`
+	NodeID         pgtype.UUID `json:"node_id"`
+	Field          string      `json:"field"`
+	OldValue       string      `json:"old_value"`
+	NewValue       string      `json:"new_value"`
+	Source         string      `json:"source"`
+	Reason         string      `json:"reason"`
+	CreatedByType  string      `json:"created_by_type"`
+	CreatedByLabel string      `json:"created_by_label"`
+}
+
+func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCockpitPendingChangeParams) (CockpitPendingChange, error) {
+	row := q.db.QueryRow(ctx, createCockpitPendingChange,
+		arg.WorkspaceID,
+		arg.CockpitID,
+		arg.NodeID,
+		arg.Field,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Source,
+		arg.Reason,
+		arg.CreatedByType,
+		arg.CreatedByLabel,
+	)
+	var i CockpitPendingChange
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.NodeID,
+		&i.Field,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Source,
+		&i.Reason,
+		&i.Status,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.DecidedByType,
+		&i.DecidedByLabel,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createCockpitSnapshot = `-- name: CreateCockpitSnapshot :one
 INSERT INTO cockpit_snapshot (
     workspace_id, cockpit_id, trigger_kind, label, payload, node_count,
@@ -447,6 +515,95 @@ func (q *Queries) CreateCockpitSnapshot(ctx context.Context, arg CreateCockpitSn
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const decideCockpitPendingChange = `-- name: DecideCockpitPendingChange :one
+UPDATE cockpit_pending_change SET
+    status           = $1::text,
+    old_value        = $2::text,
+    decided_by_type  = $3::text,
+    decided_by_label = $4::text,
+    decided_at       = now(),
+    updated_at       = now()
+WHERE id = $5::uuid
+  AND workspace_id = $6::uuid
+  AND status = 'pending'
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+`
+
+type DecideCockpitPendingChangeParams struct {
+	Status         string      `json:"status"`
+	OldValue       string      `json:"old_value"`
+	DecidedByType  string      `json:"decided_by_type"`
+	DecidedByLabel string      `json:"decided_by_label"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+}
+
+// The only status transition out of 'pending'. The status guard makes a
+// double-apply or an apply-after-reject return no rows (a 409 upstream)
+// without a separate lock: the row moves exactly once, atomically.
+func (q *Queries) DecideCockpitPendingChange(ctx context.Context, arg DecideCockpitPendingChangeParams) (CockpitPendingChange, error) {
+	row := q.db.QueryRow(ctx, decideCockpitPendingChange,
+		arg.Status,
+		arg.OldValue,
+		arg.DecidedByType,
+		arg.DecidedByLabel,
+		arg.ID,
+		arg.WorkspaceID,
+	)
+	var i CockpitPendingChange
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.NodeID,
+		&i.Field,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Source,
+		&i.Reason,
+		&i.Status,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.DecidedByType,
+		&i.DecidedByLabel,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteCockpitChangesByCockpit = `-- name: DeleteCockpitChangesByCockpit :exec
+DELETE FROM cockpit_pending_change
+WHERE cockpit_id = $1::uuid
+`
+
+// Import/restore only: the board is being replaced wholesale, so its change
+// history refers to nodes that are about to stop existing.
+func (q *Queries) DeleteCockpitChangesByCockpit(ctx context.Context, cockpitID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitChangesByCockpit, cockpitID)
+	return err
+}
+
+const deleteCockpitChangesByNode = `-- name: DeleteCockpitChangesByNode :exec
+DELETE FROM cockpit_pending_change
+WHERE node_id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type DeleteCockpitChangesByNodeParams struct {
+	NodeID      pgtype.UUID `json:"node_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Node deletion. The node's proposals and decided history go with it: there
+// is no foreign key to cascade them (repository rule), and a queue row about
+// a row that no longer exists is not history, it is litter.
+func (q *Queries) DeleteCockpitChangesByNode(ctx context.Context, arg DeleteCockpitChangesByNodeParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitChangesByNode, arg.NodeID, arg.WorkspaceID)
+	return err
 }
 
 const deleteCockpitMeeting = `-- name: DeleteCockpitMeeting :exec
@@ -630,7 +787,9 @@ func (q *Queries) DeleteCockpitSnapshot(ctx context.Context, arg DeleteCockpitSn
 }
 
 const deleteWorkspaceCockpitData = `-- name: DeleteWorkspaceCockpitData :exec
-WITH del_snapshots AS (
+WITH del_changes AS (
+    DELETE FROM cockpit_pending_change WHERE workspace_id = $1::uuid
+), del_snapshots AS (
     DELETE FROM cockpit_snapshot WHERE workspace_id = $1::uuid
 ), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = $1::uuid
@@ -781,6 +940,42 @@ func (q *Queries) GetCockpitNodeByCode(ctx context.Context, arg GetCockpitNodeBy
 	return i, err
 }
 
+const getCockpitPendingChange = `-- name: GetCockpitPendingChange :one
+SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at FROM cockpit_pending_change
+WHERE id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type GetCockpitPendingChangeParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) GetCockpitPendingChange(ctx context.Context, arg GetCockpitPendingChangeParams) (CockpitPendingChange, error) {
+	row := q.db.QueryRow(ctx, getCockpitPendingChange, arg.ID, arg.WorkspaceID)
+	var i CockpitPendingChange
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.NodeID,
+		&i.Field,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Source,
+		&i.Reason,
+		&i.Status,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.DecidedByType,
+		&i.DecidedByLabel,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getCockpitSnapshot = `-- name: GetCockpitSnapshot :one
 SELECT id, workspace_id, cockpit_id, trigger_kind, label, payload, node_count, created_by_type, created_by_label, created_at FROM cockpit_snapshot
 WHERE id = $1::uuid AND workspace_id = $2::uuid
@@ -830,6 +1025,44 @@ func (q *Queries) GetLatestCockpitSnapshot(ctx context.Context, cockpitID pgtype
 		&i.CreatedByType,
 		&i.CreatedByLabel,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getOpenCockpitPendingChangeByNodeField = `-- name: GetOpenCockpitPendingChangeByNodeField :one
+SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at FROM cockpit_pending_change
+WHERE node_id = $1::uuid
+  AND field = $2::text
+  AND status = 'pending'
+`
+
+type GetOpenCockpitPendingChangeByNodeFieldParams struct {
+	NodeID pgtype.UUID `json:"node_id"`
+	Field  string      `json:"field"`
+}
+
+// The dedupe probe: the one open proposal for this (node, field), if any.
+func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, arg GetOpenCockpitPendingChangeByNodeFieldParams) (CockpitPendingChange, error) {
+	row := q.db.QueryRow(ctx, getOpenCockpitPendingChangeByNodeField, arg.NodeID, arg.Field)
+	var i CockpitPendingChange
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.NodeID,
+		&i.Field,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Source,
+		&i.Reason,
+		&i.Status,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.DecidedByType,
+		&i.DecidedByLabel,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -1082,6 +1315,80 @@ func (q *Queries) ListCockpitPayments(ctx context.Context, cockpitID pgtype.UUID
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCockpitPendingChanges = `-- name: ListCockpitPendingChanges :many
+SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, n.code AS node_code, n.name AS node_name
+FROM cockpit_pending_change c
+LEFT JOIN cockpit_node n ON n.id = c.node_id
+WHERE c.cockpit_id = $1::uuid
+ORDER BY (c.status = 'pending') DESC, c.created_at DESC, c.id DESC
+LIMIT 500
+`
+
+type ListCockpitPendingChangesRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	CockpitID      pgtype.UUID        `json:"cockpit_id"`
+	NodeID         pgtype.UUID        `json:"node_id"`
+	Field          string             `json:"field"`
+	OldValue       string             `json:"old_value"`
+	NewValue       string             `json:"new_value"`
+	Source         string             `json:"source"`
+	Reason         string             `json:"reason"`
+	Status         string             `json:"status"`
+	CreatedByType  string             `json:"created_by_type"`
+	CreatedByLabel string             `json:"created_by_label"`
+	DecidedByType  string             `json:"decided_by_type"`
+	DecidedByLabel string             `json:"decided_by_label"`
+	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	NodeCode       pgtype.Text        `json:"node_code"`
+	NodeName       pgtype.Text        `json:"node_name"`
+}
+
+// The queue's whole history, open first. LEFT JOIN because a change can
+// outlive its node between the moment cleanup runs and the moment a reader
+// looks — a row naming no node renders as "node gone" instead of vanishing.
+func (q *Queries) ListCockpitPendingChanges(ctx context.Context, cockpitID pgtype.UUID) ([]ListCockpitPendingChangesRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitPendingChanges, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitPendingChangesRow{}
+	for rows.Next() {
+		var i ListCockpitPendingChangesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.CockpitID,
+			&i.NodeID,
+			&i.Field,
+			&i.OldValue,
+			&i.NewValue,
+			&i.Source,
+			&i.Reason,
+			&i.Status,
+			&i.CreatedByType,
+			&i.CreatedByLabel,
+			&i.DecidedByType,
+			&i.DecidedByLabel,
+			&i.DecidedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.NodeCode,
+			&i.NodeName,
 		); err != nil {
 			return nil, err
 		}
@@ -1545,6 +1852,56 @@ func (q *Queries) UpdateCockpitPayment(ctx context.Context, arg UpdateCockpitPay
 		&i.PayDate,
 		&i.Amount,
 		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCockpitPendingChangeProposal = `-- name: UpdateCockpitPendingChangeProposal :one
+UPDATE cockpit_pending_change SET
+    old_value = $1::text,
+    new_value = $2::text,
+    reason     = $3::text,
+    updated_at = now()
+WHERE id = $4::uuid
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+`
+
+type UpdateCockpitPendingChangeProposalParams struct {
+	OldValue string      `json:"old_value"`
+	NewValue string      `json:"new_value"`
+	Reason   string      `json:"reason"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+// A re-ingest for a field that already has an open proposal replaces the
+// proposal: latest intent wins, the queue never shows two competing values
+// for the same field.
+func (q *Queries) UpdateCockpitPendingChangeProposal(ctx context.Context, arg UpdateCockpitPendingChangeProposalParams) (CockpitPendingChange, error) {
+	row := q.db.QueryRow(ctx, updateCockpitPendingChangeProposal,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Reason,
+		arg.ID,
+	)
+	var i CockpitPendingChange
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.NodeID,
+		&i.Field,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Source,
+		&i.Reason,
+		&i.Status,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.DecidedByType,
+		&i.DecidedByLabel,
+		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

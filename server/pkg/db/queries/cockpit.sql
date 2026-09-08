@@ -334,7 +334,9 @@ WHERE node_id IN (SELECT id FROM cockpit_node WHERE cockpit_id = sqlc.arg('cockp
 -- goes in a single round trip; there are no foreign keys to cascade it
 -- (repository rule), and every cockpit table carries workspace_id for exactly
 -- this sweep.
-WITH del_snapshots AS (
+WITH del_changes AS (
+    DELETE FROM cockpit_pending_change WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_snapshots AS (
     DELETE FROM cockpit_snapshot WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid
@@ -403,3 +405,86 @@ SELECT * FROM cockpit_snapshot
 WHERE cockpit_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
+
+-- name: CreateCockpitPendingChange :one
+INSERT INTO cockpit_pending_change (
+    workspace_id, cockpit_id, node_id, field, old_value, new_value,
+    source, reason, created_by_type, created_by_label
+) VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('cockpit_id')::uuid,
+    sqlc.arg('node_id')::uuid,
+    sqlc.arg('field')::text,
+    sqlc.arg('old_value')::text,
+    sqlc.arg('new_value')::text,
+    sqlc.arg('source')::text,
+    sqlc.arg('reason')::text,
+    sqlc.arg('created_by_type')::text,
+    sqlc.arg('created_by_label')::text
+)
+RETURNING *;
+
+-- name: ListCockpitPendingChanges :many
+-- The queue's whole history, open first. LEFT JOIN because a change can
+-- outlive its node between the moment cleanup runs and the moment a reader
+-- looks — a row naming no node renders as "node gone" instead of vanishing.
+SELECT c.*, n.code AS node_code, n.name AS node_name
+FROM cockpit_pending_change c
+LEFT JOIN cockpit_node n ON n.id = c.node_id
+WHERE c.cockpit_id = sqlc.arg('cockpit_id')::uuid
+ORDER BY (c.status = 'pending') DESC, c.created_at DESC, c.id DESC
+LIMIT 500;
+
+-- name: GetCockpitPendingChange :one
+SELECT * FROM cockpit_pending_change
+WHERE id = sqlc.arg('id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: GetOpenCockpitPendingChangeByNodeField :one
+-- The dedupe probe: the one open proposal for this (node, field), if any.
+SELECT * FROM cockpit_pending_change
+WHERE node_id = sqlc.arg('node_id')::uuid
+  AND field = sqlc.arg('field')::text
+  AND status = 'pending';
+
+-- name: UpdateCockpitPendingChangeProposal :one
+-- A re-ingest for a field that already has an open proposal replaces the
+-- proposal: latest intent wins, the queue never shows two competing values
+-- for the same field.
+UPDATE cockpit_pending_change SET
+    old_value = sqlc.arg('old_value')::text,
+    new_value = sqlc.arg('new_value')::text,
+    reason     = sqlc.arg('reason')::text,
+    updated_at = now()
+WHERE id = sqlc.arg('id')::uuid
+RETURNING *;
+
+-- name: DecideCockpitPendingChange :one
+-- The only status transition out of 'pending'. The status guard makes a
+-- double-apply or an apply-after-reject return no rows (a 409 upstream)
+-- without a separate lock: the row moves exactly once, atomically.
+UPDATE cockpit_pending_change SET
+    status           = sqlc.arg('status')::text,
+    old_value        = sqlc.arg('old_value')::text,
+    decided_by_type  = sqlc.arg('decided_by_type')::text,
+    decided_by_label = sqlc.arg('decided_by_label')::text,
+    decided_at       = now(),
+    updated_at       = now()
+WHERE id = sqlc.arg('id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid
+  AND status = 'pending'
+RETURNING *;
+
+-- name: DeleteCockpitChangesByNode :exec
+-- Node deletion. The node's proposals and decided history go with it: there
+-- is no foreign key to cascade them (repository rule), and a queue row about
+-- a row that no longer exists is not history, it is litter.
+DELETE FROM cockpit_pending_change
+WHERE node_id = sqlc.arg('node_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitChangesByCockpit :exec
+-- Import/restore only: the board is being replaced wholesale, so its change
+-- history refers to nodes that are about to stop existing.
+DELETE FROM cockpit_pending_change
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;

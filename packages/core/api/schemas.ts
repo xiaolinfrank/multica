@@ -100,6 +100,8 @@ import type {
   WorkspaceMcpServer,
   CockpitSnapshot,
   CockpitImportResult,
+  CockpitPendingChange,
+  CockpitIngestOutcome,
 } from "../types";
 import type { CloudRuntimeNode } from "../runtimes/cloud-runtime";
 import type { CreateFeedbackResponse } from "../feedback/types";
@@ -1652,6 +1654,50 @@ export const CockpitBoardSchema = z.object({
   meetings: z.array(CockpitMeetingSchema).default([]),
 }).loose();
 
+export const CockpitPendingChangeSchema = z.object({
+  id: z.string(),
+  cockpit_id: z.string().default(""),
+  node_id: z.string().default(""),
+  node_code: z.string().default(""),
+  node_name: z.string().default(""),
+  field: z.string().default(""),
+  old_value: z.string().default(""),
+  new_value: z.string().default(""),
+  source: z.string().default("manual"),
+  reason: z.string().default(""),
+  status: z.string().default("pending"),
+  created_by_type: z.string().default(""),
+  created_by_label: z.string().default(""),
+  decided_by_type: z.string().default(""),
+  decided_by_label: z.string().default(""),
+  decided_at: z.string().nullable().default(null),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const CockpitPendingChangeListSchema = z.array(CockpitPendingChangeSchema).default([]);
+
+export const CockpitIngestResponseSchema = z.object({
+  results: z
+    .array(
+      z
+        .object({
+          node: z.string().default(""),
+          field: z.string().default(""),
+          status: z.string().default("rejected"),
+          reason: z.string().default(""),
+          id: z.string().nullable().default(null),
+        })
+        .loose(),
+    )
+    .default([]),
+}).loose();
+
+export const CockpitChangeApplyResponseSchema = z.object({
+  change: CockpitPendingChangeSchema,
+  node: CockpitNodeSchema,
+}).loose();
+
 export const CockpitSnapshotSchema = z.object({
   id: z.string(),
   trigger_kind: z.string().default(""),
@@ -1677,6 +1723,35 @@ export const CockpitImportResultSchema = z.object({
   meetings: z.number().default(0),
   unresolved_issues: z.array(z.string()).default([]),
 }).loose();
+
+export const EMPTY_COCKPIT_PENDING_CHANGE: CockpitPendingChange = {
+  id: "",
+  cockpit_id: "",
+  node_id: "",
+  node_code: "",
+  node_name: "",
+  field: "",
+  old_value: "",
+  new_value: "",
+  source: "manual",
+  reason: "",
+  status: "pending",
+  created_by_type: "",
+  created_by_label: "",
+  decided_by_type: "",
+  decided_by_label: "",
+  decided_at: null,
+  created_at: "",
+  updated_at: "",
+};
+
+export const EMPTY_COCKPIT_INGEST: CockpitIngestOutcome = {
+  node: "",
+  field: "",
+  status: "rejected",
+  reason: "",
+  id: null,
+};
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   id: "",

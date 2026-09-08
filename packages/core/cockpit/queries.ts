@@ -15,6 +15,7 @@ import type {
 export const cockpitKeys = {
   all: (wsId: string) => ["cockpit", wsId] as const,
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
+  changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
 };
 
@@ -35,6 +36,19 @@ export function cockpitSnapshotsOptions(wsId: string) {
   return queryOptions({
     queryKey: cockpitKeys.snapshots(wsId),
     queryFn: () => api.listCockpitSnapshots(),
+    enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * The review queue. Independent of the board like snapshots: a proposal can be
+ * filed or decided while this client looks at something else entirely, and the
+ * tab badge must follow it on its own.
+ */
+export function cockpitChangesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.changes(wsId),
+    queryFn: () => api.listCockpitChanges(),
     enabled: Boolean(wsId),
   });
 }

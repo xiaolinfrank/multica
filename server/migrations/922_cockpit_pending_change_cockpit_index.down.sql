@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS idx_cockpit_pending_change_cockpit;

@@ -57,6 +57,11 @@ vi.mock("@multica/core/api", () => ({
     createCockpitSnapshot: vi.fn(),
     restoreCockpitSnapshot: vi.fn(),
     deleteCockpitSnapshot: vi.fn(),
+    listCockpitChanges: vi.fn(),
+    createCockpitChange: vi.fn(),
+    applyCockpitChange: vi.fn(),
+    rejectCockpitChange: vi.fn(),
+    withdrawCockpitChange: vi.fn(),
     listMembers: vi.fn(),
   },
 }));
@@ -194,6 +199,7 @@ describe("CockpitPage", () => {
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
+    vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -346,6 +352,7 @@ describe("CockpitPage detail tables", () => {
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
+    vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -496,6 +503,109 @@ describe("CockpitPage versions", () => {
 
     fireEvent.click(group);
     expect(await screen.findAllByText("217 nodes · Mika")).toHaveLength(3);
+  });
+
+  it("badges the changes tab with the open count and renders the queue", async () => {
+    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+      {
+        id: "chg-1",
+        cockpit_id: "cp",
+        node_id: "task",
+        node_code: "L3-01-08",
+        node_name: "Sign the governance agreement",
+        field: "progress",
+        old_value: "40",
+        new_value: "80",
+        source: "agent",
+        reason: "Weekly report",
+        status: "pending",
+        created_by_type: "agent",
+        created_by_label: "Mika",
+        decided_by_type: "",
+        decided_by_label: "",
+        decided_at: null,
+        created_at: "2026-09-08T02:00:00Z",
+        updated_at: "2026-09-08T02:00:00Z",
+      },
+    ]);
+
+    renderPage();
+
+    // The badge is the tab's whole pitch: an unread count, before the click.
+    const tab = await screen.findByRole("button", { name: /Changes/ });
+    expect(tab).toHaveTextContent("1");
+
+    fireEvent.click(tab);
+    expect(await screen.findByText("Sign the governance agreement")).toBeInTheDocument();
+    expect(screen.getByText("80")).toBeInTheDocument();
+    expect(screen.getByText("agent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Apply/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reject/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Withdraw/ })).toBeInTheDocument();
+  });
+
+  it("applies a queued change through the API and settles the node it returns", async () => {
+    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+      {
+        id: "chg-2",
+        cockpit_id: "cp",
+        node_id: "task",
+        node_code: "L3-01-08",
+        node_name: "Sign the governance agreement",
+        field: "progress",
+        old_value: "40",
+        new_value: "80",
+        source: "manual",
+        reason: "",
+        status: "pending",
+        created_by_type: "member",
+        created_by_label: "Owner",
+        decided_by_type: "",
+        decided_by_label: "",
+        decided_at: null,
+        created_at: "2026-09-08T02:00:00Z",
+        updated_at: "2026-09-08T02:00:00Z",
+      },
+    ]);
+    vi.mocked(api.applyCockpitChange).mockResolvedValue({
+      change: {
+        id: "chg-2",
+        cockpit_id: "cp",
+        node_id: "task",
+        node_code: "L3-01-08",
+        node_name: "Sign the governance agreement",
+        field: "progress",
+        old_value: "40",
+        new_value: "80",
+        source: "manual",
+        reason: "",
+        status: "applied",
+        created_by_type: "member",
+        created_by_label: "Owner",
+        decided_by_type: "member",
+        decided_by_label: "Owner",
+        decided_at: "2026-09-08T03:00:00Z",
+        created_at: "2026-09-08T02:00:00Z",
+        updated_at: "2026-09-08T03:00:00Z",
+      },
+      node: { ...board.nodes[1]!, progress: 80 },
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Apply/ }));
+
+    await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledWith("chg-2"));
+  });
+
+  it("offers the filing form and keeps it inert until a task is picked", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
+
+    expect(await screen.findByText("File a change for review")).toBeInTheDocument();
+    const submit = screen.getByRole("button", { name: "File change" });
+    // No task chosen yet: the one required choice the form cannot guess.
+    expect(submit).toBeDisabled();
   });
 
   it("hides the restore affordance from a plain member, who the server would refuse anyway", async () => {

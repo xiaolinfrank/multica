@@ -74,6 +74,61 @@ export function useDeleteCockpitSnapshot(wsId: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Pending changes
+//
+// None of these are optimistic, by the state rules: whether filing even enters
+// the queue is the server's judgement, and a decision either moves board data
+// (apply) or removes an affordance the user is looking at (reject/withdraw) —
+// both await the server and invalidate.
+// ---------------------------------------------------------------------------
+
+/** File one proposal. Resolves to the filed row, or a skipped outcome the
+ * caller reads to explain "already current / already proposed". */
+export function useCreateCockpitChange(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { node: string; field: string; new_value: string; reason?: string }) =>
+      api.createCockpitChange(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
+    },
+  });
+}
+
+/** Apply writes the field onto the board: the returned node row settles the
+ * board cache, so a value the server normalised still wins. */
+export function useApplyCockpitChange(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.applyCockpitChange(id),
+    onSuccess: ({ node }) => {
+      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
+    },
+  });
+}
+
+export function useRejectCockpitChange(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rejectCockpitChange(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
+    },
+  });
+}
+
+export function useWithdrawCockpitChange(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.withdrawCockpitChange(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
+    },
+  });
+}
+
 /**
  * The shared optimistic write. `optimistic` guesses the new board, `settle`
  * folds the server's own row in — so a value the server normalised (a rounded

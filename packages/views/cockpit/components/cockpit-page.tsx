@@ -24,6 +24,7 @@ import type {
 import {
   buildCockpitTree,
   cockpitBoardOptions,
+  cockpitChangesOptions,
   cockpitFinanceCsv,
   cockpitTasksCsv,
   flattenCockpitTree,
@@ -76,15 +77,16 @@ import { useAuthStore } from "@multica/core/auth";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
+import { CockpitChanges } from "./cockpit-changes";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
 import { CockpitVersions } from "./cockpit-versions";
 
-type CockpitTab = "overview" | "gantt" | "tasks" | "finance";
+type CockpitTab = "overview" | "gantt" | "tasks" | "changes" | "finance";
 
-const TABS: CockpitTab[] = ["overview", "gantt", "tasks", "finance"];
+const TABS: CockpitTab[] = ["overview", "gantt", "tasks", "changes", "finance"];
 
 // Stable empty arrays: an inline `?? []` allocates a fresh array on every
 // render while the board query is loading, which invalidates every memo
@@ -141,6 +143,11 @@ export function CockpitPage() {
   const [today] = useState(todayString);
 
   const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
+  const { data: pendingChanges } = useQuery(cockpitChangesOptions(wsId));
+  const pendingCount = useMemo(
+    () => (pendingChanges ?? []).filter((c) => c.status === "pending").length,
+    [pendingChanges],
+  );
 
   // Restore replaces the whole board, which the server gates to owner/admin.
   // The role check here only decides whether the affordance is offered.
@@ -350,7 +357,7 @@ export function CockpitPage() {
   }
 
   const roots = tree.map((entry) => entry.node);
-  const isBoardView = tab !== "overview";
+  const isBoardView = tab === "gantt" || tab === "tasks" || tab === "finance";
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
@@ -384,7 +391,17 @@ export function CockpitPage() {
                   ? t(($) => $.tabs.gantt)
                   : key === "tasks"
                     ? t(($) => $.tabs.tasks)
-                    : t(($) => $.tabs.finance)}
+                    : key === "changes"
+                      ? t(($) => $.tabs.changes)
+                      : t(($) => $.tabs.finance)}
+              {key === "changes" && pendingCount > 0 && (
+                <span
+                  className="ml-1 rounded-full bg-brand px-1.5 py-px text-micro leading-4 font-medium text-brand-foreground"
+                  aria-label={t(($) => $.changes.queue_title, { n: pendingCount })}
+                >
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -575,6 +592,10 @@ export function CockpitPage() {
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
             />
+          )}
+
+          {tab === "changes" && (
+            <CockpitChanges wsId={wsId} nodes={nodes} onOpenTask={openTask} />
           )}
 
           {(tab === "tasks" || tab === "finance") && (

@@ -224,6 +224,8 @@ export type {
   CockpitMeetingPatch,
   CockpitSnapshot,
   CockpitImportResult,
+  CockpitPendingChange,
+  CockpitIngestOutcome,
 } from "./cockpit";
 export type { PinnedItem, PinnedItemType, CreatePinRequest, ReorderPinsRequest } from "./pin";
 export type {

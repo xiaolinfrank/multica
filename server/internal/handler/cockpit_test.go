@@ -32,6 +32,7 @@ func cockpitFixture(t *testing.T, name string) string {
 	})
 	dbfx.Member(t, wsID, testUserID, "owner")
 	t.Cleanup(func() {
+		dbfx.Exec(t, "DELETE FROM cockpit_pending_change WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_snapshot WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_node_issue WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_payment WHERE workspace_id = $1", wsID)

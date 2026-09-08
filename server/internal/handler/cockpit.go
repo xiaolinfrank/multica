@@ -1016,6 +1016,14 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
+	if err := h.Queries.DeleteCockpitChangesByNode(ctx, db.DeleteCockpitChangesByNodeParams{
+		NodeID:      node.ID,
+		WorkspaceID: cc.workspaceID,
+	}); err != nil {
+		slog.Warn("DeleteCockpitChangesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
 	if err := h.Queries.DeleteCockpitNode(ctx, db.DeleteCockpitNodeParams{
 		ID:          node.ID,
 		WorkspaceID: cc.workspaceID,
@@ -1820,6 +1828,9 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		func() error {
 			return qtx.DeleteCockpitNodeIssuesByCockpit(ctx, board.ID)
 		},
+		// Pending changes and their history name node ids that are about to
+		// stop existing; the review queue restarts empty with the new board.
+		func() error { return qtx.DeleteCockpitChangesByCockpit(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitNodes(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMilestones(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMeetings(ctx, board.ID) },

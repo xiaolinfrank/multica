@@ -131,6 +131,7 @@ export type CockpitEventScope =
   | "milestone"
   | "meeting"
   | "board"
+  | "changes"
   | "snapshots";
 
 export interface CockpitChangedPayload {
@@ -194,6 +195,48 @@ export type CockpitMilestonePatch = Partial<
 export type CockpitMeetingPatch = Partial<
   Pick<CockpitMeeting, "meet_date" | "time_range" | "title" | "attendees" | "meet_no" | "link" | "note">
 >;
+
+/**
+ * One proposed field edit waiting for a human. Nothing on the board moved to
+ * produce this row; apply is what moves it.
+ */
+export interface CockpitPendingChange {
+  id: string;
+  cockpit_id: string;
+  node_id: string;
+  /** The node's code/name resolved server-side; empty when the node is gone. */
+  node_code: string;
+  node_name: string;
+  /** One of the node's plain data fields (name, status, end_date, progress, …). */
+  field: string;
+  /** What the field said when the change was queued / what apply overwrote. */
+  old_value: string;
+  new_value: string;
+  /** "manual" | "agent". */
+  source: string;
+  reason: string;
+  /** "pending" | "applied" | "rejected" | "withdrawn". */
+  status: string;
+  created_by_type: string;
+  created_by_label: string;
+  decided_by_type: string;
+  decided_by_label: string;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One judgement from a batch ingest, per proposal. Machine-readable so an
+ * agent can react without parsing prose. */
+export interface CockpitIngestOutcome {
+  node: string;
+  field: string;
+  /** "queued" | "updated" | "skipped" | "rejected". */
+  status: string;
+  /** "" | "no_change" | "duplicate" | "invalid_field" | "invalid_value" | "unknown_node". */
+  reason: string;
+  id: string | null;
+}
 
 /**
  * One frozen board version. Payload stays server-side: a version list that

@@ -182,6 +182,16 @@ describe("onCockpitChanged", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
   });
 
+  it("refreshes only the review queue when a change is filed or decided", () => {
+    const { qc } = seedBoard();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+
+    onCockpitChanged(qc, WS, { scope: "changes", action: "queued", entity: null });
+
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.changes(WS) });
+  });
+
   it("re-reads on a scope this build does not know rather than guessing", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");

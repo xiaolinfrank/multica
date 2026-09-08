@@ -20,6 +20,8 @@ import {
   CommentTriggerPreviewSchema,
   CockpitSnapshotListSchema,
   CockpitImportResultSchema,
+  CockpitPendingChangeListSchema,
+  CockpitIngestResponseSchema,
   EMPTY_COCKPIT_IMPORT_RESULT,
   DashboardAgentRunTimeListSchema,
   DashboardRunTimeDailyListSchema,
@@ -2157,6 +2159,56 @@ describe("issue status catalog schemas", () => {
       { endpoint: "POST /api/issue-statuses" },
     );
     expect(parsed).toEqual(EMPTY_ISSUE_STATUS_ENTRY);
+  });
+});
+
+describe("Cockpit pending change schemas", () => {
+  it("parses a well-formed queue and keeps unknown future fields", () => {
+    const parsed = CockpitPendingChangeListSchema.parse([
+      {
+        id: "c1",
+        node_code: "L3-01-08",
+        node_name: "协议签署",
+        field: "progress",
+        old_value: "40",
+        new_value: "80",
+        source: "agent",
+        reason: "周会口径更新",
+        status: "pending",
+        decided_at: null,
+        future_field: "keep me",
+      },
+    ]);
+    expect(parsed[0]?.new_value).toBe("80");
+    expect((parsed[0] as unknown as { future_field?: string }).future_field).toBe("keep me");
+  });
+
+  it("serves the empty queue when the response is malformed", () => {
+    // Wrong-typed fields are drift, not absence: the schema rejects and the
+    // fallback answers, so a desktop build on a newer backend renders an
+    // empty queue rather than NaNs.
+    expect(
+      CockpitPendingChangeListSchema.safeParse([{ id: "c2", old_value: 40 }]).success,
+    ).toBe(false);
+    expect(
+      parseWithFallback("not-a-list", CockpitPendingChangeListSchema, [], {
+        endpoint: "GET /api/cockpit/changes",
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps the ingest judgement honest when the backend drifts", () => {
+    // null is not the empty result list; the schema says so and the fallback
+    // answers with one honest rejected row.
+    expect(CockpitIngestResponseSchema.safeParse({ results: null }).success).toBe(false);
+    expect(
+      parseWithFallback(
+        { results: null },
+        CockpitIngestResponseSchema,
+        { results: [{ node: "", field: "", status: "rejected", reason: "", id: null }] },
+        { endpoint: "POST /api/cockpit/changes/ingest" },
+      ).results,
+    ).toHaveLength(1);
   });
 });
 

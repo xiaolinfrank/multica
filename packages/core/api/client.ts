@@ -16,6 +16,8 @@ import type {
   Cockpit,
   CockpitBoard,
   CockpitNode,
+  CockpitPendingChange,
+  CockpitIngestOutcome,
   CockpitPayment,
   CockpitIssueLink,
   CockpitMilestone,
@@ -289,9 +291,15 @@ import {
   CockpitImportResultSchema,
   CockpitSnapshotSchema,
   CockpitSnapshotListSchema,
+  CockpitPendingChangeSchema,
+  CockpitPendingChangeListSchema,
+  CockpitIngestResponseSchema,
+  CockpitChangeApplyResponseSchema,
   EMPTY_COCKPIT_BOARD,
   EMPTY_COCKPIT_IMPORT_RESULT,
   EMPTY_COCKPIT_SNAPSHOT,
+  EMPTY_COCKPIT_PENDING_CHANGE,
+  EMPTY_COCKPIT_INGEST,
   CommentsListSchema,
   CommentTriggerPreviewSchema,
   IssueTriggerPreviewSchema,
@@ -1526,6 +1534,101 @@ export class ApiClient {
 
   async deleteCockpitSnapshot(id: string): Promise<void> {
     await this.fetch<void>(`/api/cockpit/snapshots/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  // ---------------------------------------------------------------------
+  // Cockpit pending changes
+  //
+  // The review queue. Filing is never optimistic: whether a proposal even
+  // enters the queue is the server's judgement (no-change, duplicate), not
+  // something this client can predict. Decisions await the server too — an
+  // apply moves board data, and a reject must not vanish locally before the
+  // row actually closed.
+  // ---------------------------------------------------------------------
+
+  async listCockpitChanges(): Promise<CockpitPendingChange[]> {
+    const raw = await this.fetch<unknown>("/api/cockpit/changes");
+    return parseWithFallback(raw, CockpitPendingChangeListSchema, [], {
+      endpoint: "GET /api/cockpit/changes",
+    });
+  }
+
+  /**
+   * File one proposal by hand. The endpoint answers 200 with a skipped result
+   * (not an error) when the board already says this or the queue already
+   * proposes it — the caller reads `results[0]` to tell filed from skipped.
+   */
+  async createCockpitChange(body: {
+    node: string;
+    field: string;
+    new_value: string;
+    reason?: string;
+  }): Promise<CockpitPendingChange | CockpitIngestOutcome> {
+    const raw = await this.fetch<unknown>("/api/cockpit/changes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    // 201 answers the change row; 200 answers a skipped result. The two are
+    // told apart by shape, not status text, so a drifting backend still lands
+    // on one of them.
+    const row = CockpitPendingChangeSchema.safeParse(raw);
+    if (row.success && row.data.id !== "") return row.data;
+    return (
+      parseWithFallback(
+        raw,
+        CockpitIngestResponseSchema,
+        { results: [EMPTY_COCKPIT_INGEST] },
+        { endpoint: "POST /api/cockpit/changes" },
+      ).results[0] ?? EMPTY_COCKPIT_INGEST
+    );
+  }
+
+  /**
+   * The batch funnel agent write-backs land in. One judgement per proposal;
+   * a rejected row never poisons the batch.
+   */
+  async ingestCockpitChanges(
+    changes: { node: string; field: string; new_value: string; reason?: string }[],
+  ): Promise<CockpitIngestOutcome[]> {
+    const raw = await this.fetch<unknown>("/api/cockpit/changes/ingest", {
+      method: "POST",
+      body: JSON.stringify({ changes }),
+    });
+    return parseWithFallback(raw, CockpitIngestResponseSchema, { results: [] }, {
+      endpoint: "POST /api/cockpit/changes/ingest",
+    }).results;
+  }
+
+  /** Apply moves the field onto the board; the node row comes back so the
+   * caller patches its board cache from the same response. */
+  async applyCockpitChange(id: string): Promise<{ change: CockpitPendingChange; node: CockpitNode }> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/changes/${encodeURIComponent(id)}/apply`, {
+      method: "POST",
+    });
+    return parseWithFallback(
+      raw,
+      CockpitChangeApplyResponseSchema,
+      { change: EMPTY_COCKPIT_PENDING_CHANGE, node: EMPTY_COCKPIT_BOARD.nodes[0]! },
+      { endpoint: "POST /api/cockpit/changes/:id/apply" },
+    );
+  }
+
+  async rejectCockpitChange(id: string): Promise<CockpitPendingChange> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/changes/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+    });
+    return parseWithFallback(raw, CockpitPendingChangeSchema, EMPTY_COCKPIT_PENDING_CHANGE, {
+      endpoint: "POST /api/cockpit/changes/:id/reject",
+    });
+  }
+
+  async withdrawCockpitChange(id: string): Promise<CockpitPendingChange> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/changes/${encodeURIComponent(id)}/withdraw`, {
+      method: "POST",
+    });
+    return parseWithFallback(raw, CockpitPendingChangeSchema, EMPTY_COCKPIT_PENDING_CHANGE, {
+      endpoint: "POST /api/cockpit/changes/:id/withdraw",
+    });
   }
 
   async getChildIssueProgress(): Promise<{

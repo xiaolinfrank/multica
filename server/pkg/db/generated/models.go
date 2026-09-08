@@ -632,6 +632,26 @@ type CockpitPayment struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CockpitPendingChange struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	CockpitID      pgtype.UUID        `json:"cockpit_id"`
+	NodeID         pgtype.UUID        `json:"node_id"`
+	Field          string             `json:"field"`
+	OldValue       string             `json:"old_value"`
+	NewValue       string             `json:"new_value"`
+	Source         string             `json:"source"`
+	Reason         string             `json:"reason"`
+	Status         string             `json:"status"`
+	CreatedByType  string             `json:"created_by_type"`
+	CreatedByLabel string             `json:"created_by_label"`
+	DecidedByType  string             `json:"decided_by_type"`
+	DecidedByLabel string             `json:"decided_by_label"`
+	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CockpitSnapshot struct {
 	ID             pgtype.UUID        `json:"id"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`

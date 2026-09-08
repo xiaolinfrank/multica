@@ -1,6 +1,7 @@
 export {
   cockpitKeys,
   cockpitBoardOptions,
+  cockpitChangesOptions,
   patchCockpitBoard,
   upsertCockpitNode,
   removeCockpitNode,

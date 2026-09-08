@@ -24,6 +24,12 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | PATCH | `/api/cockpit/milestones/{milestoneId}` | edit a milestone |
 | DELETE | `/api/cockpit/milestones/{milestoneId}` | delete a milestone |
 | POST | `/api/cockpit/meetings` | add a meeting |
+| GET | `/api/cockpit/changes` | the review queue: open proposals first, then decision history |
+| POST | `/api/cockpit/changes` | file one proposed field edit for review |
+| POST | `/api/cockpit/changes/ingest` | file a batch of proposals (the agent write-back funnel) |
+| POST | `/api/cockpit/changes/{changeId}/apply` | apply one: write the proposed value onto the node |
+| POST | `/api/cockpit/changes/{changeId}/reject` | close one without touching the board |
+| POST | `/api/cockpit/changes/{changeId}/withdraw` | the proposer takes an open change back |
 | GET | `/api/cockpit/snapshots` | list version history (metadata only) |
 | POST | `/api/cockpit/snapshots` | save the current board as a version; body `{label}` optional |
 | POST | `/api/cockpit/snapshots/{id}/restore` | put a frozen board back (owner/admin) |
@@ -67,6 +73,44 @@ summary cards are carried by the payload — absent on an authored import
 document (which leaves the board's cards alone), always present on a snapshot
 (so a restore brings back exactly what was frozen).
 
+## Pending changes
+
+The review queue between an observation and an edit. A proposal is one field
+of one node carrying a new value; nothing on the board moves until a human
+applies it. This is how an agent should report board drift it observed: never
+PATCH the node directly on the programme's behalf — file the change and let
+the programme decide.
+
+A proposal body is `{node, field, new_value, reason?}`, where `node` accepts
+a UUID or a `code` like every other route, and `new_value` is text (numbers
+and dates canonicalised server-side; an empty string is a real edit meaning
+"clear the field", except for `progress` which must be a number 0-100).
+Proposable fields: `name`, `owner`, `collaborators`, `status`, `progress`,
+`start_date`, `end_date`, `current_progress`, `deliverable`, `dependencies`,
+`note`, `vendor`, `budget_category`, `budget_amount`, `exec_status`,
+`contract`, `color`, `source`. Tree shape (`code`, `parent_id`, `position`)
+is not proposable.
+
+The server judges each proposal before it queues anything:
+
+- value identical to the board's current one → skipped (`no_change`);
+- an open proposal for the same (node, field) already exists → its value is
+  replaced when different (`updated`, latest intent wins) or returned as-is
+  when identical (`duplicate`);
+- bad field, unparseable value, or unknown node → rejected; on the batch
+  endpoint this is one item's outcome, never the whole request's.
+
+Batch ingest answers one result per proposal, machine-readable:
+`{node, field, status, reason, id}` with `status` one of `queued`, `updated`,
+`skipped`, `rejected`. The `source` a queued change carries (`manual` or
+`agent`) is derived from the authenticated caller, never from the body.
+
+Decisions are one-way: apply, reject and withdraw all answer 409 on a change
+that is no longer open. Apply re-reads the live column it overwrites and
+records that as `old_value`, so the history stays true even when the board
+moved between filing and deciding. Deleting a node clears its change rows;
+an import clears the whole queue with the board it replaces.
+
 ## Realtime
 
 Every write broadcasts a `cockpit:changed` event carrying
@@ -74,7 +118,9 @@ Every write broadcasts a `cockpit:changed` event carrying
 board; a `board` scope (`imported`, `restored`) means the board changed
 wholesale and has to be re-read; a `snapshots` scope means only the version
 history moved — an edit past the auto-checkpoint interval also lands here
-with action `created`.
+with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
+`rejected`, `withdrawn`) means only the review queue moved — an apply also
+carries its own `node` scope frame with the row it wrote.
 
 ## Import document
 

@@ -70,6 +70,14 @@ export function onCockpitChanged(
     return;
   }
 
+  // The review queue moved: filed, applied, rejected or withdrawn. The queue
+  // is judged server-side, so re-read it; an apply also carries its own
+  // "node updated" frame that patches the board separately.
+  if (scope === "changes") {
+    qc.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
+    return;
+  }
+
   const apply = (update: (board: CockpitBoard) => CockpitBoard) =>
     patchCockpitBoard(qc, wsId, update);
 
