@@ -50,7 +50,14 @@ the workspace issue identifier such as `BIO-314`.
 
 An import and a restore each freeze the outgoing board into a version snapshot
 inside the same transaction, then replace it. A manual `POST /snapshots` does
-the same without replacing anything. The list keeps the newest 50 per board.
+the same without replacing anything. Ordinary edits (a node field, a payment,
+a milestone, a meeting, board-level fields) do NOT snapshot one per edit —
+instead, once the board has version history, an edit landing more than
+5 minutes after the newest snapshot (and actually changing the board) leaves
+an `auto` checkpoint, so field-level churn cannot evict the milestone
+snapshots from the keep window. A board with no history stays snapshot-free
+until an import or a manual save creates the first entry. The list keeps the newest 50 per board; the
+UI collapses consecutive `auto` snapshots by the same actor into one row.
 
 A snapshot payload is an import document (the shape above), with issue links
 serialized as issue UUIDs. Restoring is an import of that payload: the same
@@ -66,7 +73,8 @@ Every write broadcasts a `cockpit:changed` event carrying
 `{scope, action, entity}`. A client patches the changed row into its cached
 board; a `board` scope (`imported`, `restored`) means the board changed
 wholesale and has to be re-read; a `snapshots` scope means only the version
-history moved.
+history moved — an edit past the auto-checkpoint interval also lands here
+with action `created`.
 
 ## Import document
 

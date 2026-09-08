@@ -194,7 +194,7 @@
     "save_current": "Save current",
     "saved": "Current board saved",
     "empty": "No versions yet. Imports and restores save one automatically; you can save one any time.",
-    "hint": "A version is frozen before every whole-board import or restore; the latest 50 are kept.",
+    "hint": "Imports and restores freeze the board first; ordinary edits leave a checkpoint every 5 minutes. Keeps the newest 50 versions.",
     "restore": "Restore",
     "confirm_restore": "Confirm restore",
     "cancel": "Cancel",
@@ -204,6 +204,8 @@
     "trigger_import": "pre-import",
     "trigger_restore": "pre-restore",
     "trigger_manual": "manual",
+    "trigger_auto": "Auto",
+    "auto_group": "Auto saves ×{{n}}",
     "row_meta": "{{nodes}} nodes · {{by}}",
     "by_unknown": "unknown"
   }

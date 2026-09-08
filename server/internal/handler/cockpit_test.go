@@ -709,6 +709,73 @@ func TestCockpitSnapshotPermissions(t *testing.T) {
 	}
 }
 
+// Ordinary edits refresh version history rather than create it: the first
+// entry stays deliberate, and once history exists an edit freezes at most one
+// 'auto' checkpoint per interval, and only when the board actually moved.
+func TestCockpitAutoSnapshotAfterSmallEdit(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit auto snapshot")
+	importBoard(t, wsID, map[string]any{
+		"nodes": []map[string]any{{"code": "L1-01", "name": "seed", "progress": 10}},
+	})
+	// A board with no history stays snapshot-free: importing into the empty
+	// board froze nothing, and the first small edit must not mint history.
+	setProgress := func(v float64) {
+		t.Helper()
+		var node CockpitNodeResponse
+		testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
+			testutil.WithURLParams(
+				cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/L1-01", wsID, map[string]any{"progress": v}),
+				"id", "L1-01",
+			)).
+			Want(http.StatusOK).
+			JSON(&node)
+	}
+	setProgress(15)
+	if snaps := listSnapshots(t, wsID); len(snaps) != 0 {
+		t.Fatalf("snapshots = %d, want 0 (no history yet, nothing automatic)", len(snaps))
+	}
+
+	// History is seeded deliberately; push it past the interval.
+	var seeded CockpitSnapshotResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitSnapshot),
+		cockpitRequest(http.MethodPost, "/api/cockpit/snapshots", wsID, nil)).
+		Want(http.StatusCreated).
+		JSON(&seeded)
+	dbfx.Exec(t, "UPDATE cockpit_snapshot SET created_at = created_at - interval '10 minutes' WHERE workspace_id = $1", wsID)
+
+	// An edit past the interval checkpoints, with the editor on record.
+	setProgress(20)
+	snaps := listSnapshots(t, wsID)
+	if len(snaps) != 2 || snaps[0].TriggerKind != "auto" {
+		t.Fatalf("snapshots = %+v, want an auto checkpoint newest above the manual seed", snaps)
+	}
+	if snaps[0].CreatedByType != "member" || snaps[0].CreatedByLabel == "" {
+		t.Errorf("auto snapshot actor = %q/%q", snaps[0].CreatedByType, snaps[0].CreatedByLabel)
+	}
+
+	// The very next edit is inside the interval and throttled — even though
+	// its value repeats, the interval check decides first.
+	setProgress(20)
+	if snaps := listSnapshots(t, wsID); len(snaps) != 2 {
+		t.Fatalf("snapshots = %d, want 2 (interval throttles the next edit)", len(snaps))
+	}
+
+	// Past the interval again, a no-op edit (content equal to the newest
+	// snapshot) mints nothing: the checkpoint did not fall behind.
+	dbfx.Exec(t, "UPDATE cockpit_snapshot SET created_at = created_at - interval '10 minutes' WHERE workspace_id = $1", wsID)
+	setProgress(20)
+	if snaps := listSnapshots(t, wsID); len(snaps) != 2 {
+		t.Fatalf("snapshots = %d, want 2 (a no-op edit is deduped)", len(snaps))
+	}
+
+	// A real edit checkpoints again.
+	setProgress(30)
+	snaps = listSnapshots(t, wsID)
+	if len(snaps) != 3 || snaps[0].TriggerKind != "auto" {
+		t.Fatalf("snapshots = %+v, want a fresh auto checkpoint newest", snaps)
+	}
+}
+
 // Retention is bounded: snapshots accumulate automatically on every import
 // and restore, so the oldest beyond the keep window must fall away.
 func TestCockpitSnapshotPrune(t *testing.T) {

@@ -4,7 +4,8 @@
 -- `multica cockpit import` consumes, so a restore is literally an import of
 -- the payload and there is exactly one format to keep true. Snapshots are
 -- taken automatically before every import and every restore (both destroy the
--- board they replace), and manually on demand.
+-- board they replace), manually on demand, and as a throttled checkpoint after
+-- ordinary edits (trigger 'auto').
 --
 -- No foreign keys (repository rule). cockpit_snapshot carries workspace_id so
 -- workspace teardown can sweep it in the same single statement as the rest of
@@ -13,7 +14,8 @@ CREATE TABLE cockpit_snapshot (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id   UUID NOT NULL,
     cockpit_id     UUID NOT NULL,
-    -- 'import' | 'restore' | 'manual'
+    -- 'import' | 'restore' | 'manual' | 'auto' ('auto' = throttled
+-- checkpoint after ordinary board edits)
     trigger_kind   TEXT NOT NULL,
     label          TEXT NOT NULL DEFAULT '',
     -- The frozen board, as an import document.

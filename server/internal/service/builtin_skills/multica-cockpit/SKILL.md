@@ -123,7 +123,9 @@ status label — set the date when it actually lands.
 ## Versions
 
 Every import and every restore freezes the board it displaces into a version
-snapshot first, so nothing here is irreversible. You can save and restore
+snapshot first, so nothing here is irreversible. Ordinary edits also leave an
+`auto` checkpoint at most once every 5 minutes, so small fixes are covered
+without flooding the history. You can save and restore
 versions yourself:
 
 ```bash

@@ -397,3 +397,9 @@ WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
     ORDER BY created_at DESC, id DESC
     LIMIT sqlc.arg('keep')::int
   );
+
+-- name: GetLatestCockpitSnapshot :one
+SELECT * FROM cockpit_snapshot
+WHERE cockpit_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1;

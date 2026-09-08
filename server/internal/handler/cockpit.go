@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -423,12 +425,97 @@ func (h *Handler) resolveCockpitIssue(ctx context.Context, ref, workspaceID stri
 // hundred nodes on every keystroke of someone else's edit. `scope` names which
 // collection moved, so a client that does not model that collection can ignore
 // the frame without parsing it.
-func (h *Handler) publishCockpit(cc cockpitContext, scope, action string, entity any) {
+func (h *Handler) publishCockpit(r *http.Request, cc cockpitContext, scope, action string, entity any) {
 	h.publish(protocol.EventCockpitChanged, uuidToString(cc.workspaceID), "member", uuidToString(cc.member.UserID), map[string]any{
 		"scope":  scope,
 		"action": action,
 		"entity": entity,
 	})
+	// Every board mutation funnels through here, which makes it the single
+	// place to give small edits their throttled checkpoint. The "snapshots"
+	// scope guard keeps the checkpoint's own publish from recursing.
+	if scope != "snapshots" {
+		h.autoSnapshotCockpitAfterEdit(r, cc)
+	}
+}
+
+// autoSnapshotCockpitAfterEdit is the small-edit safety net. Snapshots are
+// milestone checkpoints, and one per edit would bury them, so an ordinary
+// edit refreshes history instead of creating it: it freezes at most one
+// 'auto' version per cockpitAutoSnapshotInterval, only when the board content
+// actually moved, and never on a board with no version history at all (the
+// first entry stays deliberate — an import or a manual save; a one-node
+// scratch board's first edit is not history). Imports and restores that
+// displace a non-empty board have just written their own pre-snapshot inside
+// their transaction, so the interval check skips them. Failures are logged
+// and swallowed: a background checkpoint must never fail the edit it
+// follows.
+func (h *Handler) autoSnapshotCockpitAfterEdit(r *http.Request, cc cockpitContext) {
+	ctx := r.Context()
+	latest, latestErr := h.Queries.GetLatestCockpitSnapshot(ctx, cc.cockpit.ID)
+	if latestErr != nil {
+		// No history yet: an automatic checkpoint would be the noise the
+		// deliberate-first-entry rule exists to avoid.
+		return
+	}
+	if time.Since(latest.CreatedAt.Time) < cockpitAutoSnapshotInterval {
+		return
+	}
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, h.Queries, cc)
+	if err != nil {
+		slog.Warn("cockpit auto snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
+		return
+	}
+	if !hasContent {
+		return
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return
+	}
+	// Content dedupe: a no-op edit must not mint a version identical to the
+	// newest one. The stored payload is re-marshalled through the same
+	// struct, so JSONB's key reordering cannot fake a difference.
+	if sameCockpitPayload(latest.Payload, payload) {
+		return
+	}
+	actorType, actorLabel := h.cockpitActor(r, cc)
+	if _, err := h.Queries.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
+		WorkspaceID:    cc.workspaceID,
+		CockpitID:      cc.cockpit.ID,
+		TriggerKind:    "auto",
+		Payload:        payload,
+		NodeCount:      int32(len(doc.Nodes)),
+		CreatedByType:  actorType,
+		CreatedByLabel: actorLabel,
+	}); err != nil {
+		slog.Warn("CreateCockpitSnapshot(auto) failed", append(logger.RequestAttrs(r), "error", err)...)
+		return
+	}
+	if _, err := h.Queries.PruneCockpitSnapshots(ctx, db.PruneCockpitSnapshotsParams{
+		CockpitID: cc.cockpit.ID,
+		Keep:      cockpitSnapshotKeep,
+	}); err != nil {
+		slog.Warn("PruneCockpitSnapshots failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
+	h.publishCockpit(r, cc, "snapshots", "created", nil)
+}
+
+// sameCockpitPayload answers whether a stored payload and a freshly
+// marshalled document describe the same board.
+func sameCockpitPayload(stored, fresh []byte) bool {
+	if len(stored) == 0 {
+		return false
+	}
+	var doc CockpitImportRequest
+	if err := json.Unmarshal(stored, &doc); err != nil {
+		return false
+	}
+	normalized, err := json.Marshal(doc)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(normalized, fresh)
 }
 
 // decodeCockpitBody decodes into a typed request AND a raw field map, so a
@@ -624,7 +711,7 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitToResponse(board)
-	h.publishCockpit(cc, "cockpit", "updated", resp)
+	h.publishCockpit(r, cc, "cockpit", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -773,7 +860,7 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitNodeToResponse(node)
-	h.publishCockpit(cc, "node", "created", resp)
+	h.publishCockpit(r, cc, "node", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -877,7 +964,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitNodeToResponse(node)
-	h.publishCockpit(cc, "node", "updated", resp)
+	h.publishCockpit(r, cc, "node", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -938,7 +1025,7 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.publishCockpit(cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
+	h.publishCockpit(r, cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1034,7 +1121,7 @@ func (h *Handler) SetCockpitNodeIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := map[string]any{"node_id": uuidToString(node.ID), "links": nodeLinks}
-	h.publishCockpit(cc, "issue_links", "replaced", payload)
+	h.publishCockpit(r, cc, "issue_links", "replaced", payload)
 	writeJSON(w, http.StatusOK, payload)
 }
 
@@ -1064,7 +1151,7 @@ func (h *Handler) DeleteCockpitNodeIssue(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	h.publishCockpit(cc, "issue_links", "removed", map[string]any{
+	h.publishCockpit(r, cc, "issue_links", "removed", map[string]any{
 		"node_id":  uuidToString(node.ID),
 		"issue_id": uuidToString(issue.ID),
 	})
@@ -1117,7 +1204,7 @@ func (h *Handler) CreateCockpitPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitPaymentToResponse(payment)
-	h.publishCockpit(cc, "payment", "created", resp)
+	h.publishCockpit(r, cc, "payment", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -1165,7 +1252,7 @@ func (h *Handler) UpdateCockpitPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitPaymentToResponse(payment)
-	h.publishCockpit(cc, "payment", "updated", resp)
+	h.publishCockpit(r, cc, "payment", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1186,7 +1273,7 @@ func (h *Handler) DeleteCockpitPayment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete payment")
 		return
 	}
-	h.publishCockpit(cc, "payment", "deleted", map[string]any{"id": uuidToString(id)})
+	h.publishCockpit(r, cc, "payment", "deleted", map[string]any{"id": uuidToString(id)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1273,7 +1360,7 @@ func (h *Handler) CreateCockpitMilestone(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp := cockpitMilestoneToResponse(milestone)
-	h.publishCockpit(cc, "milestone", "created", resp)
+	h.publishCockpit(r, cc, "milestone", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -1338,7 +1425,7 @@ func (h *Handler) UpdateCockpitMilestone(w http.ResponseWriter, r *http.Request)
 	}
 
 	resp := cockpitMilestoneToResponse(milestone)
-	h.publishCockpit(cc, "milestone", "updated", resp)
+	h.publishCockpit(r, cc, "milestone", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1359,7 +1446,7 @@ func (h *Handler) DeleteCockpitMilestone(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "failed to delete milestone")
 		return
 	}
-	h.publishCockpit(cc, "milestone", "deleted", map[string]any{"id": uuidToString(id)})
+	h.publishCockpit(r, cc, "milestone", "deleted", map[string]any{"id": uuidToString(id)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1411,7 +1498,7 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitMeetingToResponse(meeting)
-	h.publishCockpit(cc, "meeting", "created", resp)
+	h.publishCockpit(r, cc, "meeting", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -1458,7 +1545,7 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitMeetingToResponse(meeting)
-	h.publishCockpit(cc, "meeting", "updated", resp)
+	h.publishCockpit(r, cc, "meeting", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1479,7 +1566,7 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
 		return
 	}
-	h.publishCockpit(cc, "meeting", "deleted", map[string]any{"id": uuidToString(id)})
+	h.publishCockpit(r, cc, "meeting", "deleted", map[string]any{"id": uuidToString(id)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1588,6 +1675,12 @@ func (e *cockpitImportError) Error() string { return e.msg }
 // restores snapshot automatically, so without a bound a scripted import loop
 // would grow the table without end.
 const cockpitSnapshotKeep = 50
+
+// cockpitAutoSnapshotInterval bounds how often ordinary board edits freeze an
+// 'auto' version: dense editing sessions get at most one checkpoint per
+// interval, so milestone snapshots (imports, restores, manual saves) are not
+// evicted from the keep window by field-level churn.
+const cockpitAutoSnapshotInterval = 5 * time.Minute
 
 func importDate(s string) (pgtype.Date, error) {
 	s = strings.TrimSpace(s)
@@ -1941,8 +2034,8 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	if trigger == "restore" {
 		action = "restored"
 	}
-	h.publishCockpit(cc, "board", action, map[string]any{"nodes": resp.Nodes})
-	h.publishCockpit(cc, "snapshots", action, nil)
+	h.publishCockpit(r, cc, "board", action, map[string]any{"nodes": resp.Nodes})
+	h.publishCockpit(r, cc, "snapshots", action, nil)
 	return resp, nil
 }
 
@@ -2259,7 +2352,7 @@ func (h *Handler) CreateCockpitSnapshot(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.publishCockpit(cc, "snapshots", "created", nil)
+	h.publishCockpit(r, cc, "snapshots", "created", nil)
 	writeJSON(w, http.StatusCreated, CockpitSnapshotResponse{
 		ID:             uuidToString(snap.ID),
 		TriggerKind:    snap.TriggerKind,
@@ -2351,6 +2444,6 @@ func (h *Handler) DeleteCockpitSnapshot(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	cc := cockpitContext{workspaceID: wsUUID, member: member, cockpit: board}
-	h.publishCockpit(cc, "snapshots", "deleted", nil)
+	h.publishCockpit(r, cc, "snapshots", "deleted", nil)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

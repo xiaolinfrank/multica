@@ -194,7 +194,7 @@
     "save_current": "현재 저장",
     "saved": "현재 보드를 저장했습니다",
     "empty": "아직 버전이 없습니다. 가져오기·복원 전에 자동 저장되며 언제든 수동 저장할 수 있습니다.",
-    "hint": "보드 전체 가져오기·복원 전에 자동 저장되며 최근 50개를 유지합니다.",
+    "hint": "가져오기/복원 전 자동 저장되며, 일반 편집은 5분마다 체크포인트를 저장합니다. 최신 50개를 보관합니다.",
     "restore": "복원",
     "confirm_restore": "복원 확인",
     "cancel": "취소",
@@ -204,6 +204,8 @@
     "trigger_import": "가져오기 전",
     "trigger_restore": "복원 전",
     "trigger_manual": "수동",
+    "trigger_auto": "자동",
+    "auto_group": "자동 저장 ×{{n}}",
     "row_meta": "{{nodes}}개 노드 · {{by}}",
     "by_unknown": "알 수 없음"
   }

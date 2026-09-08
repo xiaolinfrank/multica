@@ -809,6 +809,31 @@ func (q *Queries) GetCockpitSnapshot(ctx context.Context, arg GetCockpitSnapshot
 	return i, err
 }
 
+const getLatestCockpitSnapshot = `-- name: GetLatestCockpitSnapshot :one
+SELECT id, workspace_id, cockpit_id, trigger_kind, label, payload, node_count, created_by_type, created_by_label, created_at FROM cockpit_snapshot
+WHERE cockpit_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestCockpitSnapshot(ctx context.Context, cockpitID pgtype.UUID) (CockpitSnapshot, error) {
+	row := q.db.QueryRow(ctx, getLatestCockpitSnapshot, cockpitID)
+	var i CockpitSnapshot
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.TriggerKind,
+		&i.Label,
+		&i.Payload,
+		&i.NodeCount,
+		&i.CreatedByType,
+		&i.CreatedByLabel,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listCockpitMeetings = `-- name: ListCockpitMeetings :many
 SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at FROM cockpit_meeting
 WHERE cockpit_id = $1::uuid

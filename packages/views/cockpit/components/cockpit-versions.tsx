@@ -3,10 +3,11 @@
 // Version history for the board.
 //
 // Every import and every restore freezes the board it displaces; anyone can
-// save a version on demand. Restore is the one destructive operation the
-// toolbar offers, so it asks inline (a second click confirms) and then awaits
-// the server — the list and the board underneath refresh only when the
-// replacement actually landed.
+// save a version on demand; ordinary edits leave a throttled auto checkpoint
+// (dense runs collapse per actor, see group-snapshots). Restore is the one
+// destructive operation the toolbar offers, so it asks inline (a second click
+// confirms) and then awaits the server — the list and the board underneath
+// refresh only when the replacement actually landed.
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -20,9 +21,10 @@ import {
 import { Button } from "@multica/ui/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import { Spinner } from "@multica/ui/components/ui/spinner";
-import { History, RotateCcw, Save, Trash2 } from "lucide-react";
+import { ChevronDown, History, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
+import { groupVersionHistory } from "../group-snapshots";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
 
@@ -38,6 +40,8 @@ function triggerLabel(
       return t(($) => $.versions.trigger_restore);
     case "manual":
       return t(($) => $.versions.trigger_manual);
+    case "auto":
+      return t(($) => $.versions.trigger_auto);
     default:
       return trigger;
   }
@@ -159,6 +163,64 @@ function SnapshotRow({
   );
 }
 
+// A collapsed run of auto checkpoints by one actor. The whole header toggles;
+// rows inside keep the same affordances as standalone ones.
+function SnapshotRunRow({
+  wsId,
+  snapshots,
+  canRestore,
+  onRestored,
+  onError,
+}: {
+  wsId: string;
+  snapshots: CockpitSnapshot[];
+  canRestore: boolean;
+  onRestored: () => void;
+  onError: (error: unknown) => void;
+}) {
+  const { t } = useT("cockpit");
+  const timeAgo = useTimeAgo();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <li className="flex flex-col">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronDown
+          className={cn("size-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+        />
+        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-micro text-muted-foreground">
+          {t(($) => $.versions.trigger_auto)}
+        </span>
+        <span className="min-w-0 truncate text-caption font-medium">
+          {t(($) => $.versions.auto_group, { n: snapshots.length })}
+        </span>
+        <span className="ml-auto shrink-0 text-micro text-faint-foreground">
+          {timeAgo(snapshots[0]!.created_at)}
+        </span>
+      </button>
+      {open && (
+        <ul className="ml-3 flex flex-col border-l pl-1">
+          {snapshots.map((snapshot) => (
+            <SnapshotRow
+              key={snapshot.id}
+              wsId={wsId}
+              snapshot={snapshot}
+              canRestore={canRestore}
+              onRestored={onRestored}
+              onError={onError}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 /**
  * The toolbar entry for version history. `canRestore` is the caller's word for
  * whether this member may replace the board (owner/admin); the server
@@ -216,16 +278,27 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
             </p>
           ) : (
             <ul className={cn("flex flex-col")}>
-              {rows.map((snapshot) => (
-                <SnapshotRow
-                  key={snapshot.id}
-                  wsId={wsId}
-                  snapshot={snapshot}
-                  canRestore={canRestore}
-                  onRestored={() => setOpen(false)}
-                  onError={fail}
-                />
-              ))}
+              {groupVersionHistory(rows).map((entry) =>
+                entry.kind === "single" ? (
+                  <SnapshotRow
+                    key={entry.snapshot.id}
+                    wsId={wsId}
+                    snapshot={entry.snapshot}
+                    canRestore={canRestore}
+                    onRestored={() => setOpen(false)}
+                    onError={fail}
+                  />
+                ) : (
+                  <SnapshotRunRow
+                    key={entry.run.snapshots[0]!.id}
+                    wsId={wsId}
+                    snapshots={entry.run.snapshots}
+                    canRestore={canRestore}
+                    onRestored={() => setOpen(false)}
+                    onError={fail}
+                  />
+                ),
+              )}
             </ul>
           )}
         </div>

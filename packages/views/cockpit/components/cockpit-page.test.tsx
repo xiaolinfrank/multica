@@ -461,6 +461,43 @@ describe("CockpitPage versions", () => {
     await waitFor(() => expect(api.restoreCockpitSnapshot).toHaveBeenCalledWith("snap-1"));
   });
 
+  it("collapses a dense run of auto checkpoints by one actor until expanded", async () => {
+    const auto = (id: string, minutesAgo: number) => ({
+      id,
+      trigger_kind: "auto",
+      label: "",
+      node_count: 217,
+      created_by_type: "agent",
+      created_by_label: "Mika",
+      created_at: new Date(Date.UTC(2026, 8, 7, 5) - minutesAgo * 60_000).toISOString(),
+    });
+    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
+      auto("a3", 6),
+      auto("a2", 12),
+      auto("a1", 18),
+      {
+        id: "snap-1",
+        trigger_kind: "import",
+        label: "",
+        node_count: 217,
+        created_by_type: "member",
+        created_by_label: "Owner",
+        created_at: "2026-09-07T04:00:00Z",
+      },
+    ]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+
+    // Three checkpoints by the same agent render as one collapsed row; the
+    // per-checkpoint metadata appears only after expanding.
+    const group = await screen.findByRole("button", { name: /Auto saves ×3/ });
+    expect(screen.queryByText("217 nodes · Mika")).not.toBeInTheDocument();
+
+    fireEvent.click(group);
+    expect(await screen.findAllByText("217 nodes · Mika")).toHaveLength(3);
+  });
+
   it("hides the restore affordance from a plain member, who the server would refuse anyway", async () => {
     vi.mocked(api.listMembers).mockResolvedValue([
       {
