@@ -12,8 +12,9 @@
 # Production has no such gate. URLs stay origin-relative because NEXT_PUBLIC_*
 # are empty in .env, so the bundle is LAN-safe.
 #
-# Postgres (docker) and the agent daemon are left untouched -- the daemon
-# reconnects automatically after the server restarts.
+# Postgres and Redis are macOS-native brew services (postgresql@17 / redis)
+# since the 2026-09-09 cutover, not colima containers; they and the agent
+# daemon are left untouched -- the daemon reconnects after the server restarts.
 #
 # Usage:
 #   scripts/bayclaw-serve.sh start        # build Go + start both, detached
@@ -49,7 +50,26 @@ set -a; . "$ENV_FILE"; set +a
 PORT="${PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 
+# --- native datastore client (colima -> brew cutover, 2026-09-09) -----------
+# 钉死 keg 绝对路径而不是信 PATH：launchd 走 `zsh -lc` 时 homebrew 在 PATH 上，
+# 但 agent/cron/`sh -c` 上下文未必有。而裸 `pg_isready` 命令不存在时的失败形态，
+# 与「数据库真的挂了」一模一样——正是让备份 L2 层静默失效 3 周的那种形状。
+# 顺带钉住 17 大版本：将来 brew link postgresql@18 不会把探针悄悄换掉。
+PG_ISREADY_BIN="${PG_ISREADY_BIN:-/opt/homebrew/opt/postgresql@17/bin/pg_isready}"
+
 say() { printf '==> %s\n' "$*"; }
+
+# require_pg_client —— 探针二进制缺失时拒绝往下走。
+# 必须由 case 分支首行调用，绝不能塞进 wait_for_pg：restart 里 wait_for_pg 是在
+# stop_all 之后才跑的，在那里硬退出等于把「二进制找不到」变成「生产停机」。
+require_pg_client() {
+  [ -x "$PG_ISREADY_BIN" ] && return 0
+  echo "ERROR: pg_isready 不在 $PG_ISREADY_BIN" >&2
+  echo "       PG 现在是原生 brew postgresql@17，不再是容器 multica-postgres-1。" >&2
+  echo "       修：brew install postgresql@17，或 PG_ISREADY_BIN=/path/to/pg_isready $0 ..." >&2
+  echo "       没有探针就分不清『PG 还在启动』和『PG 没了』，拒绝改动正在跑的部署。" >&2
+  exit 1
+}
 
 kill_port() {
   local p="$1" pids
@@ -109,27 +129,32 @@ refresh_server_app() {
   fi
 }
 
-# Wait for Postgres (runs in colima docker) before starting the Go server.
-# On reboot, colima can take minutes to come up; the Go binary fatals if the
-# DB is unreachable at boot, and com.bayclaw.serve (RunAtLoad, no KeepAlive)
-# would not restart it. Poll the host-side 5432 forward until it is up.
+# Wait for Postgres before starting the Go server. 2026-09-09 起 PG 是原生
+# brew postgresql@17（launchd sh.brew.postgresql@17），同时监听 [::1]:5432 与
+# 127.0.0.1:5432。已无 docker。
+#
+# 探测顺序：先 ::1，因为那正是 server 走的路径——DATABASE_URL 写 localhost，
+# 本机 pgx 先解析到 ::1；且 IPv6 回环对 Cisco AnyConnect 的 acsockext 过滤器免疫
+# （它会间歇吞掉发往 127.0.0.1 的新 SYN，那次 hang 曾在 stop_all 之后卡死 restart，
+# 站点已经停了却一直等）。再退回 127.0.0.1，以便 v4-only 监听也能被认出来。
+#
+# 超时：每次探测由 `-t 2` 限住，整个循环由挂钟 deadline 限住，所以 60s 是真上限。
+# 旧版的 `docker exec` 完全没有边界，VM 冻结时会永远挂着。
 wait_for_pg() {
-  local i
-  say "waiting for Postgres ..."
-  for i in $(seq 1 60); do
-    # Prefer `docker exec pg_isready`: it asks Postgres inside the container
-    # directly and bypasses the host loopback, which the Cisco AnyConnect
-    # acsockext filter can otherwise swallow (new SYNs to 127.0.0.1 make `nc`
-    # hang even though PG is fine — that hang previously killed restart
-    # mid-way, after stop_all had already taken the server down).
-    # Fall back to nc on [::1] (IPv6 loopback is immune), with a 2s timeout.
-    if docker exec multica-postgres-1 pg_isready -U multica -d multica >/dev/null 2>&1; then
-      say "Postgres is ready (after ${i}s)"; return 0
-    fi
-    nc -z -w2 ::1 5432 2>/dev/null && { say "Postgres is ready via ::1 (after ${i}s)"; return 0; }
+  local started deadline host
+  started="$(date +%s)"; deadline=$((started + 60))
+  say "waiting for Postgres (native brew postgresql@17) ..."
+  while :; do
+    for host in ::1 127.0.0.1; do
+      if "$PG_ISREADY_BIN" -q -h "$host" -p 5432 -U multica -d multica -t 2; then
+        say "Postgres ready on [$host]:5432 (after $(( $(date +%s) - started ))s)"
+        return 0
+      fi
+    done
+    [ "$(date +%s)" -lt "$deadline" ] || break
     sleep 1
   done
-  echo "WARN: Postgres not reachable after 60s; starting server anyway" >&2
+  echo "WARN: Postgres 在 60s 内未就绪（[::1] 与 127.0.0.1 都不通）；仍继续启动 server" >&2
   return 1
 }
 
@@ -211,6 +236,7 @@ mkdir -p "$LOG_DIR"
 
 case "$cmd" in
   start)
+    require_pg_client
     build_go
     build_web
     wait_for_pg
@@ -224,6 +250,7 @@ case "$cmd" in
     say "stopped (Postgres and the agent daemon were left running)"
     ;;
   restart)
+    require_pg_client
     build_go
     build_web
     stop_all

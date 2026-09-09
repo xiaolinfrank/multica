@@ -36,18 +36,36 @@ on_err() {
 trap on_err ERR
 
 # --- config ----------------------------------------------------------------
-# launchd runs us with a minimal PATH; make homebrew/colima tooling resolve.
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+# launchd runs us with a minimal PATH; make homebrew tooling resolve.
+# postgresql@17 是 keg-only，pg_dump/psql 必须显式加它的 bin 才找得到。
+export PATH="/opt/homebrew/opt/postgresql@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 NAS_SHARE="/Volumes/虚拟员工工作区"
 NAS_BASE="${NAS_SHARE}/backup/multica"
-PG_CONTAINER="multica-postgres-1"
-REDIS_CONTAINER="multica-redis-1"
+# 2026-09-09 切换：PG/redis 从 colima 容器迁到 brew 原生进程，不再有容器可 exec。
+# 内部链路一律走 [::1]：AnyConnect 的回环过滤器会间歇吞 127.0.0.1 的新 SYN。
+PGHOST_LOCAL="::1"
+PGUSER_LOCAL="multica"
+REDIS_HOST_LOCAL="::1"
+# brew redis 的 RDB 落盘位置，SAVE 之后直接从这里取（替代 docker cp）。
+REDIS_RDB="/opt/homebrew/var/db/redis/dump.rdb"
+# 主库 dump 的体积下限。切换/误操作若留下一个「存在但是空」的 multica 库，
+# 备份会照常"成功"，连着 30 天归档空 dump，把真正有数据的那些轮转掉——
+# 这正是 L2 附件层静默失效 3 周的同一类失败。2026-09-09 实测 multica.dump 为
+# 73M，10MB 有 7 倍余量。要调只能是业务真的变了，绝不为了让红变绿而调。
+PG_MAIN_DB="multica"
+PG_MAIN_MIN_BYTES="${PG_MAIN_MIN_BYTES:-10000000}"
 REPO="/Users/fosun_main_agent/var/multica"
 # Attachments live wherever LOCAL_UPLOAD_DIR points; it moved to the NAS in
 # 2026-08. Read it from .env so this mirror cannot drift to a stale path again.
 UPLOADS_SRC=""
 if [[ -f "${REPO}/.env" ]]; then
   UPLOADS_SRC="$(awk -F= '/^LOCAL_UPLOAD_DIR=/ { sub(/^[^=]*=/, ""); print; exit }' "${REPO}/.env")"
+  # PG 现在要密码认证（原来 docker exec 是容器内 trust）。密码只从 .env 的
+  # DATABASE_URL 取，绝不写死在脚本里。这里只读进普通 shell 变量、不 export：
+  # 稍后写成 STAGING 里的一次性 PGPASSFILE（0600，随 EXIT trap 一起删），
+  # 这样它既不进 argv（ps 可见），也不会被继承进 rsync/tar 等每一个子进程。
+  PG_PASS_RAW="$(awk -F= '/^DATABASE_URL=/ { sub(/^[^=]*=/, ""); print; exit }' "${REPO}/.env" \
+    | sed -E 's|^postgres(ql)?://[^:]+:([^@]*)@.*|\2|')"
 fi
 UPLOADS_SRC="${UPLOADS_SRC:-${REPO}/data/uploads}"
 WORKSPACES_SRC="${NAS_SHARE}/v2"
@@ -142,21 +160,38 @@ ensure_dir "${NAS_BASE}/logs"
 
 # 2. L1 -- PostgreSQL, one dump per database
 say "L1 postgres dump"
-DBS="$(docker exec "${PG_CONTAINER}" psql -U multica -d postgres -tA \
+# 连不上就必须响亮失败：2026-08 附件层迁 NAS 后备份静默跳过了 3 周才被发现，
+# 这一层宁可整轮 exit 1 也不要"成功但没备到"。
+[[ -n "${PG_PASS_RAW:-}" ]] || fail "DATABASE_URL 里取不到 PG 密码（.env 变了？）"
+# URL userinfo 里的密码是百分号编码的，还原后再写 pgpass；同时转义 pgpass
+# 自己的分隔符（\ 和 :）。
+PG_PASS_PLAIN="$(printf '%b' "${PG_PASS_RAW//%/\\x}")"
+PG_PASS_ESC="${PG_PASS_PLAIN//\\/\\\\}"; PG_PASS_ESC="${PG_PASS_ESC//:/\\:}"
+PGPASSFILE="${STAGING}/.pgpass"
+( umask 077; printf '*:*:*:%s:%s\n' "${PGUSER_LOCAL}" "${PG_PASS_ESC}" > "${PGPASSFILE}" )
+export PGPASSFILE
+unset PG_PASS_RAW PG_PASS_PLAIN PG_PASS_ESC
+
+psql -h "${PGHOST_LOCAL}" -U "${PGUSER_LOCAL}" -d postgres -tAc 'select 1' >/dev/null 2>&1 \
+  || fail "无法连接 PostgreSQL ${PGHOST_LOCAL}:5432（brew postgresql@17 没跑？）"
+DBS="$(psql -h "${PGHOST_LOCAL}" -U "${PGUSER_LOCAL}" -d postgres -tA \
   -c "SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres' ORDER BY datname")"
 [[ -n "${DBS}" ]] || fail "no databases found"
 for db in ${DBS}; do
   say "  export ${db}"
-  run docker exec "${PG_CONTAINER}" pg_dump -U multica -Fc -d "${db}" -f "/tmp/bcl-${db}.dump"
-  run docker cp "${PG_CONTAINER}:/tmp/bcl-${db}.dump" "${STAGING}/${db}.dump"
-  run docker exec "${PG_CONTAINER}" rm -f "/tmp/bcl-${db}.dump"
+  run pg_dump -h "${PGHOST_LOCAL}" -U "${PGUSER_LOCAL}" -Fc -d "${db}" -f "${STAGING}/${db}.dump"
 done
 
 for db in ${DBS}; do
   say "  verify ${db}"
   # Validate the custom-format dump is readable before trusting it.
   if (( ! DRY )); then
-    docker exec -i "${PG_CONTAINER}" pg_restore --list < "${STAGING}/${db}.dump" >/dev/null || fail "pg_restore --list failed for ${db}"
+    pg_restore --list "${STAGING}/${db}.dump" >/dev/null || fail "pg_restore --list failed for ${db}"
+    if [[ "${db}" == "${PG_MAIN_DB}" ]]; then
+      sz="$(stat -f %z "${STAGING}/${db}.dump")"
+      (( sz >= PG_MAIN_MIN_BYTES )) \
+        || fail "${db}.dump 只有 ${sz} 字节 (<${PG_MAIN_MIN_BYTES})——主库疑似为空，拒绝把它当成功归档"
+    fi
   fi
   say "  compress ${db}"
   run gzip -9 -f "${STAGING}/${db}.dump"
@@ -262,8 +297,11 @@ run mv "${STAGING}/config-${DATE}.tar.gz" "${CONFIG_DIR}/"
 
 # 6. L5 -- redis RDB (session/PAT cache)
 say "L5 redis snapshot"
-run docker exec "${REDIS_CONTAINER}" redis-cli SAVE
-run docker cp "${REDIS_CONTAINER}:/data/dump.rdb" "${STAGING}/redis-${DATE}.rdb"
+redis-cli -h "${REDIS_HOST_LOCAL}" PING >/dev/null 2>&1 \
+  || fail "无法连接 redis ${REDIS_HOST_LOCAL}:6379（brew redis 没跑？）"
+run redis-cli -h "${REDIS_HOST_LOCAL}" SAVE
+[[ -f "${REDIS_RDB}" ]] || fail "redis RDB 不在 ${REDIS_RDB}（brew redis 的 dir 变了？）"
+run cp "${REDIS_RDB}" "${STAGING}/redis-${DATE}.rdb"
 run gzip -9 -f "${STAGING}/redis-${DATE}.rdb"
 run mv "${STAGING}/redis-${DATE}.rdb.gz" "${NAS_BASE}/redis/"
 
