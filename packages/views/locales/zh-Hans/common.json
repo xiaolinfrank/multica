@@ -1,4 +1,9 @@
 {
+  "agent_process": {
+    "steps_other": "{{count}} 步",
+    "tool_result_named": "{{tool}} 结果：",
+    "tool_result_unnamed": "结果："
+  },
   "avatar_upload": {
     "change": "更换头像",
     "remove": "移除",

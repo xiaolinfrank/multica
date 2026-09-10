@@ -71,9 +71,6 @@
       "fallback": "問題が発生し、エージェントは返信を完了できませんでした。もう一度お試しください。"
     },
     "tools_other": "ツール {{count}}個",
-    "tool_result_named": "{{tool}} の結果: ",
-    "tool_result_unnamed": "結果: ",
-    "process_steps_other": "ステップ {{count}}個",
     "copy_action": "コピー",
     "copied_toast": "コピーしました",
     "copy_failed_toast": "コピーに失敗しました",

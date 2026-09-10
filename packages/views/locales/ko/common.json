@@ -1,4 +1,9 @@
 {
+  "agent_process": {
+    "steps_other": "단계 {{count}}개",
+    "tool_result_named": "{{tool}} 결과: ",
+    "tool_result_unnamed": "결과: "
+  },
   "avatar_upload": {
     "change": "아바타 변경",
     "remove": "제거",

@@ -71,9 +71,6 @@
       "fallback": "문제가 발생하여 에이전트가 답변을 완료하지 못했습니다. 다시 시도해 주세요."
     },
     "tools_other": "도구 {{count}}개",
-    "tool_result_named": "{{tool}} 결과: ",
-    "tool_result_unnamed": "결과: ",
-    "process_steps_other": "단계 {{count}}개",
     "copy_action": "복사",
     "copied_toast": "복사했습니다",
     "copy_failed_toast": "복사 실패",

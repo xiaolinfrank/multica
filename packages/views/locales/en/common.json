@@ -1,4 +1,10 @@
 {
+  "agent_process": {
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "tool_result_named": "{{tool}} result: ",
+    "tool_result_unnamed": "result: "
+  },
   "avatar_upload": {
     "change": "Change avatar",
     "remove": "Remove",

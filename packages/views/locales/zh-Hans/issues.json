@@ -570,6 +570,12 @@
     "stop_tooltip": "停止智能体",
     "cancel_failed": "取消运行失败"
   },
+  "agent_process": {
+    "view_process": "查看运行过程",
+    "loading": "正在加载运行过程…",
+    "starting": "正在启动…",
+    "empty": "这次运行没有留下过程记录。"
+  },
   "execution_log": {
     "section": "执行日志",
     "show_past": "显示历史运行（{{count}}）",

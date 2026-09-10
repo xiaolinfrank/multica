@@ -380,6 +380,11 @@ vi.mock("@multica/core/issues/stores", async () => ({
   ...(await vi.importActual<
     typeof import("@multica/core/issues/stores/sub-issues-collapse-store")
   >("@multica/core/issues/stores/sub-issues-collapse-store")),
+  // Real store, in-memory: holds the reader's open/closed choice for an agent
+  // run's process fold, which hangs off agent comments in this timeline.
+  ...(await vi.importActual<
+    typeof import("@multica/core/issues/stores/agent-process-fold-store")
+  >("@multica/core/issues/stores/agent-process-fold-store")),
   useRecentIssuesStore: Object.assign(
     (selector?: any) => {
       const state = { byWorkspace: {}, recordVisit: mockRecordVisit, pruneWorkspaces: vi.fn() };
@@ -1360,6 +1365,34 @@ describe("IssueDetail (shared)", () => {
 
     await screen.findByText("Finished the requested work.");
     expect(screen.queryByRole("button", { name: "Retry run" })).not.toBeInTheDocument();
+  });
+
+  it("puts the process fold above the answer it produced", async () => {
+    mockApiObj.listTimeline.mockResolvedValue([
+      ...mockTimeline,
+      {
+        type: "comment",
+        id: "comment-successful-task",
+        actor_type: "agent",
+        actor_id: "agent-1",
+        content: "Finished the requested work.",
+        parent_id: null,
+        created_at: "2026-01-18T00:00:00Z",
+        updated_at: "2026-01-18T00:00:00Z",
+        comment_type: "comment",
+        source_task_id: "task-success",
+      },
+    ]);
+
+    renderIssueDetail();
+
+    const answer = await screen.findByText("Finished the requested work.");
+    const fold = screen.getByRole("button", { name: "View process" });
+    // The run happened before the answer was written, so it reads first. A
+    // settled fold is one caption line, so leading with it costs no space.
+    expect(fold.compareDocumentPosition(answer)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("does not show retry for agent system comments without a source task", async () => {

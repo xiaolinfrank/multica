@@ -6,6 +6,7 @@ import { chatKeys } from "@multica/core/chat/queries";
 import type { TaskMessagePayload } from "@multica/core/types";
 import type { ReactElement } from "react";
 import enChat from "../../locales/en/chat.json";
+import { RESOURCES } from "../../test/i18n";
 
 // The live timeline is a real list row rather than Virtuoso chrome (MUL-4922),
 // so it shares one identity with the persisted assistant row and keeps its
@@ -48,7 +49,10 @@ vi.mock("react-virtuoso", () => ({
 
 import { ChatMessageList } from "./chat-message-list";
 
-const TEST_RESOURCES = { en: { chat: enChat } };
+// The production resource map, not a hand-picked slice: the process fold this
+// list renders now lives in `common` (it is shared with the issue page), and a
+// per-file slice would have silently rendered the raw key instead.
+const TEST_RESOURCES = RESOURCES;
 const TASK_ID = "6af44cbe-80ab-4dfe-b07d-bd3cfd588f4d";
 
 function taskMsg(

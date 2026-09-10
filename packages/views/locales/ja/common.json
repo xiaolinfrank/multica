@@ -1,4 +1,9 @@
 {
+  "agent_process": {
+    "steps_other": "ステップ {{count}}個",
+    "tool_result_named": "{{tool}} の結果: ",
+    "tool_result_unnamed": "結果: "
+  },
   "avatar_upload": {
     "change": "アバターを変更",
     "remove": "削除",

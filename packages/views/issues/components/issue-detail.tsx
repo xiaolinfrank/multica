@@ -91,6 +91,7 @@ import { ThreadNavPanel, mentionsUser, type ThreadNavThread } from "./thread-nav
 import { collectThreadReplies, deriveThreadResolution } from "./thread-utils";
 import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 import { ExecutionLogSection } from "./execution-log-section";
+import { IssueLiveAgentProcess } from "./issue-agent-process";
 import { WorkspaceFilesSection } from "./workspace-files-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
@@ -3361,11 +3362,13 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
             <LocalDirectoryHint projectId={issue?.project_id} />
 
-            {/* The "agent is working" live signal now lives in the header
-                (IssueAgentHeaderChip) so it stays in one fixed place and
-                doesn't compete with sticky banners in this content column.
-                The per-task timeline + past runs live in the right panel
-                via ExecutionLogSection. */}
+            {/* The "agent is working" live signal lives in the header
+                (IssueAgentHeaderChip) so the status stays in one fixed place
+                and doesn't compete with sticky banners in this content column;
+                past runs live in the right panel via ExecutionLogSection.
+                What the agent is *doing* streams into IssueLiveAgentProcess
+                below the timeline — status and process are different jobs, and
+                only the status one belonged in the header. */}
 
             {/* Timeline entries — virtualized via react-virtuoso to keep
                 first-paint cost O(viewport) instead of O(N). On a 500-comment
@@ -3436,6 +3439,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             )}
 
           </div>
+
+          {/* Live agent process. Sits after the timeline and before the
+              composer, which is the only place a panel that grows on every
+              streamed frame can live: everything above it is either
+              virtualized or already read, so appending output never shifts
+              what the reader is looking at. The panel bounds its own height
+              and scrolls internally for the same reason. The header chip
+              still owns "is an agent working"; this owns "what is it doing". */}
+          <IssueLiveAgentProcess issueId={id} />
 
           {/* Bottom comment input — no avatar, full width. Direct child of
               the content column (not the Activity section): a sticky box

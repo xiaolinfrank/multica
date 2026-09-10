@@ -44,6 +44,7 @@ import { useT } from "../../i18n";
 import { CommentsFoldBar } from "./resolved-thread-bar";
 import { deriveThreadResolution } from "./thread-utils";
 import { RevisionConflictCompare } from "./revision-conflict-compare";
+import { IssueAgentProcessFold } from "./issue-agent-process";
 
 const highlightedCommentBackgroundClass =
   "bg-[color-mix(in_srgb,var(--card)_95%,var(--brand)_5%)]";
@@ -235,6 +236,18 @@ function initialStandaloneAttachmentIds(entry: TimelineEntry): Set<string> {
       .filter((attachment) => !contentReferencesAttachment(content, attachment))
       .map((attachment) => attachment.id),
   );
+}
+
+/**
+ * The run that produced this comment, when an agent wrote it. Its process fold
+ * hangs off the result so the work behind an answer stays reachable — including
+ * on a failure comment, where "what did it do before it broke" is the whole
+ * question. Human comments and agent comments with no run have no process.
+ */
+function agentRunTaskId(entry: TimelineEntry): string | null {
+  if (entry.actor_type !== "agent") return null;
+  const taskId = entry.source_task_id;
+  return typeof taskId === "string" && taskId.length > 0 ? taskId : null;
 }
 
 function retryableAgentFailureComment(entry: TimelineEntry): entry is TimelineEntry & { source_task_id: string } {
@@ -625,6 +638,7 @@ function CommentRow({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const reactions = entry.reactions ?? [];
+  const processTaskId = agentRunTaskId(entry);
 
   return (
     <div className="py-1.5">
@@ -822,6 +836,15 @@ function CommentRow({
         </div>
       ) : (
         <>
+          {/* The process ran before the answer was written, so it reads above
+              it. Settled it is collapsed to a single caption line, which is
+              why leading with it costs the reader nothing. */}
+          {processTaskId && (
+            <IssueAgentProcessFold
+              taskId={processTaskId}
+              className="pt-1 pl-12 pr-4 max-md:pl-3 max-md:pr-3"
+            />
+          )}
           <div className="pl-12 pr-4 max-md:pl-3 max-md:pr-3 pt-1 text-body leading-relaxed text-foreground">
             <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />
           </div>
@@ -899,6 +922,7 @@ function CommentCardImpl({
   const replyCount = allNestedReplies.length;
   const contentPreview = (entry.content ?? "").replace(/\n/g, " ").slice(0, 80);
   const reactions = entry.reactions ?? [];
+  const processTaskId = agentRunTaskId(entry);
 
   const isHighlighted = highlightedCommentId === entry.id;
 
@@ -1170,6 +1194,14 @@ function CommentCardImpl({
               </div>
             ) : (
               <>
+                {/* Above the answer: the process happened first. See the
+                    matching placement in CommentRow. */}
+                {processTaskId && (
+                  <IssueAgentProcessFold
+                    taskId={processTaskId}
+                    className="mb-1.5 pl-10 max-md:pl-0"
+                  />
+                )}
                 <div className="pl-10 max-md:pl-0 text-body leading-relaxed text-foreground">
                   <ReadonlyContent content={entry.content ?? ""} attachments={entry.attachments} />
                 </div>

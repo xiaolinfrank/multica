@@ -593,6 +593,12 @@
     "stop_tooltip": "Stop agent",
     "cancel_failed": "Failed to cancel run"
   },
+  "agent_process": {
+    "view_process": "View process",
+    "loading": "Loading process…",
+    "starting": "Starting…",
+    "empty": "No process was recorded for this run."
+  },
   "execution_log": {
     "section": "Execution log",
     "show_past": "Show past runs ({{count}})",
