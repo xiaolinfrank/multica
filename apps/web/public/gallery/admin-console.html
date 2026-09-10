@@ -104,9 +104,15 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
 
 /* ========== 顶栏 ========== */
 .topbar {
-  position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h); z-index: 100;
+  position: fixed; top: 26px; left: 0; right: 0; height: var(--topbar-h); z-index: 100;
   display: flex; align-items: center; gap: 20px;
   background: #fff; border-bottom: 1px solid var(--border); padding: 0 20px;
+}
+.proto-banner {
+  position: fixed; top: 0; left: 0; right: 0; height: 26px; z-index: 10000;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(90deg, #F59E0B, #FBBF24);
+  color: #451A03; font-size: 12px; font-weight: 600; letter-spacing: .12em;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; color: var(--text-1); }
 .brand-logo {
@@ -185,7 +191,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
 }
 
 /* ========== 侧边栏 ========== */
-.layout { display: flex; padding-top: var(--topbar-h); min-height: 100vh; }
+.layout { display: flex; padding-top: calc(var(--topbar-h) + 26px); min-height: 100vh; }
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0;
   background: #fff; border-right: 1px solid var(--border);
@@ -1053,6 +1059,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
   </style>
 </head>
 <body>
+<div class="proto-banner">原型演示 · 正在设计中 · 页面数据均为示例</div>
 <!-- ========== 登录页 ========== -->
 <div id="loginPage">
   <div class="login-card">
@@ -1066,7 +1073,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
         <label>账号</label>
         <div class="login-input">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <input id="loginAccount" placeholder="请输入账号" autocomplete="username" value="zhangwei" />
+          <input id="loginAccount" placeholder="请输入账号" autocomplete="username" value="yangzhaoqi" />
         </div>
       </div>
       <div class="login-field">
@@ -2294,7 +2301,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
           <div class="form-item"><label><span class="req">*</span><span id="adTNameLabel">资源名称</span></label><input class="field" id="adTName" placeholder="请输入名称" /><div class="form-msg">请输入名称</div></div>
           <div class="form-item"><label><span class="req">*</span><span id="adTTagLabel">标签</span></label><input class="field" id="adTTag" placeholder="请输入标签" /><div class="form-msg">请输入标签</div></div>
           <div class="form-item"><label><span class="req">*</span><span id="adTOrgLabel">所属团队</span></label><input class="field" id="adTOrg" placeholder="如：生信团队" /><div class="form-msg">请输入所属团队</div></div>
-          <div class="form-item"><label><span class="req">*</span><span id="adTOwnerLabel">开发者</span></label><input class="field" id="adTOwner" placeholder="如：张三" /><div class="form-msg">请输入开发者</div></div>
+          <div class="form-item"><label><span class="req">*</span><span id="adTOwnerLabel">开发者</span></label><input class="field" id="adTOwner" placeholder="如：杨兆祺" /><div class="form-msg">请输入开发者</div></div>
         </div>
       </div>
       <div style="font-size:12px;color:var(--text-4);margin-top:4px;">基础信息待与提供方确认，确认后可按目录提交资源。</div>
@@ -2378,7 +2385,7 @@ textarea.field { height: auto; padding: 8px 10px; resize: vertical; }
     </div>
     <div class="drawer-body">
       <div class="form-grid">
-        <div class="form-item"><label><span class="req">*</span>账号</label><input class="field" id="puAccount" placeholder="登录账号，如：zhangwei" /><div class="form-msg">请输入账号</div></div>
+        <div class="form-item"><label><span class="req">*</span>账号</label><input class="field" id="puAccount" placeholder="登录账号，如：yangzhaoqi" /><div class="form-msg">请输入账号</div></div>
         <div class="form-item"><label><span class="req">*</span>姓名</label><input class="field" id="puName" placeholder="用户姓名" /><div class="form-msg">请输入姓名</div></div>
         <div class="form-item"><label><span class="req">*</span>所属机构</label><input class="field" id="puOrg" placeholder="所属机构，如：复旦大学附属中山医院" /><div class="form-msg">请输入所属机构</div></div>
         <div class="form-item"><label>角色</label><div class="select-wrap"><select class="field" id="puRole"><option>系统管理员</option><option>数据运营</option><option>智能体运营</option><option>平台运营</option><option>供数方</option></select></div></div>
@@ -2605,16 +2612,16 @@ function switchView(view) {
    ============================================================ */
 let uid = 1000;
 const seedUsers = [
-  { name: '张三', phone: '18888888888', org: 'xxxxxxxxx医院', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.08 14:00' },
-  { name: '李四', phone: '13700000001', org: '瑞金医院', seat: 10, direction: '临床数据分析', perm: 8, time: '2026.08.08 14:00' },
-  { name: '王五', phone: '13700000002', org: '华山医院', seat: 20, direction: '医学影像 AI', perm: 12, time: '2026.08.07 10:32' },
-  { name: '赵六', phone: '13700000003', org: 'xxxxxxxxx医院', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.06 18:11' },
-  { name: '孙七', phone: '13700000004', org: '北京协和医院', seat: 15, direction: '药物研发', perm: 6, time: '2026.08.06 09:45' },
-  { name: '周八', phone: '13700000005', org: 'xxxxxxxxx医院', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.05 16:20' },
-  { name: '吴九', phone: '13700000006', org: '上海肿瘤医院', seat: 12, direction: '肿瘤早筛', perm: 7, time: '2026.08.05 11:08' },
-  { name: '郑十', phone: '13700000007', org: 'xxxxxxxxx医院', seat: 10, direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.04 14:00' },
-  { name: '钱多多', phone: '13700000008', org: '复星医药研究院', seat: 25, direction: '免疫治疗', perm: 15, time: '2026.08.04 09:30' },
-  { name: '陈晨', phone: '13700000009', org: 'xxxxxxxxx医院', seat: 10, direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.03 17:55' }
+  { name: '杨兆祺', phone: '13923471856', org: '深圳市儿童医院', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.08 14:00' },
+  { name: '周铭远', phone: '13823716890', org: '瑞金医院', seat: 10, direction: '临床数据分析', perm: 8, time: '2026.08.08 14:00' },
+  { name: '田语桐', phone: '13902938471', org: '华山医院', seat: 20, direction: '医学影像 AI', perm: 12, time: '2026.08.07 10:32' },
+  { name: '赵启铭', phone: '13510482637', org: '深圳市儿童医院', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.06 18:11' },
+  { name: '孙婉清', phone: '13692204718', org: '北京协和医院', seat: 15, direction: '药物研发', perm: 6, time: '2026.08.06 09:45' },
+  { name: '周景行', phone: '13760392841', org: '广州市妇女儿童医疗中心', seat: '不涉及', direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.05 16:20' },
+  { name: '吴沁瑶', phone: '13826501749', org: '上海肿瘤医院', seat: 12, direction: '肿瘤早筛', perm: 7, time: '2026.08.05 11:08' },
+  { name: '郑海峰', phone: '13983046125', org: '深圳市第二人民医院', seat: 10, direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.04 14:00' },
+  { name: '钱睿', phone: '13590172638', org: '复星医药研究院', seat: 25, direction: '免疫治疗', perm: 15, time: '2026.08.04 09:30' },
+  { name: '陈晨', phone: '13602518497', org: '北京大学第一医院', seat: 10, direction: '基因测序、蛋白质测序', perm: 10, time: '2026.08.03 17:55' }
 ];
 const SURN = ['张', '李', '王', '赵', '孙', '周', '吴', '郑', '钱', '陈', '刘', '杨', '黄', '徐', '林', '何', '高', '罗', '梁', '宋'];
 const GIVEN = ['伟', '芳', '娜', '敏', '静', '磊', '军', '洋', '勇', '艳', '杰', '娟', '涛', '明', '超', '霞', '平', '刚', '华', '鹏'];
@@ -3600,19 +3607,19 @@ function genSpaceData() {
   ];
   const mkFiles = (arr) => arr.map((f, i) => ({ id: i + 1, name: f[0], size: f[1] + ' MB', creator: f[2], time: f[3] }));
   const filesP = mkFiles([
-    ['基因测序数据分析报告_20260801.docx', '2.4', '张三', '2026.08.01 10:00'],
-    ['样本信息表_批次3.xlsx', '8.6', '李四', '2026.07.30 14:20'],
-    ['Perturb-seq_分析脚本_v2.py', '0.3', '王五', '2026.07.28 09:10'],
-    ['质控指标汇总_07月.pdf', '1.2', '张三', '2026.07.25 16:40'],
-    ['差异表达基因表_top200.csv', '0.8', '李四', '2026.07.22 11:30']
+    ['基因测序数据分析报告_20260801.docx', '2.4', '杨兆祺', '2026.08.01 10:00'],
+    ['样本信息表_批次3.xlsx', '8.6', '周铭远', '2026.07.30 14:20'],
+    ['Perturb-seq_分析脚本_v2.py', '0.3', '田语桐', '2026.07.28 09:10'],
+    ['质控指标汇总_07月.pdf', '1.2', '杨兆祺', '2026.07.25 16:40'],
+    ['差异表达基因表_top200.csv', '0.8', '周铭远', '2026.07.22 11:30']
   ]);
   const filesT = mkFiles([
-    ['TCGA队列整理_清洗后.csv', '6.8', '赵六', '2026.08.02 10:00'],
-    ['单细胞聚类结果_Umap.png', '45.2', '孙七', '2026.08.01 15:30'],
-    ['KEGG富集分析结果.xlsx', '1.4', '周八', '2026.07.31 09:20'],
-    ['模型评估报告_v3.pdf', '3.6', '吴九', '2026.07.30 13:10'],
-    ['数据字典_字段说明.md', '0.2', '郑十', '2026.07.28 17:00'],
-    ['会议纪要_课题推进.pptx', '8.9', '赵六', '2026.07.26 10:40']
+    ['TCGA队列整理_清洗后.csv', '6.8', '赵启铭', '2026.08.02 10:00'],
+    ['单细胞聚类结果_Umap.png', '45.2', '孙婉清', '2026.08.01 15:30'],
+    ['KEGG富集分析结果.xlsx', '1.4', '周景行', '2026.07.31 09:20'],
+    ['模型评估报告_v3.pdf', '3.6', '吴沁瑶', '2026.07.30 13:10'],
+    ['数据字典_字段说明.md', '0.2', '郑海峰', '2026.07.28 17:00'],
+    ['会议纪要_课题推进.pptx', '8.9', '赵启铭', '2026.07.26 10:40']
   ]);
   const personal = allUsers.slice(0, 8).map((u, i) => {
     const used = +(1.2 + ((u.id * 7) % 25) * 0.5).toFixed(1);
@@ -3741,7 +3748,7 @@ let approvalFlows = [];
 let editingFlowId = null;
 let editingNodes = [];
 let nodeKeySeq = 100;
-const approverNames = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十', '钱多多', '陈晨'];
+const approverNames = ['杨兆祺', '周铭远', '田语桐', '赵启铭', '孙婉清', '周景行', '吴沁瑶', '郑海峰', '钱睿', '陈晨'];
 function genApprovalFlows() {
   const mk = (id, name, module, approveNodes, creator, time) => ({
     id, name, module, enabled: true,
@@ -3754,36 +3761,36 @@ function genApprovalFlows() {
   });
   return [
     mk(1, '数据访问申请审批', '数据上架', [
-      { name: '科室负责人审批', approver: '张三' },
-      { name: '数据管理员审批', approver: '李四' }
+      { name: '科室负责人审批', approver: '杨兆祺' },
+      { name: '数据管理员审批', approver: '周铭远' }
     ], '管理员', '2026.08.05 10:00'),
     mk(2, '智能体发布审批', '智能体上架', [
-      { name: '项目负责人审批', approver: '王五' },
-      { name: '平台管理员审批', approver: '孙七' },
-      { name: '安全复核', approver: '周八' }
+      { name: '项目负责人审批', approver: '田语桐' },
+      { name: '平台管理员审批', approver: '孙婉清' },
+      { name: '安全复核', approver: '周景行' }
     ], '管理员', '2026.08.06 14:30'),
     mk(3, '工具接入审批', '工具上架', [
-      { name: '工具负责人审批', approver: '吴九' }
+      { name: '工具负责人审批', approver: '吴沁瑶' }
     ], '管理员', '2026.08.07 09:20'),
     mk(4, '软件包发布审批', '软件包上架', [
-      { name: '软件包负责人审批', approver: '郑十' },
+      { name: '软件包负责人审批', approver: '郑海峰' },
       { name: '平台管理员审批', approver: '陈晨' }
     ], '管理员', '2026.08.08 11:00'),
     mk(5, '数据审核流程', '数据审核', [
-      { name: '数据质量审核', approver: '钱多多' },
-      { name: '数据合规审核', approver: '周八' },
-      { name: '平台管理员终审', approver: '李四' }
+      { name: '数据质量审核', approver: '钱睿' },
+      { name: '数据合规审核', approver: '周景行' },
+      { name: '平台管理员终审', approver: '周铭远' }
     ], '管理员', '2026.08.09 09:00'),
     mk(6, '智能体审核流程', '智能体审核', [
-      { name: '智能体功能审核', approver: '张三' },
-      { name: '智能体风险审核', approver: '孙七' }
+      { name: '智能体功能审核', approver: '杨兆祺' },
+      { name: '智能体风险审核', approver: '孙婉清' }
     ], '管理员', '2026.08.10 10:30'),
     mk(7, '工具审核流程', '工具审核', [
-      { name: '工具功能审核', approver: '王五' },
-      { name: '工具风险审核', approver: '吴九' }
+      { name: '工具功能审核', approver: '田语桐' },
+      { name: '工具风险审核', approver: '吴沁瑶' }
     ], '管理员', '2026.08.10 14:00'),
     mk(8, '软件包审核流程', '软件包审核', [
-      { name: '软件包功能审核', approver: '赵六' },
+      { name: '软件包功能审核', approver: '赵启铭' },
       { name: '软件包风险审核', approver: '陈晨' }
     ], '管理员', '2026.08.11 09:15')
   ];
@@ -5212,7 +5219,7 @@ function advanceFlow(op) {
    ============================================================ */
 let platformUsers = [];
 const platformRoles = ['系统管理员', '数据运营', '智能体运营', '平台运营', '供数方'];
-const puAccounts = ['zhangwei', 'lina', 'wangfang', 'liqiang', 'chenjing', 'yangyang', 'zhaolei', 'liuming', 'sunli', 'zhoujie', 'wuyu', 'zhenghao'];
+const puAccounts = ['yangzhaoqi', 'lina', 'wangfang', 'liqiang', 'chenjing', 'yangyang', 'zhaolei', 'liuming', 'sunli', 'zhoujie', 'wuyu', 'zhenghao'];
 let puEditId = null;
 function genPlatformUsers() {
   const base = new Date(2026, 6, 15, 9, 0);
@@ -5226,7 +5233,7 @@ function genPlatformUsers() {
     status: i % 5 === 4 ? '停用' : '正常',
     time: u.time,
     pwdTime: fmtTime(new Date(base.getTime() + i * 17 * 3600000)),
-    firstLogin: i !== 0    /* 默认首次登录需修改初始密码；zhangwei 演示已改过 */
+    firstLogin: i !== 0    /* 默认首次登录需修改初始密码；yangzhaoqi 演示已改过 */
   }));
   /* 内置管理员账号：admin / 123456 */
   list.unshift({
@@ -5620,16 +5627,16 @@ function genTodos() {
     };
   };
   todoList = [
-    mk(1, '数据上架', '基因测序数据集 v2.0', '覆盖 500 例肿瘤样本的全外显子测序数据，已完成脱敏，附临床注释。', '数据上架审批流', '张三（瑞金医院）', 1.5, 'pending'),
-    mk(2, '智能体上架', '科研助手智能体', '面向临床研究团队的问答与文献检索智能体，支持多轮对话与引用溯源。', '智能体上架审批流', '李四（华山医院）', 3, 'pending'),
-    mk(3, '工具上架', '序列比对工具 v1.2', '支持 DNA/RNA 序列比对与变异检测，输出 BAM/VCF 格式结果。', '工具上架审批流', '王五（复星医药研究院）', 5, 'pending'),
-    mk(4, '软件包上架', '分析流程包 v3.0', '标准化生信分析流程包，含质控、比对、变异注释三个模块。', '软件包上架审批流', '赵六（上海肿瘤医院）', 8, 'pending'),
-    mk(5, '账号开通', '新成员平台账号', '为临床数据分析团队新成员开通平台账号，含基础数据权限。', '账号开通审批流', '钱多多（复星医药研究院）', 26, 'pending'),
-    mk(6, '数据审核', '临床数据分析报告', '肿瘤早筛队列的临床数据分析报告，待复核统计口径与结论。', '数据审核审批流', '孙七（北京协和医院）', 30, 'approved', '', '已与供数方确认统计口径'),
-    mk(7, '资源申请', '肿瘤早筛模型资源扩容', '模型训练与推理资源扩容申请，GPU 由 4 卡增至 8 卡。', '资源申请审批流', '周八（中山医院）', 50, 'rejected', '当前算力资源不足，请下月再申请'),
-    mk(8, '数据上架', '蛋白质组学数据集 v1.0', '覆盖 300 例样本的定量蛋白质组学数据，含质谱原始文件。', '数据上架审批流', '吴九（上海肿瘤医院）', 34, 'approved', '', '数据完整性核验通过'),
-    mk(9, '工具上架', '变异注释工具 v2.1', '基于 ClinVar/OMIM 的变异位点注释工具，支持批量注释。', '工具上架审批流', '郑十（北京协和医院）', 38, 'approved'),
-    mk(10, '软件包上架', '质控流程包 v1.4', 'NGS 数据质控流程包，含 FastQC/MultiQC 聚合报告。', '软件包上架审批流', '钱多多（复星医药研究院）', 42, 'rejected', '与已有分析流程包功能重叠，暂缓上架'),
+    mk(1, '数据上架', '基因测序数据集 v2.0', '覆盖 500 例肿瘤样本的全外显子测序数据，已完成脱敏，附临床注释。', '数据上架审批流', '杨兆祺（瑞金医院）', 1.5, 'pending'),
+    mk(2, '智能体上架', '科研助手智能体', '面向临床研究团队的问答与文献检索智能体，支持多轮对话与引用溯源。', '智能体上架审批流', '周铭远（华山医院）', 3, 'pending'),
+    mk(3, '工具上架', '序列比对工具 v1.2', '支持 DNA/RNA 序列比对与变异检测，输出 BAM/VCF 格式结果。', '工具上架审批流', '田语桐（复星医药研究院）', 5, 'pending'),
+    mk(4, '软件包上架', '分析流程包 v3.0', '标准化生信分析流程包，含质控、比对、变异注释三个模块。', '软件包上架审批流', '赵启铭（上海肿瘤医院）', 8, 'pending'),
+    mk(5, '账号开通', '新成员平台账号', '为临床数据分析团队新成员开通平台账号，含基础数据权限。', '账号开通审批流', '钱睿（复星医药研究院）', 26, 'pending'),
+    mk(6, '数据审核', '临床数据分析报告', '肿瘤早筛队列的临床数据分析报告，待复核统计口径与结论。', '数据审核审批流', '孙婉清（北京协和医院）', 30, 'approved', '', '已与供数方确认统计口径'),
+    mk(7, '资源申请', '肿瘤早筛模型资源扩容', '模型训练与推理资源扩容申请，GPU 由 4 卡增至 8 卡。', '资源申请审批流', '周景行（中山医院）', 50, 'rejected', '当前算力资源不足，请下月再申请'),
+    mk(8, '数据上架', '蛋白质组学数据集 v1.0', '覆盖 300 例样本的定量蛋白质组学数据，含质谱原始文件。', '数据上架审批流', '吴沁瑶（上海肿瘤医院）', 34, 'approved', '', '数据完整性核验通过'),
+    mk(9, '工具上架', '变异注释工具 v2.1', '基于 ClinVar/OMIM 的变异位点注释工具，支持批量注释。', '工具上架审批流', '郑海峰（北京协和医院）', 38, 'approved'),
+    mk(10, '软件包上架', '质控流程包 v1.4', 'NGS 数据质控流程包，含 FastQC/MultiQC 聚合报告。', '软件包上架审批流', '钱睿（复星医药研究院）', 42, 'rejected', '与已有分析流程包功能重叠，暂缓上架'),
     mk(11, '智能体上架', '文献综述智能体', '面向药物研发团队的文献检索与综述生成智能体。', '智能体上架审批流', '陈晨（复星医药研究院）', 46, 'approved', '', '回答质量符合预期'),
     mk(12, '账号开通', '数据治理专员账号', '为数据治理团队开通专员账号，含数据目录维护权限。', '账号开通审批流', '刘一（中山医院）', 54, 'approved'),
     mk(13, '数据审核', '免疫治疗队列分析报告', '免疫治疗队列的疗效与安全性分析报告，待复核。', '数据审核审批流', '黄二（仁济医院）', 58, 'rejected', '样本纳入标准需补充说明'),

@@ -8,7 +8,7 @@
 /* ============================================================
    手机端 · AI + 医药数据智能体工作平台
    绿色主题 · 与「AI + 医药数据智能体工作平台」同源 Token
-   用户：张三 · 复星医药 AI 平台产品负责人
+   用户：黄沛霖 · 复星医药 AI 平台产品负责人
    视图1：会话列表；视图2：群聊详情（生物医药内容）
    ============================================================ */
 :root {
@@ -34,7 +34,13 @@ body {
   font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   background: #E8EEF0; color: var(--text-1); font-size: 14px;
   display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; padding: 20px 0;
+  min-height: 100vh; padding: 46px 0 20px;
+}
+.proto-banner {
+  position: fixed; top: 0; left: 0; right: 0; height: 26px; z-index: 10000;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(90deg, #F59E0B, #FBBF24);
+  color: #451A03; font-size: 12px; font-weight: 600; letter-spacing: .12em;
 }
 button { font-family: inherit; }
 svg { display: block; }
@@ -391,7 +397,7 @@ svg { display: block; }
 </style>
 </head>
 <body>
-
+<div class="proto-banner">原型演示 · 正在设计中 · 页面数据均为示例</div>
 <div class="phone" id="phone">
   <!-- 状态栏 -->
   <div class="statusbar">
@@ -405,7 +411,7 @@ svg { display: block; }
   <div class="view v1" id="viewList">
     <div class="v1-head">
       <div class="entbar">
-        <button class="ent-avatar" id="entbar" title="我的" aria-label="我的" style="font-size:13px;font-weight:700;">张</button>
+        <button class="ent-avatar" id="entbar" title="我的" aria-label="我的" style="font-size:13px;font-weight:700;">黄</button>
         <div class="ent-title">会话</div>
         <span class="ent-bar-right"></span>
       </div>
@@ -420,28 +426,28 @@ svg { display: block; }
         <div class="avatar team">群</div>
         <div class="bodymeta">
           <div class="line1"><span class="title">ADC 新药研发技术交流群</span><span class="time">上午 11:05</span></div>
-          <div class="line2"><span class="mention">李博士:</span> ⚠️🧪 ADC 偶联效率验证失败，亟待复跑</div>
+          <div class="line2"><span class="mention">沈蔚然:</span> ⚠️🧪 ADC 偶联效率验证失败，亟待复跑</div>
         </div>
       </div>
       <div class="item" data-chat="2">
         <div class="avatar team">群</div>
         <div class="bodymeta">
           <div class="line1"><span class="title">肿瘤免疫临床试验协调组</span><span class="time">上午 11:01</span></div>
-          <div class="line2">王主任邀请你加入患者入组群聊</div>
+          <div class="line2">陈敬恒邀请你加入患者入组群聊</div>
         </div>
       </div>
       <div class="item" data-chat="3">
         <div class="avatar amber">T</div>
         <div class="bodymeta">
           <div class="line1"><span class="title">靶点验证组</span><span class="time">上午 09:14</span></div>
-          <div class="line2"><span class="mention">陈科研:</span> @张三 药代动力学数据已上传</div>
+          <div class="line2"><span class="mention">李青娇:</span> @黄沛霖 药代动力学数据已上传</div>
         </div>
       </div>
       <div class="item" data-chat="4">
         <div class="avatar team">群</div>
         <div class="bodymeta">
           <div class="line1"><span class="title">蛋白组学分析协作组</span><span class="time">上午 09:13</span></div>
-          <div class="line2">赵博士 创建了子区「质谱图谱库」</div>
+          <div class="line2">赵启铭 创建了子区「质谱图谱库」</div>
         </div>
       </div>
       <div class="item" data-chat="5">
@@ -524,7 +530,7 @@ svg { display: block; }
   <div class="view v1 hidden" id="viewTasks">
     <div class="v1-head">
       <div class="entbar">
-        <button class="head-userbtn" aria-label="我的">张</button>
+        <button class="head-userbtn" aria-label="我的">黄</button>
         <div class="ent-title">任务</div>
         <span class="ent-bar-right"></span>
       </div>
@@ -571,7 +577,7 @@ svg { display: block; }
   <div class="view v3 hidden" id="viewMarket">
     <div class="v3-head">
       <div class="cb-titlebar">
-        <button class="head-userbtn" aria-label="我的">张</button>
+        <button class="head-userbtn" aria-label="我的">黄</button>
         <div class="cb-title">资源市场</div>
         <span class="cb-bar-right"></span>
       </div>
@@ -594,7 +600,7 @@ svg { display: block; }
   <div class="view v3 hidden" id="viewContacts">
     <div class="v3-head">
       <div class="cb-titlebar">
-        <button class="head-userbtn" aria-label="我的">张</button>
+        <button class="head-userbtn" aria-label="我的">黄</button>
         <div class="cb-title">通讯录</div>
         <span class="cb-bar-right"></span>
       </div>
@@ -666,9 +672,9 @@ svg { display: block; }
     <div class="profile-head">
       <div class="pf-top"><button class="pf-close" onclick="toggleProfile(false)" aria-label="关闭"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="pf-user">
-        <div class="pf-avatar">张</div>
+        <div class="pf-avatar">黄</div>
         <div>
-          <div class="pf-name">张三</div>
+          <div class="pf-name">黄沛霖</div>
           <div class="pf-dept">复星医药产业发展（深圳）有限公司<br>AI 平台 · 产品负责人</div>
         </div>
       </div>
@@ -697,29 +703,29 @@ svg { display: block; }
   function tick(){ var d=new Date(); clock.textContent = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'); }
   tick(); setInterval(tick, 30000);
 
-  // 生物医药群聊消息数据（张三 = 我方）
+  // 生物医药群聊消息数据（黄沛霖 = 我方）
   var chats = {
     1: {
       title:'ADC 新药研发技术交流群', sub:'12 个成员 · 5 人在线', avatar:'群',
       msgs:[
         {t:'day', label:'08-27'},
-        {t:'right', html:'@<span class="mention blue">李博士</span> 合成路线已更新<span class="time-inline">08-27 09:29</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'right', html:'@<span class="mention blue">沈蔚然</span> 合成路线已更新<span class="time-inline">08-27 09:29</span><span class="read">'+svgRead(2)+'</span>'},
         {t:'right', html:'@<span class="mention purple">所有 AI</span> 请分析该靶点可成药性<span class="time-inline">08-27 09:31</span><span class="read">'+svgRead(2)+'</span>'},
-        {t:'left', name:'李博士', src:'/Web', cls:'green', av:'李', html:'@<span class="mention green">张三</span> 偶联效率数据已上传<span class="time-inline">08-27 09:40</span>'},
+        {t:'left', name:'沈蔚然', src:'/Web', cls:'green', av:'沈', html:'@<span class="mention green">黄沛霖</span> 偶联效率数据已上传<span class="time-inline">08-27 09:40</span>'},
         {t:'right', html:'⚠️🧪 ADC 偶联效率验证失败，亟待复跑<span class="time-inline">08-27 09:42</span><span class="read">'+svgRead(2)+'</span>'},
-        {t:'sys', label:'张三邀请王主任 加入群聊'},
+        {t:'sys', label:'黄沛霖邀请陈敬恒 加入群聊'},
         {t:'day', label:'08-28'},
-        {t:'right', html:'@<span class="mention blue">王主任</span> 请确认患者入组标准<span class="time-inline">08-28 10:05</span><span class="read">'+svgRead(2)+'</span>'},
-        {t:'left', name:'王主任', src:'/Web', cls:'orange', av:'王', html:'已确认，按最新入排标准执行<span class="time-inline">08-28 10:12</span>'}
+        {t:'right', html:'@<span class="mention blue">陈敬恒</span> 请确认患者入组标准<span class="time-inline">08-28 10:05</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'left', name:'陈敬恒', src:'/Web', cls:'orange', av:'陈', html:'已确认，按最新入排标准执行<span class="time-inline">08-28 10:12</span>'}
       ]
     },
     2: {
       title:'肿瘤免疫临床试验协调组', sub:'8 个成员 · 3 人在线', avatar:'群',
       msgs:[
         {t:'day', label:'08-28'},
-        {t:'left', name:'王主任', src:'/Web', cls:'green', av:'王', html:'@<span class="mention green">张三</span> 患者入组名单已同步<span class="time-inline">08-28 11:01</span>'},
+        {t:'left', name:'陈敬恒', src:'/Web', cls:'green', av:'陈', html:'@<span class="mention green">黄沛霖</span> 患者入组名单已同步<span class="time-inline">08-28 11:01</span>'},
         {t:'right', html:'收到，我会同步给统计组<span class="time-inline">08-28 11:03</span><span class="read">'+svgRead(2)+'</span>'},
-        {t:'sys', label:'王主任邀请你加入患者入组群聊'},
+        {t:'sys', label:'陈敬恒邀请你加入患者入组群聊'},
         {t:'day', label:'08-29'},
         {t:'left', name:'林统计', src:'/Web', cls:'orange', av:'林', html:'本周入组 3 例，均已完成基线评估<span class="time-inline">08-29 15:20</span>'}
       ]
@@ -728,7 +734,7 @@ svg { display: block; }
       title:'靶点验证组', sub:'6 个成员 · 2 人在线', avatar:'T',
       msgs:[
         {t:'day', label:'08-28'},
-        {t:'left', name:'陈科研', src:'/Web', cls:'green', av:'陈', html:'@<span class="mention green">张三</span> 药代动力学数据已上传<span class="time-inline">08-28 09:14</span>'},
+        {t:'left', name:'李青娇', src:'/Web', cls:'green', av:'李', html:'@<span class="mention green">黄沛霖</span> 药代动力学数据已上传<span class="time-inline">08-28 09:14</span>'},
         {t:'right', html:'已收到，正在核对曲线拟合<span class="time-inline">08-28 09:16</span><span class="read">'+svgRead(2)+'</span>'},
         {t:'right', html:'@<span class="mention purple">所有 AI</span> 比对已知靶点谱<span class="time-inline">08-28 09:20</span><span class="read">'+svgRead(2)+'</span>'}
       ]
@@ -737,17 +743,17 @@ svg { display: block; }
       title:'蛋白组学分析协作组', sub:'9 个成员 · 4 人在线', avatar:'群',
       msgs:[
         {t:'day', label:'08-27'},
-        {t:'right', html:'@<span class="mention blue">赵博士</span> 质谱数据已上传<span class="time-inline">08-27 16:40</span><span class="read">'+svgRead(2)+'</span>'},
-        {t:'card', by:'赵博士', sub:'「<span class="quot">质谱图谱库</span>」', count:'2条'},
+        {t:'right', html:'@<span class="mention blue">赵启铭</span> 质谱数据已上传<span class="time-inline">08-27 16:40</span><span class="read">'+svgRead(2)+'</span>'},
+        {t:'card', by:'赵启铭', sub:'「<span class="quot">质谱图谱库</span>」', count:'2条'},
         {t:'day', label:'08-28'},
-        {t:'left', name:'赵博士', src:'/Web', cls:'orange', av:'赵', html:'图谱注释已完成，可核查<span class="time-inline">08-28 09:13</span>'}
+        {t:'left', name:'赵启铭', src:'/Web', cls:'orange', av:'赵', html:'图谱注释已完成，可核查<span class="time-inline">08-28 09:13</span>'}
       ]
     },
     5: {
       title:'BioGPT 药物研发助手', sub:'AI 科研助手 · 1 人在线', avatar:'B',
       msgs:[
         {t:'right', html:'🧬 你好！我是 BioGPT，可协助靶点挖掘与分子设计。'},
-        {t:'left', name:'BioGPT', src:'/AI', cls:'indigo', av:'B', html:'@<span class="mention green">张三</span> 帮您分析 CDK4/6 抑制剂潜在耐药位点<span class="time-inline">08-26 10:02</span>'},
+        {t:'left', name:'BioGPT', src:'/AI', cls:'indigo', av:'B', html:'@<span class="mention green">黄沛霖</span> 帮您分析 CDK4/6 抑制剂潜在耐药位点<span class="time-inline">08-26 10:02</span>'},
         {t:'right', html:'请输出候选分子的 ADMET 预测<span class="time-inline">08-26 10:05</span><span class="read">'+svgRead(2)+'</span>'},
         {t:'left', name:'BioGPT', src:'/AI', cls:'indigo', av:'B', html:'已生成 5 个候选分子及排序，详见子区<span class="time-inline">08-26 10:08</span>'}
       ]
@@ -756,7 +762,7 @@ svg { display: block; }
       title:'ChemLLM 合成路径助手', sub:'AI 科研助手 · 1 人在线', avatar:'C',
       msgs:[
         {t:'right', html:'⚗️ 我是 ChemLLM，可预测化合物合成路线与反应条件。'},
-        {t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'@<span class="mention green">张三</span> 已为化合物 XF-317 规划 3 条逆合成路线<span class="time-inline">08-26 11:30</span>'},
+        {t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'@<span class="mention green">黄沛霖</span> 已为化合物 XF-317 规划 3 条逆合成路线<span class="time-inline">08-26 11:30</span>'},
         {t:'right', html:'优先选择路线 A，给出条件阈值<span class="time-inline">08-26 11:33</span><span class="read">'+svgRead(2)+'</span>'}
       ]
     },
@@ -977,75 +983,75 @@ svg { display: block; }
   var taskQA = {
     '1': [
       { t:'day', label:'14:12' },
-      { t:'right', name:'张三', html:'关于 ADC 偶联工艺，pH 值在 8.0 时偶联效率为何偏低？' },
+      { t:'right', name:'黄沛霖', html:'关于 ADC 偶联工艺，pH 值在 8.0 时偶联效率为何偏低？' },
       { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'pH 8.0 下偶联效率偏低通常与抗体表面赖氨酸 ε-氨基质子化状态及毒素活性酯水解速率相关。建议在 7.8-8.2 区间做梯度实验，并配合 DSC 监测构象变化。' },
-      { t:'right', name:'张三', html:'能否给出一组优化后的缓冲液配方？' },
+      { t:'right', name:'黄沛霖', html:'能否给出一组优化后的缓冲液配方？' },
       { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'推荐 0.1M PB 缓冲液 pH 8.0，含 10% 乙腈助溶、2mM EDTA 螯合金属，反应浓度 2mg/mL，37℃ 下孵育 90 分钟。' }
     ],
     '1-1': [
       { t:'day', label:'14:18' },
-      { t:'right', name:'张三', html:'pH 8.0 时抗体结构是否稳定？' },
+      { t:'right', name:'黄沛霖', html:'pH 8.0 时抗体结构是否稳定？' },
       { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'多数 IgG1 在 pH 7.0-8.5 之间结构稳定，但需关注 Lys-Asp 异构化风险。建议控温并做 24h 热稳定性验证。' }
     ],
     '2': [
       { t:'day', label:'11:02' },
-      { t:'right', name:'张三', html:'KRAS G12C 抑制剂常见的耐药突变位点有哪些？' },
+      { t:'right', name:'黄沛霖', html:'KRAS G12C 抑制剂常见的耐药突变位点有哪些？' },
       { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'常见耐药机制包括 G12X 二次突变、RTK 旁路激活（EGFR/MET）、以及 YAP/TAZ 通路异常激活。可结合 NGS 基线筛查。' }
     ],
     '3': [
       { t:'day', label:'昨天' },
-      { t:'right', name:'张三', html:'单细胞分析中，如何校正去除批次效应？' },
+      { t:'right', name:'黄沛霖', html:'单细胞分析中，如何校正去除批次效应？' },
       { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐使用 Harmony 或 Seurat CCA 整合，辅以 scVI 深度模型。建议先做 QC 去除低质量细胞，再用批次标签做 Anchor 校正。' }
     ],
     '4': [
       { t:'day', label:'08-29' },
-      { t:'right', name:'张三', html:'双抗 BsAb 的药效学评价应如何设计？' },
+      { t:'right', name:'黄沛霖', html:'双抗 BsAb 的药效学评价应如何设计？' },
       { t:'left', name:'ProteinAI', src:'/AI', cls:'purple', av:'P', html:'建议采用双靶点细胞系（如 CD3×HER2）联合 PBMC 杀伤实验，配合体内 CDX 模型评价药效与半衰期。' }
     ],
     '5': [
       { t:'day', label:'08-28' },
-      { t:'right', name:'张三', html:'PBMC 批次差异如何做质控判定？' },
+      { t:'right', name:'黄沛霖', html:'PBMC 批次差异如何做质控判定？' },
       { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'建议以活率 >85%、CD3+ 比例、以及经 PHA 刺激后的 IFN-γ 分泌量作为核心 QC 指标。' }
     ],
     // —— 子任务问答 ——
     '1-2': [
       { t:'day', label:'14:25' },
-      { t:'right', name:'张三', html:'毒素-连接子在血浆中的稳定性数据趋势如何？' },
+      { t:'right', name:'黄沛霖', html:'毒素-连接子在血浆中的稳定性数据趋势如何？' },
       { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'血浆中该连接子在 37℃ 下 24h 内释放量 <5%，具备良好的循环稳定性，可支持后续 PK 研究。' }
     ],
     '1-3': [
       { t:'day', label:'14:30' },
-      { t:'right', name:'张三', html:'游离毒素残留如何高效回收以降低毒性？' },
+      { t:'right', name:'黄沛霖', html:'游离毒素残留如何高效回收以降低毒性？' },
       { t:'left', name:'ChemLLM', src:'/AI', cls:'indigo', av:'C', html:'建议采用疏水相互作用层析（HIC）或离心超滤，配合 0.1% Tween-80 助洗，可回收率提升至 90% 以上。' }
     ],
     '2-1': [
       { t:'day', label:'11:08' },
-      { t:'right', name:'张三', html:'NGS 基线检测需覆盖哪些突变位点？' },
+      { t:'right', name:'黄沛霖', html:'NGS 基线检测需覆盖哪些突变位点？' },
       { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'建议覆盖 G12C/D/V、G13D、Q61L 及 KRAS 扩增，并纳入 EGFR/MET/ALK 旁路基因以实现耐药预警。' }
     ],
     '2-3': [
       { t:'day', label:'11:12' },
-      { t:'right', name:'张三', html:'耐药细胞系构建需要注意什么？' },
+      { t:'right', name:'黄沛霖', html:'耐药细胞系构建需要注意什么？' },
       { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'建议采用剂量递增法诱导 6-8 周，定期用 IC50 复测确证耐药倍数，并保存早中晚期细胞株样本。' }
     ],
     '3-1': [
       { t:'day', label:'昨天' },
-      { t:'right', name:'张三', html:'样本解离后如何控制细胞活率？' },
+      { t:'right', name:'黄沛霖', html:'样本解离后如何控制细胞活率？' },
       { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐低温和含 2% FBS 的缓冲液操作，配合 DNase 与胶原酶低浓度消化，活率可稳定在 90% 以上。' }
     ],
     '3-5': [
       { t:'day', label:'昨天' },
-      { t:'right', name:'张三', html:'细胞通讯分析有没有推荐的软件工具？' },
+      { t:'right', name:'黄沛霖', html:'细胞通讯分析有没有推荐的软件工具？' },
       { t:'left', name:'CellChat', src:'/AI', cls:'teal', av:'C', html:'推荐 CellPhoneDB 或 NicheNet 用于配受体互作推断，结合 CellChat 的通讯网络可视化工具成图。' }
     ],
     '4-1': [
       { t:'day', label:'08-29' },
-      { t:'right', name:'张三', html:'双靶点细胞系选择哪两种靶点组合合适？' },
+      { t:'right', name:'黄沛霖', html:'双靶点细胞系选择哪两种靶点组合合适？' },
       { t:'left', name:'ProteinAI', src:'/AI', cls:'purple', av:'P', html:'建议 CD3×HER2 或 CD3×PSMA，能兼顾 T 细胞募集与肿瘤特异性，并预留低表达对照细胞系。' }
     ],
     '5-2': [
       { t:'day', label:'08-28' },
-      { t:'right', name:'张三', html:'IFN-γ 分泌检测推荐什么方法？' },
+      { t:'right', name:'黄沛霖', html:'IFN-γ 分泌检测推荐什么方法？' },
       { t:'left', name:'BioGPT', src:'/AI', cls:'green', av:'B', html:'推荐 ELISpot 或流式胞内染色，ELISpot 灵敏度更高，可用于低频特异性 T 细胞应答的定量分析。' }
     ]
   };
@@ -1295,7 +1301,7 @@ svg { display: block; }
     { name:'ProteinAI 蛋白折叠', en:'P', isAI:true, cls:'purple', sub:'AI 助手', no:'61VbJnLhC8e' },
     // —— 人类成员 ——
     { name:'陈以宁', en:'C', isAI:false, cls:'amber', sub:'研发工程师', no:'12FdWgQrT5u' },
-    { name:'张三', en:'G', isAI:false, cls:'green', sub:'AI 平台产品负责人', no:'9aHkNuPlMx1' },
+    { name:'黄沛霖', en:'G', isAI:false, cls:'green', sub:'AI 平台产品负责人', no:'9aHkNuPlMx1' },
     { name:'韩雪松', en:'H', isAI:false, cls:'indigo', sub:'药物化学研究员', no:'44TsYcBmWq8' },
     { name:'李胜男', en:'L', isAI:false, cls:'magenta', sub:'临床数据科学家', no:'22PvRgXkLc3' },
     { name:'宋泽宇', en:'S', isAI:false, cls:'purple', sub:'生物信息分析师', no:'77DfZhJMnB6' },
