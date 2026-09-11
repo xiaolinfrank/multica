@@ -51,6 +51,12 @@ export interface AgentProcessFoldProps {
   /** Rendered inside the trigger, after the label (e.g. a live pulse). */
   triggerSuffix?: React.ReactNode;
   /**
+   * Controls pinned to the right of the trigger row (e.g. stop this run).
+   * A sibling of the trigger, never a child: a button inside a button is
+   * invalid HTML, and a click on it would toggle the fold instead of acting.
+   */
+  triggerActions?: React.ReactNode;
+  /**
    * Keep the newest row in view as output appends. Only honoured when the
    * caller also bounds the content box — an unbounded fold has nothing to
    * scroll, and the page would jump instead.
@@ -72,6 +78,7 @@ export function AgentProcessFold({
   onOpenChange: controlledOnOpenChange,
   triggerLabel,
   triggerSuffix,
+  triggerActions,
   followOutput,
   children,
   className,
@@ -113,11 +120,19 @@ export function AgentProcessFold({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className={className}>
-      <CollapsibleTrigger className="flex items-center gap-1 text-caption text-muted-foreground hover:text-foreground transition-colors">
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        <span>{triggerLabel ?? t(($) => $.agent_process.steps, { count: items.length })}</span>
-        {triggerSuffix}
-      </CollapsibleTrigger>
+      {/* The trigger keeps `flex-1` so the whole bar stays clickable even with
+          actions pinned beside it — the step count is a small target, and the
+          bar was full-width before the actions slot existed. */}
+      <div className="flex items-center gap-2">
+        <CollapsibleTrigger className="flex flex-1 min-w-0 items-center gap-1 text-caption text-muted-foreground hover:text-foreground transition-colors">
+          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          <span>{triggerLabel ?? t(($) => $.agent_process.steps, { count: items.length })}</span>
+          {triggerSuffix}
+        </CollapsibleTrigger>
+        {triggerActions ? (
+          <div className="flex shrink-0 items-center">{triggerActions}</div>
+        ) : null}
+      </div>
       <CollapsibleContent>
         <div
           ref={scrollRef}

@@ -24,6 +24,7 @@ const mockState = vi.hoisted(() => ({
 vi.mock("@multica/core/api", () => ({
   api: {
     listTaskMessages: vi.fn(),
+    cancelTask: vi.fn(),
   },
 }));
 
@@ -179,14 +180,39 @@ describe("IssueLiveAgentProcess", () => {
     expect((scroller as HTMLElement).style.maxHeight).toBe("22rem");
   });
 
+  it("puts stop on the fold bar, beside the step count and not inside it", async () => {
+    const qc = newClient();
+    qc.setQueryData(chatKeys.taskMessages(TASK_ID), [msg(1, "Read")]);
+    mockState.tasks = [makeTask({})];
+
+    renderLive(qc);
+
+    const fold = await screen.findByRole("button", { name: /step/i });
+    const stop = screen.getByRole("button", { name: "Cancel run" });
+    // A button inside a button is invalid HTML, and a stop nested in the
+    // trigger would toggle the fold instead of stopping the run. The full
+    // matrix for what stop does lives in cancel-task-button.test.tsx.
+    expect(fold.contains(stop)).toBe(false);
+    expect(fold.parentElement).toBe(stop.closest("div")?.parentElement);
+  });
+
   it("shows a queued run without pretending it has produced output", () => {
     mockState.tasks = [makeTask({ status: "queued", started_at: null })];
 
     renderLive(newClient());
 
     expect(screen.getByText("Queued")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    // No fold: a run that has not started has no process to show, and asking
+    // for its transcript would be a request for nothing.
+    expect(
+      screen.queryByRole("button", { name: /step/i }),
+    ).not.toBeInTheDocument();
     expect(listTaskMessages).not.toHaveBeenCalled();
+    // Stop stays reachable though — waiting for dispatch is exactly when a
+    // user changes their mind.
+    expect(
+      screen.getByRole("button", { name: "Cancel run" }),
+    ).toBeInTheDocument();
   });
 
   it("names an unknown agent rather than rendering a blank row", () => {

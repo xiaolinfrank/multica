@@ -18,6 +18,7 @@ import type { TaskMessagePayload } from "@multica/core/types/events";
 import { AgentProcessFold } from "../../common/agent-process";
 import { buildTimeline, type TimelineItem } from "../../common/task-transcript";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { CancelTaskButton } from "./cancel-task-button";
 import { useStatusLabel, useTriggerText } from "./task-run-labels";
 import { useT } from "../../i18n";
 
@@ -139,6 +140,8 @@ interface IssueAgentProcessFoldProps {
   taskId: string;
   /** True while the run is still producing events. */
   isLive?: boolean;
+  /** Pinned to the right of the fold bar — the live card puts its stop here. */
+  triggerActions?: React.ReactNode;
   className?: string;
 }
 
@@ -150,6 +153,7 @@ interface IssueAgentProcessFoldProps {
 export function IssueAgentProcessFold({
   taskId,
   isLive = false,
+  triggerActions,
   className,
 }: IssueAgentProcessFoldProps) {
   const { t } = useT("issues");
@@ -179,6 +183,7 @@ export function IssueAgentProcessFold({
           />
         ) : null
       }
+      triggerActions={triggerActions}
       className={className}
       // Live output is capped and scrolls inside itself. Letting it grow would
       // re-measure the virtualized timeline above on every 500ms flush.
@@ -258,6 +263,7 @@ export function IssueLiveAgentProcess({
         <LiveRunCard
           key={task.id}
           task={task}
+          issueId={issueId}
           agentName={
             getActorName("agent", task.agent_id) ||
             t(($) => $.agent_live.fallback_name)
@@ -268,7 +274,15 @@ export function IssueLiveAgentProcess({
   );
 }
 
-function LiveRunCard({ task, agentName }: { task: AgentTask; agentName: string }) {
+function LiveRunCard({
+  task,
+  issueId,
+  agentName,
+}: {
+  task: AgentTask;
+  issueId: string;
+  agentName: string;
+}) {
   const running = task.status === "running";
   // Status and trigger copy come from the shared run labels, so this card,
   // the Execution log row and the usage dialog can never word the same run
@@ -306,10 +320,22 @@ function LiveRunCard({ task, agentName }: { task: AgentTask; agentName: string }
         >
           {statusLabel}
         </span>
+        {/* Stop belongs on the card's LAST row, which is the fold bar once the
+            run streams. A card with no fold — queued, or parked on a busy
+            local_directory — has only this row, and must still be stoppable:
+            waiting for dispatch is exactly when a user changes their mind. */}
+        {running ? null : <CancelTaskButton task={task} issueId={issueId} />}
       </div>
       {running ? (
         <div className="mt-1.5">
-          <IssueAgentProcessFold taskId={task.id} isLive />
+          <IssueAgentProcessFold
+            taskId={task.id}
+            isLive
+            // Always visible, unlike the execution log's hover-revealed row
+            // actions: this surface exists for the reader who thinks the agent
+            // is stuck, so the way out cannot itself be hidden.
+            triggerActions={<CancelTaskButton task={task} issueId={issueId} />}
+          />
         </div>
       ) : null}
     </div>

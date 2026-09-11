@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Loader2, RotateCcw, Square } from "lucide-react";
+import { ChevronRight, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { api, dispatchReasonCode } from "@multica/core/api";
 import { issueKeys } from "@multica/core/issues/queries";
@@ -25,7 +25,7 @@ import {
   summarizeTaskUsage,
   summarizeTaskUsageAcross,
 } from "../../runtimes/utils";
-import { TerminateTaskConfirmDialog } from "./terminate-task-confirm-dialog";
+import { CancelTaskButton } from "./cancel-task-button";
 import { IssueUsageDialog } from "./issue-usage-dialog";
 import { TaskStatusIcon } from "./task-status-icon";
 import { useStatusLabel, useTriggerText } from "./task-run-labels";
@@ -314,8 +314,6 @@ export function ActiveTaskRow({
   onTranscriptOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useT("issues");
-  const [cancelling, setCancelling] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const tone = STATUS_TONE[task.status];
   const label = useStatusLabel(task.status);
   const trigger = useTriggerText(task);
@@ -340,22 +338,6 @@ export function ActiveTaskRow({
   // waiting_local_directory tasks haven't streamed any agent output yet.
   const showTranscript =
     task.status !== "queued" && task.status !== "waiting_local_directory";
-
-  const handleCancel = async () => {
-    if (cancelling) return;
-    setCancelling(true);
-    try {
-      await api.cancelTask(issueId, task.id);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t(($) => $.execution_log.cancel_failed));
-      setCancelling(false);
-    }
-  };
-
-  const requestCancel = () => {
-    if (cancelling) return;
-    setConfirmOpen(true);
-  };
 
   // Deliberately no token figure on an active row: the daemon reports usage
   // once, after `runner.run` returns (server/internal/daemon/daemon.go), and
@@ -388,37 +370,8 @@ export function ActiveTaskRow({
             onOpenChange={onTranscriptOpenChange}
           />
         )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={requestCancel}
-                disabled={cancelling}
-                aria-label={t(($) => $.execution_log.cancel_task_aria)}
-              />
-            }
-            className="flex items-center justify-center rounded p-1 text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {cancelling ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Square className="h-3.5 w-3.5" />
-            )}
-          </TooltipTrigger>
-          <TooltipContent>{t(($) => $.execution_log.cancel_task_tooltip)}</TooltipContent>
-        </Tooltip>
+        <CancelTaskButton task={task} issueId={issueId} />
       </RowActions>
-      <TerminateTaskConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        onConfirm={() => void handleCancel()}
-        showRunningNote={
-          task.status === "running" ||
-          task.status === "dispatched" ||
-          task.status === "waiting_local_directory"
-        }
-      />
     </RowShell>
   );
 }
