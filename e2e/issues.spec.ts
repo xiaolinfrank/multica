@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import pg from "pg";
-import { loginAsDefault, createTestApi, preferManualCreateMode, reloadAppPage } from "./helpers";
+import {
+  loginAsDefault,
+  createTestApi,
+  preferManualCreateMode,
+  reloadAppPage,
+  switchToIssueView,
+} from "./helpers";
 import type { TestApiClient } from "./fixtures";
 
 const DATABASE_URL =
@@ -44,9 +50,24 @@ test.describe("Issues", () => {
     }
   });
 
-  test("issues page loads with board view", async ({ page }) => {
+  test("issues page loads with table view", async ({ page }) => {
+    const title = "E2E Table Default " + Date.now();
+    await api.createIssue(title);
+    await reloadAppPage(page);
+
+    // The view toggle is named after the active view, so this asserts the
+    // default rather than just "a table rendered somewhere".
+    await expect(
+      page.getByRole("button", { name: "Table", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(title)).toBeVisible();
+  });
+
+  test("can switch to board view", async ({ page }) => {
     await api.createIssue("E2E Board View " + Date.now());
     await reloadAppPage(page);
+
+    await switchToIssueView(page, "Board");
 
     // Board columns should be visible. Exact matches: the Backlog column also
     // carries a hint ("…move one to Todo to start it.") that a substring
@@ -57,14 +78,12 @@ test.describe("Issues", () => {
     await expect(page.getByText("In Progress", { exact: true }).first()).toBeVisible();
   });
 
-  test("can switch from board to list view", async ({ page }) => {
+  test("can switch from table to list view", async ({ page }) => {
     const title = "E2E List Switch " + Date.now();
     await api.createIssue(title);
     await reloadAppPage(page);
-    await expect(page.locator("text=Backlog")).toBeVisible();
 
-    // Switch to list view
-    await page.click("text=List");
+    await switchToIssueView(page, "List");
     await expect(page.getByText(title)).toBeVisible();
   });
 
@@ -165,6 +184,9 @@ test.describe("Issues", () => {
 
     // Reload to see the new issue
     await reloadAppPage(page);
+    // Table rows navigate imperatively on row click and render no anchor, so
+    // this href-based assertion needs a view that links its rows.
+    await switchToIssueView(page, "List");
 
     // Navigate to the issue detail. Use a suffix match so the selector works
     // whether the href is legacy `/issues/{id}` or URL-refactored

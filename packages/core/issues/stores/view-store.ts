@@ -294,7 +294,7 @@ export interface IssueViewState {
 }
 
 export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): IssueViewState => ({
-  viewMode: "board",
+  viewMode: "table",
   grouping: "status",
   statusFilters: [],
   priorityFilters: [],

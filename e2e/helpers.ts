@@ -80,6 +80,48 @@ export async function preferManualCreateMode(page: Page) {
   await waitForIssuesPage(page);
 }
 
+/**
+ * Issue-surface view labels, in the order the toggle can be showing one.
+ * The toggle button is named after the ACTIVE view, so a locator pinned to a
+ * single label breaks whenever the default view changes.
+ */
+const ISSUE_VIEW_LABELS = ["Table", "Board", "List", "Swimlane", "Gantt"] as const;
+
+export type IssueViewLabel = (typeof ISSUE_VIEW_LABELS)[number];
+
+async function activeIssueView(page: Page) {
+  for (const label of ISSUE_VIEW_LABELS) {
+    // `.first()` keeps a same-named control elsewhere on the page from turning
+    // a probe into a strict-mode failure.
+    const trigger = page.getByRole("button", { name: label, exact: true }).first();
+    if (await trigger.isVisible().catch(() => false)) return { trigger, label };
+  }
+  return null;
+}
+
+/** Put the issue surface on `label`, whatever view it currently shows. */
+export async function switchToIssueView(page: Page, label: IssueViewLabel) {
+  // `activeIssueView` probes without waiting, and `reloadAppPage` only waits
+  // for the sidebar text — which paints before the surface header exists.
+  // Poll until the toggle is actually there instead of throwing on a page
+  // that is simply still rendering.
+  await expect
+    .poll(async () => (await activeIssueView(page))?.label ?? null, {
+      timeout: 15000,
+    })
+    .not.toBeNull();
+  const active = await activeIssueView(page);
+  if (!active) throw new Error("issue view toggle not found");
+  if (active.label === label) return;
+  await active.trigger.click();
+  const option = page.getByRole("menuitemradio", { name: label, exact: true });
+  await option.click();
+  await expect(
+    page.getByRole("button", { name: label, exact: true }).first(),
+  ).toBeVisible();
+  await expect(option).toBeHidden();
+}
+
 export async function openWorkspaceMenu(page: Page) {
   // Click the workspace switcher button (has ChevronDown icon)
   const workspaceButton = page.getByRole("button", { name: /E2E Workspace/ }).first();

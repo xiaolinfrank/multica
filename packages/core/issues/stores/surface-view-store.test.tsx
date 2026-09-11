@@ -69,7 +69,7 @@ describe("issue surface view store registry", () => {
     projectA.getState().togglePriorityFilter("high");
 
     expect(projectA.getState().viewMode).toBe("list");
-    expect(projectB.getState().viewMode).toBe("board");
+    expect(projectB.getState().viewMode).toBe("table");
     expect(projectB.getState().priorityFilters).toEqual([]);
 
     const raw = localStorage.getItem(`${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`);
@@ -120,7 +120,7 @@ describe("issue surface view store registry", () => {
     expect(projectA.getState().tableGrouping).toBe("status");
     expect(projectA.getState().tableCalculation).toBe("average");
 
-    expect(projectB.getState().viewMode).toBe("board");
+    expect(projectB.getState().viewMode).toBe("table");
     expect(
       projectB.getState().tableColumns.some((column) =>
         column.key.startsWith("property:"),
@@ -142,7 +142,7 @@ describe("issue surface view store registry", () => {
 
     setCurrentWorkspace("beta", "ws_b");
     await flush();
-    expect(projectA.getState().viewMode).toBe("board");
+    expect(projectA.getState().viewMode).toBe("table");
     projectA.getState().setViewMode("swimlane");
 
     setCurrentWorkspace("acme", "ws_a");
@@ -164,7 +164,7 @@ describe("issue surface view store registry", () => {
 
     clearIssueSurfaceViewState("project:a");
 
-    expect(projectA.getState().viewMode).toBe("board");
+    expect(projectA.getState().viewMode).toBe("table");
     expect(projectB.getState().viewMode).toBe("gantt");
     expect(getIssueSurfaceViewStateRegistrySnapshot()["project:a"]).toBeUndefined();
     expect(getIssueSurfaceViewStateRegistrySnapshot()["project:b"]?.state.viewMode).toBe(
@@ -183,7 +183,7 @@ describe("issue surface view store registry", () => {
     pruneIssueSurfaceViewStates(["project:a"]);
 
     expect(projectA.getState().viewMode).toBe("list");
-    expect(projectB.getState().viewMode).toBe("board");
+    expect(projectB.getState().viewMode).toBe("table");
     expect(getIssueSurfaceViewStateRegistrySnapshot()["project:a"]?.state.viewMode).toBe(
       "list",
     );
@@ -211,10 +211,70 @@ describe("issue surface view store registry", () => {
       </ViewStoreProvider>,
     );
 
-    expect(screen.getByRole("button", { name: "board" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "table" })).toBeTruthy();
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "board" }));
+      fireEvent.click(screen.getByRole("button", { name: "table" }));
     });
     expect(screen.getByRole("button", { name: "list" })).toBeTruthy();
+  });
+
+  it("migrates v0 snapshots off the retired board default, once, per workspace", async () => {
+    // v0 was written while "board" was the slice default, so a surface that
+    // merely had a filter toggled (or an automatic mode coercion) is pinned to
+    // board and would never see the table default.
+    localStorage.setItem(
+      `${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`,
+      JSON.stringify({
+        version: 0,
+        state: {
+          surfaces: {
+            "project:defaulted": {
+              state: { viewMode: "board", priorityFilters: ["high"] },
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            "project:chosen": {
+              state: { viewMode: "swimlane" },
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            "view:saved": {
+              state: { viewMode: "board" },
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+          },
+        },
+      }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    // Only the defaulted surface moves; the rest of its state survives.
+    expect(getIssueSurfaceViewStore("project:defaulted").getState().viewMode).toBe(
+      "table",
+    );
+    expect(
+      getIssueSurfaceViewStore("project:defaulted").getState().priorityFilters,
+    ).toEqual(["high"]);
+    // A mode the user actually picked is not touched.
+    expect(getIssueSurfaceViewStore("project:chosen").getState().viewMode).toBe(
+      "swimlane",
+    );
+    // A saved view's board layout is its author's explicit choice, not a default.
+    expect(getIssueSurfaceViewStore("view:saved").getState().viewMode).toBe("board");
+
+    // The bumped version is written back, so switching to board later sticks.
+    const parsed = JSON.parse(
+      localStorage.getItem(`${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`) as string,
+    );
+    expect(parsed.version).toBe(1);
+
+    getIssueSurfaceViewStore("project:defaulted").getState().setViewMode("board");
+    setCurrentWorkspace("beta", "ws_b");
+    await flush();
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    expect(getIssueSurfaceViewStore("project:defaulted").getState().viewMode).toBe(
+      "board",
+    );
   });
 });

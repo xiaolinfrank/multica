@@ -59,7 +59,7 @@ export function IssuesPage() {
 
       <IssueSurface
         scope={{ type: "workspace", actorKind: scope }}
-        modes={["board", "list", "table", "swimlane"]}
+        modes={["table", "board", "list", "swimlane"]}
         batchToolbar="list"
         renderHeader={({ controller }) => (
           <IssuesSurfaceHeader

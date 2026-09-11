@@ -5,7 +5,12 @@ import {
   type Request,
   type Response,
 } from "@playwright/test";
-import { createTestApi, loginAsDefault, reloadAppPage } from "./helpers";
+import {
+  createTestApi,
+  loginAsDefault,
+  reloadAppPage,
+  switchToIssueView,
+} from "./helpers";
 import type { TestApiClient, TestTableIssueSeed } from "./fixtures";
 
 type TableRequestBody = {
@@ -41,19 +46,23 @@ function tableBody(request: Request): TableRequestBody {
   return (request.postDataJSON() ?? {}) as TableRequestBody;
 }
 
+/**
+ * Park the surface on Board BEFORE the reload that seeds each test.
+ *
+ * Table is the default view now, so a test that reloads and only then parks on
+ * Board has already paid for Table's first paint: the ungrouped head request
+ * is answered and frozen (the app runs staleTime: Infinity), and switching
+ * back to Table re-subscribes to the identical query key and fires nothing.
+ * Reloading while parked on Board keeps the persisted view — viewMode lives in
+ * the surface registry in localStorage — and gives the reload a cold cache, so
+ * the later switch into Table is a real request these tests can observe.
+ */
+async function startOffTable(page: Page) {
+  await switchToIssueView(page, "Board");
+}
+
 async function switchToTable(page: Page) {
-  const currentView = page.getByRole("button", { name: "Board", exact: true });
-  await expect(currentView).toBeVisible();
-  await currentView.click();
-  const tableOption = page.getByRole("menuitemradio", {
-    name: "Table",
-    exact: true,
-  });
-  await tableOption.click();
-  await expect(
-    page.getByRole("button", { name: "Table", exact: true }),
-  ).toBeVisible();
-  await expect(tableOption).toBeHidden();
+  await switchToIssueView(page, "Table");
 }
 
 async function groupByStatus(page: Page) {
@@ -92,6 +101,7 @@ test.describe("Issue Table server grouping", () => {
       status: index < 501 ? "backlog" : index < 801 ? "todo" : "done",
       position: index + 1,
     }));
+    await startOffTable(page);
     await api.seedTableIssues(seeds);
     await reloadAppPage(page);
 
@@ -111,10 +121,11 @@ test.describe("Issue Table server grouping", () => {
     };
 
     page.on("request", collectRequest);
-    // The page initially mounts Board, whose seven status buckets may still
-    // be finishing when the header becomes interactive. Observe that startup
-    // traffic, wait for it to settle, then clear it while keeping the listener
-    // installed so any request caused by the Table switch is captured.
+    // The reload comes up on Board (parked before it), and its seven status
+    // buckets may still be finishing when the header becomes interactive.
+    // Observe that startup traffic, wait for it to settle, then clear it while
+    // keeping the listener installed so any request caused by the Table switch
+    // is captured.
     await expect
       .poll(() => Date.now() - lastObservedRequestAt, {
         timeout: 5000,
@@ -179,6 +190,7 @@ test.describe("Issue Table server grouping", () => {
     const parentTitle = `E2E Hierarchy Parent ${run}`;
     const sameGroupTitle = `E2E Hierarchy Same Group ${run}`;
     const crossGroupTitle = `E2E Hierarchy Cross Group ${run}`;
+    await startOffTable(page);
     const [parent] = await api.seedTableIssues([
       { title: parentTitle, status: "todo", position: 1 },
     ]);
@@ -270,6 +282,7 @@ test.describe("Issue Table server grouping", () => {
     page,
   }) => {
     const run = Date.now();
+    await startOffTable(page);
     const seeds = await api.seedTableIssues(
       Array.from({ length: 60 }, (_, index) => ({
         title: `E2E Table Cursor ${run} ${index.toString().padStart(2, "0")}`,
@@ -373,6 +386,7 @@ test.describe("Issue Table server grouping", () => {
     page,
   }) => {
     const title = `E2E Table Branch Retry ${Date.now()}`;
+    await startOffTable(page);
     await api.seedTableIssues([{ title, status: "todo", position: 1 }]);
     await reloadAppPage(page);
 
