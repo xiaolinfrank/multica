@@ -69,6 +69,7 @@ export {
 } from "./surface-view-store";
 export { useSubIssuesCollapseStore } from "./sub-issues-collapse-store";
 export { useAgentProcessFoldStore } from "./agent-process-fold-store";
+export { usePendingCreationStore } from "./pending-creation-store";
 export {
   useSubIssueDisplayStore,
   SUB_ISSUE_ROW_PROPERTY_KEYS,

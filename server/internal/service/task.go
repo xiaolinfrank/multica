@@ -1744,11 +1744,21 @@ func (s *TaskService) enqueueQuickCreateTask(ctx context.Context, workspaceID, r
 		"project_id", payload.ProjectID,
 		"parent_issue_id", payload.ParentIssueID,
 	)
-	// Match every other Enqueue* path: kick the daemon WS so the task
-	// gets claimed promptly instead of waiting for the next 30 s poll
-	// cycle. Without this the user perceives "quick create never
-	// triggered" because the modal closes immediately and the task
-	// sits in 'queued' until the next sleepWithContextOrWakeup tick.
+	// Order matters: broadcast first, notify daemon second — same reasoning as
+	// EnqueueTaskForIssue. notifyTaskAvailable kicks an in-process channel the
+	// daemon picks up and claims; the claim path emits its own task:dispatch.
+	// Publishing queued afterwards risks dispatch reaching clients first.
+	//
+	// This was the only Enqueue* path with no queued broadcast, which is why a
+	// quick-create was invisible everywhere but the agent's own page: with no
+	// task:* event no client cache was ever invalidated at submit time, so the
+	// user saw neither a pending record nor any sign the request had landed.
+	// Both public wrappers funnel through here, and the source-context branch
+	// has already committed its transaction, so a rolled-back task is never
+	// announced.
+	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, task)
+	// Kick the daemon WS so the task gets claimed promptly instead of waiting
+	// for the next 30 s poll cycle.
 	s.NotifyTaskEnqueued(ctx, task)
 	return task, nil
 }

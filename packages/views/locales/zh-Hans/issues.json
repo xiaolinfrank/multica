@@ -862,5 +862,21 @@
     "surface_loading": "正在加载 {{name}}…",
     "surface_unavailable": "{{name}} 的界面无法加载，已安装的版本可能不包含它。",
     "surface_navigated": "{{name}} 试图把面板替换成从别处加载的页面。已经拦下并断开连接，建议告知工作区管理员。"
+  },
+  "quick_create_pending": {
+    "region_label": "正在创建的任务",
+    "fallback_agent": "智能体",
+    "state_queued": "排队中",
+    "state_queued_behind": "等 {{name}} 忙完",
+    "state_queued_offline": "{{name}} 已离线",
+    "state_working": "{{name}} 正在写",
+    "state_failed": "创建失败",
+    "state_unconfirmed": "已结束但未创建",
+    "action_cancel": "取消",
+    "action_retry": "重试",
+    "action_dismiss": "忽略",
+    "check_inbox": "见收件箱",
+    "more_count": "还有 {{count}} 个",
+    "cancel_failed": "取消失败，请重试。"
   }
 }

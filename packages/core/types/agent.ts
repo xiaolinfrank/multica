@@ -406,6 +406,28 @@ export interface AgentTask {
    */
   attribution?: TaskAttribution;
   /**
+   * The user's own natural-language quick-create input. The server projects it
+   * only for the originator, so absence means "not mine", "not a quick-create",
+   * or an older backend — always render it conditionally and never gate a retry
+   * affordance on it alone.
+   */
+  quick_create_prompt?: string;
+  quick_create_priority?: string;
+  quick_create_due_date?: string;
+  /**
+   * Non-empty when this quick-create carries an immutable captured source
+   * context. Retrying such a run must go through the source-context retry
+   * endpoint so the capture and its cloned attachments survive; a fresh
+   * quick-create would silently drop them.
+   */
+  quick_create_source_context_id?: string;
+  /** Quick-create only: the project the pending issue will be filed under. */
+  project_id?: string;
+  /** Quick-create only: the parent issue the pending issue will hang from. */
+  parent_issue_id?: string;
+  /** Quick-create only: the squad picked in the modal; agent_id is its leader. */
+  squad_id?: string;
+  /**
    * This run's own token consumption, one entry per (provider, model) it used.
    * Present on the issue execution-log endpoint only; the daemon claim path
    * omits it.

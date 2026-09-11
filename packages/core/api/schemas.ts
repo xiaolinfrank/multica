@@ -2101,9 +2101,46 @@ export const AgentTaskSchema = z.object({
   // `.catch(undefined)` collapses a bad array to "no usage recorded", which
   // the UI already renders as an em dash.
   usage: z.array(TaskUsageSchema).optional().catch(undefined),
+  // Quick-create display metadata. The server projects these only for the user
+  // who typed the prompt (handler/agent.go projectQuickCreateForOriginator), so
+  // absence means "not mine", "not a quick-create", or an older backend — never
+  // gate an affordance on one of them alone. Same independent-degradation rule
+  // as the coverage arrays above: one malformed optional field must not erase
+  // the execution log.
+  quick_create_prompt: z.string().optional().catch(undefined),
+  quick_create_priority: z.string().optional().catch(undefined),
+  quick_create_due_date: z.string().optional().catch(undefined),
+  quick_create_source_context_id: z.string().optional().catch(undefined),
+  project_id: z.string().optional().catch(undefined),
+  parent_issue_id: z.string().optional().catch(undefined),
+  squad_id: z.string().optional().catch(undefined),
 }).loose();
 
 export const AgentTaskListSchema = z.array(AgentTaskSchema);
+
+// Row-resilient list form for the workspace snapshot and agent run history.
+// parseWithFallback returns the WHOLE fallback on any failure (see
+// packages/core/api/schema.ts), so a bare z.array() turns one malformed row
+// into "no agent is working anywhere" — which is exactly the blank-surface
+// failure this feature exists to remove. AgentTaskSchema requires only `id`
+// (everything else defaults or is optional), so a row can only fail on that;
+// drop those rows and keep the rest.
+export const ResilientAgentTaskListSchema = z.preprocess((raw) => {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (row) =>
+      typeof row === "object" &&
+      row !== null &&
+      typeof (row as { id?: unknown }).id === "string",
+  );
+}, AgentTaskListSchema);
+
+// POST /api/issues/quick-create answers 202 with the queue row's id only — the
+// issue does not exist yet. The task id is the caller's single handle on the
+// in-flight creation, so nothing downstream may treat this as an Issue.
+export const QuickCreateTaskResponseSchema = z.object({
+  task_id: z.string().min(1),
+}).loose();
 
 // Task cancellation (`POST /api/tasks/:id/cancel`) is consumed directly by
 // chat recovery. Its optional message payload must be well-formed before the

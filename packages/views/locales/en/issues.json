@@ -893,5 +893,21 @@
     "surface_loading": "Loading {{name}}…",
     "surface_unavailable": "{{name}} could not load its interface. The installed version may not include it.",
     "surface_navigated": "{{name}} tried to replace its panel with a page loaded from elsewhere. It has been stopped and disconnected — tell your workspace admin."
+  },
+  "quick_create_pending": {
+    "region_label": "Issues being created",
+    "fallback_agent": "The agent",
+    "state_queued": "Queued",
+    "state_queued_behind": "Waiting for {{name}} to finish",
+    "state_queued_offline": "{{name}} is offline",
+    "state_working": "{{name}} is writing it",
+    "state_failed": "Could not create",
+    "state_unconfirmed": "Ended without creating",
+    "action_cancel": "Cancel",
+    "action_retry": "Retry",
+    "action_dismiss": "Dismiss",
+    "check_inbox": "See your inbox",
+    "more_count": "{{count}} more",
+    "cancel_failed": "Could not cancel. Please try again."
   }
 }

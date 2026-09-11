@@ -13,7 +13,7 @@ import {
   Settings2,
   X as XIcon,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DialogTitle } from "@multica/ui/components/ui/dialog";
 import {
@@ -30,6 +30,7 @@ import { api, ApiError } from "@multica/core/api";
 import { pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { agentTaskSnapshotKeys } from "@multica/core/agents";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, resolveClickIntent } from "../navigation";
 import { agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
@@ -127,6 +128,7 @@ export function AgentCreatePanel({
   const workspaceName = useCurrentWorkspace()?.name;
   const workspacePaths = useWorkspacePaths();
   const wsId = useWorkspaceId();
+  const queryClient = useQueryClient();
   const anchorCommentId = typeof data?.anchor_comment_id === "string" ? data.anchor_comment_id : null;
   const sourcePreview = data?.source_context_preview as SourceContextPreview | undefined;
   const sourceContextLoading = data?.source_context_loading === true;
@@ -455,6 +457,14 @@ export function AgentCreatePanel({
             ...(activeAttachmentIds.length > 0 ? { attachment_ids: activeAttachmentIds } : {}),
           });
         }
+        // The server has confirmed the queue row (202), so refetch the snapshot
+        // the pending-creation strip reads. The task:queued broadcast covers
+        // this user's other tabs and devices; this covers the tab that
+        // submitted without waiting for the WS round trip. An invalidate, not
+        // an optimistic insert — no server payload is mirrored into a store.
+        void queryClient.invalidateQueries({
+          queryKey: agentTaskSnapshotKeys.list(wsId),
+        });
         setLastActor(actor.type, actor.id);
         setLastMode("agent");
         toast.success(t(($) => $.create_issue.agent.toast_sent), {

@@ -862,5 +862,21 @@
     "surface_loading": "{{name}} を読み込んでいます…",
     "surface_unavailable": "{{name}} のインターフェースを読み込めません。インストール済みのバージョンに含まれていない可能性があります。",
     "surface_navigated": "{{name}} がパネルを外部から読み込んだページに置き換えようとしました。停止して接続を切りました。ワークスペース管理者に知らせてください。"
+  },
+  "quick_create_pending": {
+    "region_label": "作成中のタスク",
+    "fallback_agent": "エージェント",
+    "state_queued": "待機中",
+    "state_queued_behind": "{{name}} の完了待ち",
+    "state_queued_offline": "{{name}} はオフライン",
+    "state_working": "{{name}} が作成中",
+    "state_failed": "作成できませんでした",
+    "state_unconfirmed": "作成されずに終了しました",
+    "action_cancel": "キャンセル",
+    "action_retry": "再試行",
+    "action_dismiss": "閉じる",
+    "check_inbox": "インボックスを確認",
+    "more_count": "他 {{count}} 件",
+    "cancel_failed": "キャンセルできませんでした。もう一度お試しください。"
   }
 }

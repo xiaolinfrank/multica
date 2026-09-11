@@ -266,6 +266,8 @@ import { getCurrentSlug } from "../platform/workspace-storage";
 import { parseWithFallback } from "./schema";
 import {
   AgentTaskListSchema,
+  ResilientAgentTaskListSchema,
+  QuickCreateTaskResponseSchema,
   AttachmentResponseSchema,
   CancelTaskResponseSchema,
   ChatDraftRestoresResponseSchema,
@@ -1219,9 +1221,15 @@ export class ApiClient {
     parent_issue_id?: string | null;
     attachment_ids?: string[];
   }): Promise<{ task_id: string }> {
-    return this.fetch("/api/issues/quick-create", {
+    const raw = await this.fetch<unknown>("/api/issues/quick-create", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+    // 202: the body is a queue row id, not an issue. That id is the caller's
+    // only handle on the in-flight creation, so a malformed one degrades to ""
+    // rather than being cast through unchecked.
+    return parseWithFallback(raw, QuickCreateTaskResponseSchema, { task_id: "" }, {
+      endpoint: "POST /api/issues/quick-create",
     });
   }
 
@@ -2781,7 +2789,10 @@ export class ApiClient {
   }
 
   async listAgentTasks(agentId: string): Promise<AgentTask[]> {
-    return this.fetch(`/api/agents/${agentId}/tasks`);
+    const raw = await this.fetch<unknown>(`/api/agents/${agentId}/tasks`);
+    return parseWithFallback<AgentTask[]>(raw, ResilientAgentTaskListSchema, [], {
+      endpoint: "GET /api/agents/:id/tasks",
+    });
   }
 
   // Workspace-scoped agent task snapshot: every active task
@@ -2790,7 +2801,13 @@ export class ApiClient {
   // derivation; one fetch backs every per-agent presence read in the app.
   // Workspace is resolved server-side from the X-Workspace-Slug header.
   async getAgentTaskSnapshot(): Promise<AgentTask[]> {
-    return this.fetch(`/api/agent-task-snapshot`);
+    const raw = await this.fetch<unknown>(`/api/agent-task-snapshot`);
+    // Row-resilient on purpose: this one response drives every presence read in
+    // the app plus the pending-creation strip, so one bad row must cost that
+    // row, not blank the whole workspace.
+    return parseWithFallback<AgentTask[]>(raw, ResilientAgentTaskListSchema, [], {
+      endpoint: "GET /api/agent-task-snapshot",
+    });
   }
 
   // Independent workspace-level projection. Unlike the task snapshot, this

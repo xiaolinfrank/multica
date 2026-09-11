@@ -2854,3 +2854,104 @@ describe("ApiClient session expiry", () => {
     expect(storage.getItem("multica_token")).toBeNull();
   });
 });
+
+describe("ApiClient agent-task snapshot response schema", () => {
+  const validTask = {
+    id: "task-1",
+    agent_id: "agent-1",
+    runtime_id: "runtime-1",
+    issue_id: "",
+    status: "queued",
+    priority: 0,
+    dispatched_at: null,
+    started_at: null,
+    completed_at: null,
+    result: null,
+    error: null,
+    created_at: "2026-09-11T12:00:00Z",
+    kind: "quick_create",
+    quick_create_prompt: "Draft the Q4 rollout plan",
+  };
+
+  function respondWith(body: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    return new ApiClient("https://api.example.test");
+  }
+
+  it("keeps the good rows when one row in the snapshot is malformed", async () => {
+    // parseWithFallback returns the WHOLE fallback on any failure, so a bare
+    // array schema here would turn one bad row into "no agent is working
+    // anywhere" — including the pending-creation strip going blank.
+    const result = await respondWith([
+      validTask,
+      null,
+      { id: 123 },
+      { ...validTask, id: "task-2" },
+    ]).getAgentTaskSnapshot();
+    expect(result.map((t) => t.id)).toEqual(["task-1", "task-2"]);
+  });
+
+  it("degrades a malformed quick-create field without dropping its row", async () => {
+    const result = await respondWith([
+      { ...validTask, quick_create_prompt: 42 },
+    ]).getAgentTaskSnapshot();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.quick_create_prompt).toBeUndefined();
+    expect(result[0]!.status).toBe("queued");
+  });
+
+  it("returns an empty snapshot when the payload is not a list", async () => {
+    await expect(respondWith({ tasks: [] }).getAgentTaskSnapshot()).resolves.toEqual([]);
+  });
+
+  it("applies the same row resilience to an agent's run history", async () => {
+    const result = await respondWith([{ id: 7 }, validTask]).listAgentTasks("agent-1");
+    expect(result.map((t) => t.id)).toEqual(["task-1"]);
+  });
+});
+
+describe("ApiClient quick-create response schema", () => {
+  it("returns the queue row id the caller needs to track the creation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ task_id: "task-9" }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    await expect(
+      new ApiClient("https://api.example.test").quickCreateIssue({
+        agent_id: "agent-1",
+        prompt: "Draft the plan",
+      }),
+    ).resolves.toEqual({ task_id: "task-9" });
+  });
+
+  it("does not cast a malformed 202 through unchecked", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({}), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    await expect(
+      new ApiClient("https://api.example.test").quickCreateIssue({
+        agent_id: "agent-1",
+        prompt: "Draft the plan",
+      }),
+    ).resolves.toEqual({ task_id: "" });
+  });
+});

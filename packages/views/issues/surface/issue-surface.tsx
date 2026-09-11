@@ -34,6 +34,7 @@ import { SwimLaneView } from "../components/swimlane-view";
 import { TableView } from "../components/table-view";
 import { useT } from "../../i18n";
 import { IssueContextMenuProvider } from "../actions";
+import { PendingCreationsStrip } from "../components/pending-creations-strip";
 import { IssueSurfaceActionsProvider } from "./actions-context";
 import { IssueSurfaceSelectionProvider } from "./selection-context";
 import type { IssueCreateDefaults, IssueSurfaceProps } from "./types";
@@ -261,6 +262,18 @@ function IssueSurfaceContent({
             }
           />
         )}
+        {/* Quick-creates this user is still waiting on. Placed between the
+            header and the body because a quick-create writes only a queue row
+            — the issue does not exist yet — so without a pending record here
+            the user's own list shows no trace of what they just asked for.
+            Excluded from the actor panel (an agent's / member's task tab):
+            that surface answers "what is assigned to them", not "what am I
+            waiting on". */}
+        {scope.type !== "actor" ? (
+          <PendingCreationsStrip
+            projectId={scope.type === "project" ? scope.projectId : undefined}
+          />
+        ) : null}
         {/* A failed status catalog precedes loading/empty/content on purpose.
             Row fetching is suspended while it is down (a custom status filter
             cannot be routed without it), so every branch below would render an
