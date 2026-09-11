@@ -85,6 +85,53 @@ test.describe("plugin surface browser boundary", () => {
     expect(attackerRequests).toBe(0);
   });
 
+  test("a same-origin re-navigation the CSP cannot see is still reported as navigated", async ({ page }) => {
+    // frame-src names the content origin, so a guest that replaces itself with
+    // another document on that SAME origin raises no securitypolicyviolation.
+    // The outer frame's load counter is the only signal that sees this, which
+    // is why it exists alongside the CSP report the external case relies on.
+    await page.route("https://plugin-content.example.test/**", async (route) => {
+      const isSecond = route.request().url().endsWith("/second");
+      await route.fulfill({
+        contentType: "text/html",
+        headers: {
+          "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'",
+        },
+        body: isSecond
+          ? `<!doctype html><title>second</title>`
+          : `<!doctype html><script>
+              // After this document has finished loading, not during parse: a
+              // navigation that aborts the first load never lets the counter
+              // reach two, and is the CSP handler's case anyway.
+              addEventListener("load", function () {
+                setTimeout(function () {
+                  location.replace("https://plugin-content.example.test/plugin-surfaces/second");
+                }, 50);
+              });
+            </script>`,
+      });
+    });
+
+    const wrapper = buildSurfaceFrameDocument({
+      url: "https://plugin-content.example.test/plugin-surfaces/opaque",
+      bridgeToken: "proof",
+    });
+    await page.setContent(`<script>window.navigated = 0; window.blocked = 0; addEventListener("message", event => {
+      if (event.data?.type === "multica:plugin-surface-navigated") window.navigated += 1;
+      if (event.data?.type === "multica:plugin-surface-navigation-blocked") window.blocked += 1;
+    });</script><iframe id="host" sandbox="allow-scripts allow-same-origin"></iframe>`);
+    await page.locator("#host").evaluate((frame, srcdoc) => {
+      (frame as HTMLIFrameElement).srcdoc = srcdoc as string;
+    }, wrapper);
+
+    await expect.poll(() => page.evaluate(() => (window as unknown as { navigated: number }).navigated)).toBe(1);
+    // The first, legitimate load must not have reported anything, and the
+    // terminal guard must keep a later load from reporting twice.
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(() => (window as unknown as { navigated: number }).navigated)).toBe(1);
+    expect(await page.evaluate(() => (window as unknown as { blocked: number }).blocked)).toBe(0);
+  });
+
   test("two script-capable plugin frames cannot inspect each other", async ({ page }) => {
     await page.setContent(`
       <script>
