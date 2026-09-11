@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project } from "@multica/core/types";
+import { useModalStore } from "@multica/core/modals";
+import { useCreateModeStore } from "@multica/core/issues/stores";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../../navigation";
 import { ProjectDetail } from "./project-detail";
@@ -301,6 +303,7 @@ beforeEach(() => {
   mocks.push.mockReset();
   mocks.recordVisit.mockReset();
   mocks.toastSuccess.mockReset();
+  useModalStore.getState().close();
 });
 
 describe("ProjectDetail sharing", () => {
@@ -354,5 +357,34 @@ describe("ProjectDetail project deletion", () => {
     expect(
       screen.queryByRole("button", { name: "Delete project" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectDetail issue creation", () => {
+  it("opens the create-issue flow seeded with this project", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "New Issue" }));
+
+    // Default create-mode preference is "agent", so the quick modal opens.
+    expect(useModalStore.getState().modal).toBe("quick-create-issue");
+    expect(useModalStore.getState().data).toMatchObject({
+      project_id: PROJECT.id,
+    });
+  });
+
+  it("honours the user's manual create-mode preference", async () => {
+    useCreateModeStore.getState().setLastMode("manual");
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "New Issue" }));
+
+    expect(useModalStore.getState().modal).toBe("create-issue");
+    expect(useModalStore.getState().data).toMatchObject({
+      project_id: PROJECT.id,
+    });
+    useCreateModeStore.getState().setLastMode("agent");
   });
 });

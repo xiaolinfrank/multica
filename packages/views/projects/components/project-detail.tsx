@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import { Check, ChevronRight, Link2, MoreHorizontal, Network, PanelRight, Pin, PinOff, Trash2, UserMinus } from "lucide-react";
+import { Check, ChevronRight, Link2, MoreHorizontal, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -15,7 +15,7 @@ import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
 import { memberListOptions, agentListOptions } from "@multica/core/workspace/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useIssuesScope } from "@multica/core/issues/stores";
+import { openCreateIssueWithPreference, useIssuesScope } from "@multica/core/issues/stores";
 import { useRecentContextStore } from "@multica/core/chat";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
@@ -489,6 +489,19 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             leaf={<span className="truncate font-medium text-foreground">{project.title}</span>}
             actions={
               <>
+              {/* Seeds the project the same way the `c` shortcut does on this
+                  route (global-shortcuts.tsx), and goes through the create-mode
+                  preference so agent/manual stays where the user left it. */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="px-2 sm:px-2.5"
+                aria-label={t(($) => $.detail.new_issue_button)}
+                onClick={() => openCreateIssueWithPreference({ project_id: projectId })}
+              >
+                <Plus className="h-3.5 w-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
+              </Button>
               <Button
                 variant="ghost"
                 size="icon-sm"

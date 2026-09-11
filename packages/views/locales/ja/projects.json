@@ -74,6 +74,7 @@
     "no_due_date": "期限なし",
     "description_placeholder": "説明を追加...",
     "description_hint": "このプロジェクトのすべての実行で、コンテキストとしてエージェントに共有されます。",
+    "new_issue_button": "新規タスク",
     "empty_issues_title": "リンクされたタスクはありません",
     "empty_issues_hint": "新しいタスクを作成するか、既存のタスクをこのプロジェクトに割り当ててください。",
     "empty_issues_new_button": "新規タスク",
