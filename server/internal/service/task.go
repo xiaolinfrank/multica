@@ -5087,28 +5087,12 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg, 
 		s.createAgentComment(ctx, task.IssueID, task.AgentID, redact.Text(errMsg), "system", task.TriggerCommentID, task.ID)
 	}
 
-	// Quick-create tasks: push a failure inbox notification to the
-	// requester so they can either retry or fall back to the advanced form
-	// without losing their original prompt. Skipped when an auto-retry is
-	// pending — the new attempt will write its own outcome.
+	// Quick-create tasks: push a terminal inbox notification to the requester
+	// so they can either retry or fall back to the advanced form without losing
+	// their original prompt. Skipped when an auto-retry is pending — the new
+	// attempt will write its own outcome.
 	if retried == nil {
-		if qc, ok := s.parseQuickCreateContext(task); ok {
-			attached, attachedErr := s.sourceContextAttachedByTask(ctx, task, qc)
-			switch {
-			case attachedErr != nil:
-				slog.Error("quick-create failure: source context outcome lookup failed",
-					"task_id", util.UUIDToString(task.ID), "error", attachedErr)
-				s.notifyQuickCreateUnconfirmed(ctx, task, qc)
-			case attached:
-				// The CLI create committed before the runtime reported its own
-				// failure. The attached context is authoritative proof that the
-				// target exists, so reconcile the normal success inbox rather than
-				// inviting a duplicate retry from a misleading failure row.
-				s.notifyQuickCreateCompleted(ctx, task, qc, nil)
-			default:
-				s.notifyQuickCreateFailed(ctx, task, qc, errMsg)
-			}
-		}
+		s.notifyQuickCreateTerminalFailure(ctx, task, errMsg)
 	}
 	// Reconcile agent status
 	s.ReconcileAgentStatus(ctx, task.AgentID)
@@ -5848,9 +5832,13 @@ func (s *TaskService) terminateTasksInTx(ctx context.Context, fail func(*db.Quer
 // task and isn't being retried) resetting the issue back to todo so the
 // daemon can pick it up again.
 //
-// All callers that surface a task as failed — sweepers, FailTask,
-// recover-orphans — funnel through here so the same UI-consistency
-// guarantees apply on every code path.
+// The sweepers and recover-orphans funnel through here so the same
+// UI-consistency guarantees apply on every code path that retires a task by
+// bulk UPDATE. FailTask is the exception and always has been: it owns the
+// status flip itself and runs the same side effects inline. Anything this
+// function must guarantee therefore has to exist on both sides — see
+// notifyQuickCreateTerminalFailure, which was written for FailTask alone and
+// left every swept quick-create with no record of its own failure.
 func (s *TaskService) HandleFailedTasks(ctx context.Context, tasks []db.AgentTaskQueue) int {
 	if len(tasks) == 0 {
 		return 0
@@ -5880,6 +5868,13 @@ func (s *TaskService) HandleFailedTasks(ctx context.Context, tasks []db.AgentTas
 					"error", err,
 				)
 			}
+			// A quick-create that dies here never reached FailTask: the sweepers
+			// and recover-orphans flip the row with their own UPDATE and only
+			// call in afterwards. task:failed already reaches live clients from
+			// the broadcast below, but a user who had the tab closed had no
+			// durable record at all — the request simply vanished. Write the
+			// same terminal inbox row the daemon-reported path writes.
+			s.notifyQuickCreateTerminalFailure(ctx, t, t.Error.String)
 		}
 
 		failureReason := "agent_error"
@@ -7601,6 +7596,89 @@ const (
 	inboxTypeQuickCreateFailed      = "quick_create_failed"
 	inboxTypeQuickCreateUnconfirmed = "quick_create_unconfirmed"
 )
+
+// notifyQuickCreateTerminalFailure writes the requester's terminal inbox row
+// for a quick-create task that has failed with no retry pending. Callers own
+// the retry decision; this owns which of the three outcomes is true.
+//
+// It exists as one function because two independent paths reach a terminal
+// quick-create failure and they must not drift: FailTask, when the daemon
+// reports the failure itself, and HandleFailedTasks, when a sweeper or
+// recover-orphans flips the row without the daemon ever reporting anything.
+// Only the first had this notification, so an agent that died with its runtime
+// left the requester with no inbox record — the quick-create looked like it
+// had simply been dropped.
+//
+// Non-quick-create tasks return immediately. It is called at most once per
+// task because both callers act on a row their own UPDATE just moved into
+// 'failed', and every one of those statements is guarded on a non-terminal
+// status — so no row is ever handed to both.
+func (s *TaskService) notifyQuickCreateTerminalFailure(ctx context.Context, task db.AgentTaskQueue, errMsg string) {
+	qc, ok := s.parseQuickCreateContext(task)
+	if !ok {
+		return
+	}
+	attached, attachedErr := s.sourceContextAttachedByTask(ctx, task, qc)
+	switch {
+	case attachedErr != nil:
+		slog.Error("quick-create failure: source context outcome lookup failed",
+			"task_id", util.UUIDToString(task.ID), "error", attachedErr)
+		s.notifyQuickCreateUnconfirmed(ctx, task, qc)
+	case attached:
+		// The CLI create committed before the runtime reported its own
+		// failure. The attached context is authoritative proof that the
+		// target exists, so reconcile the normal success inbox rather than
+		// inviting a duplicate retry from a misleading failure row.
+		s.notifyQuickCreateCompleted(ctx, task, qc, nil)
+	default:
+		s.notifyQuickCreateOutcomeByOrigin(ctx, task, qc, errMsg)
+	}
+}
+
+// notifyQuickCreateOutcomeByOrigin decides the outcome for a failed
+// quick-create that carries no attached source context — the common case,
+// since SourceContextID is only set by the pending-capture flow.
+//
+// The failure of the run is not the same question as the absence of an issue.
+// `multica issue create` commits its own transaction, so a run can create the
+// issue and only then lose its runtime; that is precisely the window the
+// sweepers cover, and it widens with every step the agent takes after the
+// create call. Asserting "Quick create failed" there tells the user to retry
+// something that already exists, which is the duplicate the active-duplicate
+// guard exists to prevent. origin_type/origin_id is written by the create
+// itself, so it answers the question directly.
+func (s *TaskService) notifyQuickCreateOutcomeByOrigin(ctx context.Context, task db.AgentTaskQueue, qc QuickCreateContext, errMsg string) {
+	workspaceID, err := util.ParseUUID(qc.WorkspaceID)
+	if err != nil {
+		s.notifyQuickCreateFailed(ctx, task, qc, errMsg)
+		return
+	}
+	_, err = s.Queries.GetIssueByOrigin(ctx, db.GetIssueByOriginParams{
+		WorkspaceID: workspaceID,
+		OriginType:  pgtype.Text{String: "quick_create", Valid: true},
+		OriginID:    task.ID,
+	})
+	switch {
+	case err == nil:
+		// The issue exists. Hand off to the success path so the task is linked
+		// to it and the requester gets the same row a clean run would have
+		// produced; it repeats this lookup, which is one indexed read.
+		s.notifyQuickCreateCompleted(ctx, task, qc, nil)
+	case errors.Is(err, pgx.ErrNoRows):
+		// Confirmed absence: the run failed and produced nothing.
+		s.notifyQuickCreateFailed(ctx, task, qc, errMsg)
+	default:
+		// The lookup itself failed, so neither outcome is established. Stay
+		// neutral for the same reason the completion path does — a wrong
+		// "failed" here is what invites the duplicate.
+		slog.Error("quick-create failure: origin issue lookup failed, writing unconfirmed inbox",
+			"task_id", util.UUIDToString(task.ID),
+			"workspace_id", qc.WorkspaceID,
+			"error", err,
+		)
+		s.notifyQuickCreateUnconfirmed(ctx, task, qc)
+	}
+}
 
 // notifyQuickCreateFailed writes a failure inbox notification carrying the
 // original prompt + agent ID so the frontend can render an "Edit as
