@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleCheck,
+  Download,
   Milestone,
   MoreHorizontal,
   PanelRight,
@@ -2832,6 +2833,22 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 <TooltipContent side="bottom">{t(($) => $.detail.archive_tooltip)}</TooltipContent>
               </Tooltip>
             )}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground"
+                    disabled={actions.exporting}
+                    onClick={actions.exportIssue}
+                  >
+                    <Download />
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom">{t(($) => $.detail.export_tooltip)}</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 render={

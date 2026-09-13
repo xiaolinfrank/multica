@@ -16,6 +16,7 @@ import { copyText } from "@multica/ui/lib/clipboard";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { runConfirmIntent } from "./run-confirm-gate";
+import { useExportIssue } from "../hooks/use-export-issue";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import type { IssueSurfaceMutationOptions } from "../surface/actions-context";
 
@@ -28,6 +29,9 @@ export interface UseIssueActionsResult {
   openInNewTab: () => void;
   togglePin: () => void;
   copyLink: () => Promise<void>;
+  /** Download the issue as a Markdown handoff file for a local AI agent. */
+  exportIssue: () => Promise<void>;
+  exporting: boolean;
   openCreateSubIssue: () => void;
   openSetParent: () => void;
   removeParent: () => void;
@@ -60,6 +64,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     );
 
   const updateIssue = useUpdateIssue();
+  const { exportIssue, exporting } = useExportIssue(issue);
   const surfaceActions = useIssueSurfaceActionsOptional();
   const createPin = useCreatePin();
   const deletePin = useDeletePin();
@@ -266,6 +271,8 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     openInNewTab,
     togglePin,
     copyLink,
+    exportIssue,
+    exporting,
     openCreateSubIssue,
     openSetParent,
     removeParent,
