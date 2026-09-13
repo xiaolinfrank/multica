@@ -1,9 +1,22 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import type { Attachment, Issue, TimelineEntry } from "@multica/core/types";
+import type {
+  AgentTask,
+  Attachment,
+  GitHubPullRequest,
+  Issue,
+  IssueProperty,
+  IssueSubscriber,
+  TimelineEntry,
+} from "@multica/core/types";
 import {
+  buildAttachmentUrlMap,
   buildIssueExportMarkdown,
+  decodePropertyValue,
   issueExportFilename,
+  rewriteAttachmentUrls,
+  type ExportChildIssue,
+  type ExportedAttachment,
   type IssueExportInput,
 } from "./build-issue-export";
 
@@ -56,13 +69,33 @@ function makeAttachment(overrides: Partial<Attachment> = {}): Attachment {
   };
 }
 
+function makeExportedAttachment(
+  overrides: Partial<ExportedAttachment> & { attachment?: Attachment } = {},
+): ExportedAttachment {
+  const { attachment, ...rest } = overrides;
+  return {
+    attachment: attachment ?? makeAttachment(),
+    absoluteUrl: "http://example.com/api/attachments/a-1/download",
+    ...rest,
+  };
+}
+
+const noActor = (): string | undefined => undefined;
+
 function makeInput(overrides: Partial<IssueExportInput> = {}): IssueExportInput {
   return {
     issue: makeIssue(),
     timeline: [],
     attachments: [],
-    childIssues: [],
+    childTree: [],
     statusLabel: "To do",
+    agentRuns: [],
+    runAgentName: noActor,
+    subscribers: [],
+    subscriberName: noActor,
+    pullRequests: [],
+    propertyDefinitions: [],
+    actorName: noActor,
     url: "https://example.com/ws/issues/MUL-1",
     exportedAt: "2026-09-13T00:00:00Z",
     ...overrides,
@@ -80,18 +113,95 @@ describe("issueExportFilename", () => {
   });
 });
 
+describe("buildAttachmentUrlMap / rewriteAttachmentUrls", () => {
+  it("maps both markdown_url and url to the packed path", () => {
+    const map = buildAttachmentUrlMap([
+      makeExportedAttachment({ packedName: "attachments/report.pdf" }),
+    ]);
+    expect(map["/api/attachments/a-1/download"]).toBe("attachments/report.pdf");
+    expect(map["/raw/report.pdf"]).toBe("attachments/report.pdf");
+  });
+
+  it("maps failed downloads to the absolute URL", () => {
+    const map = buildAttachmentUrlMap([makeExportedAttachment()]);
+    expect(map["/api/attachments/a-1/download"]).toBe(
+      "http://example.com/api/attachments/a-1/download",
+    );
+  });
+
+  it("rewrites occurrences inside a markdown body", () => {
+    const body = "see ![img](/api/attachments/a-1/download) and /raw/report.pdf";
+    expect(
+      rewriteAttachmentUrls(body, {
+        "/api/attachments/a-1/download": "attachments/report.pdf",
+        "/raw/report.pdf": "attachments/report.pdf",
+      }),
+    ).toBe("see ![img](attachments/report.pdf) and attachments/report.pdf");
+  });
+});
+
+describe("decodePropertyValue", () => {
+  const options = [
+    { id: "opt-1", name: "High", color: "#f00" },
+    { id: "opt-2", name: "Low", color: "#0f0" },
+  ];
+  const property = (type: string): IssueProperty =>
+    ({
+      id: "p-1",
+      workspace_id: "ws-1",
+      name: "Severity",
+      type,
+      config: { options },
+      position: 0,
+      archived: false,
+      created_at: "2025-01-01T00:00:00Z",
+    }) as IssueProperty;
+
+  it("decodes select to the option name", () => {
+    expect(decodePropertyValue(property("select"), "opt-1", noActor)).toBe("High");
+  });
+
+  it("keeps the raw id for a deleted option instead of dropping it", () => {
+    expect(decodePropertyValue(property("select"), "gone", noActor)).toBe("gone");
+  });
+
+  it("decodes multi_select in value order", () => {
+    expect(
+      decodePropertyValue(property("multi_select"), ["opt-2", "opt-1"], noActor),
+    ).toBe("Low, High");
+  });
+
+  it("decodes actor refs through the resolver and falls back to the raw ref", () => {
+    expect(
+      decodePropertyValue(property("actor"), "member:u-9", (_t, id) =>
+        id === "u-9" ? "Alice" : undefined,
+      ),
+    ).toBe("Alice");
+    expect(decodePropertyValue(property("actor"), "member:u-9", noActor)).toBe(
+      "member:u-9",
+    );
+  });
+
+  it("stringifies primitives for text/number/checkbox/date/url", () => {
+    expect(decodePropertyValue(property("text"), "abc", noActor)).toBe("abc");
+    expect(decodePropertyValue(property("number"), 3, noActor)).toBe("3");
+    expect(decodePropertyValue(property("checkbox"), true, noActor)).toBe("true");
+  });
+
+  it("returns undefined for unset values", () => {
+    expect(decodePropertyValue(property("select"), undefined, noActor)).toBeUndefined();
+  });
+});
+
 describe("buildIssueExportMarkdown", () => {
   it("renders the front matter with escaped scalars", () => {
     const md = buildIssueExportMarkdown(
-      makeInput({
-        issue: makeIssue({ title: 'A "quoted" title' }),
-      }),
+      makeInput({ issue: makeIssue({ title: 'A "quoted" title' }) }),
     );
     expect(md.startsWith("---\n")).toBe(true);
     expect(md).toContain('title: "A \\"quoted\\" title"');
     expect(md).toContain('multica_export: "issue"');
     expect(md).toContain('identifier: "MUL-1"');
-    expect(md).toContain('status: "todo"');
     expect(md).toContain('url: "https://example.com/ws/issues/MUL-1"');
     expect(md).toContain('exported_at: "2026-09-13T00:00:00Z"');
   });
@@ -104,14 +214,13 @@ describe("buildIssueExportMarkdown", () => {
           assignee_id: "ag-1",
           start_date: "2026-09-01",
           due_date: "2026-09-30",
-          labels: [
-            { id: "l1", name: "bug", color: "#f00" },
-          ] as Issue["labels"],
+          labels: [{ id: "l1", name: "bug", color: "#f00" }] as Issue["labels"],
+          metadata: { origin: "sweep" },
         }),
         assigneeName: "Mika",
         creatorName: "Alice",
         projectName: "Platform",
-        parentIdentifier: "MUL-0",
+        parent: { identifier: "MUL-0", title: "Parent task", statusLabel: "In progress" },
       }),
     );
     expect(md).toContain("- **Status**: To do");
@@ -121,8 +230,9 @@ describe("buildIssueExportMarkdown", () => {
     expect(md).toContain("- **Start date**: 2026-09-01");
     expect(md).toContain("- **Due date**: 2026-09-30");
     expect(md).toContain("- **Project**: Platform");
-    expect(md).toContain("- **Parent**: MUL-0");
+    expect(md).toContain("- **Parent**: MUL-0 — Parent task [In progress]");
     expect(md).toContain("- **Labels**: bug");
+    expect(md).toContain('- **Metadata**: {"origin":"sweep"}');
     expect(md).toContain("- **Created**: 2025-01-01T00:00:00Z");
     expect(md).toContain("- **Updated**: 2025-01-02T00:00:00Z");
   });
@@ -132,20 +242,72 @@ describe("buildIssueExportMarkdown", () => {
     expect(md).toContain("- **Assignee**: Unassigned");
   });
 
-  it("embeds the description verbatim", () => {
-    const description = "## Steps\n\n1. do a thing\n\n```go\nfmt.Println(1)\n```";
+  it("renders subscribers and custom properties in the properties block", () => {
+    const definition = {
+      id: "p-1",
+      workspace_id: "ws-1",
+      name: "Severity",
+      type: "select",
+      config: { options: [{ id: "opt-1", name: "High", color: "#f00" }] },
+      position: 0,
+      archived: false,
+      created_at: "2025-01-01T00:00:00Z",
+    } as IssueProperty;
+    const subscribers: IssueSubscriber[] = [
+      {
+        issue_id: "i-1",
+        user_type: "member",
+        user_id: "u-1",
+        reason: "assignee",
+        created_at: "2025-01-01T00:00:00Z",
+      },
+      {
+        issue_id: "i-1",
+        user_type: "agent",
+        user_id: "ag-1",
+        reason: "mentioned",
+        created_at: "2025-01-01T00:00:00Z",
+      },
+    ];
     const md = buildIssueExportMarkdown(
-      makeInput({ issue: makeIssue({ description }) }),
+      makeInput({
+        issue: makeIssue({ properties: { "p-1": "opt-1" } }),
+        propertyDefinitions: [definition],
+        subscribers,
+        subscriberName: (type, id) =>
+          type === "member" && id === "u-1"
+            ? "Alice"
+            : type === "agent" && id === "ag-1"
+              ? "Mika"
+              : undefined,
+      }),
+    );
+    expect(md).toContain("- **Subscribers**: Alice, Mika (agent)");
+    expect(md).toContain("- **Severity**: High");
+  });
+
+  it("embeds the description verbatim and rewrites packed attachment urls", () => {
+    const description =
+      "## Steps\n\n1. do a thing\n\nsee ![img](/api/attachments/a-1/download)";
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        issue: makeIssue({ description }),
+        attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+      }),
     );
     expect(md).toContain("## Description");
-    expect(md).toContain(description);
+    expect(md).toContain("## Steps");
+    expect(md).toContain("![img](attachments/report.pdf)");
+    expect(md).not.toContain("/api/attachments/a-1/download)");
   });
 
   it("omits empty sections entirely", () => {
     const md = buildIssueExportMarkdown(makeInput());
     expect(md).not.toContain("## Description");
     expect(md).not.toContain("## Timeline");
+    expect(md).not.toContain("## Agent runs");
     expect(md).not.toContain("## Sub-issues");
+    expect(md).not.toContain("## Pull requests");
     expect(md).not.toContain("## Attachments");
   });
 
@@ -160,7 +322,16 @@ describe("buildIssueExportMarkdown", () => {
         content: "First comment",
         parent_id: null,
         created_at: "2025-01-01T01:00:00Z",
-        reactions: [{ id: "r1", comment_id: "c-1", actor_type: "member", actor_id: "u-2", emoji: "👍", created_at: "2025-01-01T01:05:00Z" }],
+        reactions: [
+          {
+            id: "r1",
+            comment_id: "c-1",
+            actor_type: "member",
+            actor_id: "u-2",
+            emoji: "👍",
+            created_at: "2025-01-01T01:05:00Z",
+          },
+        ],
       },
       {
         type: "comment",
@@ -168,20 +339,27 @@ describe("buildIssueExportMarkdown", () => {
         actor_type: "agent",
         actor_id: "ag-1",
         actor_name: "Mika",
-        content: "A reply",
+        content: "A reply with [file](/api/attachments/a-1/download)",
         parent_id: "c-1",
         resolved_at: "2025-01-01T03:00:00Z",
         created_at: "2025-01-01T02:00:00Z",
         attachments: [makeAttachment({ id: "a-2", filename: "log.txt", size_bytes: 10 })],
       },
     ];
-    const md = buildIssueExportMarkdown(makeInput({ timeline }));
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        timeline,
+        attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+      }),
+    );
     expect(md).toContain("## Timeline");
     expect(md).toContain("#### 2025-01-01T01:00:00Z · Alice (member) · comment");
     expect(md).toContain("First comment");
     expect(md).toContain("#### 2025-01-01T02:00:00Z · Mika (agent) · reply · resolved");
+    expect(md).toContain("[file](attachments/report.pdf)");
     expect(md).toContain("- reaction: 👍");
-    expect(md).toContain("- [log.txt](/api/attachments/a-1/download) (10 B)");
+    // Comment-scoped attachment urls rewrite through the same map.
+    expect(md).toContain("- [log.txt](attachments/report.pdf) (10 B)");
   });
 
   it("renders activities with a phrase and a JSON details block", () => {
@@ -227,30 +405,118 @@ describe("buildIssueExportMarkdown", () => {
     expect(md).toContain("(system) · created the task");
   });
 
-  it("lists sub-issues with identifier and status key", () => {
-    const md = buildIssueExportMarkdown(
-      makeInput({
-        childIssues: [
-          makeIssue({ id: "i-2", number: 2, identifier: "MUL-2", title: "Child", status: "done" }),
+  it("renders the sub-issue tree recursively with descriptions indented", () => {
+    const childTree: ExportChildIssue[] = [
+      {
+        issue: makeIssue({
+          id: "i-2",
+          number: 2,
+          identifier: "MUL-2",
+          title: "Child",
+          status: "done",
+          description: "child body",
+        }),
+        statusLabel: "Done",
+        assigneeName: "Bob",
+        children: [
+          {
+            issue: makeIssue({
+              id: "i-3",
+              number: 3,
+              identifier: "MUL-3",
+              title: "Grandchild",
+              status: "todo",
+            }),
+            statusLabel: "To do",
+            children: [],
+          },
         ],
-      }),
-    );
+      },
+    ];
+    const md = buildIssueExportMarkdown(makeInput({ childTree }));
     expect(md).toContain("## Sub-issues");
-    expect(md).toContain("- MUL-2 — Child [done]");
+    expect(md).toContain("- **MUL-2 — Child** [Done] · Bob");
+    expect(md).toContain("  child body");
+    expect(md).toContain("  - **MUL-3 — Grandchild** [To do]");
   });
 
-  it("prefers markdown_url over url for attachments and formats sizes", () => {
+  it("notes when the sub-issue tree was truncated", () => {
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        childTree: [],
+        childTreeTruncated: { atDepth: false, nodes: 200 },
+      }),
+    );
+    expect(md).toContain("Sub-issue tree truncated");
+  });
+
+  it("renders agent runs with name, status, error and a truncated result", () => {
+    const run = {
+      id: "t-1",
+      agent_id: "ag-1",
+      runtime_id: "rt-1",
+      issue_id: "i-1",
+      status: "failed",
+      priority: 0,
+      dispatched_at: "2025-01-01T01:00:00Z",
+      started_at: "2025-01-01T01:00:05Z",
+      completed_at: "2025-01-01T01:02:00Z",
+      result: { summary: "x".repeat(5000) },
+      error: "boom",
+    } as unknown as AgentTask;
+    const md = buildIssueExportMarkdown(
+      makeInput({ agentRuns: [run], runAgentName: (id) => (id === "ag-1" ? "Mika" : undefined) }),
+    );
+    expect(md).toContain("## Agent runs");
+    expect(md).toContain("- **Mika** · failed · 2025-01-01T01:00:00Z → 2025-01-01T01:00:05Z → 2025-01-01T01:02:00Z");
+    expect(md).toContain("  - error: boom");
+    expect(md).toContain("…(truncated, ");
+  });
+
+  it("renders pull requests with repo, state and author", () => {
+    const pr = {
+      id: "pr-1",
+      workspace_id: "ws-1",
+      repo_owner: "acme",
+      repo_name: "app",
+      number: 42,
+      title: "Fix export",
+      state: "closed",
+      html_url: "https://github.com/acme/app/pull/42",
+      branch: "fix/export",
+      author_login: "alice",
+      author_avatar_url: null,
+      merged_at: "2025-01-02T00:00:00Z",
+      closed_at: "2025-01-02T00:00:00Z",
+      pr_created_at: "2025-01-01T00:00:00Z",
+      pr_updated_at: "2025-01-02T00:00:00Z",
+    } as GitHubPullRequest;
+    const md = buildIssueExportMarkdown(makeInput({ pullRequests: [pr] }));
+    expect(md).toContain("## Pull requests");
+    expect(md).toContain(
+      "- [acme/app#42 — Fix export](https://github.com/acme/app/pull/42) · closed · merged · @alice",
+    );
+  });
+
+  it("marks packed and failed attachments in the attachment list", () => {
     const md = buildIssueExportMarkdown(
       makeInput({
         attachments: [
-          makeAttachment({ markdown_url: "/durable/report.pdf" }),
-          makeAttachment({ id: "a-3", filename: "big.bin", markdown_url: "", size_bytes: 5 * 1024 * 1024 }),
+          makeExportedAttachment({ packedName: "attachments/report.pdf" }),
+          makeExportedAttachment({
+            attachment: makeAttachment({
+              id: "a-3",
+              filename: "big.bin",
+              size_bytes: 5 * 1024 * 1024,
+            }),
+            absoluteUrl: "http://example.com/api/attachments/a-3/download",
+          }),
         ],
       }),
     );
-    expect(md).toContain("- [report.pdf](/durable/report.pdf) (1.5 KB)");
-    // An empty markdown_url (older server) falls back to the raw url.
-    expect(md).toContain("- [big.bin](/raw/report.pdf)");
-    expect(md).toContain("5 MB");
+    expect(md).toContain("- [report.pdf](attachments/report.pdf) (1.5 KB) — included in this export");
+    expect(md).toContain(
+      "- [big.bin](http://example.com/api/attachments/a-3/download) (5 MB) — not included (download failed; requires platform access)",
+    );
   });
 });

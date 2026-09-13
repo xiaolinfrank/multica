@@ -1,4 +1,13 @@
-import type { Attachment, Issue, TimelineEntry } from "@multica/core/types";
+import type {
+  AgentTask,
+  Attachment,
+  GitHubPullRequest,
+  Issue,
+  IssueProperty,
+  IssuePropertyValue,
+  IssueSubscriber,
+  TimelineEntry,
+} from "@multica/core/types";
 
 /**
  * Builds the Markdown handoff document for a single issue export.
@@ -6,29 +15,66 @@ import type { Attachment, Issue, TimelineEntry } from "@multica/core/types";
  * The output targets a local AI agent (Claude Code, Codex, Cursor, …), not a
  * human reader's eye: a YAML front matter block for machine-readable identity,
  * then every section the platform knows about the task at export time —
- * properties, the description verbatim (it is already Markdown), the full
- * comment/activity timeline, sub-issues, and attachments with their durable
- * download URLs. Pure string assembly so the whole matrix is testable under
- * a node vitest environment with no DOM.
+ * properties (built-in and workspace-custom), the description verbatim (it is
+ * already Markdown), the full comment/activity timeline, the agent-run
+ * history, the parent/sub-issue tree, pull requests, and attachments. Pure
+ * string assembly so the whole matrix is testable under a node vitest
+ * environment with no DOM.
+ *
+ * When attachments are exported, the caller packs their bytes next to this
+ * file (`attachments/<name>`) and passes back each attachment's packed name;
+ * attachment URLs inside the description and comments are then rewritten to
+ * those local paths so the document is self-contained offline. Attachments
+ * that failed to download keep an absolute platform URL instead.
  */
+export interface ExportChildIssue {
+  issue: Issue;
+  statusLabel: string;
+  assigneeName?: string;
+  children: ExportChildIssue[];
+}
+
+export interface ExportedAttachment {
+  attachment: Attachment;
+  /** Zip-relative path (`attachments/<name>`) when the bytes were packed. */
+  packedName?: string;
+  /** Absolute URL used in the document when the bytes were NOT packed. */
+  absoluteUrl: string;
+}
+
 export interface IssueExportInput {
   issue: Issue;
   /** Server-ordered timeline (comments + activities). Rendered as given. */
   timeline: TimelineEntry[];
-  /** Attachments uploaded against the issue itself (not comment attachments). */
-  attachments: Attachment[];
-  childIssues: Issue[];
+  attachments: ExportedAttachment[];
+  childTree: ExportChildIssue[];
+  /** Set when the sub-issue walk hit its depth or node cap. */
+  childTreeTruncated?: { atDepth: boolean; nodes: number } | null;
   /** Localized display label for `issue.status`, resolved by the caller. */
   statusLabel: string;
   assigneeName?: string;
   creatorName?: string;
-  parentIdentifier?: string;
+  parent?: { identifier: string; title: string; statusLabel: string };
   projectName?: string;
+  agentRuns: AgentTask[];
+  /** Resolves an AgentTask.agent_id to a display name. */
+  runAgentName: (agentId: string) => string | undefined;
+  subscribers: IssueSubscriber[];
+  subscriberName: (type: string, id: string) => string | undefined;
+  pullRequests: GitHubPullRequest[];
+  /** Workspace property catalog, used to decode `issue.properties`. */
+  propertyDefinitions: IssueProperty[];
+  /** Resolves "member:<id>" style actor references in property values. */
+  actorName: (type: string, id: string) => string | undefined;
   /** Shareable absolute URL of the issue. */
   url: string;
   /** ISO timestamp of the export moment. */
   exportedAt: string;
 }
+
+/** Tree-walk caps: pathological sub-issue graphs must not hang the export. */
+export const EXPORT_CHILD_DEPTH_LIMIT = 5;
+export const EXPORT_CHILD_NODE_LIMIT = 200;
 
 /** `MUL-123` → `MUL-123.md`; falls back when an identifier is missing. */
 export function issueExportFilename(identifier: string | undefined): string {
@@ -63,11 +109,87 @@ function actorLabel(entry: TimelineEntry): string {
   return entry.actor_type ? `${who} (${entry.actor_type})` : who;
 }
 
-function attachmentLine(a: Attachment): string {
-  // `markdown_url` is the server's contract for URLs embedded in markdown
-  // bodies that outlive the session (MUL-3192); `url` is the raw fallback.
-  const href = a.markdown_url || a.url;
-  return `- [${a.filename}](${href}) (${formatBytes(a.size_bytes)})`;
+/**
+ * Maps every URL form an attachment may appear under (durable `markdown_url`
+ * and raw `url`) to what the exported document should reference: the packed
+ * zip path when the bytes were included, an absolute platform URL otherwise.
+ */
+export function buildAttachmentUrlMap(
+  attachments: ExportedAttachment[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const { attachment, packedName, absoluteUrl } of attachments) {
+    const target = packedName ?? absoluteUrl;
+    for (const key of [attachment.markdown_url, attachment.url]) {
+      if (key) map[key] = target;
+    }
+  }
+  return map;
+}
+
+/** Rewrites attachment URLs inside a Markdown body to their export targets. */
+export function rewriteAttachmentUrls(
+  markdown: string,
+  map: Record<string, string>,
+): string {
+  let out = markdown;
+  for (const [from, to] of Object.entries(map)) {
+    if (!from || from === to) continue;
+    out = out.split(from).join(to);
+  }
+  return out;
+}
+
+/**
+ * Decodes one custom-property value the way the sidebar renders it
+ * (select/multi_select ids → option names, actor refs → names), but keeps
+ * raw values for ids that no longer resolve — an export must not silently
+ * drop information the way a chip display can.
+ */
+export function decodePropertyValue(
+  property: IssueProperty,
+  value: IssuePropertyValue | undefined,
+  actorName: (type: string, id: string) => string | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const options = property.config.options ?? [];
+  switch (property.type) {
+    case "select": {
+      const option = options.find((o) => o.id === value);
+      return option ? option.name : String(value);
+    }
+    case "multi_select": {
+      const ids = Array.isArray(value) ? value : [value];
+      const names = ids.map(
+        (id) => options.find((o) => o.id === id)?.name ?? String(id),
+      );
+      return names.length > 0 ? names.join(", ") : undefined;
+    }
+    case "actor": {
+      const ref = String(value);
+      const [type, id] = ref.split(":", 2);
+      const name = type && id ? actorName(type, id) : undefined;
+      return name ?? ref;
+    }
+    case "multi_actor": {
+      const refs = Array.isArray(value) ? value : [value];
+      const names = refs.map((ref) => {
+        const [type, id] = String(ref).split(":", 2);
+        return (type && id ? actorName(type, id) : undefined) ?? String(ref);
+      });
+      return names.length > 0 ? names.join(", ") : undefined;
+    }
+    default:
+      return typeof value === "string" ? value : JSON.stringify(value);
+  }
+}
+
+function attachmentLine({ attachment, packedName, absoluteUrl }: ExportedAttachment): string {
+  const href = packedName ?? absoluteUrl;
+  const note = packedName
+    ? "included in this export"
+    : "not included (download failed; requires platform access)";
+  return `- [${attachment.filename}](${href}) (${formatBytes(attachment.size_bytes)}) — ${note}`;
 }
 
 // A short English phrase per known activity action. Anything unmapped keeps
@@ -85,20 +207,21 @@ const ACTIVITY_PHRASES: Record<string, string> = {
   archived: "archived the task",
 };
 
-function renderEntry(entry: TimelineEntry): string {
+function renderEntry(entry: TimelineEntry, urlMap: Record<string, string>): string {
   const when = entry.created_at;
   const who = actorLabel(entry);
   if (entry.type === "comment") {
     const kind = entry.parent_id ? "reply" : entry.comment_type || "comment";
     const resolved = entry.resolved_at ? " · resolved" : "";
     const lines: string[] = [`#### ${when} · ${who} · ${kind}${resolved}`, ""];
-    const content = (entry.content || "").trim();
+    const content = rewriteAttachmentUrls((entry.content || "").trim(), urlMap);
     if (content) lines.push(content, "");
     for (const reaction of entry.reactions ?? []) {
       lines.push(`- reaction: ${reaction.emoji}`);
     }
     for (const a of entry.attachments ?? []) {
-      lines.push(attachmentLine(a));
+      const target = urlMap[a.markdown_url || a.url] || a.markdown_url || a.url;
+      lines.push(`- [${a.filename}](${target}) (${formatBytes(a.size_bytes)})`);
     }
     return lines.join("\n");
   }
@@ -110,29 +233,67 @@ function renderEntry(entry: TimelineEntry): string {
   return lines.join("\n");
 }
 
-function renderTimeline(timeline: TimelineEntry[]): string | null {
-  if (timeline.length === 0) return null;
-  // The timeline query returns server order (ascending). Top-level entries
-  // and replies are interleaved as given; the `reply` marker in each heading
-  // plus original order is enough for an agent to reconstruct threads.
-  return timeline.map(renderEntry).join("\n\n");
-}
-
-function renderSubIssues(children: Issue[], statusLabel: (key: string) => string): string | null {
-  if (children.length === 0) return null;
+function renderChildTree(
+  children: ExportChildIssue[],
+  urlMap: Record<string, string>,
+  depth: number,
+): string {
+  const indent = "  ".repeat(depth);
   return children
-    .map((child) => `- ${child.identifier ?? child.id} — ${child.title} [${statusLabel(child.status)}]`)
+    .map(({ issue, statusLabel, assigneeName }) => {
+      const assignee = assigneeName ? ` · ${assigneeName}` : "";
+      const head = `${indent}- **${issue.identifier ?? issue.id} — ${issue.title}** [${statusLabel}]${assignee}`;
+      const description = (issue.description ?? "").trim();
+      if (!description) return head;
+      const body = rewriteAttachmentUrls(description, urlMap)
+        .split("\n")
+        .map((line) => (line.trim() === "" ? "" : `${indent}  ${line}`))
+        .join("\n");
+      return `${head}\n${body}`;
+    })
+    .concat(
+      children.length > 0 && children.some((c) => c.children.length > 0)
+        ? children
+            .filter((c) => c.children.length > 0)
+            .map((c) => renderChildTree(c.children, urlMap, depth + 1))
+        : [],
+    )
+    .filter(Boolean)
     .join("\n");
 }
 
-function renderAttachments(attachments: Attachment[]): string | null {
-  if (attachments.length === 0) return null;
-  return attachments.map(attachmentLine).join("\n");
+const RESULT_SNIPPET_LIMIT = 4000;
+
+function renderAgentRun(
+  run: AgentTask,
+  agentName: (id: string) => string | undefined,
+): string {
+  const who = agentName(run.agent_id) || run.agent_id;
+  const when = [run.dispatched_at, run.started_at, run.completed_at]
+    .filter(Boolean)
+    .join(" → ");
+  const lines = [`- **${who}** · ${run.status}${when ? ` · ${when}` : ""}`];
+  if (run.error) {
+    lines.push(`  - error: ${run.error}`);
+  }
+  if (run.result !== undefined && run.result !== null) {
+    const text =
+      typeof run.result === "string"
+        ? run.result
+        : JSON.stringify(run.result, null, 2);
+    const snippet =
+      text.length > RESULT_SNIPPET_LIMIT
+        ? `${text.slice(0, RESULT_SNIPPET_LIMIT)}\n…(truncated, ${text.length} chars total)`
+        : text;
+    lines.push("  - result:", "    ```json", ...snippet.split("\n").map((l) => `    ${l}`), "    ```");
+  }
+  return lines.join("\n");
 }
 
 export function buildIssueExportMarkdown(input: IssueExportInput): string {
   const { issue } = input;
   const labels = issue.labels?.map((label) => label.name).join(", ");
+  const urlMap = buildAttachmentUrlMap(input.attachments);
   const out: string[] = [];
 
   out.push("---");
@@ -152,11 +313,13 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
       `> Exported from Multica at ${input.exportedAt}. This file is a complete,`,
       "self-contained snapshot of the task above, generated for handoff to any",
       "local AI agent (Claude Code, Codex, Cursor, …). The sections below are",
-      "the full platform record: properties, the description (Markdown,",
-      "verbatim), the complete comment and activity timeline in original order,",
-      "sub-issues, and attachments with their durable download URLs. Continue",
-      "the work from the latest state in the timeline; treat the timeline as",
-      "the authoritative history.",
+      "the full platform record: properties (built-in and custom), the",
+      "description (Markdown, verbatim), the complete comment and activity",
+      "timeline in original order, agent-run history, the parent/sub-issue",
+      "tree, pull requests, and attachments. Attachment files, when included,",
+      "sit in the `attachments/` folder next to this document and are",
+      "referenced from it by relative path. Continue the work from the latest",
+      "state in the timeline; treat the timeline as the authoritative history.",
     ].join("\n> "),
   );
   out.push("");
@@ -177,29 +340,90 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
   if (issue.start_date) out.push(`- **Start date**: ${issue.start_date}`);
   if (issue.due_date) out.push(`- **Due date**: ${issue.due_date}`);
   if (input.projectName) out.push(`- **Project**: ${input.projectName}`);
-  if (input.parentIdentifier) out.push(`- **Parent**: ${input.parentIdentifier}`);
+  if (input.parent) {
+    out.push(
+      `- **Parent**: ${input.parent.identifier} — ${input.parent.title} [${input.parent.statusLabel}]`,
+    );
+  }
   if (labels) out.push(`- **Labels**: ${labels}`);
   out.push(`- **Created**: ${issue.created_at}`);
   out.push(`- **Updated**: ${issue.updated_at}`);
+  if (issue.metadata && Object.keys(issue.metadata).length > 0) {
+    out.push(`- **Metadata**: ${JSON.stringify(issue.metadata)}`);
+  }
+  const subscriberNames = input.subscribers
+    .map((s) => {
+      const name = input.subscriberName(s.user_type, s.user_id);
+      return name ? (s.user_type === "agent" ? `${name} (agent)` : name) : s.user_id;
+    })
+    .filter(Boolean);
+  if (subscriberNames.length > 0) {
+    out.push(`- **Subscribers**: ${subscriberNames.join(", ")}`);
+  }
+  for (const property of input.propertyDefinitions) {
+    const decoded = decodePropertyValue(
+      property,
+      issue.properties?.[property.id],
+      input.actorName,
+    );
+    if (decoded !== undefined) {
+      out.push(`- **${property.name}**: ${decoded}`);
+    }
+  }
   out.push("");
 
   if (issue.description && issue.description.trim().length > 0) {
-    out.push("## Description", "", issue.description, "");
+    out.push("## Description", "", rewriteAttachmentUrls(issue.description, urlMap), "");
   }
 
-  const timeline = renderTimeline(input.timeline);
-  if (timeline) {
-    out.push("## Timeline", "", timeline, "");
+  if (input.timeline.length > 0) {
+    out.push(
+      "## Timeline",
+      "",
+      input.timeline.map((entry) => renderEntry(entry, urlMap)).join("\n\n"),
+      "",
+    );
   }
 
-  const subIssues = renderSubIssues(input.childIssues, (key) => key);
-  if (subIssues) {
-    out.push("## Sub-issues", "", subIssues, "");
+  if (input.agentRuns.length > 0) {
+    out.push(
+      "## Agent runs",
+      "",
+      input.agentRuns.map((run) => renderAgentRun(run, input.runAgentName)).join("\n"),
+      "",
+    );
   }
 
-  const attachments = renderAttachments(input.attachments);
-  if (attachments) {
-    out.push("## Attachments", "", attachments, "");
+  if (input.childTree.length > 0 || input.childTreeTruncated) {
+    out.push("## Sub-issues", "", renderChildTree(input.childTree, urlMap, 0), "");
+    if (input.childTreeTruncated) {
+      const why = input.childTreeTruncated.atDepth
+        ? `depth > ${EXPORT_CHILD_DEPTH_LIMIT}`
+        : `> ${EXPORT_CHILD_NODE_LIMIT} nodes`;
+      out.push(
+        `> Sub-issue tree truncated at ${why} (${input.childTreeTruncated.nodes} exported). Open the parent task in the platform for the rest.`,
+        "",
+      );
+    }
+  }
+
+  if (input.pullRequests.length > 0) {
+    const prLines = input.pullRequests.map((pr) => {
+      const repo = `${pr.repo_owner}/${pr.repo_name}#${pr.number}`;
+      const merged = pr.merged_at ? " · merged" : "";
+      const author = pr.author_login ? ` · @${pr.author_login}` : "";
+      return `- [${repo} — ${pr.title}](${pr.html_url}) · ${pr.state}${merged}${author}`;
+    });
+    out.push("## Pull requests", "", prLines.join("\n"), "");
+  }
+
+  if (input.attachments.length > 0) {
+    out.push(
+      "## Attachments",
+      "",
+      input.attachments.map(attachmentLine).join("\n"),
+      "",
+    );
   }
 
   return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;

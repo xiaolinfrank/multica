@@ -935,6 +935,9 @@ importers:
       d3-force:
         specifier: ^3.0.0
         version: 3.0.0
+      fflate:
+        specifier: 0.4.8
+        version: 0.4.8
       hast-util-to-html:
         specifier: ^9.0.5
         version: 9.0.5
