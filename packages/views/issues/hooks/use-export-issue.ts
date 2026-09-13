@@ -128,11 +128,15 @@ export function useExportIssue(issue: Issue | null): {
         staleTime: 30_000,
       });
       const prs = await qc.ensureQueryData(issuePullRequestsOptions(issueId));
-      // ensureQueryData's type drops the options' `select`, which already
-      // unwraps `.properties` at runtime (issue-detail consumes it the same way).
-      const propertyDefinitions = ((await qc.ensureQueryData(
+      // ensureQueryData applies neither the options' `select` nor its type:
+      // it returns the raw `{properties}` response (useQuery would have
+      // unwrapped it). Normalize both shapes defensively.
+      const propertiesResponse = (await qc.ensureQueryData(
         propertyListOptions(wsId, true),
-      )) ?? []) as unknown as IssueProperty[];
+      )) as unknown as IssueProperty[] | { properties?: IssueProperty[] } | undefined;
+      const propertyDefinitions = Array.isArray(propertiesResponse)
+        ? propertiesResponse
+        : propertiesResponse?.properties ?? [];
       const parent = detail.parent_issue_id
         ? await qc.ensureQueryData(issueDetailOptions(wsId, detail.parent_issue_id))
         : undefined;
