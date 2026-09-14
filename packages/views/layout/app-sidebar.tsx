@@ -1,4 +1,5 @@
 "use client";
+import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 
 import { issueStatusCategory } from "@multica/core/issues";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -66,7 +67,7 @@ import { useCurrentWorkspace, useWorkspacePaths, paths } from "@multica/core/pat
 import { workspaceListOptions, myInvitationListOptions, memberListOptions, workspaceKeys } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { inboxKeys, deduplicateInboxItems, inboxUnreadSummaryOptions, hasOtherWorkspaceUnread, unreadWorkspaceIds } from "@multica/core/inbox/queries";
+import { inboxUnreadSummaryOptions, useInboxUnreadCount, hasOtherWorkspaceUnread, unreadWorkspaceIds } from "@multica/core/inbox/queries";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
 import { countUnreadChatMessages } from "@multica/core/chat/unread";
 import { useChatStore } from "@multica/core/chat";
@@ -103,9 +104,9 @@ function isNavActive(pathname: string, href: string): boolean {
 const EMPTY_PINS: PinnedItem[] = [];
 const EMPTY_WORKSPACES: Awaited<ReturnType<typeof api.listWorkspaces>> = [];
 const EMPTY_INVITATIONS: Awaited<ReturnType<typeof api.listMyInvitations>> = [];
-const EMPTY_INBOX: Awaited<ReturnType<typeof api.listInbox>> = [];
 const EMPTY_MEMBERS: Awaited<ReturnType<typeof api.listMembers>> = [];
 const EMPTY_INBOX_SUMMARY: Awaited<ReturnType<typeof api.getInboxUnreadSummary>> = [];
+const PINNED_PREVIEW_LIMIT = 5;
 
 // Nav items reference WorkspacePaths method names so they can be resolved
 // against the current workspace slug at render time (see AppSidebar body).
@@ -159,34 +160,40 @@ type NavLabelKey =
 // always agree. See route-icon-components.tsx.
 const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "inbox", labelKey: "inbox" },
-  { key: "chat", labelKey: "chat" },
   { key: "myIssues", labelKey: "my_issues" },
+  { key: "chat", labelKey: "chat" },
 ];
 
 // No `icon` field: icons are derived from the route-icon registry in
 // @multica/core/paths, so a BayClaw page added here must also be registered
 // in WORKSPACE_PAGES or it silently renders the Issues icon.
-const workspaceNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
-  { key: "agents", labelKey: "agents" },
-  { key: "office", labelKey: "office" },
-  { key: "squads", labelKey: "squads" },
   { key: "graph", labelKey: "graph" },
   { key: "gallery", labelKey: "gallery" },
   { key: "cockpit", labelKey: "cockpit" },
-  { key: "usage", labelKey: "usage" },
-  { key: "fleet", labelKey: "fleet" },
 ];
 
-const configureNav: { key: NavKey; labelKey: NavLabelKey }[] = [
-  { key: "runtimes", labelKey: "runtimes" },
+const aiTeamNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+  { key: "agents", labelKey: "agents" },
+  { key: "office", labelKey: "office" },
+  { key: "squads", labelKey: "squads" },
   { key: "skills", labelKey: "skills" },
+  { key: "runtimes", labelKey: "runtimes" },
+  { key: "fleet", labelKey: "fleet" },
   { key: "env", labelKey: "environment" },
+];
+
+const utilityNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+  { key: "usage", labelKey: "usage" },
   { key: "workspaces", labelKey: "workspaces" },
   { key: "settings", labelKey: "settings" },
 ];
+
+const NAV_ITEM_CLASS_NAME =
+  "text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground";
 
 // The env page reveals which secret keys each agent holds, so it's gated to
 // workspace owner/admin server-side. Mirror that gate in the nav: a non-admin
@@ -313,6 +320,7 @@ function PinRow({
   wsId: string;
 }) {
   const isIssue = pin.item_type === "issue";
+  const statusCatalog = useIssueStatuses(wsId);
   const isView = pin.item_type === "view";
   const p = useWorkspacePaths();
   const setActiveView = useActiveIssueViewStore((s) => s.setActive);
@@ -397,6 +405,8 @@ function PinRow({
       /* Override parent [&_svg]:size-4 — pinned items need smaller icons to match sm size */
       <StatusIcon
         status={issue.status}
+        color={statusCatalog.colorOf(issue.status)}
+        icon={statusCatalog.iconOf(issue.status)}
         category={issueStatusCategory(issue) ?? undefined}
         className="!size-3.5 shrink-0"
       />
@@ -434,7 +444,7 @@ function PinSkeleton() {
     <SidebarMenuItem>
       <div className="flex h-7 w-full items-center gap-2 px-2">
         <div className="size-3.5 shrink-0 rounded-sm bg-sidebar-accent/40" />
-        <div className="h-3 w-24 rounded bg-sidebar-accent/40" />
+        <div className="h-3 w-24 rounded-xs bg-sidebar-accent/40" />
       </div>
     </SidebarMenuItem>
   );
@@ -476,15 +486,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   }, [pathname, setOpenMobile]);
 
   const wsId = workspace?.id;
-  const { data: inboxItems = EMPTY_INBOX } = useQuery({
-    queryKey: wsId ? inboxKeys.list(wsId) : ["inbox", "disabled"],
-    queryFn: () => api.listInbox(),
-    enabled: !!wsId,
-  });
-  const unreadCount = React.useMemo(
-    () => deduplicateInboxItems(inboxItems).filter((i) => !i.read).length,
-    [inboxItems],
-  );
+  // Nav badge. Reads the cross-workspace unread summary fetched just below
+  // for the switcher dot, so the count costs no request of its own — it used
+  // to download the whole inbox list here just to count it (MUL-6967).
+  const unreadCount = useInboxUnreadCount(wsId);
   // Viewer's role drives admin-only nav visibility (env page). Cached and
   // shared with the members page, so this adds no real fetch cost.
   const { data: members = EMPTY_MEMBERS } = useQuery({
@@ -501,11 +506,11 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   // unknown. Showing-then-hiding would tease the non-admin majority; the
   // members query is cached (staleTime: Infinity), so the only cost is a
   // one-time late-appear for admins on a cold load, which is the safer trade.
-  const visibleConfigureNav = React.useMemo(
+  const visibleAiTeamNav = React.useMemo(
     () =>
       isWorkspaceAdmin
-        ? configureNav
-        : configureNav.filter((item) => !ADMIN_ONLY_NAV_KEYS.has(item.key)),
+        ? aiTeamNav
+        : aiTeamNav.filter((item) => !ADMIN_ONLY_NAV_KEYS.has(item.key)),
     [isWorkspaceAdmin],
   );
   // Chat tab unread badge: IM-style total of unread *messages* across chat
@@ -578,6 +583,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   // DOM under dnd-kit while its drop animation is still interpolating.
   const [localPinned, setLocalPinned] = useState<PinnedItem[]>(pinnedItems);
   const [localPinnedWsId, setLocalPinnedWsId] = useState<string | null>(wsId ?? null);
+  const [expandedPinsWorkspaceId, setExpandedPinsWorkspaceId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   useEffect(() => {
     if (!isDraggingRef.current) {
@@ -588,10 +594,12 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
     setLocalPinnedWsId(wsId ?? null);
   }, [wsId]);
   const visiblePinned = localPinnedWsId === (wsId ?? null) ? localPinned : EMPTY_PINS;
+  const pinsExpanded = expandedPinsWorkspaceId === wsId;
+  const displayedPinned = pinsExpanded ? visiblePinned : visiblePinned.slice(0, PINNED_PREVIEW_LIMIT);
   // View pins are absent here (their href resolves async): while a view
   // pin is active the plain nav row for its surface stays highlighted too.
   // Accepted — suppressing it would need every view detail lifted up here.
-  const isActivePinnedRoute = visiblePinned.some((pin) => pathname === getPinHref(pin));
+  const isActivePinnedRoute = displayedPinned.some((pin) => pathname === getPinHref(pin));
 
   const handleDragStart = useCallback(() => {
     isDraggingRef.current = true;
@@ -742,7 +750,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                             <span className="flex-1 truncate text-body">{inv.workspace_name ?? t(($) => $.sidebar.invitation_workspace_fallback)}</span>
                             <button
                               type="button"
-                              className="text-caption px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                              className="text-caption px-2 py-0.5 rounded-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                               disabled={acceptInvitationMut.isPending}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -753,7 +761,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                             </button>
                             <button
                               type="button"
-                              className="text-caption px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+                              className="text-caption px-2 py-0.5 rounded-xs bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
                               disabled={declineInvitationMut.isPending}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -816,7 +824,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       <SidebarMenuButton
                         isActive={isActive}
                         render={<AppLink href={href} />}
-                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                        className={NAV_ITEM_CLASS_NAME}
                       >
                         <Icon />
                         <span>{t(($) => $.nav[item.labelKey])}</span>
@@ -856,9 +864,9 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                      <SortableContext items={visiblePinned.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                      <SortableContext items={displayedPinned.map((p) => p.id)} strategy={verticalListSortingStrategy}>
                         <SidebarMenu className="gap-0.5">
-                          {visiblePinned.map((pin: PinnedItem) => (
+                          {displayedPinned.map((pin: PinnedItem) => (
                             <PinRow
                               key={pin.id}
                               pin={pin}
@@ -871,6 +879,20 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                         </SidebarMenu>
                       </SortableContext>
                     </DndContext>
+                    {visiblePinned.length > PINNED_PREVIEW_LIMIT && (
+                      <SidebarMenuButton
+                        size="sm"
+                        aria-expanded={pinsExpanded}
+                        className="mt-0.5 pl-7 text-muted-foreground"
+                        onClick={() => setExpandedPinsWorkspaceId(pinsExpanded ? null : wsId ?? null)}
+                      >
+                        <span>
+                          {pinsExpanded
+                            ? t(($) => $.sidebar.show_fewer_pins)
+                            : t(($) => $.sidebar.show_more_pins, { count: visiblePinned.length - PINNED_PREVIEW_LIMIT })}
+                        </span>
+                      </SidebarMenuButton>
+                    )}
                   </SidebarGroupContent>
                 </CollapsibleContent>
               </SidebarGroup>
@@ -878,10 +900,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
           )}
 
           <SidebarGroup>
-            <SidebarGroupLabel>{t(($) => $.sidebar.workspace_group)}</SidebarGroupLabel>
+            <SidebarGroupLabel>{t(($) => $.sidebar.work_group)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {workspaceNav.map((item) => {
+                {workNav.map((item) => {
                   const href = p[item.key]();
                   const Icon = routeIconForPath(href);
                   const isActive = !isActivePinnedRoute && isNavActive(pathname, href);
@@ -890,7 +912,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       <SidebarMenuButton
                         isActive={isActive}
                         render={<AppLink href={href} />}
-                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                        className={NAV_ITEM_CLASS_NAME}
                       >
                         <Icon />
                         <span>{t(($) => $.nav[item.labelKey])}</span>
@@ -903,10 +925,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
           </SidebarGroup>
 
           <SidebarGroup>
-            <SidebarGroupLabel>{t(($) => $.sidebar.configure_group)}</SidebarGroupLabel>
+            <SidebarGroupLabel>{t(($) => $.sidebar.ai_team_group)}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {visibleConfigureNav.map((item) => {
+                {visibleAiTeamNav.map((item) => {
                   const href = p[item.key]();
                   const Icon = routeIconForPath(href);
                   const isActive = isNavActive(pathname, href);
@@ -915,7 +937,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       <SidebarMenuButton
                         isActive={isActive}
                         render={<AppLink href={href} />}
-                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                        className={NAV_ITEM_CLASS_NAME}
                       >
                         <Icon />
                         <span>{t(($) => $.nav[item.labelKey])}</span>
@@ -929,9 +951,27 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         </SidebarContent>
 
         <SidebarFooter className="p-2">
+          <SidebarMenu className="gap-0.5">
+            {utilityNav.map((item) => {
+              const href = p[item.key]();
+              const Icon = routeIconForPath(href);
+              return (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton
+                    isActive={isNavActive(pathname, href)}
+                    render={<AppLink href={href} />}
+                    className={NAV_ITEM_CLASS_NAME}
+                  >
+                    <Icon />
+                    <span>{t(($) => $.nav[item.labelKey])}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
           {/* Discord entry intentionally absent: this product has no public
-              Discord community. Keep the footer to the help trigger only. */}
-          <div className="flex justify-end">
+              Discord community. Keep the strip to the help trigger only. */}
+          <div className="flex items-center justify-end gap-1">
             <HelpLauncher />
           </div>
         </SidebarFooter>

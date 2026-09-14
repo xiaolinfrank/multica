@@ -1024,7 +1024,7 @@ function FailureBubble({
                 <span>{t(($) => $.message_list.show_details)}</span>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted/40 p-2 text-caption text-muted-foreground whitespace-pre-wrap break-all">
+                <pre className="mt-1 max-h-40 overflow-auto rounded-xs bg-muted/40 p-2 text-caption text-muted-foreground whitespace-pre-wrap break-all">
                   {rawError}
                 </pre>
               </CollapsibleContent>

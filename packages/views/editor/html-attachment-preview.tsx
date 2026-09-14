@@ -119,7 +119,7 @@ export function HtmlAttachmentPreview({
       >
         <button
           type="button"
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex h-6 w-6 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title={t(($) => $.attachment.preview)}
           aria-label={t(($) => $.attachment.preview)}
           onMouseDown={(e) => {
@@ -133,7 +133,7 @@ export function HtmlAttachmentPreview({
         {canOpenInNewTab && (
           <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-6 w-6 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title={t(($) => $.attachment.open_in_new_tab)}
             aria-label={t(($) => $.attachment.open_in_new_tab)}
             onMouseDown={(e) => {
@@ -147,7 +147,7 @@ export function HtmlAttachmentPreview({
         )}
         <button
           type="button"
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex h-6 w-6 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title={t(($) => $.image.download)}
           aria-label={t(($) => $.image.download)}
           onMouseDown={(e) => {
@@ -176,7 +176,7 @@ export function HtmlAttachmentPreview({
         {onDelete && (
           <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="flex h-6 w-6 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             title={t(($) => $.attachment.remove)}
             aria-label={t(($) => $.attachment.remove)}
             onMouseDown={(e) => {
