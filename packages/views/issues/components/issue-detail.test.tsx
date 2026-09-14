@@ -1649,7 +1649,7 @@ describe("IssueDetail (shared)", () => {
     expect(screen.queryByRole("button", { name: "Retry run" })).not.toBeInTheDocument();
   });
 
-  it("puts the process fold above the answer it produced", async () => {
+  it("keeps the run's process reachable next to the answer it produced", async () => {
     mockApiObj.listTimeline.mockResolvedValue([
       ...mockTimeline,
       {
@@ -1665,16 +1665,28 @@ describe("IssueDetail (shared)", () => {
         source_task_id: "task-success",
       },
     ]);
+    // The upstream comment-runs view renders a completed run's process as an
+    // expandable block tied to the reply it produced (this replaced the fork's
+    // separate fold above the answer).
+    mockApiObj.listTasksByIssue.mockResolvedValue([
+      {
+        id: "task-success",
+        issue_id: "issue-1",
+        agent_id: "agent-1",
+        status: "completed",
+        kind: "direct",
+        created_at: "2026-01-18T00:00:00Z",
+      },
+    ]);
 
     renderIssueDetail();
 
-    const answer = await screen.findByText("Finished the requested work.");
-    const fold = screen.getByRole("button", { name: "View process" });
-    // The run happened before the answer was written, so it reads first. A
-    // settled fold is one caption line, so leading with it costs no space.
-    expect(fold.compareDocumentPosition(answer)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    await screen.findByText("Finished the requested work.");
+    // A completed run that published its reply renders in header form: the
+    // process stays one "Open full log" reach away next to the answer.
+    expect(
+      await screen.findByRole("button", { name: "Open full log" }),
+    ).toBeInTheDocument();
   });
 
   it("does not show retry for agent system comments without a source task", async () => {
