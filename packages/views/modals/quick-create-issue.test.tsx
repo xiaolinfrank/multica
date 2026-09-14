@@ -163,6 +163,14 @@ vi.mock("@tanstack/react-query", () => ({
         return { data: [] };
     }
   },
+  // The panel reads the query client to coordinate comment-run caches with
+  // the anchor comment; the tests never exercise that path, so a bare stub
+  // is enough.
+  useQueryClient: () => ({
+    getQueryData: () => undefined,
+    setQueryData: () => undefined,
+    invalidateQueries: () => Promise.resolve(),
+  }),
 }));
 
 const { ApiError } = vi.hoisted(() => {
