@@ -31,8 +31,10 @@ import {
   EXPORT_PACKED_BYTES_LIMIT,
   EXPORT_WORKSPACE_FILE_LIMIT,
   isSafeRelativePath,
+  renderTaskTranscript,
   type ExportChildIssue,
   type ExportedAttachment,
+  type ExportedExecution,
   type ExportedWorkspace,
   type ExportedWorkspaceFile,
 } from "../utils/build-issue-export";
@@ -86,14 +88,14 @@ function uniqueAttachmentName(filename: string, used: Set<string>): string {
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
-  worker: (item: T) => Promise<R>,
+  worker: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (cursor < items.length) {
       const index = cursor++;
-      results[index] = await worker(items[index] as T);
+      results[index] = await worker(items[index] as T, index);
     }
   });
   await Promise.all(runners);
@@ -292,11 +294,41 @@ export function useExportIssue(issue: Issue | null): {
       }
 
 
+      // Execution transcripts: the per-run message streams (text, thinking,
+      // tool calls and results) behind the platform's "view run process"
+      // dialog, rendered as one Markdown file per run under executions/.
+      const exportedExecutions: ExportedExecution[] = await mapWithConcurrency(
+        runs ?? [],
+        WORKSPACE_FETCH_CONCURRENCY,
+        async (run, index): Promise<ExportedExecution> => {
+          const packedName = `executions/run-${index + 1}-${run.id.slice(0, 8)}.md`;
+          if (packedBytes >= EXPORT_PACKED_BYTES_LIMIT) {
+            return { run, error: "bundle size cap" };
+          }
+          try {
+            const messages = await api.listTaskMessages(run.id);
+            const transcript = renderTaskTranscript({
+              run,
+              agentName: getActorName("agent", run.agent_id) || undefined,
+              messages,
+              exportedAt: new Date().toISOString(),
+            });
+            const bytes = strToU8(transcript);
+            packed.push({ name: packedName, bytes });
+            packedBytes += bytes.byteLength;
+            return { run, packedName };
+          } catch {
+            return { run, error: "transcript unavailable" };
+          }
+        },
+      );
+
       const markdown = buildIssueExportMarkdown({
         issue: detail,
         timeline: timeline ?? [],
         attachments: exportedAttachments,
         workspaces: exportedWorkspaces,
+        executions: exportedExecutions,
         childTree,
         childTreeTruncated: truncated,
         statusLabel: statusLabel(detail.status),
@@ -351,6 +383,7 @@ export function useExportIssue(issue: Issue | null): {
       // reads as "the platform lost my deliverables".
       const failedFiles =
         exportedAttachments.filter((a) => !a.packedName).length +
+        exportedExecutions.filter((e) => !e.packedName).length +
         exportedWorkspaces.reduce(
           (n, w) => n + w.files.filter((f) => !f.packedName).length,
           0,
