@@ -692,6 +692,7 @@
     "export": "태스크 내보내기",
     "export_success": "{{identifier}}을(를) 내보냈습니다",
     "export_failed": "태스크를 내보내지 못했습니다",
+    "export_partial": "{{identifier}}을(를) 내보냈지만 {{count}}개 파일을 패키징하지 못해 문서에서 URL로 참조됩니다",
     "copy_workdir_path": "로컬 작업 디렉터리 경로 복사",
     "copy_project_directory_path": "프로젝트 디렉터리 경로 복사",
     "relations": "관계",

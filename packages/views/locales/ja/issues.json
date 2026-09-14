@@ -692,6 +692,7 @@
     "export": "タスクをエクスポート",
     "export_success": "{{identifier}} をエクスポートしました",
     "export_failed": "タスクをエクスポートできませんでした",
+    "export_partial": "{{identifier}} をエクスポートしましたが、{{count}} 個のファイルはパッケージ化できず、ドキュメント内で URL 参照になっています",
     "copy_workdir_path": "ローカルの作業ディレクトリのパスをコピー",
     "copy_project_directory_path": "プロジェクトディレクトリのパスをコピー",
     "relations": "関係",

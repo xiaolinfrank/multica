@@ -723,6 +723,7 @@
     "export": "Export task",
     "export_success": "Exported {{identifier}}",
     "export_failed": "Failed to export task",
+    "export_partial": "Exported {{identifier}}, but {{count}} file(s) could not be packaged and are referenced by URL in the document",
     "copy_workdir_path": "Copy local workdir path",
     "copy_project_directory_path": "Copy project directory path",
     "relations": "Relations",

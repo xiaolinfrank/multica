@@ -692,6 +692,7 @@
     "export": "导出任务",
     "export_success": "已导出 {{identifier}}",
     "export_failed": "导出任务失败",
+    "export_partial": "已导出 {{identifier}}，但有 {{count}} 个文件未能打包，已在文档中改为链接引用",
     "copy_workdir_path": "复制本地 workdir 路径",
     "copy_project_directory_path": "复制项目目录路径",
     "relations": "关系",
