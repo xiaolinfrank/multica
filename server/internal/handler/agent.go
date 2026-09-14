@@ -1049,6 +1049,13 @@ func projectQuickCreateForOriginator(resp *AgentTaskResponse, task db.AgentTaskQ
 	if viewerID == "" || resp.Kind != "quick_create" {
 		return
 	}
+	// The kind stays "quick_create" after the created issue is linked
+	// (computeTaskKind keeps it stable for the UI), but the prompt projection
+	// is for pending creations only: once the issue exists it carries the
+	// outcome, and the run must stop echoing the author's input.
+	if task.IssueID.Valid {
+		return
+	}
 	if uuidToString(task.OriginatorUserID) != viewerID {
 		return
 	}
