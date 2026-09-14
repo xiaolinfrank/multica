@@ -68,6 +68,12 @@ function migrateLegacySurfaceState(
   if (surfaceKey.startsWith("view:")) return state;
 
   const next = { ...state };
+  // Board used to be the slice default, so a surface still sitting on Board
+  // is a surface nobody chose a layout for; it moves to the Table default.
+  // Any other mode (swimlane, list) was an explicit choice and survives.
+  if (next.viewMode === "board") {
+    next.viewMode = "table";
+  }
   if (
     (state.sortBy === undefined || state.sortBy === "position") &&
     (state.sortDirection === undefined || state.sortDirection === "asc")
@@ -93,32 +99,6 @@ function migrateLegacySurfaceState(
 
 function persistedIssueViewState(state: IssueViewState): PersistedIssueViewState {
   return basePersist.partialize(state);
-}
-
-/**
- * v0 → v1: the slice default used to be "board", so every surface that ever
- * wrote a registry entry — a filter toggle or an automatic mode coercion is
- * enough, it is not only a deliberate view switch — is pinned to Board and
- * would never see the Table default. Rewrite exactly those entries once.
- *
- * `view:` keys are left alone: their viewMode came from the saved view's own
- * `display` blob, which is the view author's explicit layout, not a default.
- */
-export function migrateSurfaceViewRegistry(
-  persisted: unknown,
-  version: number,
-): Pick<IssueSurfaceViewRegistryState, "surfaces"> {
-  const stored = (persisted ?? {}) as Partial<IssueSurfaceViewRegistryState>;
-  const surfaces = stored.surfaces ?? {};
-  if (version >= 1) return { surfaces };
-  const migrated: Record<string, IssueSurfaceViewEntry> = {};
-  for (const [surfaceKey, entry] of Object.entries(surfaces)) {
-    migrated[surfaceKey] =
-      entry?.state?.viewMode === "board" && !surfaceKey.startsWith("view:")
-        ? { ...entry, state: { ...entry.state, viewMode: "table" } }
-        : entry;
-  }
-  return { surfaces: migrated };
 }
 
 const issueSurfaceViewRegistryStore = createStore<IssueSurfaceViewRegistryState>()(
@@ -155,7 +135,6 @@ const issueSurfaceViewRegistryStore = createStore<IssueSurfaceViewRegistryState>
     }),
     {
       name: ISSUE_SURFACE_VIEW_STORAGE_KEY,
-      version: 1,
       storage: createJSONStorage(() => createWorkspaceAwareStorage(defaultStorage)),
       version: SURFACE_DEFAULTS_VERSION,
       migrate: (persisted, version) => {
@@ -175,7 +154,6 @@ const issueSurfaceViewRegistryStore = createStore<IssueSurfaceViewRegistryState>
         };
       },
       partialize: (state) => ({ surfaces: state.surfaces }),
-      migrate: migrateSurfaceViewRegistry,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<IssueSurfaceViewRegistryState>;
         return {
