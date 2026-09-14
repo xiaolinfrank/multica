@@ -26,16 +26,13 @@ A board is a tree of **nodes** plus four things hanging off it.
 
 - **Node** — one element of the work breakdown. The tree is arbitrary-depth;
   the usual shape is module (`L1-02`) > group (`02.03`) > task (`L3-01-08`).
-  Every node carries `code`, `name`, `owner`, `collaborators`, `start_date`,
-  `end_date`, `status`, `progress` (0-100), `deliverable`, `dependencies`,
-  `note`, `current_progress`, `vendor`, `budget_category`, `budget_amount`,
-  `exec_status`, `contract` and `source`.
+  Every node carries code/name/owner, dates, status + `progress` (0-100),
+  budget fields, `deliverable`, `dependencies` and free-text notes — the full
+  field list lives in `references/cockpit.md`.
 - **Payment** — one instalment of a node's budget: label, date, amount.
 - **Issue link** — the issues that carry the work out. Many per node.
-- **Milestone** — a date the programme commits to, with the acceptance
-  `condition` and the `guard` that protects it. Optionally pinned to a node.
-- **Meeting** — the decision record: date, time span, attendees, conference
-  number, link, note.
+- **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
+- **Meeting** — the decision record: date, time, attendees, link, note.
 
 **`code` is the address.** Every node command accepts the human code the plan
 uses (`L1-02`, `L3-01-08`) as well as a UUID. Prefer the code — it is what the
@@ -91,42 +88,29 @@ multica cockpit node link L3-01-08 BIO-314 --replace   # make these the only lin
 multica cockpit node unlink L3-01-08 BIO-320
 ```
 
-Issue references accept the workspace identifier (`BIO-314`) or a UUID. An
-unknown reference fails the whole call rather than linking half of it, so a typo
-never leaves a partially wired node.
-
-Linking is how the board stays honest: a work item with a live issue shows that
-issue's real title and status on the board. When you finish work on an issue
-that a cockpit node names, check whether the node's `progress` and `status`
-still match — the board does not infer them from the issue.
+Issue references accept the workspace identifier (`BIO-314`) or a UUID; an
+unknown reference fails the whole call, so a typo never wires a node halfway.
+Linking is how the board stays honest: a linked work item shows the issue's
+real title and status. When you finish work on a linked issue, check whether
+the node's `progress` and `status` still match — the board does not infer them.
 
 ## Payments, milestones and meetings
 
 ```bash
 multica cockpit payment add L3-01-08 --label 第1笔 --pay-date 2026-09-05 --amount 15
-multica cockpit payment update <payment-id> --amount 18
-multica cockpit payment remove <payment-id>
-
-multica cockpit milestone list
-multica cockpit milestone add --name "高质量数据集验收" \
-  --plan-date 2026-11-30 --status 前置准备 --node L1-01 \
-  --condition "三个临床队列治理完成，通过数据质量验收"
-multica cockpit milestone update <milestone-id> --actual-date 2026-11-28 --status 已完成
-
-multica cockpit meeting add --title "工作组周例会" --date 2026-09-08 \
-  --time-range "10:00–11:00" --attendees "项目组全体"
+multica cockpit milestone add --name "高质量数据集验收" --plan-date 2026-11-30 --node L1-01
+multica cockpit meeting add --title "工作组周例会" --date 2026-09-08 --attendees "项目组全体"
 ```
 
-A milestone with an `actual_date` reads as done on the board regardless of its
-status label — set the date when it actually lands.
+Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
+milestone with an `actual_date` reads as done regardless of its status label —
+set the date when it actually lands.
 
 ## Versions
 
-Every import and every restore freezes the board it displaces into a version
-snapshot first, so nothing here is irreversible. Ordinary edits also leave an
-`auto` checkpoint at most once every 5 minutes, so small fixes are covered
-without flooding the history. You can save and restore
-versions yourself:
+Nothing here is irreversible: imports and restores freeze the displaced board
+into a version first, and ordinary edits leave an `auto` checkpoint at most
+once every 5 minutes.
 
 ```bash
 multica cockpit version list                 # newest first, with ids
@@ -134,9 +118,8 @@ multica cockpit version save --label "评审前"
 multica cockpit version restore <snapshot-id>   # owner/admin; saves the current board first
 ```
 
-A restore reports issue references that no longer resolve (the issue was
-deleted after the version was saved); those links are skipped, everything else
-comes back exactly as it was frozen.
+Unresolvable issue references in a restore are reported and skipped; the
+snapshot/keep-window rules live in `references/cockpit.md` §Versions.
 
 ## Board-level fields
 
