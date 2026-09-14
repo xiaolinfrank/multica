@@ -1,6 +1,7 @@
 import type {
   AgentTask,
   Attachment,
+  TaskMessagePayload,
   GitHubPullRequest,
   Issue,
   IssueProperty,
@@ -73,6 +74,15 @@ export interface ExportedWorkspace {
   error?: string;
 }
 
+/** One agent run's execution transcript (message stream), exported under executions/. */
+export interface ExportedExecution {
+  run: AgentTask;
+  /** Zip-relative path (executions/<file>.md) when the transcript was packed. */
+  packedName?: string;
+  /** Set when the transcript could not be fetched or hit the bundle size cap. */
+  error?: string;
+}
+
 export interface IssueExportInput {
   issue: Issue;
   /** Server-ordered timeline (comments + activities). Rendered as given. */
@@ -80,6 +90,8 @@ export interface IssueExportInput {
   attachments: ExportedAttachment[];
   /** Persistent agent workspaces for this issue, with their plain files. */
   workspaces: ExportedWorkspace[];
+  /** Per-run execution transcripts for this issue's agent runs. */
+  executions: ExportedExecution[];
   childTree: ExportChildIssue[];
   /** Set when the sub-issue walk hit its depth or node cap. */
   childTreeTruncated?: { atDepth: boolean; nodes: number } | null;
@@ -116,6 +128,15 @@ export const EXPORT_CHILD_NODE_LIMIT = 200;
  */
 export const EXPORT_WORKSPACE_FILE_LIMIT = 200;
 export const EXPORT_PACKED_BYTES_LIMIT = 128 * 1024 * 1024;
+
+/**
+ * Per-run transcript caps so one pathological run (a tool result carrying a
+ * huge payload, or a stuck loop) cannot dominate the bundle: messages per
+ * run, chars per single message body, and chars for the whole file.
+ */
+export const EXPORT_EXECUTION_MESSAGE_LIMIT = 2000;
+export const EXPORT_EXECUTION_ENTRY_CHAR_LIMIT = 64 * 1024;
+export const EXPORT_EXECUTION_FILE_CHAR_LIMIT = 1_000_000;
 
 /** Zip entries must stay inside the bundle: no absolute paths, no "..". */
 export function isSafeRelativePath(path: string): boolean {
@@ -347,15 +368,88 @@ function renderChildTree(
 
 const RESULT_SNIPPET_LIMIT = 4000;
 
+function clip(text: string, limit: number): string {
+  return text.length > limit
+    ? `${text.slice(0, limit)}\n…(truncated, ${text.length} chars total)`
+    : text;
+}
+
+/**
+ * Renders one agent run's execution transcript — the message stream behind
+ * the platform's "view run process" dialog (text, thinking, tool calls and
+ * results, errors) — as a standalone Markdown file for the executions/
+ * folder of the export bundle.
+ */
+export function renderTaskTranscript(input: {
+  run: AgentTask;
+  agentName?: string;
+  messages: TaskMessagePayload[];
+  exportedAt: string;
+}): string {
+  const { run, agentName, messages, exportedAt } = input;
+  const who = agentName || run.agent_id;
+  const when = [run.dispatched_at, run.started_at, run.completed_at]
+    .filter(Boolean)
+    .join(" → ");
+  const out: string[] = [];
+  out.push("---");
+  out.push(`multica_export: ${yaml("task_transcript")}`);
+  out.push(`task_id: ${yaml(run.id)}`);
+  out.push(`agent: ${yaml(who)}`);
+  out.push(`status: ${yaml(run.status)}`);
+  out.push(`exported_at: ${yaml(exportedAt)}`);
+  out.push("---", "");
+  out.push(`# Execution transcript — ${who} · ${run.status}${when ? ` · ${when}` : ""}`, "");
+  if (run.error) {
+    out.push(`> error: ${run.error}`, "");
+  }
+  const ordered = [...messages].sort((a, b) => a.seq - b.seq);
+  const count = Math.min(ordered.length, EXPORT_EXECUTION_MESSAGE_LIMIT);
+  let used = 0;
+  for (const message of ordered.slice(0, count)) {
+    const head = `### #${message.seq} · ${message.type}${
+      message.tool ? ` · ${message.tool}` : ""
+    }${message.created_at ? ` · ${message.created_at}` : ""}`;
+    const body: string[] = [];
+    if (message.type === "tool_use") {
+      body.push("```json", JSON.stringify(message.input ?? {}, null, 2), "```");
+    } else if (message.type === "tool_result") {
+      body.push("```", clip(message.output ?? "", EXPORT_EXECUTION_ENTRY_CHAR_LIMIT), "```");
+    } else {
+      body.push(clip((message.content ?? "").trim(), EXPORT_EXECUTION_ENTRY_CHAR_LIMIT));
+    }
+    const block = [head, "", ...body, ""].join("\n");
+    used += block.length;
+    if (used > EXPORT_EXECUTION_FILE_CHAR_LIMIT) {
+      out.push("<!-- transcript size cap reached; remaining messages not exported -->", "");
+      break;
+    }
+    out.push(block);
+  }
+  if (ordered.length > count) {
+    out.push(
+      `> ${ordered.length - count} more message(s) not exported (per-run message cap).`,
+      "",
+    );
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
+}
+
 function renderAgentRun(
   run: AgentTask,
   agentName: (id: string) => string | undefined,
+  execution?: ExportedExecution,
 ): string {
   const who = agentName(run.agent_id) || run.agent_id;
   const when = [run.dispatched_at, run.started_at, run.completed_at]
     .filter(Boolean)
     .join(" → ");
-  const lines = [`- **${who}** · ${run.status}${when ? ` · ${when}` : ""}`];
+  const link = execution?.packedName
+    ? ` · [transcript](${execution.packedName})`
+    : execution?.error
+      ? ` · transcript unavailable (${execution.error})`
+      : "";
+  const lines = [`- **${who}** · ${run.status}${when ? ` · ${when}` : ""}${link}`];
   if (run.error) {
     lines.push(`  - error: ${run.error}`);
   }
@@ -403,7 +497,9 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
       "sit in the `attachments/` folder next to this document and are",
       "referenced from it by relative path. Files from the issue's agent",
       "workspaces, when included, sit under the `workspace/` folder with",
-      "their original paths. Continue the work from the latest",
+      "their original paths. Per-run execution transcripts sit under",
+      "the `executions/` folder, linked from the Agent runs section.",
+      "Continue the work from the latest",
       "state in the timeline; treat the timeline as the authoritative history.",
     ].join("\n> "),
   );
@@ -474,7 +570,15 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
     out.push(
       "## Agent runs",
       "",
-      input.agentRuns.map((run) => renderAgentRun(run, input.runAgentName)).join("\n"),
+      input.agentRuns
+        .map((run) =>
+          renderAgentRun(
+            run,
+            input.runAgentName,
+            input.executions.find((e) => e.run.id === run.id),
+          ),
+        )
+        .join("\n"),
       "",
     );
   }

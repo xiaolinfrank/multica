@@ -10,11 +10,14 @@ import type {
   TimelineEntry,
 } from "@multica/core/types";
 import {
+  EXPORT_EXECUTION_ENTRY_CHAR_LIMIT,
+  EXPORT_EXECUTION_MESSAGE_LIMIT,
   buildAttachmentUrlMap,
   buildIssueExportMarkdown,
   decodePropertyValue,
   isSafeRelativePath,
   issueExportFilename,
+  renderTaskTranscript,
   rewriteAttachmentUrls,
   type ExportChildIssue,
   type ExportedAttachment,
@@ -89,6 +92,7 @@ function makeInput(overrides: Partial<IssueExportInput> = {}): IssueExportInput 
     timeline: [],
     attachments: [],
     workspaces: [],
+    executions: [],
     childTree: [],
     statusLabel: "To do",
     agentRuns: [],
@@ -594,5 +598,100 @@ describe("isSafeRelativePath", () => {
     expect(isSafeRelativePath("a/../../x")).toBe(false);
     expect(isSafeRelativePath("a//b")).toBe(false);
     expect(isSafeRelativePath("C:\\x")).toBe(false);
+  });
+});
+
+describe("execution transcripts", () => {
+  const run = {
+    id: "t-1",
+    agent_id: "ag-1",
+    runtime_id: "rt-1",
+    issue_id: "i-1",
+    status: "completed",
+    priority: 0,
+    dispatched_at: "2025-01-01T01:00:00Z",
+    started_at: null,
+    completed_at: "2025-01-01T01:02:00Z",
+    result: null,
+    error: null,
+  } as unknown as AgentTask;
+
+  it("renders the message stream per type in seq order", () => {
+    const md = renderTaskTranscript({
+      run,
+      agentName: "Mika",
+      messages: [
+        { task_id: "t-1", issue_id: "i-1", seq: 2, type: "tool_use", tool: "web_search", input: { q: "GDPR" }, created_at: "2025-01-01T01:00:10Z" },
+        { task_id: "t-1", issue_id: "i-1", seq: 1, type: "thinking", content: "Plan first.", created_at: "2025-01-01T01:00:05Z" },
+        { task_id: "t-1", issue_id: "i-1", seq: 3, type: "tool_result", output: "found 3 docs", created_at: "2025-01-01T01:00:20Z" },
+        { task_id: "t-1", issue_id: "i-1", seq: 4, type: "text", content: "Done.", created_at: "2025-01-01T01:01:00Z" },
+        { task_id: "t-1", issue_id: "i-1", seq: 5, type: "error", content: "boom", created_at: "2025-01-01T01:01:30Z" },
+      ],
+      exportedAt: "2026-09-14T00:00:00Z",
+    });
+    const heads = md.split("\n").filter((l) => l.startsWith("### #"));
+    expect(heads[0]).toContain("#1 · thinking");
+    expect(heads[1]).toContain("#2 · tool_use · web_search");
+    expect(heads[2]).toContain("#3 · tool_result");
+    expect(md).toContain('"q": "GDPR"');
+    expect(md).toContain("found 3 docs");
+    expect(md).toContain("Done.");
+    expect(md).toContain("boom");
+    expect(md).toContain("# Execution transcript — Mika · completed");
+  });
+
+  it("truncates oversized message bodies and caps message count", () => {
+    const many = Array.from({ length: EXPORT_EXECUTION_MESSAGE_LIMIT + 3 }, (_, i) => ({
+      task_id: "t-1",
+      issue_id: "i-1",
+      seq: i + 1,
+      type: "text" as const,
+      content: "x",
+    }));
+    const md = renderTaskTranscript({
+      run,
+      messages: [
+        ...many,
+        {
+          task_id: "t-1",
+          issue_id: "i-1",
+          seq: 0,
+          type: "tool_result" as const,
+          output: "y".repeat(EXPORT_EXECUTION_ENTRY_CHAR_LIMIT + 10),
+        },
+      ],
+      exportedAt: "2026-09-14T00:00:00Z",
+    });
+    expect(md).toContain("4 more message(s) not exported");
+    expect(md).toContain(`…(truncated, ${EXPORT_EXECUTION_ENTRY_CHAR_LIMIT + 10} chars total)`);
+  });
+
+  it("stops at the per-file size cap", () => {
+    const big = Array.from({ length: 300 }, (_, i) => ({
+      task_id: "t-1",
+      issue_id: "i-1",
+      seq: i + 1,
+      type: "text" as const,
+      content: "z".repeat(4096),
+    }));
+    const md = renderTaskTranscript({ run, messages: big, exportedAt: "x" });
+    expect(md).toContain("transcript size cap reached; remaining messages not exported");
+  });
+
+  it("links each run to its transcript file in the Agent runs section", () => {
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        agentRuns: [run],
+        executions: [{ run, packedName: "executions/run-1-abc12345.md" }],
+      }),
+    );
+    expect(md).toContain("[transcript](executions/run-1-abc12345.md)");
+  });
+
+  it("notes an unavailable transcript next to the run", () => {
+    const md = buildIssueExportMarkdown(
+      makeInput({ agentRuns: [run], executions: [{ run, error: "transcript unavailable" }] }),
+    );
+    expect(md).toContain("transcript unavailable (transcript unavailable)");
   });
 });
