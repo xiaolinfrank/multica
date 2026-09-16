@@ -95,14 +95,15 @@ type Querier interface {
 	ListIssueStatusKeysByCategories(ctx context.Context, arg db.ListIssueStatusKeysByCategoriesParams) ([]string, error)
 }
 
-// Canonical returns the 7 built-in status keys in display order.
+// Canonical returns the 7 canonical status keys in display order.
 func Canonical() []string {
 	out := make([]string, len(canonicalOrder))
 	copy(out, canonicalOrder)
 	return out
 }
 
-// IsBuiltIn reports whether key is one of the 7 canonical statuses.
+// IsBuiltIn reports whether key is one of the 7 canonical, platform-owned
+// statuses. None of them can be reused as a custom key.
 func IsBuiltIn(key string) bool {
 	_, ok := canonicalRank[key]
 	return ok
@@ -164,7 +165,7 @@ func BehaviorsForCategory(category string) []string {
 	}
 }
 
-// ParseCategory accepts previous API enum spellings at the boundary only.
+// ParseCategory normalizes API spellings and pre-backfill stored categories.
 func ParseCategory(value string) (string, bool) {
 	if IsCategory(value) {
 		return value, true
@@ -183,6 +184,9 @@ func ParseCategory(value string) (string, bool) {
 // clients. This is a presentation adapter, NEVER an execution policy. New clients
 // normalize it into four lifecycle categories. No legacy behavior is persisted.
 func WireCategory(status, category string) string {
+	if normalized, ok := ParseCategory(category); ok {
+		category = normalized
+	}
 	if IsBuiltIn(status) {
 		return status
 	}
@@ -203,6 +207,7 @@ func WireCategory(status, category string) string {
 // Custom statuses inherit only terminal lifecycle semantics, not parked, review,
 // blocked or active-agent recovery behavior. Nonterminal keys stay distinct.
 func customBehavior(status, category string) string {
+	category, _ = ParseCategory(category)
 	switch category {
 	case CategoryDone:
 		return Done
@@ -312,12 +317,14 @@ func DeriveKey(name, category string, taken map[string]bool) (string, error) {
 // base_<n> that is. n starts at 2 so the series reads as "the second one".
 //
 // The scan is bounded by the CATALOG, not by a policy number. Every candidate
-// it tests is distinct, and at most len(taken)+7 keys can be occupied (the
-// workspace's own plus the built-ins), so by the pigeonhole principle a free
-// one has to turn up within that many attempts plus one. Picking a round
-// constant instead would invent a cap on custom statuses that exists nowhere
-// else in the product, and would fail with "provide one explicitly" — the very
-// error this package was changed to stop showing a UI that has no key field.
+// it tests is distinct, and only len(taken) plus the reserved names (the 7
+// canonical keys and the 4 category names) can be occupied, so by the
+// pigeonhole principle a free one has to turn up within that many attempts
+// plus one.
+// Picking a round constant instead would invent a cap on custom statuses that
+// exists nowhere else in the product, and would fail with "provide one
+// explicitly" — the very error this package was changed to stop showing a UI
+// that has no key field.
 func firstFreeKey(base string, taken map[string]bool) (string, error) {
 	if !keyOccupied(base, taken) {
 		return ValidateKey(base)
@@ -422,21 +429,35 @@ func Category(ctx context.Context, q Querier, workspaceID pgtype.UUID, status st
 	return category
 }
 
+// CategoryWithError resolves lifecycle for side-effect decisions. Unlike
+// Category, it preserves catalog failures so a caller can defer work and retry.
+// Built-ins still resolve without reading the catalog.
+func CategoryWithError(ctx context.Context, q Querier, workspaceID pgtype.UUID, status string) (string, error) {
+	category, _, err := categoryAndName(ctx, q, workspaceID, status)
+	return category, err
+}
+
 // CategoryAndName is the payload-oriented counterpart to EffectiveAndName.
 // It shares one catalog read while returning the public category rather than
 // the internal behavior projection.
 func CategoryAndName(ctx context.Context, q Querier, workspaceID pgtype.UUID, status string) (string, string) {
+	category, name, _ := categoryAndName(ctx, q, workspaceID, status)
+	return category, name
+}
+
+func categoryAndName(ctx context.Context, q Querier, workspaceID pgtype.UUID, status string) (string, string, error) {
 	if category, ok := CategoryForBehavior(status); ok {
-		return category, ""
+		return category, "", nil
 	}
 	entry, err := q.GetIssueStatusEntryByKey(ctx, db.GetIssueStatusEntryByKeyParams{WorkspaceID: workspaceID, Key: status})
 	if err != nil {
-		return "", ""
+		return "", "", fmt.Errorf("resolve issue status %q category: %w", status, err)
 	}
-	if !IsCategory(entry.Category) {
-		return "", entry.Name
+	category, ok := ParseCategory(entry.Category)
+	if !ok {
+		return "", entry.Name, fmt.Errorf("invalid category %q for issue status %q", entry.Category, status)
 	}
-	return entry.Category, entry.Name
+	return category, entry.Name, nil
 }
 
 // Resolve validates that status is usable in this workspace, returning the
@@ -596,7 +617,7 @@ func (r *Resolver) load(ctx context.Context, q Querier) {
 	r.categories = make(map[string]string, len(entries))
 	r.names = make(map[string]string, len(entries))
 	for _, e := range entries {
-		r.categories[e.Key] = e.Category
+		r.categories[e.Key], _ = ParseCategory(e.Category)
 		r.names[e.Key] = e.Name
 	}
 }
@@ -747,10 +768,11 @@ func CustomKeyCategories(ctx context.Context, q Querier, workspaceID pgtype.UUID
 	}
 	out := make(map[string]string, len(entries))
 	for _, e := range entries {
-		if IsBuiltIn(e.Key) || !IsCategory(e.Category) {
+		category, ok := ParseCategory(e.Category)
+		if IsBuiltIn(e.Key) || !ok {
 			continue
 		}
-		out[e.Key] = e.Category
+		out[e.Key] = category
 	}
 	return out, nil
 }

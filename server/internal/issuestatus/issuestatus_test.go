@@ -3,6 +3,7 @@ package issuestatus
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,13 +15,49 @@ import (
 
 var testWorkspace = pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
 
+func TestCategoryWithError(t *testing.T) {
+	ctx := context.Background()
+	q := newFakeQuerier()
+	q.err = errors.New("catalog unavailable")
+	for _, status := range Canonical() {
+		want, _ := CategoryForBehavior(status)
+		if got, err := CategoryWithError(ctx, q, testWorkspace, status); err != nil || got != want {
+			t.Errorf("built-in %s: category=%q err=%v; want %q", status, got, err, want)
+		}
+	}
+	if q.lookups != 0 {
+		t.Fatalf("built-in resolution read the catalog %d times", q.lookups)
+	}
+	if got, err := CategoryWithError(ctx, q, testWorkspace, "custom"); got != "" || !errors.Is(err, q.err) {
+		t.Fatalf("catalog error: category=%q err=%v; want the original read error", got, err)
+	}
+	q.err = nil
+	if got, err := CategoryWithError(ctx, q, testWorkspace, "missing"); got != "" || !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("missing status: category=%q err=%v; want no rows", got, err)
+	}
+	for _, category := range Categories() {
+		q.entries["custom"] = db.IssueStatus{Key: "custom", Category: category, Name: "Custom", ArchivedAt: pgtype.Timestamptz{Valid: true}}
+		if got, err := CategoryWithError(ctx, q, testWorkspace, "custom"); err != nil || got != category {
+			t.Errorf("archived custom %s: category=%q err=%v", category, got, err)
+		}
+	}
+	q.entries["custom"] = db.IssueStatus{Key: "custom", Category: "invalid", Name: "Custom"}
+	if got, err := CategoryWithError(ctx, q, testWorkspace, "custom"); got != "" || err == nil {
+		t.Fatalf("invalid category: category=%q err=%v; want an error", got, err)
+	}
+	if category, name := CategoryAndName(ctx, q, testWorkspace, "custom"); category != "" || name != "Custom" {
+		t.Fatalf("display lookup changed: category=%q name=%q", category, name)
+	}
+}
+
 // fakeQuerier is an in-memory catalog keyed by (workspace, key). It records
 // lookups so a test can assert that the built-in fast path issues NO query.
 type fakeQuerier struct {
-	entries map[string]db.IssueStatus
-	lookups int
-	lists   int
-	err     error
+	entries  map[string]db.IssueStatus
+	lookups  int
+	lists    int
+	keyLists int
+	err      error
 }
 
 func newFakeQuerier(entries ...db.IssueStatus) *fakeQuerier {
@@ -63,6 +100,7 @@ func (f *fakeQuerier) SeedIssueStatusEntries(_ context.Context, _ pgtype.UUID) e
 }
 
 func (f *fakeQuerier) ListIssueStatusKeysByCategories(_ context.Context, arg db.ListIssueStatusKeysByCategoriesParams) ([]string, error) {
+	f.keyLists++
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -205,6 +243,52 @@ func TestCategoriesCollapseBuiltInsIntoFourLifecycleGroups(t *testing.T) {
 		if got, ok := CategoryForBehavior(status); !ok || got != category {
 			t.Errorf("CategoryForBehavior(%q) = %q, %v; want %q, true", status, got, ok, category)
 		}
+	}
+}
+
+// `triage` is an ordinary custom status key (MUL-7400). The name was reserved
+// while the server read `status = 'triage'` as "in Triage"; since Triage moved
+// to issue.triage_state nothing reads it that way, so nothing here may treat
+// the key as platform-owned — a workspace that names a status Triage keeps the
+// obvious key instead of being pushed onto triage_2.
+func TestTriageIsNotReserved(t *testing.T) {
+	ctx := context.Background()
+	const triage = "triage"
+
+	if IsBuiltIn(triage) {
+		t.Error("IsBuiltIn(triage) = true; the key is not platform-owned")
+	}
+	if IsCategory(triage) {
+		t.Error("IsCategory(triage) = true; it was never a lifecycle category")
+	}
+	if slices.Contains(Canonical(), triage) {
+		t.Error("triage must not be a canonical status")
+	}
+	if got, err := ValidateKey("Triage"); err != nil || got != triage {
+		t.Errorf("ValidateKey(Triage) = %q, %v; want triage", got, err)
+	}
+	if got, err := DeriveKey("Triage", CategoryUnstarted, takenSet()); err != nil || got != triage {
+		t.Errorf("DeriveKey(Triage) = %q, %v; want triage", got, err)
+	}
+	if got, err := firstFreeKey(triage, takenSet()); err != nil || got != triage {
+		t.Errorf("firstFreeKey(triage) = %q, %v; want triage", got, err)
+	}
+	// Only a workspace that already owns the key gets a derived one, by the
+	// same rule as any other name.
+	if got, err := firstFreeKey(triage, takenSet(triage)); err != nil || got != "triage_2" {
+		t.Errorf("firstFreeKey(triage) with triage taken = %q, %v; want triage_2", got, err)
+	}
+
+	// And it resolves like any custom key: unknown without a catalog row,
+	// itself with one.
+	q := newFakeQuerier(custom("human_review", InReview))
+	if _, err := Resolve(ctx, q, testWorkspace, triage); !errors.Is(err, ErrUnknownStatus) {
+		t.Errorf("Resolve(triage) with no row = %v, want ErrUnknownStatus", err)
+	}
+	withRow := newFakeQuerier(custom(triage, CategoryUnstarted))
+	entry, err := Resolve(ctx, withRow, testWorkspace, triage)
+	if err != nil || entry.Key != triage {
+		t.Errorf("Resolve(triage) with a row = %q, %v; want the custom entry", entry.Key, err)
 	}
 }
 
@@ -577,6 +661,19 @@ func TestExpandCategories(t *testing.T) {
 		}
 		if got != nil {
 			t.Errorf("expand of a non-category = %v, want nil", got)
+		}
+	})
+
+	// A non-category mixed in with real ones drops out; the rest still expand.
+	t.Run("drops a non-category alongside real ones", func(t *testing.T) {
+		q := newFakeQuerier(custom("shipped", CategoryDone))
+		alongside, err := ExpandCategories(ctx, q, testWorkspace, []string{CategoryDone, CategoryClosed, "not_a_category"})
+		if err != nil {
+			t.Fatalf("expand: %v", err)
+		}
+		slices.Sort(alongside)
+		if want := []string{Cancelled, Done, "shipped"}; !slices.Equal(alongside, want) {
+			t.Errorf("expand(done, closed, not_a_category) = %v, want %v", alongside, want)
 		}
 	})
 }

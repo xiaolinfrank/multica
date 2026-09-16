@@ -1152,7 +1152,7 @@ export function IssuesHeader({
   allowGantt = false,
   dateFilter = null,
   onDateFilterChange,
-  isRefreshing = false,
+  isRefreshing,
   facetCountsExact = true,
   tableFacetCounts,
   onTableFacetChange,
@@ -1165,6 +1165,7 @@ export function IssuesHeader({
   allowGantt?: boolean;
   dateFilter?: IssueDateFilter | null;
   onDateFilterChange?: (filter: IssueDateFilter | null) => void;
+  /** Omit when the page title already displays refresh feedback. */
   isRefreshing?: boolean;
   /** See IssueDisplayControls.facetCountsExact. */
   facetCountsExact?: boolean;
@@ -1348,7 +1349,7 @@ export function IssuesHeader({
             onTableFacetChange={onTableFacetChange}
             viewBaseline={viewBaseline}
           />
-          <ViewRefreshIndicator active={isRefreshing} />
+          {isRefreshing !== undefined && <ViewRefreshIndicator active={isRefreshing} />}
         </div>
       </div>
     </div>
