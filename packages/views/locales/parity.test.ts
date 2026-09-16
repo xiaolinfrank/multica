@@ -49,11 +49,21 @@ function keySet(bundle: Record<string, unknown>): Set<string> {
 }
 
 const en = RESOURCES.en;
+// The fork keeps ja/ko/zh-Hans in lockstep with EN. Locales upstream adds
+// on its own (e.g. fr) ship upstream namespaces only: the fork does not
+// translate fork-only namespaces (fleet/office/gallery/cockpit/graph/env/
+// workspaces) into them, and missing keys fall back to EN at runtime. Keep
+// parity enforcement on the locales the fork maintains.
+const FORK_TRANSLATED_LOCALES = ["ja", "ko", "zh-Hans"];
 const translatedLocales = Object.keys(RESOURCES).filter(
-  (locale) => locale !== "en",
+  (locale) => locale !== "en" && FORK_TRANSLATED_LOCALES.includes(locale),
 );
 
 describe("locale bundle parity", () => {
+  it("lists only locales that exist in RESOURCES", () => {
+    expect(FORK_TRANSLATED_LOCALES.every((l) => l in RESOURCES)).toBe(true);
+  });
+
   it("registers every JSON file in RESOURCES (EN)", () => {
     expect(Object.keys(en).sort()).toEqual(jsonNamespacesIn("en"));
   });
