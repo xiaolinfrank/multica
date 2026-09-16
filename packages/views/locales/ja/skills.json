@@ -357,7 +357,8 @@
     "conflict_footer": "{{count}} 件の競合判断が残っています。",
     "conflict_apply_button": "決定を適用",
     "conflict_missing_resolution": "この競合の処理方法を選択してください。",
-    "conflict_name_still_exists": "その名前はすでに存在します。別の名前を選択するか、スキップしてください。"
+    "conflict_name_still_exists": "その名前はすでに存在します。別の名前を選択するか、スキップしてください。",
+    "no_skills_hint": "このランタイムには、まだ検出可能なローカルスキルがありません。"
   },
   "runtime_browse": {
     "hint": "接続中の各ランタイムのマシンにインストールされているスキルです（例: ~/.claude/skills、~/.codex/skills）。閲覧のみ — このワークスペースに追加するには、新規スキル → ランタイムから を使用してください。",

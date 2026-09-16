@@ -101,7 +101,8 @@
     "breadcrumb_title": "Issues",
     "breadcrumb_workspace_fallback": "Workspace",
     "empty_title": "No issues yet",
-    "move_failed": "Failed to move issue"
+    "move_failed": "Failed to move issue",
+    "empty_hint": "Create an issue to get started."
   },
   "status": {
     "backlog": "Backlog",

@@ -99,7 +99,8 @@
     "breadcrumb_title": "タスク",
     "breadcrumb_workspace_fallback": "ワークスペース",
     "empty_title": "まだタスクがありません",
-    "move_failed": "タスクを移動できませんでした"
+    "move_failed": "タスクを移動できませんでした",
+    "empty_hint": "タスクを作成して始めましょう。"
   },
   "status": {
     "backlog": "バックログ",

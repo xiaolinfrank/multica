@@ -99,7 +99,8 @@
     "breadcrumb_title": "태스크",
     "breadcrumb_workspace_fallback": "워크스페이스",
     "empty_title": "아직 태스크가 없습니다",
-    "move_failed": "태스크를 이동하지 못했습니다"
+    "move_failed": "태스크를 이동하지 못했습니다",
+    "empty_hint": "태스크를 만들어 시작하세요."
   },
   "status": {
     "backlog": "백로그",

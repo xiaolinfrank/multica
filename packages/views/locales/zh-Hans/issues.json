@@ -99,7 +99,8 @@
     "breadcrumb_title": "任务",
     "breadcrumb_workspace_fallback": "工作区",
     "empty_title": "还没有任务",
-    "move_failed": "移动任务失败"
+    "move_failed": "移动任务失败",
+    "empty_hint": "创建一个任务开始使用。"
   },
   "status": {
     "backlog": "待规划",
