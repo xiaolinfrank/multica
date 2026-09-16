@@ -1204,7 +1204,12 @@ func TestShouldCleanTaskDir_CompletedTaskTTLUnknownCategoryFallsBackAndFailsClos
 // Terminality is a category question too: `closed` covers Cancelled and every
 // custom status a workspace parks cancelled work on, and neither key is
 // something this binary can enumerate. (MUL-7364)
-func TestShouldCleanTaskDir_TerminalCategoryReclaimsWorkdir(t *testing.T) {
+// Fork policy: a terminal lifecycle category does NOT reclaim the whole
+// workdir (persistent workspaces, see gcDecisionIssueResult). Long-idle
+// terminal tasks still get the artifact-only cleanup, so the workdir itself
+// survives. Upstream's variant of this test asserts gcActionClean; ours pins
+// the fork divergence.
+func TestShouldCleanTaskDir_TerminalCategoryKeepsWorkdirReclaimsArtifacts(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
@@ -1233,8 +1238,8 @@ func TestShouldCleanTaskDir_TerminalCategoryReclaimsWorkdir(t *testing.T) {
 				CompletedAt: time.Now().Add(-30 * 24 * time.Hour),
 			})
 
-			if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionClean {
-				t.Fatalf("expected terminal category to reclaim the workdir, got %d", action)
+			if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionCleanArtifacts {
+				t.Fatalf("expected terminal category to keep the workdir with artifact-only cleanup, got %d", action)
 			}
 		})
 	}
