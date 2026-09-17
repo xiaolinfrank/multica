@@ -223,11 +223,15 @@ describe("PendingCreationsStrip", () => {
   });
 
   it("collapses the tail behind a control rather than growing without bound", async () => {
+    // Relative timestamps: derivePendingCreations drops rows older than
+    // PENDING_CREATION_MAX_AGE_MS (24 h), so fixed dates rot the fixture and
+    // the whole strip renders empty once the clock passes them.
+    const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
     mockState.snapshot = [
-      makeTask({ id: "t1", created_at: "2026-09-11T12:00:03Z" }),
-      makeTask({ id: "t2", created_at: "2026-09-11T12:00:02Z" }),
-      makeTask({ id: "t3", created_at: "2026-09-11T12:00:01Z" }),
-      makeTask({ id: "t4", created_at: "2026-09-11T12:00:00Z" }),
+      makeTask({ id: "t1", created_at: secondsAgo(0) }),
+      makeTask({ id: "t2", created_at: secondsAgo(1) }),
+      makeTask({ id: "t3", created_at: secondsAgo(2) }),
+      makeTask({ id: "t4", created_at: secondsAgo(3) }),
     ];
     const user = userEvent.setup();
     render(<PendingCreationsStrip />);
