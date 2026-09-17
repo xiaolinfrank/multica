@@ -2073,6 +2073,20 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
+			// Modules (BayClaw fork): project subdivisions. Reads and writes are
+			// open to any workspace member; deletion is owner/admin gated in
+			// the handler, like project deletion.
+			r.Route("/api/modules", func(r chi.Router) {
+				r.Get("/", h.ListModules)
+				r.Post("/", h.CreateModule)
+				r.Put("/reorder", h.ReorderModules)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetModule)
+					r.Put("/", h.UpdateModule)
+					r.Delete("/", h.DeleteModule)
+				})
+			})
+
 			// Squads
 			r.Route("/api/squads", func(r chi.Router) {
 				r.Get("/", h.ListSquads)

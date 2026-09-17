@@ -10,6 +10,7 @@ import type {
   IssueTableFacetsResponse,
   IssueTableGroupsRequest,
   IssueTableQuerySpec,
+  Module,
   Project,
   WorkingAgentSummary,
 } from "@multica/core/types";
@@ -35,7 +36,7 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import type { IssueFilters } from "../utils/filter";
 import type { ChildProgress } from "../components/list-row";
 import { IssueTableExportIntegrityError } from "../components/table-view-model";
-import type { IssueSurfaceMode } from "./types";
+import type { IssueSurfaceMode, IssueSurfaceModuleFilter } from "./types";
 import type { IssueSurfaceActions } from "./actions-context";
 import {
   type IssueSurfaceSelection,
@@ -61,6 +62,8 @@ interface UseIssueSurfaceControllerInput {
   modes: IssueSurfaceMode[];
   createDefaults?: IssueCreateDefaults;
   search?: string;
+  /** Page-level module narrowing (project detail module strip). */
+  moduleFilter?: IssueSurfaceModuleFilter;
 }
 
 export interface IssueSurfaceController {
@@ -97,6 +100,7 @@ export interface IssueSurfaceController {
   selection: IssueSurfaceSelection;
   childProgressMap: Map<string, ChildProgress>;
   projectMap: Map<string, Project>;
+  moduleMap: Map<string, Module>;
   resolveTableExportLookups: (needs: {
     projects: boolean;
     childProgress: boolean;
@@ -202,6 +206,7 @@ export function useIssueSurfaceController({
   modes,
   createDefaults,
   search = "",
+  moduleFilter,
 }: UseIssueSurfaceControllerInput): IssueSurfaceController {
   const wsId = useWorkspaceId();
   const queryPlan = useMemo<IssueSurfaceQueryPlan>(
@@ -388,6 +393,9 @@ export function useIssueSurfaceController({
 
   // Exactly the filters `clearFilters()` resets, so an empty surface that
   // reports "filters hid everything" can always offer a button that fixes it.
+  // The page-level module filter is deliberately out too: the strip chip
+  // owns it and clearFilters cannot reset it, so counting it here would
+  // offer a dead button on a module with no issues.
   // Display toggles (show sub-issues) and per-surface search are deliberately
   // out: they have their own affordances and clearing filters would not undo
   // them.
@@ -477,6 +485,12 @@ export function useIssueSurfaceController({
           ? { project_ids: viewProjectFilters }
           : {}),
         ...(viewIncludeNoProject ? { include_no_project: true } : {}),
+        ...(moduleFilter?.module_ids?.length
+          ? { module_ids: moduleFilter.module_ids }
+          : {}),
+        ...(moduleFilter?.include_no_module
+          ? { include_no_module: true }
+          : {}),
         ...(labelFilters.length > 0 ? { label_ids: labelFilters } : {}),
         ...(Object.keys(effectivePropertyFilters).length > 0
           ? { properties: effectivePropertyFilters }
@@ -502,6 +516,7 @@ export function useIssueSurfaceController({
     effectivePropertyFilters,
     includeNoAssignee,
     labelFilters,
+    moduleFilter,
     priorityFilters,
     scope,
     showSubIssues,
@@ -630,6 +645,7 @@ export function useIssueSurfaceController({
       };
     }
     if (effectiveGrouping === "project") return { kind: "project" };
+    if (effectiveGrouping === "module") return { kind: "module" };
     const propertyId = propertyIdFromViewKey(effectiveGrouping);
     if (propertyId) {
       return {
@@ -680,6 +696,7 @@ export function useIssueSurfaceController({
         creatorFilters,
         viewProjectFilters,
         viewIncludeNoProject,
+        moduleFilter,
         labelFilters,
         effectivePropertyFilters,
         agentRunningFilter,
@@ -696,6 +713,7 @@ export function useIssueSurfaceController({
       effectivePropertyFilters,
       includeNoAssignee,
       labelFilters,
+      moduleFilter,
       priorityFilters,
       showSubIssues,
       statusFilters,
@@ -728,10 +746,19 @@ export function useIssueSurfaceController({
     creatorFilters,
     projectFilters: viewProjectFilters,
     includeNoProject: viewIncludeNoProject,
+    moduleFilters: moduleFilter?.module_ids ?? [],
+    includeNoModule: moduleFilter?.include_no_module ?? false,
     labelFilters,
     propertyFilters: effectivePropertyFilters,
     workingIssueIDs,
     showSubIssues,
+    // Module titles resolve through the modules query (group headers, the
+    // module table column), like project titles do through loadProjects.
+    loadModules:
+      (usesTable && tableColumns.some((column) => column.key === "module")) ||
+      (usesTable && tableGrouping === "module") ||
+      (effectiveViewMode === "board" && effectiveGrouping === "module") ||
+      (effectiveViewMode === "swimlane" && swimlaneGrouping === "module"),
     loadProjects:
       cardProperties.project ||
       (usesTable && tableColumns.some((column) => column.key === "project")) ||

@@ -67,6 +67,9 @@ type IssueResponse struct {
 	CreatorID     string  `json:"creator_id"`
 	ParentIssueID *string `json:"parent_issue_id"`
 	ProjectID     *string `json:"project_id"`
+	// ModuleID names the module the issue is filed into within its project;
+	// nil = directly under the project.
+	ModuleID      *string `json:"module_id"`
 	Position      float64 `json:"position"`
 	// Stage groups sub-issues under the same parent into ordered barrier
 	// groups (null = unstaged). See issue_child_done.go for how a closed
@@ -347,6 +350,7 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		CreatorID:      uuidToString(i.CreatorID),
 		ParentIssueID:  uuidToPtr(i.ParentIssueID),
 		ProjectID:      uuidToPtr(i.ProjectID),
+		ModuleID:       uuidToPtr(i.ModuleID),
 		Position:       i.Position,
 		Stage:          int4ToPtr(i.Stage),
 		StartDate:      dateToPtr(i.StartDate),
@@ -384,6 +388,7 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		CreatorID:      uuidToString(i.CreatorID),
 		ParentIssueID:  uuidToPtr(i.ParentIssueID),
 		ProjectID:      uuidToPtr(i.ProjectID),
+		ModuleID:       uuidToPtr(i.ModuleID),
 		Position:       i.Position,
 		Stage:          int4ToPtr(i.Stage),
 		StartDate:      dateToPtr(i.StartDate),
@@ -453,6 +458,7 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		CreatorID:      uuidToString(i.CreatorID),
 		ParentIssueID:  uuidToPtr(i.ParentIssueID),
 		ProjectID:      uuidToPtr(i.ProjectID),
+		ModuleID:       uuidToPtr(i.ModuleID),
 		Position:       i.Position,
 		Stage:          int4ToPtr(i.Stage),
 		StartDate:      dateToPtr(i.StartDate),
@@ -944,7 +950,7 @@ func buildSearchQuery(phrase string, terms []string, queryNum int, hasNum bool, 
 	SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position,
-		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id,
+		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id,
 		i.revision,
 		pc.match_source,
 		COALESCE(c.content, '') AS matched_comment_content
@@ -1040,6 +1046,7 @@ func (h *Handler) SearchIssues(w http.ResponseWriter, r *http.Request) {
 				&sr.issue.LastActivityAt,
 				&sr.issue.Number,
 				&sr.issue.ProjectID,
+				&sr.issue.ModuleID,
 				&sr.issue.Revision,
 				&sr.matchSource,
 				&sr.matchedCommentContent,
@@ -1174,6 +1181,19 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		projectFilter = id
 	}
+	// Module lane filter: module_id narrows to one module; include_no_module
+	// widens it to also match issues filed directly under the project. The
+	// flag accepts both "true" and "1".
+	var moduleFilter pgtype.UUID
+	if m := r.URL.Query().Get("module_id"); m != "" {
+		id, ok := parseUUIDOrBadRequest(w, m, "module_id")
+		if !ok {
+			return
+		}
+		moduleFilter = id
+	}
+	rawIncludeNoModule := r.URL.Query().Get("include_no_module")
+	includeNoModule := rawIncludeNoModule == "true" || rawIncludeNoModule == "1"
 	// involves_user_id widens the assignee filter to surface issues where the
 	// user is the indirect assignee (their owned agent, or a squad they belong
 	// to / lead / have an agent inside). Direct member-assignment is excluded
@@ -1240,6 +1260,8 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 			AssigneeIds:        assigneeIdsFilter,
 			CreatorID:          creatorFilter,
 			ProjectID:          projectFilter,
+			ModuleID:           moduleFilter,
+			IncludeNoModule:    pgtype.Bool{Bool: includeNoModule, Valid: true},
 			InvolvesUserID:     involvesUserFilter,
 			MetadataFilter:     metadataFilter,
 			PropertiesFilter:   openPropertiesFilter,
@@ -1432,6 +1454,26 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	if projectFilter.Valid {
 		where = append(where, fmt.Sprintf("i.project_id = %s::uuid", addArg(projectFilter)))
 	}
+	// module_id / module_ids / include_no_module compile to one OR predicate
+	// so module_id + include_no_module reads as "this module or no module"
+	// rather than an unsatisfiable AND of the two.
+	moduleIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("module_ids"), "module_ids")
+	if !ok {
+		return
+	}
+	if moduleFilter.Valid || len(moduleIDs) > 0 || includeNoModule {
+		ors := make([]string, 0, 3)
+		if moduleFilter.Valid {
+			ors = append(ors, fmt.Sprintf("i.module_id = %s::uuid", addArg(moduleFilter)))
+		}
+		if len(moduleIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.module_id = ANY(%s::uuid[])", addArg(moduleIDs)))
+		}
+		if includeNoModule {
+			ors = append(ors, "i.module_id IS NULL")
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
 
 	// Table facets must be part of the server window. Applying them after
 	// LIMIT/OFFSET hides matches that live on later pages and makes `total`
@@ -1610,7 +1652,7 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 
 	query := fmt.Sprintf(`SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
-       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.metadata, i.stage, i.properties,
+       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties,
 	   i.revision
 FROM issue i
 WHERE %s
@@ -1648,6 +1690,7 @@ LIMIT %s OFFSET %s`, whereSql, orderBy, limitRef, offsetRef)
 			&row.LastActivityAt,
 			&row.Number,
 			&row.ProjectID,
+			&row.ModuleID,
 			&row.Metadata,
 			&row.Stage,
 			&row.Properties,
@@ -2080,6 +2123,38 @@ func (h *Handler) ListGroupedIssues(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "("+strings.Join(ors, " OR ")+")")
 	}
 
+	// module_id / module_ids / include_no_module compile to one OR predicate,
+	// same as ListIssues, so module_id + include_no_module reads as "this
+	// module or no module" rather than an unsatisfiable AND of the two. The
+	// singular form is what the client's listGroupedIssues sends; accepting
+	// only the plural silently dropped it.
+	var moduleFilter pgtype.UUID
+	if m := r.URL.Query().Get("module_id"); m != "" {
+		id, ok := parseUUIDOrBadRequest(w, m, "module_id")
+		if !ok {
+			return
+		}
+		moduleFilter = id
+	}
+	moduleIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("module_ids"), "module_ids")
+	if !ok {
+		return
+	}
+	includeNoModule := r.URL.Query().Get("include_no_module") == "true"
+	if moduleFilter.Valid || len(moduleIDs) > 0 || includeNoModule {
+		ors := make([]string, 0, 3)
+		if moduleFilter.Valid {
+			ors = append(ors, fmt.Sprintf("i.module_id = %s::uuid", addArg(moduleFilter)))
+		}
+		if len(moduleIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.module_id = ANY(%s::uuid[])", addArg(moduleIDs)))
+		}
+		if includeNoModule {
+			ors = append(ors, "i.module_id IS NULL")
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+
 	labelIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("label_ids"), "label_ids")
 	if !ok {
 		return
@@ -2210,7 +2285,7 @@ WITH ranked AS (
 		i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at,
-		i.number, i.project_id, i.metadata, i.stage, i.properties, i.revision,
+		i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties, i.revision,
 		COUNT(*) OVER (PARTITION BY i.assignee_type, i.assignee_id) AS group_total,
 		ROW_NUMBER() OVER (
 			PARTITION BY i.assignee_type, i.assignee_id
@@ -2223,7 +2298,7 @@ SELECT
 	id, workspace_id, title, description, status, priority,
 	assignee_type, assignee_id, creator_type, creator_id,
 	parent_issue_id, position, start_date, due_date, created_at, updated_at, last_activity_at,
-	number, project_id, metadata, stage, properties, revision, group_total
+	number, project_id, module_id, metadata, stage, properties, revision, group_total
 FROM ranked
 WHERE rn > %s AND rn <= %s + %s
 ORDER BY
@@ -2268,6 +2343,7 @@ ORDER BY
 			&row.LastActivityAt,
 			&row.Number,
 			&row.ProjectID,
+			&row.ModuleID,
 			&row.Metadata,
 			&row.Stage,
 			&row.Properties,
@@ -2889,7 +2965,11 @@ type CreateIssueRequest struct {
 	AssigneeID    *string  `json:"assignee_id"`
 	ParentIssueID *string  `json:"parent_issue_id"`
 	ProjectID     *string  `json:"project_id"`
-	Stage         *int32   `json:"stage,omitempty"`
+	// ModuleID files the issue into one of the project's modules. When
+	// ProjectID is absent the module's project is adopted; a mismatching pair
+	// is rejected by IssueService.Create (ErrModuleNotInProject).
+	ModuleID      *string `json:"module_id"`
+	Stage         *int32  `json:"stage,omitempty"`
 	StartDate     *string  `json:"start_date"`
 	DueDate       *string  `json:"due_date"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
@@ -3017,6 +3097,14 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projectID = id
+	}
+	var moduleID pgtype.UUID
+	if req.ModuleID != nil {
+		id, ok := parseUUIDOrBadRequest(w, *req.ModuleID, "module_id")
+		if !ok {
+			return
+		}
+		moduleID = id
 	}
 	// Project existence and the final parent boundary check are enforced inside
 	// IssueService.Create atomically with the create. The handler preloads a
@@ -3151,6 +3239,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		CreatorID:      parseUUID(actualCreatorID),
 		ParentIssueID:  parentIssueID,
 		ProjectID:      projectID,
+		ModuleID:       moduleID,
 		StartDate:      startDate,
 		DueDate:        dueDate,
 		OriginType:     originType,
@@ -3199,6 +3288,14 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, service.ErrProjectNotFound) {
 		writeError(w, http.StatusBadRequest, "project not found in this workspace")
+		return
+	}
+	if errors.Is(err, service.ErrModuleNotFound) {
+		writeError(w, http.StatusBadRequest, "module not found in this workspace")
+		return
+	}
+	if errors.Is(err, service.ErrModuleNotInProject) {
+		writeError(w, http.StatusBadRequest, "module does not belong to project")
 		return
 	}
 	if errors.Is(err, service.ErrIssueLabelNotFound) {
@@ -3255,6 +3352,7 @@ type UpdateIssueRequest struct {
 	DueDate         *string  `json:"due_date"`
 	ParentIssueID   *string  `json:"parent_issue_id"`
 	ProjectID       *string  `json:"project_id"`
+	ModuleID        *string  `json:"module_id"`
 	Stage           *int32   `json:"stage"`
 	// AttachmentIDs lets the description editor bind newly uploaded files to
 	// this issue so they surface in `GET /api/issues/:id/attachments` and the
@@ -3344,6 +3442,16 @@ func refreshUntouchedNullableIssueParams(params *db.UpdateIssueParams, current d
 	}
 	if _, touched := rawFields["project_id"]; !touched {
 		params.ProjectID = current.ProjectID
+	}
+	// A project move re-files the issue: the handler clears module_id when the
+	// request's resulting project differs from the stored one without naming
+	// a module, so the refresh here must not restore the old module on top of
+	// that clear. Comparing projects rather than raw key presence is what
+	// keeps that guard honest: an echoed, unchanged project_id is not a move,
+	// and its module must survive the refresh. ProjectID was refreshed above,
+	// so an untouched project is already current here.
+	if _, touched := rawFields["module_id"]; !touched && params.ProjectID == current.ProjectID {
+		params.ModuleID = current.ModuleID
 	}
 	if _, touched := rawFields["stage"]; !touched {
 		params.Stage = current.Stage
@@ -3499,6 +3607,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		DueDate:       prevIssue.DueDate,
 		ParentIssueID: prevIssue.ParentIssueID,
 		ProjectID:     prevIssue.ProjectID,
+		ModuleID:      prevIssue.ModuleID,
 		Stage:         prevIssue.Stage,
 	}
 	if req.ExpectedRevision != nil {
@@ -3659,6 +3768,45 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Presence semantics mirror project_id: absent keeps the module, an
+	// explicit null files the issue directly under the project, a value is
+	// validated against the workspace and the request's resulting project.
+	// A request that MOVES the project without naming a module clears it — the
+	// old module belongs to the old project. The branch is change-based, not
+	// presence-based: board drags and batch echoes re-submit an unchanged
+	// project_id, and treating that echo as a move would wipe the module.
+	if _, ok := rawFields["module_id"]; ok {
+		if req.ModuleID != nil {
+			moduleUUID, ok := parseUUIDOrBadRequest(w, *req.ModuleID, "module_id")
+			if !ok {
+				return
+			}
+			module, err := h.Queries.GetModuleInWorkspace(r.Context(), db.GetModuleInWorkspaceParams{
+				ID:          moduleUUID,
+				WorkspaceID: prevIssue.WorkspaceID,
+			})
+			if err != nil {
+				if !isNotFound(err) {
+					slog.Error("update issue: validate module scope",
+						append(logger.RequestAttrs(r), "module_id", uuidToString(moduleUUID), "error", err)...)
+					writeError(w, http.StatusInternalServerError, "failed to validate module")
+					return
+				}
+				writeError(w, http.StatusBadRequest, "module not found in this workspace")
+				return
+			}
+			if module.ProjectID != params.ProjectID {
+				writeError(w, http.StatusBadRequest, "module does not belong to project")
+				return
+			}
+			params.ModuleID = moduleUUID
+		} else {
+			params.ModuleID = pgtype.UUID{Valid: false} // explicit null = file directly under the project
+		}
+	} else if params.ProjectID != prevIssue.ProjectID {
+		params.ModuleID = pgtype.UUID{Valid: false}
+	}
+
 	// Validate the resulting (assignee_type, assignee_id) pair when the caller
 	// touches either field. Existing data on the issue is left alone if the
 	// caller is not changing it.
@@ -3736,6 +3884,10 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// project_id against its own cache, which breaks once an optimistic local
 	// move has overwritten the cached value (MUL-3669 / #4548).
 	projectChanged := req.ProjectID != nil && uuidToString(prevIssue.ProjectID) != uuidToString(issue.ProjectID)
+	// module_changed gates module-cache refreshes the same way; a project move
+	// that clears the module is left to the client's module_id diff, mirroring
+	// how project_changed only covers the explicitly requested field.
+	moduleChanged := req.ModuleID != nil && uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
 	descriptionChanged := req.Description != nil && textToPtr(prevIssue.Description) != resp.Description
 	titleChanged := req.Title != nil && prevIssue.Title != issue.Title
 	prevStartDate := dateToPtr(prevIssue.StartDate)
@@ -3751,6 +3903,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		"status_changed":      statusChanged,
 		"priority_changed":    priorityChanged,
 		"project_changed":     projectChanged,
+		"module_changed":      moduleChanged,
 		"start_date_changed":  startDateChanged,
 		"due_date_changed":    dueDateChanged,
 		"description_changed": descriptionChanged,
@@ -4205,7 +4358,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		req.Updates.Priority != nil ||
 		req.Updates.Position != nil
 	if !hasMutation {
-		for _, k := range []string{"assignee_type", "assignee_id", "start_date", "due_date", "parent_issue_id", "project_id", "stage"} {
+		for _, k := range []string{"assignee_type", "assignee_id", "start_date", "due_date", "parent_issue_id", "project_id", "module_id", "stage"} {
 			if _, ok := rawUpdates[k]; ok {
 				hasMutation = true
 				break
@@ -4265,6 +4418,41 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		batchProjectID = projectUUID
 	}
+	// The batch shares one module_id as well; checked once here rather than
+	// per issue and rejected instead of skipped, mirroring the project guard
+	// above. An explicit null stays invalid and clears every target's module.
+	batchModuleID := pgtype.UUID{Valid: false}
+	var batchModule db.Module
+	if _, ok := rawUpdates["module_id"]; ok && req.Updates.ModuleID != nil {
+		moduleUUID, ok := parseUUIDOrBadRequest(w, *req.Updates.ModuleID, "module_id")
+		if !ok {
+			return
+		}
+		module, err := h.Queries.GetModuleInWorkspace(r.Context(), db.GetModuleInWorkspaceParams{
+			ID:          moduleUUID,
+			WorkspaceID: wsUUID,
+		})
+		if err != nil {
+			if !isNotFound(err) {
+				slog.Error("batch update issues: validate module scope",
+					append(logger.RequestAttrs(r), "module_id", uuidToString(moduleUUID), "error", err)...)
+				writeError(w, http.StatusInternalServerError, "failed to validate module")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "module not found in this workspace")
+			return
+		}
+		// With a co-submitted project_id the module must belong to it — both
+		// values are shared by the whole batch, so one check covers every
+		// issue. An explicit project null (invalid batchProjectID) can never
+		// host a module and is rejected here too.
+		if _, projectSubmitted := rawUpdates["project_id"]; projectSubmitted && module.ProjectID != batchProjectID {
+			writeError(w, http.StatusBadRequest, "module does not belong to project")
+			return
+		}
+		batchModule = module
+		batchModuleID = moduleUUID
+	}
 
 	updated := 0
 	// One Resolver for the whole batch — a per-issue filler would query the
@@ -4295,6 +4483,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			DueDate:       prevIssue.DueDate,
 			ParentIssueID: prevIssue.ParentIssueID,
 			ProjectID:     prevIssue.ProjectID,
+			ModuleID:      prevIssue.ModuleID,
 			Stage:         prevIssue.Stage,
 		}
 
@@ -4397,6 +4586,26 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			// Resolved before the loop; an explicit null stays invalid and clears.
 			params.ProjectID = batchProjectID
 		}
+		if _, ok := rawUpdates["module_id"]; ok {
+			// Resolved before the loop; an explicit null stays invalid and
+			// clears. The module must belong to each issue's RESULTING project:
+			// the batch-level guard above only covered a co-submitted
+			// project_id, so a module set without one is checked against the
+			// issue's own project here. A mid-batch rejection aborts the whole
+			// request like the archive race below, rather than silently
+			// skipping one issue of a set the caller believes shares a module.
+			if batchModuleID.Valid && batchModule.ProjectID != params.ProjectID {
+				writeError(w, http.StatusBadRequest, "module does not belong to project")
+				return
+			}
+			params.ModuleID = batchModuleID
+		} else if _, ok := rawUpdates["project_id"]; ok && params.ProjectID != prevIssue.ProjectID {
+			// Same re-file rule as the single update: a batch project move
+			// without a module clears it. Change-based like UpdateIssue's — a
+			// project echo over issues already in the target project keeps
+			// their modules.
+			params.ModuleID = pgtype.UUID{Valid: false}
+		}
 		if _, ok := rawUpdates["stage"]; ok {
 			if req.Updates.Stage != nil {
 				if *req.Updates.Stage < 1 {
@@ -4465,6 +4674,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		statusChanged := req.Updates.Status != nil && prevIssue.Status != issue.Status
 		priorityChanged := req.Updates.Priority != nil && prevIssue.Priority != issue.Priority
 		projectChanged := req.Updates.ProjectID != nil && uuidToString(prevIssue.ProjectID) != uuidToString(issue.ProjectID)
+		moduleChanged := req.Updates.ModuleID != nil && uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
 
 		h.publish(protocol.EventIssueUpdated, workspaceID, actorType, actorID, map[string]any{
 			"issue":            resp,
@@ -4472,6 +4682,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			"status_changed":   statusChanged,
 			"priority_changed": priorityChanged,
 			"project_changed":  projectChanged,
+			"module_changed":   moduleChanged,
 		})
 
 		// Reassignment does not cancel existing tasks (#4963 / MUL-4113) —

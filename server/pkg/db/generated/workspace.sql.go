@@ -140,6 +140,12 @@ cleared_issue_properties AS (
 cleared_quick_actions AS (
     DELETE FROM quick_action WHERE workspace_id = $1
 ),
+cleared_modules AS (
+    -- module (fork, migration 923) carries no FK to workspace; sweep its rows
+    -- with the workspace like the other no-FK fork tables. The issues that
+    -- pointed at them cascade away with the workspace themselves.
+    DELETE FROM module WHERE workspace_id = $1
+),
 ws_mcp_servers AS (
     SELECT id FROM workspace_mcp_server WHERE workspace_id = $1
 ),

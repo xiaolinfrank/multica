@@ -90,6 +90,55 @@ describe("issueMatchesListFilter", () => {
     ).toBe("unknown");
   });
 
+  it("judges module filters with the server's OR when include_no_module is set", () => {
+    // module_id alone is an exact match.
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: "m1" }), "project:p1", { module_id: "m1" }),
+    ).toBe(true);
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: "m2" }), "project:p1", { module_id: "m1" }),
+    ).toBe(false);
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: null }), "project:p1", { module_id: "m1" }),
+    ).toBe(false);
+    // module_id + include_no_module matches the named module OR no module —
+    // the server compiles the pair to one OR predicate, and the client-side
+    // projection must not silently drop the named-module leg.
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: "m1" }), "project:p1", {
+        module_id: "m1",
+        include_no_module: true,
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: null }), "project:p1", {
+        module_id: "m1",
+        include_no_module: true,
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: "m2" }), "project:p1", {
+        module_id: "m1",
+        include_no_module: true,
+      }),
+    ).toBe(false);
+    // include_no_module alone matches only unfiled issues.
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: null }), "project:p1", {
+        include_no_module: true,
+      }),
+    ).toBe(true);
+    expect(
+      issueMatchesListFilter(makeIssue({ module_id: "m1" }), "project:p1", {
+        include_no_module: true,
+      }),
+    ).toBe(false);
+    // A partial entity missing module_id stays unknown, not a miss.
+    expect(
+      issueMatchesListFilter({ title: "partial" }, "project:p1", { module_id: "m1" }),
+    ).toBe("unknown");
+  });
+
   it("never decides the my:all union scope", () => {
     expect(issueMatchesListFilter(makeIssue(), "all", {})).toBe("unknown");
   });
@@ -111,11 +160,13 @@ describe("issueChangedDims", () => {
       assignee: true,
       project: false,
       status: false,
+      module: false,
     });
     expect(issueChangedDims({ project_id: null })).toEqual({
       assignee: false,
       project: true,
       status: false,
+      module: false,
     });
   });
 
@@ -125,6 +176,7 @@ describe("issueChangedDims", () => {
       assignee: false,
       project: false,
       status: false,
+      module: false,
     });
     expect(issueChangedDims({ status: "todo" }, base).status).toBe(false);
     expect(issueChangedDims({ status: "done" }, base).status).toBe(true);
@@ -136,12 +188,13 @@ describe("issueChangedDims", () => {
       assignee: false,
       project: false,
       status: false,
+      module: false,
     });
   });
 });
 
 describe("listFilterDependsOn", () => {
-  const none = { assignee: false, project: false, status: false };
+  const none = { assignee: false, project: false, status: false, module: false };
 
   it("my:all reacts to assignee changes only", () => {
     expect(listFilterDependsOn("all", {}, { ...none, assignee: true })).toBe(true);
@@ -176,19 +229,31 @@ describe("listFilterDependsOn", () => {
     ).toBe(false);
   });
 
+  it("module filters react to module changes", () => {
+    expect(
+      listFilterDependsOn("project:p1", { project_id: "p1", module_id: "m1" }, { ...none, module: true }),
+    ).toBe(true);
+    expect(
+      listFilterDependsOn("project:p1", { include_no_module: true }, { ...none, module: true }),
+    ).toBe(true);
+    expect(
+      listFilterDependsOn("project:p1", { project_id: "p1" }, { ...none, module: true }),
+    ).toBe(false);
+  });
+
   it("creator filters never react — creator is immutable", () => {
     expect(
       listFilterDependsOn(
         "created",
         { creator_id: "me" },
-        { assignee: true, project: true, status: true },
+        { assignee: true, project: true, status: true, module: true },
       ),
     ).toBe(false);
   });
 
   it("the unfiltered workspace list never reacts", () => {
     expect(
-      listFilterDependsOn(undefined, {}, { assignee: true, project: true, status: true }),
+      listFilterDependsOn(undefined, {}, { assignee: true, project: true, status: true, module: true }),
     ).toBe(false);
   });
 });

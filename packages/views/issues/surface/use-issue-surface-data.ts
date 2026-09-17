@@ -2,8 +2,9 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Issue, Project } from "@multica/core/types";
+import type { Issue, Module, Project } from "@multica/core/types";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { moduleListOptions } from "@multica/core/modules/queries";
 import { childIssueProgressOptions } from "@multica/core/issues/queries";
 import { issueSurfaceGanttOptions } from "@multica/core/issues/surface/repository";
 import type { IssueSurfaceQueryPlan } from "@multica/core/issues/surface/query-plan";
@@ -25,6 +26,7 @@ import type { IssueGroupBranches } from "./use-issue-group-branches";
 const EMPTY_ISSUES: Issue[] = [];
 const EMPTY_CHILD_PROGRESS = new Map<string, ChildProgress>();
 const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_MODULES: Module[] = [];
 
 /**
  * The rows the gantt canvas actually draws, on top of the shared filters.
@@ -67,6 +69,7 @@ export interface IssueSurfaceData {
   activeFilters: Omit<IssueFilters, "statusFilters">;
   childProgressMap: Map<string, ChildProgress>;
   projectMap: Map<string, Project>;
+  moduleMap: Map<string, Module>;
   resolveTableExportLookups: (needs: {
     projects: boolean;
     childProgress: boolean;
@@ -109,11 +112,14 @@ export function useIssueSurfaceData({
   creatorFilters,
   projectFilters,
   includeNoProject,
+  moduleFilters,
+  includeNoModule,
   labelFilters,
   propertyFilters,
   workingIssueIDs,
   showSubIssues,
   loadProjects,
+  loadModules,
 }: {
   wsId: string;
   queryPlan: IssueSurfaceQueryPlan;
@@ -138,12 +144,15 @@ export function useIssueSurfaceData({
   creatorFilters: IssueFilterState["creatorFilters"];
   projectFilters: string[];
   includeNoProject: boolean;
+  moduleFilters: string[];
+  includeNoModule: boolean;
   labelFilters: string[];
   propertyFilters: Record<string, PropertyFilterValue[]>;
   /** Distinct running-task issue ids projected by `/api/working-agents`. */
   workingIssueIDs: ReadonlySet<string>;
   showSubIssues: boolean;
   loadProjects: boolean;
+  loadModules: boolean;
 }): IssueSurfaceData {
   const ganttIssuesQuery = useQuery({
     ...issueSurfaceGanttOptions(wsId, projectId ?? "", queryPlan),
@@ -179,6 +188,8 @@ export function useIssueSurfaceData({
       creatorFilters,
       projectFilters,
       includeNoProject,
+      moduleFilters,
+      includeNoModule,
       labelFilters,
       propertyFilters,
       workingOnly: agentRunningFilter,
@@ -189,8 +200,10 @@ export function useIssueSurfaceData({
       agentRunningFilter,
       creatorFilters,
       includeNoAssignee,
+      includeNoModule,
       includeNoProject,
       labelFilters,
+      moduleFilters,
       priorityFilters,
       projectFilters,
       propertyFilters,
@@ -300,6 +313,17 @@ export function useIssueSurfaceData({
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
+  // Module titles for group headers and the module column, mirroring the
+  // projects query above. Not part of the export lookups: exported rows
+  // carry module ids only, like project ids.
+  const { data: moduleData } = useQuery({
+    ...moduleListOptions(wsId),
+    enabled: loadModules,
+  });
+  const moduleMap = useMemo(
+    () => new Map((moduleData ?? EMPTY_MODULES).map((module) => [module.id, module])),
+    [moduleData],
+  );
   const resolveTableExportLookups = useCallback(
     async (needs: { projects: boolean; childProgress: boolean }) => {
       const [projectResult, progressResult] = await Promise.all([
@@ -359,6 +383,8 @@ export function useIssueSurfaceData({
       creatorFilters,
       projectFilters,
       includeNoProject,
+      moduleFilters,
+      includeNoModule,
       labelFilters,
       propertyFilters,
       showSubIssues,
@@ -368,8 +394,10 @@ export function useIssueSurfaceData({
       agentRunningFilter,
       creatorFilters,
       includeNoAssignee,
+      includeNoModule,
       includeNoProject,
       labelFilters,
+      moduleFilters,
       propertyFilters,
       priorityFilters,
       projectFilters,
@@ -415,6 +443,7 @@ export function useIssueSurfaceData({
     activeFilters,
     childProgressMap,
     projectMap,
+    moduleMap,
     resolveTableExportLookups,
     isLoading,
     isRefreshing,

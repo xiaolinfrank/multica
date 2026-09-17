@@ -111,7 +111,11 @@ vi.mock("../auth", () => ({ useLogout: () => vi.fn() }));
 vi.mock("../issues/components/status-icon", () => ({ StatusIcon: () => <span /> }));
 vi.mock("../navigation", () => ({
   AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
-  useNavigation: () => ({ pathname: navigation.current.pathname, push: vi.fn() }),
+  useNavigation: () => ({
+    pathname: navigation.current.pathname,
+    push: vi.fn(),
+    searchParams: new URLSearchParams(),
+  }),
 }));
 vi.mock("../projects/components/project-icon", () => ({ ProjectIcon: () => <span /> }));
 vi.mock("../workspace/workspace-avatar", () => ({ WorkspaceAvatar: () => <span /> }));
@@ -192,7 +196,13 @@ vi.mock("@multica/core/issues/stores/draft-store", () => ({ useIssueDraftStore: 
 vi.mock("@multica/core/modals", () => ({ useModalStore: { getState: () => ({ modal: null, open: vi.fn() }) } }));
 vi.mock("@multica/core/pins/mutations", () => ({ useDeletePin: () => ({ mutate: deletePin }), useReorderPins: () => ({ mutate: vi.fn() }) }));
 vi.mock("@multica/core/pins/queries", () => ({ pinListOptions: () => ({ queryKey: ["pins"] }) }));
-vi.mock("@multica/core/projects/queries", () => ({ projectDetailOptions: () => ({ queryKey: ["project"] }) }));
+vi.mock("@multica/core/projects/queries", () => ({
+  projectDetailOptions: () => ({ queryKey: ["project"] }),
+  projectListOptions: () => ({ queryKey: ["projects"] }),
+}));
+vi.mock("@multica/core/modules/queries", () => ({
+  moduleListOptions: () => ({ queryKey: ["modules"] }),
+}));
 vi.mock("@multica/core/workspace/queries", () => ({
   myInvitationListOptions: () => ({ queryKey: ["invitations"] }),
   workspaceKeys: { myInvitations: () => ["invitations"] },

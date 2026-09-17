@@ -189,6 +189,11 @@ export interface Issue {
   creator_id: string;
   parent_issue_id: string | null;
   project_id: string | null;
+  // The module this issue sits under, when the project uses modules. Optional
+  // rather than `string | null` so literals typed as Issue (mobile's empty-issue
+  // fallback) keep compiling without listing it; a current backend always
+  // sends it (null = directly under the project).
+  module_id?: string | null;
   position: number;
   // Ordered barrier group among sibling sub-issues (null = unstaged). The
   // parent assignee is notified/woken only when every sub-issue in a stage

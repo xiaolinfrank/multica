@@ -88,6 +88,8 @@ type issueTableFiltersRequest struct {
 	Creators          []issueTableActorRef `json:"creators,omitempty"`
 	ProjectIDs        []string             `json:"project_ids,omitempty"`
 	IncludeNoProject  bool                 `json:"include_no_project,omitempty"`
+	ModuleIDs         []string             `json:"module_ids,omitempty"`
+	IncludeNoModule   bool                 `json:"include_no_module,omitempty"`
 	LabelIDs          []string             `json:"label_ids,omitempty"`
 	// Members are raw JSON so operator objects ({op, value}) and plain
 	// strings both survive the round-trip into parsePropertiesFilterParam.
@@ -258,6 +260,7 @@ func canonicalIssueTableFingerprint(workspaceID string, spec issueTableQuerySpec
 	normalized.Filters.Statuses = sortedUniqueStrings(normalized.Filters.Statuses)
 	normalized.Filters.Priorities = sortedUniqueStrings(normalized.Filters.Priorities)
 	normalized.Filters.ProjectIDs = sortedUniqueStrings(normalized.Filters.ProjectIDs)
+	normalized.Filters.ModuleIDs = sortedUniqueStrings(normalized.Filters.ModuleIDs)
 	normalized.Filters.LabelIDs = sortedUniqueStrings(normalized.Filters.LabelIDs)
 	normalized.Filters.Assignees = sortedUniqueActors(normalized.Filters.Assignees)
 	normalized.Filters.WorkingIssueIDs = sortedUniqueStrings(normalized.Filters.WorkingIssueIDs)
@@ -597,6 +600,21 @@ func (h *Handler) compileIssueTableQuery(w http.ResponseWriter, r *http.Request,
 		}
 		if spec.Filters.IncludeNoProject {
 			ors = append(ors, "i.project_id IS NULL")
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+
+	moduleIDs, ok := parseIssueTableUUIDList(w, spec.Filters.ModuleIDs, "filters.module_ids")
+	if !ok {
+		return issueTableSQL{}, false
+	}
+	if len(moduleIDs) > 0 || spec.Filters.IncludeNoModule {
+		ors := make([]string, 0, 2)
+		if len(moduleIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.module_id = ANY(%s::uuid[])", addArg(moduleIDs)))
+		}
+		if spec.Filters.IncludeNoModule {
+			ors = append(ors, "i.module_id IS NULL")
 		}
 		where = append(where, "("+strings.Join(ors, " OR ")+")")
 	}

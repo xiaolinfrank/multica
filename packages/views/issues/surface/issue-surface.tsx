@@ -40,7 +40,10 @@ import { IssueContextMenuProvider } from "../actions";
 import { PendingCreationsStrip } from "../components/pending-creations-strip";
 import { IssueSurfaceActionsProvider } from "./actions-context";
 import { IssueSurfaceSelectionProvider } from "./selection-context";
-import type { IssueCreateDefaults, IssueSurfaceProps } from "./types";
+import type {
+  IssueCreateDefaults,
+  IssueSurfaceProps,
+} from "./types";
 import {
   useIssueSurfaceController,
   type IssueSurfaceController,
@@ -194,6 +197,7 @@ function IssueSurfaceContent({
   showClientEmpty,
   batchToolbar,
   contentClassName,
+  moduleFilter,
 }: Omit<IssueSurfaceComponentProps, "surfaceKey">) {
   const { t } = useT("projects");
   const controller = useIssueSurfaceController({
@@ -201,6 +205,7 @@ function IssueSurfaceContent({
     modes,
     createDefaults,
     search,
+    moduleFilter,
   });
   const [tableLoadedIssues, setTableLoadedIssues] = useState<Issue[]>([]);
   const handleTableLoadedIssuesChange = useCallback((next: Issue[]) => {
@@ -339,6 +344,7 @@ function IssueSurfaceContent({
                 onMoveIssue={controller.moveIssue}
                 childProgressMap={controller.childProgressMap}
                 projectMap={controller.projectMap}
+                moduleMap={controller.moduleMap}
                 projectId={controller.projectId}
                 onCreateIssue={openCreateIssue}
                 statusPagination={controller.statusPagination}
@@ -383,6 +389,7 @@ function IssueSurfaceContent({
                 onMoveIssue={controller.moveIssue}
                 childProgressMap={controller.childProgressMap}
                 projectMap={controller.projectMap}
+                moduleMap={controller.moduleMap}
                 projectId={controller.projectId}
                 onCreateIssue={openCreateIssue}
                 groupBranches={controller.groupBranches}

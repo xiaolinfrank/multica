@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/util"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 var issueMoveFields = map[string]struct{}{
@@ -20,6 +21,7 @@ var issueMoveFields = map[string]struct{}{
 	"assignee_id":       {},
 	"parent_issue_id":   {},
 	"project_id":        {},
+	"module_id":         {},
 	"before_id":         {},
 	"after_id":          {},
 	"expected_revision": {},
@@ -62,6 +64,7 @@ func (h *Handler) MoveIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "after_id is required")
 		return
 	}
+	targetProjectID := current.ProjectID
 	if rawProjectID, touched := fields["project_id"]; touched && !rawJSONNull(rawProjectID) {
 		projectID, valid := decodeIssueMoveAnchor(w, rawProjectID, "project_id")
 		if !valid {
@@ -83,6 +86,34 @@ func (h *Handler) MoveIssue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "project not found in this workspace")
 			return
 		}
+		targetProjectID = *projectID
+	}
+	// A board module-lane drag carries the module beside the position. The
+	// module must belong to the project the issue lands in — the explicit one
+	// when the move crosses projects, otherwise the issue's current project.
+	if rawModuleID, touched := fields["module_id"]; touched && !rawJSONNull(rawModuleID) {
+		moduleID, valid := decodeIssueMoveAnchor(w, rawModuleID, "module_id")
+		if !valid {
+			return
+		}
+		module, err := h.Queries.GetModuleInWorkspace(r.Context(), db.GetModuleInWorkspaceParams{
+			ID:          *moduleID,
+			WorkspaceID: current.WorkspaceID,
+		})
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "module not found in this workspace")
+			return
+		}
+		if module.ProjectID != targetProjectID {
+			writeError(w, http.StatusBadRequest, "module does not belong to project")
+			return
+		}
+	} else if _, projectTouched := fields["project_id"]; projectTouched && targetProjectID != current.ProjectID {
+		// Cross-project move without a module: the old module belongs to the
+		// old project, so the issue falls back to sitting directly under the
+		// new one. Injecting the explicit null keeps UpdateIssue's
+		// absent-means-keep semantics from preserving it.
+		fields["module_id"] = json.RawMessage("null")
 	}
 
 	beforeID, ok := decodeIssueMoveAnchor(w, fields["before_id"], "before_id")

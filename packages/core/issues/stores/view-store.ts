@@ -20,8 +20,9 @@ export type IssueGrouping =
   | "status"
   | "assignee"
   | "project"
+  | "module"
   | `property:${string}`;
-export type SwimlaneGrouping = "parent" | "project" | "assignee";
+export type SwimlaneGrouping = "parent" | "project" | "module" | "assignee";
 /**
  * Sort key. `property:<definitionId>` is resolved server-side against the
  * active property catalog; stale or unsupported definitions degrade to
@@ -48,6 +49,7 @@ export type TableSystemColumnKey =
   | "assignee"
   | "labels"
   | "project"
+  | "module"
   | "start_date"
   | "due_date"
   | "created_at"
@@ -64,6 +66,7 @@ export type TableGrouping =
   | "status"
   | "assignee"
   | "project"
+  | "module"
   | `property:${string}`;
 export type TableCalculation = "none" | "sum" | "average" | "count";
 
@@ -75,6 +78,7 @@ export const TABLE_SYSTEM_COLUMNS: readonly TableSystemColumnKey[] = [
   "assignee",
   "labels",
   "project",
+  "module",
   "start_date",
   "due_date",
   "created_at",
@@ -98,7 +102,7 @@ export interface IssueDateFilter {
   to: string;
 }
 
-export const SWIMLANE_GROUPINGS: SwimlaneGrouping[] = ["parent", "project", "assignee"];
+export const SWIMLANE_GROUPINGS: SwimlaneGrouping[] = ["parent", "project", "module", "assignee"];
 
 export interface CardProperties {
   priority: boolean;
@@ -165,6 +169,7 @@ export const GROUPING_OPTIONS: { value: StaticIssueGrouping; label: string }[] =
   { value: "status", label: "Status" },
   { value: "assignee", label: "Assignee" },
   { value: "project", label: "Project" },
+  { value: "module", label: "Module" },
 ];
 
 export const CARD_PROPERTY_OPTIONS: { key: keyof CardProperties; label: string }[] = [
@@ -375,8 +380,8 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   ganttZoom: "week",
   ganttShowCompleted: false,
   swimlaneGrouping: "assignee",
-  swimlaneOrders: { parent: [], project: [], assignee: [] },
-  collapsedSwimlanes: { parent: [], project: [], assignee: [] },
+  swimlaneOrders: { parent: [], project: [], module: [], assignee: [] },
+  collapsedSwimlanes: { parent: [], project: [], module: [], assignee: [] },
   tableColumns: DEFAULT_TABLE_COLUMNS.map((column) => ({ ...column })),
   tableGrouping: "none",
   tableCollapsedGroups: [],

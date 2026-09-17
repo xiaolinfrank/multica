@@ -210,6 +210,8 @@ export type MyIssuesFilter = Pick<
   | "assignee_types"
   | "creator_id"
   | "project_id"
+  | "module_id"
+  | "include_no_module"
   | "involves_user_id"
 >;
 

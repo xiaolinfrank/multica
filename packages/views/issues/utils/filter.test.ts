@@ -18,6 +18,8 @@ const NO_FILTER: IssueFilters = {
   creatorFilters: [],
   projectFilters: [],
   includeNoProject: false,
+  moduleFilters: [],
+  includeNoModule: false,
   labelFilters: [],
 };
 
@@ -625,5 +627,44 @@ describe("scalar operator filters", () => {
       },
     });
     expect(result.map((i) => i.id)).toEqual(["B"]);
+  });
+});
+describe("module filters", () => {
+  const inA = makeIssue({ id: "M1", project_id: "p-1", module_id: "mod-a" });
+  const inB = makeIssue({ id: "M2", project_id: "p-1", module_id: "mod-b" });
+  const unfiled = makeIssue({ id: "M3", project_id: "p-1", module_id: null });
+
+  it("moduleFilters match any listed module", () => {
+    const result = filterIssues([inA, inB, unfiled], {
+      ...NO_FILTER,
+      moduleFilters: ["mod-a"],
+    });
+    expect(result.map((i) => i.id)).toEqual(["M1"]);
+  });
+
+  it("includeNoModule keeps only issues filed directly under the project", () => {
+    const result = filterIssues([inA, inB, unfiled], {
+      ...NO_FILTER,
+      includeNoModule: true,
+    });
+    expect(result.map((i) => i.id)).toEqual(["M3"]);
+  });
+
+  it("moduleFilters and includeNoModule OR within the group, like the server predicate", () => {
+    const result = filterIssues([inA, inB, unfiled], {
+      ...NO_FILTER,
+      moduleFilters: ["mod-b"],
+      includeNoModule: true,
+    });
+    expect(result.map((i) => i.id)).toEqual(["M2", "M3"]);
+  });
+
+  it("an absent module_id field behaves like no module, mirroring project filters", () => {
+    // Older payloads can omit the field entirely; the client-side filter
+    // reads it the same way it reads a missing project_id.
+    const legacy = makeIssue({ id: "M4", project_id: "p-1" });
+    expect(
+      filterIssues([inA, legacy], { ...NO_FILTER, includeNoModule: true }).map((i) => i.id),
+    ).toEqual(["M4"]);
   });
 });

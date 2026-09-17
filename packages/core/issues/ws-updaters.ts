@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { issueKeys } from "./queries";
 import { labelKeys } from "../labels/queries";
 import { projectKeys } from "../projects/queries";
+import { moduleKeys } from "../modules/queries";
 import {
   applyIssueChange,
   bucketedListEntries,
@@ -402,6 +403,9 @@ export function onIssueCreated(
   if (issue.project_id) {
     qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
   }
+  if (issue.module_id) {
+    qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+  }
   // Refresh every Project Gantt cache that might be observing this issue.
   // We invalidate the whole prefix rather than the issue's own project
   // because a fresh issue isn't necessarily scheduled yet; the active Gantt
@@ -426,6 +430,7 @@ export function onIssueUpdated(
     assigneeChanged?: boolean;
     statusChanged?: boolean;
     projectChanged?: boolean;
+    moduleChanged?: boolean;
   } = {},
 ) {
   // Look up the OLD parent + cached entity before mutating cache state, so we
@@ -463,6 +468,12 @@ export function onIssueUpdated(
   // #4548). The local move itself is covered by useUpdateIssue's own
   // coordinator pass, which never depends on these flags.
   const oldProjectId = detailData?.project_id ?? cachedIssue?.project_id ?? null;
+  // Same flag contract as project, for module membership: module rows carry
+  // issue_count/done_count aggregates an entity patch cannot recompute.
+  const oldModuleId = detailData?.module_id ?? cachedIssue?.module_id ?? null;
+  const moduleChanged =
+    meta.moduleChanged ??
+    (issue.module_id !== undefined && (issue.module_id ?? null) !== oldModuleId);
   const changed = {
     assignee:
       meta.assigneeChanged ??
@@ -474,6 +485,7 @@ export function onIssueUpdated(
     project:
       meta.projectChanged ??
       (issue.project_id !== undefined && (issue.project_id ?? null) !== oldProjectId),
+    module: moduleChanged,
     status:
       meta.statusChanged ??
       (cachedIssue !== undefined &&
@@ -500,6 +512,9 @@ export function onIssueUpdated(
     statusOrProjectChanged:
       issue.status !== undefined || issue.project_id !== undefined,
   });
+  if (moduleChanged) {
+    qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+  }
   // Group counts, branch membership and hierarchy are server-owned. Never
   // guess deltas from a partial branch; refetch the active Table queries.
   qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
@@ -762,4 +777,5 @@ export function onIssueDeleted(
   qc.invalidateQueries({ queryKey: issueKeys.assigneeGroupsAll(wsId) });
   qc.invalidateQueries({ queryKey: issueKeys.myAssigneeGroupsAll(wsId) });
   qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+  qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
 }

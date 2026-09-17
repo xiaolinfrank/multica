@@ -151,6 +151,43 @@
     "search_placeholder": "프로젝트 검색...",
     "clear_aria": "프로젝트 지우기"
   },
+  "module": {
+    "create": {
+      "title": "모듈 만들기",
+      "breadcrumb": "모듈",
+      "title_placeholder": "모듈 이름",
+      "submit": "모듈 만들기",
+      "submitting": "만드는 중...",
+      "toast_created": "모듈이 생성되었습니다",
+      "toast_failed": "모듈 생성에 실패했습니다"
+    },
+    "picker": {
+      "search_placeholder": "모듈 검색...",
+      "none": "모듈 없음",
+      "empty": "아직 모듈이 없습니다",
+      "needs_project": "먼저 프로젝트를 선택하세요"
+    },
+    "all": "전체",
+    "ungrouped": "미분류",
+    "add": "모듈 추가",
+    "add_aria": "프로젝트에 모듈 추가",
+    "toggle_modules_aria": "모듈 표시 전환",
+    "clear_aria": "모듈 지우기",
+    "manage": "관리",
+    "manage_title": "모듈 관리",
+    "manage_empty": "아직 모듈이 없습니다",
+    "reorder_handle_aria": "드래그하여 모듈 순서 변경",
+    "rename_aria": "모듈 이름 바꾸기",
+    "delete_aria": "모듈 삭제",
+    "delete_title": "{{title}} 을(를) 삭제하시겠습니까?",
+    "delete_description": "모듈이 삭제되면 해당 이슈는 프로젝트에 남아 프로젝트 바로 아래에 배치됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "delete_cancel": "취소",
+    "delete_confirm": "모듈 삭제",
+    "toast_deleted": "모듈이 삭제되었습니다",
+    "toast_delete_failed": "모듈 삭제에 실패했습니다",
+    "toast_reorder_failed": "모듈 순서 변경에 실패했습니다",
+    "agent_carry_hint": "수동 만들기로 전환할 때 적용됩니다. 에이전트 만들기는 모듈을 무시합니다"
+  },
   "chip": {
     "fallback_label": "프로젝트"
   },

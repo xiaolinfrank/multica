@@ -10,7 +10,7 @@ import type { BoardColumnGroup } from "../components/board-column";
 
 export type DragMoveTargetUpdates = Pick<
   UpdateIssueRequest,
-  "status" | "assignee_type" | "assignee_id" | "project_id" | "position"
+  "status" | "assignee_type" | "assignee_id" | "project_id" | "module_id" | "position"
 >;
 
 export type DragMoveUpdates = DragMoveTargetUpdates & {
@@ -53,6 +53,12 @@ export function projectGroupId(projectId: string | null): string {
   return `project:${projectId ?? "none"}`;
 }
 
+/** Mirrors the server's module group key (`module:<id>` / `module:none`) so a
+ *  column built from a descriptor and one built from a card agree. */
+export function moduleGroupId(moduleId: string | null): string {
+  return `module:${moduleId ?? "none"}`;
+}
+
 export function getIssueGroupId(
   issue: Issue,
   grouping: IssueGrouping,
@@ -61,6 +67,7 @@ export function getIssueGroupId(
   // Column identity is the exact status key, including custom statuses.
   if (grouping === "status") return statusGroupId(issue.status);
   if (grouping === "project") return projectGroupId(issue.project_id ?? null);
+  if (grouping === "module") return moduleGroupId(issue.module_id ?? null);
   const propertyId = propertyIdFromViewKey(grouping);
   if (propertyId) {
     const value = issue.properties?.[propertyId];
@@ -153,8 +160,11 @@ export function issueMatchesGroup(issue: Issue, group: BoardColumnGroup): boolea
     const optionId = typeof value === "string" ? value : null;
     return optionId === (group.propertyOptionId ?? null);
   }
-  if (group.projectId !== undefined) {
+  if (group.projectId !== undefined && group.moduleId === undefined) {
     return (issue.project_id ?? null) === group.projectId;
+  }
+  if (group.moduleId !== undefined) {
+    return (issue.module_id ?? null) === group.moduleId;
   }
   return (
     (issue.assignee_type ?? null) === (group.assigneeType ?? null) &&
@@ -178,6 +188,21 @@ export function getMoveUpdates(
   // Property columns: the value change is not part of UpdateIssueRequest —
   // the board applies it through useSetIssueProperty after the position move.
   if (group.propertyId !== undefined) return { position };
+  // Module columns send the project alongside the module: the update path
+  // validates the module against the request's resulting project, so a
+  // module-only write onto another project's column would 400. This branch
+  // must precede the project one — a module column carries both ids.
+  if (group.moduleId !== undefined) {
+    return {
+      // The owning project rides along only when the column knows it —
+      // the "No module" column spans projects (projectId null), and a null
+      // project_id here would detach the issue from its project instead of
+      // only clearing the module.
+      ...(group.projectId ? { project_id: group.projectId } : {}),
+      module_id: group.moduleId,
+      position,
+    };
+  }
   if (group.projectId !== undefined) {
     return { project_id: group.projectId, position };
   }

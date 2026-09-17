@@ -80,6 +80,7 @@ import { projectDetailOptions } from "@multica/core/projects/queries";
 import type { PinnedItem } from "@multica/core/types";
 import { useLogout } from "../auth";
 import { ProjectIcon } from "../projects/components/project-icon";
+import { SidebarProjectsTree } from "../projects/components/sidebar-projects-tree";
 import { routeIconForPath } from "./route-icon-components";
 import { useT } from "../i18n";
 import {
@@ -933,6 +934,11 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Projects / modules tree sits below the Work group so the
+              standalone 项目 row keeps its route role while projects gain
+              one-click deep links. Renders nothing without projects. */}
+          <SidebarProjectsTree />
 
           <SidebarGroup>
             <SidebarGroupLabel>{t(($) => $.sidebar.ai_team_group)}</SidebarGroupLabel>

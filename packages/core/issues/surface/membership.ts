@@ -21,6 +21,7 @@ export type IssueMembership = true | false | "unknown";
 export interface IssueChangedDims {
   assignee: boolean;
   project: boolean;
+  module: boolean;
   status: boolean;
 }
 
@@ -43,6 +44,7 @@ export function issueChangedDims(
       (has("assignee_id") && (!base || base.assignee_id !== p.assignee_id)) ||
       (has("assignee_type") && (!base || base.assignee_type !== p.assignee_type)),
     project: has("project_id") && (!base || base.project_id !== p.project_id),
+    module: has("module_id") && (!base || base.module_id !== p.module_id),
     status: has("status") && p.status !== undefined && (!base || base.status !== p.status),
   };
 }
@@ -72,6 +74,12 @@ export function listFilterDependsOn(
     return true;
   }
   if (changed.project && filter.project_id !== undefined) return true;
+  if (
+    changed.module &&
+    (filter.module_id !== undefined || filter.include_no_module !== undefined)
+  ) {
+    return true;
+  }
   // creator_id filters never react to updates — creator is immutable.
   return false;
 }
@@ -122,6 +130,16 @@ export function issueMatchesListFilter(
   if (filter.project_id !== undefined) {
     if (issue.project_id === undefined) unknown = true;
     else if (issue.project_id !== filter.project_id) return false;
+  }
+  if (filter.module_id !== undefined || filter.include_no_module) {
+    if (issue.module_id === undefined) unknown = true;
+    // The server compiles these to one OR predicate — with include_no_module
+    // the filter reads "the named module OR no module" (ListIssues / the
+    // table window), not "no module only".
+    else if (filter.include_no_module) {
+      const wanted = filter.module_id ?? null;
+      if (issue.module_id !== null && issue.module_id !== wanted) return false;
+    } else if ((issue.module_id ?? null) !== filter.module_id) return false;
   }
   if (filter.involves_user_id !== undefined) {
     // Indirect-assignee predicate (owned agents / squads) — server-only.

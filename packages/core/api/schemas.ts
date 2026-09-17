@@ -69,6 +69,9 @@ import type {
   IssueTableGroupsResponse,
   IssueTableRowsResponse,
   ListIssuesResponse,
+  ListModulesResponse,
+  Module,
+  ModuleResponse,
   ListGitHubInstallationsResponse,
   ListGitHubRepositoriesResponse,
   ListLabelsResponse,
@@ -1309,6 +1312,9 @@ export const IssueSchema = z.object({
   creator_id: z.string(),
   parent_issue_id: z.string().nullable(),
   project_id: z.string().nullable(),
+  // Older backends predate modules; default to null so a missing field parses
+  // into the optional Issue.module_id (string | null) without failing the row.
+  module_id: z.string().nullable().default(null),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
   // cleanly into the non-optional Issue.stage (number | null).
@@ -1435,6 +1441,62 @@ export const EMPTY_SEARCH_PROJECTS_RESPONSE: SearchProjectsResponse = {
   projects: [],
 };
 
+// Module: the middle layer of Project → Module → Issue. Exported (unlike
+// ProjectSchema) because the modules client and tests consume it directly.
+// Same leniency rules as ProjectSchema: .loose(), counts .default(0) so a
+// server that predates stat enrichment keeps the row parseable, description
+// .nullable() with no default (an absent key fails the row, mirroring
+// ProjectSchema.description).
+export const ModuleSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+  project_id: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  position: z.number(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  issue_count: z.number().default(0),
+  done_count: z.number().default(0),
+}).loose();
+
+export const ListModulesResponseSchema = z.object({
+  modules: z.array(ModuleSchema).default([]),
+  total: z.number().default(0),
+}).loose();
+
+export const EMPTY_LIST_MODULES_RESPONSE: ListModulesResponse = {
+  modules: [],
+  total: 0,
+};
+
+// Fallback for GET /api/modules/{id} — same role as EMPTY_LABEL: the detail
+// read degrades to an empty row instead of throwing on contract drift.
+export const EMPTY_MODULE: Module = {
+  id: "",
+  workspace_id: "",
+  project_id: "",
+  title: "",
+  description: null,
+  position: 0,
+  created_at: "",
+  updated_at: "",
+  issue_count: 0,
+  done_count: 0,
+};
+
+// Single-module envelope: GET/POST/PUT /api/modules[...] wrap the row as
+// {"module": {...}} (see GetModule/CreateModule/UpdateModule handlers), the
+// same single-entity shape the project endpoints use. Parsing the bare row
+// against ModuleSchema would degrade every real response to the fallback.
+export const ModuleResponseSchema = z.object({
+  module: ModuleSchema,
+}).loose();
+
+export const EMPTY_MODULE_RESPONSE: ModuleResponse = {
+  module: EMPTY_MODULE,
+};
+
 const IssueAssigneeGroupSchema = z.object({
   id: z.string(),
   assignee_type: z.string().nullable(),
@@ -1480,6 +1542,13 @@ const IssueTableGroupValueSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("project"),
     project_id: z.string().nullable().optional().default(null),
+  }).loose(),
+  z.object({
+    kind: z.literal("module"),
+    // The server omits module_id on the "module:none" bucket (omitempty), so
+    // the field must default rather than fail the whole descriptor — exactly
+    // the project arm's rule.
+    module_id: z.string().nullable().optional().default(null),
   }).loose(),
   z.object({
     kind: z.literal("parent"),

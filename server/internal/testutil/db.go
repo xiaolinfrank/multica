@@ -286,6 +286,16 @@ func (f *Fixture) Project(t TB, title string, over ...Cols) string {
 	}, over))
 }
 
+// Module inserts a module under projectID.
+func (f *Fixture) Module(t TB, projectID, title string, over ...Cols) string {
+	t.Helper()
+	return f.Insert(t, "module", merge(Cols{
+		"workspace_id": f.WorkspaceID,
+		"project_id":   projectID,
+		"title":        title,
+	}, over))
+}
+
 // ChatSession inserts a chat session with agentID.
 func (f *Fixture) ChatSession(t TB, agentID string, over ...Cols) string {
 	t.Helper()

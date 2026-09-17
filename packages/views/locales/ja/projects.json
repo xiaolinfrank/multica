@@ -151,6 +151,43 @@
     "search_placeholder": "プロジェクトを検索...",
     "clear_aria": "プロジェクトをクリア"
   },
+  "module": {
+    "create": {
+      "title": "モジュールを作成",
+      "breadcrumb": "モジュール",
+      "title_placeholder": "モジュール名",
+      "submit": "モジュールを作成",
+      "submitting": "作成中...",
+      "toast_created": "モジュールを作成しました",
+      "toast_failed": "モジュールの作成に失敗しました"
+    },
+    "picker": {
+      "search_placeholder": "モジュールを検索...",
+      "none": "モジュールなし",
+      "empty": "モジュールはまだありません",
+      "needs_project": "先にプロジェクトを選択してください"
+    },
+    "all": "すべて",
+    "ungrouped": "未分類",
+    "add": "モジュールを追加",
+    "add_aria": "プロジェクトにモジュールを追加",
+    "toggle_modules_aria": "モジュールの表示を切り替える",
+    "clear_aria": "モジュールをクリア",
+    "manage": "管理",
+    "manage_title": "モジュールを管理",
+    "manage_empty": "モジュールはまだありません",
+    "reorder_handle_aria": "ドラッグしてモジュールの順序を変更",
+    "rename_aria": "モジュールの名前を変更",
+    "delete_aria": "モジュールを削除",
+    "delete_title": "{{title}} を削除しますか？",
+    "delete_description": "モジュールを削除すると、その課題はプロジェクトに残り、プロジェクト直下に分類されます。この操作は取り消せません。",
+    "delete_cancel": "キャンセル",
+    "delete_confirm": "モジュールを削除",
+    "toast_deleted": "モジュールを削除しました",
+    "toast_delete_failed": "モジュールの削除に失敗しました",
+    "toast_reorder_failed": "モジュールの順序変更に失敗しました",
+    "agent_carry_hint": "手動作成に切り替えた場合に適用されます。エージェント作成ではモジュールは無視されます"
+  },
   "chip": {
     "fallback_label": "プロジェクト"
   },

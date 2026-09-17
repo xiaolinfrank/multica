@@ -7518,6 +7518,7 @@ func IssueToMap(issue db.Issue, issuePrefix string) map[string]any {
 		"creator_id":       util.UUIDToString(issue.CreatorID),
 		"parent_issue_id":  util.UUIDToPtr(issue.ParentIssueID),
 		"project_id":       util.UUIDToPtr(issue.ProjectID),
+		"module_id":        util.UUIDToPtr(issue.ModuleID),
 		"position":         issue.Position,
 		"stage":            util.Int4ToPtr(issue.Stage),
 		"start_date":       util.DateToPtr(issue.StartDate),

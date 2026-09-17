@@ -8,6 +8,7 @@ import {
   getMoveUpdates,
   insertIdByPosition,
   issueMatchesGroup,
+  moduleGroupId,
   projectGroupId,
   propertyGroupId,
 } from "./drag-utils";
@@ -254,6 +255,80 @@ describe("project grouping", () => {
     ).toEqual({
       [projectGroupId("proj-1")]: ["A"],
       [projectGroupId(null)]: ["B"],
+    });
+  });
+});
+describe("module grouping", () => {
+  const inModule = { id: "A", project_id: "proj-1", module_id: "mod-1" } as unknown as Issue;
+  const noModule = { id: "B", project_id: "proj-1", module_id: null } as unknown as Issue;
+  const moduleColumn: BoardColumnGroup = {
+    id: moduleGroupId("mod-1"),
+    title: "Parser rewrite",
+    projectId: "proj-1",
+    moduleId: "mod-1",
+  };
+  const noModuleColumn: BoardColumnGroup = {
+    id: moduleGroupId(null),
+    title: "No module",
+    projectId: null,
+    moduleId: null,
+  };
+
+  it("moduleGroupId mirrors the server group keys", () => {
+    expect(moduleGroupId("mod-1")).toBe("module:mod-1");
+    expect(moduleGroupId(null)).toBe("module:none");
+  });
+
+  it("getIssueGroupId buckets cards by module and falls back to none", () => {
+    expect(getIssueGroupId(inModule, "module")).toBe(moduleGroupId("mod-1"));
+    expect(getIssueGroupId(noModule, "module")).toBe(moduleGroupId(null));
+  });
+
+  it("issueMatchesGroup distinguishes module and no-module columns", () => {
+    expect(issueMatchesGroup(inModule, moduleColumn)).toBe(true);
+    expect(issueMatchesGroup(inModule, noModuleColumn)).toBe(false);
+    expect(issueMatchesGroup(noModule, noModuleColumn)).toBe(true);
+    expect(issueMatchesGroup(noModule, moduleColumn)).toBe(false);
+  });
+
+  it("getMoveUpdates moves into a module carrying its owning project", () => {
+    // The server validates module_id against the issue's resulting project,
+    // so the owning project rides along on every module move.
+    expect(getMoveUpdates(moduleColumn, 5)).toEqual({
+      project_id: "proj-1",
+      module_id: "mod-1",
+      position: 5,
+    });
+  });
+
+  it("the no-module column detaches only the module", () => {
+    expect(getMoveUpdates(noModuleColumn, 5)).toEqual({
+      module_id: null,
+      position: 5,
+    });
+  });
+
+  it("a plain project column leaves the module field alone", () => {
+    // Dropping on the project's own plain column keeps a same-project
+    // module valid; a cross-project drop is the server's call (it clears
+    // the module when the project changes and no module follows).
+    const projectColumn: BoardColumnGroup = {
+      id: projectGroupId("proj-1"),
+      title: "Acme",
+      projectId: "proj-1",
+    };
+    expect(getMoveUpdates(projectColumn, 5)).toEqual({
+      project_id: "proj-1",
+      position: 5,
+    });
+  });
+
+  it("buildColumns places cards into their module column", () => {
+    expect(
+      buildColumns([inModule, noModule], [moduleColumn, noModuleColumn], "module"),
+    ).toEqual({
+      [moduleGroupId("mod-1")]: ["A"],
+      [moduleGroupId(null)]: ["B"],
     });
   });
 });

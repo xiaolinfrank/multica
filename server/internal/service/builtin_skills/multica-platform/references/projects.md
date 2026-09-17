@@ -5,6 +5,7 @@ display metadata; it is context later injected into task briefs and
 `.multica/project/resources.json`.
 
 - [Core model](#core-model)
+- [Modules](#modules)
 - [CLI](#cli)
 - [local_directory execution modes](#local_directory-execution-modes)
 - [Referring to a project in a comment](#referring-to-a-project-in-a-comment)
@@ -40,6 +41,44 @@ Common resource types:
   `daemon_id`, optional label, and optional `execution_mode` (`in_place`, the
   default, or `worktree`).
 
+## Modules
+
+A module subdivides one project: Project → Module → Issue. Modules are a
+grouping layer only — they carry a title, an optional description, and a
+stable order; they have no resources, dates, or status of their own. An
+issue belongs to at most one module, always a module of its own project.
+
+```json
+{
+  "id": "uuid",
+  "workspace_id": "uuid",
+  "project_id": "uuid",
+  "title": "Parser rewrite",
+  "description": "",
+  "position": 0,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "issue_count": 12,
+  "done_count": 4
+}
+```
+
+Endpoints (reads and writes are open to any workspace member; deletion is
+owner/admin gated, like project deletion):
+
+- `GET /api/modules?project_id=<uuid>` → `{ "modules": [...], "total": n }`
+  ordered by `position` ascending.
+- `POST /api/modules` with `{ "project_id": "...", "title": "...",
+  "description": "..." }` → `201` with the module.
+- `GET /api/modules/{id}` and `PUT /api/modules/{id}` with
+  `{ "title": "...", "description": "..." }`.
+- `PUT /api/modules/reorder` with `{ "module_ids": [...] }` — the full
+  ordered id list for one project.
+- `DELETE /api/modules/{id}` → `204`. The module is removed and its issues
+  keep their project with `module_id` null (filed directly under it).
+
+Deleting a project first detaches its issues, then deletes its modules.
+There is no `multica module` CLI surface yet; manage modules over the API.
 ## CLI
 
 ```bash

@@ -22,20 +22,21 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Virtuoso } from "react-virtuoso";
-import { ChevronRight, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus } from "lucide-react";
+import { Boxes, ChevronRight, EyeOff, GripVertical, MoreHorizontal, Pencil, Plus } from "lucide-react";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import type {
   Issue,
   IssueAssigneeType,
   IssueStatus,
   IssueTableGroupDescriptor,
+  Module,
   Project,
   UpdateIssueRequest,
 } from "@multica/core/types";
 import { useViewStore, useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
 import { useViewBaseline } from "../surface/view-baseline-context";
 import { filterIssues, type IssueFilters } from "../utils/filter";
-import { getMoveAnchors } from "../utils/drag-utils";
+import { getMoveAnchors, moduleGroupId } from "../utils/drag-utils";
 import type { SwimlaneGrouping } from "@multica/core/issues/stores/view-store";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -96,6 +97,7 @@ type SwimLaneMoveTargetUpdates = Pick<
   UpdateIssueRequest,
   | "parent_issue_id"
   | "project_id"
+  | "module_id"
   | "assignee_type"
   | "assignee_id"
   | "status"
@@ -235,6 +237,8 @@ interface LaneGroup {
   parentIssue: Pick<Issue, "id" | "status"> | null;
   /** Project metadata (project grouping only) — drives the icon in the header. */
   project: Project | null;
+  /** Module metadata (module grouping only) — drives the icon in the header. */
+  module?: Module | null;
   /** Actor (assignee grouping only) — drives the avatar in the header. */
   actor: { type: IssueAssigneeType; id: string } | null;
   /** Whether this lane owns `issue`. */
@@ -256,6 +260,7 @@ const EMPTY_PROGRESS_MAP = new Map<string, ChildProgress>();
 // `cells` memos from busting on every render when there are no headers.
 const EMPTY_HEADER_IDS = new Set<string>();
 const EMPTY_PROJECTS: Project[] = [];
+const EMPTY_MODULES: Module[] = [];
 
 /**
  * Build parent-grouping lanes. The "No parent" lane is always pinned at the
@@ -406,6 +411,76 @@ function buildProjectLanes(
   ];
 }
 
+function buildModuleLanes(
+  visibleIssues: Issue[],
+  modules: Module[],
+  storedOrder: string[],
+  labels: { noModule: string },
+): LaneGroup[] {
+  const moduleMap = new Map<string, Module>();
+  for (const m of modules) moduleMap.set(m.id, m);
+
+  const seen = new Map<string, LaneGroup>();
+  for (const issue of visibleIssues) {
+    // Patches can omit module_id (undefined); treat it like null.
+    if (!issue.module_id) continue;
+    // moduleGroupId() is the one key builder ("module:<id>" / "module:none")
+    // so descriptor-built lanes, card-built lanes, and the stored order all
+    // agree on lane identity.
+    const key = moduleGroupId(issue.module_id);
+    if (seen.has(key)) continue;
+    const module = moduleMap.get(issue.module_id) ?? null;
+    const moduleId = issue.module_id;
+    seen.set(key, {
+      key,
+      rawId: moduleId,
+      isPinned: false,
+      isOrphan: false,
+      title: module?.title ?? "",
+      identifier: "",
+      parentIssue: null,
+      project: null,
+      module,
+      actor: null,
+      // Normalized: a patch omitting module_id buckets into the none lane
+      // instead of matching no lane at all.
+      matches: (i) => (i.module_id ?? null) === moduleId,
+      moveUpdates: module
+        ? { project_id: module.project_id, module_id: moduleId }
+        : { module_id: moduleId },
+    });
+  }
+
+  const orderIndex = new Map<string, number>();
+  storedOrder.forEach((id, idx) => orderIndex.set(moduleGroupId(id), idx));
+  const ordered = Array.from(seen.values()).sort((a, b) => {
+    const ai = orderIndex.get(a.key);
+    const bi = orderIndex.get(b.key);
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  return [
+    {
+      key: `module:${NONE_LANE_ID}`,
+      rawId: NONE_LANE_ID,
+      isPinned: true,
+      isOrphan: false,
+      title: labels.noModule,
+      identifier: "",
+      parentIssue: null,
+      project: null,
+      module: null,
+      actor: null,
+      matches: (i) => (i.module_id ?? null) === null,
+      moveUpdates: { module_id: null },
+    },
+    ...ordered,
+  ];
+}
+
 function buildAssigneeLanes(
   visibleIssues: Issue[],
   getActorName: (type: string, id: string) => string,
@@ -478,12 +553,15 @@ function buildServerLanes(
   grouping: SwimlaneGrouping,
   visibleStatuses: readonly IssueStatus[],
   projects: ReadonlyMap<string, Project> | undefined,
+  modules: ReadonlyMap<string, Module> | undefined,
   getActorName: (type: string, id: string) => string,
   storedOrder: string[],
   labels: {
     noParent: string;
     otherParents: string;
     noProject: string;
+    noModule: string;
+    unavailableModule: string;
     noAssignee: string;
   },
 ): LaneGroup[] {
@@ -562,6 +640,32 @@ function buildServerLanes(
         serverCellKeys,
       }];
     }
+    if (grouping === "module" && value.kind === "module") {
+      const rawId = value.module_id ?? NONE_LANE_ID;
+      const module = value.module_id
+        ? modules?.get(value.module_id) ?? null
+        : null;
+      return [{
+        key: moduleGroupId(value.module_id),
+        rawId,
+        isPinned: value.module_id === null,
+        isOrphan: false,
+        title: value.module_id
+          ? module?.title ?? labels.unavailableModule
+          : labels.noModule,
+        identifier: "",
+        parentIssue: null,
+        project: null,
+        module,
+        actor: null,
+        matches: (issue) => (issue.module_id ?? null) === value.module_id,
+        moveUpdates: module
+          ? { project_id: module.project_id, module_id: value.module_id }
+          : { module_id: value.module_id },
+        total: descriptor.count,
+        serverCellKeys,
+      }];
+    }
     if (grouping === "parent" && value.kind === "parent") {
       const rawId = value.parent_id ?? NONE_LANE_ID;
       const unavailable = value.value_state === "unavailable";
@@ -615,6 +719,7 @@ function SwimLaneViewImpl({
   onMoveIssue,
   childProgressMap = EMPTY_PROGRESS_MAP,
   projectMap,
+  moduleMap,
   projectId,
   onCreateIssue,
   groupBranches,
@@ -639,6 +744,7 @@ function SwimLaneViewImpl({
   ) => void;
   childProgressMap?: Map<string, ChildProgress>;
   projectMap?: Map<string, Project>;
+  moduleMap?: Map<string, Module>;
   /** Pre-fills `project_id` on the create form for the in-cell "+" button. */
   projectId?: string;
   onCreateIssue?: (defaults: IssueCreateDefaults) => void;
@@ -675,6 +781,8 @@ function SwimLaneViewImpl({
     creatorFilters: activeFiltersProp?.creatorFilters ?? [],
     projectFilters: activeFiltersProp?.projectFilters ?? [],
     includeNoProject: activeFiltersProp?.includeNoProject ?? false,
+    moduleFilters: activeFiltersProp?.moduleFilters ?? [],
+    includeNoModule: activeFiltersProp?.includeNoModule ?? false,
     labelFilters: activeFiltersProp?.labelFilters ?? [],
     // Carry the "Show sub-issues" toggle through to the extra-children merge
     // path (see `filterIssues(extra, activeFilters)` below); otherwise batch /
@@ -688,6 +796,13 @@ function SwimLaneViewImpl({
         : EMPTY_PROJECTS,
     [projectMap, swimlaneGrouping],
   );
+  const modules = useMemo(
+    () =>
+      swimlaneGrouping === "module" && moduleMap
+        ? Array.from(moduleMap.values())
+        : EMPTY_MODULES,
+    [moduleMap, swimlaneGrouping],
+  );
   const { getActorName } = useActorName();
 
   const laneSourceIssues = unfilteredIssues ?? issues;
@@ -700,6 +815,8 @@ function SwimLaneViewImpl({
       noParent: t(($) => $.swimlane.no_parent),
       otherParents: t(($) => $.swimlane.other_parents),
       noProject: t(($) => $.swimlane.no_project),
+      noModule: t(($) => $.swimlane.no_module),
+      unavailableModule: t(($) => $.table.value_unavailable),
       noAssignee: t(($) => $.swimlane.no_assignee),
     }),
     [t],
@@ -810,6 +927,7 @@ function SwimLaneViewImpl({
         swimlaneGrouping,
         sortedStatuses,
         projectMap,
+        moduleMap,
         getActorName,
         swimlaneOrder,
         laneLabels,
@@ -817,6 +935,9 @@ function SwimLaneViewImpl({
     }
     if (swimlaneGrouping === "project") {
       return buildProjectLanes(issues, projects, swimlaneOrder, laneLabels);
+    }
+    if (swimlaneGrouping === "module") {
+      return buildModuleLanes(issues, modules, swimlaneOrder, laneLabels);
     }
     if (swimlaneGrouping === "assignee") {
       return buildAssigneeLanes(issues, getActorName, swimlaneOrder, laneLabels);
@@ -831,11 +952,13 @@ function SwimLaneViewImpl({
     mergedIssues,
     laneSourceIssues,
     projects,
+    modules,
     getActorName,
     swimlaneOrder,
     laneLabels,
     groupBranches,
     projectMap,
+    moduleMap,
     sortedStatuses,
   ]);
 
@@ -1649,6 +1772,9 @@ function DraggableSwimLane({
             />
           )}
           {lane.project && <ProjectIcon project={lane.project} size="sm" />}
+          {lane.module && (
+            <Boxes className="size-[18px] shrink-0 text-muted-foreground" />
+          )}
           {lane.actor && (
             <ActorAvatar
               actorType={lane.actor.type}

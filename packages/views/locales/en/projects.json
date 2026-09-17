@@ -152,6 +152,43 @@
     "search_placeholder": "Search projects...",
     "clear_aria": "Clear project"
   },
+  "module": {
+    "create": {
+      "title": "Create module",
+      "breadcrumb": "Module",
+      "title_placeholder": "Module name",
+      "submit": "Create module",
+      "submitting": "Creating...",
+      "toast_created": "Module created",
+      "toast_failed": "Failed to create module"
+    },
+    "picker": {
+      "search_placeholder": "Search modules...",
+      "none": "No module",
+      "empty": "No modules yet",
+      "needs_project": "Select a project first"
+    },
+    "all": "All",
+    "ungrouped": "No module",
+    "add": "Add module",
+    "add_aria": "Add module to project",
+    "toggle_modules_aria": "Toggle modules",
+    "clear_aria": "Clear module",
+    "manage": "Manage",
+    "manage_title": "Manage modules",
+    "manage_empty": "No modules yet",
+    "reorder_handle_aria": "Drag to reorder module",
+    "rename_aria": "Rename module",
+    "delete_aria": "Delete module",
+    "delete_title": "Delete {{title}}?",
+    "delete_description": "The module is removed. Its issues stay in the project, filed directly under it. This cannot be undone.",
+    "delete_cancel": "Cancel",
+    "delete_confirm": "Delete module",
+    "toast_deleted": "Module deleted",
+    "toast_delete_failed": "Failed to delete module",
+    "toast_reorder_failed": "Failed to reorder modules",
+    "agent_carry_hint": "Applies when you switch to manual create; agent create ignores the module"
+  },
   "chip": {
     "fallback_label": "Project"
   },

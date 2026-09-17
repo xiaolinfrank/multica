@@ -150,6 +150,43 @@
     "search_placeholder": "Rechercher des projets...",
     "clear_aria": "Effacer le projet"
   },
+  "module": {
+    "create": {
+      "title": "Créer un module",
+      "breadcrumb": "Module",
+      "title_placeholder": "Nom du module",
+      "submit": "Créer le module",
+      "submitting": "Création...",
+      "toast_created": "Module créé",
+      "toast_failed": "Échec de la création du module"
+    },
+    "picker": {
+      "search_placeholder": "Rechercher des modules...",
+      "none": "Aucun module",
+      "empty": "Aucun module pour le moment",
+      "needs_project": "Sélectionnez d'abord un projet"
+    },
+    "all": "Tous",
+    "ungrouped": "Non classé",
+    "add": "Ajouter un module",
+    "add_aria": "Ajouter un module au projet",
+    "toggle_modules_aria": "Afficher ou masquer les modules",
+    "clear_aria": "Effacer le module",
+    "manage": "Gérer",
+    "manage_title": "Gérer les modules",
+    "manage_empty": "Aucun module pour le moment",
+    "reorder_handle_aria": "Glisser pour réordonner le module",
+    "rename_aria": "Renommer le module",
+    "delete_aria": "Supprimer le module",
+    "delete_title": "Supprimer {{title}} ?",
+    "delete_description": "Le module est supprimé. Ses tickets restent dans le projet, classés directement sous celui-ci. Cette action est irréversible.",
+    "delete_cancel": "Annuler",
+    "delete_confirm": "Supprimer le module",
+    "toast_deleted": "Module supprimé",
+    "toast_delete_failed": "Échec de la suppression du module",
+    "toast_reorder_failed": "Échec de la réorganisation des modules",
+    "agent_carry_hint": "Appliqué en passant en création manuelle ; la création par l'agent ignore le module"
+  },
   "chip": {
     "fallback_label": "Projet"
   },

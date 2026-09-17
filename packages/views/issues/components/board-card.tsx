@@ -12,13 +12,14 @@ import { propertyListOptions } from "@multica/core/properties";
 import { CustomPropertyValueDisplay } from "./pickers/custom-property-picker";
 import { descriptionPreview } from "./description-preview";
 import { formatDateOnly, isPastDateOnly } from "@multica/core/issues/date";
-import { CalendarClock, CalendarDays } from "lucide-react";
+import { Boxes, CalendarClock, CalendarDays } from "lucide-react";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { PropertyIcon } from "../../common/property-icon";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useLocale, useT, useTimeAgo } from "../../i18n";
 import { ProjectIcon } from "../../projects/components/project-icon";
+import { moduleListOptions } from "@multica/core/modules/queries";
 import { PriorityIcon } from "./priority-icon";
 import { PriorityPicker, AssigneePicker, StartDatePicker, DueDatePicker } from "./pickers";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
@@ -105,6 +106,17 @@ export const BoardCardContent = memo(function BoardCardContent({
   const showDueDate = storeProperties.dueDate && issue.due_date;
   const showProject =
     storeProperties.project && cardGrouping !== "project" && project;
+  // Module chip: shown whenever the card carries a module except on a
+  // module-grouped board, where the column already names it. Fetched lazily
+  // (only when a chip would render) against the shared modules cache.
+  const showModule = !!issue.module_id && cardGrouping !== "module";
+  const { data: cardModules = [] } = useQuery({
+    ...moduleListOptions(cardWsId),
+    enabled: showModule,
+  });
+  const module = showModule
+    ? cardModules.find((m) => m.id === issue.module_id)
+    : undefined;
   const showChildProgress = storeProperties.childProgress && childProgress;
   const showLabels = storeProperties.labels && labels.length > 0;
   // Keeps the chip row from rendering an empty flex container when the status
@@ -218,13 +230,21 @@ export const BoardCardContent = memo(function BoardCardContent({
       {/* Chip row: status + project + labels + custom property values.
           The status chip renders only for a CUSTOM status — the column header
           already names the category. (MUL-6243) */}
-      {(showCustomStatus || showProject || showLabels || cardCustomProperties.length > 0) && (
+      {(showCustomStatus || showProject || showModule || showLabels || cardCustomProperties.length > 0) && (
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
           <CustomStatusChip status={issue.status} />
           {showProject && (
             <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground max-w-[160px]">
               <ProjectIcon project={project} size="sm" />
               <span className="truncate">{project!.title}</span>
+            </span>
+          )}
+          {showModule && (
+            <span className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground">
+              <Boxes className="size-3 shrink-0" />
+              <span className="truncate">
+                {module?.title ?? t(($) => $.table.value_unavailable)}
+              </span>
             </span>
           )}
           {showLabels && labels.slice(0, 2).map((label) => (

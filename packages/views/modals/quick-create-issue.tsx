@@ -63,6 +63,7 @@ import {
 import { ActorAvatar } from "../common/actor-avatar";
 import { ClearablePillButton, PillButton } from "../common/pill-button";
 import { ProjectPicker } from "../projects/components/project-picker";
+import { ModulePicker } from "../projects/components/module-picker";
 import { DueDatePicker, PriorityIcon, PriorityPicker } from "../issues/components";
 import { canAssignAgent } from "../issues/components/pickers/assignee-picker";
 import { isAgentRuntimeBound } from "@multica/core/agents";
@@ -287,6 +288,12 @@ export function AgentCreatePanel({
   const [priority, setPriority] = useState<IssuePriority>(
     (data?.priority as IssuePriority | undefined) ?? draft.shared.priority,
   );
+  // Module context, seeded like projectId. The agent quick-create endpoint
+  // has no module field, so this only rides the manual switch (see carry) —
+  // the pill says so.
+  const [moduleId, setModuleId] = useState<string | null>(
+    (data?.module_id as string | undefined) ?? null,
+  );
   const [dueDate, setDueDate] = useState<string | null>(
     (data?.due_date as string | undefined) ?? draft.shared.dueDate,
   );
@@ -296,6 +303,9 @@ export function AgentCreatePanel({
   const commitProject = (next: string | null) => {
     setProjectId(next);
     setShared({ projectId: next ?? undefined });
+    // A module belongs to exactly one project — any project change (or
+    // clear) orphans the previous module choice.
+    setModuleId(null);
   };
 
   // Parent-issue context — seeded by `openCreateSubIssue` when the modal is
@@ -609,6 +619,7 @@ export function AgentCreatePanel({
     setLastMode("manual");
     setActiveMode("manual");
     const carry: Record<string, unknown> = {};
+    if (moduleId) carry.module_id = moduleId;
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (parentIssueIdentifier) carry.parent_issue_identifier = parentIssueIdentifier;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);
@@ -768,6 +779,26 @@ export function AgentCreatePanel({
               open={fieldPickerOpen === "project" ? true : undefined}
               onOpenChange={(open) => setFieldPickerOpen(open ? "project" : null)}
             />
+          )}
+          {/* Module rides the project pill (a module belongs to exactly one
+              project). The agent quick-create contract has no module field,
+              so the choice only survives a switch to manual — the tooltip
+              says so instead of letting a submit silently drop it. */}
+          {(projectId !== null || moduleId !== null) && (
+            <span title={tProjects(($) => $.module.agent_carry_hint)}>
+              <ModulePicker
+                moduleId={moduleId}
+                projectId={projectId}
+                onUpdate={(u) => setModuleId(u.module_id ?? null)}
+                triggerRender={
+                  <ClearablePillButton
+                    onClear={moduleId !== null ? () => setModuleId(null) : undefined}
+                    clearLabel={tProjects(($) => $.picker.clear_aria)}
+                  />
+                }
+                align="start"
+              />
+            </span>
           )}
           {(visibleFields.includes("priority") ||
             priority !== "none" ||

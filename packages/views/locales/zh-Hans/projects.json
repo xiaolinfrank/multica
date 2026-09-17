@@ -151,6 +151,43 @@
     "search_placeholder": "搜索项目...",
     "clear_aria": "清除项目"
   },
+  "module": {
+    "create": {
+      "title": "创建模块",
+      "breadcrumb": "模块",
+      "title_placeholder": "模块名称",
+      "submit": "创建模块",
+      "submitting": "创建中...",
+      "toast_created": "模块已创建",
+      "toast_failed": "创建模块失败"
+    },
+    "picker": {
+      "search_placeholder": "搜索模块...",
+      "none": "无模块",
+      "empty": "暂无模块",
+      "needs_project": "请先选择项目"
+    },
+    "all": "全部",
+    "ungrouped": "未分组",
+    "add": "添加模块",
+    "add_aria": "为项目添加模块",
+    "toggle_modules_aria": "展开或收起模块",
+    "clear_aria": "清除模块",
+    "manage": "管理",
+    "manage_title": "管理模块",
+    "manage_empty": "暂无模块",
+    "reorder_handle_aria": "拖动调整模块顺序",
+    "rename_aria": "重命名模块",
+    "delete_aria": "删除模块",
+    "delete_title": "删除 {{title}} 吗？",
+    "delete_description": "模块将被删除，其下任务仍保留在项目中并直接归属项目。此操作无法撤销。",
+    "delete_cancel": "取消",
+    "delete_confirm": "删除模块",
+    "toast_deleted": "模块已删除",
+    "toast_delete_failed": "删除模块失败",
+    "toast_reorder_failed": "调整模块顺序失败",
+    "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块"
+  },
   "chip": {
     "fallback_label": "项目"
   },

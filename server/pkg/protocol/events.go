@@ -98,6 +98,13 @@ const (
 	EventProjectResourceUpdated = "project_resource:updated"
 	EventProjectResourceDeleted = "project_resource:deleted"
 
+	// Module events (BayClaw fork). A module subdivides a project; payloads
+	// carry the full ModuleResponse (or the ids on delete) so clients can
+	// patch their cache without a refetch.
+	EventModuleCreated = "module:created"
+	EventModuleUpdated = "module:updated"
+	EventModuleDeleted = "module:deleted"
+
 	// Label events
 	EventLabelCreated       = "label:created"
 	EventLabelUpdated       = "label:updated"

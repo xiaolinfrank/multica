@@ -110,12 +110,14 @@ const GROUPING_LABEL_KEY = {
   status: "group_status",
   assignee: "group_assignee",
   project: "group_project",
+  module: "group_module",
 } as const;
 
 const SWIMLANE_LABEL_KEY = {
   parent: "group_parent",
   project: "group_project",
   assignee: "group_assignee",
+  module: "group_module",
 } as const;
 
 const SORT_LABEL_KEY = {

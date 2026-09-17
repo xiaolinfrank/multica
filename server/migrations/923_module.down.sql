@@ -1,0 +1,2 @@
+ALTER TABLE issue DROP COLUMN IF EXISTS module_id;
+DROP TABLE IF EXISTS module;

@@ -90,6 +90,7 @@ import {
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyListOptions } from "@multica/core/properties";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { moduleListOptions } from "@multica/core/modules/queries";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buildActorNameResolver, useActorName } from "@multica/core/workspace/hooks";
 import {
@@ -105,6 +106,7 @@ import type {
   IssueTableGroupSpec,
   IssueTableQuerySpec,
   IssueTableRowsResponse,
+  Module,
   Project,
   UpdateIssueRequest,
 } from "@multica/core/types";
@@ -125,6 +127,7 @@ import { ActorAvatar } from "../../common/actor-avatar";
 import { LabelChip } from "../../labels/label-chip";
 import { resolveClickIntent, useIntentNavigate } from "../../navigation";
 import { ProjectPicker } from "../../projects/components/project-picker";
+import { ModulePicker } from "../../projects/components/module-picker";
 import { useT } from "../../i18n";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import { useIssueSurfaceSelection } from "../surface/selection-context";
@@ -264,6 +267,7 @@ function tableGroupSpec(grouping: string): IssueTableGroupSpec {
   if (grouping === "status") return { kind: "status" };
   if (grouping === "assignee") return { kind: "assignee" };
   if (grouping === "project") return { kind: "project" };
+  if (grouping === "module") return { kind: "module" };
   const propertyId = propertyIdFromViewKey(grouping);
   if (propertyId) return { kind: "property", property_id: propertyId };
   return { kind: "none" };
@@ -277,6 +281,7 @@ type ColumnLabelKey =
   | "assignee"
   | "labels"
   | "project"
+  | "module"
   | "start_date"
   | "due_date"
   | "created_at"
@@ -1214,6 +1219,24 @@ function IssueTableBodyCell({
           />
         </div>
       );
+    case "module":
+      return (
+        <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
+          <ModulePicker
+            moduleId={issue.module_id ?? null}
+            projectId={issue.project_id}
+            onUpdate={onUpdate}
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            triggerRender={
+              <button
+                type="button"
+                className="flex max-w-full items-center gap-1.5 rounded-xs px-1 py-0.5 hover:bg-accent"
+              />
+            }
+          />
+        </div>
+      );
     case "start_date":
       return (
         <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
@@ -1388,6 +1411,19 @@ export function TableView({
         (groupProjectsQuery.data ?? []).map((project) => [project.id, project]),
       ),
     [groupProjectsQuery.data],
+  );
+  // Module group rows carry only a module id; the title comes from the
+  // shared modules query (same read-without-default rule as projects above).
+  const groupModulesQuery = useQuery({
+    ...moduleListOptions(wsId),
+    enabled: serverGroupSpec.kind === "module",
+  });
+  const groupModuleMap = useMemo(
+    () =>
+      new Map(
+        (groupModulesQuery.data ?? []).map((module) => [module.id, module]),
+      ),
+    [groupModulesQuery.data],
   );
   const serverGroupsRequestGroup =
     serverGroupSpec.kind === "none"
@@ -1799,6 +1835,14 @@ export function TableView({
           t(($) => $.table.value_unavailable)
         );
       }
+      if (value.kind === "module") {
+        if (!value.module_id) return t(($) => $.swimlane.no_module);
+        // Deleted / unresolvable modules read as unavailable, like projects.
+        return (
+          groupModuleMap.get(value.module_id)?.title ??
+          t(($) => $.table.value_unavailable)
+        );
+      }
       if (value.kind === "parent") {
         if (value.value_state === "unset") {
           return t(($) => $.swimlane.no_parent);
@@ -1820,7 +1864,7 @@ export function TableView({
           ?.name ?? String(value.value ?? "")
       );
     },
-    [getActorName, groupProjectMap, propertyById, t],
+    [getActorName, groupModuleMap, groupProjectMap, propertyById, t],
   );
 
   const serverDisplayRows = useMemo<IssueTableDisplayRow[]>(() => {
@@ -2306,7 +2350,10 @@ export function TableView({
         const property = propertyId ? exportPropertyById.get(propertyId) : undefined;
         return property ? isActorPropertyType(property.type) : false;
       });
-      const [rows, exportLookups, exportActorName] = await Promise.all([
+      // The module column exports titles, mirroring the project column: the
+      // modules query is the same read the grouping headers use.
+      const needsModules = csvColumns.some((column) => column.key === "module");
+      const [rows, exportLookups, exportActorName, exportModules] = await Promise.all([
         mode === "all" ? exportIssues() : Promise.resolve(selectedIssues),
         resolveExportLookups({
           projects: csvColumns.some((column) => column.key === "project"),
@@ -2323,7 +2370,17 @@ export function TableView({
               buildActorNameResolver({ members, agents, squads }),
             )
           : Promise.resolve(getActorName),
+        // fetchQuery bypasses the options' `select`, so unwrap the response —
+        // same note as the property catalog above.
+        needsModules
+          ? queryClient
+              .fetchQuery(moduleListOptions(wsId))
+              .then((response) => response.modules)
+          : Promise.resolve([] as Module[]),
       ]);
+      const exportModuleTitleById = new Map(
+        exportModules.map((module) => [module.id, module.title]),
+      );
       const headers = csvColumns.map((column) => {
         const propertyId = propertyIdFromViewKey(column.key);
         if (propertyId) return exportPropertyById.get(propertyId)?.name ?? "";
@@ -2360,6 +2417,12 @@ export function TableView({
             case "project":
               return issue.project_id
                 ? exportLookups.projectMap.get(issue.project_id)?.title ?? ""
+                : "";
+            case "module":
+              // Titles, like the project column. A deleted/unresolvable id
+              // exports an empty cell — same fallback the project column uses.
+              return issue.module_id
+                ? exportModuleTitleById.get(issue.module_id) ?? ""
                 : "";
             case "start_date":
             case "due_date":

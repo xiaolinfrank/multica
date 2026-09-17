@@ -11,6 +11,7 @@ import { defaultStorage } from "../platform/storage";
 import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
+import { moduleKeys } from "../modules/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -654,6 +655,7 @@ function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
     qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) });
     qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) });
     qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: autopilotKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
@@ -795,7 +797,17 @@ export function useRealtimeSync(
       },
       project: () => {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+        if (wsId) {
+          qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+          // Project deletion sweeps the project's module rows too, so a
+          // project:* event must also drop module caches or ghost modules
+          // linger under a project that no longer exists.
+          qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+        }
+      },
+      module: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
       },
       squad: () => {
         const wsId = getCurrentWsId();
@@ -974,7 +986,7 @@ export function useRealtimeSync(
     // Event types handled by specific handlers below -- skip generic refresh
     const specificEvents = new Set([
       "workspace:updated",
-      "issue:updated", "issue:created", "issue:deleted", "issue_attachments:changed", "issue_labels:changed", "issue_metadata:changed", "issue_properties:changed", "property:created", "property:updated", "inbox:new",
+      "issue:updated", "issue:created", "issue:deleted", "module:deleted", "issue_attachments:changed", "issue_labels:changed", "issue_metadata:changed", "issue_properties:changed", "property:created", "property:updated", "inbox:new",
       "comment:created", "comment:updated", "comment:deleted",
       "comment:resolved", "comment:unresolved",
       "activity:created",
@@ -1023,6 +1035,7 @@ export function useRealtimeSync(
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,
           projectChanged: payload.project_changed,
+          moduleChanged: payload.module_changed,
         });
         if (issue.status) {
           onInboxIssueStatusChanged(qc, wsId, issue.id, issue.status);
@@ -1052,6 +1065,20 @@ export function useRealtimeSync(
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
         void onInboxIssueDeleted(qc, wsId, issue_id);
+      }
+    });
+
+    // Module deletion re-files its issues under the project root server-side
+    // (module_id → NULL, revision bumped) and drops the module row. Both the
+    // module caches and every issue cache holding module_id must refetch —
+    // boards, tables, and lists all snapshot module_id per row. Listed in
+    // specificEvents so the generic module-prefix path does not double-fire
+    // the module half.
+    const unsubModuleDeleted = ws.on("module:deleted", () => {
+      const wsId = getCurrentWsId();
+      if (wsId) {
+        qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+        qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
       }
     });
 
@@ -1755,6 +1782,7 @@ export function useRealtimeSync(
       unsubCockpitChanged();
       unsubIssueCreated();
       unsubIssueDeleted();
+      unsubModuleDeleted();
       unsubIssueAttachmentsChanged();
       unsubIssueLabelsChanged();
       unsubIssueMetadataChanged();

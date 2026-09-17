@@ -58,6 +58,7 @@ import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { StatusIcon, StatusPicker, PriorityIcon, PriorityPicker, StagePicker, AssigneePicker, StartDatePicker, DueDatePicker, LabelPicker } from "../issues/components";
 import { maxSiblingStage } from "../issues/components/pickers/stage-picker";
 import { ProjectPicker } from "../projects/components/project-picker";
+import { ModulePicker } from "../projects/components/module-picker";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
@@ -289,6 +290,13 @@ export function ManualCreatePanel({
   const [parentIssueId, setParentIssueId] = useState<string | undefined>(
     (data?.parent_issue_id as string) || undefined,
   );
+  // Kept local (not in the persisted draft): modules are per-project, and a
+  // project change below clears it, so there is nothing durable to restore.
+  const [moduleId, setModuleId] = useState<string | undefined>(() =>
+    data && "module_id" in data
+      ? (data.module_id as string | null) ?? undefined
+      : undefined,
+  );
   const parentIssueLocked = anchorCommentId !== null
     && typeof data?.parent_issue_id === "string"
     && data.parent_issue_id.length > 0;
@@ -411,7 +419,13 @@ export function ManualCreatePanel({
     setAssigneeType("agent");
     setAssigneeId(match.id);
   }, [workspaceAgents, defaultAssigneeAgentName, assigneeType, assigneeId]);
-  const updateProject = (id?: string) => { setProjectId(id); setShared({ projectId: id }); };
+  const updateProject = (id?: string) => {
+    setProjectId(id);
+    setShared({ projectId: id });
+    // A module belongs to exactly one project; any project switch orphans
+    // the old choice, and the server would reject the pair on create.
+    setModuleId(undefined);
+  };
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };
   const updateDueDate = (v: string | null) => { setDueDate(v); setShared({ dueDate: v }); };
   const updateLabelIds = (ids: string[]) => { setLabelIds(ids); setManual({ labelIds: ids }); };
@@ -532,6 +546,7 @@ export function ManualCreatePanel({
               label_ids: labelIds.length > 0 ? labelIds : undefined,
               stage: parentIssueId && stage != null ? stage : undefined,
               project_id: projectId,
+              module_id: moduleId,
             },
           },
         });
@@ -556,6 +571,7 @@ export function ManualCreatePanel({
           // Stage is only meaningful for a sub-issue (relative to its siblings).
           stage: parentIssueId && stage != null ? stage : undefined,
           project_id: projectId,
+          module_id: moduleId,
         });
       }
 
@@ -1076,6 +1092,23 @@ export function ManualCreatePanel({
                   align="start"
                   open={fieldPickerOpen === "project" ? true : undefined}
                   onOpenChange={(open) => setFieldPickerOpen(open ? "project" : null)}
+                />
+              )}
+
+              {/* Module — meaningful only once a project is chosen (a module
+                  belongs to exactly one project), so it rides the project pill. */}
+              {(projectId != null || moduleId != null) && (
+                <ModulePicker
+                  moduleId={moduleId ?? null}
+                  projectId={projectId ?? null}
+                  onUpdate={(u) => setModuleId(u.module_id ?? undefined)}
+                  triggerRender={
+                    <ClearablePillButton
+                      onClear={moduleId ? () => setModuleId(undefined) : undefined}
+                      clearLabel={tProjects(($) => $.picker.clear_aria)}
+                    />
+                  }
+                  align="start"
                 />
               )}
 

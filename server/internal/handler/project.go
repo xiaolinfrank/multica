@@ -655,6 +655,24 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete project views")
 		return
 	}
+	// The project's modules ride along (no FK to cascade them): issues in
+	// those modules fall back to sitting directly under no module, revision
+	// bumped so clients refetch, and the module rows themselves go in the
+	// same transaction as the project row.
+	if _, err := qtx.DetachProjectModuleIssues(r.Context(), db.DetachProjectModuleIssuesParams{
+		WorkspaceID: project.WorkspaceID,
+		ProjectID:   project.ID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to detach project modules")
+		return
+	}
+	if _, err := qtx.DeleteModulesForProject(r.Context(), db.DeleteModulesForProjectParams{
+		WorkspaceID: project.WorkspaceID,
+		ProjectID:   project.ID,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete project modules")
+		return
+	}
 	if err := qtx.DeleteProject(r.Context(), db.DeleteProjectParams{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,

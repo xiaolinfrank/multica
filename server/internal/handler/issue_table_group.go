@@ -25,6 +25,7 @@ type issueTableGroupValueResponse struct {
 	Status     string               `json:"status,omitempty"`
 	Actor      *issueTableActorRef  `json:"actor"`
 	ProjectID  *string              `json:"project_id,omitempty"`
+	ModuleID   *string              `json:"module_id,omitempty"`
 	ParentID   *string              `json:"parent_id,omitempty"`
 	Parent     *issueTableParentRef `json:"parent,omitempty"`
 	PropertyID string               `json:"property_id,omitempty"`
@@ -272,6 +273,15 @@ END, ''))`,
   ''
 )) END`,
 		}, true
+	case "module":
+		return resolvedIssueTableGroup{
+			kind:      "module",
+			groupExpr: "COALESCE(i.module_id::text, '__no_module__')",
+			groupSortExpr: `CASE WHEN group_value = '__no_module__' THEN '' ELSE LOWER(COALESCE(
+  (SELECT m.title FROM module m WHERE m.workspace_id = $1 AND m.id = group_value::uuid),
+  ''
+)) END`,
+		}, true
 	case "parent":
 		return resolvedIssueTableGroup{
 			kind:      "parent",
@@ -287,7 +297,7 @@ END, ''))`,
 			return resolvedIssueTableGroup{}, false
 		}
 		secondaryCategory := group.Secondary == "status_category"
-		if group.Primary != "assignee" && group.Primary != "project" && group.Primary != "parent" {
+		if group.Primary != "assignee" && group.Primary != "project" && group.Primary != "module" && group.Primary != "parent" {
 			writeIssueTableUnsupportedGroup(w, "primary_group_unsupported", "This primary group is not supported.")
 			return resolvedIssueTableGroup{}, false
 		}
@@ -509,6 +519,8 @@ func (group resolvedIssueTableGroup) orderExpression(addArg func(any) string) st
 		return "CASE split_part(group_value, ':', 1) WHEN 'member' THEN 0 WHEN 'agent' THEN 1 WHEN 'squad' THEN 2 ELSE 3 END"
 	case "project":
 		return "CASE WHEN group_value = '__no_project__' THEN 0 ELSE 1 END"
+	case "module":
+		return "CASE WHEN group_value = '__no_module__' THEN 0 ELSE 1 END"
 	case "parent":
 		return "CASE WHEN group_value = '__no_parent__' THEN 0 ELSE 1 END"
 	case "property":
@@ -654,6 +666,17 @@ func (group resolvedIssueTableGroup) descriptor(raw string, count int64, context
 		}
 		descriptor.Key = "project:" + raw
 		descriptor.Value.ProjectID = &raw
+	case "module":
+		descriptor.Value.Kind = "module"
+		if raw == "__no_module__" {
+			descriptor.Key = "module:none"
+			return descriptor, nil
+		}
+		if _, err := util.ParseUUID(raw); err != nil {
+			return descriptor, fmt.Errorf("unexpected module group value %q", raw)
+		}
+		descriptor.Key = "module:" + raw
+		descriptor.Value.ModuleID = &raw
 	case "parent":
 		descriptor.Value.Kind = "parent"
 		if raw == "__no_parent__" {
@@ -819,6 +842,22 @@ func (group resolvedIssueTableGroup) predicate(w http.ResponseWriter, key string
 			return "", false
 		}
 		return fmt.Sprintf("i.project_id = %s::uuid", addArg(id)), true
+	case "module":
+		const prefix = "module:"
+		if !strings.HasPrefix(key, prefix) {
+			writeError(w, http.StatusBadRequest, "invalid group_key")
+			return "", false
+		}
+		raw := strings.TrimPrefix(key, prefix)
+		if raw == "none" {
+			return "i.module_id IS NULL", true
+		}
+		id, err := util.ParseUUID(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid group_key")
+			return "", false
+		}
+		return fmt.Sprintf("i.module_id = %s::uuid", addArg(id)), true
 	case "parent":
 		const prefix = "parent:"
 		if !strings.HasPrefix(key, prefix) {

@@ -13,6 +13,9 @@ export interface CreateIssueRequest {
   assignee_id?: string;
   parent_issue_id?: string;
   project_id?: string;
+  /** Module to place the issue under; the module's project wins when
+   *  project_id is omitted (server rejects a mismatching pair). */
+  module_id?: string | null;
   /** Ordered stage (>= 1) grouping this sub-issue under its parent. */
   stage?: number;
   start_date?: string;
@@ -67,6 +70,9 @@ export interface UpdateIssueRequest {
   due_date?: string | null;
   parent_issue_id?: string | null;
   project_id?: string | null;
+  /** Omit to keep the module; null clears it (issue sits directly under the
+   *  project). Changing project_id without an explicit module_id clears it. */
+  module_id?: string | null;
   /** Ordered stage (>= 1); null clears it (unstaged). */
   stage?: number | null;
   /** Attachment IDs to bind to this issue alongside the description update.
@@ -92,6 +98,7 @@ export interface MoveIssueRequest
     | "assignee_id"
     | "parent_issue_id"
     | "project_id"
+    | "module_id"
   > {
   before_id: string | null;
   after_id: string | null;
@@ -156,6 +163,10 @@ export interface ListIssuesParams {
   creator_filters?: IssueActorRef[];
   project_ids?: string[];
   include_no_project?: boolean;
+  /** Narrow to one project module (Project → Module → Issue). */
+  module_id?: string;
+  /** Widen `module_id` to issues with no module (`include_no_module=1`). */
+  include_no_module?: boolean;
   label_ids?: string[];
   /** Restrict the window to root issues instead of filtering loaded pages. */
   top_level_only?: boolean;
@@ -243,6 +254,10 @@ export interface ListGroupedIssuesParams {
   creator_filters?: IssueActorRef[];
   project_ids?: string[];
   include_no_project?: boolean;
+  /** Narrow to one project module (Project → Module → Issue). */
+  module_id?: string;
+  /** Widen `module_id` to issues with no module. */
+  include_no_module?: boolean;
   label_ids?: string[];
   group_assignee_type?: IssueAssigneeType | "none";
   group_assignee_id?: string;
@@ -300,6 +315,10 @@ export interface IssueTableFilters {
   creators?: IssueActorRef[];
   project_ids?: string[];
   include_no_project?: boolean;
+  /** Module facets of the scope's projects (Project → Module → Issue). */
+  module_ids?: string[];
+  /** Widen `module_ids` to issues with no module. */
+  include_no_module?: boolean;
   label_ids?: string[];
   /** Same shape as `ListIssuesParams.properties`: bare strings are exact
    *  equality / "No value", operator objects narrow scalar matches. */
@@ -355,10 +374,11 @@ export type IssueTableGroupSpec =
   | { kind: "status_category"; category_format?: "lifecycle" }
   | { kind: "assignee" }
   | { kind: "project" }
+  | { kind: "module" }
   | { kind: "parent" }
   | {
       kind: "compound";
-      primary: "assignee" | "project" | "parent";
+      primary: "assignee" | "project" | "module" | "parent";
       /** `status_category` folds custom statuses into their category's cell. */
       secondary: "status" | "status_category";
       /** Omit for legacy seven-value category buckets; only for status_category. */
@@ -389,6 +409,7 @@ export type IssueTableGroupValue =
   | { kind: "status"; status: string }
   | { kind: "assignee"; actor: IssueTableActorRef | null }
   | { kind: "project"; project_id: string | null }
+  | { kind: "module"; module_id: string | null }
   | {
       kind: "parent";
       parent_id: string | null;

@@ -11,6 +11,8 @@ import { ProjectDetail } from "./project-detail";
 
 const mocks = vi.hoisted(() => ({
   role: "admin",
+  modules: { current: [] as Array<Record<string, unknown>> },
+  issueSurface: { current: null as Record<string, unknown> | null },
   copyText: vi.fn(),
   deleteProject: vi.fn(),
   getShareableUrl: vi.fn((path: string) => `https://app.example${path}`),
@@ -36,6 +38,8 @@ vi.mock("@tanstack/react-query", () => ({
       case "agents":
       case "pins":
         return { data: [], isLoading: false };
+      case "modules":
+        return { data: mocks.modules.current, isLoading: false, isSuccess: true };
       default:
         return { data: undefined, isLoading: false };
     }
@@ -44,6 +48,17 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@multica/core/projects/queries", () => ({
   projectDetailOptions: () => ({ queryKey: ["project-detail"] }),
+}));
+
+vi.mock("@multica/core/modules/queries", () => ({
+  moduleListOptions: () => ({ queryKey: ["modules"] }),
+}));
+
+vi.mock("@multica/core/modules/mutations", () => ({
+  useCreateModule: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+  useUpdateModule: () => ({ mutate: vi.fn() }),
+  useDeleteModule: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
+  useReorderModules: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("@multica/core/projects/mutations", () => ({
@@ -80,6 +95,7 @@ vi.mock("@multica/core/chat", () => ({
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
     projects: () => "/test-workspace/projects",
+    projectDetail: (id: string) => "/test-workspace/projects/" + id,
   }),
 }));
 
@@ -233,12 +249,24 @@ vi.mock("./project-due-date-picker", () => ({
 }));
 
 vi.mock("../../issues/surface/issue-surface", () => ({
-  IssueSurface: () => null,
+  IssueSurface: (props: Record<string, unknown>) => {
+    mocks.issueSurface.current = props;
+    return null;
+  },
 }));
 
 vi.mock("../../layout/breadcrumb-header", () => ({
-  BreadcrumbHeader: ({ actions }: { actions: React.ReactNode }) => (
-    <header>{actions}</header>
+  BreadcrumbHeader: ({
+    actions,
+    leaf,
+  }: {
+    actions: React.ReactNode;
+    leaf?: React.ReactNode;
+  }) => (
+    <header>
+      {leaf}
+      {actions}
+    </header>
   ),
 }));
 
@@ -277,13 +305,13 @@ const PROJECT: Project = {
   resource_count: 0,
 };
 
-function renderProjectDetail() {
+function renderProjectDetail(search = "") {
   const adapter: NavigationAdapter = {
     push: mocks.push,
     replace: vi.fn(),
     back: vi.fn(),
     pathname: "/test-workspace/projects/project-1",
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(search),
     hash: "",
     getShareableUrl: mocks.getShareableUrl,
   };
@@ -386,5 +414,118 @@ describe("ProjectDetail issue creation", () => {
       project_id: PROJECT.id,
     });
     useCreateModeStore.getState().setLastMode("agent");
+  });
+});
+
+describe("ProjectDetail module filtering", () => {
+  beforeEach(() => {
+    mocks.modules.current = [
+      {
+        id: "module-1",
+        workspace_id: "workspace-1",
+        project_id: PROJECT.id,
+        title: "Parser rewrite",
+        description: null,
+        position: 0,
+        created_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-01T00:00:00Z",
+        issue_count: 3,
+        done_count: 1,
+      },
+    ];
+  });
+
+  it("navigates with the module param when a module chip is picked", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(
+      screen.getByRole("button", { name: /parser rewrite/i }),
+    );
+
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1?module=module-1",
+    );
+  });
+
+  it("navigates with the none param from the ungrouped chip", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "No module" }));
+
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1?module=none",
+    );
+  });
+
+  it("shows the active module in the breadcrumb and clears back to all", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail("module=module-1");
+
+    const chip = screen.getByRole("button", { name: /parser rewrite/i });
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+
+    // The breadcrumb clear affordance drops the param entirely.
+    await user.click(screen.getByRole("button", { name: "Clear module" }));
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1",
+    );
+  });
+
+  it("resets to all from the All chip, dropping the param", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail("module=none");
+
+    await user.click(screen.getByRole("button", { name: "All" }));
+
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1",
+    );
+  });
+
+  it("narrows the surface and seeds creation for a live module param", () => {
+    renderProjectDetail("module=module-1");
+
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({
+      module_ids: ["module-1"],
+    });
+    expect(mocks.issueSurface.current?.createDefaults).toEqual({
+      module_id: "module-1",
+    });
+  });
+
+  it("narrows to the no-module bucket for the none sentinel", () => {
+    renderProjectDetail("module=none");
+
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({
+      include_no_module: true,
+    });
+    expect(mocks.issueSurface.current?.createDefaults).toBeUndefined();
+  });
+
+  // A module deleted after its URL was shared (or a hand-edited param) must
+  // not filter the surface into permanent silence: once the list has loaded,
+  // an unknown id reads as "all".
+  it("falls back to the unfiltered view when the module param is dead", () => {
+    renderProjectDetail("module=deleted-module");
+
+    expect(mocks.issueSurface.current?.moduleFilter).toBeUndefined();
+    expect(mocks.issueSurface.current?.createDefaults).toBeUndefined();
+  });
+
+  it("seeds the header New issue button with the active module", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail("module=module-1");
+
+    await user.click(screen.getByRole("button", { name: "New Issue" }));
+
+    expect(useModalStore.getState().data).toMatchObject({
+      project_id: PROJECT.id,
+      module_id: "module-1",
+    });
   });
 });

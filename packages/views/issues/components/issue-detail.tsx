@@ -78,6 +78,7 @@ import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
 import { ProjectPicker } from "../../projects/components/project-picker";
+import { ModulePicker } from "../../projects/components/module-picker";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { useNewRunIds } from "./use-run-comment-motion";
 import { AgentRunComment, CommentCard } from "./comment-card";
@@ -2325,6 +2326,13 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_project)}>
             <ProjectPicker
+              projectId={issue.project_id}
+              onUpdate={handleUpdateField}
+            />
+          </PropRow>
+          <PropRow label={t(($) => $.detail.prop_module)}>
+            <ModulePicker
+              moduleId={issue.module_id ?? null}
               projectId={issue.project_id}
               onUpdate={handleUpdateField}
             />

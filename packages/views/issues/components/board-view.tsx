@@ -21,6 +21,7 @@ import type {
   IssueAssigneeType,
   IssueStatus,
   Project,
+  Module,
   IssueProperty,
 } from "@multica/core/types";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
@@ -61,6 +62,7 @@ import {
   getMoveUpdates,
   propertyGroupId,
   projectGroupId,
+  moduleGroupId,
 } from "../utils/drag-utils";
 
 function isStatusGroup(
@@ -77,10 +79,19 @@ interface ProjectColumnLabels {
   unavailableProject: string;
 }
 
+interface ModuleColumnLabels {
+  noModule: string;
+  /** Deleted-module fallback. Shares the Table's wording so one board column
+   *  and one table group row never describe the same module differently. */
+  unavailableModule: string;
+}
+
 interface BuildGroupsContext extends ProjectColumnLabels {
   getActorName: (type: string, id: string) => string;
   groupingProperty: IssueProperty | null;
   projectMap: Map<string, Project> | undefined;
+  moduleMap: Map<string, Module> | undefined;
+  moduleColumnLabels: ModuleColumnLabels;
   noAssigneeLabel: string;
   noValueLabel: string;
 }
@@ -131,6 +142,50 @@ function withNoProjectColumn(
   ];
 }
 
+/**
+ * One module column — the projectColumn analogue. Carries the owning
+ * project id too: a drag onto a module column must move the issue into that
+ * project as well (module and project are validated together server-side).
+ */
+function moduleColumn(
+  id: string,
+  moduleId: string | null,
+  moduleMap: Map<string, Module> | undefined,
+  labels: ModuleColumnLabels,
+  totalCount?: number,
+): BoardColumnGroup {
+  const module = moduleId ? moduleMap?.get(moduleId) ?? null : null;
+  return {
+    id,
+    title: moduleId
+      ? module?.title ?? labels.unavailableModule
+      : labels.noModule,
+    moduleId,
+    projectId: module?.project_id ?? null,
+    totalCount,
+    createData: module
+      ? { project_id: module.project_id, module_id: module.id }
+      : undefined,
+  };
+}
+
+/**
+ * Keep the "No module" column present as a drop target, mirroring
+ * withNoProjectColumn.
+ */
+function withNoModuleColumn(
+  columns: BoardColumnGroup[],
+  moduleMap: Map<string, Module> | undefined,
+  labels: ModuleColumnLabels,
+): BoardColumnGroup[] {
+  if (columns.length === 0) return columns;
+  if (columns.some((column) => column.moduleId === null)) return columns;
+  return [
+    moduleColumn(moduleGroupId(null), null, moduleMap, labels, 0),
+    ...columns,
+  ];
+}
+
 function buildGroups(
   issues: Issue[],
   visibleStatuses: IssueStatus[],
@@ -139,6 +194,8 @@ function buildGroups(
     getActorName,
     groupingProperty,
     projectMap,
+    moduleMap,
+    moduleColumnLabels,
     noAssigneeLabel,
     noValueLabel,
     ...projectLabels
@@ -193,6 +250,25 @@ function buildGroups(
       return a.title.localeCompare(b.title);
     });
     return withNoProjectColumn(ordered, projectMap, projectLabels);
+  }
+
+  // Module board: one column per module the loaded cards reference, plus the
+  // "No module" column. Ordering mirrors the server (no-module first, then
+  // module title), matching the project board's contract.
+  if (grouping === "module") {
+    const columns = new Map<string, BoardColumnGroup>();
+    for (const issue of issues) {
+      const moduleId = issue.module_id ?? null;
+      const id = moduleGroupId(moduleId);
+      if (columns.has(id)) continue;
+      columns.set(id, moduleColumn(id, moduleId, moduleMap, moduleColumnLabels));
+    }
+    const ordered = Array.from(columns.values()).toSorted((a, b) => {
+      if (a.moduleId === null) return b.moduleId === null ? 0 : -1;
+      if (b.moduleId === null) return 1;
+      return a.title.localeCompare(b.title);
+    });
+    return withNoModuleColumn(ordered, moduleMap, moduleColumnLabels);
   }
 
   const groups = new Map<string, BoardColumnGroup>();
@@ -251,6 +327,7 @@ function BoardViewImpl({
   onMoveIssue,
   childProgressMap = EMPTY_PROGRESS_MAP,
   projectMap,
+  moduleMap,
   projectId,
   onCreateIssue,
   statusPagination,
@@ -262,6 +339,7 @@ function BoardViewImpl({
   onMoveIssue: (issueId: string, updates: DragMoveUpdates, onSettled?: () => void) => void;
   childProgressMap?: Map<string, ChildProgress>;
   projectMap?: Map<string, Project>;
+  moduleMap?: Map<string, Module>;
   /** When set, the per-column "+" pre-fills the project on the create form. */
   projectId?: string;
   onCreateIssue?: (defaults: IssueCreateDefaults) => void;
@@ -372,6 +450,13 @@ function BoardViewImpl({
     }),
     [t],
   );
+  const moduleColumnLabels = useMemo<ModuleColumnLabels>(
+    () => ({
+      noModule: t(($) => $.swimlane.no_module),
+      unavailableModule: t(($) => $.table.value_unavailable),
+    }),
+    [t],
+  );
   const hydratedProjectGroups = useMemo<BoardColumnGroup[] | undefined>(() => {
     if (grouping !== "project" || !groupBranches?.enabled) return undefined;
     const columns = groupBranches.descriptors.flatMap(
@@ -393,6 +478,26 @@ function BoardViewImpl({
     );
     return withNoProjectColumn(columns, projectMap, projectColumnLabels);
   }, [groupBranches, grouping, projectColumnLabels, projectMap]);
+  const hydratedModuleGroups = useMemo<BoardColumnGroup[] | undefined>(() => {
+    if (grouping !== "module" || !groupBranches?.enabled) return undefined;
+    const columns = groupBranches.descriptors.flatMap(
+      (descriptor): BoardColumnGroup[] =>
+        descriptor.value.kind === "module"
+          ? [
+              moduleColumn(
+                // Descriptor key again: groupPagination is keyed by it and
+                // moduleGroupId reproduces it exactly.
+                descriptor.key,
+                descriptor.value.module_id ?? null,
+                moduleMap,
+                moduleColumnLabels,
+                descriptor.count,
+              ),
+            ]
+          : [],
+    );
+    return withNoModuleColumn(columns, moduleMap, moduleColumnLabels);
+  }, [groupBranches, grouping, moduleColumnLabels, moduleMap]);
   const groupPagination = useMemo(() => {
     if (!groupBranches?.enabled) return undefined;
     const grouped = new Map<string, IssueGroupPageState[]>();
@@ -440,10 +545,13 @@ function BoardViewImpl({
       const built =
         hydratedAssigneeGroups ??
         hydratedProjectGroups ??
+        hydratedModuleGroups ??
         buildGroups(issues, visibleStatuses, grouping, {
           getActorName,
           groupingProperty,
           projectMap,
+          moduleMap,
+          moduleColumnLabels,
           noAssigneeLabel: t(($) => $.filters.no_assignee),
           noValueLabel: t(($) => $.board.no_value),
           ...projectColumnLabels,
@@ -453,7 +561,7 @@ function BoardViewImpl({
         totalCount: groupPagination?.[group.id]?.total ?? group.totalCount,
       }));
     },
-    [hydratedAssigneeGroups, hydratedProjectGroups, issues, visibleStatuses, grouping, getActorName, groupingProperty, projectMap, projectColumnLabels, groupPagination, t],
+    [hydratedAssigneeGroups, hydratedProjectGroups, hydratedModuleGroups, issues, visibleStatuses, grouping, getActorName, groupingProperty, projectMap, moduleMap, projectColumnLabels, moduleColumnLabels, groupPagination, t],
   );
   const groupIds = useMemo(
     () => new Set(groups.map((group) => group.id)),

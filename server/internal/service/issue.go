@@ -70,7 +70,13 @@ type IssueCreateParams struct {
 	CreatorID     pgtype.UUID
 	ParentIssueID pgtype.UUID
 	ProjectID     pgtype.UUID
-	StartDate     pgtype.Date
+	// ModuleID files the new issue into one of the project's modules. A
+	// module names its own project: when ProjectID is absent the module's
+	// project is adopted, and when the two disagree the create fails with
+	// ErrModuleNotInProject. Sub-issues inherit the parent's project but
+	// never its module.
+	ModuleID   pgtype.UUID
+	StartDate  pgtype.Date
 	DueDate       pgtype.Date
 	OriginType    pgtype.Text
 	OriginID      pgtype.UUID
@@ -152,6 +158,17 @@ var ErrParentIssueNotFound = errors.New("parent issue not found in this workspac
 // having to remember it. Callers translate this into 400.
 var ErrProjectNotFound = errors.New("project not found in this workspace")
 
+// ErrModuleNotFound signals that the supplied ModuleID does not exist in the
+// issue's workspace. Same boundary semantics as ErrProjectNotFound: every
+// create entry enforces it here so no transport has to remember it. Callers
+// translate this into 400.
+var ErrModuleNotFound = errors.New("module not found in this workspace")
+
+// ErrModuleNotInProject signals that the supplied ModuleID belongs to a
+// project other than the issue's resolved project. Callers translate this
+// into 400.
+var ErrModuleNotInProject = errors.New("module does not belong to project")
+
 // ErrIssueLabelNotFound signals that one of the supplied LabelIDs does not
 // exist in the issue's workspace or is not an issue-scoped label. The whole
 // create is rejected so a new issue is never born with a partial or wrong
@@ -190,7 +207,7 @@ type IssueCreateResult struct {
 // Create runs the full issue-creation pipeline atomically end-to-end:
 //
 //  1. Begin transaction.
-//  2. Resolve & validate parent / project belong to the same workspace.
+//  2. Resolve & validate parent / project / module belong to the same workspace.
 //  3. Lock & check the duplicate guard.
 //  4. Increment the workspace issue counter.
 //  5. Insert the issue row (with optional origin stamping).
@@ -287,6 +304,27 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			projectID = parent.ProjectID
 		}
 	}
+	// A module must live in the issue's project. A create that names a
+	// project adopts the module's project when it omitted one, and is
+	// rejected when the two disagree — the same one-place boundary the
+	// project check below enforces.
+	moduleID := p.ModuleID
+	if moduleID.Valid {
+		module, err := qtx.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
+			ID:          moduleID,
+			WorkspaceID: p.WorkspaceID,
+		})
+		if err != nil {
+			return IssueCreateResult{}, ErrModuleNotFound
+		}
+		if projectID.Valid {
+			if module.ProjectID != projectID {
+				return IssueCreateResult{}, ErrModuleNotInProject
+			}
+		} else {
+			projectID = module.ProjectID
+		}
+	}
 	if projectID.Valid {
 		if _, err := qtx.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{
 			ID:          projectID,
@@ -353,6 +391,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			DueDate:       p.DueDate,
 			Number:        issueNumber,
 			ProjectID:     projectID,
+			ModuleID:      moduleID,
 			OriginType:    p.OriginType,
 			OriginID:      p.OriginID,
 			Stage:         p.Stage,
@@ -375,6 +414,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			DueDate:       p.DueDate,
 			Number:        issueNumber,
 			ProjectID:     projectID,
+			ModuleID:      moduleID,
 			Stage:         p.Stage,
 		})
 	}

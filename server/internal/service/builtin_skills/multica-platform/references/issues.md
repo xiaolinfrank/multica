@@ -5,6 +5,7 @@ Product contracts the runtime brief does not fully encode.
 - [PR linking and close intent are two distinct contracts](#pr-linking-and-close-intent-are-two-distinct-contracts)
 - [Reading a linked PR's real state](#reading-a-linked-prs-real-state)
 - [Editing comments without overwriting concurrent work](#editing-comments-without-overwriting-concurrent-work)
+- [Modules: grouping issues inside a project](#modules-grouping-issues-inside-a-project)
 - [Custom properties: typed workflow state](#custom-properties-typed-workflow-state)
 - [Status changes have server side effects](#status-changes-have-server-side-effects)
 - [Claim ownership without duplicating a run](#claim-ownership-without-duplicating-a-run)
@@ -176,6 +177,25 @@ duplicate issue stops the operation before any position write. This protects
 against truncated or repeated pages, but does not promise a snapshot across
 concurrent edits. There is no CLI bulk-export or `--all` mode.
 
+## Modules: grouping issues inside a project
+
+Issues carry a nullable `module_id`; a module belongs to exactly one
+project, so the two fields move together:
+
+- An issue update validates `module_id` against the issue's *resulting*
+  project. Moving an issue into another project's module is rejected.
+- Changing `project_id` without a new `module_id` clears the module: the
+  issue lands directly under the new project.
+- There is no CLI module flag yet (no `--module` on create/update). Manage
+  modules over the API — see [projects.md](projects.md#modules) — and do
+  not invent flags.
+
+Issue queries filter with `module_id` (single) or `module_ids` (any of),
+plus `include_no_module=true` for issues filed directly under their
+project. These compile to one OR predicate, so `module_id` together with
+`include_no_module` reads as "this module or no module". Table grouping
+exposes a `module` kind whose group keys are `module:<uuid>` and
+`module:none`.
 ## Custom properties: typed workflow state
 
 Workspaces may define custom issue properties (Severity, Environment, QA

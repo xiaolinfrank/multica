@@ -6,6 +6,7 @@ import type { Comment, Reaction } from "./comment";
 import type { TimelineEntry } from "./activity";
 import type { Workspace, MemberWithUser, Invitation } from "./workspace";
 import type { Project } from "./project";
+import type { Module } from "./module";
 import type { Label } from "./label";
 import type { CockpitChangedPayload } from "./cockpit";
 
@@ -68,6 +69,9 @@ export type WSEventType =
   | "project:created"
   | "project:updated"
   | "project:deleted"
+  | "module:created"
+  | "module:updated"
+  | "module:deleted"
   | "squad:created"
   | "squad:updated"
   | "squad:deleted"
@@ -119,6 +123,9 @@ export interface IssueUpdatedPayload {
   assignee_changed?: boolean;
   status_changed?: boolean;
   project_changed?: boolean;
+  // Same contract as project_changed, for module membership: moving an issue
+  // between modules (or out of one) shifts each module's issue/done counts.
+  module_changed?: boolean;
 }
 
 export interface IssueDeletedPayload {
@@ -517,6 +524,19 @@ export interface ProjectDeletedPayload {
   project_id: string;
 }
 
+export interface ModuleCreatedPayload {
+  module: Module;
+}
+
+export interface ModuleUpdatedPayload {
+  module: Module;
+}
+
+export interface ModuleDeletedPayload {
+  module_id: string;
+  project_id: string;
+}
+
 export interface InvitationCreatedPayload {
   invitation: Invitation;
   workspace_name?: string;
@@ -626,6 +646,9 @@ export interface WSEventPayloadMap {
   "project:created": ProjectCreatedPayload;
   "project:updated": ProjectUpdatedPayload;
   "project:deleted": ProjectDeletedPayload;
+  "module:created": ModuleCreatedPayload;
+  "module:updated": ModuleUpdatedPayload;
+  "module:deleted": ModuleDeletedPayload;
   "invitation:created": InvitationCreatedPayload;
   "invitation:accepted": InvitationAcceptedPayload;
   "invitation:declined": InvitationDeclinedPayload;

@@ -1710,6 +1710,8 @@ describe("SwimLaneView", () => {
           creatorFilters: [],
           projectFilters: [],
           includeNoProject: false,
+          moduleFilters: [],
+          includeNoModule: false,
           labelFilters: [],
         }}
         childProgressMap={childProgressMap}
@@ -1808,6 +1810,8 @@ describe("SwimLaneView", () => {
           creatorFilters: [],
           projectFilters: [],
           includeNoProject: false,
+          moduleFilters: [],
+          includeNoModule: false,
           labelFilters: [],
         }}
         childProgressMap={childProgressMap}
@@ -1851,6 +1855,8 @@ describe("SwimLaneView", () => {
           creatorFilters: [],
           projectFilters: [],
           includeNoProject: false,
+          moduleFilters: [],
+          includeNoModule: false,
           labelFilters: [],
         }}
         childProgressMap={
@@ -1932,6 +1938,8 @@ describe("SwimLaneView", () => {
           creatorFilters: [],
           projectFilters: [],
           includeNoProject: false,
+          moduleFilters: [],
+          includeNoModule: false,
           labelFilters: [],
           showSubIssues: false,
         }}

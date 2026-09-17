@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { EyeOff, FolderMinus, Info, MoreHorizontal, Plus, UserMinus } from "lucide-react";
+import { Boxes, EyeOff, FolderMinus, Info, MoreHorizontal, Plus, UserMinus } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import type {
@@ -87,6 +87,10 @@ export interface BoardColumnGroup {
   /** Display-only, for the column's leading icon. Null on the "No project"
    *  column and on a project the projects query cannot resolve. */
   project?: Pick<Project, "icon"> | null;
+  /** Module id for this column; null = the "No module" column. Set only when
+   *  the board is grouped by module. The owning project's id rides along
+   *  (in `projectId`) because a module move must name its project. */
+  moduleId?: string | null;
   /** Set when the board is grouped by a select-type custom property. */
   propertyId?: string;
   /** Option id for this column; null = the "No value" column. */
@@ -365,6 +369,24 @@ function BoardGroupHeading({
           className="size-2.5 shrink-0 rounded-full bg-muted-foreground/30"
           style={group.propertyOptionColor ? { backgroundColor: group.propertyOptionColor } : undefined}
         />
+        <span className="truncate text-body font-medium" title={group.title}>
+          {group.title}
+        </span>
+        <span className="shrink-0 rounded-full bg-background px-1.5 py-0.5 text-micro font-medium tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      </div>
+    );
+  }
+
+  // Module columns carry BOTH projectId and moduleId, so this branch has
+  // to run before the project one.
+  if (group.moduleId !== undefined) {
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+          <Boxes className="size-3.5" />
+        </span>
         <span className="truncate text-body font-medium" title={group.title}>
           {group.title}
         </span>

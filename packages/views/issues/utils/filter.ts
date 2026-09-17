@@ -14,6 +14,8 @@ export interface IssueFilters {
   creatorFilters: ActorFilterValue[];
   projectFilters: string[];
   includeNoProject: boolean;
+  moduleFilters: string[];
+  includeNoModule: boolean;
   labelFilters: string[];
   /** Custom-property filters: definition id → selected values (OR within
    *  a definition, AND across definitions; checkbox uses "true"/"false"). */
@@ -40,6 +42,8 @@ export interface IssueFilterState {
   creatorFilters: ActorFilterValue[];
   projectFilters: string[];
   includeNoProject: boolean;
+  moduleFilters: string[];
+  includeNoModule: boolean;
   labelFilters: string[];
   propertyFilters?: Record<string, PropertyFilterValue[]>;
   workingOnly: boolean;
@@ -185,12 +189,13 @@ export function applyIssueFilters(
   filters: IssueFilterState,
   context: IssueFilterContext = {},
 ): Issue[] {
-  const { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters, projectFilters, includeNoProject, labelFilters, workingOnly } = filters;
+  const { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters, projectFilters, includeNoProject, moduleFilters, includeNoModule, labelFilters, workingOnly } = filters;
   const hasAssigneeFilter =
     filters.assigneeFilterActive === true ||
     assigneeFilters.length > 0 ||
     includeNoAssignee;
   const hasProjectFilter = projectFilters.length > 0 || includeNoProject;
+  const hasModuleFilter = moduleFilters.length > 0 || includeNoModule;
   // Empty set passed without `agentRunningFilter` is a no-op. When the
   // filter is on but the set is missing/empty, hide everything — the
   // user opted into "only running" and there is nothing running.
@@ -244,6 +249,17 @@ export function applyIssueFilters(
       }
     }
 
+    if (hasModuleFilter) {
+      if (!issue.module_id) {
+        if (!includeNoModule) return false;
+      } else if (moduleFilters.length > 0) {
+        if (!moduleFilters.includes(issue.module_id)) return false;
+      } else {
+        // Only "No module" is checked → hide issues that have a module
+        return false;
+      }
+    }
+
     if (labelFilters.length > 0) {
       // OR semantics within the filter: keep issues that carry any of the
       // selected labels. Matches existing priority / project multi-select.
@@ -270,6 +286,8 @@ export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
       creatorFilters: filters.creatorFilters,
       projectFilters: filters.projectFilters,
       includeNoProject: filters.includeNoProject,
+      moduleFilters: filters.moduleFilters,
+      includeNoModule: filters.includeNoModule,
       labelFilters: filters.labelFilters,
       propertyFilters: filters.propertyFilters,
       workingOnly: filters.agentRunningFilter === true,

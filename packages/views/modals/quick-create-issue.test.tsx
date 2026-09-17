@@ -231,6 +231,10 @@ vi.mock("@multica/core/projects/queries", () => ({
   projectListOptions: () => ({ queryKey: ["projects"] }),
 }));
 
+vi.mock("@multica/core/modules/queries", () => ({
+  moduleListOptions: () => ({ queryKey: ["modules"] }),
+}));
+
 vi.mock("@multica/core/issues/stores/quick-create-store", () => ({
   useQuickCreateStore: (selector?: (state: typeof mockQuickCreateStore) => unknown) =>
     (selector ? selector(mockQuickCreateStore) : mockQuickCreateStore),

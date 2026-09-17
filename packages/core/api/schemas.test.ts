@@ -45,7 +45,13 @@ import {
   EMPTY_INBOX_ITEMS,
   EMPTY_INBOX_UNREAD_SUMMARY,
   EMPTY_SEARCH_PROJECTS_RESPONSE,
+  EMPTY_LIST_MODULES_RESPONSE,
+  EMPTY_MODULE_RESPONSE,
+  EMPTY_ISSUE_TABLE_GROUPS_RESPONSE,
   EMPTY_USER,
+  ListModulesResponseSchema,
+  ModuleResponseSchema,
+  IssueTableGroupsResponseSchema,
   InboxItemListSchema,
   InboxUnreadSummarySchema,
   IssueTriggerPreviewSchema,
@@ -1569,6 +1575,114 @@ describe("SearchProjectsResponseSchema date drift", () => {
     expect(parsed.projects).toHaveLength(1);
     expect(parsed.projects[0]?.start_date).toBeNull();
     expect(parsed.projects[0]?.due_date).toBeNull();
+  });
+});
+
+describe("Module schemas", () => {
+  const ENDPOINT = { endpoint: "GET /api/modules" };
+
+  const baseModule = {
+    id: "m-1",
+    workspace_id: "ws-1",
+    project_id: "p-1",
+    title: "Auth",
+    description: null,
+    position: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  // Frontend deploys before backend: a module row from a server that predates
+  // stat enrichment omits the counts, and a list may omit total. Both must
+  // default rather than degrade the whole batch to the empty fallback.
+  it("defaults missing counts and total without dropping modules", () => {
+    const parsed = parseWithFallback(
+      { modules: [baseModule] },
+      ListModulesResponseSchema,
+      EMPTY_LIST_MODULES_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed).not.toBe(EMPTY_LIST_MODULES_RESPONSE);
+    expect(parsed.modules).toHaveLength(1);
+    expect(parsed.modules[0]?.issue_count).toBe(0);
+    expect(parsed.modules[0]?.done_count).toBe(0);
+    expect(parsed.modules[0]?.description).toBeNull();
+    expect(parsed.total).toBe(0);
+  });
+
+  // A genuinely wrong shape (position drifted to a string) still fails the row,
+  // and the response degrades to the empty fallback — same trade-off ProjectSchema
+  // makes for a drifted title.
+  it("degrades a type-drifted module row to the empty fallback", () => {
+    const parsed = parseWithFallback(
+      { modules: [{ ...baseModule, position: "zero" }], total: 1 },
+      ListModulesResponseSchema,
+      EMPTY_LIST_MODULES_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed).toBe(EMPTY_LIST_MODULES_RESPONSE);
+  });
+
+  // Older backends predate modules entirely: an issue without module_id must
+  // parse to null, not fail the row and blank the list.
+  it("defaults a missing IssueSchema.module_id to null", () => {
+    const parsed = ListIssuesResponseSchema.parse({
+      issues: [baseIssue],
+      total: 1,
+    });
+    expect(parsed.issues).toHaveLength(1);
+    expect(parsed.issues[0]?.module_id).toBeNull();
+  });
+
+  // The server omits module_id on the "module:none" bucket (json omitempty on
+  // issue_table_group.go's ModuleID), so the module arm of the group-value
+  // union must default the field rather than fail the descriptor and degrade
+  // the whole groups response to zero rendered groups.
+  it("parses module group values, defaulting the omitted none bucket", () => {
+    const parsed = parseWithFallback(
+      {
+        query_fingerprint: "fp",
+        total: 2,
+        groups: [
+          { key: "module:none", value: { kind: "module" }, count: 1 },
+          { key: "module:m-1", value: { kind: "module", module_id: "m-1" }, count: 1 },
+        ],
+      },
+      IssueTableGroupsResponseSchema,
+      EMPTY_ISSUE_TABLE_GROUPS_RESPONSE,
+      { endpoint: "POST /api/issues/table/groups" },
+    );
+    expect(parsed.groups).toHaveLength(2);
+    expect(parsed.groups[0]?.value).toEqual({ kind: "module", module_id: null });
+    expect(parsed.groups[1]?.value).toEqual({ kind: "module", module_id: "m-1" });
+  });
+
+  // Single-module endpoints (GET/POST/PUT /api/modules[...]) wrap the row as
+  // {"module": {...}}; the client unwraps after parsing, so the envelope must
+  // parse with the row-level leniency above and degrade to the empty
+  // envelope on drift.
+  it("parses the single-module envelope with defaulted counts", () => {
+    const parsed = parseWithFallback(
+      { module: baseModule },
+      ModuleResponseSchema,
+      EMPTY_MODULE_RESPONSE,
+      { endpoint: "GET /api/modules/{id}" },
+    );
+    expect(parsed).not.toBe(EMPTY_MODULE_RESPONSE);
+    expect(parsed.module.id).toBe("m-1");
+    expect(parsed.module.issue_count).toBe(0);
+    expect(parsed.module.done_count).toBe(0);
+  });
+
+  it("degrades a malformed single-module envelope to the empty fallback", () => {
+    const parsed = parseWithFallback(
+      { module: { ...baseModule, position: "zero" } },
+      ModuleResponseSchema,
+      EMPTY_MODULE_RESPONSE,
+      { endpoint: "GET /api/modules/{id}" },
+    );
+    expect(parsed).toBe(EMPTY_MODULE_RESPONSE);
+    expect(parsed.module.id).toBe("");
   });
 });
 

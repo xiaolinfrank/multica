@@ -1938,15 +1938,23 @@ export function IssueDisplayControls({
     updated_at: "sort_updated",
     title: "sort_title",
   };
-  const GROUPING_LABEL_KEY: Record<typeof GROUPING_OPTIONS[number]["value"], "group_status" | "group_assignee" | "group_project"> = {
+  const GROUPING_LABEL_KEY: Record<
+    typeof GROUPING_OPTIONS[number]["value"],
+    "group_status" | "group_assignee" | "group_project" | "group_module"
+  > = {
     status: "group_status",
     assignee: "group_assignee",
     project: "group_project",
+    module: "group_module",
   };
-  const SWIMLANE_GROUPING_LABEL_KEY: Record<SwimlaneGrouping, "group_parent" | "group_project" | "group_assignee"> = {
+  const SWIMLANE_GROUPING_LABEL_KEY: Record<
+    SwimlaneGrouping,
+    "group_parent" | "group_project" | "group_assignee" | "group_module"
+  > = {
     parent: "group_parent",
     project: "group_project",
     assignee: "group_assignee",
+    module: "group_module",
   };
   const CARD_PROPERTY_LABEL_KEY: Record<typeof CARD_PROPERTY_OPTIONS[number]["key"], "card_priority" | "card_description" | "card_assignee" | "card_start_date" | "card_due_date" | "card_project" | "card_labels" | "card_child_progress"> = {
     priority: "card_priority",
@@ -2069,6 +2077,9 @@ export function IssueDisplayControls({
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="project">
                   {t(($) => $.table.columns.project)}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="module">
+                  {t(($) => $.table.columns.module)}
                 </DropdownMenuRadioItem>
                 {tableGroupableProperties.map((property) => (
                   <DropdownMenuRadioItem

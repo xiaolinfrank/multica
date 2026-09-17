@@ -204,6 +204,14 @@ export type {
   ListProjectResourcesResponse,
 } from "./project";
 export type {
+  Module,
+  CreateModuleRequest,
+  UpdateModuleRequest,
+  ListModulesResponse,
+  ModuleResponse,
+  ReorderModulesResponse,
+} from "./module";
+export type {
   GraphNode,
   GraphEdge,
   GraphEdgeKind,

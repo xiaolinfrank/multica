@@ -128,6 +128,11 @@ import type {
   CreateProjectRequest,
   UpdateProjectRequest,
   ListProjectsResponse,
+  Module,
+  CreateModuleRequest,
+  UpdateModuleRequest,
+  ListModulesResponse,
+  ReorderModulesResponse,
   ProjectResource,
   CreateProjectResourceRequest,
   UpdateProjectResourceRequest,
@@ -376,6 +381,10 @@ import {
   SearchAttachmentsResponseSchema,
   SearchIssuesResponseSchema,
   SearchProjectsResponseSchema,
+  ModuleResponseSchema,
+  ListModulesResponseSchema,
+  EMPTY_LIST_MODULES_RESPONSE,
+  EMPTY_MODULE_RESPONSE,
   SquadSchema,
   SquadListSchema,
   SquadMemberListSchema,
@@ -1145,6 +1154,8 @@ export class ApiClient {
     }
     if (params?.project_ids?.length) search.set("project_ids", params.project_ids.join(","));
     if (params?.include_no_project) search.set("include_no_project", "true");
+    if (params?.module_id) search.set("module_id", params.module_id);
+    if (params?.include_no_module) search.set("include_no_module", "true");
     if (params?.label_ids?.length) search.set("label_ids", params.label_ids.join(","));
     if (params?.top_level_only) search.set("top_level_only", "true");
     // No `.length` guard on purpose: an empty ids array must still send
@@ -1214,6 +1225,8 @@ export class ApiClient {
     }
     if (params.project_ids?.length) search.set("project_ids", params.project_ids.join(","));
     if (params.include_no_project) search.set("include_no_project", "true");
+    if (params.module_id) search.set("module_id", params.module_id);
+    if (params.include_no_module) search.set("include_no_module", "true");
     if (params.label_ids?.length) search.set("label_ids", params.label_ids.join(","));
     if (params.group_assignee_type) search.set("group_assignee_type", params.group_assignee_type);
     if (params.group_assignee_id) search.set("group_assignee_id", params.group_assignee_id);
@@ -4443,6 +4456,61 @@ export class ApiClient {
     await this.fetch(`/api/projects/${projectId}/resources/${resourceId}`, {
       method: "DELETE",
     });
+  }
+
+  // Modules (Project → Module → Issue). Every module endpoint — list, detail,
+  // create, update — goes through parseWithFallback per the API-compat rule,
+  // because UI-consumed JSON must not ride an `as` cast. The single-module
+  // endpoints wrap the row as {"module": {...}}; the client unwraps it so
+  // callers keep working with the bare Module.
+  async listModules(params?: { project_id?: string }): Promise<ListModulesResponse> {
+    const search = new URLSearchParams();
+    if (params?.project_id) search.set("project_id", params.project_id);
+    const raw = await this.fetch<unknown>(`/api/modules?${search}`);
+    return parseWithFallback(raw, ListModulesResponseSchema, EMPTY_LIST_MODULES_RESPONSE, {
+      endpoint: "GET /api/modules",
+    });
+  }
+
+  async getModule(id: string): Promise<Module> {
+    const raw = await this.fetch<unknown>(`/api/modules/${id}`);
+    return parseWithFallback(raw, ModuleResponseSchema, EMPTY_MODULE_RESPONSE, {
+      endpoint: "GET /api/modules/{id}",
+    }).module;
+  }
+
+  async createModule(data: CreateModuleRequest): Promise<Module> {
+    const raw = await this.fetch<unknown>("/api/modules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, ModuleResponseSchema, EMPTY_MODULE_RESPONSE, {
+      endpoint: "POST /api/modules",
+    }).module;
+  }
+
+  async updateModule(id: string, data: UpdateModuleRequest): Promise<Module> {
+    const raw = await this.fetch<unknown>(`/api/modules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return parseWithFallback(raw, ModuleResponseSchema, EMPTY_MODULE_RESPONSE, {
+      endpoint: "PUT /api/modules/{id}",
+    }).module;
+  }
+
+  /** Rewrites one project's module order in a single server-side statement:
+   *  positions become 0..n-1 in the given order. All ids must belong to the
+   *  same project. */
+  async reorderModules(moduleIds: string[]): Promise<ReorderModulesResponse> {
+    return this.fetch("/api/modules/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ module_ids: moduleIds }),
+    });
+  }
+
+  async deleteModule(id: string): Promise<void> {
+    await this.fetch(`/api/modules/${id}`, { method: "DELETE" });
   }
 
   // Labels

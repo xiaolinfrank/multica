@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import { Check, ChevronRight, Link2, MoreHorizontal, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus } from "lucide-react";
+import { Boxes, Check, ChevronRight, Link2, MoreHorizontal, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import type { ProjectStatus, ProjectPriority } from "@multica/core/types";
 import { useAuthStore } from "@multica/core/auth";
 import { projectDetailOptions } from "@multica/core/projects/queries";
+import { moduleListOptions } from "@multica/core/modules/queries";
 import { useUpdateProject, useDeleteProject } from "@multica/core/projects/mutations";
 import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
@@ -74,6 +75,10 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { useT } from "../../i18n";
 import { useProjectStatusLabels, useProjectPriorityLabels } from "./labels";
+import {
+  ProjectModuleStrip,
+  NO_MODULE_FILTER,
+} from "./project-module-strip";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 
 // ---------------------------------------------------------------------------
@@ -127,6 +132,38 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const issueScope = useMemo(
     () => ({ type: "project" as const, projectId, actorKind: issueTab }),
     [projectId, issueTab],
+  );
+  // Module narrowing comes from the ?module= URL param so the strip, the
+  //  breadcrumb, deep links, and browser/tab back all agree on one source.
+  // Both platform adapters surface searchParams (web: useSearchParams,
+  // desktop: location.search), so no per-app wiring is needed here.
+  const activeModule = router.searchParams.get("module");
+  const { data: stripModules = [], isSuccess: modulesLoaded } = useQuery(
+    moduleListOptions(wsId, projectId),
+  );
+  const activeModuleRecord = stripModules.find(
+    (module) => module.id === activeModule,
+  );
+  const moduleFilter = useMemo(() => {
+    if (!activeModule) return undefined;
+    if (activeModule === NO_MODULE_FILTER) return { include_no_module: true };
+    // A stale ?module= id (module since deleted, hand-edited URL) must not
+    // filter the surface into silence. Once the list has loaded, an unknown
+    // id falls back to the unfiltered view instead of matching zero rows.
+    if (modulesLoaded && !activeModuleRecord) return undefined;
+    return { module_ids: [activeModule] };
+  }, [activeModule, activeModuleRecord, modulesLoaded]);
+  const handleSelectModule = useCallback(
+    (value: string | null) => {
+      const params = new URLSearchParams(router.searchParams.toString());
+      if (value) params.set("module", value);
+      else params.delete("module");
+      const qs = params.toString();
+      router.push(
+        wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""),
+      );
+    },
+    [projectId, router, wsPaths],
   );
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
@@ -486,18 +523,48 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         <div ref={rightSidebarShortcutTargetRef} className="flex h-full flex-col">
           <BreadcrumbHeader
             segments={[{ href: wsPaths.projects(), label: t(($) => $.detail.breadcrumb_fallback) }]}
-            leaf={<span className="truncate font-medium text-foreground">{project.title}</span>}
+            leaf={
+              <span className="flex min-w-0 items-center gap-1">
+                <span className="truncate font-medium text-foreground">{project.title}</span>
+                {activeModuleRecord && (
+                  <>
+                    <ChevronRight className="size-3 shrink-0 text-faint-foreground" />
+                    <span className="flex min-w-0 items-center gap-0.5 rounded-full bg-accent px-2 py-0.5 text-caption">
+                      <Boxes className="size-3 shrink-0" />
+                      <span className="max-w-[10rem] truncate">{activeModuleRecord.title}</span>
+                      <button
+                        type="button"
+                        aria-label={t(($) => $.module.clear_aria)}
+                        onClick={() => handleSelectModule(null)}
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </span>
+                  </>
+                )}
+              </span>
+            }
             actions={
               <>
               {/* Seeds the project the same way the `c` shortcut does on this
                   route (global-shortcuts.tsx), and goes through the create-mode
-                  preference so agent/manual stays where the user left it. */}
+                  preference so agent/manual stays where the user left it. The
+                  active module rides along exactly like the surface create
+                  defaults below — activeModuleRecord is only set for a module
+                  that still exists in this project, so the "none" sentinel and
+                  dead ids seed nothing. */}
               <Button
                 size="sm"
                 variant="outline"
                 className="px-2 sm:px-2.5"
                 aria-label={t(($) => $.detail.new_issue_button)}
-                onClick={() => openCreateIssueWithPreference({ project_id: projectId })}
+                onClick={() =>
+                  openCreateIssueWithPreference({
+                    project_id: projectId,
+                    ...(activeModuleRecord && { module_id: activeModuleRecord.id }),
+                  })
+                }
               >
                 <Plus className="h-3.5 w-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
@@ -576,9 +643,18 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             }
           />
 
+          <ProjectModuleStrip
+            projectId={projectId}
+            active={activeModule}
+            onSelect={handleSelectModule}
+            canManage={isWorkspaceAdmin}
+          />
+
           <IssueSurface
             scope={issueScope}
             modes={["table", "board", "list", "swimlane", "gantt"]}
+            moduleFilter={moduleFilter}
+            createDefaults={activeModuleRecord ? { module_id: activeModuleRecord.id } : undefined}
           />
           </div>
         </ResizablePanel>

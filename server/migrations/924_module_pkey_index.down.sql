@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS module_pkey_uidx;

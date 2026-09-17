@@ -771,6 +771,7 @@ describe("useIssueSurfaceController", () => {
   it.each([
     { grouping: "assignee" as const, expected: { kind: "assignee" } },
     { grouping: "project" as const, expected: { kind: "project" } },
+    { grouping: "module" as const, expected: { kind: "module" } },
   ])(
     "asks the server for $grouping groups when the board is grouped that way",
     async ({ grouping, expected }) => {
@@ -789,6 +790,7 @@ describe("useIssueSurfaceController", () => {
         listIssueTableGroups,
         listGroupedIssues: vi.fn(() => never()),
         listProjects: vi.fn(() => Promise.resolve({ projects: [], total: 0 })),
+        listModules: vi.fn(() => Promise.resolve({ modules: [], total: 0 })),
         getAgentTaskSnapshot: vi.fn(() => Promise.resolve([])),
         getChildIssueProgress: vi.fn(() => Promise.resolve([])),
       } as unknown as ApiClient);

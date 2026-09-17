@@ -28,4 +28,14 @@ export interface IssueSurfaceProps {
   createDefaults?: IssueCreateDefaults;
   /** Server-owned membership search shared by non-Table issue surfaces. */
   search?: string;
+  /** Page-level module narrowing (the project detail module strip). Travels
+   *  server-side with the Table query and client-side everywhere else, like
+   *  the project scope. Deliberately not part of the persisted filter set:
+   *  the strip owns selecting and clearing it. */
+  moduleFilter?: IssueSurfaceModuleFilter;
+}
+
+export interface IssueSurfaceModuleFilter {
+  module_ids?: string[];
+  include_no_module?: boolean;
 }
