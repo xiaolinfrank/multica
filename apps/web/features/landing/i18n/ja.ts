@@ -2944,8 +2944,8 @@ export function createJaDict(allowSignup: boolean): LandingDict {
       title: "BayClaw について",
       nameLine: {
         prefix: "BayClaw — ",
-        mul: "Mul",
-        tiplexed: "tiplexed ",
+        mult: "Mult",
+        iplexed: "iplexed ",
         i: "I",
         nformationAnd: "nformation and ",
         c: "C",

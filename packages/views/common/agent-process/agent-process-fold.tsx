@@ -44,6 +44,12 @@ export interface AgentProcessFoldProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /**
+   * Step count to show instead of `items.length`. The chat settled view folds
+   * preface text into the items so intermediate narration stays inspectable,
+   * but only the actual process steps should be counted (MUL-7458).
+   */
+  stepCount?: number;
+  /**
    * Trigger copy to use instead of the step count. The lazy caller has no
    * count to show before its first fetch, and "0 steps" would be a lie.
    */
@@ -76,6 +82,7 @@ export function AgentProcessFold({
   phase = "settled",
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  stepCount,
   triggerLabel,
   triggerSuffix,
   triggerActions,
@@ -126,7 +133,7 @@ export function AgentProcessFold({
       <div className="flex items-center gap-2">
         <CollapsibleTrigger className="flex flex-1 min-w-0 items-center gap-1 text-caption text-muted-foreground hover:text-foreground transition-colors">
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-          <span>{triggerLabel ?? t(($) => $.agent_process.steps, { count: items.length })}</span>
+          <span>{triggerLabel ?? t(($) => $.agent_process.steps, { count: stepCount ?? items.length })}</span>
           {triggerSuffix}
         </CollapsibleTrigger>
         {triggerActions ? (

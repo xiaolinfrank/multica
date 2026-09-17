@@ -2965,8 +2965,8 @@ export function createKoDict(allowSignup: boolean): LandingDict {
       title: "BayClaw 소개",
       nameLine: {
         prefix: "BayClaw — ",
-        mul: "Mul",
-        tiplexed: "tiplexed ",
+        mult: "Mult",
+        iplexed: "iplexed ",
         i: "I",
         nformationAnd: "nformation and ",
         c: "C",
