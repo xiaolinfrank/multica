@@ -37,6 +37,10 @@ export const user: User = {
   starter_content_state: "imported",
   language: "en",
   profile_description: "",
+  // BayClaw office customization adds these to the core User schema; upstream
+  // ui-lab fixtures do not know about them.
+  custom_status: "",
+  custom_status_key: "",
   timezone: "Asia/Shanghai",
   created_at: time,
   updated_at: time,
