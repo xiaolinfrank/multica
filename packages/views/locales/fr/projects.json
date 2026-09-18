@@ -169,6 +169,7 @@
     },
     "add": "Ajouter un module",
     "add_aria": "Ajouter un module au projet",
+    "toggle_projects_aria": "Développer ou réduire les projets",
     "toggle_modules_aria": "Afficher ou masquer les modules",
     "clear_aria": "Effacer le module",
     "manage": "Gérer",

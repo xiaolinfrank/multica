@@ -170,6 +170,7 @@
     },
     "add": "모듈 추가",
     "add_aria": "프로젝트에 모듈 추가",
+    "toggle_projects_aria": "프로젝트 펼치기/접기",
     "toggle_modules_aria": "모듈 표시 전환",
     "clear_aria": "모듈 지우기",
     "manage": "관리",

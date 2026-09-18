@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import type { ProjectStatus, ProjectPriority } from "@multica/core/types";
 import { useAuthStore } from "@multica/core/auth";
 import { projectDetailOptions } from "@multica/core/projects/queries";
+import { useModalStore } from "@multica/core/modals";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useUpdateProject, useDeleteProject } from "@multica/core/projects/mutations";
 import { pinListOptions } from "@multica/core/pins";
@@ -570,6 +571,16 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               >
                 <Plus className="h-3.5 w-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="px-2 sm:px-2.5"
+                aria-label={t(($) => $.module.create.title)}
+                onClick={() => useModalStore.getState().open("create-module", { projectId })}
+              >
+                <Boxes className="h-3.5 w-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">{t(($) => $.module.create.title)}</span>
               </Button>
               <Button
                 variant="ghost"
