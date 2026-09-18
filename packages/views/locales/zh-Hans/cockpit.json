@@ -28,7 +28,16 @@
     "back_to_today": "回到今日",
     "export": "导出",
     "export_tasks": "任务明细 CSV",
-    "export_finance": "财务支出 CSV"
+    "export_finance": "财务支出 CSV",
+    "scope_count": "模块 {{n}}/{{total}}",
+    "overall_progress": "总体进度",
+    "year_progress": "今年进度",
+    "overall_basis": "全部任务（含跨年）的平均完成度。未填进度按状态计（已完成 100 / 进行中 50 / 受阻 25 / 未开始 0），已取消不计。",
+    "year_basis": "结束日期 ≤ {{date}} 的任务平均完成度，按计划应约 {{scheduled}}%；跨年任务不计入。",
+    "expand_controls": "展开时间轴工具",
+    "collapse_controls": "收起时间轴工具",
+    "export_pdf": "甘特图 PDF",
+    "export_png": "甘特图 PNG"
   },
   "overview": {
     "annual_goal": "年度目标",
@@ -48,15 +57,14 @@
     "overdue": "逾期",
     "finance": "财务板块",
     "finance_hint": "预算与分期付款按月对照",
-    "card_overall": "近期完成",
-    "card_next": "未来一个月",
+    "card_overall": "当前核心进展",
+    "card_next": "未来两周重点",
     "card_support": "需要支持",
     "card_auto": "自动汇总",
     "card_manual": "手动填写",
     "card_placeholder": "填写本卡片内容",
     "card_write_manual": "改为手动填写",
     "card_seed": "…",
-    "meetings": "会议记录",
     "add_meeting": "新增会议",
     "mvp_label": "年度 MVP 目标",
     "clock": "当前时间",
@@ -64,7 +72,23 @@
     "module_active": "进行中",
     "module_recent": "最近成果",
     "module_next": "下一关键节点",
-    "open_task": "在甘特图中定位 {{code}}"
+    "open_task": "在甘特图中定位 {{code}}",
+    "card_meetings": "近期会议",
+    "card_overall_hint": "近 7 天 {{from}}–{{to}}",
+    "card_next_hint": "{{from}}–{{to}}",
+    "card_support_hint": "受阻与逾期在办",
+    "card_meetings_hint": "本周与即将到来",
+    "lead_done": "完成 {{n}} 项",
+    "lead_active": "在办 {{n}} 项",
+    "lead_milestones": "里程碑 {{n}} 项",
+    "lead_paid": "实付 {{amount}}",
+    "lead_due": "到期任务 {{n}} 项",
+    "lead_planned": "预计支出 {{amount}}",
+    "lead_blocked": "受阻 {{n}} 项",
+    "lead_overdue": "逾期在办 {{n}} 项",
+    "more_detail": "…完整明细见执行甘特图",
+    "more_items": "…共 {{n}} 项，完整清单见执行甘特图",
+    "tag_milestone": "里程碑"
   },
   "gantt": {
     "column_task": "任务 / 模块",
@@ -74,10 +98,10 @@
     "expand_branch": "展开 {{name}}",
     "collapse_branch": "收起 {{name}}",
     "open_node": "打开 {{code}}",
-    "overdue": "逾期",
+    "overdue": "已逾期",
     "bar_label": "时间轴上的 {{code}}",
     "column_finance": "预算 / 付款",
-    "legend_rollup": "汇总条",
+    "legend_rollup": "汇总条（按子树状态聚合）",
     "legend_end_only": "仅有截止日",
     "legend_payment": "付款节点",
     "legend_today": "今日",
@@ -89,7 +113,31 @@
     "collaborator_count": "协 {{n}}",
     "should_have_started": "应开始",
     "done_of": "{{done}}/{{total}} 项",
-    "unscheduled": "待排期"
+    "unscheduled": "待排期",
+    "legend_status": {
+      "progress": "进行中（含审查中/等待期）",
+      "done": "已完成",
+      "blocked": "受阻",
+      "todo": "待开始/未开始",
+      "cancelled": "已取消"
+    },
+    "legend_core": "核心节点",
+    "original_code": "原编号 {{code}}",
+    "subtree_progress_hint": "子任务平均进度，共 {{n}} 项 · 已完成 {{done}}/{{total}}",
+    "goal_chip": "距年度目标",
+    "goal_actual": "当前完成度 {{pct}}%",
+    "goal_scheduled": "按计划应约 {{pct}}%",
+    "goal_behind": "落后 {{pts}} 点",
+    "goal_ahead": "超前 {{pts}} 点",
+    "goal_on_track": "按计划",
+    "goal_late_days": "计划最晚完成 {{date}}，晚于年度目标 {{days}} 天",
+    "goal_early_days": "计划最晚完成 {{date}}，早于年度目标 {{days}} 天",
+    "goal_cross_year": "跨年任务 {{count}} 项（不参与推算）",
+    "goal_basis": "按结束日期 ≤ {{date}} 的 {{n}} 项任务推算；未填进度按状态计（已完成 100 / 进行中 50 / 受阻 25 / 未开始 0）",
+    "core_done": "{{date}} 已完成核心 {{count}} 项",
+    "core_blocked": "{{date}} 受阻 {{count}} 项",
+    "core_upcoming": "{{date}} 近期关键 {{count}} 项",
+    "today_line": "今天 {{date}}"
   },
   "node": {
     "code": "编号",
@@ -137,7 +185,11 @@
     "new": "新会议",
     "attendees": "参会人",
     "open": "进入会议",
-    "delete": "删除会议 {{title}}"
+    "delete": "删除会议 {{title}}",
+    "this_week": "本周",
+    "upcoming": "即将到来",
+    "show_all": "查看全部 {{n}} 场",
+    "show_upcoming": "只看近期"
   },
   "payment": {
     "label": "期次",
@@ -147,19 +199,28 @@
     "delete": "删除该期"
   },
   "finance": {
-    "budget": "预算总额",
-    "paid": "已支付",
-    "contracted": "合同已定",
-    "unplanned": "尚未排期",
+    "budget": "预算合计",
     "payment": "付款",
     "payment_count": "{{count}} 笔付款",
     "payment_total": "合计 {{total}}",
     "month_tasks": "任务完成 {{done}}/{{total}}",
     "payment_on": "{{date}} 的付款",
     "month_chart": "月度任务进度 × 财务支出预算",
-    "month_basis": "柱＝当月付款计划（按板块分色堆叠）；绿条＝实付占比",
-    "paid_label": "实付",
-    "month_active": "在办 {{n}}"
+    "month_basis": "柱＝当月付款计划（按板块分色堆叠）；下方两条＝当月预计与实际支出",
+    "month_active": "在办 {{n}}",
+    "planned": "预计支出费用",
+    "actual": "实际支出费用",
+    "outstanding": "预计待支出",
+    "line_count": "{{n}} 项",
+    "line_header": "项数",
+    "actual_basis": "实际支出取「预算执行状态＝完全支付」的行：金额按该行预算，时间按其首个付款日期。",
+    "planned_short": "预计支出",
+    "actual_short": "实际支出",
+    "plus_projected": "+计划 {{amount}}",
+    "actual_track": "实付 {{n}} 项 · 合计 {{amount}}",
+    "payment_paid": "已支付",
+    "payment_planned": "待支付",
+    "payment_month": "{{month}} 待支付 {{count}} 笔 · 合计 {{total}}"
   },
   "issues": {
     "link": "关联任务",
@@ -201,7 +262,10 @@
     "actual_amount": "实际支出费用",
     "check": "校验",
     "check_ok": "正常",
-    "check_warn": "提醒 {{n}}"
+    "check_warn": "提醒 {{n}}",
+    "suggested_fields": "建议补充：{{count}} 项",
+    "core_missing": "必填项缺失：{{count}} 项",
+    "search_matches": "匹配 {{count}} 项"
   },
   "changes": {
     "field_color": "板块颜色",
@@ -234,7 +298,12 @@
     "status_withdrawn": "已撤销",
     "history_title": "已处理记录（{{n}}）",
     "locate": "在甘特图中定位 {{code}}",
-    "locate_hint": "点击任务编号可在甘特图中定位该任务。"
+    "locate_hint": "点击任务编号可在甘特图中定位该任务。",
+    "apply_all": "全部采纳",
+    "confirm_apply_all": "采纳全部待确认字段变更？",
+    "type_add": "新增值",
+    "type_modify": "修改值",
+    "type_clear": "清空值"
   },
   "versions": {
     "button": "版本",
@@ -256,5 +325,10 @@
     "auto_group": "自动存档 ×{{n}}",
     "row_meta": "{{nodes}} 节点 · {{by}}",
     "by_unknown": "未知"
+  },
+  "confirmation": {
+    "delete_title": "删除此记录？",
+    "delete_description": "将永久删除「{{label}}」，此操作无法撤销。",
+    "delete_branch_description": "将永久删除「{{label}}」及其全部下级记录，此操作无法撤销。"
   }
 }

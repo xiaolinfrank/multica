@@ -1,57 +1,19 @@
 /*
  * The cockpit skin.
  *
- * The cockpit board started life as a standalone HTML prototype with its own
- * recognisable look: a fixed light "programme review" palette, blue accent,
- * and status colours keyed to the Chinese status vocabulary. That look is part
- * of what the board's readers expect, so the cockpit page puts `.cockpit-skin`
- * on its root and this file pins the semantic variables to the prototype's
- * values inside that container — the board keeps its look in dark mode too,
- * and nothing outside the board changes.
+ * The board came from a standalone HTML prototype with a fixed light palette.
+ * Its colours now come from the app theme instead, so the board is legible in
+ * dark mode and stays consistent with every other page; what the skin still
+ * carries is the prototype's *geometry* — a denser 13px report surface and a
+ * rounder card frame — because that density is what makes a 187-row programme
+ * board readable.
  *
- * Only final semantic variables are overridden here. Portalled overlays
- * (selects, popovers, tooltips) render outside the container and keep the app
- * theme; that is accepted — the board surface is what carries the identity.
+ * Everything below resolves through semantic tokens, so each rule has a light
+ * and a dark answer without being written twice. The only exceptions are the
+ * banner's white type and the module tint, both handled explicitly.
  */
 
 .cockpit-skin {
-  color-scheme: light;
-
-  /* Prototype surface ramp: #f5f7fa canvas, white panels, #e6eaf0 hairlines. */
-  --page-canvas: #f5f7fa;
-  --surface: #ffffff;
-  --surface-foreground: #1f2733;
-  --surface-raised: #ffffff;
-  --surface-hover: #eef4ff;
-  --background: #f5f7fa;
-  --foreground: #1f2733;
-  --card: #ffffff;
-  --card-foreground: #1f2733;
-  --popover: #ffffff;
-  --popover-foreground: #1f2733;
-  --border: #e6eaf0;
-  --input: #d4dae3;
-  --muted: #eef1f6;
-  --muted-foreground: #7b8794;
-  --faint-foreground: #cbd5e1;
-  --accent: #eef4ff;
-  --accent-foreground: #334155;
-
-  /* The prototype's blue: primary actions, links, in-progress work. */
-  --primary: #3b6cff;
-  --primary-foreground: #ffffff;
-  --brand: #3b6cff;
-  --brand-foreground: #ffffff;
-  --ring: #3b6cff;
-
-  /* Status family, mapped to the prototype's pills and gantt bars:
-     done green, in-progress blue (via --brand), review teal, waiting amber,
-     blocked red, not-started pale. */
-  --success: #15803d;
-  --warning: #e0a106;
-  --destructive: #ff4d4f;
-  --info: #0891b2;
-
   /* The prototype is a dense 13px report surface, one step below the app's
      14px body. */
   --text-body: 13px;
@@ -59,24 +21,78 @@
 
   /* Its cards read rounder than the app's default frame. */
   --radius: 12px;
+
+  /*
+   * Module colours arrive as data (`CockpitNode.color`, e.g. #2563eb), chosen
+   * against a white canvas. Components set `--module-ink` inline from that
+   * value and then read `--module-tint`, which is the ink as-is in light mode
+   * and lifted towards white in dark mode — without it L1-06's #475569 is
+   * almost invisible on the dark surface.
+   */
+  --module-tint: var(--module-ink, var(--color-brand));
+
+  /* Hatching on a roll-up bar. Lighter in dark mode: the same alpha that
+     reads as texture on a bright bar smears into a blur on a dim one. */
+  --rollup-hatch: rgb(255 255 255 / 0.18);
+}
+
+.dark .cockpit-skin {
+  --module-tint: color-mix(in oklab, var(--module-ink, var(--color-brand)) 58%, white);
+  --rollup-hatch: rgb(255 255 255 / 0.12);
 }
 
 /*
- * Annual-objective banner — the board's masthead. Blue gradient with a light
- * bloom in the top-right corner, the goal riding in a frosted glass strip at
- * the exact centre, and the clock pinned to the top-right.
+ * A summary bar is hatched as well as coloured. It reports the state of
+ * everything beneath it rather than a status someone set on the row, and the
+ * texture is what says so at a glance.
+ */
+.cockpit-rollup-bar {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--rollup-hatch) 0 5px,
+    transparent 5px 10px
+  );
+}
+
+/*
+ * Annual-objective banner — the board's masthead. The prototype's blue-to-cyan
+ * sweep, rebuilt from the brand and info tokens so it follows the theme, and
+ * deepened in dark mode so white type keeps its contrast.
  */
 .cockpit-banner {
+  --banner-from: color-mix(in oklab, var(--color-brand) 60%, #06122e);
+  --banner-via: var(--color-brand);
+  --banner-to: var(--color-info);
+  --banner-bloom: rgb(255 255 255 / 0.16);
+  --banner-glass: rgb(255 255 255 / 0.16);
+  --banner-glass-border: rgb(255 255 255 / 0.34);
+
   position: relative;
   min-height: 116px;
   border-radius: 16px;
   padding: 20px 24px;
   color: #ffffff;
-  background: linear-gradient(115deg, #1e3a8a 0%, #1d4ed8 42%, #2563eb 64%, #0891b2 100%);
+  background: linear-gradient(
+    115deg,
+    var(--banner-from) 0%,
+    var(--banner-via) 58%,
+    var(--banner-to) 100%
+  );
   box-shadow:
-    0 8px 24px rgb(29 78 216 / 0.24),
+    0 8px 24px color-mix(in oklab, var(--color-brand) 28%, transparent),
     inset 0 1px 0 rgb(255 255 255 / 0.14);
   overflow: hidden;
+}
+.dark .cockpit-banner {
+  --banner-from: color-mix(in oklab, var(--color-brand) 34%, #04091a);
+  --banner-via: color-mix(in oklab, var(--color-brand) 66%, #04091a);
+  --banner-to: color-mix(in oklab, var(--color-info) 58%, #04091a);
+  --banner-bloom: rgb(255 255 255 / 0.1);
+  --banner-glass: rgb(255 255 255 / 0.09);
+  --banner-glass-border: rgb(255 255 255 / 0.2);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 .cockpit-banner::before {
   content: "";
@@ -86,7 +102,7 @@
   width: 220px;
   height: 220px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(255 255 255 / 0.16), transparent 68%);
+  background: radial-gradient(circle, var(--banner-bloom), transparent 68%);
   pointer-events: none;
 }
 .cockpit-banner > * {
@@ -97,8 +113,8 @@
   display: inline-flex;
   align-items: center;
   gap: 11px;
-  background: rgb(255 255 255 / 0.16);
-  border: 1px solid rgb(255 255 255 / 0.34);
+  background: var(--banner-glass);
+  border: 1px solid var(--banner-glass-border);
   border-radius: 12px;
   padding: 9px 18px;
   box-shadow:
@@ -123,44 +139,44 @@
   right: calc(-50% + 9px);
   height: 2px;
   border-radius: 2px;
-  background: linear-gradient(90deg, #dbe3ee, #e8edf5);
+  background: var(--color-border);
 }
 .cockpit-ms-node[data-done]:not(:last-child)::before {
-  background: linear-gradient(90deg, #22a06b, #e8edf5);
+  background: linear-gradient(90deg, var(--color-success), var(--color-border));
 }
 .cockpit-ms-dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffffff;
-  border: 3px solid #cbd5e1;
+  background: var(--color-card);
+  border: 3px solid var(--color-faint-foreground);
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
 }
 .cockpit-ms-node[data-done] .cockpit-ms-dot {
-  border-color: #22a06b;
-  background: #22a06b;
-  box-shadow: 0 0 0 4px rgb(34 160 107 / 0.14);
+  border-color: var(--color-success);
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-success) 18%, transparent);
 }
 .cockpit-ms-card {
-  border-color: var(--border);
-  background: #fbfcfe;
+  border-color: var(--color-border);
+  background: color-mix(in oklab, var(--color-muted) 45%, var(--color-card));
 }
 .cockpit-ms-node[data-done] .cockpit-ms-card {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
+  border-color: color-mix(in oklab, var(--color-success) 40%, var(--color-border));
+  background: color-mix(in oklab, var(--color-success) 10%, var(--color-card));
 }
 
 /*
- * Narrative cards carry a 3px gradient cap, parameterised per card through
- * --top-from / --top-to on the element.
+ * Narrative cards carry a 3px gradient cap. The pair is named per card through
+ * a modifier rather than inline hex, so both ends follow the theme.
  */
 .cockpit-card-top {
   position: relative;
   overflow: hidden;
-  --top-from: #3b6cff;
-  --top-to: #38bdf8;
+  --top-from: var(--color-brand);
+  --top-to: color-mix(in oklab, var(--color-info) 70%, white);
 }
 .cockpit-card-top::before {
   content: "";
@@ -171,14 +187,26 @@
   height: 3px;
   background: linear-gradient(90deg, var(--top-from), var(--top-to));
 }
+.cockpit-card-top[data-cap="next"] {
+  --top-from: var(--color-info);
+  --top-to: color-mix(in oklab, var(--color-info) 55%, white);
+}
+.cockpit-card-top[data-cap="meetings"] {
+  --top-from: color-mix(in oklab, var(--color-brand) 60%, var(--color-destructive));
+  --top-to: color-mix(in oklab, var(--color-brand) 30%, white);
+}
+.cockpit-card-top[data-cap="support"] {
+  --top-from: var(--color-budget);
+  --top-to: color-mix(in oklab, var(--color-warning) 60%, white);
+}
 
 /* A located row flashes once, then fades back out. */
 @keyframes cockpit-gridflash {
   0% {
-    background: #dbeafe;
+    background: color-mix(in oklab, var(--color-brand) 22%, transparent);
   }
   60% {
-    background: #e0e7ff;
+    background: color-mix(in oklab, var(--color-brand) 12%, transparent);
   }
   100% {
     background: transparent;

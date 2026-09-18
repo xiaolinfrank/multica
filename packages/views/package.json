@@ -119,7 +119,8 @@
     "remark-math": "catalog:",
     "sonner": "^2.0.7",
     "unist-util-visit": "^5.1.0",
-    "fflate": "0.4.8"
+    "fflate": "0.4.8",
+    "html-to-image": "catalog:"
   },
   "peerDependencies": {
     "@tanstack/react-query": "catalog:",

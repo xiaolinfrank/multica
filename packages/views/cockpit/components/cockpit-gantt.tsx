@@ -21,46 +21,61 @@ import type {
 import {
   COCKPIT_STATUS_LEGEND,
   axisMonths,
+  buildCockpitDisplayCodes,
   buildCockpitTree,
+  cockpitAggStatusColor,
+  cockpitEffectiveProgress,
+  cockpitGoalProgress,
+  cockpitPaymentToneColor,
   cockpitStatusColor,
   computeCockpitAxis,
   computeCockpitRollups,
   daysBetween,
-  flattenCockpitTree,
   groupIssueLinksByNode,
   groupPaymentsByNode,
   groupSubtreePayments,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   parseDay,
+  type CockpitGoalProgress,
   type CockpitPaymentGroup,
   type CockpitRollup,
+  type CockpitStatusLegendKey,
   type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@multica/ui/components/ui/tooltip";
+import { Button } from "@multica/ui/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 import { EditableSuggest, EditableText, ProgressField } from "./cockpit-fields";
 import { StatusChip } from "./cockpit-status";
 
 /** Timeline density. Month is the year-at-a-glance read; week zooms in. */
 export type CockpitZoom = "month" | "week";
 
-const DAY_WIDTH: Record<CockpitZoom, number> = { month: 2.6, week: 9 };
-const ROW_HEIGHT = 34;
+const DAY_WIDTH: Record<CockpitZoom, number> = { month: 3.5, week: 9 };
+const ROW_HEIGHT = 32;
+/** One indent step in the tree pane. */
+const INDENT = 20;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-/** Colours a branch's summary bar. Neutral on purpose: a roll-up has no status. */
-const BRANCH_BAR_COLOR = "var(--muted-foreground)";
+/** Shortest bar that still reads as a bar. */
+const MIN_BAR_WIDTH = 3;
+/**
+ * Clearance an instalment's amount label needs before it collides with the
+ * next marker. Below it the dot still draws — on its true date — and the
+ * figure stays in the tooltip.
+ */
+const AMOUNT_LABEL_CLEARANCE = 78;
 
 export interface CockpitGanttProps {
   board: CockpitBoard;
   today: string;
   zoom: CockpitZoom;
   query: string;
-  /** Restrict to one root branch; null shows the whole board. */
-  rootId: string | null;
+  /** Restrict to these root branches; empty shows the whole board. */
+  rootIds: Set<string>;
   collapsed: Set<string>;
   onToggleCollapse: (nodeId: string) => void;
   onSelect: (nodeId: string) => void;
@@ -74,6 +89,16 @@ export interface CockpitGanttProps {
   /** Locate-and-flash one row; the nonce re-triggers repeat clicks. */
   focusTarget: { nodeId: string; nonce: number } | null;
   readOnly?: boolean;
+}
+
+/** Tasks active in a calendar week, including end-only deadlines. */
+export function cockpitWeekTasks(nodes: CockpitNode[], start: string, end: string): CockpitNode[] {
+  return nodes.filter((node) => {
+    const first = node.start_date ?? node.end_date;
+    const last = node.end_date ?? node.start_date;
+    return !!first && !!last && !!parseDay(first) && !!parseDay(last)
+      && first <= last && first <= end && last >= start;
+  });
 }
 
 function matches(node: CockpitNode, query: string): boolean {
@@ -128,6 +153,18 @@ function visibleRows(
   return rows;
 }
 
+/**
+ * Which rows carry the payment markers.
+ *
+ * One row per module, always the same one: drawing an instalment on whichever
+ * row happens to be collapsed right now moves it around as the reader expands
+ * the tree, and drawing it on every ancestor draws it three times. The module
+ * row is the level someone asks "when does this pay out" about.
+ */
+function carriesMarkers(entry: CockpitTreeNode): boolean {
+  return entry.depth === 1 || (entry.depth === 0 && entry.children.length === 0);
+}
+
 /** Trims "李林（POOL 超饱和）" down to the name the row has space for. */
 function shortOwner(owner: string): string {
   const name = owner.split("(")[0]!.split("（")[0]!.trim();
@@ -177,11 +214,13 @@ function TooltipRow({ label, value }: { label: string; value: string }) {
 
 function BarTooltipBody({
   node,
+  code,
   rollup,
   payments,
   links,
 }: {
   node: CockpitNode;
+  code: string;
   rollup: CockpitRollup | undefined;
   payments: CockpitPayment[];
   links: CockpitIssueLink[];
@@ -192,8 +231,13 @@ function BarTooltipBody({
   return (
     <div className="flex max-w-80 flex-col gap-1">
       <span className="font-medium">
-        {node.code} · {node.name}
+        {code} · {node.name}
       </span>
+      {code !== node.code && (
+        <span className="text-caption text-muted-foreground">
+          {t(($) => $.gantt.original_code, { code: node.code })}
+        </span>
+      )}
       {(start || end) && (
         <span className="text-caption tabular-nums">
           {start ?? "—"} → {end ?? "—"}
@@ -231,42 +275,151 @@ function BarTooltipBody({
 function PaymentMarker({
   group,
   left,
+  showAmount,
   onSelect,
 }: {
   group: CockpitPaymentGroup;
   left: number;
+  showAmount: boolean;
   onSelect: (nodeId: string) => void;
 }) {
   const { t } = useT("cockpit");
+  const color = cockpitPaymentToneColor(group.tone);
+  const state = group.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned);
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={() => onSelect(group.entries[0]!.node.id)}
+              aria-label={`${state} · ${t(($) => $.finance.payment_on, { date: group.date })}`}
+              // A marker lands either on the bar or on the bare track, so it
+              // carries its own disc of card background — a gold ring on brand
+              // blue alone is too close in lightness to find at a glance.
+              className="absolute top-1/2 z-10 flex size-3.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] bg-card text-micro leading-none font-bold"
+              style={{ left, borderColor: color, color }}
+            >
+              ¥
+            </button>
+          }
+        />
+        <TooltipContent>
+          <div className="flex max-w-80 flex-col gap-0.5">
+            <span className="font-medium tabular-nums">
+              {group.month
+                ? t(($) => $.finance.payment_month, {
+                    month: group.month,
+                    count: group.entries.length,
+                    total: formatAmount(group.total),
+                  })
+                : `${state} · ${group.date} · ${t(($) => $.finance.payment_total, {
+                    total: formatAmount(group.total),
+                  })}`}
+            </span>
+            {group.entries.map(({ payment, node }) => (
+              <span key={payment.id} className="text-caption">
+                {paymentLine(payment, node)}
+              </span>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+      {showAmount && (
+        <span
+          className="pointer-events-none absolute top-0 z-10 text-micro leading-[11px] font-bold whitespace-nowrap tabular-nums"
+          style={{ left: left + 9, color }}
+          aria-hidden
+        >
+          {formatAmount(group.total)}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Percent plus a 22px rail — the branch read that a number alone doesn't give. */
+function MiniProgress({ value, className }: { value: number; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-micro font-bold tabular-nums", className)}>
+      {value}%
+      <span className="h-1 w-[22px] overflow-hidden rounded-full bg-current/20">
+        <span className="block h-full rounded-full bg-current" style={{ width: `${value}%` }} />
+      </span>
+    </span>
+  );
+}
+
+/** How a module is tracking against the annual objective, as a clickable chip. */
+function GoalChip({
+  goal,
+  goalDate,
+  onOpen,
+}: {
+  goal: CockpitGoalProgress;
+  goalDate: string;
+  onOpen: () => void;
+}) {
+  const { t } = useT("cockpit");
+  if (goal.actual == null) return null;
+  const gap = goal.gapPts;
+  const drift =
+    gap == null
+      ? t(($) => $.gantt.goal_on_track)
+      : gap > 0
+        ? t(($) => $.gantt.goal_behind, { pts: gap })
+        : gap < 0
+          ? t(($) => $.gantt.goal_ahead, { pts: -gap })
+          : t(($) => $.gantt.goal_on_track);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
             type="button"
-            onClick={() => onSelect(group.entries[0]!.node.id)}
-            aria-label={t(($) => $.finance.payment_on, { date: group.date })}
-            // A marker lands either on the bar or on the bare track, so it
-            // carries its own disc of page background — gold on brand blue
-            // alone is too close in lightness to find at a glance.
-            className="absolute top-1/2 z-10 flex size-3.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-budget bg-background text-micro font-bold text-budget tabular-nums"
-            style={{ left }}
+            onClick={onOpen}
+            className={cn(
+              "flex items-center gap-1 rounded-sm border px-1 py-px",
+              goal.behind
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-success/30 bg-success/10 text-success",
+            )}
           >
-            {group.entries.length > 1 ? group.entries.length : "¥"}
+            <span aria-hidden>🎯</span>
+            <MiniProgress value={goal.actual} />
           </button>
         }
       />
       <TooltipContent>
         <div className="flex max-w-80 flex-col gap-0.5">
-          <span className="font-medium tabular-nums">
-            {group.date} · {t(($) => $.finance.payment_count, { count: group.entries.length })} ·{" "}
-            {t(($) => $.finance.payment_total, { total: formatAmount(group.total) })}
+          <span className="font-medium">{t(($) => $.gantt.goal_chip)}</span>
+          <span className="text-caption">
+            {t(($) => $.gantt.goal_actual, { pct: goal.actual })}
+            {goal.scheduled != null && ` · ${t(($) => $.gantt.goal_scheduled, { pct: goal.scheduled })}`}
+            {` · ${drift}`}
           </span>
-          {group.entries.map(({ payment, node }) => (
-            <span key={payment.id} className="text-caption">
-              {paymentLine(payment, node)}
+          {goal.latestEnd && goal.planVsGoalDays != null && (
+            <span className="text-caption">
+              {goal.planVsGoalDays > 0
+                ? t(($) => $.gantt.goal_late_days, {
+                    date: goal.latestEnd,
+                    days: goal.planVsGoalDays,
+                  })
+                : t(($) => $.gantt.goal_early_days, {
+                    date: goal.latestEnd,
+                    days: -goal.planVsGoalDays,
+                  })}
             </span>
-          ))}
+          )}
+          {goal.crossYearCount > 0 && (
+            <span className="text-caption">
+              {t(($) => $.gantt.goal_cross_year, { count: goal.crossYearCount })}
+            </span>
+          )}
+          <span className="text-caption text-muted-foreground">
+            {t(($) => $.gantt.goal_basis, { date: goalDate, n: goal.taskCount })}
+          </span>
         </div>
       </TooltipContent>
     </Tooltip>
@@ -278,7 +431,7 @@ export function CockpitGantt({
   today,
   zoom,
   query,
-  rootId,
+  rootIds,
   collapsed,
   onToggleCollapse,
   onSelect,
@@ -291,17 +444,21 @@ export function CockpitGantt({
   readOnly,
 }: CockpitGanttProps) {
   const { t } = useT("cockpit");
+  const locale = useLocale();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   const scopedTree = useMemo(() => {
-    if (!rootId) return tree;
-    const found = flattenCockpitTree(tree).find((e) => e.node.id === rootId);
-    return found ? [found] : tree;
-  }, [tree, rootId]);
+    if (rootIds.size === 0) return tree;
+    const picked = tree.filter((entry) => rootIds.has(entry.node.id));
+    return picked.length > 0 ? picked : tree;
+  }, [tree, rootIds]);
 
+  // Row codes are addresses, so they are built once over the whole tree: a
+  // filtered or searched view must not renumber the rows under the reader.
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
   const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
   const rows = useMemo(
     () => visibleRows(scopedTree, collapsed, query),
@@ -311,11 +468,13 @@ export function CockpitGantt({
   const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
   const linksByNode = useMemo(() => groupIssueLinksByNode(board.issue_links), [board.issue_links]);
 
-  const scopedNodes = useMemo(
-    () => flattenCockpitTree(scopedTree).map((e) => e.node),
-    [scopedTree],
+  // The axis spans the whole board, never just the filtered modules: rescaling
+  // the timeline when someone narrows the scope makes every bar jump, and the
+  // question a filter asks is "which rows", not "which dates".
+  const axis = useMemo(
+    () => computeCockpitAxis(board.nodes, today, { zoom }),
+    [board.nodes, today, zoom],
   );
-  const axis = useMemo(() => computeCockpitAxis(scopedNodes, today), [scopedNodes, today]);
   const dayWidth = DAY_WIDTH[zoom];
   const timelineWidth = Math.max(axis.days * dayWidth, 320);
   const months = useMemo(() => axisMonths(axis), [axis]);
@@ -323,6 +482,18 @@ export function CockpitGantt({
     const date = parseDay(today);
     return date ? daysBetween(axis.start, date) * dayWidth : null;
   }, [today, axis.start, dayWidth]);
+
+  const monthLabel = useMemo(() => {
+    const monthFormat = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
+    const yearFormat = new Intl.DateTimeFormat(locale, { year: "numeric", timeZone: "UTC" });
+    return (key: string) => {
+      const [year, month] = key.split("-").map(Number);
+      const date = new Date(Date.UTC(year ?? 2000, (month ?? 1) - 1, 1));
+      // January carries the year instead of the month: on a three-year axis
+      // "Jan" twice over is the one label that needs saying which Jan.
+      return month === 1 ? yearFormat.format(date) : monthFormat.format(date);
+    };
+  }, [locale]);
 
   /** Monday offsets, for the week ruler and its gridlines. */
   const weeks = useMemo(() => {
@@ -332,24 +503,36 @@ export function CockpitGantt({
     const lead = (axis.start.getUTCDay() + 6) % 7;
     for (let offset = lead === 0 ? 0 : 7 - lead; offset < axis.days; offset += 7) {
       const date = new Date(axis.start.getTime() + offset * MS_PER_DAY);
-      out.push({ offset, label: String(date.getUTCDate()) });
+      out.push({ offset, label: `${date.getUTCMonth() + 1}/${date.getUTCDate()}` });
     }
     return out;
   }, [zoom, axis.start, axis.days]);
 
-  /** Instalments a row is answerable for, bucketed by day. */
+  const weekTasks = useMemo(
+    () => visibleRows(scopedTree, new Set(), query)
+      .filter((entry) => entry.children.length === 0)
+      .map((entry) => entry.node),
+    [scopedTree, query],
+  );
+
+  /** Instalments a module row is answerable for. */
   const paymentGroups = useMemo(() => {
     const map = new Map<string, CockpitPaymentGroup[]>();
     for (const entry of rows) {
-      // A collapsed branch speaks for the money underneath it; an expanded one
-      // lets its children speak, so an instalment is drawn exactly once.
-      const isLeaf = entry.children.length === 0;
-      if (!isLeaf && !collapsed.has(entry.node.id)) continue;
+      if (!carriesMarkers(entry)) continue;
       const groups = groupSubtreePayments(entry, paymentsByNode, nodeById);
       if (groups.length > 0) map.set(entry.node.id, groups);
     }
     return map;
-  }, [rows, collapsed, paymentsByNode, nodeById]);
+  }, [rows, paymentsByNode, nodeById]);
+
+  const goalDate = board.cockpit.goal_date;
+  const goalProgress = useMemo(() => {
+    const map = new Map<string, CockpitGoalProgress>();
+    if (!goalDate) return map;
+    for (const entry of tree) map.set(entry.node.id, cockpitGoalProgress(entry, today, goalDate));
+    return map;
+  }, [tree, today, goalDate]);
 
   const goalOffset = useMemo(() => {
     const date = parseDay(board.cockpit.goal_date);
@@ -366,14 +549,19 @@ export function CockpitGantt({
     return { branches, leaves };
   }, [rows]);
 
+  const treeWidth = showFinance ? 800 : 680;
+
   // Scrolling is a viewport action, not board state, so it is driven by a
   // nonce from the toolbar rather than by a value the render depends on.
   useEffect(() => {
     if (scrollToTodayNonce === 0 || todayOffset === null) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ left: Math.max(todayOffset - el.clientWidth / 3, 0), behavior: "smooth" });
-  }, [scrollToTodayNonce, todayOffset]);
+    // The tree pane is sticky and covers the left of the viewport, so the
+    // today line is centred in what is left of it, not in the whole element.
+    const centre = Math.max(todayOffset - (el.clientWidth - treeWidth) / 2, 0);
+    el.scrollTo({ left: centre, behavior: "smooth" });
+  }, [scrollToTodayNonce, todayOffset, treeWidth]);
 
   // A digest-card task click lands here: locate the row, scroll it into the
   // middle and flash it, the way the prototype's grid did.
@@ -398,32 +586,33 @@ export function CockpitGantt({
   }
 
   const emptyLabel = t(($) => $.common.unset);
-  const treeWidth = showFinance ? 800 : 680;
-  const headerHeight = zoom === "week" ? 44 : 30;
+  const monthBandHeight = zoom === "week" ? 22 : 36;
+  const headerHeight = zoom === "week" ? 52 : 36;
+  const legendLabel = (key: CockpitStatusLegendKey) => t(($) => $.gantt.legend_status[key]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div data-cockpit-gantt data-summary-width={zoom === "month" && rows.every((entry) => entry.children.length > 0) ? treeWidth + Math.max(0, daysBetween(axis.start, new Date(Date.UTC(Number(today.slice(0, 4)) + 1, 0, 1)))) * dayWidth : undefined} className="flex min-h-0 flex-1 flex-col">
       {/* Legend, provenance and row counts: what the chart is showing and what
           its colours mean, collapsible for anyone who already knows. */}
       <div className="shrink-0 border-b border-border px-4 py-1.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
           {navOpen &&
             COCKPIT_STATUS_LEGEND.map((item) => (
-              <span key={item.status} className="flex items-center gap-1">
+              <span key={item.key} className="flex items-center gap-1">
                 <span
                   className="size-2 rounded-full"
                   style={{ backgroundColor: item.color }}
                   aria-hidden
                 />
-                {item.status}
+                {legendLabel(item.key)}
               </span>
             ))}
           {navOpen && (
             <>
               <span className="flex items-center gap-1">
                 <span
-                  className="h-1 w-3 rounded-full opacity-50"
-                  style={{ backgroundColor: BRANCH_BAR_COLOR }}
+                  className="cockpit-rollup-bar h-1.5 w-3 rounded-full opacity-[0.78]"
+                  style={{ backgroundColor: "var(--color-brand)" }}
                   aria-hidden
                 />
                 {t(($) => $.gantt.legend_rollup)}
@@ -435,10 +624,16 @@ export function CockpitGantt({
                 {t(($) => $.gantt.legend_end_only)}
               </span>
               <span className="flex items-center gap-1">
-                <span className="font-bold text-budget" aria-hidden>
+                <span className="font-bold text-success" aria-hidden>
                   ¥
                 </span>
-                {t(($) => $.gantt.legend_payment)}
+                {t(($) => $.finance.payment_paid)}
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="font-bold text-brand" aria-hidden>
+                  ¥
+                </span>
+                {t(($) => $.finance.payment_planned)}
               </span>
               <span className="flex items-center gap-1">
                 <span className="text-destructive" aria-hidden>
@@ -473,7 +668,7 @@ export function CockpitGantt({
         )}
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} data-cockpit-scroll className="min-h-0 flex-1 overflow-auto">
         <div className="flex min-w-max">
           {/* Tree pane. Sticky so the timeline scrolls under the names. */}
           <div
@@ -502,6 +697,8 @@ export function CockpitGantt({
               const drifting = !late && isCockpitNodeDrifting(node, today);
               const budget = isBranch ? (rollup?.budget ?? 0) : (node.budget_amount ?? 0);
               const ownPayments = paymentsByNode.get(node.id) ?? [];
+              const code = displayCodes.get(node.id) ?? node.code;
+              const goal = depth === 0 ? goalProgress.get(node.id) : undefined;
               return (
                 <div
                   key={node.id}
@@ -521,7 +718,7 @@ export function CockpitGantt({
                 >
                   <div
                     className="flex min-w-0 flex-1 items-center gap-1"
-                    style={{ paddingLeft: depth * 14 }}
+                    style={{ paddingLeft: depth * INDENT }}
                   >
                     {isBranch ? (
                       <button
@@ -543,18 +740,27 @@ export function CockpitGantt({
                     ) : (
                       <span className="w-[1.125rem] shrink-0" />
                     )}
-                    <span className="shrink-0 font-mono text-micro text-faint-foreground">
-                      L{depth + 1}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(node.id)}
-                      aria-label={t(($) => $.gantt.open_node, { code: node.code })}
-                      className="shrink-0 rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
-                      style={entry.color ? { color: entry.color } : undefined}
-                    >
-                      {node.code}
-                    </button>
+                    {/* The row code is the address people quote in meetings.
+                        It already says which level the row is on, so no
+                        separate depth chip sits beside it. */}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            onClick={() => onSelect(node.id)}
+                            aria-label={t(($) => $.gantt.open_node, { code })}
+                            className="shrink-0 rounded-sm px-1 font-mono text-micro text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground"
+                            style={entry.color ? { color: entry.color } : undefined}
+                          >
+                            {code}
+                          </button>
+                        }
+                      />
+                      <TooltipContent>
+                        {t(($) => $.gantt.original_code, { code: node.code })}
+                      </TooltipContent>
+                    </Tooltip>
                     <EditableText
                       value={node.name}
                       onCommit={(name) => onPatchNode(node.id, { name })}
@@ -582,13 +788,16 @@ export function CockpitGantt({
                         <TooltipContent>{node.collaborators}</TooltipContent>
                       </Tooltip>
                     )}
+                    {/* Amber for a deadline already missed, red for one about
+                        to be: the row that has not started yet is the one
+                        still worth acting on. */}
                     {late && (
-                      <span className="shrink-0 rounded-sm border border-destructive/30 bg-destructive/10 px-1 text-micro text-destructive">
+                      <span className="shrink-0 rounded-sm border border-warning/30 bg-warning/10 px-1 text-micro text-warning">
                         {t(($) => $.gantt.overdue)}
                       </span>
                     )}
                     {drifting && (
-                      <span className="shrink-0 rounded-sm border border-warning/30 bg-warning/10 px-1 text-micro text-warning">
+                      <span className="shrink-0 rounded-sm border border-destructive/30 bg-destructive/10 px-1 text-micro text-destructive">
                         {t(($) => $.gantt.should_have_started)}
                       </span>
                     )}
@@ -670,12 +879,37 @@ export function CockpitGantt({
                     )}
                   </div>
                   <div className="flex w-28 shrink-0 justify-end">
-                    <ProgressField
-                      value={isBranch ? Math.round(rollup?.progress ?? node.progress) : node.progress}
-                      onCommit={(progress) => onPatchNode(node.id, { progress })}
-                      label={t(($) => $.node.progress)}
-                      disabled={readOnly || isBranch}
-                    />
+                    {goal && goalDate ? (
+                      <GoalChip goal={goal} goalDate={goalDate} onOpen={() => onSelect(node.id)} />
+                    ) : isBranch ? (
+                      // A branch's percentage is derived, so it is a read-out
+                      // rather than a field: editing it would write a number
+                      // the next roll-up overwrites.
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <MiniProgress
+                              value={Math.round(rollup?.progress ?? node.progress)}
+                              className="text-muted-foreground"
+                            />
+                          }
+                        />
+                        <TooltipContent>
+                          {t(($) => $.gantt.subtree_progress_hint, {
+                            n: rollup?.leafCount ?? 0,
+                            done: rollup?.doneCount ?? 0,
+                            total: rollup?.leafCount ?? 0,
+                          })}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <ProgressField
+                        value={node.progress}
+                        onCommit={(progress) => onPatchNode(node.id, { progress })}
+                        label={t(($) => $.node.progress)}
+                        disabled={readOnly}
+                      />
+                    )}
                   </div>
                 </div>
               );
@@ -688,29 +922,116 @@ export function CockpitGantt({
               className="sticky top-0 z-10 border-b border-border bg-background"
               style={{ height: headerHeight }}
             >
-              <div className="relative flex h-[30px]">
-                {months.map((month) => (
-                  <div
-                    key={month.key}
-                    className="flex items-center justify-center border-l border-border/50 text-micro text-muted-foreground tabular-nums"
-                    style={{ width: month.days * dayWidth }}
-                  >
-                    {month.days * dayWidth > 28 ? month.key.slice(2) : ""}
-                  </div>
-                ))}
+              <div className="relative flex" style={{ height: monthBandHeight }}>
+                {months.map((month) => {
+                  const isJanuary = month.key.endsWith("-01");
+                  return (
+                    <div
+                      key={month.key}
+                      className={cn(
+                        "flex items-center text-micro tabular-nums",
+                        zoom === "week"
+                          ? "justify-start border-b border-border/50 pl-1 font-semibold text-foreground"
+                          : "justify-center text-muted-foreground",
+                        // A year boundary is a stronger line than a month one.
+                        isJanuary && month.offset > 0
+                          ? "border-l border-border"
+                          : "border-l border-border/50",
+                        isJanuary && "font-semibold text-foreground",
+                      )}
+                      style={{ width: month.days * dayWidth }}
+                    >
+                      {month.days * dayWidth > 28 ? monthLabel(month.key) : ""}
+                    </div>
+                  );
+                })}
               </div>
               {zoom === "week" && (
-                <div className="relative h-3.5">
-                  {weeks.map((week) => (
-                    <span
-                      key={week.offset}
-                      className="absolute top-0 text-micro text-faint-foreground tabular-nums"
-                      style={{ left: week.offset * dayWidth + 1 }}
-                    >
-                      {week.label}
-                    </span>
-                  ))}
+                <div className="relative flex h-[30px]">
+                  {weeks.map((week) => {
+                    const start = new Date(axis.start.getTime() + week.offset * MS_PER_DAY)
+                      .toISOString().slice(0, 10);
+                    const end = new Date(axis.start.getTime() + (week.offset + 6) * MS_PER_DAY)
+                      .toISOString().slice(0, 10);
+                    const tasks = cockpitWeekTasks(weekTasks, start, end);
+                    const weeklyPayments = board.payments.filter((payment) => payment.pay_date && payment.pay_date >= start && payment.pay_date <= end && visibleRows(scopedTree, new Set(), query).some((entry) => entry.node.id === payment.node_id));
+                    const title = `${t(($) => $.toolbar.zoom_week)} · ${start} – ${end}`;
+                    return (
+                      <Dialog key={week.offset}>
+                        <Tooltip>
+                          <TooltipTrigger render={
+                            <DialogTrigger render={
+                              <Button variant="ghost" size="sm"
+                                className="absolute top-0 h-full rounded-none border-l border-border/50 p-0 text-micro text-muted-foreground tabular-nums"
+                                aria-label={title}
+                                style={{ left: week.offset * dayWidth,
+                                  width: Math.min(7, axis.days - week.offset) * dayWidth }}>
+                                {week.label}
+                              </Button>
+                            } />
+                          } />
+                          <TooltipContent>
+                            <div>{title}</div>
+                            <div>{t(($) => $.overview.tasks)}: {tasks.length}</div>
+                            {tasks.slice(0, 5).map((node) => <div key={node.id}>{node.name}</div>)}
+                          </TooltipContent>
+                        </Tooltip>
+                        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+                          <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+                          {tasks.length === 0 ? <p className="text-body text-muted-foreground">{t(($) => $.empty.no_nodes)}</p> : (
+                            <table className="w-full text-caption">
+                              <thead><tr className="text-left text-muted-foreground">
+                                <th>{t(($) => $.gantt.column_task)}</th>
+                                <th>{t(($) => $.node.end_date)}</th>
+                                <th>{t(($) => $.node.status)}</th>
+                              </tr></thead>
+                              <tbody>{tasks.map((node) => (
+                                <tr key={node.id} className="border-t border-border">
+                                  <td className="py-2 pr-2"><DialogClose render={<Button variant="link" size="sm" className="h-auto whitespace-normal text-left" onClick={() => onSelect(node.id)} />}>
+                                    {displayCodes.get(node.id) ?? node.code} {node.name}
+                                  </DialogClose>
+                                    <div>{t(($) => $.node.progress)}: {cockpitEffectiveProgress(node)}%</div>
+                                    <div>{t(($) => $.node.current_progress)}: {node.current_progress || emptyLabel}</div>
+                                    <div>{t(($) => $.node.deliverable)}: {node.deliverable || emptyLabel}</div>
+                                    <div>{t(($) => $.node.linked_issues)}: {(linksByNode.get(node.id) ?? []).map((link) => `${link.issue_identifier} ${link.issue_title} (${link.issue_status})`).join(" · ") || emptyLabel}</div>
+                                  </td>
+                                  <td className="whitespace-nowrap pr-2">{node.end_date ?? emptyLabel}</td>
+                                  <td><StatusChip status={node.status} /></td>
+                                </tr>
+                              ))}</tbody>
+                            </table>
+                          )}
+                          <section aria-label={t(($) => $.node.payments)}>
+                            <h3 className="mt-4 font-medium">{t(($) => $.node.payments)}</h3>
+                            {weeklyPayments.map((payment) => <div key={payment.id} className="py-2 text-caption">
+                              <DialogClose render={<Button variant="link" size="sm" onClick={() => onSelect(payment.node_id)} />}>
+                                {nodeById.get(payment.node_id)?.name} · {payment.label}
+                              </DialogClose>
+                              <div>{payment.pay_date} · {formatAmount(payment.amount)}</div>
+                              {nodeById.get(payment.node_id)?.contract && <div>{t(($) => $.node.contract)}: {nodeById.get(payment.node_id)?.contract}</div>}
+                              {nodeById.get(payment.node_id)?.exec_status && <div>{nodeById.get(payment.node_id)?.exec_status}</div>}
+                            </div>)}
+                            {weeklyPayments.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.empty.no_payments)}</p>}
+                          </section>
+                        </DialogContent>
+                      </Dialog>
+                    );
+                  })}
                 </div>
+              )}
+              {todayOffset !== null && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        className="absolute top-0 bottom-0 z-10 w-0.5 bg-destructive opacity-70"
+                        style={{ left: todayOffset }}
+                        aria-label={t(($) => $.gantt.today_line, { date: today })}
+                      />
+                    }
+                  />
+                  <TooltipContent>{t(($) => $.gantt.today_line, { date: today })}</TooltipContent>
+                </Tooltip>
               )}
             </div>
 
@@ -732,7 +1053,7 @@ export function CockpitGantt({
 
               {todayOffset !== null && (
                 <div
-                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-destructive"
+                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-destructive opacity-70"
                   style={{ left: todayOffset }}
                   aria-hidden
                 />
@@ -769,20 +1090,30 @@ export function CockpitGantt({
                 const { node, children } = entry;
                 const rollup = rollups.get(node.id);
                 const isBranch = children.length > 0;
+                const code = displayCodes.get(node.id) ?? node.code;
                 const start = node.start_date ?? (isBranch ? (rollup?.start ?? null) : null);
                 const end = node.end_date ?? (isBranch ? (rollup?.end ?? null) : null);
                 const startDate = parseDay(start);
                 const endDate = parseDay(end);
                 const groups = paymentGroups.get(node.id) ?? [];
-                const late = isCockpitNodeLate(node, today);
                 const isSelected = selectedId === node.id;
-                const barColor = isBranch ? BRANCH_BAR_COLOR : cockpitStatusColor(node.status);
+                const barColor = isBranch
+                  ? cockpitAggStatusColor(entry)
+                  : cockpitStatusColor(node.status);
+                const progress = isBranch
+                  ? Math.round(rollup?.progress ?? node.progress)
+                  : cockpitEffectiveProgress(node);
 
+                // Clamped to the axis on both edges: a bar that starts before
+                // the canvas would otherwise draw at a negative offset and a
+                // bar that ends after it would stretch the scroll width.
                 let left = 0;
                 let width = 0;
                 if (startDate && endDate) {
-                  left = daysBetween(axis.start, startDate) * dayWidth;
-                  width = Math.max((daysBetween(startDate, endDate) + 1) * dayWidth, 4);
+                  const rawLeft = daysBetween(axis.start, startDate) * dayWidth;
+                  const rawRight = rawLeft + (daysBetween(startDate, endDate) + 1) * dayWidth;
+                  left = Math.max(0, Math.min(rawLeft, timelineWidth - MIN_BAR_WIDTH));
+                  width = Math.max(MIN_BAR_WIDTH, Math.min(rawRight, timelineWidth) - left);
                 }
 
                 return (
@@ -804,29 +1135,25 @@ export function CockpitGantt({
                             <button
                               type="button"
                               onClick={() => onSelect(node.id)}
-                              aria-label={t(($) => $.gantt.bar_label, { code: node.code })}
+                              aria-label={t(($) => $.gantt.bar_label, { code })}
                               className={cn(
-                                "absolute top-1/2 overflow-hidden rounded-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                                isBranch ? "h-2 -translate-y-1/2" : "h-4 -translate-y-1/2",
+                                "absolute top-1/2 -translate-y-1/2 overflow-hidden rounded-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                // A roll-up is hatched as well as coloured: it
+                                // reports the state of everything under it, not
+                                // a status anyone set on the row itself.
+                                isBranch ? "cockpit-rollup-bar h-[22px] opacity-[0.78]" : "h-[18px]",
                               )}
-                              style={{
-                                left,
-                                width,
-                                backgroundColor: barColor,
-                                opacity: isBranch ? 0.45 : 1,
-                              }}
+                              style={{ left, width, backgroundColor: barColor }}
                             >
                               {/* The unfinished tail is veiled rather than the
                                   done head being filled, so the bar keeps one
                                   colour and progress reads as a waterline. The
                                   code is not repeated inside the bar: the tree
                                   pane is sticky, so it never scrolls away. */}
-                              {!isBranch && node.progress < 100 && (
+                              {progress < 100 && (
                                 <span
                                   className="absolute inset-y-0 right-0 bg-background/70"
-                                  style={{
-                                    width: `${100 - Math.max(node.progress, 0)}%`,
-                                  }}
+                                  style={{ width: `${100 - Math.max(progress, 0)}%` }}
                                   aria-hidden
                                 />
                               )}
@@ -836,6 +1163,7 @@ export function CockpitGantt({
                         <TooltipContent>
                           <BarTooltipBody
                             node={node}
+                            code={code}
                             rollup={rollup}
                             payments={paymentsByNode.get(node.id) ?? []}
                             links={linksByNode.get(node.id) ?? []}
@@ -853,9 +1181,17 @@ export function CockpitGantt({
                             <button
                               type="button"
                               onClick={() => onSelect(node.id)}
-                              aria-label={t(($) => $.gantt.bar_label, { code: node.code })}
+                              aria-label={t(($) => $.gantt.bar_label, { code })}
                               className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1 text-info"
-                              style={{ left: daysBetween(axis.start, endDate) * dayWidth - 6 }}
+                              style={{
+                                left: Math.max(
+                                  0,
+                                  Math.min(
+                                    daysBetween(axis.start, endDate) * dayWidth - 6,
+                                    timelineWidth - MIN_BAR_WIDTH,
+                                  ),
+                                ),
+                              }}
                             >
                               <span className="text-body leading-none font-black">{DEADLINE_GLYPH}</span>
                               <span className="text-micro whitespace-nowrap">{end!.slice(5)}</span>
@@ -865,6 +1201,7 @@ export function CockpitGantt({
                         <TooltipContent>
                           <BarTooltipBody
                             node={node}
+                            code={code}
                             rollup={rollup}
                             payments={paymentsByNode.get(node.id) ?? []}
                             links={linksByNode.get(node.id) ?? []}
@@ -881,23 +1218,23 @@ export function CockpitGantt({
                       </span>
                     )}
 
-                    {groups.map((group) => (
-                      <PaymentMarker
-                        key={`${node.id}-${group.date}`}
-                        group={group}
-                        left={daysBetween(axis.start, parseDay(group.date)!) * dayWidth}
-                        onSelect={onSelect}
-                      />
-                    ))}
+                    {groups.map((group, index) => {
+                      const x = daysBetween(axis.start, parseDay(group.date)!) * dayWidth;
+                      const next = groups[index + 1];
+                      const nextX = next
+                        ? daysBetween(axis.start, parseDay(next.date)!) * dayWidth
+                        : Number.POSITIVE_INFINITY;
+                      return (
+                        <PaymentMarker
+                          key={`${node.id}-${group.paid ? "paid" : "plan"}-${group.date}`}
+                          group={group}
+                          left={x}
+                          showAmount={nextX - x >= AMOUNT_LABEL_CLEARANCE}
+                          onSelect={onSelect}
+                        />
+                      );
+                    })}
 
-                    {late && startDate && endDate && (
-                      <span
-                        className="absolute top-1/2 ml-1 -translate-y-1/2 text-micro font-medium text-destructive"
-                        style={{ left: left + width }}
-                      >
-                        {t(($) => $.gantt.overdue)}
-                      </span>
-                    )}
                   </div>
                 );
               })}

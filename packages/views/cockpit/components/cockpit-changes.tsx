@@ -13,10 +13,14 @@
 // decision either moves board data or removes a row the reviewer is looking
 // at.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CockpitNode, CockpitPendingChange } from "@multica/core/types";
 import {
+  buildCockpitTree,
+  buildCockpitDisplayCodes,
+  flattenCockpitTree,
+  cockpitMissingFields,
   cockpitChangesOptions,
   useApplyCockpitChange,
   useCreateCockpitChange,
@@ -24,6 +28,11 @@ import {
   useWithdrawCockpitChange,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogCancel, AlertDialogAction,
+} from "@multica/ui/components/ui/alert-dialog";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import {
@@ -108,6 +117,10 @@ function valueLabel(
   return value === "" ? t(($) => $.changes.clear_value) : value;
 }
 
+function changeType(change: CockpitPendingChange) {
+  return change.new_value === "" ? "type_clear" : change.old_value === "" ? "type_add" : "type_modify";
+}
+
 function sourceBadgeClass(source: string): string {
   // An agent's proposal carries different trust than a colleague's note;
   // give it the accent family so the badge does the introducing.
@@ -148,7 +161,13 @@ function ChangeRow({
   change,
   onOpenTask,
   onError,
+  batchBusy,
+  beginDecision,
+  endDecision,
 }: {
+  batchBusy: boolean;
+  beginDecision: () => boolean;
+  endDecision: () => void;
   wsId: string;
   change: CockpitPendingChange;
   onOpenTask: (nodeId: string) => void;
@@ -159,7 +178,7 @@ function ChangeRow({
   const apply = useApplyCockpitChange(wsId);
   const reject = useRejectCockpitChange(wsId);
   const withdraw = useWithdrawCockpitChange(wsId);
-  const busy = apply.isPending || reject.isPending || withdraw.isPending;
+  const busy = batchBusy || apply.isPending || reject.isPending || withdraw.isPending;
 
   // Structural on purpose: the three decision hooks return different result
   // shapes, and the row only needs "run it and tell me".
@@ -171,11 +190,13 @@ function ChangeRow({
       ) => void;
     },
     ok: string,
-  ) =>
+  ) => {
+    if (!beginDecision()) return;
     run.mutate(change.id, {
-      onSuccess: () => toast.success(ok),
-      onError,
+      onSuccess: () => { endDecision(); toast.success(ok); },
+      onError: (error) => { endDecision(); onError(error); },
     });
+  };
 
   const code =
     change.node_code !== "" ? (
@@ -202,6 +223,9 @@ function ChangeRow({
           ·
         </span>
         <span className="shrink-0">{fieldLabel(t, change.field)}</span>
+        <span className="rounded-full border border-border px-1.5 py-0.5 text-micro">
+          {t(($) => $.changes[changeType(change)])}
+        </span>
         <span
           className={`shrink-0 rounded-full px-1.5 py-0.5 text-micro ${sourceBadgeClass(change.source)}`}
         >
@@ -414,8 +438,38 @@ export function CockpitChanges({
   onOpenTask: (nodeId: string) => void;
 }) {
   const { t } = useT("cockpit");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const batchLock = useRef(false);
+  const applyAll = useApplyCockpitChange(wsId);
   const [showHistory, setShowHistory] = useState(false);
-  const { data: changes = [] } = useQuery(cockpitChangesOptions(wsId));
+  const { data: rawChanges = [] } = useQuery(cockpitChangesOptions(wsId));
+  const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  const displayNodes = useMemo(() => nodes.map((node) => ({ ...node, code: displayCodes.get(node.id) ?? node.code })), [nodes, displayCodes]);
+  const changes = useMemo(() => rawChanges.map((change) => ({ ...change, node_code: displayCodes.get(change.node_id) ?? change.node_code })), [rawChanges, displayCodes]);
+  const rootById = useMemo(() => {
+    const roots = new Map<string, CockpitNode>();
+    for (const root of tree) for (const entry of flattenCockpitTree([root])) roots.set(entry.node.id, root.node);
+    return roots;
+  }, [tree]);
+  const review = useMemo(() => {
+    return tree.map((root) => {
+      const tasks = flattenCockpitTree([root])
+        .filter((entry) => entry.children.length === 0)
+        .map(({ node }) => ({
+          node,
+          missing: cockpitMissingFields(node),
+          suggested: (["collaborators", "vendor", "budget_category", "exec_status", "dependencies", "deliverable", "note", "current_progress"] as const)
+            .filter((field) => !node[field].trim()),
+        }));
+      return { root: root.node, tasks, missing: tasks.reduce((sum, task) => sum + task.missing.length, 0),
+        complete: tasks.filter((task) => task.missing.length === 0).length };
+    });
+  }, [tree]);
+  const missingTotal = review.reduce((sum, group) => sum + group.missing, 0);
+  const completeTotal = review.reduce((sum, group) => sum + group.complete, 0);
+  const taskTotal = review.reduce((sum, group) => sum + group.tasks.length, 0);
 
   const pending = useMemo(
     () => changes.filter((c) => c.status === "pending"),
@@ -426,13 +480,119 @@ export function CockpitChanges({
     [changes],
   );
 
+  const groups = useMemo(() => {
+    const grouped = new Map<string, { root: CockpitNode | undefined; tasks: Map<string, CockpitPendingChange[]> }>();
+    for (const change of pending) {
+      const root = rootById.get(change.node_id);
+      const key = root?.id ?? "";
+      let group = grouped.get(key);
+      if (!group) { group = { root, tasks: new Map() }; grouped.set(key, group); }
+      const task = group.tasks.get(change.node_id) ?? [];
+      task.push(change);
+      group.tasks.set(change.node_id, task);
+    }
+    return [...grouped.entries()];
+  }, [pending, rootById]);
+
   const onError = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
   };
 
+  const beginDecision = () => {
+    if (batchLock.current) return false;
+    batchLock.current = true;
+    setBatchBusy(true);
+    return true;
+  };
+  const endDecision = () => { batchLock.current = false; setBatchBusy(false); };
+  const acceptAll = async () => {
+    if (pending.length === 0 || !beginDecision()) return;
+    try {
+      // Sequential writes preserve proposal ordering for repeated edits of one field.
+      // Stop on failure: applied decisions stay settled, remaining proposals stay pending.
+      const oldestFirst = [...pending].sort((a, b) =>
+        Date.parse(a.created_at) - Date.parse(b.created_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      for (const change of oldestFirst) await applyAll.mutateAsync(change.id);
+      setConfirmOpen(false);
+      toast.success(t(($) => $.changes.apply_done));
+    } catch (error) {
+      onError(error);
+    } finally {
+      endDecision();
+    }
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto p-4">
-      <FileChangeForm wsId={wsId} nodes={nodes} onError={onError} />
+      <FileChangeForm wsId={wsId} nodes={displayNodes} onError={onError} />
+
+      {taskTotal > 0 && (
+        <section className="rounded-lg border border-border bg-card p-3">
+          <h2 className="text-caption font-medium">
+            {t(($) => $.table.check)} · {t(($) => $.table.core_missing, { count: missingTotal })} · {t(($) => $.table.check_ok)} {completeTotal}/{taskTotal}
+          </h2>
+          <div className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
+            {review.map((group) => (
+              <details key={group.root.id} open>
+                <summary className="cursor-pointer text-caption font-medium">
+                  {displayCodes.get(group.root.id) ?? group.root.code} {group.root.name} · {t(($) => $.table.core_missing, { count: group.missing })} · {t(($) => $.table.check_ok)} {group.complete}/{group.tasks.length}
+                </summary>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {group.tasks.map(({ node, missing, suggested }) => {
+                    const suggestedLabels = [
+                      ...suggested.map((field) => fieldLabel(t, field)),
+                      ...(node.budget_amount == null ? [t(($) => $.node.budget)] : []),
+                    ];
+                    return (
+                      <li key={node.id} className="flex flex-wrap items-center gap-2 text-caption">
+                        <Button variant="ghost" size="sm" onClick={() => onOpenTask(node.id)}>
+                          {displayCodes.get(node.id) ?? node.code} {node.name}
+                        </Button>
+                        <span>{t(($) => $.node.owner)}: {node.owner.trim() || t(($) => $.common.unset)}</span>
+                        <span className="text-muted-foreground">
+                          {missing.length > 0 ? `${t(($) => $.table.core_missing, { count: missing.length })}: ${missing.map((field) => fieldLabel(t, field)).join(" / ")}` : t(($) => $.table.check_ok)}
+                        </span>
+                        {suggestedLabels.length > 0 && (
+                          <span className="text-muted-foreground">{t(($) => $.table.suggested_fields, { count: suggestedLabels.length })}: {suggestedLabels.join(" / ")}</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 text-caption">
+        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.queue_title, { n: pending.length })}</span>
+        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.status_applied)} {changes.filter((change) => change.status === "applied").length}</span>
+        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.status_rejected)} {changes.filter((change) => change.status === "rejected").length}</span>
+        {(["type_add", "type_modify", "type_clear"] as const).map((type) => (
+          <span key={type} className="rounded-full border border-border px-2 py-1">
+            {t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}
+          </span>
+        ))}
+        <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!batchLock.current) setConfirmOpen(open); }}>
+          <AlertDialogTrigger render={<Button size="sm" className="ml-auto" disabled={batchBusy || pending.length === 0} />}>
+            {t(($) => $.changes.apply_all)}
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t(($) => $.changes.confirm_apply_all)}</AlertDialogTitle>
+              <AlertDialogDescription>{t(($) => $.changes.queue_title, { n: pending.length })}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={batchBusy}>{t(($) => $.versions.cancel)}</AlertDialogCancel>
+              <AlertDialogAction disabled={batchBusy || pending.length === 0} aria-busy={batchBusy} onClick={() => void acceptAll()}>
+                {batchBusy ? <Spinner className="size-3.5" /> : <Check className="size-3.5" aria-hidden />}
+                {t(($) => $.changes.apply_all)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-caption font-medium text-muted-foreground">
@@ -443,17 +603,29 @@ export function CockpitChanges({
             {t(($) => $.changes.queue_empty)}
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {pending.map((change) => (
-              <ChangeRow
-                key={change.id}
-                wsId={wsId}
-                change={change}
-                onOpenTask={onOpenTask}
-                onError={onError}
-              />
+          <div className="flex flex-col gap-3">
+            {groups.map(([key, group]) => (
+              <details key={key} open className="rounded-lg border border-border bg-card p-3">
+                <summary className="cursor-pointer text-caption font-medium">
+                  {group.root ? `${displayCodes.get(group.root.id) ?? group.root.code} ${group.root.name}` : t(($) => $.changes.node_gone)}
+                </summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  {[...group.tasks.entries()].map(([nodeId, taskChanges]) => (
+                    <details key={nodeId} open>
+                      <summary className="cursor-pointer text-caption text-muted-foreground">
+                        {taskChanges[0]?.node_code} {taskChanges[0]?.node_name} · {taskChanges.length}
+                      </summary>
+                      <ul className="mt-2 flex flex-col gap-2">
+                        {taskChanges.map((change) => (
+                          <ChangeRow key={change.id} wsId={wsId} change={change} batchBusy={batchBusy} beginDecision={beginDecision} endDecision={endDecision} onOpenTask={onOpenTask} onError={onError} />
+                        ))}
+                      </ul>
+                    </details>
+                  ))}
+                </div>
+              </details>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 

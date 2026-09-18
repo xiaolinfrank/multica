@@ -28,7 +28,16 @@
     "back_to_today": "今日に戻る",
     "export": "エクスポート",
     "export_tasks": "タスク明細 CSV",
-    "export_finance": "支出明細 CSV"
+    "export_finance": "支出明細 CSV",
+    "scope_count": "モジュール {{n}}/{{total}}",
+    "overall_progress": "全体進捗",
+    "year_progress": "今年の進捗",
+    "overall_basis": "年度をまたぐものを含む全タスクの平均完了度。進捗未記入は状態で換算（完了 100 / 進行中 50 / 受阻 25 / 未着手 0）、中止は数えません。",
+    "year_basis": "終了日が {{date}} 以前のタスクの平均完了度。計画上は約 {{scheduled}}%。年度をまたぐタスクは含めません。",
+    "expand_controls": "タイムラインの操作を表示",
+    "collapse_controls": "タイムラインの操作を非表示",
+    "export_pdf": "ガントチャート PDF",
+    "export_png": "ガントチャート PNG"
   },
   "overview": {
     "annual_goal": "年間目標",
@@ -48,15 +57,14 @@
     "overdue": "遅延",
     "finance": "財務",
     "finance_hint": "予算と支払いを月次で対照",
-    "card_overall": "直近の完了",
-    "card_next": "今後の予定",
+    "card_overall": "現在の主な進捗",
+    "card_next": "今後2週間の重点",
     "card_support": "支援が必要",
     "card_auto": "自動集計",
     "card_manual": "手動入力",
     "card_placeholder": "このカードの内容を書く",
     "card_write_manual": "手動で書く",
     "card_seed": "…",
-    "meetings": "会議記録",
     "add_meeting": "会議を追加",
     "mvp_label": "年間MVP目標",
     "clock": "現在時刻",
@@ -64,7 +72,23 @@
     "module_active": "進行中",
     "module_recent": "直近の成果",
     "module_next": "次のキーノード",
-    "open_task": "ガントチャートで {{code}} を表示"
+    "open_task": "ガントチャートで {{code}} を表示",
+    "card_meetings": "直近の会議",
+    "card_overall_hint": "直近7日 {{from}}–{{to}}",
+    "card_next_hint": "{{from}}–{{to}}",
+    "card_support_hint": "停滞・期限超過",
+    "card_meetings_hint": "今週とこれから",
+    "lead_done": "完了 {{n}} 件",
+    "lead_active": "進行中 {{n}} 件",
+    "lead_milestones": "マイルストーン {{n}} 件",
+    "lead_paid": "支払実績 {{amount}}",
+    "lead_due": "期限到来 {{n}} 件",
+    "lead_planned": "支出予定 {{amount}}",
+    "lead_blocked": "停滞 {{n}} 件",
+    "lead_overdue": "期限超過 {{n}} 件",
+    "more_detail": "…詳細はガントチャートで",
+    "more_items": "…全 {{n}} 件。一覧はガントチャートで",
+    "tag_milestone": "マイルストーン"
   },
   "gantt": {
     "column_task": "タスク / モジュール",
@@ -74,10 +98,10 @@
     "expand_branch": "{{name}} を展開",
     "collapse_branch": "{{name}} を折りたたむ",
     "open_node": "{{code}} を開く",
-    "overdue": "遅延",
+    "overdue": "期限超過",
     "bar_label": "タイムライン上の {{code}}",
     "column_finance": "予算 / 支払",
-    "legend_rollup": "集計バー",
+    "legend_rollup": "ロールアップ（子孫の集約状態）",
     "legend_end_only": "期限のみ",
     "legend_payment": "支払ノード",
     "legend_today": "今日",
@@ -89,7 +113,31 @@
     "collaborator_count": "協 {{n}}",
     "should_have_started": "開始予定",
     "done_of": "{{done}}/{{total}} 件",
-    "unscheduled": "日程未定"
+    "unscheduled": "日程未定",
+    "legend_status": {
+      "progress": "進行中（レビュー・待機を含む）",
+      "done": "完了",
+      "blocked": "受阻",
+      "todo": "未着手",
+      "cancelled": "中止"
+    },
+    "legend_core": "重要日",
+    "original_code": "元の番号 {{code}}",
+    "subtree_progress_hint": "サブタスク {{n}} 件の平均 · 完了 {{done}}/{{total}}",
+    "goal_chip": "年度目標との差",
+    "goal_actual": "現在の完了度 {{pct}}%",
+    "goal_scheduled": "計画上は約 {{pct}}%",
+    "goal_behind": "{{pts}} ポイント遅れ",
+    "goal_ahead": "{{pts}} ポイント先行",
+    "goal_on_track": "計画どおり",
+    "goal_late_days": "計画上の最終完了 {{date}}、年度目標より {{days}} 日遅い",
+    "goal_early_days": "計画上の最終完了 {{date}}、年度目標より {{days}} 日早い",
+    "goal_cross_year": "年度をまたぐタスク {{count}} 件（推算に含めない）",
+    "goal_basis": "終了日が {{date}} 以前の {{n}} 件から推算。進捗未記入は状態で換算（完了 100 / 進行中 50 / 受阻 25 / 未着手 0）",
+    "core_done": "{{date}} 主要タスク {{count}} 件完了",
+    "core_blocked": "{{date}} 受阻 {{count}} 件",
+    "core_upcoming": "{{date}} 直近の要注目 {{count}} 件",
+    "today_line": "本日 {{date}}"
   },
   "node": {
     "code": "コード",
@@ -137,7 +185,11 @@
     "new": "新規会議",
     "attendees": "参加者",
     "open": "参加",
-    "delete": "会議 {{title}} を削除"
+    "delete": "会議 {{title}} を削除",
+    "this_week": "今週",
+    "upcoming": "まもなく",
+    "show_all": "すべて表示（{{n}} 件）",
+    "show_upcoming": "直近のみ表示"
   },
   "payment": {
     "label": "回次",
@@ -147,19 +199,28 @@
     "delete": "この回を削除"
   },
   "finance": {
-    "budget": "予算額",
-    "paid": "支払済",
-    "contracted": "契約済",
-    "unplanned": "未計画",
+    "budget": "予算合計",
     "payment": "支払い",
     "payment_count": "{{count}} 件の支払い",
     "payment_total": "合計 {{total}}",
     "month_tasks": "タスク {{done}}/{{total}} 完了",
     "payment_on": "{{date}} の支払",
     "month_chart": "月次タスク進捗 × 支出予算",
-    "month_basis": "柱＝当月の支払予定（モジュール別カラー積み上げ）；緑バー＝実払比率",
-    "paid_label": "実払",
-    "month_active": "進行中 {{n}}"
+    "month_basis": "柱＝当月の支払計画（モジュール色で積み上げ）、下の2本＝当月の支出予定と実績",
+    "month_active": "進行中 {{n}}",
+    "planned": "支出予定額",
+    "actual": "支出実績額",
+    "outstanding": "支出予定残",
+    "line_count": "{{n}} 件",
+    "line_header": "件数",
+    "actual_basis": "支出実績は「予算執行状況＝全額支払」の行から算出します。金額はその行の予算、日付は最初の支払日です。",
+    "planned_short": "支出予定",
+    "actual_short": "支出実績",
+    "plus_projected": "+予定 {{amount}}",
+    "actual_track": "支払済 {{n}} 件 · 合計 {{amount}}",
+    "payment_paid": "支払済",
+    "payment_planned": "支払予定",
+    "payment_month": "{{month}} 支払予定 {{count}} 件 · 合計 {{total}}"
   },
   "issues": {
     "link": "イシューを関連付け",
@@ -201,7 +262,10 @@
     "actual_amount": "実際の支出額",
     "check": "チェック",
     "check_ok": "正常",
-    "check_warn": "要確認 {{n}}"
+    "check_warn": "要確認 {{n}}",
+    "suggested_fields": "追加推奨：{{count}} 件",
+    "core_missing": "必須項目の不足：{{count}} 件",
+    "search_matches": "{{count}} 件一致"
   },
   "changes": {
     "field_color": "分野カラー",
@@ -234,7 +298,12 @@
     "status_withdrawn": "取り下げ",
     "history_title": "処理履歴（{{n}}）",
     "locate": "ガントチャートで {{code}} を表示",
-    "locate_hint": "タスクコードをクリックするとガントチャートで表示します。"
+    "locate_hint": "タスクコードをクリックするとガントチャートで表示します。",
+    "apply_all": "すべて適用",
+    "confirm_apply_all": "保留中のすべてのフィールド変更を適用しますか？",
+    "type_add": "値の追加",
+    "type_modify": "値の変更",
+    "type_clear": "値の削除"
   },
   "versions": {
     "button": "バージョン",
@@ -256,5 +325,10 @@
     "auto_group": "自動保存 ×{{n}}",
     "row_meta": "{{nodes}} ノード · {{by}}",
     "by_unknown": "不明"
+  },
+  "confirmation": {
+    "delete_title": "この記録を削除しますか？",
+    "delete_description": "「{{label}}」は完全に削除されます。この操作は取り消せません。",
+    "delete_branch_description": "「{{label}}」とそのすべての下位記録は完全に削除されます。この操作は取り消せません。"
   }
 }

@@ -3,6 +3,7 @@ packages:
   - packages/*
 
 catalog:
+  html-to-image: ^1.11.13
   '@formatjs/intl-localematcher': ^0.8.4
   '@tailwindcss/postcss': ^4
   '@tailwindcss/vite': ^4

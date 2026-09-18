@@ -182,6 +182,14 @@ const board: CockpitBoard = {
   ],
 };
 
+// Detailed fields belong to a genuine depth-two task; keep its fixture index.
+function useDetailedBoard() {
+  const detailed = structuredClone(board);
+  detailed.nodes[1]!.parent_id = "module";
+  detailed.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", name: "Governance" }));
+  vi.mocked(api.getCockpit).mockResolvedValue(detailed);
+}
+
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -221,11 +229,13 @@ describe("CockpitPage", () => {
       "End-to-end demo",
     );
     expect(screen.getByText("Dataset acceptance")).toBeInTheDocument();
-    expect(screen.getByText("High-quality datasets")).toBeInTheDocument();
+    // The module name is printed twice on purpose: once on the module card and
+    // once in the spend-by-module table.
+    expect(screen.getAllByText("High-quality datasets").length).toBeGreaterThan(0);
     expect(screen.getByText("Working group weekly")).toBeInTheDocument();
 
     // Budget rolls up from the leaf; the leaf's instalment counts as contracted.
-    const finance = screen.getByText("Budgeted").closest("div")!;
+    const finance = screen.getByText("Budget total").closest("div")!;
     expect(within(finance).getByText("30")).toBeInTheDocument();
   });
 
@@ -233,7 +243,7 @@ describe("CockpitPage", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
 
-    expect(await screen.findByRole("button", { name: "Open L3-01-08" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open 01.01" })).toBeInTheDocument();
     // The branch has one leaf at 40%, so it reports 40% and is not editable.
     const progressFields = screen.getAllByRole("button", { name: "Progress" });
     expect(progressFields.length).toBeGreaterThan(0);
@@ -273,9 +283,11 @@ describe("CockpitPage", () => {
   });
 
   it("opens the node panel from the gantt and shows the fields the row has no room for", async () => {
+    useDetailedBoard();
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
 
     expect(await screen.findByText("Instalments")).toBeInTheDocument();
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
@@ -297,9 +309,11 @@ describe("CockpitPage", () => {
     });
     vi.mocked(api.setCockpitNodeIssues).mockResolvedValue({ node_id: "task", links: [] });
 
+    useDetailedBoard();
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Link issue" }));
     const search = await screen.findByPlaceholderText("Search issues by title or identifier…");
@@ -325,9 +339,9 @@ describe("CockpitPage", () => {
       target: { value: "governance" },
     });
 
-    expect(await screen.findByRole("button", { name: "Open L3-01-08" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open 01.01" })).toBeInTheDocument();
     // The parent stays so the hit has context to be read in.
-    expect(screen.getByRole("button", { name: "Open L1-01" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open 01" })).toBeInTheDocument();
   });
 
   it("shows an empty board as an invitation to add work, not as an error", async () => {
@@ -368,6 +382,7 @@ describe("CockpitPage detail tables", () => {
   });
 
   it("puts the deliverable on the task table, where the gantt has no room for it", async () => {
+    useDetailedBoard();
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
 
@@ -380,12 +395,12 @@ describe("CockpitPage detail tables", () => {
       ...board.nodes[1]!,
       deliverable: "Executed contract",
     });
+    useDetailedBoard();
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
 
-    // Both rows carry a deliverable cell; the leaf is the second.
-    const cells = await screen.findAllByRole("button", { name: "Deliverable" });
-    fireEvent.click(cells[1]!);
+    // Only the detailed leaf exposes a deliverable editor.
+    fireEvent.click(await screen.findByRole("button", { name: "Deliverable" }));
     const input = screen.getByRole("textbox", { name: "Deliverable" });
     fireEvent.change(input, { target: { value: "Executed contract" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -539,7 +554,7 @@ describe("CockpitPage versions", () => {
     expect(await screen.findByText("Sign the governance agreement")).toBeInTheDocument();
     expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("agent")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Apply/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Reject/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Withdraw/ })).toBeInTheDocument();
   });
@@ -593,7 +608,7 @@ describe("CockpitPage versions", () => {
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Apply/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Apply" }));
 
     await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledWith("chg-2"));
   });

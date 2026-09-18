@@ -8,7 +8,7 @@
 // re-opening the cockpit should show the board, not the last person's scroll
 // position.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type {
@@ -22,10 +22,12 @@ import type {
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import {
+  buildCockpitDisplayCodes,
   buildCockpitTree,
   cockpitBoardOptions,
   cockpitChangesOptions,
   cockpitFinanceCsv,
+  cockpitOverallProgress,
   cockpitTasksCsv,
   flattenCockpitTree,
   groupIssueLinksByNode,
@@ -48,14 +50,19 @@ import {
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter } from "@multica/ui/components/ui/alert-dialog";
 import { Input } from "@multica/ui/components/ui/input";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@multica/ui/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -70,6 +77,7 @@ import {
   CircleDollarSign,
   Crosshair,
   Download,
+  Layers,
   Plus,
   Search,
 } from "lucide-react";
@@ -78,6 +86,7 @@ import { memberListOptions } from "@multica/core/workspace/queries";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
+import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
@@ -94,6 +103,52 @@ const TABS: CockpitTab[] = ["overview", "gantt", "tasks", "changes", "finance"];
 const EMPTY_NODES: CockpitNode[] = [];
 const EMPTY_PAYMENTS: CockpitPayment[] = [];
 const EMPTY_LINKS: CockpitIssueLink[] = [];
+
+/**
+ * One derived headline figure for the toolbar: a label, a percentage and a
+ * rail. Derived, so it is a read-out and not a field — the number comes from
+ * the tasks, and the way to move it is to move them.
+ */
+function ProgressChip({
+  label,
+  value,
+  behind,
+  hint,
+}: {
+  label: string;
+  value: number | null;
+  behind?: boolean;
+  hint: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              "flex h-7 items-center gap-1.5 rounded-md border px-2 text-caption tabular-nums",
+              behind
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-border text-muted-foreground",
+            )}
+          >
+            {label}
+            <b className="text-foreground">{value == null ? "—" : `${value}%`}</b>
+            <span className="h-1 w-6 overflow-hidden rounded-full bg-foreground/10">
+              <span
+                className={cn("block h-full rounded-full", behind ? "bg-destructive" : "bg-brand")}
+                style={{ width: `${value ?? 0}%` }}
+              />
+            </span>
+          </span>
+        }
+      />
+      <TooltipContent>
+        <span className="block max-w-72 text-caption">{hint}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 /** Today as a calendar day, in the viewer's own timezone. */
 function todayString(): string {
@@ -126,14 +181,22 @@ function downloadCsv(content: string, filename: string): void {
 
 export function CockpitPage() {
   const { t } = useT("cockpit");
+  const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
   const [tab, setTab] = useState<CockpitTab>("overview");
   const [zoom, setZoom] = useState<CockpitZoom>("month");
   const [query, setQuery] = useState("");
-  const [rootId, setRootId] = useState<string | null>(null);
+  // Empty means "every module"; the menu is multi-select, so comparing two
+  // modules side by side does not mean opening the board twice.
+  const [rootIds, setRootIds] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showFinance, setShowFinance] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const [deletion, setDeletion] = useState<{ kind: "meeting" | "milestone" | "payment"; id: string; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletionLock = useRef(false);
+  const deletionOpener = useRef<HTMLElement | null>(null);
   const [scrollToTodayNonce, setScrollToTodayNonce] = useState(0);
   // The gantt locates-and-flashes one row; the nonce makes repeat clicks on
   // the same digest task re-trigger the effect.
@@ -179,6 +242,7 @@ export function CockpitPage() {
   const nodes = useMemo(() => board?.nodes ?? EMPTY_NODES, [board?.nodes]);
   const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
   const flat = useMemo(() => flattenCockpitTree(tree), [tree]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const paymentsByNode = useMemo(
     () => groupPaymentsByNode(board?.payments ?? EMPTY_PAYMENTS),
@@ -301,6 +365,33 @@ export function CockpitPage() {
     [flat],
   );
 
+  /**
+   * First paint opens the board to its modules and stops there. A 187-row
+   * programme fully expanded is a wall, and fully collapsed is six rows that
+   * say nothing. This runs once: a live edit or a websocket refresh must not
+   * fold a branch the reader just opened.
+   */
+  const didSeedCollapse = useRef(false);
+  useEffect(() => {
+    if (didSeedCollapse.current || flat.length === 0) return;
+    didSeedCollapse.current = true;
+    expandToDepth(1);
+  }, [flat, expandToDepth]);
+
+  const overall = useMemo(
+    () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
+    [nodes, today, board?.cockpit.goal_date],
+  );
+
+  const toggleRoot = useCallback((nodeId: string) => {
+    setRootIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
+
   const addNode = useCallback(() => {
     // A new node lands under whatever is selected, at the end of that branch.
     const parent = selectedId ? nodeById.get(selectedId) : undefined;
@@ -328,6 +419,33 @@ export function CockpitPage() {
     );
   }, [selectedId, nodeById, nodes, createNode, fail]);
 
+  const requestDeletion = (kind: "meeting" | "milestone" | "payment", id: string) => {
+    deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const label = kind === "meeting"
+      ? t(($) => $.meeting.delete, { title: board?.meetings.find((item) => item.id === id)?.title ?? "" })
+      : kind === "milestone"
+        ? t(($) => $.milestone.delete, { name: board?.milestones.find((item) => item.id === id)?.name ?? "" })
+        : `${t(($) => $.payment.delete)} · ${board?.payments.find((item) => item.id === id)?.label ?? ""}`;
+    setDeletion({ kind, id, label });
+  };
+
+  const confirmDeletion = async () => {
+    if (!deletion || deletionLock.current) return;
+    deletionLock.current = true;
+    setDeleting(true);
+    try {
+      const mutation = deletion.kind === "meeting" ? deleteMeeting
+        : deletion.kind === "milestone" ? deleteMilestone : deletePayment;
+      await mutation.mutateAsync(deletion.id);
+      setDeletion(null);
+    } catch (error) {
+      fail(error);
+    } finally {
+      deletionLock.current = false;
+      setDeleting(false);
+    }
+  };
+
   const exportTasks = useCallback(() => {
     if (!board) return;
     downloadCsv(cockpitTasksCsv(board), `${board.cockpit.title || "cockpit"}-${today}-tasks.csv`);
@@ -340,6 +458,24 @@ export function CockpitPage() {
       `${board.cockpit.title || "cockpit"}-${today}-finance.csv`,
     );
   }, [board, today]);
+
+  const [exporting, setExporting] = useState(false);
+  const chartContainer = useRef<HTMLDivElement>(null);
+  const exportChart = async (format: "png" | "pdf") => {
+    const chart = chartContainer.current?.querySelector<HTMLElement>("[data-cockpit-gantt]");
+    if (!board || !chart || exporting) return;
+    const popup = format === "pdf" ? window.open("", "_blank", "popup,width=1100,height=800") : null;
+    if (format === "pdf" && !popup) { fail(new Error(t(($) => $.errors.save_failed))); return; }
+    if (popup) popup.opener = null;
+    setExporting(true);
+    try {
+      const canvas = await captureCockpitGantt(chart, format === "pdf");
+      const filename = `${board.cockpit.title || "cockpit"}-${today}`;
+      if (popup) await printCockpitGantt(canvas, popup, filename);
+      else await downloadCockpitPng(canvas, `${filename}.png`);
+    } catch (error) { popup?.close(); fail(error); }
+    finally { setExporting(false); }
+  };
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
@@ -425,32 +561,62 @@ export function CockpitPage() {
             </div>
 
             {roots.length > 1 && (
-              <Select
-                items={[
-                  { value: "all", label: t(($) => $.toolbar.scope_all) },
-                  ...roots.map((root) => ({ value: root.id, label: `${root.code} ${root.name}` })),
-                ]}
-                value={rootId ?? "all"}
-                onValueChange={(value) => setRootId(!value || value === "all" ? null : value)}
-              >
-                <SelectTrigger className="h-7 w-44 text-caption" aria-label={t(($) => $.toolbar.scope)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t(($) => $.toolbar.scope_all)}</SelectItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant={rootIds.size > 0 ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-7 gap-1 px-2"
+                      aria-label={t(($) => $.toolbar.scope)}
+                    >
+                      <Layers className="size-3.5" />
+                      {rootIds.size > 0
+                        ? t(($) => $.toolbar.scope_count, {
+                            n: rootIds.size,
+                            total: roots.length,
+                          })
+                        : t(($) => $.toolbar.scope_all)}
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
                   {roots.map((root) => (
-                    <SelectItem key={root.id} value={root.id}>
-                      {root.code} {root.name}
-                    </SelectItem>
+                    <DropdownMenuCheckboxItem
+                      key={root.id}
+                      checked={rootIds.has(root.id)}
+                      closeOnClick={false}
+                      onCheckedChange={() => toggleRoot(root.id)}
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: root.color || "var(--color-brand)" }}
+                        aria-hidden
+                      />
+                      {displayCodes.get(root.id) ?? root.code} {root.name}
+                    </DropdownMenuCheckboxItem>
                   ))}
-                </SelectContent>
-              </Select>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setRootIds(new Set())}>
+                    {t(($) => $.toolbar.scope_all)}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </>
         )}
 
         {tab === "gantt" && (
-          <>
+          <Button variant="ghost" size="icon-sm" aria-expanded={toolsOpen}
+            aria-controls="cockpit-secondary-toolbar"
+            aria-label={toolsOpen ? t(($) => $.toolbar.collapse_controls) : t(($) => $.toolbar.expand_controls)}
+            onClick={() => setToolsOpen((open) => !open)}>
+            {toolsOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
+          </Button>
+        )}
+
+        {tab === "gantt" && toolsOpen && (
+          <div id="cockpit-secondary-toolbar" className="order-last flex w-full flex-wrap items-center gap-2">
             <Select
               items={[
                 { value: "month", label: t(($) => $.toolbar.zoom_month) },
@@ -517,7 +683,24 @@ export function CockpitPage() {
               <Crosshair className="size-3.5" />
               {t(($) => $.toolbar.back_to_today)}
             </Button>
-          </>
+
+            <ProgressChip
+              label={t(($) => $.toolbar.overall_progress)}
+              value={overall.overall}
+              hint={t(($) => $.toolbar.overall_basis)}
+            />
+            {board?.cockpit.goal_date && (
+              <ProgressChip
+                label={t(($) => $.toolbar.year_progress)}
+                value={overall.thisYear}
+                behind={overall.behind}
+                hint={t(($) => $.toolbar.year_basis, {
+                  date: board.cockpit.goal_date,
+                  scheduled: overall.scheduled ?? "—",
+                })}
+              />
+            )}
+          </div>
         )}
 
         <CockpitVersions wsId={wsId} canRestore={canRestore} />
@@ -532,6 +715,12 @@ export function CockpitPage() {
             }
           />
           <DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("png")}>
+              {t(($) => $.toolbar.export_png)}
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("pdf")}>
+              {t(($) => $.toolbar.export_pdf)}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={exportTasks}>
               {t(($) => $.toolbar.export_tasks)}
             </DropdownMenuItem>
@@ -560,14 +749,14 @@ export function CockpitPage() {
                 onCreateMilestone={() =>
                   createMilestone.mutate({ name: t(($) => $.milestone.new), status: "" }, { onError: fail })
                 }
-                onDeleteMilestone={(id) => deleteMilestone.mutate(id, { onError: fail })}
+                onDeleteMilestone={(id) => requestDeletion("milestone", id)}
                 onPatchMeeting={patchMeeting}
                 onCreateMeeting={() =>
                   createMeeting.mutate({ title: t(($) => $.meeting.new), meet_date: today }, { onError: fail })
                 }
-                onDeleteMeeting={(id) => deleteMeeting.mutate(id, { onError: fail })}
+                onDeleteMeeting={(id) => requestDeletion("meeting", id)}
                 onOpenBranch={(nodeId) => {
-                  setRootId(nodeId);
+                  setRootIds(new Set([nodeId]));
                   setTab("gantt");
                 }}
                 onOpenTask={openTask}
@@ -576,12 +765,13 @@ export function CockpitPage() {
           )}
 
           {tab === "gantt" && (
+            <div ref={chartContainer} className="flex min-h-0 flex-1 flex-col" aria-busy={exporting}>
             <CockpitGantt
               board={board}
               today={today}
               zoom={zoom}
               query={query}
-              rootId={rootId}
+              rootIds={rootIds}
               collapsed={collapsed}
               onToggleCollapse={toggleCollapse}
               onSelect={setSelectedId}
@@ -592,6 +782,7 @@ export function CockpitPage() {
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
             />
+            </div>
           )}
 
           {tab === "changes" && (
@@ -603,7 +794,7 @@ export function CockpitPage() {
               board={board}
               mode={tab === "tasks" ? "tasks" : "finance"}
               query={query}
-              rootId={rootId}
+              rootIds={rootIds}
               onSelect={setSelectedId}
               selectedId={selectedId}
               onPatchNode={patchNode}
@@ -617,18 +808,23 @@ export function CockpitPage() {
 
         {selected && (
           <CockpitNodePanel
+            key={selected.id}
             node={selected}
             parent={selected.parent_id ? nodeById.get(selected.parent_id) : undefined}
             payments={paymentsByNode.get(selected.id) ?? []}
             links={linksByNode.get(selected.id) ?? []}
             isBranch={(selectedEntry?.children.length ?? 0) > 0}
+            depth={selectedEntry?.depth ?? 0}
+            deleteConfirmationDescription={(selectedEntry?.children.length ?? 0) > 0
+              ? t(($) => $.confirmation.delete_branch_description, { label: selected.name || selected.code })
+              : t(($) => $.confirmation.delete_description, { label: selected.name || selected.code })}
             statusSuggestions={statusSuggestions}
             execStatusSuggestions={execStatusSuggestions}
             budgetCategorySuggestions={budgetCategorySuggestions}
             ownerSuggestions={ownerSuggestions}
             onPatch={(patch) => patchNode(selected.id, patch)}
             onDelete={() =>
-              deleteNode.mutate(selected.id, {
+              deleteNode.mutateAsync(selected.id, {
                 onSuccess: () => setSelectedId(null),
                 onError: fail,
               })
@@ -654,10 +850,28 @@ export function CockpitPage() {
               )
             }
             onPatchPayment={patchPayment}
-            onDeletePayment={(paymentId) => deletePayment.mutate(paymentId, { onError: fail })}
+            onDeletePayment={(paymentId) => requestDeletion("payment", paymentId)}
           />
         )}
       </div>
+      <AlertDialog open={deletion !== null} onOpenChange={(open) => {
+        if (!open && !deletionLock.current) setDeletion(null);
+      }}>
+        <AlertDialogContent finalFocus={deletionOpener}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.confirmation.delete_title)}</AlertDialogTitle>
+            <AlertDialogDescription>{t(($) => $.confirmation.delete_description, { label: deletion?.label ?? "" })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" disabled={deleting} onClick={() => setDeletion(null)}>
+              {commonT(($) => $.cancel)}
+            </Button>
+            <Button variant="destructive" disabled={deleting} aria-busy={deleting} onClick={confirmDeletion}>
+              {commonT(($) => $.delete)}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

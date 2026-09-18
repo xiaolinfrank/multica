@@ -3,9 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
+  buildCockpitDisplayCodes,
   buildCockpitTree,
+  cockpitAggStatusColor,
+  cockpitCoreNodes,
+  cockpitEffectiveProgress,
+  cockpitGoalProgress,
   cockpitMissingFields,
   cockpitModuleHighlights,
+  cockpitOverallProgress,
+  cockpitPaymentTone,
   cockpitStatusColor,
   computeCockpitAxis,
   computeCockpitDigest,
@@ -222,21 +229,37 @@ describe("computeCockpitFinance", () => {
     );
 
     expect(summary.budget).toBe(100);
-    expect(summary.paid).toBe(20);
+    expect(summary.planned).toBe(100);
+    // Only the fully-paid line counts as spent, at its own budget.
+    expect(summary.actual).toBe(20);
+    expect(summary.outstanding).toBe(80);
+    expect(summary.lineCount).toBe(3);
+    expect(summary.paidLineCount).toBe(1);
     expect(summary.contracted).toBe(30);
-    // 100 budgeted, 50 with an instalment plan behind it.
-    expect(summary.unplanned).toBe(50);
     expect(summary.paymentCount).toBe(2);
   });
 
-  it("never reports negative unplanned budget when instalments exceed the plan", () => {
+  it("rolls the ledger up per module in code order", () => {
     const summary = computeCockpitFinance(
       board({
-        nodes: [node({ id: "n", code: "N", budget_amount: 10 })],
-        payments: [{ id: "1", node_id: "n", label: "", pay_date: null, amount: 40, position: 0 }],
+        nodes: [
+          node({ id: "m2", code: "L1-02", name: "Platform" }),
+          node({ id: "m1", code: "L1-01", name: "Datasets" }),
+          node({ id: "a", code: "L3-01-01", parent_id: "m1", budget_amount: 10 }),
+          node({
+            id: "b",
+            code: "L3-02-01",
+            parent_id: "m2",
+            budget_amount: 40,
+            exec_status: "完全支付",
+          }),
+        ],
       }),
     );
-    expect(summary.unplanned).toBe(0);
+    expect(summary.byModule.map((m) => [m.code, m.lineCount, m.planned, m.actual])).toEqual([
+      ["L1-01", 1, 10, 0],
+      ["L1-02", 1, 40, 40],
+    ]);
   });
 });
 
@@ -395,6 +418,19 @@ describe("computeCockpitAxis", () => {
     expect(axis.end.toISOString().slice(0, 10)).toBe("2026-12-31");
   });
 
+  it("starts week density on the Monday of the earliest execution task", () => {
+    const axis = computeCockpitAxis(
+      [
+        node({ id: "r", code: "R", start_date: "2026-03-02", end_date: "2026-05-20" }),
+        node({ id: "a", code: "A", parent_id: "r", start_date: "2026-03-18", end_date: "2026-05-20" }),
+      ],
+      "2026-04-01",
+      { zoom: "week" },
+    );
+    // 2026-03-18 is a Wednesday; its week opens on the 16th.
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
+  });
+
   it("covers every day of the span exactly once across its months", () => {
     const axis = computeCockpitAxis(
       [node({ id: "a", code: "A", start_date: "2026-01-05", end_date: "2026-04-15" })],
@@ -412,22 +448,22 @@ describe("computeCockpitDigest", () => {
     node({ id: "old-done", code: "OD", status: "已完成", end_date: "2026-01-10" }),
     node({ id: "soon", code: "S", end_date: "2026-06-20" }),
     node({ id: "far", code: "F", end_date: "2026-12-20" }),
-    node({ id: "late", code: "L", end_date: "2026-05-01" }),
+    node({ id: "late", code: "L", status: "进行中", end_date: "2026-05-01" }),
     node({ id: "blocked", code: "B", status: "受阻", end_date: "2026-07-01" }),
     node({ id: "cancelled", code: "C", status: "已取消", end_date: "2026-05-01" }),
   ];
-  const digest = computeCockpitDigest(nodes, "2026-06-15");
+  const digest = computeCockpitDigest(board({ nodes }), "2026-06-15");
 
   it("reports only work finished inside the trailing window", () => {
-    expect(digest.recentlyDone.map((n) => n.id)).toEqual(["done"]);
+    expect(digest.overall.items.map((item) => item.key)).toEqual(["done"]);
   });
 
   it("reports only work due inside the leading window", () => {
-    expect(digest.upcoming.map((n) => n.id)).toEqual(["soon"]);
+    expect(digest.next.items.map((item) => item.key)).toEqual(["soon"]);
   });
 
   it("puts overdue and blocked work under support, and drops cancelled work entirely", () => {
-    expect(digest.needsSupport.map((n) => n.id)).toEqual(["late", "blocked"]);
+    expect(digest.support.items.map((item) => item.key)).toEqual(["blocked", "late"]);
   });
 });
 
@@ -484,27 +520,30 @@ describe("groupSubtreePayments", () => {
     { id: "p3", node_id: "b", label: "尾款", pay_date: "2026-09-01", amount: 7, position: 1 },
   ];
 
-  it("collapses a branch's instalments onto one marker per calendar day", () => {
+  it("keeps paid days separate from scheduled months, even on the same day", () => {
     const tree = buildCockpitTree(nodes);
     const groups = groupSubtreePayments(
       tree[0]!,
       groupPaymentsByNode(payments),
       new Map(nodes.map((n) => [n.id, n])),
     );
-    expect(groups.map((g) => [g.date, g.entries.length, g.total])).toEqual([
-      ["2026-03-01", 2, 15],
-      ["2026-09-01", 1, 7],
+    expect(groups.map((g) => [g.date, g.month, g.paid, g.tone, g.entries.length, g.total])).toEqual([
+      ["2026-03-01", "2026-03", false, "pending", 1, 10],
+      ["2026-03-01", null, true, "paid", 1, 5],
+      ["2026-09-01", null, true, "paid", 1, 7],
     ]);
   });
 
-  it("colours a mixed day by the most advanced execution status in it", () => {
-    const tree = buildCockpitTree(nodes);
-    const groups = groupSubtreePayments(
-      tree[0]!,
-      groupPaymentsByNode(payments),
-      new Map(nodes.map((n) => [n.id, n])),
-    );
-    expect(groups[0]!.execStatus).toBe("完全支付");
+  it("anchors scheduled months on their last instalment and uses the most advanced tone", () => {
+    const mixed = [...nodes, node({ id: "c", code: "01.03", parent_id: "r", exec_status: "合同已定" })];
+    const groups = groupSubtreePayments(buildCockpitTree(mixed)[0]!, groupPaymentsByNode([
+      payments[0]!,
+      { id: "p4", node_id: "c", label: "", pay_date: "2026-03-20", amount: 8, position: 0 },
+    ]), new Map(mixed.map((n) => [n.id, n])));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ date: "2026-03-20", month: "2026-03", paid: false,
+      tone: "contract", total: 18, execStatus: "合同已定" });
+    expect(groups[0]!.entries.map((e) => e.payment.id)).toEqual(["p1", "p4"]);
   });
 
   it("drops an instalment with no date rather than stacking it at the axis start", () => {
@@ -555,29 +594,224 @@ describe("cockpitModuleHighlights", () => {
   it("picks the latest finished leaf and the nearest unfinished one", () => {
     const tree = buildCockpitTree([
       node({ id: "m", code: "L1-01" }),
-      node({ id: "a", code: "A", parent_id: "m", status: "已完成", end_date: "2026-03-01" }),
-      node({ id: "b", code: "B", parent_id: "m", status: "已完成", end_date: "2026-05-01" }),
+      node({ id: "a", code: "A", parent_id: "m", status: "已完成", deliverable: "Result A", end_date: "2026-03-01" }),
+      node({ id: "b", code: "B", parent_id: "m", status: "已完成", deliverable: "Result B", end_date: "2026-05-01" }),
       node({ id: "c", code: "C", parent_id: "m", status: "进行中", end_date: "2026-04-01" }),
       node({ id: "d", code: "D", parent_id: "m", status: "未开始", end_date: "2026-02-01" }),
     ]);
-    const highlights = cockpitModuleHighlights(tree[0]!);
+    const highlights = cockpitModuleHighlights(tree[0]!, "2026-03-15");
     expect(highlights.recent?.id).toBe("b");
-    expect(highlights.next?.id).toBe("d");
+    expect(highlights.next?.id).toBe("c");
   });
 
-  it("treats overdue work as the next node and reports nulls without dated leaves", () => {
+  it("excludes overdue work from the next node and reports nulls without dated leaves", () => {
     const past = buildCockpitTree([
       node({ id: "m", code: "L1-02" }),
       node({ id: "old", code: "OLD", parent_id: "m", status: "进行中", end_date: "2020-01-01" }),
     ]);
-    expect(cockpitModuleHighlights(past[0]!).next?.id).toBe("old");
+    expect(cockpitModuleHighlights(past[0]!, "2026-03-15").next).toBeNull();
 
     const bare = buildCockpitTree([
       node({ id: "m", code: "L1-03" }),
       node({ id: "x", code: "X", parent_id: "m" }),
     ]);
-    const empty = cockpitModuleHighlights(bare[0]!);
+    const empty = cockpitModuleHighlights(bare[0]!, "2026-03-15");
     expect(empty.recent).toBeNull();
     expect(empty.next).toBeNull();
+  });
+});
+
+describe("buildCockpitDisplayCodes", () => {
+  it("uses root ordinals and gap-free sibling positions without changing stored addresses", () => {
+    const nodes = [
+      node({ id: "r", code: "L1-3" }),
+      node({ id: "b", code: "AI-99", parent_id: "r", position: 2 }),
+      node({ id: "a", code: "L3-06-13", parent_id: "r", position: 1 }),
+      node({ id: "g", code: "01.03", parent_id: "a" }),
+      node({ id: "fallback", code: "MODULE", position: 1 }),
+    ];
+    expect([...buildCockpitDisplayCodes(buildCockpitTree(nodes))]).toEqual([
+      ["r", "03"], ["a", "03.01"], ["g", "03.01.01"], ["b", "03.02"], ["fallback", "02"],
+    ]);
+    expect(nodes.map((n) => n.code)).toEqual(["L1-3", "AI-99", "L3-06-13", "01.03", "MODULE"]);
+    expect(buildCockpitDisplayCodes([]).size).toBe(0);
+  });
+});
+
+describe("cockpitEffectiveProgress", () => {
+  it.each([
+    ["已完成", 0, 100], [" Completed ", 0, 100], ["进行中", 0, 50],
+    ["in_review", 0, 50], ["等待期", 0, 50], [" on hold ", 0, 50],
+    ["受阻", 0, 25], ["BLOCKED", 0, 25], ["未开始", 0, 0], ["unknown", 0, 0],
+    ["已取消", 0, 0], ["已完成", 20, 20], ["进行中", 140, 100],
+  ])("derives %s at %s percent as %s", (status, progress, expected) => {
+    expect(cockpitEffectiveProgress(node({ id: "x", code: "X", status, progress }))).toBe(expected);
+  });
+});
+
+describe("cockpitAggStatusColor", () => {
+  it.each([
+    [["已完成", "受阻", "进行中"], "var(--destructive)"],
+    [["已完成", "等待期"], "var(--brand)"],
+    [["已完成", "已取消"], "var(--success)"],
+    [["已完成", "未开始"], "var(--faint-foreground)"],
+    [["已取消"], "var(--muted-foreground)"],
+  ])("summarises live leaves %j", (statuses, expected) => {
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "R", status: "受阻" }),
+      node({ id: "branch", code: "B", parent_id: "r", status: "受阻" }),
+      ...statuses.map((status, i) => node({ id: `${i}`, code: `${i}`, parent_id: "branch", status })),
+    ]);
+    expect(cockpitAggStatusColor(tree[0]!)).toBe(expected);
+  });
+});
+
+describe("cockpitPaymentTone", () => {
+  it.each([
+    ["完全支付", "paid"], ["已支付", "paid"], [" PAID ", "paid"],
+    ["合同已定", "contract"], ["已签合同", "contract"], ["Contracted", "contract"],
+    ["规划中", "planning"], ["planning", "planning"], [" Planned ", "planning"],
+    ["未支付", "pending"], ["", "pending"], ["unknown", "pending"],
+  ])("classifies %s as %s", (status, expected) => {
+    expect(cockpitPaymentTone(status)).toBe(expected);
+  });
+});
+
+describe("cockpitCoreNodes", () => {
+  it("groups leaves by day and kind, with inclusive horizon and progress thresholds", () => {
+    const specs: Partial<CockpitNode>[] = [
+      { status: "已完成", end_date: "2026-05-01" },
+      { progress: 100, end_date: "2026-05-01" },
+      { status: "受阻", end_date: "2026-05-01" },
+      { status: "进行中", progress: 1, end_date: "2026-06-15" },
+      { status: "进行中", progress: 1, end_date: "2026-07-15" },
+      { status: "进行中", progress: 1, end_date: "2026-07-16" },
+      { status: "进行中", progress: 40, end_date: "2026-08-01" },
+      { status: "进行中", progress: 39, end_date: "2026-08-01" },
+      { status: "进行中", progress: 0, end_date: "2026-08-01" },
+      { status: "已取消", progress: 100, end_date: "2026-05-01" },
+      { status: "等待期", end_date: "2026-06-20" },
+      { status: "未开始", end_date: "2026-06-20" },
+      { status: "已完成" },
+    ];
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "R", status: "已完成", end_date: "2026-01-01" }),
+      ...specs.map((over, i) => node({ ...over, id: `${i}`, code: `${i}`.padStart(2, "0"), parent_id: "r" })),
+    ]);
+    expect(cockpitCoreNodes(tree[0]!, "2026-06-15").map((g) => [g.date, g.kind, g.nodes.map((n) => n.id)])).toEqual([
+      ["2026-05-01", "blocked", ["2"]], ["2026-05-01", "done", ["0", "1"]],
+      ["2026-06-15", "upcoming", ["3"]], ["2026-07-15", "upcoming", ["4"]],
+      ["2026-08-01", "upcoming", ["6", "8"]],
+    ]);
+  });
+});
+
+// One schedule matrix owns the arithmetic for both module and toolbar figures.
+describe("goal and overall progress", () => {
+  const nodes = [
+    node({ id: "r", code: "R", progress: 100 }),
+    node({ id: "a", code: "A", parent_id: "r", status: "进行中", start_date: "2026-06-01", end_date: "2026-06-21" }),
+    node({ id: "b", code: "B", parent_id: "r", progress: 20, start_date: "2026-06-01", end_date: "2026-06-21" }),
+    node({ id: "undated", code: "U", parent_id: "r", status: "受阻" }),
+    node({ id: "cross", code: "X", parent_id: "r", progress: 100, end_date: "2027-01-01" }),
+    node({ id: "cancelled", code: "C", parent_id: "r", status: "已取消", progress: 100 }),
+  ];
+  it("excludes cancelled leaves and cross-year work from the annual goal, but not undated work", () => {
+    expect(cockpitGoalProgress(buildCockpitTree(nodes)[0]!, "2026-06-11", "2026-12-31")).toEqual({
+      actual: 32, scheduled: 50, gapPts: 18, latestEnd: "2026-06-21", planVsGoalDays: -193,
+      taskCount: 3, crossYearCount: 1, behind: true,
+    });
+    expect(cockpitOverallProgress(nodes, "2026-06-11", "2026-12-31")).toEqual({
+      overall: 49, thisYear: 32, scheduled: 50, behind: true,
+    });
+  });
+  it.each([["2026-05-01", 0, false], ["2026-07-01", 100, true]] as const)(
+    "clamps scheduled progress at %s", (today, scheduled, behind) => {
+      expect(cockpitGoalProgress(buildCockpitTree(nodes)[0]!, today, null)).toMatchObject({
+        actual: 49, scheduled, gapPts: scheduled - 49, taskCount: 4, crossYearCount: 0, planVsGoalDays: null, behind,
+      });
+      expect(cockpitOverallProgress(nodes, today, null)).toEqual({ overall: 49, thisYear: 49, scheduled, behind });
+    },
+  );
+  it("reports nulls rather than fabricated percentages when all work is cancelled or cross-year", () => {
+    const cross = node({ id: "x", code: "X", end_date: "2027-01-01", progress: 20 });
+    expect(cockpitGoalProgress(buildCockpitTree([cross])[0]!, "2026-06-11", "2026-12-31")).toEqual({
+      actual: null, scheduled: null, gapPts: null, latestEnd: null, planVsGoalDays: null,
+      taskCount: 0, crossYearCount: 1, behind: false,
+    });
+    expect(cockpitOverallProgress([cross], "2026-06-11", "2026-12-31")).toEqual({ overall: 20, thisYear: null, scheduled: null, behind: false });
+    expect(cockpitOverallProgress([], "2026-06-11", null)).toEqual({ overall: null, thisYear: null, scheduled: null, behind: false });
+  });
+  it("does not schedule undated, same-day, or reversed windows", () => {
+    const invalid = [
+      node({ id: "r", code: "R" }),
+      node({ id: "a", code: "A", parent_id: "r", status: "已完成" }),
+      node({ id: "b", code: "B", parent_id: "r", start_date: "2026-06-11", end_date: "2026-06-11" }),
+      node({ id: "c", code: "C", parent_id: "r", start_date: "2026-06-12", end_date: "2026-06-11" }),
+    ];
+    expect(cockpitGoalProgress(buildCockpitTree(invalid)[0]!, "2026-06-11", "2026-06-11")).toMatchObject({
+      actual: 33, scheduled: null, gapPts: null, taskCount: 3, crossYearCount: 0, planVsGoalDays: 0, behind: false,
+    });
+    expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 33, thisYear: 33, scheduled: null, behind: false });
+  });
+});
+
+describe("week axis boundaries", () => {
+  it("clips the first month and accounts for every remaining day", () => {
+    const axis = computeCockpitAxis([node({ id: "x", code: "X", start_date: "2026-03-22", end_date: "2026-04-10" })], "2026-03-25", { zoom: "week" });
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
+    expect(axis.end.toISOString().slice(0, 10)).toBe("2026-04-30");
+    expect(axis.days).toBe(46);
+    expect(axisMonths(axis)).toEqual([
+      { key: "2026-03", offset: 0, days: 16 }, { key: "2026-04", offset: 16, days: 30 },
+    ]);
+  });
+  it("does not trim past today when execution starts in the future", () => {
+    const axis = computeCockpitAxis([node({ id: "x", code: "X", start_date: "2026-03-18", end_date: "2026-04-10" })], "2026-03-10", { zoom: "week" });
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+  it("keeps the annual fallback at week density when no execution dates exist", () => {
+    const axis = computeCockpitAxis([], "2026-06-15", { zoom: "week" });
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(axis.days).toBe(365);
+  });
+});
+
+describe("finance ledger totals", () => {
+  it("counts paid budgets once regardless of instalment totals, including lines without transfers", () => {
+    const summary = computeCockpitFinance(board({
+      nodes: [
+        node({ id: "r", code: "R" }),
+        node({ id: "paid", code: "P", parent_id: "r", budget_amount: 40, exec_status: " PAID " }),
+        node({ id: "unitemised", code: "U", parent_id: "r", budget_amount: 20, exec_status: "完全支付" }),
+        node({ id: "signed", code: "S", parent_id: "r", budget_amount: 30, exec_status: " Contracted " }),
+        node({ id: "transfer-only", code: "T", parent_id: "r", exec_status: "已支付" }),
+      ],
+      payments: [
+        { id: "1", node_id: "paid", label: "", pay_date: "2026-06-10", amount: 5, position: 0 },
+        { id: "2", node_id: "paid", label: "", pay_date: "2026-07-10", amount: 5, position: 1 },
+        { id: "3", node_id: "signed", label: "", pay_date: "2026-06-15", amount: 10, position: 0 },
+        { id: "4", node_id: "transfer-only", label: "", pay_date: "2026-06-15", amount: 8, position: 0 },
+      ],
+    }));
+    expect(summary).toMatchObject({ budget: 90, planned: 90, actual: 60, outstanding: 30,
+      lineCount: 4, paidLineCount: 2, contracted: 10, paymentCount: 4 });
+    expect(summary.byModule).toEqual([{ code: "R", name: "R", color: "", lineCount: 4, planned: 90, actual: 60 }]);
+  });
+});
+
+describe("module highlight eligibility", () => {
+  it("requires a deliverable for results, skips cancelled tasks, and breaks same-date ties by code", () => {
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "R", status: "已完成", deliverable: "Heading", end_date: "2026-12-31" }),
+      node({ id: "no-result", code: "N", parent_id: "r", status: "已完成", deliverable: " ", end_date: "2026-06-15" }),
+      node({ id: "b", code: "B", parent_id: "r", status: "已完成", deliverable: "B", end_date: "2026-06-10" }),
+      node({ id: "a", code: "A", parent_id: "r", status: "已完成", deliverable: "A", end_date: "2026-06-10" }),
+      node({ id: "cancelled", code: "C", parent_id: "r", status: "已取消", end_date: "2026-06-15" }),
+      node({ id: "today", code: "T", parent_id: "r", end_date: "2026-06-15" }),
+    ]);
+    const highlights = cockpitModuleHighlights(tree[0]!, "2026-06-15");
+    expect(highlights.recent?.id).toBe("a");
+    expect(highlights.next?.id).toBe("today");
   });
 });

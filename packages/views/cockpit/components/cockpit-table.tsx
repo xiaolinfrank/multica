@@ -9,7 +9,7 @@
 // chart and drifted from it. Here they are the same rows, one source, edited
 // where they are read.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CockpitBoard,
   CockpitIssueLink,
@@ -18,6 +18,7 @@ import type {
 } from "@multica/core/types";
 import {
   buildCockpitTree,
+  buildCockpitDisplayCodes,
   cockpitMissingFields,
   computeCockpitFinanceRows,
   flattenCockpitTree,
@@ -38,8 +39,8 @@ export interface CockpitTableProps {
   board: CockpitBoard;
   mode: CockpitTableMode;
   query: string;
-  /** Restrict to one root branch; null shows the whole board. */
-  rootId: string | null;
+  /** Restrict to these root branches; empty shows the whole board. */
+  rootIds: Set<string>;
   onSelect: (nodeId: string) => void;
   selectedId: string | null;
   onPatchNode: (nodeId: string, patch: CockpitNodePatch) => void;
@@ -50,16 +51,14 @@ export interface CockpitTableProps {
   readOnly?: boolean;
 }
 
-function matches(node: CockpitNode, query: string): boolean {
-  if (!query) return true;
-  const needle = query.toLowerCase();
-  return (
-    node.name.toLowerCase().includes(needle) ||
-    node.code.toLowerCase().includes(needle) ||
-    node.owner.toLowerCase().includes(needle) ||
-    node.vendor.toLowerCase().includes(needle) ||
-    node.deliverable.toLowerCase().includes(needle)
-  );
+function matches(node: CockpitNode, query: string, displayCode: string, links: CockpitIssueLink[]): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [displayCode, node.code, node.name, node.owner, node.collaborators,
+    node.vendor, node.deliverable, node.dependencies, node.note, node.current_progress,
+    node.start_date, node.end_date, node.status, node.progress, node.budget_amount,
+    node.budget_category, node.exec_status, node.contract, node.source, ...links.flatMap((link) => [link.issue_identifier, link.issue_title])]
+    .some((value) => value != null && String(value).toLowerCase().includes(needle));
 }
 
 function formatAmount(value: number): string {
@@ -97,23 +96,35 @@ function Derived({ value }: { value: string }) {
  * The prototype's field-integrity verdict: green "OK" when every core field
  * carries a value, amber "remind N" naming what is missing on hover.
  */
-function CheckBadge({ missing }: { missing: CockpitCheckField[] }) {
+function CheckBadge({ missing, node, onSelect, linkCount }: { missing: CockpitCheckField[]; node: CockpitNode; onSelect: () => void; linkCount: number }) {
   const { t } = useT("cockpit");
+  const suggested = (["collaborators", "vendor", "budget_category", "exec_status", "dependencies", "deliverable", "note", "current_progress"] as const)
+    .filter((field) => !node[field].trim());
+  const suggestedLabels = [
+    ...suggested.map((field) => t(($) => $.node[field])),
+    ...(node.budget_amount == null ? [t(($) => $.node.budget)] : []),
+    ...(linkCount === 0 ? [t(($) => $.node.linked_issues)] : []),
+  ];
+  const title = [
+    ...(missing.length ? [`${t(($) => $.table.core_missing, { count: missing.length })}: ${missing.map((field) => t(($) => $.node[field])).join(" / ")}`] : []),
+    ...(suggestedLabels.length ? [`${t(($) => $.table.suggested_fields, { count: suggestedLabels.length })}: ${suggestedLabels.join(" / ")}`] : []),
+  ].join("; ");
   if (missing.length === 0) {
     return (
-      <span className="whitespace-nowrap text-micro font-medium text-success">
+      <button type="button" onClick={onSelect} title={title || undefined} className="whitespace-nowrap rounded-sm text-micro font-medium text-success">
         {t(($) => $.table.check_ok)}
-      </span>
+      </button>
     );
   }
-  const labels = missing.map((field) => t(($) => $.node[field]));
   return (
-    <span
-      title={labels.join(" / ")}
+    <button
+      type="button"
+      onClick={onSelect}
+      title={title}
       className="inline-flex items-center whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-micro font-medium text-warning"
     >
       {t(($) => $.table.check_warn, { n: missing.length })}
-    </span>
+    </button>
   );
 }
 
@@ -138,7 +149,7 @@ export function CockpitTable({
   board,
   mode,
   query,
-  rootId,
+  rootIds,
   onSelect,
   selectedId,
   onPatchNode,
@@ -151,27 +162,53 @@ export function CockpitTable({
   const { t } = useT("cockpit");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
+  const tableRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  const ancestors = useMemo(() => {
+    const result = new Map<string, { root: CockpitTreeNode; parent: CockpitTreeNode | null }>();
+    const walk = (entry: CockpitTreeNode, root: CockpitTreeNode, parent: CockpitTreeNode | null) => {
+      result.set(entry.node.id, { root, parent });
+      entry.children.forEach((child) => walk(child, root, entry));
+    };
+    tree.forEach((root) => walk(root, root, null));
+    return result;
+  }, [tree]);
   const scopedTree = useMemo(() => {
-    if (!rootId) return tree;
-    const found = flattenCockpitTree(tree).find((e) => e.node.id === rootId);
-    return found ? [found] : tree;
-  }, [tree, rootId]);
+    if (rootIds.size === 0) return tree;
+    return tree.filter((entry) => rootIds.has(entry.node.id));
+  }, [tree, rootIds]);
 
   const linksByNode = useMemo(() => groupIssueLinksByNode(board.issue_links), [board.issue_links]);
   const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
 
   const taskRows = useMemo(
-    () => flattenCockpitTree(scopedTree).filter((e) => matches(e.node, query)),
-    [scopedTree, query],
+    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, displayCodes.get(e.node.id) ?? e.node.code, linksByNode.get(e.node.id) ?? [])),
+    [scopedTree, query, displayCodes, linksByNode],
   );
   const financeRows = useMemo(
     () =>
       computeCockpitFinanceRows(scopedTree, board.payments).filter((row) =>
-        matches(row.node, query),
+        matches(row.node, query, displayCodes.get(row.node.id) ?? row.node.code, linksByNode.get(row.node.id) ?? []),
       ),
-    [scopedTree, board.payments, query],
+    [scopedTree, board.payments, query, displayCodes, linksByNode],
   );
+
+  const searchLabel = t(($) => $.toolbar.search);
+  useEffect(() => {
+    const locate = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || event.isComposing || !query.trim()) return;
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.getAttribute("aria-label") !== searchLabel) return;
+      const first = tableRef.current?.querySelector<HTMLTableRowElement>("tbody tr[data-node-id]");
+      if (!first) return;
+      event.preventDefault();
+      first.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      onSelect(first.dataset.nodeId!);
+    };
+    document.addEventListener("keydown", locate);
+    return () => document.removeEventListener("keydown", locate);
+  }, [query, searchLabel, onSelect, mode]);
 
   const emptyLabel = t(($) => $.common.unset);
 
@@ -194,13 +231,14 @@ export function CockpitTable({
     const totalBudget = financeRows.reduce((sum, row) => sum + row.budget, 0);
     const totalActual = financeRows.reduce((sum, row) => sum + (row.actualAmount ?? 0), 0);
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <p className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
+      <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
+        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
           {t(($) => $.table.finance_hint, {
             rows: financeRows.length,
             budget: formatAmount(totalBudget),
             actual: formatAmount(totalActual),
           })}
+          {query.trim() && <> · {t(($) => $.table.search_matches, { count: financeRows.length })}</>}
         </p>
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-max min-w-full border-collapse">
@@ -227,6 +265,7 @@ export function CockpitTable({
                 return (
                   <tr
                     key={node.id}
+                    data-node-id={node.id}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                     className={rowClass(node.id)}
@@ -238,17 +277,17 @@ export function CockpitTable({
                           style={{ backgroundColor: row.rootColor || "var(--muted-foreground)" }}
                           aria-hidden
                         />
-                        {row.rootCode}
+                        {displayCodes.get(ancestors.get(node.id)?.root.node.id ?? "") ?? row.rootCode}
                       </span>
                     </Td>
                     <Td>
                       <button
                         type="button"
                         onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
+                        aria-label={t(($) => $.gantt.open_node, { code: displayCodes.get(node.id) ?? node.code })}
                         className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
                       >
-                        {node.code}
+                        {displayCodes.get(node.id) ?? node.code}
                       </button>
                     </Td>
                     <Td>
@@ -356,29 +395,31 @@ export function CockpitTable({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <p className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
-        {t(($) => $.table.tasks_hint, { rows: taskRows.length })}
+    <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
+      <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
+        {query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}
       </p>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-max min-w-full border-collapse">
           <thead>
             <tr>
-              <Th>{t(($) => $.node.code)}</Th>
-              <Th>{t(($) => $.node.name)}</Th>
+              <Th className="left-0 z-30 w-[100px] min-w-[100px]">{t(($) => $.node.code)}</Th>
+              <Th className="left-[100px] z-30 min-w-[260px]">{t(($) => $.node.name)}</Th>
+              <Th>{"L1"}</Th>
+              <Th>{"L2"}</Th>
               <Th>{t(($) => $.node.owner)}</Th>
-              <Th>{t(($) => $.node.collaborators)}</Th>
-              <Th>{t(($) => $.node.deliverable)}</Th>
-              <Th>{t(($) => $.node.current_progress)}</Th>
               <Th>{t(($) => $.node.start_date)}</Th>
               <Th>{t(($) => $.node.end_date)}</Th>
               <Th>{t(($) => $.node.status)}</Th>
-              <Th className="text-right">{t(($) => $.node.progress)}</Th>
+              <Th>{t(($) => $.node.progress)}</Th>
               <Th>{t(($) => $.table.check)}</Th>
+              <Th>{t(($) => $.node.collaborators)}</Th>
+              <Th>{t(($) => $.node.deliverable)}</Th>
+              <Th>{t(($) => $.node.current_progress)}</Th>
               <Th>{t(($) => $.node.dependencies)}</Th>
               <Th>{t(($) => $.node.linked_issues)}</Th>
               <Th>{t(($) => $.node.vendor)}</Th>
-              <Th className="text-right">{t(($) => $.node.budget)}</Th>
+              <Th>{t(($) => $.node.budget)}</Th>
               <Th>{t(($) => $.node.budget_category)}</Th>
               <Th>{t(($) => $.node.exec_status)}</Th>
               <Th>{t(($) => $.node.payments)}</Th>
@@ -393,14 +434,15 @@ export function CockpitTable({
               return (
                 <tr
                   key={node.id}
+                    data-node-id={node.id}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   className={rowClass(node.id)}
                 >
-                  <Td>
+                  <Td className={cn("sticky left-0 z-10 w-[100px] min-w-[100px] max-w-[100px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <span
                       className="flex items-center gap-1 whitespace-nowrap"
-                      style={{ paddingLeft: entry.depth * 10 }}
+                      title={node.code}
                     >
                       <span className="font-mono text-micro text-faint-foreground">
                         L{entry.depth + 1}
@@ -408,15 +450,15 @@ export function CockpitTable({
                       <button
                         type="button"
                         onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
+                        aria-label={t(($) => $.gantt.open_node, { code: displayCodes.get(node.id) ?? node.code })}
                         className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
                         style={entry.color ? { color: entry.color } : undefined}
                       >
-                        {node.code}
+                        {displayCodes.get(node.id) ?? node.code}
                       </button>
                     </span>
                   </Td>
-                  <Td className="max-w-80">
+                  <Td className={cn("sticky left-[100px] z-10 w-[260px] min-w-[260px] max-w-[260px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <EditableText
                       value={node.name}
                       onCommit={(name) => onPatchNode(node.id, { name })}
@@ -426,6 +468,8 @@ export function CockpitTable({
                       displayClassName={cn("text-caption", isBranch && "font-medium")}
                     />
                   </Td>
+                  <Td><span className="text-caption" title={ancestors.get(node.id)?.root.node.name}>{displayCodes.get(ancestors.get(node.id)?.root.node.id ?? "") ?? "—"}</span></Td>
+                  <Td className="max-w-48"><span className="text-caption" title={ancestors.get(node.id)?.parent?.node.name}>{ancestors.get(node.id)?.parent?.node.name ?? "—"}</span></Td>
                   <Td>
                     <EditableSuggest
                       value={node.owner}
@@ -434,37 +478,6 @@ export function CockpitTable({
                       label={t(($) => $.node.owner)}
                       placeholder={emptyLabel}
                       disabled={readOnly}
-                    />
-                  </Td>
-                  <Td className="max-w-64">
-                    <EditableText
-                      value={node.collaborators}
-                      onCommit={(collaborators) => onPatchNode(node.id, { collaborators })}
-                      label={t(($) => $.node.collaborators)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
-                    />
-                  </Td>
-                  {/* The column the old board had no room for anywhere. */}
-                  <Td className="max-w-96">
-                    <EditableText
-                      value={node.deliverable}
-                      onCommit={(deliverable) => onPatchNode(node.id, { deliverable })}
-                      label={t(($) => $.node.deliverable)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
-                    />
-                  </Td>
-                  <Td className="max-w-80">
-                    <EditableText
-                      value={node.current_progress}
-                      onCommit={(current_progress) => onPatchNode(node.id, { current_progress })}
-                      label={t(($) => $.node.current_progress)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
                     />
                   </Td>
                   <Td>
@@ -497,6 +510,9 @@ export function CockpitTable({
                     />
                   </Td>
                   <Td className="text-right">
+                    <div role="progressbar" aria-label={t(($) => $.node.progress)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, node.progress))} className="mb-1 h-1 w-20 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-brand" style={{ width: `${Math.max(0, Math.min(100, node.progress))}%` }} />
+                    </div>
                     <EditableNumber
                       value={node.progress}
                       onCommit={(progress) => onPatchNode(node.id, { progress: progress ?? 0 })}
@@ -509,8 +525,36 @@ export function CockpitTable({
                       className="text-right"
                     />
                   </Td>
-                  <Td>
-                    <CheckBadge missing={cockpitMissingFields(node)} />
+                  <Td><CheckBadge missing={cockpitMissingFields(node)} node={node} onSelect={() => onSelect(node.id)} linkCount={linksByNode.get(node.id)?.length ?? 0} /></Td>
+                  <Td className="max-w-64">
+                    <EditableText
+                      value={node.collaborators}
+                      onCommit={(collaborators) => onPatchNode(node.id, { collaborators })}
+                      label={t(($) => $.node.collaborators)}
+                      placeholder={emptyLabel}
+                      disabled={readOnly}
+                      displayClassName="text-caption"
+                    />
+                  </Td>
+                  <Td className="max-w-96">
+                    <EditableText
+                      value={node.deliverable}
+                      onCommit={(deliverable) => onPatchNode(node.id, { deliverable })}
+                      label={t(($) => $.node.deliverable)}
+                      placeholder={emptyLabel}
+                      disabled={readOnly}
+                      displayClassName="text-caption"
+                    />
+                  </Td>
+                  <Td className="max-w-80">
+                    <EditableText
+                      value={node.current_progress}
+                      onCommit={(current_progress) => onPatchNode(node.id, { current_progress })}
+                      label={t(($) => $.node.current_progress)}
+                      placeholder={emptyLabel}
+                      disabled={readOnly}
+                      displayClassName="text-caption"
+                    />
                   </Td>
                   <Td className="max-w-64">
                     <EditableText

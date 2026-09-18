@@ -28,7 +28,16 @@
     "back_to_today": "Back to today",
     "export": "Export",
     "export_tasks": "Task detail CSV",
-    "export_finance": "Spend detail CSV"
+    "export_finance": "Spend detail CSV",
+    "scope_count": "Modules {{n}}/{{total}}",
+    "overall_progress": "Overall",
+    "year_progress": "This year",
+    "overall_basis": "Mean progress across every task, cross-year work included. A blank progress counts by status (done 100 / in progress 50 / blocked 25 / not started 0); cancelled tasks do not count.",
+    "year_basis": "Mean progress across tasks ending on or before {{date}}; the plan puts them near {{scheduled}}% by now. Work running past that date is excluded.",
+    "expand_controls": "Show timeline controls",
+    "collapse_controls": "Hide timeline controls",
+    "export_pdf": "Gantt PDF",
+    "export_png": "Gantt PNG"
   },
   "overview": {
     "annual_goal": "Annual objective",
@@ -48,15 +57,14 @@
     "overdue": "Overdue",
     "finance": "Finance",
     "finance_hint": "Budget against instalments, month by month",
-    "card_overall": "Recently delivered",
-    "card_next": "Coming up",
+    "card_overall": "Current progress",
+    "card_next": "The fortnight ahead",
     "card_support": "Needs support",
     "card_auto": "derived",
     "card_manual": "written",
     "card_placeholder": "Write what this card should say",
     "card_write_manual": "Write this card myself",
     "card_seed": "…",
-    "meetings": "Meetings",
     "add_meeting": "Add meeting",
     "mvp_label": "Annual MVP goal",
     "clock": "Local time",
@@ -64,7 +72,23 @@
     "module_active": "Active",
     "module_recent": "Latest result",
     "module_next": "Next key node",
-    "open_task": "Locate {{code}} on the gantt"
+    "open_task": "Locate {{code}} on the gantt",
+    "card_meetings": "Meetings",
+    "card_overall_hint": "Last 7 days, {{from}}–{{to}}",
+    "card_next_hint": "{{from}}–{{to}}",
+    "card_support_hint": "Blocked and overdue",
+    "card_meetings_hint": "This week and next up",
+    "lead_done": "{{n}} done",
+    "lead_active": "{{n}} in flight",
+    "lead_milestones": "{{n}} milestones",
+    "lead_paid": "{{amount}} paid",
+    "lead_due": "{{n}} due",
+    "lead_planned": "{{amount}} planned",
+    "lead_blocked": "{{n}} blocked",
+    "lead_overdue": "{{n}} overdue",
+    "more_detail": "…full detail on the gantt",
+    "more_items": "…{{n}} in all; full list on the gantt",
+    "tag_milestone": "Milestone"
   },
   "gantt": {
     "column_task": "Task / module",
@@ -74,10 +98,10 @@
     "expand_branch": "Expand {{name}}",
     "collapse_branch": "Collapse {{name}}",
     "open_node": "Open {{code}}",
-    "overdue": "overdue",
+    "overdue": "Overdue",
     "bar_label": "{{code}} on the timeline",
     "column_finance": "Budget / paid",
-    "legend_rollup": "Roll-up bar",
+    "legend_rollup": "Roll-up (aggregated status)",
     "legend_end_only": "Deadline only",
     "legend_payment": "Instalment",
     "legend_today": "Today",
@@ -89,7 +113,31 @@
     "collaborator_count": "+{{n}}",
     "should_have_started": "Should have started",
     "done_of": "{{done}}/{{total}} done",
-    "unscheduled": "Unscheduled"
+    "unscheduled": "Unscheduled",
+    "legend_status": {
+      "progress": "In progress (incl. review / waiting)",
+      "done": "Done",
+      "blocked": "Blocked",
+      "todo": "Not started",
+      "cancelled": "Cancelled"
+    },
+    "legend_core": "Core dates",
+    "original_code": "Original code {{code}}",
+    "subtree_progress_hint": "Average of {{n}} subtasks · {{done}}/{{total}} done",
+    "goal_chip": "Against the annual objective",
+    "goal_actual": "{{pct}}% done",
+    "goal_scheduled": "{{pct}}% due by now",
+    "goal_behind": "{{pts}} points behind",
+    "goal_ahead": "{{pts}} points ahead",
+    "goal_on_track": "On plan",
+    "goal_late_days": "Last planned finish {{date}}, {{days}} days past the objective",
+    "goal_early_days": "Last planned finish {{date}}, {{days}} days before the objective",
+    "goal_cross_year": "{{count}} tasks run past the objective and are excluded",
+    "goal_basis": "From the {{n}} tasks ending on or before {{date}}; a blank progress counts by status (done 100 / in progress 50 / blocked 25 / not started 0)",
+    "core_done": "{{date}} · {{count}} core tasks done",
+    "core_blocked": "{{date}} · {{count}} blocked",
+    "core_upcoming": "{{date}} · {{count}} coming up",
+    "today_line": "Today {{date}}"
   },
   "node": {
     "code": "Code",
@@ -137,7 +185,11 @@
     "new": "New meeting",
     "attendees": "Attendees",
     "open": "Join",
-    "delete": "Delete meeting {{title}}"
+    "delete": "Delete meeting {{title}}",
+    "this_week": "This week",
+    "upcoming": "Next up",
+    "show_all": "Show all {{n}}",
+    "show_upcoming": "Show upcoming only"
   },
   "payment": {
     "label": "Instalment",
@@ -147,19 +199,28 @@
     "delete": "Delete instalment"
   },
   "finance": {
-    "budget": "Budgeted",
-    "paid": "Paid",
-    "contracted": "Contracted",
-    "unplanned": "Not yet scheduled",
+    "budget": "Budget total",
     "payment": "Instalment",
     "payment_count": "{{count}} instalments",
     "payment_total": "total {{total}}",
     "month_tasks": "{{done}}/{{total}} tasks done",
     "payment_on": "Payment on {{date}}",
     "month_chart": "Monthly task progress × spend budget",
-    "month_basis": "column = the month's instalments (stacked by module colour); green bar = paid share",
-    "paid_label": "Paid",
-    "month_active": "Active {{n}}"
+    "month_basis": "column = the month's instalments (stacked by module colour); the two tracks below are planned and actual spend",
+    "month_active": "Active {{n}}",
+    "planned": "Planned spend",
+    "actual": "Actual spend",
+    "outstanding": "Still to spend",
+    "line_count": "{{n}} lines",
+    "line_header": "Lines",
+    "actual_basis": "Actual spend comes from the lines whose execution status reads as fully paid: the amount is that line's budget, the date its first instalment.",
+    "planned_short": "Planned",
+    "actual_short": "Actual",
+    "plus_projected": "+{{amount}} planned",
+    "actual_track": "{{n}} lines paid · {{amount}}",
+    "payment_paid": "Paid",
+    "payment_planned": "Scheduled",
+    "payment_month": "{{month}} · {{count}} scheduled · {{total}} in total"
   },
   "issues": {
     "link": "Link issue",
@@ -201,7 +262,10 @@
     "actual_amount": "Actual amount",
     "check": "Check",
     "check_ok": "OK",
-    "check_warn": "Remind {{n}}"
+    "check_warn": "Remind {{n}}",
+    "suggested_fields": "Suggested additions: {{count}}",
+    "core_missing": "Required fields missing: {{count}}",
+    "search_matches": "{{count}} matches"
   },
   "changes": {
     "field_color": "Branch colour",
@@ -234,7 +298,12 @@
     "status_withdrawn": "withdrawn",
     "history_title": "Decision history ({{n}})",
     "locate": "Locate {{code}} in the gantt",
-    "locate_hint": "Click a task code to locate it in the gantt."
+    "locate_hint": "Click a task code to locate it in the gantt.",
+    "apply_all": "Apply all",
+    "confirm_apply_all": "Apply all pending field changes?",
+    "type_add": "Added value",
+    "type_modify": "Modified value",
+    "type_clear": "Cleared value"
   },
   "versions": {
     "button": "Versions",
@@ -256,5 +325,10 @@
     "auto_group": "Auto saves ×{{n}}",
     "row_meta": "{{nodes}} nodes · {{by}}",
     "by_unknown": "unknown"
+  },
+  "confirmation": {
+    "delete_title": "Delete this record?",
+    "delete_description": "{{label}} will be permanently removed. This cannot be undone.",
+    "delete_branch_description": "{{label}} and all descendant records will be permanently removed. This cannot be undone."
   }
 }

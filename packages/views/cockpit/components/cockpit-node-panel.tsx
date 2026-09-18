@@ -1,8 +1,6 @@
 "use client";
 
-// The node detail panel. Everything a work item carries, in one place, editable
-// in place — including the fields the gantt row has no width for: deliverable,
-// dependencies, vendor, budget category, instalments and the note.
+// Structural levels expose basic fields; task-level details remain stored when hidden.
 
 import type {
   CockpitIssueLink,
@@ -11,9 +9,20 @@ import type {
   CockpitPayment,
   CockpitPaymentPatch,
 } from "@multica/core/types";
+import { useEffect, useRef, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@multica/ui/components/ui/alert-dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
-import { Plus, Trash2, X } from "lucide-react";
+import { LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
   CockpitField,
@@ -38,7 +47,12 @@ export interface CockpitNodePanelProps {
   budgetCategorySuggestions: string[];
   ownerSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
-  onDelete: () => void;
+  /** Resolve only after the server has deleted the node; reject on failure. */
+  onDelete: () => Promise<unknown>;
+  /** Localized destructive consequences, including descendants for a branch. */
+  deleteConfirmationDescription: string;
+  /** Zero-based tree depth, matching CockpitTreeNode.depth. */
+  depth: number;
   onClose: () => void;
   onLinkIssue: (issueId: string) => void;
   onUnlinkIssue: (issueId: string) => void;
@@ -60,6 +74,8 @@ export function CockpitNodePanel({
   ownerSuggestions,
   onPatch,
   onDelete,
+  deleteConfirmationDescription,
+  depth,
   onClose,
   onLinkIssue,
   onUnlinkIssue,
@@ -69,6 +85,43 @@ export function CockpitNodePanel({
   readOnly,
 }: CockpitNodePanelProps) {
   const { t } = useT("cockpit");
+  const { t: common } = useT("common");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+  const deletingRef = useRef(false);
+  const taskDetails = depth >= 2;
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || confirmOpen) return;
+      // Editors and other popups consume Escape before it reaches the panel.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"]')) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable=true]")) return;
+      onClose();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [confirmOpen, onClose]);
+
+  const confirmDelete = async () => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteFailed(false);
+    try {
+      await onDelete();
+      setConfirmOpen(false);
+      onClose();
+    } catch {
+      setDeleteFailed(true);
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
+  };
+
   const unset = t(($) => $.common.unset);
   const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -105,6 +158,7 @@ export function CockpitNodePanel({
         <button
           type="button"
           onClick={onClose}
+          disabled={deleting}
           aria-label={t(($) => $.panel.close)}
           className="rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
@@ -163,7 +217,8 @@ export function CockpitNodePanel({
               disabled={readOnly || isBranch}
             />
           </CockpitField>
-          <CockpitField label={t(($) => $.node.collaborators)} className="col-span-2">
+          {taskDetails && (
+            <CockpitField label={t(($) => $.node.collaborators)} className="col-span-2">
             <EditableText
               value={node.collaborators}
               onCommit={(collaborators) => onPatch({ collaborators })}
@@ -171,11 +226,11 @@ export function CockpitNodePanel({
               placeholder={t(($) => $.node.collaborators_placeholder)}
               disabled={readOnly}
             />
-          </CockpitField>
+            </CockpitField>
+          )}
         </div>
 
         <Separator className="my-4" />
-
         <CockpitField label={t(($) => $.node.linked_issues)}>
           <CockpitIssueLinks
             links={links}
@@ -185,170 +240,183 @@ export function CockpitNodePanel({
           />
         </CockpitField>
 
-        <Separator className="my-4" />
+        {taskDetails && (
+          <>
+            <Separator className="my-4" />
 
-        <div className="grid grid-cols-2 gap-3">
-          <CockpitField label={t(($) => $.node.vendor)}>
-            <EditableText
-              value={node.vendor}
-              onCommit={(vendor) => onPatch({ vendor })}
-              label={t(($) => $.node.vendor)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.budget_category)}>
-            <EditableSuggest
-              value={node.budget_category}
-              onCommit={(budget_category) => onPatch({ budget_category })}
-              suggestions={budgetCategorySuggestions}
-              label={t(($) => $.node.budget_category)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.budget)}>
-            <EditableNumber
-              value={node.budget_amount}
-              onCommit={(budget_amount) => onPatch({ budget_amount })}
-              label={t(($) => $.node.budget)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.exec_status)}>
-            <EditableSuggest
-              value={node.exec_status}
-              onCommit={(exec_status) => onPatch({ exec_status })}
-              suggestions={execStatusSuggestions}
-              label={t(($) => $.node.exec_status)}
-              placeholder={unset}
-              disabled={readOnly}
-              renderDisplay={(value) =>
-                value ? (
-                  <ExecStatusChip status={value} />
-                ) : (
-                  <span className="text-caption text-muted-foreground italic">{unset}</span>
-                )
-              }
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.contract)} className="col-span-2">
-            <EditableText
-              value={node.contract}
-              onCommit={(contract) => onPatch({ contract })}
-              label={t(($) => $.node.contract)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-        </div>
+            <div className="grid grid-cols-2 gap-3">
+              <CockpitField label={t(($) => $.node.vendor)}>
+                <EditableText
+                  value={node.vendor}
+                  onCommit={(vendor) => onPatch({ vendor })}
+                  label={t(($) => $.node.vendor)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.budget_category)}>
+                <EditableSuggest
+                  value={node.budget_category}
+                  onCommit={(budget_category) => onPatch({ budget_category })}
+                  suggestions={budgetCategorySuggestions}
+                  label={t(($) => $.node.budget_category)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.budget)}>
+                <EditableNumber
+                  value={node.budget_amount}
+                  onCommit={(budget_amount) => onPatch({ budget_amount })}
+                  label={t(($) => $.node.budget)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.exec_status)}>
+                <EditableSuggest
+                  value={node.exec_status}
+                  onCommit={(exec_status) => onPatch({ exec_status })}
+                  suggestions={execStatusSuggestions}
+                  label={t(($) => $.node.exec_status)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                  renderDisplay={(value) =>
+                    value ? (
+                      <ExecStatusChip status={value} />
+                    ) : (
+                      <span className="text-caption text-muted-foreground italic">{unset}</span>
+                    )
+                  }
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.contract)} className="col-span-2">
+                <EditableText
+                  value={node.contract}
+                  onCommit={(contract) => onPatch({ contract })}
+                  label={t(($) => $.node.contract)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+            </div>
 
-        <div className="mt-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
-              {t(($) => $.node.payments)}
-            </span>
-            {payments.length > 0 && (
-              <span className="text-micro text-muted-foreground tabular-nums">
-                {t(($) => $.finance.payment_total, { total: paymentTotal })}
-              </span>
-            )}
-            <span className="flex-1" />
-            {!readOnly && (
-              <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5" onClick={onCreatePayment}>
-                <Plus className="size-3" />
-                {t(($) => $.node.add_payment)}
-              </Button>
-            )}
-          </div>
-          {payments.length === 0 ? (
-            <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.empty.no_payments)}</p>
-          ) : (
-            <ul className="mt-1 flex flex-col gap-1">
-              {payments.map((payment) => (
-                <li key={payment.id} className="group/pay flex items-center gap-2">
-                  <EditableText
-                    value={payment.label}
-                    onCommit={(label) => onPatchPayment(payment.id, { label })}
-                    label={t(($) => $.payment.label)}
-                    placeholder={t(($) => $.payment.label)}
-                    disabled={readOnly}
-                    displayClassName="w-16 text-caption"
-                  />
-                  <EditableDate
-                    value={payment.pay_date}
-                    onCommit={(pay_date) => onPatchPayment(payment.id, { pay_date })}
-                    label={t(($) => $.payment.date)}
-                    placeholder={unset}
-                    disabled={readOnly}
-                  />
-                  <EditableNumber
-                    value={payment.amount}
-                    onCommit={(amount) => onPatchPayment(payment.id, { amount: amount ?? 0 })}
-                    label={t(($) => $.payment.amount)}
-                    placeholder="0"
-                    disabled={readOnly}
-                  />
-                  <span className="flex-1" />
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => onDeletePayment(payment.id)}
-                      aria-label={t(($) => $.payment.delete)}
-                      className="rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover/pay:opacity-100 hover:text-destructive focus-visible:opacity-100"
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          </>
+        )}
 
-        <Separator className="my-4" />
+        {(taskDetails || payments.length > 0) && (
+            <div className="mt-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
+                  {t(($) => $.node.payments)}
+                </span>
+                {payments.length > 0 && (
+                  <span className="text-micro text-muted-foreground tabular-nums">
+                    {t(($) => $.finance.payment_total, { total: paymentTotal })}
+                  </span>
+                )}
+                <span className="flex-1" />
+                {!readOnly && (
+                  <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5" onClick={onCreatePayment}>
+                    <Plus className="size-3" />
+                    {t(($) => $.node.add_payment)}
+                  </Button>
+                )}
+              </div>
+              {payments.length === 0 ? (
+                <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.empty.no_payments)}</p>
+              ) : (
+                <ul className="mt-1 flex flex-col gap-1">
+                  {payments.map((payment) => (
+                    <li key={payment.id} className="group/pay flex items-center gap-2">
+                      <EditableText
+                        value={payment.label}
+                        onCommit={(label) => onPatchPayment(payment.id, { label })}
+                        label={t(($) => $.payment.label)}
+                        placeholder={t(($) => $.payment.label)}
+                        disabled={readOnly}
+                        displayClassName="w-16 text-caption"
+                      />
+                      <EditableDate
+                        value={payment.pay_date}
+                        onCommit={(pay_date) => onPatchPayment(payment.id, { pay_date })}
+                        label={t(($) => $.payment.date)}
+                        placeholder={unset}
+                        disabled={readOnly}
+                      />
+                      <EditableNumber
+                        value={payment.amount}
+                        onCommit={(amount) => onPatchPayment(payment.id, { amount: amount ?? 0 })}
+                        label={t(($) => $.payment.amount)}
+                        placeholder="0"
+                        disabled={readOnly}
+                      />
+                      <span className="flex-1" />
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => onDeletePayment(payment.id)}
+                          aria-label={t(($) => $.payment.delete)}
+                          className="rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover/pay:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-        <div className="flex flex-col gap-3">
-          <CockpitField label={t(($) => $.node.current_progress)}>
-            <EditableTextArea
-              value={node.current_progress}
-              onCommit={(current_progress) => onPatch({ current_progress })}
-              label={t(($) => $.node.current_progress)}
-              placeholder={t(($) => $.node.current_progress_placeholder)}
-              disabled={readOnly}
-              rows={2}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.deliverable)}>
-            <EditableTextArea
-              value={node.deliverable}
-              onCommit={(deliverable) => onPatch({ deliverable })}
-              label={t(($) => $.node.deliverable)}
-              placeholder={t(($) => $.node.deliverable_placeholder)}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.dependencies)}>
-            <EditableTextArea
-              value={node.dependencies}
-              onCommit={(dependencies) => onPatch({ dependencies })}
-              label={t(($) => $.node.dependencies)}
-              placeholder={t(($) => $.node.dependencies_placeholder)}
-              disabled={readOnly}
-              rows={2}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.node.note)}>
-            <EditableTextArea
-              value={node.note}
-              onCommit={(note) => onPatch({ note })}
-              label={t(($) => $.node.note)}
-              placeholder={t(($) => $.node.note_placeholder)}
-              disabled={readOnly}
-            />
-          </CockpitField>
-        </div>
+        )}
+
+        {taskDetails && (
+          <>
+            <Separator className="my-4" />
+
+            <div className="flex flex-col gap-3">
+              <CockpitField label={t(($) => $.node.current_progress)}>
+                <EditableTextArea
+                  value={node.current_progress}
+                  onCommit={(current_progress) => onPatch({ current_progress })}
+                  label={t(($) => $.node.current_progress)}
+                  placeholder={t(($) => $.node.current_progress_placeholder)}
+                  disabled={readOnly}
+                  rows={2}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.deliverable)}>
+                <EditableTextArea
+                  value={node.deliverable}
+                  onCommit={(deliverable) => onPatch({ deliverable })}
+                  label={t(($) => $.node.deliverable)}
+                  placeholder={t(($) => $.node.deliverable_placeholder)}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.dependencies)}>
+                <EditableTextArea
+                  value={node.dependencies}
+                  onCommit={(dependencies) => onPatch({ dependencies })}
+                  label={t(($) => $.node.dependencies)}
+                  placeholder={t(($) => $.node.dependencies_placeholder)}
+                  disabled={readOnly}
+                  rows={2}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.node.note)}>
+                <EditableTextArea
+                  value={node.note}
+                  onCommit={(note) => onPatch({ note })}
+                  label={t(($) => $.node.note)}
+                  placeholder={t(($) => $.node.note_placeholder)}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+            </div>
+
+          </>
+        )}
 
         {node.source && (
           <p className="mt-4 text-micro text-muted-foreground">
@@ -359,15 +427,32 @@ export function CockpitNodePanel({
 
       {!readOnly && (
         <footer className="border-t border-border p-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            className="h-7 gap-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" />
-            {isBranch ? t(($) => $.panel.delete_branch) : t(($) => $.panel.delete_node)}
-          </Button>
+          <AlertDialog open={confirmOpen} onOpenChange={(open) => {
+            if (deletingRef.current) return;
+            setConfirmOpen(open);
+            if (open) setDeleteFailed(false);
+          }}>
+            <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" />}>
+              <Trash2 className="size-3.5" />
+              {isBranch ? t(($) => $.panel.delete_branch) : t(($) => $.panel.delete_node)}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {isBranch ? t(($) => $.panel.delete_branch) : t(($) => $.panel.delete_node)} · {node.name}
+                </AlertDialogTitle>
+                <AlertDialogDescription>{deleteConfirmationDescription}</AlertDialogDescription>
+              </AlertDialogHeader>
+              {deleteFailed && <p role="alert" className="text-caption text-destructive">{t(($) => $.errors.save_failed)}</p>}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>{common(($) => $.cancel)}</AlertDialogCancel>
+                <Button variant="destructive" disabled={deleting} aria-busy={deleting} onClick={confirmDelete}>
+                  {deleting && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+                  {deleting ? common(($) => $.loading) : common(($) => $.delete)}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </footer>
       )}
     </aside>
