@@ -188,7 +188,6 @@
     "toast_reorder_failed": "Failed to reorder modules",
     "agent_carry_hint": "Applies when you switch to manual create; agent create ignores the module"
   },
-  "tree_toggle_aria": "Expand or collapse the project list",
   "chip": {
     "fallback_label": "Project"
   },

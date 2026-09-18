@@ -186,7 +186,6 @@
     "toast_reorder_failed": "Échec de la réorganisation des modules",
     "agent_carry_hint": "Appliqué en passant en création manuelle ; la création par l'agent ignore le module"
   },
-  "tree_toggle_aria": "Déplier ou replier la liste des projets",
   "chip": {
     "fallback_label": "Projet"
   },

@@ -187,7 +187,6 @@
     "toast_reorder_failed": "モジュールの順序変更に失敗しました",
     "agent_carry_hint": "手動作成に切り替えた場合に適用されます。エージェント作成ではモジュールは無視されます"
   },
-  "tree_toggle_aria": "プロジェクトリストの展開／折りたたみ",
   "chip": {
     "fallback_label": "プロジェクト"
   },

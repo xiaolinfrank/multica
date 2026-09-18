@@ -198,10 +198,6 @@ vi.mock("@multica/core/pins/mutations", () => ({ useDeletePin: () => ({ mutate: 
 vi.mock("@multica/core/pins/queries", () => ({ pinListOptions: () => ({ queryKey: ["pins"] }) }));
 vi.mock("@multica/core/projects/queries", () => ({
   projectDetailOptions: () => ({ queryKey: ["project"] }),
-  projectListOptions: () => ({ queryKey: ["projects"] }),
-}));
-vi.mock("@multica/core/modules/queries", () => ({
-  moduleListOptions: () => ({ queryKey: ["modules"] }),
 }));
 vi.mock("@multica/core/workspace/queries", () => ({
   myInvitationListOptions: () => ({ queryKey: ["invitations"] }),
@@ -407,6 +403,22 @@ describe("workspace-switcher dropdown per-workspace dot", () => {
 });
 
 describe("navigation item presentation", () => {
+  it.each(["/acme/projects", "/acme/projects/project-1"])(
+    "keeps one Projects entry immediately after Issues and active on %s",
+    (pathname) => {
+      navigation.current.pathname = pathname;
+      const { container } = renderWithI18n(<AppSidebar />);
+      const projects = screen.getAllByRole("button", { name: "Projects" });
+      const issues = container.querySelector('button[data-href="/acme/issues"]');
+
+      expect(projects).toHaveLength(1);
+      expect(projects[0]).toHaveAttribute("data-href", "/acme/projects");
+      expect(projects[0]).toHaveAttribute("data-active", "true");
+      expect(projects[0]?.className).toBe(issues?.className);
+      expect(issues?.nextElementSibling).toBe(projects[0]);
+    },
+  );
+
   it("keeps Analytics and Settings styled like the other nav items", () => {
     const { container } = render(<AppSidebar />);
     const referenceClassName = container.querySelector(

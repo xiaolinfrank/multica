@@ -80,7 +80,6 @@ import { projectDetailOptions } from "@multica/core/projects/queries";
 import type { PinnedItem } from "@multica/core/types";
 import { useLogout } from "../auth";
 import { ProjectIcon } from "../projects/components/project-icon";
-import { SidebarProjectsTree } from "../projects/components/sidebar-projects-tree";
 import { routeIconForPath } from "./route-icon-components";
 import { useT } from "../i18n";
 import {
@@ -170,6 +169,7 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 // in WORKSPACE_PAGES or it silently renders the Issues icon.
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
+  { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
   { key: "graph", labelKey: "graph" },
   { key: "gallery", labelKey: "gallery" },
@@ -933,12 +933,6 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-
-          {/* The projects tree section owns the 项目 entry: its label row is
-              the projects-index link, and it expands into per-project module
-              deep links. Replaces the standalone nav row so 项目 appears
-              exactly once in the sidebar. */}
-          <SidebarProjectsTree />
 
           <SidebarGroup>
             <SidebarGroupLabel>{t(($) => $.sidebar.ai_team_group)}</SidebarGroupLabel>

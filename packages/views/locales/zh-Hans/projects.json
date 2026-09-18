@@ -187,7 +187,6 @@
     "toast_reorder_failed": "调整模块顺序失败",
     "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块"
   },
-  "tree_toggle_aria": "展开或收起项目列表",
   "chip": {
     "fallback_label": "项目"
   },
