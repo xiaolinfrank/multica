@@ -525,3 +525,15 @@ describe("ProjectDetail module filtering", () => {
     });
   });
 });
+
+
+describe("ProjectDetail module creation", () => {
+  it.each(["owner", "admin", "member"])("prefills the project from the header for %s", async (role) => {
+    mocks.role = role;
+    const user = userEvent.setup();
+    renderProjectDetail();
+    await user.click(screen.getByRole("button", { name: "Create module" }));
+    expect(useModalStore.getState().modal).toBe("create-module");
+    expect(useModalStore.getState().data).toEqual({ projectId: PROJECT.id });
+  });
+});

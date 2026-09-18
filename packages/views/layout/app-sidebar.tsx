@@ -79,6 +79,7 @@ import { issueDetailOptions } from "@multica/core/issues/queries";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import type { PinnedItem } from "@multica/core/types";
 import { useLogout } from "../auth";
+import { SidebarProjectsTree } from "../projects/components/sidebar-projects-tree";
 import { ProjectIcon } from "../projects/components/project-icon";
 import { routeIconForPath } from "./route-icon-components";
 import { useT } from "../i18n";
@@ -917,17 +918,20 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                   const href = p[item.key]();
                   const Icon = routeIconForPath(href);
                   const isActive = !isActivePinnedRoute && isNavActive(pathname, href);
-                  return (
-                    <SidebarMenuItem key={item.key}>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        render={<AppLink href={href} />}
-                        className={NAV_ITEM_CLASS_NAME}
-                      >
-                        <Icon />
-                        <span>{t(($) => $.nav[item.labelKey])}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                  const button = (
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      render={<AppLink href={href} />}
+                      className={NAV_ITEM_CLASS_NAME}
+                    >
+                      <Icon />
+                      <span>{t(($) => $.nav[item.labelKey])}</span>
+                    </SidebarMenuButton>
+                  );
+                  return item.key === "projects" ? (
+                    <SidebarProjectsTree key={item.key} href={href}>{button}</SidebarProjectsTree>
+                  ) : (
+                    <SidebarMenuItem key={item.key}>{button}</SidebarMenuItem>
                   );
                 })}
               </SidebarMenu>

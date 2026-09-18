@@ -1,15 +1,18 @@
+import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { buildIssueStatusCatalog } from "@multica/core/issue-statuses/queries";
 
 vi.mock("@multica/core/issue-statuses/hooks", () => ({
   useIssueStatuses: () => buildIssueStatusCatalog([]),
 }));
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@multica/core/api";
 import { renderWithI18n } from "../test/i18n";
 import { AppSidebar } from "./app-sidebar";
 
-const { appForeground, chatSessions, chatStore, detail, deletePin, invitationApi, navigation, pins, sidebarState, summary, workspaces } = vi.hoisted(() => ({
+const { appForeground, chatSessions, chatStore, detail, deletePin, invitationApi, navigation, projectsTree, openModal, pins, sidebarState, summary, workspaces } = vi.hoisted(() => ({
+  projectsTree: { projects: [] as Array<Record<string, unknown>>, modules: [] as Array<Record<string, unknown>> },
+  openModal: vi.fn(),
   appForeground: { current: true },
   sidebarState: { setOpenMobile: vi.fn() },
   chatSessions: { current: [] as { id?: string; unread_count?: number }[] },
@@ -24,7 +27,7 @@ const { appForeground, chatSessions, chatStore, detail, deletePin, invitationApi
     invalidateQueries: vi.fn(),
     mutations: [] as Array<Record<string, unknown>>,
   },
-  navigation: { current: { pathname: "/acme/issues" } },
+  navigation: { current: { pathname: "/acme/issues", search: "" } as { pathname: string; search?: string } },
   summary: { current: [] as { workspace_id: string; count: number }[] },
   workspaces: {
     current: [] as { id: string; name: string; slug: string; avatar_url: string | null }[],
@@ -114,7 +117,7 @@ vi.mock("../navigation", () => ({
   useNavigation: () => ({
     pathname: navigation.current.pathname,
     push: vi.fn(),
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(navigation.current.search),
   }),
 }));
 vi.mock("../projects/components/project-icon", () => ({ ProjectIcon: () => <span /> }));
@@ -193,12 +196,14 @@ vi.mock("@multica/core/issues/stores/create-mode-store", () => ({
   openCreateIssueWithPreference: vi.fn(),
 }));
 vi.mock("@multica/core/issues/stores/draft-store", () => ({ useIssueDraftStore: () => false }));
-vi.mock("@multica/core/modals", () => ({ useModalStore: { getState: () => ({ modal: null, open: vi.fn() }) } }));
+vi.mock("@multica/core/modals", () => ({ useModalStore: { getState: () => ({ modal: null, open: openModal }) } }));
 vi.mock("@multica/core/pins/mutations", () => ({ useDeletePin: () => ({ mutate: deletePin }), useReorderPins: () => ({ mutate: vi.fn() }) }));
 vi.mock("@multica/core/pins/queries", () => ({ pinListOptions: () => ({ queryKey: ["pins"] }) }));
 vi.mock("@multica/core/projects/queries", () => ({
   projectDetailOptions: () => ({ queryKey: ["project"] }),
+  projectListOptions: () => ({ queryKey: ["projects"] }),
 }));
+vi.mock("@multica/core/modules/queries", () => ({ moduleListOptions: () => ({ queryKey: ["modules"] }) }));
 vi.mock("@multica/core/workspace/queries", () => ({
   myInvitationListOptions: () => ({ queryKey: ["invitations"] }),
   workspaceKeys: { myInvitations: () => ["invitations"] },
@@ -212,6 +217,8 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
     return { isPending: false, mutate: vi.fn() };
   },
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+    if (queryKey[0] === "projects") return { data: projectsTree.projects };
+    if (queryKey[0] === "modules") return { data: projectsTree.modules };
     if (queryKey[0] === "pins") return { data: pins.current };
     if (queryKey[0] === "issue") return detail.current;
     if (queryKey[0] === "inbox" && queryKey[1] === "unread-summary") return { data: summary.current };
@@ -415,7 +422,7 @@ describe("navigation item presentation", () => {
       expect(projects[0]).toHaveAttribute("data-href", "/acme/projects");
       expect(projects[0]).toHaveAttribute("data-active", "true");
       expect(projects[0]?.className).toBe(issues?.className);
-      expect(issues?.nextElementSibling).toBe(projects[0]);
+      expect(issues?.nextElementSibling).toContainElement(projects[0] ?? null);
     },
   );
 
@@ -565,5 +572,76 @@ describe("Pending invitation self-heal", () => {
     }
     expect(invitationApi.accept).toHaveBeenCalledTimes(1);
     expect(invitationApi.decline).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("Work projects tree", () => {
+  beforeEach(() => {
+    navigation.current = { pathname: "/acme/issues", search: "" };
+    projectsTree.projects = [
+      { id: "project-a", title: "Project Alpha" },
+      { id: "project-b", title: "Project Beta" },
+    ];
+    projectsTree.modules = [
+      { id: "module-a", project_id: "project-a", title: "Module Alpha", issue_count: 3 },
+      { id: "module-b", project_id: "project-b", title: "Module Beta", issue_count: 1 },
+    ];
+    openModal.mockClear();
+  });
+
+  afterEach(() => {
+    projectsTree.projects = [];
+    projectsTree.modules = [];
+    navigation.current = { pathname: "/acme/issues", search: "" };
+  });
+
+  it("keeps one projects destination with a separate expandable tree and create-module plus", () => {
+    renderWithI18n(<AppSidebar />);
+    const destination = screen.getByRole("button", { name: "Projects" });
+    expect(destination).toHaveAttribute("data-href", "/acme/projects");
+    expect(screen.getAllByRole("button", { name: "Projects" })).toHaveLength(1);
+    const toggle = screen.getByRole("button", { name: "Toggle projects" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    const project = screen.getByRole("button", { name: "Project Alpha" });
+    expect(project).toHaveAttribute("data-href", "/acme/projects/project-a");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle modules Project Alpha" }));
+    expect(screen.getByRole("button", { name: /Module Alpha/ })).toHaveAttribute("data-href", "/acme/projects/project-a?module=module-a");
+    expect(screen.queryByRole("button", { name: /Module Beta/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add module to project Project Alpha" }));
+    expect(openModal).toHaveBeenCalledWith("create-module", { projectId: "project-a" });
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: /Module Alpha/ })).toBeInTheDocument();
+  });
+
+  it("supports keyboard expansion and module creation", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<AppSidebar />);
+    const toggle = screen.getByRole("button", { name: "Toggle projects" });
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const add = screen.getByRole("button", { name: "Add module to project Project Beta" });
+    add.focus();
+    await user.keyboard(" ");
+    expect(openModal).toHaveBeenCalledWith("create-module", { projectId: "project-b" });
+  });
+
+  it("auto-opens a module deep link, scopes selection to its project, and allows collapse", () => {
+    navigation.current = { pathname: "/acme/projects/project-a", search: "module=module-a" };
+    const { rerender } = renderWithI18n(<AppSidebar />);
+    expect(screen.getByRole("button", { name: /Module Alpha/ })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: "Project Alpha" })).not.toHaveAttribute("data-active");
+    const toggle = screen.getByRole("button", { name: "Toggle modules Project Alpha" });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
+    navigation.current = { pathname: "/acme/projects/project-b", search: "module=module-a" };
+    rerender(<AppSidebar />);
+    expect(screen.getByRole("button", { name: "Project Beta" })).toHaveAttribute("data-active", "true");
+    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
   });
 });

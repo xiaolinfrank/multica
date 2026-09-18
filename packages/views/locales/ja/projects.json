@@ -170,6 +170,7 @@
     },
     "add": "モジュールを追加",
     "add_aria": "プロジェクトにモジュールを追加",
+    "toggle_projects_aria": "プロジェクトを展開・折りたたむ",
     "toggle_modules_aria": "モジュールの表示を切り替える",
     "clear_aria": "モジュールをクリア",
     "manage": "管理",

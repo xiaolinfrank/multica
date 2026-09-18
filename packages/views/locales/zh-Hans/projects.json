@@ -170,6 +170,7 @@
     },
     "add": "添加模块",
     "add_aria": "为项目添加模块",
+    "toggle_projects_aria": "展开或折叠项目",
     "toggle_modules_aria": "展开或收起模块",
     "clear_aria": "清除模块",
     "manage": "管理",
