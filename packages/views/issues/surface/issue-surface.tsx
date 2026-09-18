@@ -90,6 +90,8 @@ export function IssueSurface({
   showClientEmpty,
   batchToolbar = "always",
   contentClassName,
+  moduleFilter,
+  defaultTableGrouping,
 }: IssueSurfaceComponentProps) {
   const wsId = useWorkspaceId();
   // Saved views exist on workspace / my / project surfaces only.
@@ -179,6 +181,10 @@ export function IssueSurface({
         showClientEmpty={showClientEmpty}
         batchToolbar={batchToolbar}
         contentClassName={contentClassName}
+        moduleFilter={moduleFilter}
+        // An open saved view owns its grouping outright; the caller's default
+        // only applies to the built-in surface.
+        defaultTableGrouping={activeView ? undefined : defaultTableGrouping}
       />
       </ViewBaselineProvider>
     </ViewStoreProvider>
@@ -198,6 +204,7 @@ function IssueSurfaceContent({
   batchToolbar,
   contentClassName,
   moduleFilter,
+  defaultTableGrouping,
 }: Omit<IssueSurfaceComponentProps, "surfaceKey">) {
   const { t } = useT("projects");
   const controller = useIssueSurfaceController({
@@ -207,6 +214,17 @@ function IssueSurfaceContent({
     search,
     moduleFilter,
   });
+  // The caller's default grouping only lands while the user has not picked
+  // one: the store action is a no-op for a touched store, so re-renders and
+  // mode switches cannot override an explicit choice.
+  const applyTableGroupingDefault = useViewStore(
+    (s) => s.applyTableGroupingDefault,
+  );
+  useEffect(() => {
+    if (defaultTableGrouping !== undefined) {
+      applyTableGroupingDefault(defaultTableGrouping);
+    }
+  }, [defaultTableGrouping, applyTableGroupingDefault]);
   const [tableLoadedIssues, setTableLoadedIssues] = useState<Issue[]>([]);
   const handleTableLoadedIssuesChange = useCallback((next: Issue[]) => {
     setTableLoadedIssues((current) =>

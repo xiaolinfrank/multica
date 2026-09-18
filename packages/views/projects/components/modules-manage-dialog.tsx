@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
+import { Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -27,9 +27,13 @@ import {
 import { useModalStore } from "@multica/core/modals";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { Module } from "@multica/core/types";
-import { cn } from "@multica/ui/lib/utils";
 import { toast } from "sonner";
-import { Popover, PopoverTrigger, PopoverContent } from "@multica/ui/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@multica/ui/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,39 +45,6 @@ import {
   AlertDialogTitle,
 } from "@multica/ui/components/ui/alert-dialog";
 import { useT } from "../../i18n";
-
-/** Sentinel for the ungrouped chip (module ids are UUIDs, so "none" can
- *  never collide with one). */
-export const NO_MODULE_FILTER = "none";
-
-const CHIP_CLASS =
-  "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-caption transition-colors";
-
-function ModuleChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        CHIP_CLASS,
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 function SortableModuleRow({
   module,
@@ -129,6 +100,9 @@ function SortableModuleRow({
       ) : (
         <>
           <span className="min-w-0 flex-1 truncate text-caption">{module.title}</span>
+          <span className="shrink-0 text-micro text-muted-foreground tabular-nums">
+            {module.issue_count}
+          </span>
           <button
             type="button"
             aria-label={t(($) => $.module.rename_aria)}
@@ -151,28 +125,28 @@ function SortableModuleRow({
   );
 }
 
-/** Module strip under the project detail header: filters the surface to
- *  one module / the ungrouped set, and owns module management (create,
- *  rename, delete, drag-reorder). */
-export function ProjectModuleStrip({
+/** Folder management for one project's modules: create, rename, drag-reorder
+ *  and delete. Lives in the project header menu — day-to-day grouping is the
+ *  table's module folders, so this surface only carries the consequential
+ *  operations. */
+export function ModulesManageDialog({
   projectId,
-  active,
-  onSelect,
-  canManage,
+  open,
+  onOpenChange,
 }: {
   projectId: string;
-  /** null = all issues, "none" = ungrouped, otherwise a module id. */
-  active: string | null;
-  onSelect: (value: string | null) => void;
-  canManage: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
-  const { data: modules = [] } = useQuery(moduleListOptions(wsId, projectId));
+  const { data: modules = [] } = useQuery({
+    ...moduleListOptions(wsId, projectId),
+    enabled: open,
+  });
   const updateModule = useUpdateModule();
   const deleteModule = useDeleteModule();
   const reorderModules = useReorderModules();
-  const [manageOpen, setManageOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Module | null>(null);
@@ -180,8 +154,11 @@ export function ProjectModuleStrip({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
-  const openCreateModule = () =>
+  const openCreateModule = () => {
+    // One overlay at a time: the create modal takes over from this dialog.
+    onOpenChange(false);
     useModalStore.getState().open("create-module", { projectId });
+  };
 
   const beginRename = (module: Module) => {
     setRenamingId(module.id);
@@ -218,13 +195,11 @@ export function ProjectModuleStrip({
 
   const handleDelete = () => {
     if (!deleteTarget) return;
-    const deletedId = deleteTarget.id;
-    deleteModule.mutate(deletedId, {
+    deleteModule.mutate(deleteTarget.id, {
       onSuccess: () => {
         toast.success(t(($) => $.module.toast_deleted));
-        // The deleted chip can no longer filter anything — fall back to
-        // the unfiltered view instead of an empty, un-clearable surface.
-        if (active === deletedId) onSelect(null);
+        // A deleted module id still in ?module= is healed by the project
+        // detail's dead-id fallback, no URL work needed here.
         setDeleteTarget(null);
       },
       onError: () => toast.error(t(($) => $.module.toast_delete_failed)),
@@ -232,96 +207,62 @@ export function ProjectModuleStrip({
   };
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto px-4 pb-1 pt-2">
-      <ModuleChip active={active === null} onClick={() => onSelect(null)}>
-        {t(($) => $.module.all)}
-      </ModuleChip>
-      <ModuleChip
-        active={active === NO_MODULE_FILTER}
-        onClick={() => onSelect(NO_MODULE_FILTER)}
-      >
-        {t(($) => $.module.ungrouped)}
-      </ModuleChip>
-      {modules.map((module) => (
-        <ModuleChip
-          key={module.id}
-          active={active === module.id}
-          onClick={() => onSelect(module.id)}
-        >
-          <Boxes className="size-3 shrink-0" />
-          <span className="max-w-[12rem] truncate">{module.title}</span>
-          <span className="text-micro text-muted-foreground">
-            {module.issue_count}
-          </span>
-        </ModuleChip>
-      ))}
-      {canManage && (
-        <>
-          <button
-            type="button"
-            onClick={openCreateModule}
-            className={cn(CHIP_CLASS, "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}
-          >
-            <Plus className="size-3" />
-            {t(($) => $.module.add)}
-          </button>
-          <Popover open={manageOpen} onOpenChange={setManageOpen}>
-            <PopoverTrigger
-              render={
-                <button
-                  type="button"
-                  className={cn(CHIP_CLASS, "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t(($) => $.module.manage_title)}</DialogTitle>
+          </DialogHeader>
+          <div className="p-1.5 -m-1.5">
+            {modules.length === 0 ? (
+              <p className="px-1 py-2 text-caption text-muted-foreground">
+                {t(($) => $.module.manage_empty)}
+              </p>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={modules.map((m) => m.id)}
+                  strategy={verticalListSortingStrategy}
                 >
-                  {t(($) => $.module.manage)}
-                </button>
-              }
-            />
-            <PopoverContent align="start" className="w-72 p-1.5">
-              <div className="px-1 pb-1 pt-0.5 text-caption font-medium text-muted-foreground">
-                {t(($) => $.module.manage_title)}
-              </div>
-              {modules.length === 0 ? (
-                <p className="px-1 py-2 text-caption text-muted-foreground">
-                  {t(($) => $.module.manage_empty)}
-                </p>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={modules.map((m) => m.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="group/module-list">
-                      {modules.map((module) => (
-                        <div key={module.id} className="group/module-row">
-                          <SortableModuleRow
-                            module={module}
-                            onRename={beginRename}
-                            onDelete={setDeleteTarget}
-                            renaming={renamingId === module.id}
-                            renameValue={renameValue}
-                            onRenameValueChange={setRenameValue}
-                            onCommitRename={commitRename}
-                            onCancelRename={cancelRename}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              )}
-            </PopoverContent>
-          </Popover>
-        </>
-      )}
+                  <div className="group/module-list">
+                    {modules.map((module) => (
+                      <div key={module.id} className="group/module-row">
+                        <SortableModuleRow
+                          module={module}
+                          onRename={beginRename}
+                          onDelete={setDeleteTarget}
+                          renaming={renamingId === module.id}
+                          renameValue={renameValue}
+                          onRenameValueChange={setRenameValue}
+                          onCommitRename={commitRename}
+                          onCancelRename={cancelRename}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+            <button
+              type="button"
+              onClick={openCreateModule}
+              className="mt-1 flex w-full items-center gap-1.5 rounded-md px-1 py-1.5 text-caption text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+            >
+              <Plus className="size-3.5" />
+              {t(($) => $.module.add)}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
@@ -346,6 +287,6 @@ export function ProjectModuleStrip({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

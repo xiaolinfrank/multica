@@ -164,10 +164,9 @@
       "search_placeholder": "Rechercher des modules...",
       "none": "Aucun module",
       "empty": "Aucun module pour le moment",
-      "needs_project": "Sélectionnez d'abord un projet"
+      "needs_project": "Sélectionnez d'abord un projet",
+      "create": "Créer le module « {{title}} »"
     },
-    "all": "Tous",
-    "ungrouped": "Non classé",
     "add": "Ajouter un module",
     "add_aria": "Ajouter un module au projet",
     "toggle_modules_aria": "Afficher ou masquer les modules",
@@ -187,6 +186,7 @@
     "toast_reorder_failed": "Échec de la réorganisation des modules",
     "agent_carry_hint": "Appliqué en passant en création manuelle ; la création par l'agent ignore le module"
   },
+  "tree_toggle_aria": "Déplier ou replier la liste des projets",
   "chip": {
     "fallback_label": "Projet"
   },

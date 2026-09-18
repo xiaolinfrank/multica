@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enProjects from "../../locales/en/projects.json";
@@ -14,6 +14,28 @@ vi.mock("@tanstack/react-query", () => ({
       { id: "module-2", title: "Sync engine", project_id: "project-1" },
     ],
   }),
+  // useCreateModule: mutate runs the mocked api below; cache writes are
+  // irrelevant to these tests.
+  useMutation: ({ mutationFn }: { mutationFn: (data: unknown) => unknown }) => ({
+    mutate: (data: unknown, opts?: { onSuccess?: (r: unknown) => void }) => {
+      void Promise.resolve(mutationFn(data)).then((r) => opts?.onSuccess?.(r));
+    },
+    isPending: false,
+  }),
+  useQueryClient: () => ({
+    setQueryData: vi.fn(),
+    invalidateQueries: vi.fn(),
+  }),
+}));
+
+vi.mock("@multica/core/api", () => ({
+  api: {
+    createModule: async (data: { title: string }) => ({
+      id: "created-1",
+      title: data.title,
+      project_id: "project-1",
+    }),
+  },
 }));
 
 vi.mock("@multica/core/hooks", () => ({
@@ -89,6 +111,41 @@ describe("ModulePicker", () => {
 
     await user.click(screen.getByRole("button", { name: /no module/i }));
     expect(onUpdate).toHaveBeenCalledWith({ module_id: null });
+  });
+
+  it("creates a missing module from the search text and assigns it", async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+
+    renderPicker({ onUpdate });
+
+    await user.click(screen.getByRole("button", { name: /parser rewrite/i }));
+    await user.type(await screen.findByPlaceholderText(SEARCH_PLACEHOLDER), "Fresh module");
+
+    // No exact match, so the create row offers the typed text as the title.
+    await user.click(await screen.findByRole("button", { name: /create module/i }));
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith({ module_id: "created-1" }),
+    );
+  });
+
+  it("does not offer creation on an existing title", async () => {
+    const user = userEvent.setup();
+
+    renderPicker();
+
+    await user.click(screen.getByRole("button", { name: /parser rewrite/i }));
+    await user.type(await screen.findByPlaceholderText(SEARCH_PLACEHOLDER), "Parser rewrite");
+
+    // The open trigger also reads "Parser rewrite", so a filtered row shows
+    // up twice; the point is that no create row joins them.
+    expect(
+      await screen.findAllByRole("button", { name: /parser rewrite/i }),
+    ).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", { name: /create module/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("locks without a project instead of offering an empty menu", async () => {

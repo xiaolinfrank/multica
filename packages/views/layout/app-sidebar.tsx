@@ -170,7 +170,6 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 // in WORKSPACE_PAGES or it silently renders the Issues icon.
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
-  { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
   { key: "graph", labelKey: "graph" },
   { key: "gallery", labelKey: "gallery" },
@@ -935,9 +934,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {/* Projects / modules tree sits below the Work group so the
-              standalone 项目 row keeps its route role while projects gain
-              one-click deep links. Renders nothing without projects. */}
+          {/* The projects tree section owns the 项目 entry: its label row is
+              the projects-index link, and it expands into per-project module
+              deep links. Replaces the standalone nav row so 项目 appears
+              exactly once in the sidebar. */}
           <SidebarProjectsTree />
 
           <SidebarGroup>

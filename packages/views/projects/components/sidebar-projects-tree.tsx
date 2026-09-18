@@ -17,13 +17,13 @@ import {
 import {
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@multica/ui/components/ui/sidebar";
 import { CappedNumberFlow } from "@multica/ui/components/ui/number-flow";
 import { AppLink, useNavigation } from "../../navigation";
+import { routeIconForPath } from "../../layout/route-icon-components";
 import { ProjectIcon } from "./project-icon";
 import { useT } from "../../i18n";
 
@@ -132,10 +132,12 @@ function ProjectTreeRow({
   );
 }
 
-/** Projects-with-modules tree under the Work nav group. The standalone
- *  项目 nav row above stays the single route entry; this section only
- *  shortens the path to a specific project or module. */
+/** The sidebar's 项目 entry: the label row navigates to the projects index
+ *  exactly like the nav item it replaces, and expands into the
+ *  projects-with-modules tree for one-click deep links. Always renders —
+ *  with no projects yet the index link is the only way to create one. */
 export function SidebarProjectsTree() {
+  const { t } = useT("projects");
   const { t: tLayout } = useT("layout");
   // The sidebar can render before the workspace resolves (slug-first
   // routing); useCurrentWorkspace is nullable here, unlike useWorkspaceId.
@@ -162,37 +164,60 @@ export function SidebarProjectsTree() {
     return map;
   }, [modules]);
 
-  if (projects.length === 0) return null;
+  const projectsHref = wsPaths.projects();
+  const projectsActive =
+    pathname === projectsHref || pathname.startsWith(projectsHref + "/");
+  const hasProjects = projects.length > 0;
+  // The sidebar and desktop tab bar derive this icon from the destination
+  // path (route-icon-components), so this row reads like every other nav
+  // entry instead of a bare label.
+  const ProjectsNavIcon = routeIconForPath(projectsHref);
 
   return (
     <Collapsible defaultOpen>
       <SidebarGroup className="group/projects-tree">
-        <SidebarGroupLabel
-          render={<CollapsibleTrigger />}
-          className="group/trigger cursor-pointer hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
-        >
-          <span>{tLayout(($) => $.nav.projects)}</span>
-          <ChevronRight className="!size-3 ml-1 stroke-[2.5] transition-transform duration-200 group-data-[panel-open]/trigger:rotate-90" />
-          <span className="ml-auto text-micro text-muted-foreground opacity-0 transition-opacity group-hover/projects-tree:opacity-100">
-            {projects.length}
-          </span>
-        </SidebarGroupLabel>
-        <CollapsibleContent>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {projects.map((project) => (
-                <ProjectTreeRow
-                  key={project.id}
-                  project={project}
-                  modules={modulesByProject.get(project.id) ?? []}
-                  pathname={pathname}
-                  activeModuleId={activeModuleId}
-                  projectHref={wsPaths.projectDetail(project.id)}
-                />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </CollapsibleContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <div className="flex items-center">
+              <SidebarMenuButton
+                isActive={projectsActive && activeModuleId === null}
+                render={<AppLink href={projectsHref} />}
+                className={cn("min-w-0 flex-1", ROW_CLASS_NAME)}
+              >
+                <ProjectsNavIcon />
+                <span className="truncate">
+                  {tLayout(($) => $.nav.projects)}
+                </span>
+              </SidebarMenuButton>
+              {hasProjects && (
+                <CollapsibleTrigger
+                  aria-label={t(($) => $.tree_toggle_aria)}
+                  className="group/trigger grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRight className="!size-3 stroke-[2.5] transition-transform duration-200 group-data-[panel-open]/trigger:rotate-90" />
+                </CollapsibleTrigger>
+              )}
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        {hasProjects && (
+          <CollapsibleContent>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {projects.map((project) => (
+                  <ProjectTreeRow
+                    key={project.id}
+                    project={project}
+                    modules={modulesByProject.get(project.id) ?? []}
+                    pathname={pathname}
+                    activeModuleId={activeModuleId}
+                    projectHref={wsPaths.projectDetail(project.id)}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </CollapsibleContent>
+        )}
       </SidebarGroup>
     </Collapsible>
   );

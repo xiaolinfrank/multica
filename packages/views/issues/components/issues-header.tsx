@@ -1997,7 +1997,9 @@ export function IssueDisplayControls({
         ? t(($) => $.table.columns.assignee)
         : effectiveTableGrouping === "project"
           ? t(($) => $.table.columns.project)
-          : t(($) => $.table.group_none);
+          : effectiveTableGrouping === "module"
+            ? t(($) => $.table.columns.module)
+            : t(($) => $.table.group_none);
   const controlButtonClass = "h-8 w-8 gap-1 px-0 text-muted-foreground md:h-7 md:w-auto md:px-2.5";
 
   return (
@@ -2062,7 +2064,7 @@ export function IssueDisplayControls({
               <DropdownMenuRadioGroup
                 value={effectiveTableGrouping}
                 onValueChange={(value) => {
-                  act.setTableGrouping(value as TableGrouping);
+                  act.chooseTableGrouping(value as TableGrouping);
                   setTableGroupMenuOpen(false);
                 }}
               >

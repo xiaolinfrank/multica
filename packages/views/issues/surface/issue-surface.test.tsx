@@ -424,6 +424,64 @@ describe("IssueSurface — table pagination ownership", () => {
     expect(listIssues).not.toHaveBeenCalled();
   });
 
+  it("forwards the page module filter into the Table query filters", async () => {
+    // Regression: IssueSurface dropped the moduleFilter prop between its
+    // destructure and IssueSurfaceContent, so the project page's module
+    // narrowing silently never reached the server.
+    const { getIssueSurfaceViewStore } = await import(
+      "@multica/core/issues/stores/surface-view-store"
+    );
+    const store = getIssueSurfaceViewStore("project:pmf");
+    store.getState().setViewMode("table");
+
+    const rows = [makeIssue("in-1", "In module", "pmf")];
+    const listIssueTableRows = vi.fn(async () => ({
+      query_fingerprint: "fp",
+      group_key: null,
+      parent_id: null,
+      total: rows.length,
+      rows: rows.map((issue) => ({ issue, direct_child_count: 0 })),
+      branch_total: rows.length,
+      next_cursor: null,
+    }));
+    setApiInstance({
+      listIssueStatuses: async () => ({ statuses: [], categories: [], total: 0 }),
+      listIssues: vi.fn(() => never()),
+      listIssueTableRows,
+      listIssueTableFacets: vi.fn(() => never()),
+      listGroupedIssues: vi.fn(() => never()),
+      listProjects: vi.fn(() => never()),
+      getAgentTaskSnapshot: vi.fn(() => Promise.resolve([])),
+      getWorkspaceWorkingAgents: vi.fn(() => Promise.resolve([])),
+      getChildIssueProgress: vi.fn(() => never()),
+      listProperties: vi.fn(() => never()),
+      listMembers: vi.fn(() => never()),
+      listAgents: vi.fn(() => never()),
+      listSquads: vi.fn(() => never()),
+    } as unknown as ApiClient);
+
+    render(
+      <QueryClientProvider client={qc}>
+        <IssueSurface
+          scope={{ type: "project", projectId: "pmf" }}
+          modes={["table"]}
+          moduleFilter={{ module_ids: ["m-1"] }}
+          renderHeader={() => null}
+          batchToolbar="never"
+        />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(listIssueTableRows).toHaveBeenCalled());
+    expect(listIssueTableRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.objectContaining({
+          filters: expect.objectContaining({ module_ids: ["m-1"] }),
+        }),
+      }),
+    );
+  });
+
   it("keeps loaded rows when a continuation page reports zero", async () => {
     const { getIssueSurfaceViewStore } = await import(
       "@multica/core/issues/stores/surface-view-store"

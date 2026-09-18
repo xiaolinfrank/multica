@@ -1,6 +1,9 @@
 import type { IssueScope } from "@multica/core/issues/surface/scope";
 import type { CreateIssueRequest } from "@multica/core/types";
-import type { ViewMode } from "@multica/core/issues/stores/view-store";
+import type {
+  TableGrouping,
+  ViewMode,
+} from "@multica/core/issues/stores/view-store";
 
 export type IssueCreateDefaults = Partial<
   Omit<
@@ -33,6 +36,10 @@ export interface IssueSurfaceProps {
    *  the project scope. Deliberately not part of the persisted filter set:
    *  the strip owns selecting and clearing it. */
   moduleFilter?: IssueSurfaceModuleFilter;
+  /** Table grouping applied while the user has not picked one explicitly
+   *  (e.g. "module" on a project page that has modules). Ignored once the
+   *  store's grouping is touched, and while a saved view is open. */
+  defaultTableGrouping?: TableGrouping;
 }
 
 export interface IssueSurfaceModuleFilter {

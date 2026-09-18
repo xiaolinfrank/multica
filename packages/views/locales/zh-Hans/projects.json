@@ -165,10 +165,9 @@
       "search_placeholder": "搜索模块...",
       "none": "无模块",
       "empty": "暂无模块",
-      "needs_project": "请先选择项目"
+      "needs_project": "请先选择项目",
+      "create": "新建模块“{{title}}”"
     },
-    "all": "全部",
-    "ungrouped": "未分组",
     "add": "添加模块",
     "add_aria": "为项目添加模块",
     "toggle_modules_aria": "展开或收起模块",
@@ -188,6 +187,7 @@
     "toast_reorder_failed": "调整模块顺序失败",
     "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块"
   },
+  "tree_toggle_aria": "展开或收起项目列表",
   "chip": {
     "fallback_label": "项目"
   },

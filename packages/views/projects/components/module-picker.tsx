@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes } from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { useCreateModule } from "@multica/core/modules/mutations";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { UpdateIssueRequest } from "@multica/core/types";
+import { toast } from "sonner";
 import {
   PropertyPicker,
   PickerItem,
@@ -47,6 +49,7 @@ export function ModulePicker({
   });
   const current = modules.find((m) => m.id === moduleId);
   const [filter, setFilter] = useState("");
+  const createModule = useCreateModule();
   // Same controlled-open normalization as the project picker: Base UI
   // latches a controlled open, and a locked picker can never be open.
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -60,6 +63,14 @@ export function ModulePicker({
   const filtered = modules.filter(
     (m) => m.title.toLowerCase().includes(query) || matchesPinyin(m.title, query),
   );
+  // Linear-style inline creation: the search text doubles as the new
+  // module's title. Hidden on an exact (case-insensitive) duplicate —
+  // picking the existing row is the same outcome with no extra row.
+  const createTitle = filter.trim();
+  const canCreate =
+    projectId !== null &&
+    createTitle.length > 0 &&
+    !modules.some((m) => m.title.trim().toLowerCase() === query);
 
   const resolvedTriggerRender = triggerRender ?? (
     <button type="button" disabled={locked} className={PICKER_TRIGGER_CLASS} />
@@ -125,12 +136,39 @@ export function ModulePicker({
           </PickerItem>
         ))}
 
-        {modules.length === 0 && (
+        {modules.length === 0 && !canCreate && (
           <div className="px-2 py-1.5 text-caption text-muted-foreground">
             {t(($) => $.module.picker.empty)}
           </div>
         )}
-        {modules.length > 0 && filtered.length === 0 && query && <PickerEmpty />}
+        {modules.length > 0 && filtered.length === 0 && query && !canCreate && <PickerEmpty />}
+
+        {canCreate && (
+          <PickerItem
+            selected={false}
+            disabled={createModule.isPending}
+            onClick={() => {
+              if (projectId === null) return;
+              createModule.mutate(
+                { project_id: projectId, title: createTitle },
+                {
+                  onSuccess: (created) => {
+                    onUpdate({ module_id: created.id });
+                    setFilter("");
+                    setOpen(false);
+                  },
+                  onError: () =>
+                    toast.error(t(($) => $.module.create.toast_failed)),
+                },
+              );
+            }}
+          >
+            <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="truncate">
+              {t(($) => $.module.picker.create, { title: createTitle })}
+            </span>
+          </PickerItem>
+        )}
       </PropertyPicker>
     </div>
   );

@@ -166,10 +166,9 @@
       "search_placeholder": "Search modules...",
       "none": "No module",
       "empty": "No modules yet",
-      "needs_project": "Select a project first"
+      "needs_project": "Select a project first",
+      "create": "Create module \"{{title}}\""
     },
-    "all": "All",
-    "ungrouped": "No module",
     "add": "Add module",
     "add_aria": "Add module to project",
     "toggle_modules_aria": "Toggle modules",
@@ -189,6 +188,7 @@
     "toast_reorder_failed": "Failed to reorder modules",
     "agent_carry_hint": "Applies when you switch to manual create; agent create ignores the module"
   },
+  "tree_toggle_aria": "Expand or collapse the project list",
   "chip": {
     "fallback_label": "Project"
   },

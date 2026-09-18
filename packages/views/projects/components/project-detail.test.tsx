@@ -435,56 +435,52 @@ describe("ProjectDetail module filtering", () => {
     ];
   });
 
-  it("navigates with the module param when a module chip is picked", async () => {
-    const user = userEvent.setup();
-    renderProjectDetail();
-
-    await user.click(
-      screen.getByRole("button", { name: /parser rewrite/i }),
-    );
-
-    expect(mocks.push).toHaveBeenCalledWith(
-      "/test-workspace/projects/project-1?module=module-1",
-    );
-  });
-
-  it("navigates with the none param from the ungrouped chip", async () => {
-    const user = userEvent.setup();
-    renderProjectDetail();
-
-    await user.click(screen.getByRole("button", { name: "No module" }));
-
-    expect(mocks.push).toHaveBeenCalledWith(
-      "/test-workspace/projects/project-1?module=none",
-    );
-  });
-
   it("shows the active module in the breadcrumb and clears back to all", async () => {
     const user = userEvent.setup();
     renderProjectDetail("module=module-1");
 
-    const chip = screen.getByRole("button", { name: /parser rewrite/i });
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
-    expect(
-      screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed"),
-    ).toBe("false");
+    // The breadcrumb chip is the "you are inside this folder" affordance
+    // now that the module strip is gone.
+    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
 
-    // The breadcrumb clear affordance drops the param entirely.
     await user.click(screen.getByRole("button", { name: "Clear module" }));
     expect(mocks.push).toHaveBeenCalledWith(
       "/test-workspace/projects/project-1",
     );
   });
 
-  it("resets to all from the All chip, dropping the param", async () => {
+  it("defaults the table grouping to module when the project has modules", () => {
+    renderProjectDetail();
+
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("module");
+  });
+
+  it("defaults the table grouping to none without modules", () => {
+    mocks.modules.current = [];
+
+    renderProjectDetail();
+
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("none");
+  });
+
+  it("offers module management to workspace admins from the header menu", async () => {
     const user = userEvent.setup();
-    renderProjectDetail("module=none");
+    renderProjectDetail();
 
-    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.click(screen.getByRole("button", { name: "Manage modules" }));
 
-    expect(mocks.push).toHaveBeenCalledWith(
-      "/test-workspace/projects/project-1",
-    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+  });
+
+  it("hides module management from regular members", () => {
+    mocks.role = "member";
+
+    renderProjectDetail();
+
+    expect(
+      screen.queryByRole("button", { name: "Manage modules" }),
+    ).not.toBeInTheDocument();
   });
 
   it("narrows the surface and seeds creation for a live module param", () => {

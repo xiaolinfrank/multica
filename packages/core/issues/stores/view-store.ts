@@ -302,6 +302,11 @@ export interface IssueViewState {
   /** Ordered table columns. Title is mandatory and normalized to the front. */
   tableColumns: TableColumnConfig[];
   tableGrouping: TableGrouping;
+  /** True once the user picks a table grouping from the view menu. While
+   *  false, a surface may apply its caller-provided default grouping (the
+   *  project page defaults to "module" when the project has modules).
+   *  Persisted so an explicit "none" survives reloads. */
+  tableGroupingTouched: boolean;
   tableCollapsedGroups: string[];
   tableCollapsedParents: string[];
   tableHierarchy: boolean;
@@ -349,6 +354,14 @@ export interface IssueViewState {
   reorderTableColumn: (active: TableColumnKey, over: TableColumnKey) => void;
   setTableColumnWidth: (key: TableColumnKey, width?: number) => void;
   setTableGrouping: (grouping: TableGrouping) => void;
+  /** User-initiated grouping pick from the view menu: marks the grouping as
+   *  explicitly chosen so surface-provided defaults stop applying. Program-
+   *  matic corrections (unavailable property, failed group query) keep using
+   *  `setTableGrouping` and do not count as a user choice. */
+  chooseTableGrouping: (grouping: TableGrouping) => void;
+  /** Applies the surface's caller-provided default grouping. A no-op once
+   *  the grouping was explicitly chosen (`tableGroupingTouched`). */
+  applyTableGroupingDefault: (grouping: TableGrouping) => void;
   toggleTableGroupCollapsed: (key: string) => void;
   toggleTableParentCollapsed: (issueId: string) => void;
   toggleTableHierarchy: () => void;
@@ -384,6 +397,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   collapsedSwimlanes: { parent: [], project: [], module: [], assignee: [] },
   tableColumns: DEFAULT_TABLE_COLUMNS.map((column) => ({ ...column })),
   tableGrouping: "none",
+  tableGroupingTouched: false,
   tableCollapsedGroups: [],
   tableCollapsedParents: [],
   tableHierarchy: true,
@@ -622,6 +636,14 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
       ),
     })),
   setTableGrouping: (tableGrouping) => set({ tableGrouping }),
+  chooseTableGrouping: (tableGrouping) =>
+    set({ tableGrouping, tableGroupingTouched: true }),
+  applyTableGroupingDefault: (tableGrouping) =>
+    set((state) =>
+      state.tableGroupingTouched || state.tableGrouping === tableGrouping
+        ? {}
+        : { tableGrouping },
+    ),
   toggleTableGroupCollapsed: (key) =>
     set((state) => ({
       tableCollapsedGroups: state.tableCollapsedGroups.includes(key)
@@ -675,6 +697,7 @@ export const viewStorePersistOptions = (name: string) => ({
     collapsedSwimlanes: state.collapsedSwimlanes,
     tableColumns: state.tableColumns,
     tableGrouping: state.tableGrouping,
+    tableGroupingTouched: state.tableGroupingTouched,
     tableCollapsedGroups: state.tableCollapsedGroups,
     tableCollapsedParents: state.tableCollapsedParents,
     tableHierarchy: state.tableHierarchy,

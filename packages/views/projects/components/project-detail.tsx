@@ -75,11 +75,12 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { useT } from "../../i18n";
 import { useProjectStatusLabels, useProjectPriorityLabels } from "./labels";
-import {
-  ProjectModuleStrip,
-  NO_MODULE_FILTER,
-} from "./project-module-strip";
+import { ModulesManageDialog } from "./modules-manage-dialog";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
+
+/** URL sentinel for the ungrouped filter (module ids are UUIDs, so "none"
+ *  can never collide with one). */
+const NO_MODULE_FILTER = "none";
 
 // ---------------------------------------------------------------------------
 // Property row — sidebar property display
@@ -186,6 +187,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const descEditorRef = useRef<ContentEditorRef>(null);
   const isMobile = useIsMobile();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [modulesManageOpen, setModulesManageOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   const [progressOpen, setProgressOpen] = useState(true);
@@ -613,6 +615,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                   {isWorkspaceAdmin && (
                     <>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setModulesManageOpen(true)}>
+                        <Boxes className="h-3.5 w-3.5" />
+                        {t(($) => $.module.manage_title)}
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={() => setDeleteDialogOpen(true)}
@@ -643,17 +649,20 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             }
           />
 
-          <ProjectModuleStrip
-            projectId={projectId}
-            active={activeModule}
-            onSelect={handleSelectModule}
-            canManage={isWorkspaceAdmin}
-          />
-
           <IssueSurface
             scope={issueScope}
             modes={["table", "board", "list", "swimlane", "gantt"]}
             moduleFilter={moduleFilter}
+            // Folder-style management: a project with modules shows them as
+            // table groups until the user picks a grouping explicitly. While
+            // modules load, no default applies, so the table never flaps.
+            defaultTableGrouping={
+              modulesLoaded
+                ? stripModules.length > 0
+                  ? "module"
+                  : "none"
+                : undefined
+            }
             createDefaults={activeModuleRecord ? { module_id: activeModuleRecord.id } : undefined}
           />
           </div>
@@ -685,6 +694,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </Sheet>
         )}
       </ResizablePanelGroup>
+
+      {/* Module folder management (rename / reorder / delete / create) */}
+      {isWorkspaceAdmin && (
+        <ModulesManageDialog
+          projectId={projectId}
+          open={modulesManageOpen}
+          onOpenChange={setModulesManageOpen}
+        />
+      )}
 
       {/* Delete confirmation */}
       {isWorkspaceAdmin && (

@@ -50,7 +50,14 @@ vi.mock("@multica/core/paths", () => ({
   useCurrentWorkspace: () => mocks.workspace.current,
   useWorkspacePaths: () => ({
     projectDetail: (id: string) => "/acme/projects/" + id,
+    projects: () => "/acme/projects",
   }),
+}));
+
+// The real resolver pulls the route registry from @multica/core/paths,
+// which this file mocks away; the icon itself is not under test.
+vi.mock("../../layout/route-icon-components", () => ({
+  routeIconForPath: () => () => null,
 }));
 
 vi.mock("../../navigation", () => ({
@@ -201,17 +208,33 @@ describe("SidebarProjectsTree", () => {
     ).not.toHaveAttribute("data-active");
   });
 
-  it("renders nothing without projects", () => {
+  it("renders the projects-index entry when there are no projects yet", () => {
+    // The label row replaces the standalone 项目 nav item, so it must never
+    // disappear — the index page is where the first project gets created.
     mocks.projects.current = [];
-    const { container } = renderWithI18n(<SidebarProjectsTree />);
-    expect(container).toBeEmptyDOMElement();
+    renderWithI18n(<SidebarProjectsTree />);
+
+    expect(
+      screen.getByRole("link", { name: /projects/i }),
+    ).toHaveAttribute("href", "/acme/projects");
   });
 
-  it("renders nothing before the workspace resolves", () => {
-    // The sidebar can mount ahead of slug resolution; the tree must not
-    // throw or query against a missing workspace.
+  it("renders the index entry before the workspace resolves", () => {
+    // The sidebar can mount ahead of slug resolution; the entry row is
+    // path-driven, so it renders while the project/module queries wait.
     mocks.workspace.current = null;
-    const { container } = renderWithI18n(<SidebarProjectsTree />);
-    expect(container).toBeEmptyDOMElement();
+    renderWithI18n(<SidebarProjectsTree />);
+
+    expect(
+      screen.getByRole("link", { name: /projects/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("links the section entry to the projects index and lights it there", () => {
+    renderWithI18n(<SidebarProjectsTree />);
+
+    const entry = screen.getByRole("link", { name: /^projects$/i });
+    expect(entry).toHaveAttribute("href", "/acme/projects");
+    expect(entry).toHaveAttribute("data-active", "true");
   });
 });
