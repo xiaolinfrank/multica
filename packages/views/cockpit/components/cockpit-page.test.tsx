@@ -109,6 +109,15 @@ function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code:
   };
 }
 
+// The overview only lists meetings that are current or upcoming, so the
+// fixture meeting rides two days ahead of the real clock.
+function upcomingDate(days = 2): string {
+  const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 const board: CockpitBoard = {
   cockpit: {
     id: "cp",
@@ -171,7 +180,7 @@ const board: CockpitBoard = {
   meetings: [
     {
       id: "meet-1",
-      meet_date: "2026-09-01",
+      meet_date: upcomingDate(),
       time_range: "10:00-11:00",
       title: "Working group weekly",
       attendees: "Everyone",
@@ -234,9 +243,21 @@ describe("CockpitPage", () => {
     expect(screen.getAllByText("High-quality datasets").length).toBeGreaterThan(0);
     expect(screen.getByText("Working group weekly")).toBeInTheDocument();
 
-    // Budget rolls up from the leaf; the leaf's instalment counts as contracted.
-    const finance = screen.getByText("Budget total").closest("div")!;
-    expect(within(finance).getByText("30")).toBeInTheDocument();
+    // Budget rolls up from the leaf, quoted in the board's 万元 unit.
+    const finance = screen.getByText("2026 budget total (per master sheet)").closest("div")!;
+    expect(within(finance).getByText("30万")).toBeInTheDocument();
+  });
+
+  it("records the completion date when an open milestone is marked done", async () => {
+    renderPage();
+    const markDone = await screen.findByRole("button", { name: "Mark done" });
+    fireEvent.click(markDone);
+    await waitFor(() =>
+      expect(api.updateCockpitMilestone).toHaveBeenCalledWith(
+        "ms-1",
+        expect.objectContaining({ actual_date: expect.any(String) }),
+      ),
+    );
   });
 
   it("switches to the gantt and lists the tree with its rolled-up branch progress", async () => {
@@ -430,7 +451,7 @@ describe("CockpitPage detail tables", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show money" }));
     expect(await screen.findByText("Budget / paid")).toBeInTheDocument();
-    expect(screen.getAllByText("30").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("30万").length).toBeGreaterThan(0);
   });
 });
 

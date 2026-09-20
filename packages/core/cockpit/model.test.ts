@@ -4,6 +4,7 @@ import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
   buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitAggStatusColor,
   cockpitCoreNodes,
@@ -14,6 +15,8 @@ import {
   cockpitOverallProgress,
   cockpitPaymentTone,
   cockpitStatusColor,
+  cockpitSubtreeAverage,
+  cockpitSummaryCollapseIds,
   computeCockpitAxis,
   computeCockpitDigest,
   computeCockpitFinance,
@@ -23,6 +26,7 @@ import {
   flattenCockpitTree,
   groupPaymentsByNode,
   groupSubtreePayments,
+  isCockpitExecNode,
   isCockpitMilestoneDone,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
@@ -418,7 +422,20 @@ describe("computeCockpitAxis", () => {
     expect(axis.end.toISOString().slice(0, 10)).toBe("2026-12-31");
   });
 
-  it("starts week density on the Monday of the earliest execution task", () => {
+  it("opens at June of the goal year and closes on the goal month", () => {
+    const axis = computeCockpitAxis(
+      [node({ id: "a", code: "A", start_date: "2026-01-05", end_date: "2026-04-15" })],
+      "2026-02-01",
+      { goalDate: "2026-12-31" },
+    );
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-06-01");
+    expect(axis.end.toISOString().slice(0, 10)).toBe("2026-12-31");
+    expect(axisMonths(axis).map((m) => m.key)).toEqual([
+      "2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
+    ]);
+  });
+
+  it("starts week density on the Monday of the earliest execution row", () => {
     const axis = computeCockpitAxis(
       [
         node({ id: "r", code: "R", start_date: "2026-03-02", end_date: "2026-05-20" }),
@@ -427,8 +444,9 @@ describe("computeCockpitAxis", () => {
       "2026-04-01",
       { zoom: "week" },
     );
-    // 2026-03-18 is a Wednesday; its week opens on the 16th.
-    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
+    // 2026-03-02 is itself a Monday, and the parent row is execution work too:
+    // the source sheet converges on the earliest task week, parents included.
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-02");
   });
 
   it("covers every day of the span exactly once across its months", () => {
@@ -638,6 +656,66 @@ describe("buildCockpitDisplayCodes", () => {
   });
 });
 
+describe("isCockpitExecNode", () => {
+  it("reads structure rows by their stored codes, everything else as work", () => {
+    expect(isCockpitExecNode("L1-02")).toBe(false);
+    expect(isCockpitExecNode("02.03")).toBe(false);
+    expect(isCockpitExecNode("AI-05-01")).toBe(false);
+    // An empty direction is structure, not a task at 0%.
+    expect(isCockpitExecNode("04.04")).toBe(false);
+    expect(isCockpitExecNode("L3-02-03-01")).toBe(true);
+    expect(isCockpitExecNode("（后续年度）")).toBe(true);
+    expect(isCockpitExecNode("04.04-01")).toBe(true);
+  });
+});
+
+describe("buildCockpitSummaryTree", () => {
+  it("folds the merged directions into one row with their tasks flattened and renumbered", () => {
+    const nodes = [
+      node({ id: "l1", code: "L1-02", name: "Platform" }),
+      node({ id: "d1", code: "02.01", parent_id: "l1", name: "Needs" }),
+      node({ id: "t1", code: "L3-02-01-01", parent_id: "d1", name: "Spec" }),
+      node({ id: "m1", code: "02.02", parent_id: "l1", name: "Old A" }),
+      node({ id: "m2", code: "02.03", parent_id: "l1", name: "Old B" }),
+      node({ id: "t2", code: "L3-02-02-01", parent_id: "m1", name: "Build" }),
+      node({ id: "t3", code: "L3-02-03-01", parent_id: "m2", name: "Ship" }),
+      node({ id: "d9", code: "02.10", parent_id: "l1", name: "Boxes" }),
+    ];
+    const tree = buildCockpitSummaryTree(buildCockpitTree(nodes));
+    const rows = flattenCockpitTree(tree);
+    // The group takes the first member's slot; members' tasks follow in
+    // member order; the untouched directions keep their places.
+    expect(rows.map((e) => [e.node.id, e.depth])).toEqual([
+      ["l1", 0], ["d1", 1], ["t1", 2], ["02.02-09", 1], ["t2", 2], ["t3", 2], ["d9", 1],
+    ]);
+    // The rename is a display alias: the stored row keeps its own name.
+    expect(rows.find((e) => e.node.id === "d9")!.node.name).toBe("院端一体机与部署");
+    expect(nodes.find((n) => n.id === "d9")!.name).toBe("Boxes");
+    // Positional codes over the summary shape: the group is one direction.
+    expect([...buildCockpitDisplayCodes(tree)]).toEqual([
+      ["l1", "02"], ["d1", "02.01"], ["t1", "02.01.01"],
+      ["02.02-09", "02.02"], ["t2", "02.02.01"], ["t3", "02.02.02"], ["d9", "02.03"],
+    ]);
+    // First paint folds at the direction rows, tasks one click away.
+    expect(new Set(cockpitSummaryCollapseIds(tree))).toEqual(new Set(["d1", "02.02-09"]));
+  });
+});
+
+describe("cockpitSubtreeAverage", () => {
+  it("scores untyped rows by the source sheet's status map, review and waiting as zero", () => {
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "L1-02" }),
+      node({ id: "a", code: "A", parent_id: "r", status: "已完成" }),
+      node({ id: "b", code: "B", parent_id: "r", status: "进行中" }),
+      node({ id: "c", code: "C", parent_id: "r", status: "受阻" }),
+      node({ id: "d", code: "D", parent_id: "r", status: "审查中" }),
+      // Cancelled work no longer occupies the plan.
+      node({ id: "e", code: "E", parent_id: "r", progress: 100, status: "已取消" }),
+    ]);
+    expect(cockpitSubtreeAverage(tree[0]!)).toBe(44);
+  });
+});
+
 describe("cockpitEffectiveProgress", () => {
   it.each([
     ["已完成", 0, 100], [" Completed ", 0, 100], ["进行中", 0, 50],
@@ -721,8 +799,10 @@ describe("goal and overall progress", () => {
       actual: 32, scheduled: 50, gapPts: 18, latestEnd: "2026-06-21", planVsGoalDays: -193,
       taskCount: 3, crossYearCount: 1, behind: true,
     });
+    // The toolbar means run over every execution row — the parent included —
+    // and the year figure only over rows with both dates ending by the goal.
     expect(cockpitOverallProgress(nodes, "2026-06-11", "2026-12-31")).toEqual({
-      overall: 49, thisYear: 32, scheduled: 50, behind: true,
+      overall: 59, thisYear: 35, scheduled: 50, behind: true,
     });
   });
   it.each([["2026-05-01", 0, false], ["2026-07-01", 100, true]] as const)(
@@ -730,7 +810,7 @@ describe("goal and overall progress", () => {
       expect(cockpitGoalProgress(buildCockpitTree(nodes)[0]!, today, null)).toMatchObject({
         actual: 49, scheduled, gapPts: scheduled - 49, taskCount: 4, crossYearCount: 0, planVsGoalDays: null, behind,
       });
-      expect(cockpitOverallProgress(nodes, today, null)).toEqual({ overall: 49, thisYear: 49, scheduled, behind });
+      expect(cockpitOverallProgress(nodes, today, null)).toEqual({ overall: 59, thisYear: 59, scheduled, behind });
     },
   );
   it("reports nulls rather than fabricated percentages when all work is cancelled or cross-year", () => {
@@ -752,7 +832,7 @@ describe("goal and overall progress", () => {
     expect(cockpitGoalProgress(buildCockpitTree(invalid)[0]!, "2026-06-11", "2026-06-11")).toMatchObject({
       actual: 33, scheduled: null, gapPts: null, taskCount: 3, crossYearCount: 0, planVsGoalDays: 0, behind: false,
     });
-    expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 33, thisYear: 33, scheduled: null, behind: false });
+    expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 25, thisYear: 0, scheduled: null, behind: false });
   });
 });
 
@@ -766,9 +846,9 @@ describe("week axis boundaries", () => {
       { key: "2026-03", offset: 0, days: 16 }, { key: "2026-04", offset: 16, days: 30 },
     ]);
   });
-  it("does not trim past today when execution starts in the future", () => {
+  it("converges to the earliest task's week even when that week is in the future", () => {
     const axis = computeCockpitAxis([node({ id: "x", code: "X", start_date: "2026-03-18", end_date: "2026-04-10" })], "2026-03-10", { zoom: "week" });
-    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
   });
   it("keeps the annual fallback at week density when no execution dates exist", () => {
     const axis = computeCockpitAxis([], "2026-06-15", { zoom: "week" });

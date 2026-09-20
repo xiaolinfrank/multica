@@ -23,11 +23,12 @@ import type {
 } from "@multica/core/types";
 import {
   buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitBoardOptions,
   cockpitChangesOptions,
-  cockpitFinanceCsv,
   cockpitOverallProgress,
+  cockpitSummaryCollapseIds,
   cockpitTasksCsv,
   flattenCockpitTree,
   groupIssueLinksByNode,
@@ -241,8 +242,26 @@ export function CockpitPage() {
   // the query is still loading, invalidating every memo below it.
   const nodes = useMemo(() => board?.nodes ?? EMPTY_NODES, [board?.nodes]);
   const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
+  // The shipped shape of the board: merged directions, tasks flattened under
+  // the group rows. The gantt and the detail tables quote row codes from this
+  // tree, so a code means the same row everywhere.
+  const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
+  const summaryFlat = useMemo(() => flattenCockpitTree(summaryTree), [summaryTree]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(summaryTree), [summaryTree]);
+  // The summary tree's parent links, for jumps that must open a row whose
+  // display parent is a merged group rather than its stored parent.
+  const summaryParent = useMemo(() => {
+    const map = new Map<string, string>();
+    const walk = (entry: (typeof summaryFlat)[number]) => {
+      entry.children.forEach((child) => {
+        map.set(child.node.id, entry.node.id);
+        walk(child);
+      });
+    };
+    summaryTree.forEach(walk);
+    return map;
+  }, [summaryTree, summaryFlat]);
   const flat = useMemo(() => flattenCockpitTree(tree), [tree]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const paymentsByNode = useMemo(
     () => groupPaymentsByNode(board?.payments ?? EMPTY_PAYMENTS),
@@ -321,10 +340,12 @@ export function CockpitPage() {
     (nodeId: string) => {
       setCollapsed((prev) => {
         const ancestors = new Set<string>();
-        let cursor = nodeById.get(nodeId);
-        while (cursor?.parent_id) {
-          ancestors.add(cursor.parent_id);
-          cursor = nodeById.get(cursor.parent_id);
+        let cursor: string | null = nodeId;
+        while (cursor) {
+          const parent = summaryParent.get(cursor);
+          if (!parent) break;
+          ancestors.add(parent);
+          cursor = parent;
         }
         if (ancestors.size === 0) return prev;
         const next = new Set(prev);
@@ -335,7 +356,7 @@ export function CockpitPage() {
       setFocusTarget((prev) => ({ nodeId, nonce: (prev?.nonce ?? 0) + 1 }));
       setTab("gantt");
     },
-    [nodeById],
+    [summaryParent],
   );
 
   const toggleCollapse = useCallback((nodeId: string) => {
@@ -351,32 +372,34 @@ export function CockpitPage() {
    * Open the tree down to one level and no further. A six-module board with
    * 226 rows is unreadable fully expanded and useless fully collapsed; the
    * level someone wants is almost always "modules" or "modules and tasks".
+   * Runs over the summary shape, so a merged group is one level, like the
+   * rows the reader is looking at.
    */
   const expandToDepth = useCallback(
     (maxDepth: number) => {
       setCollapsed(
         new Set(
-          flat
+          summaryFlat
             .filter((e) => e.children.length > 0 && e.depth >= maxDepth)
             .map((e) => e.node.id),
         ),
       );
     },
-    [flat],
+    [summaryFlat],
   );
 
   /**
-   * First paint opens the board to its modules and stops there. A 187-row
-   * programme fully expanded is a wall, and fully collapsed is six rows that
-   * say nothing. This runs once: a live edit or a websocket refresh must not
+   * First paint opens the board to its directions and stops there — the
+   * shipped board's default: modules and directions visible, one click from
+   * the tasks. This runs once: a live edit or a websocket refresh must not
    * fold a branch the reader just opened.
    */
   const didSeedCollapse = useRef(false);
   useEffect(() => {
-    if (didSeedCollapse.current || flat.length === 0) return;
+    if (didSeedCollapse.current || summaryFlat.length === 0) return;
     didSeedCollapse.current = true;
-    expandToDepth(1);
-  }, [flat, expandToDepth]);
+    setCollapsed(new Set(cockpitSummaryCollapseIds(summaryTree)));
+  }, [summaryFlat, summaryTree]);
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
@@ -449,14 +472,6 @@ export function CockpitPage() {
   const exportTasks = useCallback(() => {
     if (!board) return;
     downloadCsv(cockpitTasksCsv(board), `${board.cockpit.title || "cockpit"}-${today}-tasks.csv`);
-  }, [board, today]);
-
-  const exportFinance = useCallback(() => {
-    if (!board) return;
-    downloadCsv(
-      cockpitFinanceCsv(board),
-      `${board.cockpit.title || "cockpit"}-${today}-finance.csv`,
-    );
   }, [board, today]);
 
   const [exporting, setExporting] = useState(false);
@@ -615,6 +630,30 @@ export function CockpitPage() {
           </Button>
         )}
 
+        {/* The two headline figures stay out of the collapsible toolbar: they
+            are the board's state, not a control, and the shipped board keeps
+            them visible however the controls are folded. */}
+        {tab === "gantt" && (
+          <div className="flex items-center gap-2">
+            <ProgressChip
+              label={t(($) => $.toolbar.overall_progress)}
+              value={overall.overall}
+              hint={t(($) => $.toolbar.overall_basis)}
+            />
+            {board?.cockpit.goal_date && (
+              <ProgressChip
+                label={t(($) => $.toolbar.year_progress)}
+                value={overall.thisYear}
+                behind={overall.behind}
+                hint={t(($) => $.toolbar.year_basis, {
+                  date: board.cockpit.goal_date,
+                  scheduled: overall.scheduled ?? "—",
+                })}
+              />
+            )}
+          </div>
+        )}
+
         {tab === "gantt" && toolsOpen && (
           <div id="cockpit-secondary-toolbar" className="order-last flex w-full flex-wrap items-center gap-2">
             <Select
@@ -683,23 +722,6 @@ export function CockpitPage() {
               <Crosshair className="size-3.5" />
               {t(($) => $.toolbar.back_to_today)}
             </Button>
-
-            <ProgressChip
-              label={t(($) => $.toolbar.overall_progress)}
-              value={overall.overall}
-              hint={t(($) => $.toolbar.overall_basis)}
-            />
-            {board?.cockpit.goal_date && (
-              <ProgressChip
-                label={t(($) => $.toolbar.year_progress)}
-                value={overall.thisYear}
-                behind={overall.behind}
-                hint={t(($) => $.toolbar.year_basis, {
-                  date: board.cockpit.goal_date,
-                  scheduled: overall.scheduled ?? "—",
-                })}
-              />
-            )}
           </div>
         )}
 
@@ -723,9 +745,6 @@ export function CockpitPage() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={exportTasks}>
               {t(($) => $.toolbar.export_tasks)}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={exportFinance}>
-              {t(($) => $.toolbar.export_finance)}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -759,6 +778,13 @@ export function CockpitPage() {
                   setRootIds(new Set([nodeId]));
                   setTab("gantt");
                 }}
+                onOpenModule={(rootCode) => {
+                  const root = tree.find((entry) => entry.node.code === rootCode);
+                  if (root) {
+                    setRootIds(new Set([root.node.id]));
+                    setTab("gantt");
+                  }
+                }}
                 onOpenTask={openTask}
               />
             </div>
@@ -779,6 +805,7 @@ export function CockpitPage() {
               onPatchNode={patchNode}
               statusSuggestions={statusSuggestions}
               showFinance={showFinance}
+              toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
             />

@@ -238,7 +238,12 @@ describe("Cockpit secondary interactions", () => {
     let finish!: () => void;
     vi.mocked(api.deleteCockpitMeeting).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Working group weekly" }));
+    // The meeting row opens a read-only detail dialog; deletion lives behind
+    // its Edit entry, one hop from reading.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Meeting details: Working group weekly" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
     const dialog = await screen.findByRole("alertdialog");
     const remove = within(dialog).getByRole("button", { name: "Delete" });
@@ -307,7 +312,7 @@ describe("Cockpit secondary interactions", () => {
       <CockpitGantt board={board} today="2026-09-18" zoom="week" query=""
         rootIds={new Set()} collapsed={new Set(["root"])} onToggleCollapse={vi.fn()}
         onSelect={select} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
-        showFinance={false} scrollToTodayNonce={0} focusTarget={null} />
+        showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
     </I18nProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));
     const dialog = await screen.findByRole("dialog");

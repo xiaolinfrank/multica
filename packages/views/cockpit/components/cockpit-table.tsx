@@ -18,6 +18,7 @@ import type {
 } from "@multica/core/types";
 import {
   buildCockpitTree,
+  buildCockpitSummaryTree,
   buildCockpitDisplayCodes,
   cockpitMissingFields,
   computeCockpitFinanceRows,
@@ -164,7 +165,13 @@ export function CockpitTable({
 
   const tableRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  // Codes come from the summary shape — the same addresses the gantt prints —
+  // so a code quoted in a review names the same row in both places. A member
+  // direction the summary folded away keeps its stored code.
+  const displayCodes = useMemo(
+    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(tree)),
+    [tree],
+  );
   const ancestors = useMemo(() => {
     const result = new Map<string, { root: CockpitTreeNode; parent: CockpitTreeNode | null }>();
     const walk = (entry: CockpitTreeNode, root: CockpitTreeNode, parent: CockpitTreeNode | null) => {

@@ -103,6 +103,18 @@ export function buildCockpitTree(nodes: CockpitNode[]): CockpitTreeNode[] {
   return roots;
 }
 
+/** The structure rows above the work: L1 mainlines and L2 directions. */
+const DEFINITION_CODE_RE = /^(?:L1-\d{2}|\d{2}\.\d{2}|AI-\d{2}-\d{2})$/;
+
+/**
+ * Whether a node is execution work ("yg" in the source sheet) rather than an
+ * L1/L2 structure row. An empty direction such as 04.04 is structure, not a
+ * task, so module tallies and progress averages must not count it.
+ */
+export function isCockpitExecNode(code: string): boolean {
+  return !DEFINITION_CODE_RE.test(code);
+}
+
 /** Depth-first order — the order the gantt and the table render rows in. */
 export function flattenCockpitTree(tree: CockpitTreeNode[]): CockpitTreeNode[] {
   const out: CockpitTreeNode[] = [];
@@ -114,6 +126,181 @@ export function flattenCockpitTree(tree: CockpitTreeNode[]): CockpitTreeNode[] {
   };
   walk(tree);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Summary tree: the merged directions the shipped gantt groups by
+// ---------------------------------------------------------------------------
+
+/** Directions the summary view folds into one row, in source-sheet order. */
+export interface CockpitSummaryGroup {
+  /** Synthetic row id, e.g. "02.02-09" — never a real node's id. */
+  id: string;
+  name: string;
+  /** The module root the group renders under. */
+  rootCode: string;
+  color: string;
+  /** Direction codes folded into this row, in order. */
+  members: string[];
+}
+
+/**
+ * Presentation-only groupings from the source sheet's SUM_GROUPS. They carry
+ * no data of their own: a group row stands in for its members, and each
+ * member's tasks move up to sit directly under the group.
+ */
+export const COCKPIT_SUMMARY_GROUPS: CockpitSummaryGroup[] = [
+  {
+    id: "02.02-09",
+    name: "平台架构与开发",
+    rootCode: "L1-02",
+    color: "#0891b2",
+    members: ["02.02", "02.03", "02.04", "02.05", "02.06", "02.07", "02.08", "02.09"],
+  },
+  {
+    id: "03.01-02",
+    name: "场景的定义及方向",
+    rootCode: "L1-03",
+    color: "#7c3aed",
+    members: ["03.01", "03.02"],
+  },
+  {
+    id: "03.03-05",
+    name: "数据与工具的开发",
+    rootCode: "L1-03",
+    color: "#7c3aed",
+    members: ["03.03", "03.04", "03.05"],
+  },
+  {
+    id: "03.06-07",
+    name: "科学测评与用户验证",
+    rootCode: "L1-03",
+    color: "#7c3aed",
+    members: ["03.06", "03.07"],
+  },
+];
+
+/** Display-only renames in the summary view; the stored node is untouched. */
+export const COCKPIT_SUMMARY_RENAMES: Record<string, string> = {
+  "02.10": "院端一体机与部署",
+};
+
+/** A blank row object for a synthetic group node. */
+function summaryGroupNode(
+  group: CockpitSummaryGroup,
+  cockpitId: string,
+  position: number,
+): CockpitNode {
+  return {
+    id: group.id,
+    cockpit_id: cockpitId,
+    parent_id: group.rootCode,
+    code: group.id,
+    name: group.name,
+    position,
+    color: group.color,
+    owner: "",
+    collaborators: "",
+    start_date: null,
+    end_date: null,
+    status: "",
+    progress: 0,
+    deliverable: "",
+    dependencies: "",
+    note: "",
+    current_progress: "",
+    vendor: "",
+    budget_category: "",
+    budget_amount: null,
+    exec_status: "",
+    contract: "",
+    source: "",
+    updated_by_type: "",
+    updated_by_id: null,
+    created_at: "",
+    updated_at: "",
+  };
+}
+
+/**
+ * The board as the shipped gantt shows it: each summary group takes the place
+ * of its member directions (at the first member's slot), and the members'
+ * execution tasks move up to sit directly under the group. Rows keep their
+ * real node objects — payments, links and roll-ups key off ids, so a group
+ * entry aggregates its members' tasks for free.
+ */
+export function buildCockpitSummaryTree(tree: CockpitTreeNode[]): CockpitTreeNode[] {
+  const memberToGroup = new Map<string, CockpitSummaryGroup>();
+  for (const group of COCKPIT_SUMMARY_GROUPS) {
+    for (const member of group.members) memberToGroup.set(member, group);
+  }
+  const cockpitId = tree[0]?.node.cockpit_id ?? "";
+
+  const rebuild = (entry: CockpitTreeNode, depth: number, color: string): CockpitTreeNode => {
+    const node =
+      depth === 1 && COCKPIT_SUMMARY_RENAMES[entry.node.code] != null
+        ? { ...entry.node, name: COCKPIT_SUMMARY_RENAMES[entry.node.code]! }
+        : entry.node;
+    return {
+      node,
+      depth,
+      color: node.color || color,
+      children: entry.children.map((child) => rebuild(child, depth + 1, node.color || color)),
+    };
+  };
+
+  const out: CockpitTreeNode[] = [];
+  for (const root of tree) {
+    const children: CockpitTreeNode[] = [];
+    const placed = new Set<string>();
+    for (const child of root.children) {
+      const group = memberToGroup.get(child.node.code);
+      if (group) {
+        if (!placed.has(group.id)) {
+          placed.add(group.id);
+          // The members' execution rows, flattened under the group in member
+          // order; a direction that is itself structure contributes no row.
+          const tasks = COCKPIT_SUMMARY_GROUPS.find((g) => g.id === group.id)!
+            .members.flatMap((member) =>
+              (root.children.find((c) => c.node.code === member)?.children ?? []).filter((grand) =>
+                isCockpitExecNode(grand.node.code),
+              ),
+            );
+          children.push({
+            node: summaryGroupNode(group, cockpitId, child.node.position),
+            depth: 1,
+            color: group.color,
+            children: tasks.map((task) => rebuild(task, 2, group.color)),
+          });
+        }
+        continue;
+      }
+      children.push(rebuild(child, 1, root.node.color));
+    }
+    // A group whose members all vanished still renders, at the tail.
+    for (const group of COCKPIT_SUMMARY_GROUPS) {
+      if (group.rootCode !== root.node.code || placed.has(group.id)) continue;
+      children.push({
+        node: summaryGroupNode(group, cockpitId, Number.MAX_SAFE_INTEGER),
+        depth: 1,
+        color: group.color,
+        children: [],
+      });
+    }
+    out.push({ node: root.node, depth: 0, color: root.color, children });
+  }
+  return out;
+}
+
+/**
+ * The rows the summary view starts collapsed: every direction and group row,
+ * so first paint shows modules and directions, tasks one click away.
+ */
+export function cockpitSummaryCollapseIds(summaryTree: CockpitTreeNode[]): string[] {
+  return summaryTree
+    .flatMap((root) => root.children)
+    .filter((entry) => entry.children.length > 0)
+    .map((entry) => entry.node.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +518,7 @@ export function computeCockpitRollups(
       // Budget lives on the tasks that spend it. A branch that also carries a
       // figure would otherwise be counted twice — once as its own line and
       // once through the children it summarises.
-      budget: children.length === 0 ? (node.budget_amount ?? 0) : 0,
+      budget: children.length === 0 && isCockpitExecNode(node.code) ? (node.budget_amount ?? 0) : 0,
       start: node.start_date,
       end: node.end_date,
       live: {
@@ -344,7 +531,9 @@ export function computeCockpitRollups(
       },
     };
 
-    if (children.length === 0) {
+    // Only execution rows are work. A childless direction is structure the
+    // tasks hang under, not a task itself, so it tallies as nothing.
+    if (children.length === 0 && isCockpitExecNode(node.code)) {
       own.leafCount = 1;
       own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
       own.activeCount = isCockpitNodeActive(node) ? 1 : 0;
@@ -830,15 +1019,20 @@ export interface CockpitAxisOptions {
    * 3.5px a day and expensive at 9.
    */
   zoom?: "month" | "week";
+  /**
+   * The annual objective date. Its month closes the axis even when no task
+   * reaches it, and the axis never opens before the June of its year — work
+   * finished earlier clumps onto the June boundary instead of stretching the
+   * timeline back through history nobody plans against.
+   */
+  goalDate?: string | null;
 }
 
-/** Monday of the week the earliest leaf task starts in, or null. */
+/** Monday of the week the earliest execution row starts in, or null. */
 function execWeekStart(nodes: CockpitNode[]): Date | null {
-  const parents = new Set<string>();
-  for (const node of nodes) if (node.parent_id) parents.add(node.parent_id);
   let earliest: string | null = null;
   for (const node of nodes) {
-    if (parents.has(node.id)) continue;
+    if (!isCockpitExecNode(node.code)) continue;
     earliest = minDate(earliest, node.start_date);
     earliest = minDate(earliest, node.end_date);
   }
@@ -866,6 +1060,9 @@ export function computeCockpitAxis(
     max = maxDate(max, node.end_date);
     max = maxDate(max, node.start_date);
   }
+  // The objective's month always closes the axis, like the source sheet's
+  // goalMarks: the dashed line lives on the canvas even past the last task.
+  max = maxDate(max, options.goalDate ?? null);
 
   const todayDate = parseDay(today) ?? new Date();
   let start = parseDay(min);
@@ -883,10 +1080,19 @@ export function computeCockpitAxis(
   let paddedStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
   const paddedEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0));
 
+  if (options.goalDate) {
+    const goal = parseDay(options.goalDate);
+    if (goal) {
+      const june = new Date(Date.UTC(goal.getUTCFullYear(), 5, 1));
+      if (paddedStart < june) paddedStart = june;
+    }
+  }
+
   if (options.zoom === "week") {
     const monday = execWeekStart(nodes);
-    // Never past today: the marker has to stay on the canvas.
-    if (monday && monday > paddedStart && monday <= todayDate) paddedStart = monday;
+    // Only ever forward: the marker stays on the canvas because June never
+    // follows the earliest task week on a board with a goal this year.
+    if (monday && monday > paddedStart) paddedStart = monday;
   }
 
   return { start: paddedStart, end: paddedEnd, days: daysBetween(paddedStart, paddedEnd) + 1 };
@@ -1043,7 +1249,9 @@ export function computeCockpitDigest(
   const leaves: CockpitNode[] = [];
   const walk = (entry: CockpitTreeNode, rootCode: string): void => {
     rootCodeOf.set(entry.node.id, rootCode);
-    if (entry.children.length === 0) leaves.push(entry.node);
+    if (entry.children.length === 0 && isCockpitExecNode(entry.node.code)) {
+      leaves.push(entry.node);
+    }
     entry.children.forEach((child) => walk(child, rootCode));
   };
   tree.forEach((root) => walk(root, root.node.code));
@@ -1079,14 +1287,18 @@ export function computeCockpitDigest(
   active.sort((a, b) => b.progress - a.progress || a.name.localeCompare(b.name));
   done.sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""));
 
-  const financeRows = computeCockpitFinanceRows(tree, board.payments);
+  // Money reads off instalments, not budget lines: what actually left the
+  // account this week is the sum of paid instalments whose pay date fell in
+  // the window, one figure per instalment.
+  const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
   let paidAmount = 0;
   let paidCount = 0;
-  for (const row of financeRows) {
-    if (row.actualAmount != null && row.actualAmount > 0 && inPast(row.actualDate)) {
-      paidAmount += row.actualAmount;
-      paidCount += 1;
-    }
+  for (const payment of board.payments) {
+    if (!payment.pay_date || !inPast(payment.pay_date)) continue;
+    const node = nodeById.get(payment.node_id);
+    if (!node || cockpitPaymentTone(node.exec_status) !== "paid") continue;
+    paidAmount += payment.amount;
+    paidCount += 1;
   }
 
   // Running work first — that is what "where are we" means — and only pad with
@@ -1130,19 +1342,21 @@ export function computeCockpitDigest(
   }
   let plannedAmount = 0;
   let plannedCount = 0;
-  for (const row of financeRows) {
-    if (row.budget <= 0 || !inAhead(row.plannedDate)) continue;
-    plannedAmount += row.budget;
+  for (const payment of board.payments) {
+    if (!payment.pay_date || !inAhead(payment.pay_date)) continue;
+    const node = nodeById.get(payment.node_id);
+    if (!node || cockpitPaymentTone(node.exec_status) === "paid") continue;
+    plannedAmount += payment.amount;
     plannedCount += 1;
     ahead.push({
       kind: "payment",
-      key: `pay:${row.node.id}`,
-      node: row.node,
-      date: row.plannedDate,
-      title: row.node.name,
+      key: `pay:${payment.id}`,
+      node,
+      date: payment.pay_date,
+      title: node.name,
       rootCode: "",
       progress: null,
-      amount: row.budget,
+      amount: payment.amount,
     });
   }
   ahead.sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.title.localeCompare(b.title));
@@ -1272,6 +1486,40 @@ export function cockpitEffectiveProgress(node: CockpitNode): number {
   if (isCockpitNodeActive(node) || isCockpitNodeWaiting(node)) return 50;
   if (isCockpitNodeBlocked(node)) return 25;
   return 0;
+}
+
+/** Status→progress fallback for subtree averages, as the source sheet scores them. */
+const SUBTREE_STATUS_PROGRESS: Record<string, number> = {
+  已完成: 100,
+  进行中: 50,
+  未开始: 0,
+  受阻: 25,
+};
+
+/**
+ * The mean effective progress of a branch's execution leaves: the level a
+ * summary bar fills to and the percentage an L2 row badge shows. Unlike
+ * cockpitEffectiveProgress, review and waiting count as 0 here — the source
+ * sheet's average treats only the four statuses above as started.
+ */
+export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
+  let sum = 0;
+  let count = 0;
+  const walk = (branch: CockpitTreeNode) => {
+    if (branch.children.length > 0) {
+      branch.children.forEach(walk);
+      return;
+    }
+    const node = branch.node;
+    if (!isCockpitExecNode(node.code) || isCockpitNodeCancelled(node)) return;
+    sum +=
+      node.progress > 0
+        ? Math.min(node.progress, 100)
+        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0);
+    count += 1;
+  };
+  walk(entry);
+  return count > 0 ? Math.round(sum / count) : null;
 }
 
 /**
@@ -1433,6 +1681,9 @@ export function cockpitGoalProgress(
       return;
     }
     const node = branch.node;
+    // Structure rows are not work: an empty direction must not drag a
+    // module's forecast to zero by counting as a task at 0%.
+    if (!isCockpitExecNode(node.code)) return;
     if (isCockpitNodeCancelled(node)) return;
     if (goalDate && node.end_date && node.end_date > goalDate) {
       crossYearCount += 1;
@@ -1454,8 +1705,18 @@ export function cockpitGoalProgress(
   };
   if (inYear.length === 0) return empty;
 
+  // Scored as the source sheet does: a typed percentage, else the status
+  // map — review and waiting have not started, so they read as 0 here even
+  // though the row chip paints them as in flight.
   const actual = Math.round(
-    inYear.reduce((sum, node) => sum + cockpitEffectiveProgress(node), 0) / inYear.length,
+    inYear.reduce(
+      (sum, node) =>
+        sum +
+        (node.progress > 0
+          ? Math.min(node.progress, 100)
+          : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0)),
+      0,
+    ) / inYear.length,
   );
 
   let schedSum = 0;
@@ -1501,17 +1762,16 @@ export interface CockpitOverallProgress {
  * The two figures the toolbar carries: how far the whole programme has come,
  * and how far the part of it that is due this year has come.
  *
- * Both are means over leaves, because a branch is not work — counting it would
- * weight a module by how finely it happens to be broken down.
+ * The mean runs over execution rows rather than leaves — a task that carries
+ * sub-tasks still counts once, beside them, exactly as the source sheet's
+ * overallProgress does. The year figure only includes rows with both dates
+ * set, ending on or before the goal.
  */
 export function cockpitOverallProgress(
   nodes: CockpitNode[],
   today: string,
   goalDate: string | null,
 ): CockpitOverallProgress {
-  const parents = new Set<string>();
-  for (const node of nodes) if (node.parent_id) parents.add(node.parent_id);
-
   let allSum = 0;
   let allCount = 0;
   let yearSum = 0;
@@ -1520,12 +1780,18 @@ export function cockpitOverallProgress(
   let schedCount = 0;
 
   for (const node of nodes) {
-    if (parents.has(node.id)) continue;
+    if (!isCockpitExecNode(node.code)) continue;
     if (isCockpitNodeCancelled(node)) continue;
-    const progress = cockpitEffectiveProgress(node);
+    const progress =
+      node.progress > 0
+        ? Math.min(node.progress, 100)
+        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0);
     allSum += progress;
     allCount += 1;
-    if (goalDate && node.end_date && node.end_date > goalDate) continue;
+    if (goalDate) {
+      if (!node.start_date || !node.end_date) continue;
+      if (node.end_date > goalDate) continue;
+    }
     yearSum += progress;
     yearCount += 1;
     const value = scheduledProgress(node, today);

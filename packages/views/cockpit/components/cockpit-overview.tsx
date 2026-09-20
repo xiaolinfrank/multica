@@ -48,26 +48,39 @@ import {
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@multica/ui/components/ui/dialog";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { useT, useLocale } from "../../i18n";
 import { EditableDate, EditableText, EditableTextArea } from "./cockpit-fields";
 
-/** The banner's live clock: today's date and weekday, no minutes or seconds.
- * A programme board is read in days, and a ticking second hand on it is a
- * distraction. First paint shows the placeholder so server and client agree. */
+/** The banner's live clock, read off local Date components — the wall clock
+ * the room reads, not the UTC one a date formatter hands back. First paint
+ * shows the placeholder so server and client agree. */
 function BannerClock({ locale }: { locale: string }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     const tick = () => setNow(new Date());
     tick();
-    // A minute is enough to cross midnight on time.
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
+  // The prototype's v1.0 clock is the day, not the second: no time-of-day,
+  // so a minute's tick is all the cadence it needs.
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  const clock = now
+    ? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    : "—";
   return (
     <>
       <span className="text-display-sm font-semibold tracking-wide tabular-nums">
-        {now ? formatDay(now) : "——"}
+        {clock}
       </span>
       <span className="text-micro opacity-90">
         {now ? now.toLocaleDateString(locale, { weekday: "long" }) : "—"}
@@ -104,8 +117,62 @@ function Section({
  * modules compact below them. */
 const MODULE_BIG_COUNT = 2;
 
+/** The milestone the board's countdown hangs off, matched by name like the
+ * prototype: the one the annual results are reported through. */
+const ANNUAL_REPORT_NAME = "年度成果汇报";
+
+/** The interaction props a module card's root element takes when the whole
+ * card opens the module's slice of the execution gantt. Keyboard-reachable
+ * button semantics, and a click guard so a click that landed on an inline
+ * editor or the code chip keeps its own meaning instead of navigating. */
+function moduleCardInteraction(
+  code: string,
+  label: string,
+  onOpenModule: (rootCode: string) => void,
+): React.HTMLAttributes<HTMLElement> {
+  return {
+    role: "button",
+    tabIndex: 0,
+    "aria-label": label,
+    onClick: (event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("button, a, input, textarea, select")
+      ) {
+        return;
+      }
+      onOpenModule(code);
+    },
+    onKeyDown: (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest("button, a, input, textarea, select")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onOpenModule(code);
+    },
+  };
+}
+
 function formatAmount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+/** Money on this board is counted in 万 (ten-thousand yuan); the figure keeps
+ * its unit wherever it is shown. */
+function formatWan(value: number): string {
+  return `${formatAmount(value)}万`;
+}
+
+/** "2026年9月" — the month as the reader's calendar writes it, not a raw
+ * "2026-09" key. */
+function monthLabel(month: string, locale: string): string {
+  const [year, mon] = month.split("-").map(Number);
+  const date = new Date(year!, (mon ?? 1) - 1, 1);
+  return date.toLocaleDateString(locale, { year: "numeric", month: "long" });
 }
 
 /** "6/15" — the short form the cards date their lines with. */
@@ -341,6 +408,9 @@ export interface CockpitOverviewProps {
   onOpenBranch: (nodeId: string) => void;
   /** Locates and highlights one task row in the gantt. */
   onOpenTask?: (nodeId: string) => void;
+  /** Opens a module's slice of the execution gantt — when wired, the whole
+   * module card clicks through. */
+  onOpenModule?: (rootCode: string) => void;
   readOnly?: boolean;
 }
 
@@ -357,6 +427,7 @@ export function CockpitOverview({
   onDeleteMeeting,
   onOpenBranch,
   onOpenTask,
+  onOpenModule,
   readOnly,
 }: CockpitOverviewProps) {
   const { t } = useT("cockpit");
@@ -392,16 +463,25 @@ export function CockpitOverview({
   const moduleCode = (rootCode: string): string =>
     dispCode(nodeByCode.get(rootCode)) || rootCode;
 
-  // The countdown hangs off the last milestone in plan order while it is still
-  // open — that is the one the year is counted down to — rather than sitting in
-  // the banner where it competes with the objective itself.
+  // The countdown hangs off the annual results-report milestone while it is
+  // still open — that is the one the year is counted down to — rather than
+  // sitting in the banner where it competes with the objective itself.
   const countdownMilestoneId = useMemo(() => {
-    const last = milestones[milestones.length - 1];
-    return last && !isCockpitMilestoneDone(last) ? last.id : null;
+    const target = milestones.find(
+      (milestone) =>
+        !isCockpitMilestoneDone(milestone) && milestone.name.includes(ANNUAL_REPORT_NAME),
+    );
+    return target?.id ?? null;
   }, [milestones]);
 
-  const maxMonthAmount = months.reduce((max, m) => Math.max(max, m.amount), 0);
-  const maxMonthSpend = months.reduce(
+  // Only months the ledger touches get a column — one with a payment plan or
+  // an actual payment — not every month in between.
+  const chartMonths = useMemo(
+    () => months.filter((month) => month.amount > 0 || month.actualSpend > 0),
+    [months],
+  );
+  const maxMonthAmount = chartMonths.reduce((max, m) => Math.max(max, m.amount), 0);
+  const maxMonthSpend = chartMonths.reduce(
     (max, m) => Math.max(max, m.plannedSpend, m.actualSpend + m.projectedSpend),
     0,
   );
@@ -410,8 +490,9 @@ export function CockpitOverview({
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {/* Annual objective — the board's masthead banner, goal in a frosted
-          glass strip at the centre, today's date pinned top-right. */}
+      {/* Annual objective — the board's masthead banner: corner label, the
+          goal itself in a frosted glass strip at the centre, and the live
+          clock pinned top-right. Nothing else; the banner is one glance. */}
       <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-24 py-5 text-white">
         <span className="absolute top-3 left-5 text-micro font-bold tracking-widest opacity-85">
           {t(($) => $.overview.mvp_label)}
@@ -427,25 +508,11 @@ export function CockpitOverview({
             displayClassName="text-title-lg font-extrabold text-white"
           />
         </div>
-        {board.cockpit.basis && (
-          <p className="max-w-3xl text-center text-micro opacity-75">{board.cockpit.basis}</p>
-        )}
         <div className="absolute top-3 right-5 flex flex-col items-end">
           <span className="text-micro font-bold tracking-widest opacity-85">
             {t(($) => $.overview.clock)}
           </span>
           <BannerClock locale={locale} />
-          <div className="flex items-center gap-2 text-micro opacity-90">
-            <span>{t(($) => $.overview.target_date)}</span>
-            <EditableDate
-              value={board.cockpit.goal_date}
-              onCommit={(goal_date) => onPatchBoard({ goal_date })}
-              label={t(($) => $.overview.target_date)}
-              placeholder={t(($) => $.overview.target_date)}
-              disabled={readOnly}
-              displayClassName="text-white"
-            />
-          </div>
         </div>
       </section>
 
@@ -481,6 +548,7 @@ export function CockpitOverview({
                   node={node}
                   nodeCode={dispCode(node)}
                   countdownFrom={milestone.id === countdownMilestoneId ? today : null}
+                  today={today}
                   fallbackDate={board.cockpit.goal_date}
                   onPatch={(patch) => onPatchMilestone(milestone.id, patch)}
                   onDelete={() => onDeleteMilestone(milestone.id)}
@@ -505,6 +573,7 @@ export function CockpitOverview({
               readOnly={readOnly}
               emptyLabel={emptyLabel}
               onOpenBranch={onOpenBranch}
+              onOpenModule={onOpenModule}
               onPatchNode={onPatchNode}
             />
           ))}
@@ -520,6 +589,7 @@ export function CockpitOverview({
               readOnly={readOnly}
               emptyLabel={emptyLabel}
               onOpenBranch={onOpenBranch}
+              onOpenModule={onOpenModule}
               onPatchNode={onPatchNode}
             />
           ))}
@@ -544,7 +614,7 @@ export function CockpitOverview({
               ? t(($) => $.overview.lead_milestones, { n: digest.overall.milestoneCount })
               : null,
             digest.overall.paidCount > 0
-              ? t(($) => $.overview.lead_paid, { amount: formatAmount(digest.overall.paidAmount) })
+              ? t(($) => $.overview.lead_paid, { amount: formatWan(digest.overall.paidAmount) })
               : null,
           ])}
           items={digest.overall.items}
@@ -553,9 +623,8 @@ export function CockpitOverview({
               ? t(($) => $.overview.more_detail)
               : null
           }
-          emptyLabel={t(($) => $.empty.no_recent_done)}
+          emptyLabel={t(($) => $.overview.empty_recent)}
           dispCode={dispCode}
-          moduleCode={moduleCode}
           onCommit={(summary_overall) => onPatchBoard({ summary_overall })}
           onOpenTask={onOpenTask}
           onOpenCode={openByCode}
@@ -577,7 +646,7 @@ export function CockpitOverview({
               : null,
             digest.next.plannedCount > 0
               ? t(($) => $.overview.lead_planned, {
-                  amount: formatAmount(digest.next.plannedAmount),
+                  amount: formatWan(digest.next.plannedAmount),
                 })
               : null,
           ])}
@@ -587,9 +656,8 @@ export function CockpitOverview({
               ? t(($) => $.overview.more_items, { n: digest.next.totalCount })
               : null
           }
-          emptyLabel={t(($) => $.empty.no_upcoming)}
+          emptyLabel={t(($) => $.overview.empty_next)}
           dispCode={dispCode}
-          moduleCode={moduleCode}
           locale={locale}
           onCommit={(summary_next) => onPatchBoard({ summary_next })}
           onOpenTask={onOpenTask}
@@ -623,7 +691,6 @@ export function CockpitOverview({
           }
           emptyLabel={t(($) => $.empty.no_support_needed)}
           dispCode={dispCode}
-          moduleCode={moduleCode}
           tone="destructive"
           onCommit={(summary_support) => onPatchBoard({ summary_support })}
           onOpenTask={onOpenTask}
@@ -640,241 +707,253 @@ export function CockpitOverview({
             // so it carries the gold the board reserves for budget.
             {
               key: "budget",
-              label: t(($) => $.finance.budget),
+              label: t(($) => $.overview.fin_budget),
               value: finance.budget,
-              note: null,
+              title: null as string | null,
               className: "text-budget",
             },
             {
               key: "planned",
-              label: t(($) => $.finance.planned),
+              label: t(($) => $.overview.fin_planned, { n: finance.lineCount }),
               value: finance.planned,
-              note: t(($) => $.finance.line_count, { n: finance.lineCount }),
+              title: null,
               className: "",
             },
             {
               key: "actual",
-              label: t(($) => $.finance.actual),
+              label: t(($) => $.overview.fin_actual, { n: finance.paidLineCount }),
               value: finance.actual,
-              note: t(($) => $.finance.line_count, { n: finance.paidLineCount }),
+              // The fully-paid basis is reference, not headline: it rides in
+              // the tooltip, like the prototype's title hint.
+              title: t(($) => $.finance.actual_basis),
               className: "text-success",
             },
             {
               key: "outstanding",
-              label: t(($) => $.finance.outstanding),
+              label: t(($) => $.overview.fin_outstanding),
               value: finance.outstanding,
-              note: null,
+              title: null,
               className: "",
             },
           ].map((cell) => (
-            <div key={cell.key} className="rounded-md border border-border p-3">
-              <dt className="text-caption text-muted-foreground">
-                {cell.label}
-                {cell.note && <span className="ml-1 text-micro">· {cell.note}</span>}
-              </dt>
+            <div
+              key={cell.key}
+              className="rounded-md border border-border p-3"
+              title={cell.title ?? undefined}
+            >
+              <dt className="text-caption text-muted-foreground">{cell.label}</dt>
               <dd className={cn("mt-1 text-title font-semibold tabular-nums", cell.className)}>
-                {formatAmount(cell.value)}
+                {formatWan(cell.value)}
               </dd>
             </div>
           ))}
         </dl>
-        <p className="mt-1.5 text-micro text-muted-foreground">
-          {t(($) => $.finance.actual_basis)}
-        </p>
 
-        {finance.byModule.length > 0 && (
-          <table className="mt-3 w-full text-caption">
-            <thead>
-              <tr className="border-b border-border text-left text-micro text-muted-foreground">
-                <th className="py-1 font-medium">{t(($) => $.table.module)}</th>
-                <th className="py-1 text-right font-medium">{t(($) => $.finance.line_header)}</th>
-                <th className="py-1 text-right font-medium">
-                  {t(($) => $.table.planned_amount)}
-                </th>
-                <th className="py-1 text-right font-medium">{t(($) => $.table.actual_amount)}</th>
+        <table className="mt-3 w-full text-caption">
+          <thead>
+            <tr className="border-b border-border text-left text-micro text-muted-foreground">
+              <th className="py-1 font-medium">{t(($) => $.table.module)}</th>
+              <th className="py-1 text-right font-medium">{t(($) => $.finance.line_header)}</th>
+              <th className="py-1 text-right font-medium">{t(($) => $.table.planned_amount)}</th>
+              <th className="py-1 text-right font-medium">{t(($) => $.table.actual_amount)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {finance.byModule.map((module) => (
+              <tr key={module.code} className="border-b border-border/60 last:border-0">
+                <td className="py-1">
+                  <span
+                    aria-hidden
+                    className="mr-1.5 inline-block size-1.5 rounded-full align-middle"
+                    style={{ backgroundColor: module.color || "var(--color-muted-foreground)" }}
+                  />
+                  <span className="font-mono text-micro text-muted-foreground">
+                    {moduleCode(module.code)}
+                  </span>{" "}
+                  {module.name}
+                </td>
+                <td className="py-1 text-right tabular-nums">{module.lineCount}</td>
+                <td className="py-1 text-right tabular-nums">{formatWan(module.planned)}</td>
+                <td className="py-1 text-right tabular-nums">{formatWan(module.actual)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {finance.byModule.map((module) => (
-                <tr key={module.code} className="border-b border-border/60 last:border-0">
-                  <td className="py-1">
-                    <span
-                      aria-hidden
-                      className="mr-1.5 inline-block size-1.5 rounded-full align-middle"
-                      style={{ backgroundColor: module.color || "var(--color-muted-foreground)" }}
-                    />
-                    <span className="font-mono text-micro text-muted-foreground">
-                      {moduleCode(module.code)}
-                    </span>{" "}
-                    {module.name}
-                  </td>
-                  <td className="py-1 text-right tabular-nums">{module.lineCount}</td>
-                  <td className="py-1 text-right tabular-nums">{formatAmount(module.planned)}</td>
-                  <td className="py-1 text-right tabular-nums">{formatAmount(module.actual)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+            ))}
+            {finance.byModule.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-3 text-center text-muted-foreground">
+                  {t(($) => $.overview.fin_empty)}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
 
-        {months.length > 0 && (
+        {chartMonths.length > 0 && (
           <>
             <div className="mt-4 mb-1 text-caption font-medium">
               {t(($) => $.finance.month_chart)}
               <span className="ml-2 font-normal text-muted-foreground">
-                {t(($) => $.finance.month_basis)}
+                {t(($) => $.overview.month_note)}
               </span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {months.map((month) => (
-                <div
-                  key={month.month}
-                  className="flex min-w-32 flex-1 flex-col rounded-md border border-border bg-card p-2.5"
-                >
-                  <div className="text-micro text-muted-foreground tabular-nums">{month.month}</div>
-                  <div className="mt-0.5 text-body font-semibold tabular-nums">
-                    {month.amount > 0 ? formatAmount(month.amount) : "—"}
-                  </div>
-                  {/* The stacked column: instalments of this month by module
-                      colour, one segment per root. */}
-                  <div className="mt-2 flex h-20 items-end justify-center">
-                    {month.amount > 0 ? (
-                      <div className="flex w-6 flex-col-reverse overflow-hidden rounded-t-sm">
-                        {month.byModule.map((share) => (
-                          <div
-                            key={share.code}
-                            title={`${moduleCode(share.code)} ${formatAmount(share.amount)}`}
-                            style={{
-                              height: `${(share.amount / maxMonthAmount) * 100}%`,
-                              backgroundColor: share.color || "var(--color-muted-foreground)",
-                            }}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-micro text-muted-foreground">—</span>
-                    )}
-                  </div>
-                  <div className="mt-1.5 flex flex-col gap-0.5">
-                    {month.byModule.length > 0 ? (
-                      month.byModule.map((share) => (
-                        <div
-                          key={share.code}
-                          className="flex items-center gap-1 text-micro tabular-nums"
-                        >
-                          <span
-                            className="size-1.5 rounded-full"
-                            style={{
-                              backgroundColor: share.color || "var(--color-muted-foreground)",
-                            }}
-                            aria-hidden
-                          />
-                          <span className="text-muted-foreground">{moduleCode(share.code)}</span>
-                          <span className="ml-auto font-medium">{formatAmount(share.amount)}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-micro text-muted-foreground">—</span>
-                    )}
-                  </div>
-                  {/* Planned against actual: what the month's spend lines are
-                      worth, and how much of it has actually gone out. The
-                      paler tail on the second track is the part still only
-                      planned. */}
-                  <div className="mt-2 border-t border-border pt-1.5">
-                    <div className="flex items-baseline justify-between text-micro">
-                      <span className="text-muted-foreground">
-                        {t(($) => $.finance.planned_short)}
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        {month.plannedSpend > 0 ? formatAmount(month.plannedSpend) : "—"}
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-info transition-[width] duration-300"
-                        style={{
-                          width:
-                            maxMonthSpend > 0
-                              ? `${(month.plannedSpend / maxMonthSpend) * 100}%`
-                              : "0%",
-                        }}
-                      />
-                    </div>
-                    <div className="mt-1.5 flex items-baseline justify-between text-micro">
-                      <span className="text-muted-foreground">
-                        {t(($) => $.finance.actual_short)}
-                      </span>
-                      <span
-                        className={cn(
-                          "font-medium tabular-nums",
-                          month.actualSpend > 0 && "text-success",
-                        )}
-                      >
-                        {month.actualSpend > 0 ? formatAmount(month.actualSpend) : "—"}
-                        {month.projectedSpend > 0 && (
-                          <span className="ml-1 font-normal text-muted-foreground">
-                            {t(($) => $.finance.plus_projected, {
-                              amount: formatAmount(month.projectedSpend),
-                            })}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div
-                      className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-muted"
-                      title={t(($) => $.finance.actual_track, {
-                        n: month.actualCount,
-                        amount: formatAmount(month.actualSpend),
-                      })}
-                    >
-                      <div
-                        className="h-full bg-success transition-[width] duration-300"
-                        style={{
-                          width:
-                            maxMonthSpend > 0
-                              ? `${(month.actualSpend / maxMonthSpend) * 100}%`
-                              : "0%",
-                        }}
-                      />
-                      <div
-                        className="h-full bg-success/35 transition-[width] duration-300"
-                        style={{
-                          width:
-                            maxMonthSpend > 0
-                              ? `${(month.projectedSpend / maxMonthSpend) * 100}%`
-                              : "0%",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-2 border-t border-border pt-1.5">
+              {chartMonths.map((month) => {
+                // Ascending by module code — the order the summary table and
+                // the gantt read modules in, not a ranking by amount.
+                const shares = [...month.byModule].sort((a, b) => a.code.localeCompare(b.code));
+                const donePct =
+                  month.dueCount > 0
+                    ? `${Math.round((month.doneCount / month.dueCount) * 100)}%`
+                    : "—";
+                return (
+                  <div
+                    key={month.month}
+                    className="flex min-w-32 flex-1 flex-col rounded-md border border-border bg-card p-2.5"
+                  >
                     <div className="text-micro text-muted-foreground tabular-nums">
-                      {t(($) => $.finance.month_tasks, {
-                        done: month.doneCount,
-                        total: month.dueCount,
-                      })}
-                      {month.activeCount > 0 && (
-                        <>
-                          {" · "}
-                          {t(($) => $.finance.month_active, { n: month.activeCount })}
-                        </>
+                      {monthLabel(month.month, locale)}
+                    </div>
+                    <div className="mt-0.5 text-body font-semibold tabular-nums">
+                      {month.amount > 0 ? formatWan(month.amount) : "—"}
+                    </div>
+                    {/* The stacked column: instalments of this month by module
+                        colour, one segment per root. */}
+                    <div className="mt-2 flex h-20 items-end justify-center">
+                      {month.amount > 0 ? (
+                        <div className="flex w-6 flex-col-reverse overflow-hidden rounded-t-sm">
+                          {shares.map((share) => (
+                            <div
+                              key={share.code}
+                              title={`${moduleCode(share.code)} ${formatWan(share.amount)}`}
+                              style={{
+                                height: `${(share.amount / maxMonthAmount) * 100}%`,
+                                backgroundColor: share.color || "var(--color-muted-foreground)",
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-micro text-muted-foreground">—</span>
                       )}
                     </div>
-                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      {shares.length > 0 ? (
+                        shares.map((share) => (
+                          <div
+                            key={share.code}
+                            className="flex items-center gap-1 text-micro tabular-nums"
+                          >
+                            <span
+                              className="size-1.5 rounded-full"
+                              style={{
+                                backgroundColor: share.color || "var(--color-muted-foreground)",
+                              }}
+                              aria-hidden
+                            />
+                            <span className="text-muted-foreground">{moduleCode(share.code)}</span>
+                            <span className="ml-auto font-medium">{formatWan(share.amount)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-micro text-muted-foreground">—</span>
+                      )}
+                    </div>
+                    {/* Planned against actual: what the month's spend lines are
+                        worth, and how much of it has actually gone out. The
+                        paler tail on the second track is the part still only
+                        planned. */}
+                    <div className="mt-2 border-t border-border pt-1.5">
+                      <div className="flex items-baseline justify-between text-micro">
+                        <span className="text-muted-foreground">
+                          {t(($) => $.finance.planned_short)}
+                        </span>
+                        <span className="font-medium tabular-nums">
+                          {month.plannedSpend > 0 ? formatWan(month.plannedSpend) : "—"}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-info transition-[width] duration-300"
+                          style={{
+                            width:
+                              maxMonthSpend > 0
+                                ? `${(month.plannedSpend / maxMonthSpend) * 100}%`
+                                : "0%",
+                          }}
+                        />
+                      </div>
+                      <div className="mt-1.5 flex items-baseline justify-between text-micro">
+                        <span className="text-muted-foreground">
+                          {t(($) => $.finance.actual_short)}
+                        </span>
+                        <span
+                          className={cn(
+                            "font-medium tabular-nums",
+                            month.actualSpend > 0 && "text-success",
+                          )}
+                        >
+                          {month.actualSpend > 0 ? formatWan(month.actualSpend) : "—"}
+                          {month.projectedSpend > 0 && (
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              {t(($) => $.finance.plus_projected, {
+                                amount: formatWan(month.projectedSpend),
+                              })}
+                            </span>
+                          )}
+                        </span>
+                      </div>
                       <div
-                        className="h-full rounded-full bg-success transition-[width] duration-300"
-                        style={{
-                          width:
-                            month.dueCount > 0
-                              ? `${Math.round((month.doneCount / month.dueCount) * 100)}%`
-                              : "0%",
-                        }}
-                      />
+                        className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-muted"
+                        title={t(($) => $.finance.actual_track, {
+                          n: month.actualCount,
+                          amount: formatWan(month.actualSpend),
+                        })}
+                      >
+                        <div
+                          className="h-full bg-success transition-[width] duration-300"
+                          style={{
+                            width:
+                              maxMonthSpend > 0
+                                ? `${(month.actualSpend / maxMonthSpend) * 100}%`
+                                : "0%",
+                          }}
+                        />
+                        <div
+                          className="h-full bg-success/35 transition-[width] duration-300"
+                          style={{
+                            width:
+                              maxMonthSpend > 0
+                                ? `${(month.projectedSpend / maxMonthSpend) * 100}%`
+                                : "0%",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 border-t border-border pt-1.5">
+                      <div className="text-micro text-muted-foreground tabular-nums">
+                        {t(($) => $.overview.month_progress, { pct: donePct })}
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-success transition-[width] duration-300"
+                          style={{
+                            width:
+                              month.dueCount > 0
+                                ? `${Math.round((month.doneCount / month.dueCount) * 100)}%`
+                                : "0%",
+                          }}
+                        />
+                      </div>
+                      <div className="mt-1 text-micro text-muted-foreground tabular-nums">
+                        {t(($) => $.overview.month_detail, {
+                          due: month.dueCount,
+                          done: month.doneCount,
+                          doing: month.activeCount,
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -891,6 +970,8 @@ interface ModuleCardProps {
   readOnly?: boolean;
   emptyLabel: string;
   onOpenBranch: (nodeId: string) => void;
+  /** When the host wires it, the whole card opens the module's gantt slice. */
+  onOpenModule?: (rootCode: string) => void;
   onPatchNode: (id: string, patch: CockpitNodePatch) => void;
 }
 
@@ -902,6 +983,7 @@ function ModuleBigCard({
   readOnly,
   emptyLabel,
   onOpenBranch,
+  onOpenModule,
   onPatchNode,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
@@ -910,15 +992,26 @@ function ModuleBigCard({
   const pct = rollup?.live.doneRatio ?? Math.round(entry.node.progress);
   const color = entry.color || "var(--color-brand)";
   const highlights = useMemo(() => cockpitModuleHighlights(entry, today), [entry, today]);
+  const interaction = onOpenModule
+    ? moduleCardInteraction(
+        entry.node.code,
+        t(($) => $.overview.open_module_card, { code }),
+        onOpenModule,
+      )
+    : undefined;
   return (
     <article
-      className="rounded-lg border border-border bg-card p-4"
+      className={cn("rounded-lg border border-border bg-card p-4", interaction && "cursor-pointer")}
       style={{ borderTopColor: color, borderTopWidth: 4 }}
+      {...interaction}
     >
       <div className="flex items-baseline gap-2">
         <button
           type="button"
-          onClick={() => onOpenBranch(entry.node.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenBranch(entry.node.id);
+          }}
           aria-label={t(($) => $.overview.open_module, { code })}
           className="font-mono text-micro font-medium hover:underline"
           style={{ color }}
@@ -965,7 +1058,7 @@ function ModuleBigCard({
         </div>
         <div className="rounded-md bg-muted/50 p-2 text-center">
           <dd className="text-body font-semibold text-budget tabular-nums">
-            {(rollup?.budget ?? 0) > 0 ? formatAmount(rollup!.budget) : "—"}
+            {(rollup?.budget ?? 0) > 0 ? formatWan(rollup!.budget) : "—"}
           </dd>
           <dt className="text-micro text-muted-foreground">{t(($) => $.overview.budget)}</dt>
         </div>
@@ -1004,20 +1097,32 @@ function ModuleSmallCard({
   readOnly,
   emptyLabel,
   onOpenBranch,
+  onOpenModule,
   onPatchNode,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
   const pct = rollup?.live.doneRatio ?? Math.round(entry.node.progress);
   const color = entry.color || "var(--color-brand)";
+  const interaction = onOpenModule
+    ? moduleCardInteraction(
+        entry.node.code,
+        t(($) => $.overview.open_module_card, { code }),
+        onOpenModule,
+      )
+    : undefined;
   return (
     <article
-      className="rounded-lg border border-border bg-card p-3"
+      className={cn("rounded-lg border border-border bg-card p-3", interaction && "cursor-pointer")}
       style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+      {...interaction}
     >
       <div className="flex items-baseline gap-2">
         <button
           type="button"
-          onClick={() => onOpenBranch(entry.node.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenBranch(entry.node.id);
+          }}
           aria-label={t(($) => $.overview.open_module, { code })}
           className="font-mono text-micro font-medium hover:underline"
           style={{ color }}
@@ -1039,17 +1144,16 @@ function ModuleSmallCard({
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-      <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-micro text-muted-foreground tabular-nums">
-        <div className="flex gap-1">
-          <dt>{t(($) => $.overview.tasks)}</dt>
-          <dd className="font-medium text-foreground">
-            {rollup?.live.doneCount ?? 0}/{rollup?.live.leafCount ?? 0}
-          </dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>{t(($) => $.overview.progress)}</dt>
-          <dd className="font-medium text-foreground">{pct}%</dd>
-        </div>
+      {/* "5/8 项 · 63% · 负责 李林" — the one line the prototype's compact
+          cards carry; the owner stays editable inside it. */}
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-micro text-muted-foreground tabular-nums">
+        <span>
+          {t(($) => $.overview.small_summary, {
+            done: rollup?.live.doneCount ?? 0,
+            total: rollup?.live.leafCount ?? 0,
+            pct,
+          })}
+        </span>
         <EditableText
           value={entry.node.owner}
           onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
@@ -1058,7 +1162,7 @@ function ModuleSmallCard({
           disabled={readOnly}
           displayClassName="text-micro text-muted-foreground"
         />
-      </dl>
+      </div>
     </article>
   );
 }
@@ -1069,6 +1173,7 @@ function MilestoneCard({
   nodeCode,
   countdownFrom,
   fallbackDate,
+  today,
   onPatch,
   onDelete,
   readOnly,
@@ -1079,6 +1184,7 @@ function MilestoneCard({
   /** Today, when this milestone carries the board's countdown; null otherwise. */
   countdownFrom: string | null;
   fallbackDate: string | null;
+  today: string;
   onPatch: (patch: CockpitMilestonePatch) => void;
   onDelete: () => void;
   readOnly?: boolean;
@@ -1121,31 +1227,38 @@ function MilestoneCard({
           disabled={readOnly}
           displayClassName="mt-1 font-medium"
         />
-        {/* One date line: the date that matters is the one it landed on, or
-            the one it is due on while it has not. */}
+        {/* One date line: the date it landed on once it has — falling back to
+            the plan when nobody recorded it — otherwise the date it is due.
+            An open milestone does not carry an empty completion field. */}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-micro">
           <span className="text-muted-foreground">
-            {done ? t(($) => $.milestone.actual) : t(($) => $.milestone.plan)}
+            {done
+              ? t(($) => $.overview.milestone_done_date)
+              : t(($) => $.overview.milestone_plan_date)}
           </span>
           <EditableDate
-            value={done ? milestone.actual_date : milestone.plan_date}
+            value={done ? (milestone.actual_date ?? milestone.plan_date) : milestone.plan_date}
             onCommit={(value) => onPatch(done ? { actual_date: value } : { plan_date: value })}
-            label={done ? t(($) => $.milestone.actual) : t(($) => $.milestone.plan)}
+            label={
+              done
+                ? t(($) => $.overview.milestone_done_date)
+                : t(($) => $.overview.milestone_plan_date)
+            }
             placeholder={t(($) => $.common.unset)}
             disabled={readOnly}
             displayClassName="font-medium"
           />
-          {!done && (
-            <>
-              <span className="text-muted-foreground">{t(($) => $.milestone.actual)}</span>
-              <EditableDate
-                value={milestone.actual_date}
-                onCommit={(actual_date) => onPatch({ actual_date })}
-                label={t(($) => $.milestone.actual)}
-                placeholder={t(($) => $.common.unset)}
-                disabled={readOnly}
-              />
-            </>
+          {/* The card is the only place a milestone is edited, so an open one
+              still needs its way across the finish line: recording the day it
+              landed. Clearing the date on a done card reopens it. */}
+          {!done && !readOnly && (
+            <button
+              type="button"
+              onClick={() => onPatch({ actual_date: today })}
+              className="rounded-sm border border-border px-1 text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              {t(($) => $.overview.mark_done)}
+            </button>
           )}
         </div>
         {daysLeft !== null && (
@@ -1193,7 +1306,6 @@ function DigestCard({
   overflow,
   emptyLabel,
   dispCode,
-  moduleCode,
   locale,
   onCommit,
   readOnly,
@@ -1213,8 +1325,6 @@ function DigestCard({
   overflow: string | null;
   emptyLabel: string;
   dispCode: (node: CockpitNode | null | undefined) => string;
-  /** A root node's own code to the code the board shows for it. */
-  moduleCode: (rootCode: string) => string;
   /** Only the dated card needs it. */
   locale?: string;
   onCommit: (next: string) => void;
@@ -1266,18 +1376,12 @@ function DigestCard({
                   code={item.kind === "task" ? dispCode(item.node) : undefined}
                   icon={item.kind === "milestone" ? "🎯" : item.kind === "payment" ? "💰" : undefined}
                   title={item.title}
-                  tag={
-                    item.kind === "milestone"
-                      ? t(($) => $.overview.tag_milestone)
-                      : item.rootCode
-                        ? moduleCode(item.rootCode)
-                        : undefined
-                  }
+                  tag={item.kind === "milestone" ? t(($) => $.overview.tag_milestone) : undefined}
                   badge={
                     item.progress != null
                       ? `${Math.round(item.progress)}%`
                       : item.amount != null
-                        ? formatAmount(item.amount)
+                        ? formatWan(item.amount)
                         : undefined
                   }
                   tone={tone}
@@ -1344,12 +1448,12 @@ function MeetingsCard({
         : [],
     );
     if (inWeek.size > 0) return { shown: sorted.filter((m) => inWeek.has(m)), thisWeek: inWeek };
-    // Nothing this week — lead with the next one on the calendar, and failing
-    // that with the last one held. A meeting log that goes blank because the
-    // working group skipped a week is the one thing it must not do.
+    // Nothing this week — lead with the next one on the calendar, and say so
+    // plainly when there is none either. History stays where it belongs,
+    // behind the "show all" toggle.
     const next = sorted.find((m) => m.meet_date && m.meet_date > today);
     if (next) return { shown: [next], thisWeek: inWeek };
-    return { shown: sorted.slice(-2), thisWeek: inWeek };
+    return { shown: [], thisWeek: inWeek };
   }, [meetings, today]);
 
   const list = showAll ? [...meetings] : shown;
@@ -1370,7 +1474,7 @@ function MeetingsCard({
       }
     >
       {list.length === 0 ? (
-        <p className="text-body text-muted-foreground">{t(($) => $.empty.no_meetings)}</p>
+        <p className="text-body text-muted-foreground">{t(($) => $.overview.meetings_empty)}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {list.map((meeting) => (
@@ -1424,52 +1528,65 @@ function MeetingRow({
   readOnly?: boolean;
 }) {
   const { t } = useT("cockpit");
-  const [open, setOpen] = useState(false);
+  // The row opens the read-only detail dialog; the inline editor is reached
+  // from the dialog's footer, so editing stays one hop from reading.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const date = parseDay(meeting.meet_date);
+  // Agenda lines are written as a list, one bullet per line or semicolon.
+  const agenda = useMemo(
+    () =>
+      meeting.note
+        .split(/\n|;|；/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    [meeting.note],
+  );
 
   return (
-    <li className="group/meet flex gap-2.5 py-2">
-      {/* A calendar chip reads faster than an ISO date in a list of five. */}
-      <div className="flex size-9 shrink-0 flex-col items-center justify-center rounded-md border border-border bg-muted/50 leading-none">
-        <b className="text-caption tabular-nums">{date ? date.getUTCDate() : "--"}</b>
-        <span className="text-micro text-muted-foreground">
-          {date ? date.toLocaleDateString(locale, { month: "short" }) : ""}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            className="min-w-0 flex-1 truncate text-left font-medium hover:underline"
-          >
-            {meeting.title || t(($) => $.meeting.title_placeholder)}
-          </button>
-          {tag && (
-            <span className="shrink-0 rounded-sm border border-border px-1 text-micro text-muted-foreground">
-              {tag}
+    <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <li className="group/meet">
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={t(($) => $.meeting.details, {
+            title: meeting.title || t(($) => $.meeting.title_placeholder),
+          })}
+          onClick={() => setDetailOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            setDetailOpen(true);
+          }}
+          className="flex cursor-pointer gap-2.5 rounded-sm py-2 hover:bg-accent"
+        >
+          {/* A calendar chip reads faster than an ISO date in a list of five. */}
+          <div className="flex size-9 shrink-0 flex-col items-center justify-center rounded-md border border-border bg-muted/50 leading-none">
+            <b className="text-caption tabular-nums">{date ? date.getUTCDate() : "--"}</b>
+            <span className="text-micro text-muted-foreground">
+              {date ? date.toLocaleDateString(locale, { month: "short" }) : ""}
             </span>
-          )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="min-w-0 flex-1 truncate text-left font-medium">
+                {meeting.title || t(($) => $.meeting.title_placeholder)}
+              </span>
+              {tag && (
+                <span className="shrink-0 rounded-sm border border-border px-1 text-micro text-muted-foreground">
+                  {tag}
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-micro text-muted-foreground">
+              <span>⏰ {meeting.time_range || t(($) => $.common.unset)}</span>
+              <span>👥 {meeting.attendees || t(($) => $.common.unset)}</span>
+              {meeting.meet_no && <span>#{meeting.meet_no}</span>}
+            </div>
+          </div>
         </div>
-        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-micro text-muted-foreground">
-          <span>⏰ {meeting.time_range || t(($) => $.common.unset)}</span>
-          <span>👥 {meeting.attendees || t(($) => $.common.unset)}</span>
-          {meeting.meet_no && <span>#{meeting.meet_no}</span>}
-          {meeting.link && (
-            <a
-              href={meeting.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-brand hover:underline"
-            >
-              {t(($) => $.meeting.open)}
-              <ExternalLink className="size-3" />
-            </a>
-          )}
-        </div>
-        {open && (
-          <div className="mt-2 flex flex-col gap-1 rounded-md border border-border p-2">
+        {editOpen && (
+          <div className="mb-2 flex flex-col gap-1 rounded-md border border-border p-2">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <EditableDate
                 value={meeting.meet_date}
@@ -1518,7 +1635,53 @@ function MeetingRow({
             )}
           </div>
         )}
-      </div>
-    </li>
+      </li>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{meeting.title || t(($) => $.meeting.title_placeholder)}</DialogTitle>
+        </DialogHeader>
+        <p className="text-caption text-muted-foreground">
+          ⏰ {meeting.meet_date || t(($) => $.meeting.date)}
+          {meeting.time_range ? ` ${meeting.time_range}` : ""}
+        </p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
+          <dt className="text-muted-foreground">{t(($) => $.meeting.attendees)}</dt>
+          <dd className="min-w-0">{meeting.attendees || t(($) => $.common.unset)}</dd>
+          <dt className="text-muted-foreground">{t(($) => $.meeting.meet_no)}</dt>
+          <dd className="min-w-0 font-medium tracking-wide">
+            {meeting.meet_no || t(($) => $.common.unset)}
+          </dd>
+        </dl>
+        <div className="flex flex-col gap-1 text-caption">
+          {agenda.length > 0 ? (
+            agenda.map((line) => (
+              <p key={line}>• {line}</p>
+            ))
+          ) : (
+            <p className="text-muted-foreground">{t(($) => $.meeting.no_agenda)}</p>
+          )}
+        </div>
+        <DialogFooter>
+          {!readOnly && (
+            <DialogClose
+              render={
+                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} />
+              }
+            >
+              {t(($) => $.meeting.edit)}
+            </DialogClose>
+          )}
+          {meeting.link && (
+            <Button
+              size="sm"
+              render={<a href={meeting.link} target="_blank" rel="noopener noreferrer" />}
+            >
+              {t(($) => $.meeting.open)}
+              <ExternalLink className="size-3.5" />
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
