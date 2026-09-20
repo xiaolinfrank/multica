@@ -437,8 +437,8 @@ func writeRepositories(b *strings.Builder, ctx TaskContextForEnv) {
 // an active project. Project context is independent of the task surface: an
 // issue inherits it from its project, while a chat receives it from the
 // project selected on the chat session.
-func writeProjectContext(b *strings.Builder, ctx TaskContextForEnv) {
-	if ctx.ProjectID == "" && len(ctx.ProjectResources) == 0 {
+func writeProjectContext(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
+	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 {
 		return
 	}
 	b.WriteString("## Project Context\n\n")
@@ -450,6 +450,7 @@ func writeProjectContext(b *strings.Builder, ctx TaskContextForEnv) {
 		b.WriteString(desc)
 		b.WriteString("\n\n")
 	}
+	writeModuleContext(b, ctx)
 	if len(ctx.ProjectResources) > 0 {
 		b.WriteString("Project resources (also written to `.multica/project/resources.json`):\n\n")
 		for _, r := range ctx.ProjectResources {
@@ -460,6 +461,79 @@ func writeProjectContext(b *strings.Builder, ctx TaskContextForEnv) {
 	} else {
 		b.WriteString("This project has no resources attached yet.\n\n")
 	}
+	// Last in the section on purpose: it answers "where does the finished work
+	// go", which is the question the agent carries out of Project Context.
+	writeCollaborationSpace(b, kind, ctx)
+}
+
+// writeModuleContext names the issue's module inside the Project Context
+// section. Modules subdivide a project (fork-only) and only issues carry one,
+// so this stays nested under the project rather than owning a section: an agent
+// that has a module always has the project it belongs to.
+func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
+	if ctx.ModuleID == "" {
+		return
+	}
+	if ctx.ModuleTitle != "" {
+		fmt.Fprintf(b, "Within that project, this task belongs to the module **%s**.\n\n", ctx.ModuleTitle)
+	}
+	if desc := strings.TrimSpace(ctx.ModuleDescription); desc != "" {
+		b.WriteString("Module description — durable context for work in this module:\n\n")
+		b.WriteString(desc)
+		b.WriteString("\n\n")
+	}
+}
+
+// writeCollaborationSpace emits the shared-storage directories the project and
+// module bind to ("人机协作空间路径").
+//
+// This is the one filesystem path in the brief an agent is allowed to deliver
+// to, which is why it states the contrast with the working directory in full:
+// writeDeliveryInvariant otherwise tells the agent that absolute paths are
+// never deliverables, and an agent that reads only that rule refuses to use the
+// space the team set up for it.
+//
+// The daemon does not check that the directory exists. The value is resolved on
+// whichever host runs the task, so a missing mount is a host problem the agent
+// must report rather than route around — silently writing the file somewhere
+// else is what loses the deliverable.
+func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
+	project := strings.TrimSpace(ctx.ProjectCollabPath)
+	module := strings.TrimSpace(ctx.ModuleCollabPath)
+	if project == "" && module == "" {
+		return
+	}
+	b.WriteString("### Collaboration Space\n\n")
+	b.WriteString("Shared storage where this team's people and agents exchange finished work. It is NOT your working directory: it lives on a share the people on this project can open.\n\n")
+	if project != "" {
+		fmt.Fprintf(b, "- Project: `%s`\n", project)
+	}
+	if module != "" {
+		fmt.Fprintf(b, "- Module: `%s`\n", module)
+	}
+	b.WriteString("\n")
+	if module != "" && project != "" {
+		b.WriteString("Use the module directory — it is the narrower of the two. ")
+	} else {
+		b.WriteString("Use that directory. ")
+	}
+	b.WriteString("Deliverable files (reports, datasets, decks, exports) go there, in a subdirectory when the task warrants one. Working notes, scratch files and checkouts stay in your working directory.\n\n")
+	// Whether the agent may NAME the path it wrote is a property of the
+	// surface, not of the collaboration space, and `## Output` is what decides
+	// it. Quick-create in particular forbids any commentary beyond one
+	// templated line, so a blanket "name it in your comment" here would order
+	// the agent to break a hard guardrail in the same brief.
+	switch kind {
+	case kindQuickCreate:
+		b.WriteString("Do not name the path in your output: this surface allows only the single line `## Output` specifies. The location is recorded on the project, so a person can find the file without you repeating it.\n\n")
+	case kindChat:
+		b.WriteString("Name the path you wrote in your reply, as plain text, so the reader can open it.\n\n")
+	case kindAutopilotRunOnly:
+		b.WriteString("Name the path you wrote in your run result, as plain text, so a person can open it.\n\n")
+	default:
+		b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
+	}
+	b.WriteString("If the directory is missing, the shared storage is not mounted on this machine: report that where this surface lets you (see `## Output`) and leave the file in your working directory. Never substitute a nearby path — a deliverable written somewhere else is a deliverable nobody finds.\n\n")
 }
 
 // writeInstructionPrecedence emits the "Agent Identity wins over the issue
@@ -904,8 +978,15 @@ func writeAlwaysUseCLI(b *strings.Builder) {
 // every surface, and the per-kind line inside the switch only answers "how do I
 // deliver a file HERE". Keeping them apart stops a new task kind from silently
 // inheriting no invariant at all.
-func writeDeliveryInvariant(b *strings.Builder) {
+func writeDeliveryInvariant(b *strings.Builder, ctx TaskContextForEnv) {
 	b.WriteString("**Runtime-local paths are never deliverables.** Your working directory exists only on the machine running you — NEVER write an absolute path or a `file://` URL as a clickable link or an embedded image. Reference code locations as inline code, never a link: `path/to/file.ts:42`. Deliver files through this surface's mechanism (above); if it has none, say so in words — never link the path and imply the file was delivered.\n\n")
+	// The collaboration space is the single exception, and it is stated here
+	// because this is the rule an agent recalls when it is about to hand a file
+	// over. Emitted only when the task actually has one, so a brief without a
+	// collaboration space stays byte-identical to before this existed.
+	if strings.TrimSpace(ctx.ProjectCollabPath) != "" || strings.TrimSpace(ctx.ModuleCollabPath) != "" {
+		b.WriteString("The one exception is this task's **collaboration space** (see `## Project Context`): shared storage the team reads, not runtime-local. Write the finished file there as well. Whether you may name that path, and where, is stated in that section — and when you may, it is plain text, never a clickable link.\n\n")
+	}
 }
 
 // writeOutput emits the kind-specific Output section: the always-on delivery
@@ -957,7 +1038,7 @@ func writeOutput(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 		b.WriteString("**Delivering files here:** pass `--attachment <path>` to `multica issue comment add` (repeatable) — the only way a screenshot or artifact reaches the reader.\n")
 	}
 	b.WriteString("\n")
-	writeDeliveryInvariant(b)
+	writeDeliveryInvariant(b, ctx)
 }
 
 // buildMetaSkillContentSlim is the post-MUL-3560 brief assembler.
@@ -1014,7 +1095,7 @@ func buildMetaSkillContentSlim(provider string, ctx TaskContextForEnv) string {
 		writeRepositories(&b, ctx)
 	}
 
-	writeProjectContext(&b, ctx)
+	writeProjectContext(&b, kind, ctx)
 
 	if kind == kindIssue {
 		writeInstructionPrecedence(&b)

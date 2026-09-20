@@ -238,10 +238,17 @@ func writeTaskContextMarker(workDir string, ctx TaskContextForEnv, manifest *sid
 // directory. Schema is intentionally a thin pass-through of the API response
 // so consumers (skills, future tooling) don't need a separate parser.
 type projectResourceFile struct {
-	ProjectID          string                  `json:"project_id,omitempty"`
-	ProjectTitle       string                  `json:"project_title,omitempty"`
-	ProjectDescription string                  `json:"project_description,omitempty"`
-	Resources          []ProjectResourceForEnv `json:"resources"`
+	ProjectID          string `json:"project_id,omitempty"`
+	ProjectTitle       string `json:"project_title,omitempty"`
+	ProjectDescription string `json:"project_description,omitempty"`
+	// ProjectCollabPath / Module* mirror the brief's Project Context section so
+	// a skill can read the collaboration space without parsing prose.
+	ProjectCollabPath string                  `json:"project_collab_path,omitempty"`
+	ModuleID          string                  `json:"module_id,omitempty"`
+	ModuleTitle       string                  `json:"module_title,omitempty"`
+	ModuleDescription string                  `json:"module_description,omitempty"`
+	ModuleCollabPath  string                  `json:"module_collab_path,omitempty"`
+	Resources         []ProjectResourceForEnv `json:"resources"`
 }
 
 // MarshalJSON renders the resource_ref field as raw JSON instead of a base64
@@ -274,7 +281,7 @@ func (p ProjectResourceForEnv) MarshalJSON() ([]byte, error) {
 // of created directories and the resources.json file so CleanupSidecars
 // can undo them on local_directory teardown.
 func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *sidecarManifest) error {
-	if ctx.ProjectID == "" && len(ctx.ProjectResources) == 0 {
+	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 {
 		return nil
 	}
 	dir := filepath.Join(workDir, ".multica", "project")
@@ -289,6 +296,11 @@ func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *side
 		ProjectID:          ctx.ProjectID,
 		ProjectTitle:       ctx.ProjectTitle,
 		ProjectDescription: ctx.ProjectDescription,
+		ProjectCollabPath:  ctx.ProjectCollabPath,
+		ModuleID:           ctx.ModuleID,
+		ModuleTitle:        ctx.ModuleTitle,
+		ModuleDescription:  ctx.ModuleDescription,
+		ModuleCollabPath:   ctx.ModuleCollabPath,
 		Resources:          resources,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")

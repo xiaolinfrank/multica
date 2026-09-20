@@ -156,12 +156,21 @@ type TaskContextForEnv struct {
 	AgentInstructions             string // agent identity/persona instructions, injected into CLAUDE.md
 	AgentSkills                   []SkillContextForEnv
 	DisabledRuntimeSkills         []RuntimeSkillRefForEnv
-	Repos                         []RepoContextForEnv     // workspace repos available for checkout
-	ProjectID                     string                  // active project for this task, when present
-	ProjectTitle                  string                  // human-readable project title
-	ProjectDescription            string                  // durable project-level context, rendered into the brief's Project Context section
-	ProjectResources              []ProjectResourceForEnv // resources attached to the project
-	ChatSessionID                 string                  // non-empty for chat tasks
+	Repos                         []RepoContextForEnv // workspace repos available for checkout
+	ProjectID                     string              // active project for this task, when present
+	ProjectTitle                  string              // human-readable project title
+	ProjectDescription            string              // durable project-level context, rendered into the brief's Project Context section
+	// ProjectCollabPath / ModuleCollabPath are shared-storage directories
+	// ("人机协作空间路径") where the team exchanges deliverables. They are
+	// durable configuration like ProjectDescription, not per-run state, so
+	// rendering them into the brief keeps it byte-stable across resumes.
+	ProjectCollabPath string
+	ModuleID          string // issue's module, when present; issue claims only
+	ModuleTitle       string
+	ModuleDescription string
+	ModuleCollabPath  string
+	ProjectResources  []ProjectResourceForEnv // resources attached to the project
+	ChatSessionID     string                  // non-empty for chat tasks
 	// ChatChannelType is the IM platform behind a chat session ("slack",
 	// "feishu", "wecom"); empty for a web/mobile chat. It names the surface in
 	// the brief's copy; what that surface can DELIVER is the separate field

@@ -102,6 +102,11 @@ type Task struct {
 	ProjectID                     string                 `json:"project_id,omitempty"`                       // active project for this task, when present
 	ProjectTitle                  string                 `json:"project_title,omitempty"`                    // human-readable project title for context injection
 	ProjectDescription            string                 `json:"project_description,omitempty"`              // durable project-level context injected into the brief
+	ProjectCollabPath             string                 `json:"project_collab_path,omitempty"`              // shared-storage directory for this project's deliverables
+	ModuleID                      string                 `json:"module_id,omitempty"`                        // issue's module, when present
+	ModuleTitle                   string                 `json:"module_title,omitempty"`                     // for surfacing in agent context
+	ModuleDescription             string                 `json:"module_description,omitempty"`               // durable module-level context injected into the brief
+	ModuleCollabPath              string                 `json:"module_collab_path,omitempty"`               // shared-storage directory for this module's deliverables
 	ProjectResources              []ProjectResourceData  `json:"project_resources,omitempty"`                // project-scoped resources to expose to the agent
 	IsLeaderTask                  bool                   `json:"is_leader_task,omitempty"`                   // true when executing in the squad-leader coordinator role
 	LeaderRoleResolved            bool                   `json:"leader_role_resolved,omitempty"`             // server capability: IsLeaderTask/SquadID authoritatively answer "is this a leader run". Absent on servers predating it — those before #4951 never sent is_leader_task at all, later ones send it without this guarantee — so taskIsSquadLeader falls back to the briefing marker for both (MUL-5811)

@@ -874,6 +874,7 @@ type claimProjectContext struct {
 	ProjectID   string
 	Title       string
 	Description string
+	CollabPath  string
 	Resources   []ProjectResourceData
 	Repos       []RepoData
 }
@@ -885,6 +886,7 @@ func (c claimProjectContext) applyTo(resp *AgentTaskResponse) {
 	resp.ProjectID = c.ProjectID
 	resp.ProjectTitle = c.Title
 	resp.ProjectDescription = c.Description
+	resp.ProjectCollabPath = c.CollabPath
 	if len(c.Resources) > 0 {
 		resp.ProjectResources = c.Resources
 	}
@@ -927,6 +929,7 @@ func (h *Handler) resolveClaimProjectContext(ctx context.Context, projectID, wor
 			out.ProjectID = uuidToString(project.ID)
 			out.Title = project.Title
 			out.Description = project.Description.String
+			out.CollabPath = project.CollabPath.String
 
 			rows, resErr := h.Queries.ListProjectResourcesInWorkspace(ctx, db.ListProjectResourcesInWorkspaceParams{
 				ProjectID:   project.ID,
@@ -964,6 +967,66 @@ func (h *Handler) resolveClaimProjectContext(ctx context.Context, projectID, wor
 		}
 	}
 	return out, nil
+}
+
+// claimModuleContext is the module-scoped context an ISSUE claim adds on top
+// of its project context. Modules subdivide a project (fork-only), and only an
+// issue carries one: chat, autopilot and quick-create tasks reference a project
+// directly and have no module to inherit.
+type claimModuleContext struct {
+	ModuleID    string
+	Title       string
+	Description string
+	CollabPath  string
+}
+
+// applyTo copies the resolved module context onto a claim response. Like
+// claimProjectContext.applyTo it assigns the whole context or none of it, so a
+// claim can never name a module without the path that module points at.
+func (c claimModuleContext) applyTo(resp *AgentTaskResponse) {
+	resp.ModuleID = c.ModuleID
+	resp.ModuleTitle = c.Title
+	resp.ModuleDescription = c.Description
+	resp.ModuleCollabPath = c.CollabPath
+}
+
+// resolveClaimModuleContext loads the module context for one issue claim.
+//
+// Failure rules mirror resolveClaimProjectContext deliberately: a read error is
+// not "no module" and returns an error so the caller can preserve the task for
+// redelivery, while a module that resolves to no row IS "no module" — the
+// reference is stale, deleted, or points outside this workspace, and the claim
+// degrades to project context alone.
+//
+// The projectID cross-check is defense in depth. module.project_id is an
+// application-layer relation with no foreign key, and UpdateIssue clears
+// module_id when an issue changes project; a module that survived pointing at
+// another project would otherwise hand the agent a collaboration path
+// belonging to work it is not doing.
+func (h *Handler) resolveClaimModuleContext(ctx context.Context, moduleID, projectID, workspaceID pgtype.UUID) (claimModuleContext, error) {
+	if !moduleID.Valid {
+		return claimModuleContext{}, nil
+	}
+	module, err := h.Queries.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
+		ID:          moduleID,
+		WorkspaceID: workspaceID,
+	})
+	switch {
+	case err == nil:
+	case errors.Is(err, pgx.ErrNoRows):
+		return claimModuleContext{}, nil
+	default:
+		return claimModuleContext{}, fmt.Errorf("get module: %w", err)
+	}
+	if projectID.Valid && module.ProjectID != projectID {
+		return claimModuleContext{}, nil
+	}
+	return claimModuleContext{
+		ModuleID:    uuidToString(module.ID),
+		Title:       module.Title,
+		Description: module.Description.String,
+		CollabPath:  module.CollabPath.String,
+	}, nil
 }
 
 // projectResourcesForClaim maps resource rows onto the claim wire shape and
