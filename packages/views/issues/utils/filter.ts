@@ -1,4 +1,4 @@
-import type { Issue, IssueStatus, IssuePriority, IssueAssigneeGroup, PropertyFilterValue, PropertyOperatorFilter } from "@multica/core/types";
+import type { Issue, IssueStatus, IssuePriority, IssueAssigneeGroup, ProjectStatus, PropertyFilterValue, PropertyOperatorFilter } from "@multica/core/types";
 import type { ActorFilterValue } from "@multica/core/issues/stores/view-store";
 import type { IssueActivityState } from "../surface/activity";
 
@@ -16,6 +16,14 @@ export interface IssueFilters {
   includeNoProject: boolean;
   moduleFilters: string[];
   includeNoModule: boolean;
+  /** Lifecycle status of the parent project. Needs
+   *  `IssueFilterContext.projectStatusById` to be evaluated — an Issue only
+   *  carries `project_id`. */
+  projectStatusFilters?: ProjectStatus[];
+  /** See IssueFilterContext.projectStatusById. Carried on the filter object
+   *  so the context-free `filterIssues` entry point can evaluate the
+   *  project-status predicate, like `runningIssueIds` does for working-only. */
+  projectStatusById?: ReadonlyMap<string, ProjectStatus>;
   labelFilters: string[];
   /** Custom-property filters: definition id → selected values (OR within
    *  a definition, AND across definitions; checkbox uses "true"/"false"). */
@@ -44,6 +52,8 @@ export interface IssueFilterState {
   includeNoProject: boolean;
   moduleFilters: string[];
   includeNoModule: boolean;
+  /** See IssueFilters.projectStatusFilters. */
+  projectStatusFilters?: ProjectStatus[];
   labelFilters: string[];
   propertyFilters?: Record<string, PropertyFilterValue[]>;
   workingOnly: boolean;
@@ -54,6 +64,10 @@ export interface IssueFilterState {
 export interface IssueFilterContext {
   activityByIssueId?: ReadonlyMap<string, IssueActivityState>;
   runningIssueIds?: ReadonlySet<string>;
+  /** Project id → its lifecycle status, from the workspace project list.
+   *  Absent on surfaces that never load it, which makes the project-status
+   *  filter a no-op there rather than blanking the surface. */
+  projectStatusById?: ReadonlyMap<string, ProjectStatus>;
 }
 
 /**
@@ -196,6 +210,13 @@ export function applyIssueFilters(
     includeNoAssignee;
   const hasProjectFilter = projectFilters.length > 0 || includeNoProject;
   const hasModuleFilter = moduleFilters.length > 0 || includeNoModule;
+  const projectStatusFilters = filters.projectStatusFilters ?? [];
+  // Without the catalog the predicate cannot be answered. Treat that as
+  // "no filter" — the server-driven surfaces enforce it for real, and a
+  // silent match-none here would empty a list with no visible cause.
+  const projectStatusCatalog = context.projectStatusById;
+  const hasProjectStatusFilter =
+    projectStatusFilters.length > 0 && projectStatusCatalog !== undefined;
   // Empty set passed without `agentRunningFilter` is a no-op. When the
   // filter is on but the set is missing/empty, hide everything — the
   // user opted into "only running" and there is nothing running.
@@ -260,6 +281,17 @@ export function applyIssueFilters(
       }
     }
 
+    if (hasProjectStatusFilter) {
+      // An issue with no project has no status to match, so it never
+      // survives — same as the server's EXISTS predicate. `includeNoProject`
+      // widens the project-id dimension only.
+      const projectStatus = issue.project_id
+        ? projectStatusCatalog.get(issue.project_id)
+        : undefined;
+      if (!projectStatus || !projectStatusFilters.includes(projectStatus))
+        return false;
+    }
+
     if (labelFilters.length > 0) {
       // OR semantics within the filter: keep issues that carry any of the
       // selected labels. Matches existing priority / project multi-select.
@@ -288,12 +320,16 @@ export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
       includeNoProject: filters.includeNoProject,
       moduleFilters: filters.moduleFilters,
       includeNoModule: filters.includeNoModule,
+      projectStatusFilters: filters.projectStatusFilters,
       labelFilters: filters.labelFilters,
       propertyFilters: filters.propertyFilters,
       workingOnly: filters.agentRunningFilter === true,
       showSubIssues: filters.showSubIssues,
     },
-    { runningIssueIds: filters.runningIssueIds },
+    {
+      runningIssueIds: filters.runningIssueIds,
+      projectStatusById: filters.projectStatusById,
+    },
   );
 }
 
