@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Copy } from "lucide-react";
+import { Copy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { cn } from "@multica/ui/lib/utils";
@@ -9,6 +9,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
 import { normalizeCollabPath, type CollabPathError } from "@multica/core/projects/collab-path";
+import { LocalPathLink } from "../../common/local-path-link";
 import { useT } from "../../i18n";
 
 // Shared UI for a project's human-agent collaboration space path
@@ -34,10 +35,6 @@ export function useCollabPathErrorMessage(): (reason: CollabPathError) => string
     }
   };
 }
-
-/** A path is a single LTR run even when its segments are Chinese: without this
- *  the bidi algorithm can reorder the separators around a CJK segment. */
-const PATH_TEXT = "font-mono text-caption";
 
 /** Last segment of a path, for places too narrow to show any of it — a pill in
  *  a wrapping toolbar. The leading directories are the part every sibling path
@@ -134,8 +131,14 @@ export function CollabPathInput({
 }
 
 /**
- * The editable property itself: truncated value plus copy while idle, a text
- * input once clicked.
+ * The editable property itself: while idle, the value is the control that
+ * opens the directory, with copy and edit beside it; a text input once editing
+ * starts.
+ *
+ * Editing used to start by clicking the value. It cannot any more: a click on
+ * the path now reaches the filesystem, and one target cannot mean both "show me
+ * this folder" and "let me rename it". The pencil is the smaller of the two
+ * costs — opening is the action taken daily, renaming the one taken once.
  *
  * Commit rules match the inline rename in the modules dialog — Enter and blur
  * commit, Escape abandons — with one addition: a value the server would reject
@@ -227,27 +230,39 @@ export function CollabPathProperty({
     );
   }
 
+  const editLabel = t(($) => $.collab_path.edit_aria);
+
   return (
     <div className="flex min-w-0 w-full items-center gap-1">
-      {/* No aria-label: the accessible name is the value itself (or "Not set"),
-          the same contract the lead and date rows in this sidebar use. The
-          adjacent row label supplies the "of what". */}
-      <button
-        type="button"
-        onClick={beginEdit}
-        title={value ?? undefined}
-        className={cn(
-          "min-w-0 flex-1 truncate rounded-xs text-left transition-colors",
-          value
-            ? cn(PATH_TEXT, "hover:text-foreground")
-            : "text-caption text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <span dir={value ? "ltr" : undefined}>
-          {value ?? t(($) => $.collab_path.empty)}
-        </span>
-      </button>
-      {value && <CollabPathCopyButton path={value} />}
+      {/* No aria-label on either branch: the accessible name is the value
+          itself (or "Not set"), the same contract the lead and date rows in
+          this sidebar use. The adjacent row label supplies the "of what". */}
+      {value ? (
+        <LocalPathLink path={value} wrap="truncate" className="min-w-0 flex-1" />
+      ) : (
+        <button
+          type="button"
+          onClick={beginEdit}
+          className="min-w-0 flex-1 truncate rounded-xs text-left text-caption text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {t(($) => $.collab_path.empty)}
+        </button>
+      )}
+      {value && (
+        <>
+          <CollabPathCopyButton path={value} />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={editLabel}
+            title={editLabel}
+            className="shrink-0 text-muted-foreground"
+            onClick={beginEdit}
+          >
+            <Pencil />
+          </Button>
+        </>
+      )}
     </div>
   );
 }

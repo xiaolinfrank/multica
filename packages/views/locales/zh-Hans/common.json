@@ -133,5 +133,15 @@
   },
   "navigation": {
     "open_in_new_tab": "在新标签页打开"
+  },
+  "local_path": {
+    "action_open": "在文件管理器中打开",
+    "action_copy": "复制该路径",
+    "toast_copied_finder": "已复制路径 —— 在访达里按 ⇧⌘G 粘贴即可打开",
+    "toast_copied_explorer": "已复制路径 —— 粘贴到文件资源管理器的地址栏即可打开",
+    "toast_copied_generic": "已复制路径 —— 粘贴到文件管理器即可打开",
+    "toast_copy_failed": "复制路径失败",
+    "toast_not_found": "这台电脑访问不到该路径，多半是共享存储没有挂载。路径已复制到剪贴板。",
+    "toast_failed": "打不开该路径"
   }
 }

@@ -10,6 +10,13 @@ export {
 export { preprocessMentionShortcodes } from './mentions'
 export { markdownSanitizeSchema, markdownUrlTransform } from './sanitize'
 export {
+  preprocessLocalPaths,
+  localPathHref,
+  localPathFromHref,
+  hasLocalPath,
+  LOCAL_PATH_PROTOCOL,
+} from './local-paths'
+export {
   preprocessFileCards,
   isCdnUrl,
   isFileCardUrl,

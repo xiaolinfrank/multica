@@ -134,5 +134,15 @@
   },
   "navigation": {
     "open_in_new_tab": "Open in new tab"
+  },
+  "local_path": {
+    "action_open": "Open in the file manager",
+    "action_copy": "Copy this path",
+    "toast_copied_finder": "Path copied — press ⇧⌘G in Finder and paste it",
+    "toast_copied_explorer": "Path copied — paste it into the File Explorer address bar",
+    "toast_copied_generic": "Path copied — paste it into your file manager",
+    "toast_copy_failed": "Couldn't copy the path",
+    "toast_not_found": "This machine can't reach that path. The shared volume is probably not mounted — the path is on your clipboard.",
+    "toast_failed": "Couldn't open that path"
   }
 }

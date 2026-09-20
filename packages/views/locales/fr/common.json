@@ -128,5 +128,15 @@
   },
   "navigation": {
     "open_in_new_tab": "Ouvrir dans un nouvel onglet"
+  },
+  "local_path": {
+    "action_open": "Ouvrir dans le gestionnaire de fichiers",
+    "action_copy": "Copier ce chemin",
+    "toast_copied_finder": "Chemin copié — appuyez sur ⇧⌘G dans le Finder et collez-le",
+    "toast_copied_explorer": "Chemin copié — collez-le dans la barre d'adresse de l'Explorateur de fichiers",
+    "toast_copied_generic": "Chemin copié — collez-le dans votre gestionnaire de fichiers",
+    "toast_copy_failed": "Impossible de copier le chemin",
+    "toast_not_found": "Cette machine n'atteint pas ce chemin. Le volume partagé n'est probablement pas monté — le chemin est dans votre presse-papiers.",
+    "toast_failed": "Impossible d'ouvrir ce chemin"
   }
 }
