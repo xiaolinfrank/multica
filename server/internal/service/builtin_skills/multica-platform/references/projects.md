@@ -6,6 +6,7 @@ display metadata; it is context later injected into task briefs and
 
 - [Core model](#core-model)
 - [Modules](#modules)
+- [Collaboration space](#collaboration-space)
 - [CLI](#cli)
 - [local_directory execution modes](#local_directory-execution-modes)
 - [Referring to a project in a comment](#referring-to-a-project-in-a-comment)
@@ -56,6 +57,7 @@ issue belongs to at most one module, always a module of its own project.
   "title": "Parser rewrite",
   "description": "",
   "position": 0,
+  "collab_path": null,
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z",
   "issue_count": 12,
@@ -69,16 +71,83 @@ owner/admin gated, like project deletion):
 - `GET /api/modules?project_id=<uuid>` → `{ "modules": [...], "total": n }`
   ordered by `position` ascending.
 - `POST /api/modules` with `{ "project_id": "...", "title": "...",
-  "description": "..." }` → `201` with the module.
+  "description": "...", "collab_path": "..." }` → `201` with the module.
 - `GET /api/modules/{id}` and `PUT /api/modules/{id}` with
-  `{ "title": "...", "description": "..." }`.
+  `{ "title": "...", "description": "...", "position": 1,
+  "collab_path": "..." }`. `description` and `collab_path` follow the
+  presence contract: a key absent from the body keeps the stored value, a
+  key present with `null` clears it, and `collab_path` also clears on `""`.
 - `PUT /api/modules/reorder` with `{ "module_ids": [...] }` — the full
   ordered id list for one project.
 - `DELETE /api/modules/{id}` → `204`. The module is removed and its issues
   keep their project with `module_id` null (filed directly under it).
 
 Deleting a project first detaches its issues, then deletes its modules.
-There is no `multica module` CLI surface yet; manage modules over the API.
+
+Modules are managed from the CLI with `multica module`, documented under
+[CLI](#cli) below.
+
+## Collaboration space
+
+`collab_path` — 人机协作空间路径 — binds a project, and optionally each of its
+modules, to a directory on the shared NAS where people and agents exchange
+finished work. It is the team's drop point, not a runtime path: a task's
+working directory exists only on the machine running that task, while this
+directory is mounted on the daemon hosts and is where a person goes to read
+what an agent produced.
+
+```text
+/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集/01.01回顾性队列数据集（JIA）
+```
+
+Both entities carry it — `project.collab_path` and `module.collab_path`, each
+`string | null` on the API. A module path narrows the project's rather than
+replacing it; the project keeps its own. **When both are set, use the module
+path** — it is the narrower one, pointing at this task's slice of the work.
+With only a project path, use that.
+
+Validation (HTTP 400 on failure): the value is trimmed, must be absolute, at
+most 1024 characters, and must not contain control characters. Absolute means
+POSIX (`/Volumes/...`), UNC (`\\nas\share\...`), or a Windows drive
+(`Z:/...`, `Z:\...`) — daemons run on macOS, Linux and Windows, so no single
+separator is assumed. A blank value stores NULL. The server never stats the
+path: it is resolved on whichever daemon host claims the task, so a host that
+has not mounted the share fails at the agent rather than at write time, and a
+path that is correct on every other host is never rejected on that host's
+behalf.
+
+Presence semantics on update, identical for both entities: a key absent from
+the request body keeps the stored value, and the key present with `null` or
+`""` clears it to NULL. `POST /api/projects` and `POST /api/modules` accept
+the same field.
+
+A task that has one is told about it. The brief's `## Project Context` gains a
+`### Collaboration Space` subsection listing the project path and the module
+path, and `.multica/project/resources.json` carries `project_collab_path`,
+`module_collab_path`, and the module identity (`module_id`, `module_title`,
+`module_description`) for tooling that would rather read JSON than prose.
+
+### Delivering into it
+
+The standing rule in every brief is that runtime-local paths are never
+deliverables. The collaboration space is the exception, and the only one:
+
+- Write the finished file into the collaboration-space directory — the
+  module's when the task has one — in a subdirectory when the work warrants
+  one. This is in addition to the surface's own delivery mechanism, not
+  instead of it: an issue comment still carries the file with
+  `--attachment <path>`.
+- Name that path in your comment as **plain text**. Never a clickable link,
+  never a `file://` URL. The rule against linking filesystem paths is
+  unchanged; what is different about this directory is that the reader can
+  actually open it.
+- Keep scratch work in your working directory — notes, intermediate output,
+  checkouts. Only what is being handed over goes to the share.
+- If the directory does not exist, the share is not mounted on this machine.
+  Say that in your comment and leave the file in the working directory. Do
+  not pick a nearby path that does exist: a deliverable written somewhere
+  else is a deliverable nobody finds.
+
 ## CLI
 
 ```bash
@@ -86,9 +155,12 @@ multica project list --output json
 multica project get <project-id> --output json
 multica project create --title "<title>" --repo <github-url> --output json
 multica project create --title "<title>" --start-date 2026-03-01 --due-date 2026-03-31 --output json
+multica project create --title "<title>" --collab-path "/Volumes/人机协作空间/<项目>" --output json
 multica project update <project-id> --title "<title>" --output json
 multica project update <project-id> --due-date 2026-04-15 --output json
 multica project update <project-id> --start-date "" --output json   # clear the start date
+multica project update <project-id> --collab-path "/Volumes/人机协作空间/<项目>" --output json
+multica project update <project-id> --collab-path "" --output json  # clear the collaboration space
 multica project status <project-id> in_progress --output json
 multica project resource list <project-id> --output json
 multica project resource add <project-id> --type github_repo --url <github-url> --output json
@@ -109,7 +181,36 @@ shortcuts. `project resource update` merges shortcut edits with the existing
 
 `--start-date` / `--due-date` are optional calendar days (`YYYY-MM-DD`, like
 issue dates). On `project update`, pass an empty string (`--start-date ""`) to
-clear a date; an unset flag leaves it untouched.
+clear a date; an unset flag leaves it untouched. `--collab-path` takes an
+absolute path and clears the same way.
+
+### Modules
+
+`--project` takes a project UUID from `multica project list --output json`;
+every other argument is the module's own id.
+
+```bash
+multica module list --project <project-id> --output json
+multica module get <module-id> --output json
+multica module create --project <project-id> --title "<title>" --output json
+multica module create --project <project-id> --title "<title>" --description "<text>" --collab-path "/Volumes/人机协作空间/<项目>/<模块>" --output json
+multica module update <module-id> --title "<title>" --output json
+multica module update <module-id> --collab-path "/Volumes/人机协作空间/<项目>/<模块>" --output json
+multica module update <module-id> --collab-path "" --output json   # clear the collaboration space
+multica module update <module-id> --position 3 --output json
+multica module delete <module-id>
+```
+
+`list` returns the project's modules ordered by `position` ascending, with
+`issue_count` / `done_count` on each. On `update`, an unset flag leaves its
+field untouched. `--position` moves one module; reordering a whole project's
+list in one call stays `PUT /api/modules/reorder`, which has no CLI surface.
+`delete` is owner/admin gated and leaves the module's issues in the project
+with `module_id` null.
+
+To file an issue into a module, use `multica issue create --module` /
+`multica issue update --module` — see
+[issues.md](issues.md#modules-grouping-issues-inside-a-project).
 
 ## local_directory execution modes
 
