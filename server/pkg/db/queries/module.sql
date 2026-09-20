@@ -23,10 +23,11 @@ WHERE workspace_id = $1 AND id = ANY(sqlc.arg('ids')::uuid[]);
 -- and land on the same position. Display order stays deterministic anyway —
 -- ListModules tiebreaks on created_at — and ReorderModules rewrites the whole
 -- set, which heals any collision.
-INSERT INTO module (workspace_id, project_id, title, description, position)
+INSERT INTO module (workspace_id, project_id, title, description, position, collab_path)
 VALUES (
     $1, $2, $3, sqlc.narg('description'),
-    COALESCE((SELECT MAX(position) FROM module WHERE project_id = $2), 0) + 1
+    COALESCE((SELECT MAX(position) FROM module WHERE project_id = $2), 0) + 1,
+    sqlc.narg('collab_path')
 ) RETURNING *;
 
 -- name: UpdateModule :one
@@ -36,6 +37,7 @@ UPDATE module SET
     title = COALESCE(sqlc.narg('title'), title),
     description = sqlc.narg('description'),
     position = COALESCE(sqlc.narg('position'), position),
+    collab_path = sqlc.narg('collab_path'),
     updated_at = now()
 WHERE id = $1 AND workspace_id = $2
 RETURNING *;
