@@ -102,9 +102,18 @@ export function normalizeCollabPath(raw: string): CollabPathResult {
  *   \\host\share\…       what Windows Explorer accepts in its address bar
  *
  * Deriving them requires knowing which part of the path is the share name.
- * Only two forms answer that. A UNC path carries the host and share itself, so
- * it needs no configuration at all. And macOS mounts a share at
- * `/Volumes/<share name>`, so the first segment under `/Volumes` IS the share.
+ * Only two forms answer that: a UNC path carries the host and share itself, and
+ * macOS mounts a share at `/Volumes/<share name>`, so the first segment under
+ * `/Volumes` IS the share.
+ *
+ * BOTH are gated on the deployment's configured file server, and a UNC path is
+ * NOT exempt just because it names its own host. These paths come out of
+ * content an agent or a user wrote, and an `smb://` click asks the reader's OS
+ * to authenticate against whatever host the string names. Trusting the string
+ * would turn any comment into a one-click mount of an attacker's server — a
+ * credential prompt the reader has every reason to believe is their own NAS.
+ * So a host that is not the configured one gets no address at all, and the
+ * reader gets the clipboard instead.
  *
  * Everything else returns nothing, deliberately. A Linux `/mnt/<anything>` is
  * named by whoever wrote the fstab entry and a `Z:\…` drive letter hides the
@@ -139,21 +148,24 @@ export function collabPathAddresses(
   const value = path.trim();
   if (!value) return NONE;
 
-  // A UNC path already names its own server. Nothing to configure, and the
-  // deployment's host is irrelevant — this path may well name a different one.
+  const server = host.trim();
+  if (!server) return NONE;
+
+  // A UNC path names its own server; it is honoured only when that server is
+  // the one the deployment declared. See the header — an unchecked host here is
+  // a one-click credential prompt pointed wherever the content author chose.
   if (value.startsWith("\\\\")) {
     const rest = value.slice(2).replace(/\\/g, "/");
     const [uncHost, ...segments] = rest.split("/").filter(Boolean);
     // `\\host` alone is a server, not a directory.
     if (!uncHost || segments.length === 0) return NONE;
+    if (uncHost.toLowerCase() !== server.toLowerCase()) return NONE;
     return {
       smbUrl: `smb://${uncHost}/${encodeSmbPath(segments.join("/"))}`,
       uncPath: value.replace(/\//g, "\\"),
     };
   }
 
-  const server = host.trim();
-  if (!server) return NONE;
   if (!value.startsWith(MACOS_MOUNT_ROOT)) return NONE;
   const rest = value.slice(MACOS_MOUNT_ROOT.length);
   // `/Volumes/` alone names the mount root, not a share.

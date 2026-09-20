@@ -153,6 +153,15 @@ describe("preprocessLocalPaths", () => {
     expect(preprocessLocalPaths(input)).toBe(input);
   });
 
+  it.each([
+    "见 /Volumes/share/x)y 完成",
+    "见 /Volumes/share/a(b/c 完成",
+  ])("emits a parseable link for %s", (input) => {
+    const out = preprocessLocalPaths(input);
+    // Exactly one balanced destination: no stray ")" leaking into the prose.
+    expect(out).toMatch(/\]\(localpath:\/\/[^()]*\)/);
+  });
+
   it("returns the input unchanged when there is no mount root", () => {
     const input = "no paths here, just prose about /Volumes";
     expect(preprocessLocalPaths(input)).toBe(input);
@@ -160,6 +169,20 @@ describe("preprocessLocalPaths", () => {
 });
 
 describe("localPathHref / localPathFromHref", () => {
+  // encodeURIComponent leaves parentheses alone, but the href is written into a
+  // markdown link destination where the first unbalanced `)` ends it — the link
+  // would point at the truncated path and the rest would fall out as literal
+  // text in the middle of a comment.
+  it.each([
+    ["/Volumes/share/x)y", "%29"],
+    ["/Volumes/share/a(b", "%28"],
+  ])("escapes the parenthesis in %s so the markdown link survives", (path, escape) => {
+    const href = localPathHref(path);
+    expect(href).toContain(escape);
+    expect(href).not.toMatch(/[()]/);
+    expect(localPathFromHref(href)).toBe(path);
+  });
+
   it("round-trips a path with characters a URL would otherwise eat", () => {
     const path = "/Volumes/共享 空间/a#b?c%d";
     expect(localPathFromHref(localPathHref(path))).toBe(path);

@@ -117,13 +117,28 @@ describe("collabPathAddresses", () => {
     );
   });
 
-  // A UNC path names its own server, so it resolves with no deployment
-  // configuration at all — and must not be rewritten to the configured host,
-  // which may be a different machine entirely.
-  it("keeps a UNC path on the server it already names", () => {
-    expect(collabPathAddresses("\\\\nas01\\共享\\项目", "")).toEqual({
+  it("keeps a UNC path on the server it names, when that is the configured one", () => {
+    expect(collabPathAddresses("\\\\nas01\\共享\\项目", "NAS01")).toEqual({
       smbUrl: `smb://nas01/${encodeURIComponent("共享")}/${encodeURIComponent("项目")}`,
       uncPath: "\\\\nas01\\共享\\项目",
+    });
+  });
+
+  // SECURITY. These paths come out of content an agent or a user wrote, and an
+  // smb:// click asks the reader's OS to authenticate against whatever host the
+  // string names. Honouring a UNC path's own host would turn any comment into a
+  // one-click mount of an attacker's server, behind a credential prompt the
+  // reader has every reason to read as their own NAS.
+  it("refuses a UNC path naming a host the deployment did not configure", () => {
+    expect(
+      collabPathAddresses("\\\\evil.example.com\\pwn\\x", HOST),
+    ).toEqual({ smbUrl: null, uncPath: null });
+  });
+
+  it("refuses a UNC path when no file server is configured at all", () => {
+    expect(collabPathAddresses("\\\\nas01\\共享\\项目", "")).toEqual({
+      smbUrl: null,
+      uncPath: null,
     });
   });
 
