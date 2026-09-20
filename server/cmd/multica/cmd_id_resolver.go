@@ -406,6 +406,128 @@ func resolveProjectResourceID(ctx context.Context, client *cli.APIClient, projec
 	return resolveIDByPrefix(ctx, client, "project resource", input, fetch)
 }
 
+// resolveModuleID resolves a module reference to its UUID. A module has no
+// human-readable key like an issue's MUL-123, so the reference may be a full
+// UUID, a UUID prefix (as for every other resource here), or the module title —
+// the title is what a person or an agent reading a project brief actually has
+// at hand. projectID narrows the search to one project; an empty projectID
+// searches the whole workspace, which is what GET /api/modules does when
+// project_id is absent.
+//
+// Hex-shaped input is tried as an id prefix first so a copied short id keeps
+// working; a title that happens to look like hex (e.g. "beef") still resolves
+// once no id matches that prefix.
+func resolveModuleID(ctx context.Context, client *cli.APIClient, projectID, input string) (resolvedID, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return resolvedID{}, fmt.Errorf("module id is required")
+	}
+	if uuidRegexp.MatchString(trimmed) {
+		return resolvedID{ID: trimmed, Display: trimmed}, nil
+	}
+
+	candidates, err := fetchModuleCandidates(ctx, client, projectID)
+	if err != nil {
+		return resolvedID{}, fmt.Errorf("resolve module: %w", err)
+	}
+
+	if prefix, prefixErr := normalizeUUIDPrefix(trimmed); prefixErr == nil {
+		matches := make([]idCandidate, 0, 1)
+		for _, c := range candidates {
+			if c.ID != "" && strings.HasPrefix(compactUUID(c.ID), prefix) {
+				matches = append(matches, c)
+			}
+		}
+		if len(matches) > 1 {
+			return resolvedID{}, ambiguousIDPrefixError("module", input, matches)
+		}
+		if len(matches) == 1 {
+			return moduleResolvedID(matches[0]), nil
+		}
+	}
+
+	titleMatches := make([]idCandidate, 0, 1)
+	for _, c := range candidates {
+		if c.ID != "" && strings.EqualFold(strings.TrimSpace(c.Display), trimmed) {
+			titleMatches = append(titleMatches, c)
+		}
+	}
+	switch len(titleMatches) {
+	case 1:
+		return moduleResolvedID(titleMatches[0]), nil
+	case 0:
+		return resolvedID{}, fmt.Errorf(
+			"no module found matching %q%s; run `multica module list --full-id` to see the modules and their ids",
+			input, moduleScopeSuffix(projectID))
+	default:
+		return resolvedID{}, ambiguousModuleTitleError(input, titleMatches)
+	}
+}
+
+func moduleResolvedID(c idCandidate) resolvedID {
+	display := c.Display
+	if display == "" {
+		display = c.ID
+	}
+	return resolvedID{ID: c.ID, Display: display}
+}
+
+func moduleScopeSuffix(projectID string) string {
+	if projectID == "" {
+		return " in this workspace"
+	}
+	return " in project " + truncateID(projectID)
+}
+
+// ambiguousModuleTitleError lists the colliding modules, since two modules in
+// different projects may legitimately carry the same title: the caller
+// disambiguates with --project or by passing the id.
+func ambiguousModuleTitleError(input string, matches []idCandidate) error {
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].ID < matches[j].ID
+	})
+	parts := make([]string, 0, len(matches))
+	for _, m := range matches {
+		line := "  " + m.ID + "  " + m.Display
+		if m.Detail != "" {
+			line += " (project " + truncateID(m.Detail) + ")"
+		}
+		parts = append(parts, line)
+	}
+	return fmt.Errorf("ambiguous module title %q; matches:\n%s\nPass --project to narrow the search, or use the module id",
+		input, strings.Join(parts, "\n"))
+}
+
+func fetchModuleCandidates(ctx context.Context, client *cli.APIClient, projectID string) ([]idCandidate, error) {
+	if client.WorkspaceID == "" {
+		return nil, fmt.Errorf("workspace_id is required to resolve module references")
+	}
+	// The workspace comes from the request header, so project_id is the only
+	// query parameter the modules endpoint reads.
+	path := "/api/modules"
+	if projectID != "" {
+		path += "?" + url.Values{"project_id": {projectID}}.Encode()
+	}
+	var result map[string]any
+	if err := client.GetJSON(ctx, path, &result); err != nil {
+		return nil, err
+	}
+	modulesRaw, _ := result["modules"].([]any)
+	candidates := make([]idCandidate, 0, len(modulesRaw))
+	for _, raw := range modulesRaw {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, idCandidate{
+			ID:      strVal(m, "id"),
+			Display: strVal(m, "title"),
+			Detail:  strVal(m, "project_id"),
+		})
+	}
+	return candidates, nil
+}
+
 func resolveLabelID(ctx context.Context, client *cli.APIClient, input, resourceType string) (resolvedID, error) {
 	return resolveIDByPrefix(ctx, client, "label", input, func(ctx context.Context, client *cli.APIClient) ([]idCandidate, error) {
 		return fetchLabelCandidates(ctx, client, resourceType)

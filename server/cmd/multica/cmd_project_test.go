@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -384,4 +387,127 @@ func TestBuildResourceRefFromFlagsLocalDirectoryExecutionMode(t *testing.T) {
 			t.Errorf("expected execution_mode cleared, got %v", ref["execution_mode"])
 		}
 	})
+}
+
+func newProjectCreateTestCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "create"}
+	cmd.Flags().String("title", "", "")
+	cmd.Flags().String("description", "", "")
+	cmd.Flags().String("status", "", "")
+	cmd.Flags().String("icon", "", "")
+	cmd.Flags().String("lead", "", "")
+	cmd.Flags().String("start-date", "", "")
+	cmd.Flags().String("due-date", "", "")
+	cmd.Flags().String("collab-path", "", "")
+	cmd.Flags().StringArray("repo", nil, "")
+	cmd.Flags().String("output", "json", "")
+	return cmd
+}
+
+func newProjectUpdateTestCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "update"}
+	cmd.Flags().String("title", "", "")
+	cmd.Flags().String("description", "", "")
+	cmd.Flags().String("status", "", "")
+	cmd.Flags().String("icon", "", "")
+	cmd.Flags().String("lead", "", "")
+	cmd.Flags().String("start-date", "", "")
+	cmd.Flags().String("due-date", "", "")
+	cmd.Flags().String("collab-path", "", "")
+	cmd.Flags().String("output", "json", "")
+	return cmd
+}
+
+// TestRunProjectCreateSendsCollabPath pins the create gate: the collaboration
+// space travels as collab_path, and an untouched flag stays out of the payload.
+func TestRunProjectCreateSendsCollabPath(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/projects" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": testProjectUUID, "title": body["title"], "status": "planned",
+			"collab_path": body["collab_path"],
+		})
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+
+	cmd := newProjectCreateTestCmd()
+	_ = cmd.Flags().Set("title", "AI医药联合创新平台")
+	_ = cmd.Flags().Set("collab-path", testCollabPath)
+
+	if _, err := captureStdout(t, func() error { return runProjectCreate(cmd, nil) }); err != nil {
+		t.Fatalf("runProjectCreate: %v", err)
+	}
+	if body["collab_path"] != testCollabPath {
+		t.Fatalf("body[collab_path] = %#v, want %q", body["collab_path"], testCollabPath)
+	}
+	if _, ok := body["icon"]; ok {
+		t.Fatalf("body = %#v, an unset --icon must not be sent", body)
+	}
+}
+
+// TestRunProjectUpdateClearsCollabPath pins the Changed() gate: an explicit
+// empty --collab-path is a clear, not a no-op.
+func TestRunProjectUpdateClearsCollabPath(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/projects/"+testProjectUUID {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": testProjectUUID, "title": "AI医药联合创新平台", "status": "planned",
+		})
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+
+	cmd := newProjectUpdateTestCmd()
+	_ = cmd.Flags().Set("collab-path", "")
+
+	if _, err := captureStdout(t, func() error { return runProjectUpdate(cmd, []string{testProjectUUID}) }); err != nil {
+		t.Fatalf("runProjectUpdate: %v", err)
+	}
+	v, ok := body["collab_path"]
+	if !ok || v != "" {
+		t.Fatalf("body = %#v, want collab_path present and empty", body)
+	}
+	if len(body) != 1 {
+		t.Fatalf("body = %#v, want only collab_path", body)
+	}
+}
+
+// TestRunProjectUpdateWithoutFieldsNamesCollabPath keeps the "no fields to
+// update" message honest: it enumerates the flags, so a flag missing from that
+// list is a message that lies about what the command accepts.
+func TestRunProjectUpdateWithoutFieldsNamesCollabPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	setCLITestServerEnv(t, srv.URL)
+
+	cmd := newProjectUpdateTestCmd()
+	err := runProjectUpdate(cmd, []string{testProjectUUID})
+	if err == nil {
+		t.Fatal("expected an error when no field flag is set")
+	}
+	for _, flag := range []string{"--title", "--status", "--description", "--icon", "--lead", "--start-date", "--due-date", "--collab-path"} {
+		if !strings.Contains(err.Error(), flag) {
+			t.Fatalf("error = %q, want it to name %s", err, flag)
+		}
+	}
 }
