@@ -1,5 +1,6 @@
 import { defaultUrlTransform } from 'react-markdown'
 import { defaultSchema, type Options } from 'rehype-sanitize'
+import { LOCAL_PATH_PROTOCOL } from './local-paths'
 
 /**
  * Canonical sanitize schema + URL transform for every product-level Markdown
@@ -24,7 +25,16 @@ export const markdownSanitizeSchema: Options = {
   tagNames: [...(defaultSchema.tagNames ?? []), 'mark'],
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), 'mention', 'slash'],
+    href: [
+      ...(defaultSchema.protocols?.href ?? []),
+      'mention',
+      'slash',
+      // Detected filesystem paths (see local-paths.ts). The href never reaches
+      // the network or an <a href> the browser follows — the renderer matches
+      // the scheme and swaps in its own component — so the value it carries is
+      // opaque to this gate; what matters is that the scheme survives sanitize.
+      LOCAL_PATH_PROTOCOL,
+    ],
     // Permit inline data-URI images (QR codes, charts, base64 screenshots).
     // The scheme gate only allows `data:` through here; attributes.img below
     // narrows it to image/* so non-image data URIs are still rejected.
@@ -67,6 +77,7 @@ export const markdownSanitizeSchema: Options = {
 export function markdownUrlTransform(url: string): string {
   if (url.startsWith('mention://')) return url
   if (url.startsWith('slash://skill/')) return url
+  if (url.startsWith(`${LOCAL_PATH_PROTOCOL}://`)) return url
   // defaultUrlTransform strips every data: URL to '', which would blank the src
   // even after rehype-sanitize keeps it. Kept in sync with the image/* narrowing
   // in markdownSanitizeSchema so both gates agree on what a valid inline image is.

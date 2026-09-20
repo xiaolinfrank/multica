@@ -59,7 +59,7 @@ describe("CollabPathProperty", () => {
     const user = userEvent.setup();
     renderWithI18n(<CollabPathProperty value={PATH} onCommit={onCommit} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    await user.click(screen.getByRole("button", { name: "Edit path" }));
     await user.clear(screen.getByRole("textbox", { name: "Collaboration space" }));
     await user.keyboard("{Enter}");
 
@@ -71,7 +71,7 @@ describe("CollabPathProperty", () => {
     const user = userEvent.setup();
     renderWithI18n(<CollabPathProperty value={PATH} onCommit={onCommit} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    await user.click(screen.getByRole("button", { name: "Edit path" }));
     await user.clear(screen.getByRole("textbox", { name: "Collaboration space" }));
     await user.keyboard("/Volumes/elsewhere{Escape}");
 
@@ -86,7 +86,7 @@ describe("CollabPathProperty", () => {
     const user = userEvent.setup();
     renderWithI18n(<CollabPathProperty value={PATH} onCommit={onCommit} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    await user.click(screen.getByRole("button", { name: "Edit path" }));
     await user.keyboard("{Enter}");
 
     expect(onCommit).not.toHaveBeenCalled();
@@ -114,6 +114,20 @@ describe("CollabPathProperty", () => {
     expect(
       screen.getByText("Enter an absolute path, such as /Volumes/share/project."),
     ).toBeInTheDocument();
+  });
+
+  // The value opens the directory now, so a click on it must not also drop the
+  // row into an editor — that is what the pencil is for. Regression guard for
+  // the split: before it, one target meant both.
+  it("does not start editing when the path itself is clicked", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<CollabPathProperty value={PATH} onCommit={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(
+      screen.queryByRole("textbox", { name: "Collaboration space" }),
+    ).not.toBeInTheDocument();
   });
 
   it("copies the full path, not the truncated one", async () => {

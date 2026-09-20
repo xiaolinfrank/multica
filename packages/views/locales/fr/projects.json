@@ -87,6 +87,7 @@
     "empty": "Non défini",
     "placeholder": "/Volumes/…",
     "copy_aria": "Copier le chemin",
+    "edit_aria": "Modifier le chemin",
     "toast_copied": "Chemin copié",
     "toast_copy_failed": "Impossible de copier le chemin",
     "hint_project": "Répertoire partagé où les personnes et les agents se transmettent les livrables de ce projet. Chemin absolu, tel qu'il est monté sur la machine qui exécute l'agent.",

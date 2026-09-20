@@ -47,6 +47,7 @@ import { attachmentIdFromDownloadURL } from "@multica/core/types";
 import {
   isAllowedFileCardHref,
   isIssueIdentifier,
+  localPathFromHref,
   markdownSanitizeSchema,
   markdownUrlTransform,
 } from "@multica/ui/markdown";
@@ -55,6 +56,7 @@ import {
   useAppOrigin,
   useOptionalNavigation,
 } from "../navigation";
+import { LocalPathLink } from "../common/local-path-link";
 import { IssueMentionCard } from "../issues/components/issue-mention-card";
 import { useResolveIssueIdentifier } from "../issues/hooks";
 import { ProjectMentionCard } from "../projects/components/project-mention-card";
@@ -237,6 +239,17 @@ function RichLink({ href, children }: { href?: string; children?: ReactNode }) {
     }
     // Member / agent / all mentions
     return <span className="mention">{children}</span>;
+  }
+
+  // A filesystem path the preprocessor found in the prose (see
+  // ui/markdown/local-paths.ts). Must be checked before the regular-link
+  // branch: `openLink` would hand an unrecognized scheme to `window.open`,
+  // which does nothing useful, and on desktop the native window-open request
+  // dies against the http/https allowlist. <LocalPathLink> owns what a click
+  // means, which differs between the desktop shell and a browser.
+  const localPath = localPathFromHref(href);
+  if (localPath) {
+    return <LocalPathLink path={localPath}>{children}</LocalPathLink>;
   }
 
   // Attachment download links — `[file.csv](/api/attachments/<id>/download)`.
@@ -537,7 +550,11 @@ export const RichContent = memo(function RichContent({
   const processed = useMemo(
     () =>
       highlightToHtml(
-        preprocessMarkdown(content, { cdnDomain, autolinkIssueIdentifiers: true }),
+        preprocessMarkdown(content, {
+          cdnDomain,
+          autolinkIssueIdentifiers: true,
+          autolinkLocalPaths: true,
+        }),
       ),
     [content, cdnDomain],
   );

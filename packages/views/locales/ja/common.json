@@ -133,5 +133,15 @@
   },
   "navigation": {
     "open_in_new_tab": "新しいタブで開く"
+  },
+  "local_path": {
+    "action_open": "ファイルマネージャーで開く",
+    "action_copy": "このパスをコピー",
+    "toast_copied_finder": "パスをコピーしました — Finder で ⇧⌘G を押して貼り付けてください",
+    "toast_copied_explorer": "パスをコピーしました — エクスプローラーのアドレスバーに貼り付けてください",
+    "toast_copied_generic": "パスをコピーしました — ファイルマネージャーに貼り付けてください",
+    "toast_copy_failed": "パスをコピーできませんでした",
+    "toast_not_found": "このマシンからそのパスに到達できません。共有ボリュームがマウントされていない可能性があります。パスはクリップボードにあります。",
+    "toast_failed": "そのパスを開けませんでした"
   }
 }

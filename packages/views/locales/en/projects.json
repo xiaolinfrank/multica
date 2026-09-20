@@ -89,6 +89,7 @@
     "empty": "Not set",
     "placeholder": "/Volumes/…",
     "copy_aria": "Copy path",
+    "edit_aria": "Edit path",
     "toast_copied": "Path copied",
     "toast_copy_failed": "Couldn't copy the path",
     "hint_project": "Shared directory where people and agents hand this project's deliverables to each other. Absolute path, as mounted on the machine the agent runs on.",

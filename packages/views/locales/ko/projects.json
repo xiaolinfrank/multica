@@ -88,6 +88,7 @@
     "empty": "설정 안 됨",
     "placeholder": "/Volumes/…",
     "copy_aria": "경로 복사",
+    "edit_aria": "경로 편집",
     "toast_copied": "경로를 복사했습니다",
     "toast_copy_failed": "경로를 복사하지 못했습니다",
     "hint_project": "사람과 에이전트가 이 프로젝트의 산출물을 주고받는 공유 디렉터리입니다. 에이전트가 실행되는 컴퓨터에 마운트된 절대 경로를 입력하세요.",
