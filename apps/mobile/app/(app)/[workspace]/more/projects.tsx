@@ -6,8 +6,9 @@
  * `headerRight`). Rendering an in-body title row on top of the native bar
  * would stack two "Projects" labels vertically.
  *
- * Sort: client-side by `updated_at` desc — most recently touched at top.
- * Mirrors web's default list ordering. WS `project:*` events keep the cache
+ * Sort: client-side by status lifecycle (planned → in_progress → paused →
+ * completed → cancelled), tie-broken by title — mirrors web's default list
+ * ordering. WS `project:*` events keep the cache
  * fresh via the listing-level realtime hook (`useProjectsRealtime` in
  * `_layout.tsx`), so pull-to-refresh is rarely needed but kept for the
  * cellular-edge case where a WS reconnect missed events.
@@ -28,6 +29,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ProjectRow } from "@/components/project/project-row";
 import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { PROJECT_STATUSES } from "@/lib/project-status";
+import type { ProjectStatus } from "@multica/core/types";
 
 export default function ProjectsPage() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -39,10 +42,19 @@ export default function ProjectsPage() {
 
   const sorted = useMemo(() => {
     if (!data) return [];
-    return [...data].sort(
-      (a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    );
+    // Same lifecycle rank web's STATUS_ORDER gives each known status;
+    // off-enum server values rank last (web's map lookup instead falls
+    // through to the title tie-break). localeCompare matches web and the
+    // project picker's ordering of these same titles.
+    const statusRank = (s: string) => {
+      const i = PROJECT_STATUSES.indexOf(s as ProjectStatus);
+      return i === -1 ? PROJECT_STATUSES.length : i;
+    };
+    return [...data].sort((a, b) => {
+      const byStatus = statusRank(a.status) - statusRank(b.status);
+      if (byStatus !== 0) return byStatus;
+      return a.title.localeCompare(b.title);
+    });
   }, [data]);
 
   const goCreate = useCallback(() => {

@@ -92,4 +92,89 @@ describe("useProjectViewStore", () => {
     expect(useProjectViewStore.getState().viewMode).toBe("compact");
     expect(localStorage.getItem("multica_projects_view:acme")).not.toBeNull();
   });
+
+  it("defaults the sort to status/asc", async () => {
+    useProjectViewStore.setState({ sortField: "name", sortDirection: "desc" });
+
+    setCurrentWorkspace("fresh", "ws_fresh");
+    await flush();
+    await flush();
+    expect(useProjectViewStore.getState().sortField).toBe("status");
+    expect(useProjectViewStore.getState().sortDirection).toBe("asc");
+  });
+
+  it("migrates v0's untouched 'created' default to status/asc and re-persists at v1", async () => {
+    localStorage.setItem(
+      "multica_projects_view:acme",
+      JSON.stringify({
+        state: {
+          viewMode: "comfortable",
+          sortField: "created",
+          sortDirection: "desc",
+          hiddenColumns: ["issues"],
+          filters: { statuses: [], priorities: [], leads: [] },
+        },
+        version: 0,
+      }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    await flush();
+    expect(useProjectViewStore.getState().sortField).toBe("status");
+    expect(useProjectViewStore.getState().sortDirection).toBe("asc");
+    // Unrelated prefs ride through the migration untouched.
+    expect(useProjectViewStore.getState().viewMode).toBe("comfortable");
+    expect(useProjectViewStore.getState().hiddenColumns).toEqual(["issues"]);
+
+    const raw = JSON.parse(
+      localStorage.getItem("multica_projects_view:acme") as string,
+    );
+    expect(raw.version).toBe(1);
+    expect(raw.state.sortField).toBe("status");
+  });
+
+  it("keeps a deliberately chosen sort field through the v0 migration", async () => {
+    localStorage.setItem(
+      "multica_projects_view:acme",
+      JSON.stringify({
+        state: { sortField: "name", sortDirection: "asc" },
+        version: 0,
+      }),
+    );
+    localStorage.setItem(
+      "multica_projects_view:beta",
+      JSON.stringify({
+        state: { sortField: "status", sortDirection: "desc" },
+        version: 0,
+      }),
+    );
+    // created+asc can only be a deliberate pick: choosing "created" resets
+    // to desc, so the asc direction was flipped by hand.
+    localStorage.setItem(
+      "multica_projects_view:gamma",
+      JSON.stringify({
+        state: { sortField: "created", sortDirection: "asc" },
+        version: 0,
+      }),
+    );
+
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+    await flush();
+    expect(useProjectViewStore.getState().sortField).toBe("name");
+
+    // A v0 user who already sorted by status keeps their flipped direction.
+    setCurrentWorkspace("beta", "ws_b");
+    await flush();
+    await flush();
+    expect(useProjectViewStore.getState().sortField).toBe("status");
+    expect(useProjectViewStore.getState().sortDirection).toBe("desc");
+
+    setCurrentWorkspace("gamma", "ws_g");
+    await flush();
+    await flush();
+    expect(useProjectViewStore.getState().sortField).toBe("created");
+    expect(useProjectViewStore.getState().sortDirection).toBe("asc");
+  });
 });

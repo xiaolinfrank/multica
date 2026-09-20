@@ -68,11 +68,14 @@ export interface ProjectViewState {
 
 const DEFAULTS = {
   viewMode: "compact" as ProjectViewMode,
-  sortField: "created" as ProjectSortField,
-  sortDirection: PROJECT_SORT_DEFAULT_DIRECTION.created,
+  sortField: "status" as ProjectSortField,
+  sortDirection: PROJECT_SORT_DEFAULT_DIRECTION.status,
   hiddenColumns: PROJECT_DEFAULT_HIDDEN_COLUMNS,
   filters: EMPTY_PROJECT_FILTERS,
 };
+
+// v1: default sortField changed from "created" to "status".
+const PROJECTS_VIEW_STATE_VERSION = 1;
 
 export const useProjectViewStore = create<ProjectViewState>()(
   persist(
@@ -116,7 +119,29 @@ export const useProjectViewStore = create<ProjectViewState>()(
     }),
     {
       name: "multica_projects_view",
+      version: PROJECTS_VIEW_STATE_VERSION,
       storage: createJSONStorage(() => createWorkspaceAwareStorage(defaultStorage)),
+      // v0 payloads that never touched the sort control hold the old
+      // "created"/"desc" default (or no sort fields at all). Flip only
+      // those; "created" with a flipped direction was a deliberate pick,
+      // and picking any field resets it to that field's default, so
+      // {created, desc} is the only ambiguous pair left.
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<ProjectViewState>;
+        if (version >= PROJECTS_VIEW_STATE_VERSION) return p;
+        const untouchedDefault =
+          p.sortField === undefined ||
+          (p.sortField === "created" &&
+            (p.sortDirection === undefined || p.sortDirection === "desc"));
+        if (untouchedDefault) {
+          return {
+            ...p,
+            sortField: "status",
+            sortDirection: PROJECT_SORT_DEFAULT_DIRECTION.status,
+          };
+        }
+        return p;
+      },
       partialize: (state) => ({
         viewMode: state.viewMode,
         sortField: state.sortField,
