@@ -47,6 +47,13 @@ interface DesktopAPI {
   onInviteOpen: (callback: (invitationId: string) => void) => () => void;
   /** Open a URL in the default browser. */
   openExternal: (url: string) => Promise<void>;
+  /** Reveal a local directory in Finder / Explorer. Resolves with the outcome;
+   *  main refuses anything that is not an absolute path, and reveals rather
+   *  than opens anything that is not a plain directory. */
+  openLocalPath: (path: string) => Promise<
+    | { ok: true; action: "opened" | "revealed" }
+    | { ok: false; reason: "invalid" | "not_found" | "error"; error?: string }
+  >;
   /** Download a file by URL through Electron's native download system.
    *  Shows a native save dialog. On non-desktop platforms this is undefined. */
   downloadURL: (url: string) => Promise<void>;

@@ -149,6 +149,10 @@ const desktopAPI = {
     subscribeToMainRendererChannel("invite:open", callback),
   /** Open a URL in the default browser */
   openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+  /** Reveal a local directory in Finder / Explorer. Main validates the path
+   *  and only ever opens a plain directory — see main/local-path.ts. */
+  openLocalPath: (path: string) =>
+    ipcRenderer.invoke("shell:open-local-path", path),
   /** Download a file by URL through Electron's native download system.
    *  Shows a save dialog and saves to disk. Unlike openExternal, this
    *  avoids browser rendering of HTML files on Linux.
