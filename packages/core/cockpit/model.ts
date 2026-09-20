@@ -328,11 +328,26 @@ function rootOrdinal(code: string, index: number): string {
  * Numbering is per parent and gap-free, so it is stable for a given tree
  * regardless of how the stored codes were assigned.
  */
+// A stored dotted code ending in ".00" (e.g. 06.00 平台治理与制度) is an
+// intentional governance prefix that positional numbering can never emit;
+// honor it so the line keeps its published code. Everything else stays
+// positional — notably the summary tree's gap-free renumbering.
+const STORED_ZERO_SEGMENT_CODE_RE = /^\d{2}(?:\.\d{2})*\.00$/;
+
 export function buildCockpitDisplayCodes(tree: CockpitTreeNode[]): Map<string, string> {
   const codes = new Map<string, string>();
   const walk = (entry: CockpitTreeNode, prefix: string): void => {
-    entry.children.forEach((child, index) => {
-      const code = `${prefix}.${String(index + 1).padStart(2, "0")}`;
+    let ordinal = 0;
+    entry.children.forEach((child) => {
+      ordinal += 1;
+      const stored = child.node.code ?? "";
+      let code = `${prefix}.${String(ordinal).padStart(2, "0")}`;
+      // A leading ".00" line takes its stored code and resets the counter so
+      // the siblings after it number from 01.
+      if (ordinal === 1 && STORED_ZERO_SEGMENT_CODE_RE.test(stored)) {
+        code = stored;
+        ordinal = 0;
+      }
       codes.set(child.node.id, code);
       walk(child, code);
     });

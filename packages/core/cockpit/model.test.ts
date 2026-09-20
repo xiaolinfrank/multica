@@ -654,6 +654,21 @@ describe("buildCockpitDisplayCodes", () => {
     expect(nodes.map((n) => n.code)).toEqual(["L1-3", "AI-99", "L3-06-13", "01.03", "MODULE"]);
     expect(buildCockpitDisplayCodes([]).size).toBe(0);
   });
+
+  it("keeps a stored zero-segment line code like 06.00 while other dotted codes stay positional", () => {
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "L1-06" }),
+      node({ id: "gov", code: "06.00", parent_id: "r", position: 1 }),
+      node({ id: "t0", code: "06.00.01", parent_id: "gov", position: 1 }),
+      node({ id: "d1", code: "06.01", parent_id: "r", position: 2 }),
+      // Reordered dotted lines still number by position, not stored code.
+      node({ id: "d9", code: "02.10", parent_id: "r", position: 3 }),
+    ]);
+    expect([...buildCockpitDisplayCodes(tree)]).toEqual([
+      ["r", "06"], ["gov", "06.00"], ["t0", "06.00.01"],
+      ["d1", "06.01"], ["d9", "06.02"],
+    ]);
+  });
 });
 
 describe("isCockpitExecNode", () => {
