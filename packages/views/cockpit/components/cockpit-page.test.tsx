@@ -402,37 +402,6 @@ describe("CockpitPage detail tables", () => {
     ]);
   });
 
-  it("puts the deliverable on the task table, where the gantt has no room for it", async () => {
-    useDetailedBoard();
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
-
-    expect(await screen.findByRole("columnheader", { name: "Deliverable" })).toBeInTheDocument();
-    expect(screen.getByText("Signed governance agreement")).toBeInTheDocument();
-  });
-
-  it("edits a table cell in place and sends only that field", async () => {
-    vi.mocked(api.updateCockpitNode).mockResolvedValue({
-      ...board.nodes[1]!,
-      deliverable: "Executed contract",
-    });
-    useDetailedBoard();
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
-
-    // Only the detailed leaf exposes a deliverable editor.
-    fireEvent.click(await screen.findByRole("button", { name: "Deliverable" }));
-    const input = screen.getByRole("textbox", { name: "Deliverable" });
-    fireEvent.change(input, { target: { value: "Executed contract" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(api.updateCockpitNode).toHaveBeenCalledWith("task", {
-        deliverable: "Executed contract",
-      });
-    });
-  });
-
   it("lists only the rows that carry money on the spend table, with derived dates", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Spend" }));

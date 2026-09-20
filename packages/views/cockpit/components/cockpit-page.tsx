@@ -94,9 +94,9 @@ import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
 import { CockpitVersions } from "./cockpit-versions";
 
-type CockpitTab = "overview" | "gantt" | "tasks" | "changes" | "finance";
+type CockpitTab = "overview" | "gantt" | "changes" | "finance";
 
-const TABS: CockpitTab[] = ["overview", "gantt", "tasks", "changes", "finance"];
+const TABS: CockpitTab[] = ["overview", "gantt", "changes", "finance"];
 
 // Stable empty arrays: an inline `?? []` allocates a fresh array on every
 // render while the board query is loading, which invalidates every memo
@@ -508,7 +508,7 @@ export function CockpitPage() {
   }
 
   const roots = tree.map((entry) => entry.node);
-  const isBoardView = tab === "gantt" || tab === "tasks" || tab === "finance";
+  const isBoardView = tab === "gantt" || tab === "finance";
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
@@ -540,11 +540,9 @@ export function CockpitPage() {
                 ? t(($) => $.tabs.overview)
                 : key === "gantt"
                   ? t(($) => $.tabs.gantt)
-                  : key === "tasks"
-                    ? t(($) => $.tabs.tasks)
-                    : key === "changes"
-                      ? t(($) => $.tabs.changes)
-                      : t(($) => $.tabs.finance)}
+                  : key === "changes"
+                    ? t(($) => $.tabs.changes)
+                    : t(($) => $.tabs.finance)}
               {key === "changes" && pendingCount > 0 && (
                 <span
                   className="ml-1 rounded-full bg-brand px-1.5 py-px text-micro leading-4 font-medium text-brand-foreground"
@@ -816,10 +814,10 @@ export function CockpitPage() {
             <CockpitChanges wsId={wsId} nodes={nodes} onOpenTask={openTask} />
           )}
 
-          {(tab === "tasks" || tab === "finance") && (
+          {tab === "finance" && (
             <CockpitTable
               board={board}
-              mode={tab === "tasks" ? "tasks" : "finance"}
+              mode="finance"
               query={query}
               rootIds={rootIds}
               onSelect={setSelectedId}

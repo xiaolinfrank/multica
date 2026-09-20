@@ -6,7 +6,6 @@
   "tabs": {
     "overview": "项目总览",
     "gantt": "执行甘特图",
-    "tasks": "任务明细",
     "finance": "财务支出",
     "changes": "待确认"
   },

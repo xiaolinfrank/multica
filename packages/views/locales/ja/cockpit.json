@@ -6,7 +6,6 @@
   "tabs": {
     "overview": "全体概要",
     "gantt": "実行ガントチャート",
-    "tasks": "タスク明細",
     "finance": "支出明細",
     "changes": "確認待ち"
   },

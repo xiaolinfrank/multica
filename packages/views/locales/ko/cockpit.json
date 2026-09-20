@@ -6,7 +6,6 @@
   "tabs": {
     "overview": "전체 개요",
     "gantt": "실행 간트차트",
-    "tasks": "작업 명세",
     "finance": "지출 명세",
     "changes": "검토 대기"
   },
