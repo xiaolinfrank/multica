@@ -2771,6 +2771,20 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 		projectCtx.applyTo(&resp)
 
+		moduleCtx, moduleErr := h.resolveClaimModuleContext(r.Context(), issue.ModuleID, issue.ProjectID, issue.WorkspaceID)
+		if moduleErr != nil {
+			slog.Error("issue claim: load module context failed; preserving task for redelivery",
+				"task_id", uuidToString(task.ID),
+				"issue_id", uuidToString(issue.ID),
+				"error", moduleErr)
+			return resp, deliveredCommentIDs, issueSnapshot, agentSkillCount, builtinSkillCount, &claimBuildFailure{
+				outcome: "error_module_context",
+				status:  http.StatusInternalServerError,
+				message: "failed to load module context",
+			}
+		}
+		moduleCtx.applyTo(&resp)
+
 		// Load every planned input as one chronological, de-duplicated set.
 		// The trigger is included here so the delivery receipt can only contain
 		// comments whose body we successfully embedded. Missing/deleted rows are
