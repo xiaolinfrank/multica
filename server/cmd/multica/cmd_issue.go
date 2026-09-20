@@ -437,7 +437,7 @@ var validIssueFields = []string{
 	"id", "workspace_id", "number", "identifier", "title", "description",
 	"status", "status_category", "status_name", "priority", "assignee_type",
 	"assignee_id", "creator_type", "creator_id", "parent_issue_id",
-	"project_id", "position", "stage", "start_date", "due_date", "created_at",
+	"project_id", "module_id", "position", "stage", "start_date", "due_date", "created_at",
 	"updated_at", "revision", "last_activity_at", "metadata", "properties",
 	"labels",
 }
@@ -531,6 +531,7 @@ func init() {
 	issueListCmd.Flags().String("assignee", "", "Filter by assignee name (member, agent, or squad; fuzzy match)")
 	issueListCmd.Flags().String("assignee-id", "", "Filter by assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueListCmd.Flags().String("project", "", "Filter by project ID")
+	issueListCmd.Flags().String("module", "", "Filter by module ID or title; a title is resolved inside --project when given, otherwise across the workspace")
 	issueListCmd.Flags().StringSlice("metadata", nil, "Filter by metadata key=value (repeatable; combined with AND). Value is JSON-parsed: 'true'/'false' → bool, numbers → number, otherwise string. Wrap as '\"42\"' to force a string when the value would otherwise sniff as a number.")
 	issueListCmd.Flags().StringArray("property", nil, `Filter by custom property, written as "Name=Value" (repeatable, one value per flag). Name is a property name (case-insensitive) or its UUID. Value depends on the type: an option name or id for select and multi_select, true or false for checkbox, a member name, email, or id for actor types, and the value itself for text, url, number, and date (YYYY-MM-DD). Use __none__ to match issues where the property is unset; it works for every type, so an option or member actually named __none__ has to be given by id, as does a property whose name contains "=" or ends in <, > or ! (the >=, <=, and != spellings are reserved for comparison filters). Repeating a property matches ANY of its values; different properties must ALL match.`)
 	issueListCmd.Flags().Int("limit", 50, fmt.Sprintf("Page size, 1 to %d (the server returns at most %d issues per request; use --offset to page through more)", issueListMaxPageSize, issueListMaxPageSize))
@@ -563,6 +564,7 @@ func init() {
 	issueCreateCmd.Flags().String("parent", "", "Parent issue ID")
 	issueCreateCmd.Flags().Int("stage", 0, "Stage ordinal (>=1) grouping this sub-issue into an ordered barrier group under its parent; omit for unstaged. The parent assignee is woken only when every sub-issue in a stage finishes.")
 	issueCreateCmd.Flags().String("project", "", "Project ID")
+	issueCreateCmd.Flags().String("module", "", "Module ID or title within the project; a title is resolved inside --project when given, otherwise across the workspace")
 	issueCreateCmd.Flags().String("start-date", "", "Start date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().String("due-date", "", "Due date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().Bool("allow-duplicate", false, "Allow creating an issue even when an active duplicate exists")
@@ -581,6 +583,7 @@ func init() {
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee name (member, agent, or squad; fuzzy match)")
 	issueUpdateCmd.Flags().String("assignee-id", "", "New assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueUpdateCmd.Flags().String("project", "", "Project ID")
+	issueUpdateCmd.Flags().String("module", "", "New module ID or title (use --module \"\" to file the issue directly under the project)")
 	issueUpdateCmd.Flags().String("start-date", "", "New start date (calendar day, YYYY-MM-DD; pass empty string to clear)")
 	issueUpdateCmd.Flags().String("due-date", "", "New due date (calendar day, YYYY-MM-DD)")
 	issueUpdateCmd.Flags().String("parent", "", "Parent issue ID (use --parent \"\" to clear)")
@@ -726,12 +729,23 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 	if hasAssignee {
 		params.Set("assignee_id", aID)
 	}
+	projectScope := ""
 	if v, _ := cmd.Flags().GetString("project"); v != "" {
 		project, err := resolveProjectID(ctx, client, v)
 		if err != nil {
 			return err
 		}
+		projectScope = project.ID
 		params.Set("project_id", project.ID)
+	}
+	// The module lane filter is server-side (module_id on ListIssues); a module
+	// named by title resolves inside --project when the caller gave one.
+	if v, _ := cmd.Flags().GetString("module"); v != "" {
+		module, err := resolveModuleID(ctx, client, projectScope, v)
+		if err != nil {
+			return err
+		}
+		params.Set("module_id", module.ID)
 	}
 	if mdFlags, _ := cmd.Flags().GetStringSlice("metadata"); len(mdFlags) > 0 {
 		filter, err := buildMetadataFilterQueryParam(mdFlags)
@@ -1355,12 +1369,23 @@ func runIssueCreate(cmd *cobra.Command, _ []string) error {
 		}
 		body["parent_issue_id"] = parent.ID
 	}
+	projectScope := ""
 	if v, _ := cmd.Flags().GetString("project"); v != "" {
 		project, err := resolveProjectID(ctx, client, v)
 		if err != nil {
 			return fmt.Errorf("resolve project: %w", err)
 		}
+		projectScope = project.ID
 		body["project_id"] = project.ID
+	}
+	// The server adopts the module's project when project_id is absent, and
+	// rejects a module that belongs to a different project than the one named.
+	if v, _ := cmd.Flags().GetString("module"); v != "" {
+		module, err := resolveModuleID(ctx, client, projectScope, v)
+		if err != nil {
+			return err
+		}
+		body["module_id"] = module.ID
 	}
 	if cmd.Flags().Changed("stage") {
 		stage, _ := cmd.Flags().GetInt("stage")
@@ -1530,6 +1555,7 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	if priorityChanged {
 		body["priority"] = priorityFlag
 	}
+	projectScope := ""
 	if cmd.Flags().Changed("project") {
 		v, _ := cmd.Flags().GetString("project")
 		if v == "" {
@@ -1539,7 +1565,24 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("resolve project: %w", err)
 			}
+			projectScope = project.ID
 			body["project_id"] = project.ID
+		}
+	}
+	// Changed() (not "") so an explicit --module "" reaches the server as a
+	// null, which files the issue directly under its project. Moving the issue
+	// to another project without naming a module clears the module server-side,
+	// because the old module belongs to the old project.
+	if cmd.Flags().Changed("module") {
+		v, _ := cmd.Flags().GetString("module")
+		if v == "" {
+			body["module_id"] = nil
+		} else {
+			module, err := resolveModuleID(ctx, client, projectScope, v)
+			if err != nil {
+				return err
+			}
+			body["module_id"] = module.ID
 		}
 	}
 	if cmd.Flags().Changed("start-date") {
