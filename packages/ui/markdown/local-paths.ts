@@ -149,11 +149,24 @@ export function hasLocalPath(text: string): boolean {
   return HAS_MOUNT_ROOT.test(text)
 }
 
-/** Build the href a detected path travels on. Exported for tests and for the
- *  surfaces that render a stored path (a project's collaboration space) through
- *  the same component without going through markdown. */
+/**
+ * Build the href a detected path travels on. Exported for tests and for the
+ * surfaces that render a stored path (a project's collaboration space) through
+ * the same component without going through markdown.
+ *
+ * `encodeURIComponent` leaves parentheses alone — they are legal URI
+ * sub-delimiters — but this value is about to be written inside a markdown
+ * link destination, where the FIRST unbalanced `)` ends it. A path such as
+ * `/Volumes/share/x)y` would emit `](localpath://…x)y)`, which parses as a link
+ * to `…x` followed by the literal text `y)`. So both are escaped here, where
+ * the href is built, rather than in the one caller that happens to write
+ * markdown today.
+ */
 export function localPathHref(path: string): string {
-  return `${HREF_PREFIX}${encodeURIComponent(path)}`
+  const encoded = encodeURIComponent(path)
+    .replace(/\(/g, '%28')
+    .replace(/\)/g, '%29')
+  return `${HREF_PREFIX}${encoded}`
 }
 
 /** The path a `localpath://` href carries, or `null` for any other href.

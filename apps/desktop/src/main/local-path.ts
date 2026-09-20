@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { shell } from "electron";
 
@@ -22,6 +22,13 @@ import { shell } from "electron";
  * everything else. `shell.showItemInFolder` selects the item in a file-manager
  * window and never consults LaunchServices, so a path naming an executable, a
  * document or an app bundle is still useful to the reader and still inert.
+ *
+ * "Is it a bundle" has to be asked of the RESOLVED path, not the one that was
+ * clicked. A symlink is a directory whose name is whatever its author chose:
+ * `report-final` pointing at `/Applications/Anything.app` stats as a directory
+ * and has no bundle extension, so a name-only check hands it to LaunchServices
+ * and the app starts. Both names are therefore tested, and the path that is
+ * opened is the resolved one — the same path the checks were made against.
  */
 
 /** Bounds the value before it touches the filesystem. Matches the server's
@@ -82,12 +89,14 @@ export async function openLocalPathSafely(
   if (!isAbsolute(path)) return { ok: false, reason: "invalid" };
 
   let isDirectory: boolean;
+  let resolved: string;
   try {
-    // stat, not lstat: a symlink to a directory is a directory as far as the
-    // reader is concerned, and resolving it is also what keeps a link pointing
-    // at a bundle from slipping past the extension check below — the name we
-    // test is the one the user clicked either way.
-    isDirectory = (await stat(path)).isDirectory();
+    // realpath first: every check below must see what the path actually names,
+    // not what it is called. A symlink to a directory is still a directory to
+    // the reader, so following it is right — but then the bundle test has to
+    // follow it too.
+    resolved = await realpath(path);
+    isDirectory = (await stat(resolved)).isDirectory();
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT" || code === "ENOTDIR") {
@@ -100,13 +109,18 @@ export async function openLocalPathSafely(
     };
   }
 
-  if (isDirectory && !isBundle(path)) {
+  // Both names are tested: the resolved one catches a link pointing into a
+  // bundle, and the clicked one catches a link whose own name ends in a bundle
+  // extension but resolves somewhere innocuous.
+  if (isDirectory && !isBundle(resolved) && !isBundle(path)) {
+    // Open the resolved path — the one the checks were made against.
     // Returns "" on success, an error string otherwise.
-    const error = await shell.openPath(path);
+    const error = await shell.openPath(resolved);
     if (error === "") return { ok: true, action: "opened" };
     return { ok: false, reason: "error", error };
   }
 
+  // Reveal the path the reader clicked, which is the one they recognise.
   shell.showItemInFolder(path);
   return { ok: true, action: "revealed" };
 }

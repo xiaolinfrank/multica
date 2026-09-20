@@ -8,7 +8,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { shell } from "electron";
@@ -22,9 +22,22 @@ const directory = join(root, "项目");
 const file = join(root, "report.pdf");
 const bundle = join(root, "Calculator.app");
 
+const linkToBundle = join(root, "报告最终版");
+const linkToDirectory = join(root, "捷径");
+const bundleNamedLinkToDirectory = join(root, "Innocent.app");
+
 await mkdir(directory);
 await writeFile(file, "x");
 await mkdir(bundle);
+await symlink(bundle, linkToBundle);
+await symlink(directory, linkToDirectory);
+await symlink(directory, bundleNamedLinkToDirectory);
+
+// What openPath is expected to receive: the module opens the RESOLVED path,
+// which is the one its bundle and directory checks were made against. On macOS
+// the temp root itself resolves (/var/folders → /private/var/folders), so this
+// differs from `directory` even with no symlink involved.
+const resolvedDirectory = await realpath(directory);
 
 afterAll(() => rm(root, { recursive: true, force: true }));
 
@@ -39,7 +52,7 @@ describe("openLocalPathSafely", () => {
       ok: true,
       action: "opened",
     });
-    expect(shell.openPath).toHaveBeenCalledWith(directory);
+    expect(shell.openPath).toHaveBeenCalledWith(resolvedDirectory);
   });
 
   it("trims the value before using it", async () => {
@@ -47,7 +60,7 @@ describe("openLocalPathSafely", () => {
       ok: true,
       action: "opened",
     });
-    expect(shell.openPath).toHaveBeenCalledWith(directory);
+    expect(shell.openPath).toHaveBeenCalledWith(resolvedDirectory);
   });
 
   // A file has a default handler, and handing it to the OS would run that
@@ -81,6 +94,38 @@ describe("openLocalPathSafely", () => {
     expect(shell.openPath).not.toHaveBeenCalled();
   });
 
+  // SECURITY. A symlink is a directory whose name is whatever its author chose.
+  // Checking the clicked name alone, while stat() follows the link, hands
+  // `/Applications/Anything.app` to LaunchServices under a harmless name — from
+  // a path an agent wrote into a comment.
+  it("reveals a bundle reached through an innocently-named symlink", async () => {
+    await expect(openLocalPathSafely(linkToBundle)).resolves.toEqual({
+      ok: true,
+      action: "revealed",
+    });
+    expect(shell.openPath).not.toHaveBeenCalled();
+    expect(shell.showItemInFolder).toHaveBeenCalledWith(linkToBundle);
+  });
+
+  // The mirror case: a link whose own name ends in a bundle extension but
+  // resolves somewhere ordinary. Testing only the resolved name would open it.
+  it("reveals a bundle-named symlink even when it resolves to a plain directory", async () => {
+    await expect(
+      openLocalPathSafely(bundleNamedLinkToDirectory),
+    ).resolves.toEqual({ ok: true, action: "revealed" });
+    expect(shell.openPath).not.toHaveBeenCalled();
+  });
+
+  // Following a link is still the right behaviour for the ordinary case, and
+  // what gets opened is the resolved path — the one the checks were made on.
+  it("opens the target of a symlink to a plain directory", async () => {
+    await expect(openLocalPathSafely(linkToDirectory)).resolves.toEqual({
+      ok: true,
+      action: "opened",
+    });
+    expect(shell.openPath).toHaveBeenCalledWith(resolvedDirectory);
+  });
+
   it("reports a missing path without touching the shell", async () => {
     await expect(openLocalPathSafely(join(root, "nope"))).resolves.toEqual({
       ok: false,
@@ -100,7 +145,9 @@ describe("openLocalPathSafely", () => {
     });
   });
 
-  it.each([
+  // Typed explicitly: a mixed array infers as a union of tuples, which
+  // `it.each` cannot reconcile with a single callback signature.
+  const refused: Array<[unknown, string]> = [
     ["relative/path", "a relative path"],
     ["./report", "an explicitly relative path"],
     ["~/Documents", "a home-relative path"],
@@ -112,7 +159,9 @@ describe("openLocalPathSafely", () => {
     [42, "a non-string"],
     [null, "null"],
     [undefined, "undefined"],
-  ])("refuses %s (%s)", async (value) => {
+  ];
+
+  it.each(refused)("refuses %s (%s)", async (value) => {
     await expect(openLocalPathSafely(value)).resolves.toEqual({
       ok: false,
       reason: "invalid",
