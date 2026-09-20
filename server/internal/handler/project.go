@@ -33,8 +33,12 @@ type ProjectResponse struct {
 	LeadID      *string `json:"lead_id"`
 	// StartDate / DueDate are calendar days ("YYYY-MM-DD"), no time-of-day or
 	// timezone — same contract as issue.start_date / issue.due_date.
-	StartDate  *string `json:"start_date"`
-	DueDate    *string `json:"due_date"`
+	StartDate *string `json:"start_date"`
+	DueDate   *string `json:"due_date"`
+	// CollabPath is the shared-storage directory ("人机协作空间路径") where this
+	// project's deliverables live, so people and agents exchange finished work
+	// in one place instead of inside a task's private workdir.
+	CollabPath *string `json:"collab_path"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
 	IssueCount int64   `json:"issue_count"`
@@ -59,6 +63,7 @@ func projectToResponse(p db.Project) ProjectResponse {
 		LeadID:      uuidToPtr(p.LeadID),
 		StartDate:   dateToPtr(p.StartDate),
 		DueDate:     dateToPtr(p.DueDate),
+		CollabPath:  textToPtr(p.CollabPath),
 		CreatedAt:   timestampToString(p.CreatedAt),
 		UpdatedAt:   timestampToString(p.UpdatedAt),
 	}
@@ -108,6 +113,7 @@ type CreateProjectRequest struct {
 	LeadID      *string                               `json:"lead_id"`
 	StartDate   *string                               `json:"start_date"`
 	DueDate     *string                               `json:"due_date"`
+	CollabPath  *string                               `json:"collab_path"`
 	Resources   []CreateProjectResourceRequestPayload `json:"resources,omitempty"`
 }
 
@@ -131,6 +137,7 @@ type UpdateProjectRequest struct {
 	LeadID      *string `json:"lead_id"`
 	StartDate   *string `json:"start_date"`
 	DueDate     *string `json:"due_date"`
+	CollabPath  *string `json:"collab_path"`
 }
 
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -322,6 +329,11 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		dueDate = d
 	}
 
+	collabPath, ok := collabPathFromRequest(w, req.CollabPath)
+	if !ok {
+		return
+	}
+
 	// Pre-validate every resource payload before opening a transaction so an
 	// invalid ref produces a clean 400 with no DB work. For local_directory we
 	// also enforce one row per daemon_id within the batch — the daemon-side
@@ -378,6 +390,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		Priority:    priority,
 		StartDate:   startDate,
 		DueDate:     dueDate,
+		CollabPath:  collabPath,
 	}
 
 	// Without resources, keep the simple non-tx path.
@@ -511,6 +524,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		LeadID:      prevProject.LeadID,
 		StartDate:   prevProject.StartDate,
 		DueDate:     prevProject.DueDate,
+		CollabPath:  prevProject.CollabPath,
 	}
 	if req.Title != nil {
 		params.Title = pgtype.Text{String: *req.Title, Valid: true}
@@ -584,6 +598,13 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		} else {
 			params.DueDate = pgtype.Date{Valid: false} // explicit null = clear date
 		}
+	}
+	if _, ok := rawFields["collab_path"]; ok {
+		collabPath, valid := collabPathFromRequest(w, req.CollabPath)
+		if !valid {
+			return
+		}
+		params.CollabPath = collabPath
 	}
 	project, err := h.Queries.UpdateProject(r.Context(), params)
 	if err != nil {
@@ -817,7 +838,7 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 
 	query := fmt.Sprintf(`SELECT p.id, p.workspace_id, p.title, p.description, p.icon,
 		p.status, p.priority, p.lead_type, p.lead_id,
-		p.start_date, p.due_date,
+		p.start_date, p.due_date, p.collab_path,
 		p.created_at, p.updated_at,
 		%s AS match_source
 	FROM project p
@@ -896,6 +917,7 @@ func (h *Handler) SearchProjects(w http.ResponseWriter, r *http.Request) {
 				&row.project.LeadID,
 				&row.project.StartDate,
 				&row.project.DueDate,
+				&row.project.CollabPath,
 				&row.project.CreatedAt,
 				&row.project.UpdatedAt,
 				&row.matchSource,

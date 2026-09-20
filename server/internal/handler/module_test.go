@@ -37,9 +37,9 @@ func TestModuleCreateListGetUpdateDelete(t *testing.T) {
 		Module ModuleResponse `json:"module"`
 	}
 	testutil.Call(t, testHandler.CreateModule, newRequest(http.MethodPost, "/api/modules", map[string]any{
-		"project_id":   projectID,
-		"title":        "  Gamma  ",
-		"description":  "third module",
+		"project_id":  projectID,
+		"title":       "  Gamma  ",
+		"description": "third module",
 	})).Want(http.StatusCreated).JSON(&created)
 	if created.Module.Title != "Gamma" {
 		t.Fatalf("title = %q, want trimmed Gamma", created.Module.Title)
@@ -138,8 +138,8 @@ func TestCreateModuleValidation(t *testing.T) {
 	projectID, _, _ := moduleTestSeed(t)
 
 	for name, title := range map[string]string{
-		"empty":   "",
-		"blank":   "   ",
+		"empty":    "",
+		"blank":    "   ",
 		"too long": strings.Repeat("模", 201),
 	} {
 		w := httptest.NewRecorder()
@@ -293,9 +293,9 @@ func TestCreateIssueModuleScoping(t *testing.T) {
 	// Disagreing project/module pair is rejected whole.
 	w := httptest.NewRecorder()
 	testHandler.CreateIssue(w, newRequest(http.MethodPost, "/api/issues", map[string]any{
-		"title":     "Mismatched module",
+		"title":      "Mismatched module",
 		"project_id": otherProject,
-		"module_id": moduleA,
+		"module_id":  moduleA,
 	}))
 	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "module does not belong to project") {
 		t.Fatalf("expected 400 mismatch error, got %d: %s", w.Code, w.Body.String())

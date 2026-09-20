@@ -29,10 +29,13 @@ type ModuleResponse struct {
 	Title       string  `json:"title"`
 	Description *string `json:"description"`
 	Position    float64 `json:"position"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	IssueCount  int64   `json:"issue_count"`
-	DoneCount   int64   `json:"done_count"`
+	// CollabPath is the shared-storage directory ("人机协作空间路径") for this
+	// module's deliverables — the project's path narrowed to one module.
+	CollabPath *string `json:"collab_path"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	IssueCount int64   `json:"issue_count"`
+	DoneCount  int64   `json:"done_count"`
 }
 
 func moduleToResponse(m db.Module) ModuleResponse {
@@ -43,6 +46,7 @@ func moduleToResponse(m db.Module) ModuleResponse {
 		Title:       m.Title,
 		Description: textToPtr(m.Description),
 		Position:    m.Position,
+		CollabPath:  textToPtr(m.CollabPath),
 		CreatedAt:   timestampToString(m.CreatedAt),
 		UpdatedAt:   timestampToString(m.UpdatedAt),
 	}
@@ -104,12 +108,14 @@ type CreateModuleRequest struct {
 	ProjectID   string  `json:"project_id"`
 	Title       string  `json:"title"`
 	Description *string `json:"description"`
+	CollabPath  *string `json:"collab_path"`
 }
 
 type UpdateModuleRequest struct {
 	Title       *string  `json:"title"`
 	Description *string  `json:"description"`
 	Position    *float64 `json:"position"`
+	CollabPath  *string  `json:"collab_path"`
 }
 
 func (h *Handler) ListModules(w http.ResponseWriter, r *http.Request) {
@@ -200,11 +206,16 @@ func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "project not found in this workspace")
 		return
 	}
+	collabPath, ok := collabPathFromRequest(w, req.CollabPath)
+	if !ok {
+		return
+	}
 	module, err := h.Queries.CreateModule(r.Context(), db.CreateModuleParams{
 		WorkspaceID: wsUUID,
 		ProjectID:   projectUUID,
 		Title:       title,
 		Description: ptrToText(req.Description),
+		CollabPath:  collabPath,
 	})
 	if err != nil {
 		slog.Error("create module failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -255,6 +266,7 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		ID:          module.ID,
 		WorkspaceID: module.WorkspaceID,
 		Description: module.Description,
+		CollabPath:  module.CollabPath,
 	}
 	if req.Title != nil {
 		title, ok := validateModuleTitle(w, *req.Title)
@@ -274,6 +286,13 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		} else {
 			params.Description = pgtype.Text{Valid: false}
 		}
+	}
+	if _, ok := rawFields["collab_path"]; ok {
+		collabPath, valid := collabPathFromRequest(w, req.CollabPath)
+		if !valid {
+			return
+		}
+		params.CollabPath = collabPath
 	}
 	updated, err := h.Queries.UpdateModule(r.Context(), params)
 	if err != nil {
@@ -494,7 +513,7 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.publish(protocol.EventModuleDeleted, workspaceID, "member", userID, map[string]any{
-		"module_id": uuidToString(module.ID),
+		"module_id":  uuidToString(module.ID),
 		"project_id": uuidToString(module.ProjectID),
 	})
 	w.WriteHeader(http.StatusNoContent)

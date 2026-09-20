@@ -1,0 +1,2 @@
+ALTER TABLE module DROP COLUMN IF EXISTS collab_path;
+ALTER TABLE project DROP COLUMN IF EXISTS collab_path;
