@@ -101,6 +101,24 @@ type AppConfig struct {
 	// create-issue dialog pre-selects this agent so the automatic assignment —
 	// and the run it immediately triggers — is visible before submit.
 	DefaultIssueAssigneeAgentName string `json:"default_issue_assignee_agent_name,omitempty"`
+	// CollabSpaceHost is the file server that hosts the shared storage a
+	// project's collaboration space (collab_path) lives on — a host name or
+	// address, e.g. "nas.corp" or "10.0.0.50". Set by the operator via
+	// MULTICA_COLLAB_SPACE_HOST; omitted when unset, which is every deployment
+	// that has not configured shared storage.
+	//
+	// It exists because a stored collaboration space is a path as the AGENT's
+	// machine mounts it ("/Volumes/<share>/..."), and a browser can do nothing
+	// with that: an http(s) page may not navigate to file://, in any browser.
+	// With the host, the same location can be addressed as smb:// — which
+	// macOS hands to Finder — and as a UNC path Windows Explorer accepts, so a
+	// reader gets one click instead of a string to paste.
+	//
+	// Public alongside daemon_server_url, which already names a deployment's
+	// own hosts here. Deployment topology, not user- or tenant-scoped data;
+	// the managed cloud leaves it unset and emits nothing.
+	CollabSpaceHost string `json:"collab_space_host,omitempty"`
+
 	// DefaultIssueAssigneeNode is the raw node label
 	// DefaultIssueAssigneeAgentName is derived from (BayClaw fork,
 	// DEFAULT_ISSUE_ASSIGNEE_NODE). Onboarding's shared-runtime picker uses it
@@ -134,6 +152,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		config.DefaultIssueAssigneeAgentName = clusterAgentNameForNode(node)
 		config.DefaultIssueAssigneeNode = node
 	}
+	config.CollabSpaceHost = collabSpaceHostFromEnv()
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	// Only surface the build version on self-hosted deployments. The managed
 	// cloud is continuously deployed and its users can't choose the build, so
@@ -154,6 +173,35 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, config)
+}
+
+// collabSpaceHostFromEnv returns the configured shared-storage host, stripped
+// of anything that is not a host: a scheme the operator may have pasted
+// ("smb://nas"), a trailing slash, and any path or share segment. Clients
+// append the share themselves — it comes from the stored collaboration space
+// path — so a value carrying one would produce a doubled segment.
+//
+// Read per request, like the analytics keys above, so an operator can point
+// the platform at a different file server without restarting the API.
+func collabSpaceHostFromEnv() string {
+	raw := strings.TrimSpace(os.Getenv("MULTICA_COLLAB_SPACE_HOST"))
+	if raw == "" {
+		return ""
+	}
+	if idx := strings.Index(raw, "://"); idx >= 0 {
+		raw = raw[idx+len("://"):]
+	}
+	raw = strings.TrimLeft(raw, "/\\")
+	if idx := strings.IndexAny(raw, "/\\"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	// A host cannot contain whitespace; a value that does is a paste accident
+	// and would produce an unopenable URL rather than a broken one, so it is
+	// dropped instead of passed on.
+	if raw == "" || strings.ContainsAny(raw, " \t") {
+		return ""
+	}
+	return raw
 }
 
 func daemonSetupURLsFromEnv() (string, string) {

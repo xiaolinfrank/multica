@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COLLAB_PATH_MAX_BYTES,
+  collabPathAddresses,
   isAbsoluteCollabPath,
   normalizeCollabPath,
 } from "./collab-path";
@@ -94,5 +95,53 @@ describe("isAbsoluteCollabPath", () => {
 
   it("requires a letter before the drive colon", () => {
     expect(isAbsoluteCollabPath("1:/share")).toBe(false);
+  });
+});
+
+describe("collabPathAddresses", () => {
+  const HOST = "10.0.0.50";
+
+  it("addresses a macOS mount through the configured file server", () => {
+    expect(collabPathAddresses("/Volumes/人机协作空间/项目/模块", HOST)).toEqual({
+      smbUrl: `smb://${HOST}/${encodeURIComponent("人机协作空间")}/${encodeURIComponent("项目")}/${encodeURIComponent("模块")}`,
+      uncPath: "\\\\10.0.0.50\\人机协作空间\\项目\\模块",
+    });
+  });
+
+  // macOS writes its own mount URLs percent-encoded, so Finder decodes them
+  // back; a raw space would truncate the address instead.
+  it("percent-encodes a segment containing a space", () => {
+    const { smbUrl } = collabPathAddresses("/Volumes/AI 平台/报告", HOST);
+    expect(smbUrl).toBe(
+      `smb://${HOST}/AI%20${encodeURIComponent("平台")}/${encodeURIComponent("报告")}`,
+    );
+  });
+
+  // A UNC path names its own server, so it resolves with no deployment
+  // configuration at all — and must not be rewritten to the configured host,
+  // which may be a different machine entirely.
+  it("keeps a UNC path on the server it already names", () => {
+    expect(collabPathAddresses("\\\\nas01\\共享\\项目", "")).toEqual({
+      smbUrl: `smb://nas01/${encodeURIComponent("共享")}/${encodeURIComponent("项目")}`,
+      uncPath: "\\\\nas01\\共享\\项目",
+    });
+  });
+
+  // Guessing would produce an address that fails in a way the reader cannot
+  // diagnose, which is worse than the clipboard.
+  it.each([
+    ["/mnt/share/项目", HOST, "a Linux mount point names no share"],
+    ["/media/nas/项目", HOST, "same for removable media"],
+    ["Z:\\共享\\项目", HOST, "a drive letter hides a per-machine mapping"],
+    ["/Volumes/人机协作空间/项目", "", "no file server is configured"],
+    ["/Volumes/", HOST, "the mount root is not a share"],
+    ["/Volumes//项目", HOST, "an empty share segment"],
+    ["\\\\nas01", HOST, "a bare server is not a directory"],
+    ["", HOST, "an empty path"],
+  ])("gives no address for %s (%s)", (path, host) => {
+    expect(collabPathAddresses(path, host)).toEqual({
+      smbUrl: null,
+      uncPath: null,
+    });
   });
 });

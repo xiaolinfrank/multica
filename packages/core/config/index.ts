@@ -45,10 +45,19 @@ interface ConfigState {
   // Older handlers accepted the unknown field and returned success while
   // dropping it, so absent must fail closed.
   agentConversationStartersSupported: boolean;
-  // Whether deleting a comment keeps its replies (#8296). Older servers
+  // Host of the file server the shared collaboration storage lives on, from
+  // the server's MULTICA_COLLAB_SPACE_HOST. A project's collaboration space is
+  // stored as the AGENT's mount path, which a browser can do nothing with;
+  // with this host the same location can be addressed as an smb:// URL macOS
+  // hands to Finder, or a UNC path Windows Explorer accepts. Empty on every
+  // deployment without shared storage — and empty must mean "offer the
+  // clipboard", never "guess a host".
+  collabSpaceHost: string;
+    // Whether deleting a comment keeps its replies (#8296). Older servers
   // deleted the replies too, so absent must fail closed: the client then
   // promises nothing about replies and uses the legacy delete route.
   commentDeleteKeepRepliesSupported: boolean;
+  setCollabSpaceHost: (host?: string) => void;
   setCdnConfig: (config: { cdnDomain: string; cdnSigned?: boolean }) => void;
   setAuthConfig: (config: {
     allowSignup: boolean;
@@ -71,6 +80,7 @@ interface ConfigState {
 
 export const configStore = createStore<ConfigState>((set) => ({
   cdnDomain: "",
+  collabSpaceHost: "",
   cdnSigned: false,
   allowSignup: true,
   googleClientId: "",
@@ -104,6 +114,7 @@ export const configStore = createStore<ConfigState>((set) => ({
     set({ agentConversationStartersSupported: supported === true }),
   setCommentDeleteKeepRepliesSupported: (supported = false) =>
     set({ commentDeleteKeepRepliesSupported: supported === true }),
+  setCollabSpaceHost: (host = "") => set({ collabSpaceHost: host }),
 }));
 
 export function useConfigStore(): ConfigState;
