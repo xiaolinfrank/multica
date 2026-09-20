@@ -9,6 +9,10 @@ export interface Module {
   title: string;
   description: string | null;
   position: number;
+  // Absolute directory on shared storage ("人机协作空间路径") for this module's
+  // deliverables — the project's collaboration space narrowed to one module.
+  // The project keeps its own path; this one does not replace it.
+  collab_path: string | null;
   created_at: string;
   updated_at: string;
   issue_count: number;
@@ -19,14 +23,18 @@ export interface CreateModuleRequest {
   project_id: string;
   title: string;
   description?: string;
+  collab_path?: string;
 }
 
 // Partial-update payload: omit a key to keep the field, send null to clear it
-// (description only). Mirrors UpdateProjectRequest presence semantics.
+// (description and collab_path only). Mirrors UpdateProjectRequest presence
+// semantics.
 export interface UpdateModuleRequest {
   title?: string;
   description?: string | null;
   position?: number;
+  // Omit the key to leave the path untouched; send null (or "") to clear it.
+  collab_path?: string | null;
 }
 
 export interface ListModulesResponse {

@@ -1,8 +1,12 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithI18n } from "../test/i18n";
+
+const mocks = vi.hoisted(() => ({
+  createProject: vi.fn(),
+}));
 
 const longRepoUrl =
   "https://github.com/multica-ai/a-very-long-repository-name-that-needs-a-tooltip";
@@ -17,7 +21,7 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("@multica/core/projects/mutations", () => ({
-  useCreateProject: () => ({ mutateAsync: vi.fn() }),
+  useCreateProject: () => ({ mutateAsync: mocks.createProject }),
 }));
 
 vi.mock("@multica/core/projects", () => ({
@@ -67,9 +71,19 @@ vi.mock("../navigation", () => ({
 }));
 
 vi.mock("../editor", () => {
-  const ContentEditor = React.forwardRef<HTMLTextAreaElement, { placeholder?: string }>(
-    ({ placeholder }, ref) => <textarea ref={ref} placeholder={placeholder} />,
-  );
+  // Mirrors ContentEditorRef: the modal reads the description off the handle
+  // (`getMarkdown()`) when it submits, so a bare <textarea> ref would throw
+  // inside handleSubmit's try block and silently abort every create.
+  const ContentEditor = React.forwardRef<
+    { getMarkdown: () => string },
+    { placeholder?: string }
+  >(({ placeholder }, ref) => {
+    const inner = React.useRef<HTMLTextAreaElement>(null);
+    React.useImperativeHandle(ref, () => ({
+      getMarkdown: () => inner.current?.value ?? "",
+    }));
+    return <textarea ref={inner} placeholder={placeholder} />;
+  });
   ContentEditor.displayName = "ContentEditor";
 
   return {
@@ -176,6 +190,12 @@ vi.mock("sonner", () => ({
 
 import { CreateProjectModal } from "./create-project";
 
+const COLLAB_PATH = "/Volumes/人机协作空间/AI医药联合创新平台";
+
+beforeEach(() => {
+  mocks.createProject.mockReset().mockResolvedValue({ id: "project-1" });
+});
+
 describe("CreateProjectModal", () => {
   it("exposes full repository URLs in the repository picker", () => {
     render(<CreateProjectModal onClose={vi.fn()} />);
@@ -199,6 +219,49 @@ describe("CreateProjectModal", () => {
 
     await user.click(screen.getByRole("button", { name: /Set due date/ }));
     expect(screen.getByRole("button", { name: "Due date" })).toBeInTheDocument();
+  });
+
+  // Collapsed behind ⋯ like the dates: most projects don't have a shared
+  // directory, and the ones that do reveal it in one click.
+  it("reveals the collaboration space from the ⋯ overflow and sends it", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<CreateProjectModal onClose={vi.fn()} />);
+
+    expect(
+      screen.queryByRole("textbox", { name: "Collaboration space" }),
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Project title"), "Platform");
+    await user.click(screen.getByRole("button", { name: /Set collaboration space/ }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Collaboration space" }),
+      COLLAB_PATH,
+    );
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+
+    expect(mocks.createProject).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Platform", collab_path: COLLAB_PATH }),
+    );
+  });
+
+  // The path rides in the same call that creates the project and its
+  // resources, so a server rejection would fail the whole creation.
+  it("does not create the project when the path would be rejected", async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<CreateProjectModal onClose={vi.fn()} />);
+
+    await user.type(screen.getByPlaceholderText("Project title"), "Platform");
+    await user.click(screen.getByRole("button", { name: /Set collaboration space/ }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Collaboration space" }),
+      "AI医药联合创新平台",
+    );
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+
+    expect(mocks.createProject).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Enter an absolute path, such as /Volumes/share/project."),
+    ).toBeInTheDocument();
   });
 
   it("filters workspace repositories by search text", async () => {

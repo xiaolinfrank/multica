@@ -84,6 +84,20 @@
     "toast_project_deleted": "Project deleted",
     "toast_move_issue_failed": "Failed to move issue"
   },
+  "collab_path": {
+    "label": "Collaboration space",
+    "module_label": "Module space",
+    "empty": "Not set",
+    "placeholder": "/Volumes/…",
+    "copy_aria": "Copy path",
+    "toast_copied": "Path copied",
+    "toast_copy_failed": "Couldn't copy the path",
+    "hint_project": "Shared directory where people and agents hand this project's deliverables to each other. Absolute path, as mounted on the machine the agent runs on.",
+    "hint_module": "Where this module's deliverables go, inside the project's space. Absolute path, as mounted on the machine the agent runs on.",
+    "error_not_absolute": "Enter an absolute path, such as /Volumes/share/project.",
+    "error_too_long": "Too long for a directory path.",
+    "error_control_characters": "Contains characters a path can't hold."
+  },
   "resources": {
     "section_header": "Resources",
     "empty": "No resources attached.",
@@ -162,6 +176,19 @@
       "toast_created": "Module created",
       "toast_failed": "Failed to create module"
     },
+    "edit": {
+      "title": "Edit module",
+      "title_label": "Name",
+      "description_label": "Description",
+      "description_placeholder": "What this module covers...",
+      "description_hint": "Shared with agents as context for every task in this module.",
+      "submit": "Save",
+      "submitting": "Saving...",
+      "cancel": "Cancel",
+      "toast_saved": "Module updated",
+      "toast_failed": "Failed to update module",
+      "not_found": "This module no longer exists."
+    },
     "picker": {
       "search_placeholder": "Search modules...",
       "none": "No module",
@@ -179,6 +206,7 @@
     "manage_empty": "No modules yet",
     "reorder_handle_aria": "Drag to reorder module",
     "rename_aria": "Rename module",
+    "edit_aria": "Edit module",
     "delete_aria": "Delete module",
     "delete_title": "Delete {{title}}?",
     "delete_description": "The module is removed. Its issues stay in the project, filed directly under it. This cannot be undone.",

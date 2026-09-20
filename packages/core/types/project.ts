@@ -16,6 +16,11 @@ export interface Project {
   // issue.start_date / issue.due_date.
   start_date: string | null;
   due_date: string | null;
+  // Absolute directory on shared storage ("人机协作空间路径") where people and
+  // agents exchange this project's deliverables. Resolved on the daemon host
+  // that runs a task, never by the server, so an unmounted share fails at the
+  // agent rather than at write time.
+  collab_path: string | null;
   created_at: string;
   updated_at: string;
   issue_count: number;
@@ -33,6 +38,7 @@ export interface CreateProjectRequest {
   lead_id?: string;
   start_date?: string;
   due_date?: string;
+  collab_path?: string;
   // Resources to attach in the same transaction as the project. Server returns
   // 4xx (and rolls back) if any one is invalid or duplicate.
   resources?: CreateProjectResourceRequest[];
@@ -49,6 +55,8 @@ export interface UpdateProjectRequest {
   // Omit the key to leave the date untouched; send null (or "") to clear it.
   start_date?: string | null;
   due_date?: string | null;
+  // Omit the key to leave the path untouched; send null (or "") to clear it.
+  collab_path?: string | null;
 }
 
 export interface ListProjectsResponse {

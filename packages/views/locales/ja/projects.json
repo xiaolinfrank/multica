@@ -83,6 +83,20 @@
     "toast_project_deleted": "プロジェクトを削除しました",
     "toast_move_issue_failed": "タスクを移動できませんでした"
   },
+  "collab_path": {
+    "label": "協働スペースのパス",
+    "module_label": "モジュールの協働スペース",
+    "empty": "未設定",
+    "placeholder": "/Volumes/…",
+    "copy_aria": "パスをコピー",
+    "toast_copied": "パスをコピーしました",
+    "toast_copy_failed": "パスをコピーできませんでした",
+    "hint_project": "人とエージェントがこのプロジェクトの成果物を受け渡す共有ディレクトリです。エージェントを実行するマシンでマウントされている絶対パスを入力してください。",
+    "hint_module": "このモジュールの成果物を置く場所で、プロジェクトのスペース内にあります。エージェントを実行するマシンでマウントされている絶対パスを入力してください。",
+    "error_not_absolute": "絶対パスを入力してください（例: /Volumes/共有/プロジェクト）。",
+    "error_too_long": "ディレクトリのパスとしては長すぎます。",
+    "error_control_characters": "パスに使用できない文字が含まれています。"
+  },
   "resources": {
     "section_header": "リソース",
     "empty": "添付されたリソースはありません。",
@@ -161,6 +175,19 @@
       "toast_created": "モジュールを作成しました",
       "toast_failed": "モジュールの作成に失敗しました"
     },
+    "edit": {
+      "title": "モジュールを編集",
+      "title_label": "名前",
+      "description_label": "説明",
+      "description_placeholder": "このモジュールが扱う範囲...",
+      "description_hint": "このモジュールのすべてのタスクで、コンテキストとしてエージェントに共有されます。",
+      "submit": "保存",
+      "submitting": "保存中...",
+      "cancel": "キャンセル",
+      "toast_saved": "モジュールを更新しました",
+      "toast_failed": "モジュールの更新に失敗しました",
+      "not_found": "このモジュールはすでに存在しません。"
+    },
     "picker": {
       "search_placeholder": "モジュールを検索...",
       "none": "モジュールなし",
@@ -178,6 +205,7 @@
     "manage_empty": "モジュールはまだありません",
     "reorder_handle_aria": "ドラッグしてモジュールの順序を変更",
     "rename_aria": "モジュールの名前を変更",
+    "edit_aria": "モジュールを編集",
     "delete_aria": "モジュールを削除",
     "delete_title": "{{title}} を削除しますか？",
     "delete_description": "モジュールを削除すると、その課題はプロジェクトに残り、プロジェクト直下に分類されます。この操作は取り消せません。",

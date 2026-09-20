@@ -1421,6 +1421,10 @@ const ProjectSchema = z.object({
   // object — which would degrade a search/list batch to the empty fallback.
   start_date: z.string().nullable().default(null),
   due_date: z.string().nullable().default(null),
+  // Same leniency as the dates above: a backend that predates collab_path
+  // omits the key, and defaulting to null keeps the row (and the batch it
+  // belongs to) parseable instead of degrading to the empty fallback.
+  collab_path: z.string().nullable().default(null),
   created_at: z.string(),
   updated_at: z.string(),
   issue_count: z.number().default(0),
@@ -1454,6 +1458,10 @@ export const ModuleSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   position: z.number(),
+  // .default(null) rather than bare .nullable(): a backend deployed before
+  // collab_path omits the key entirely, and failing the row over it would
+  // blank every module list on a frontend-first deploy.
+  collab_path: z.string().nullable().default(null),
   created_at: z.string(),
   updated_at: z.string(),
   issue_count: z.number().default(0),
@@ -1479,6 +1487,7 @@ export const EMPTY_MODULE: Module = {
   title: "",
   description: null,
   position: 0,
+  collab_path: null,
   created_at: "",
   updated_at: "",
   issue_count: 0,

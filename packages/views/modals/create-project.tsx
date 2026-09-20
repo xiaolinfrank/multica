@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { CalendarClock, CalendarDays, ChevronRight, FolderOpen, GitBranch, Maximize2, Minimize2, MoreHorizontal, Pencil, Search, X as XIcon, UserMinus } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronRight, FolderOpen, FolderTree, GitBranch, Maximize2, Minimize2, MoreHorizontal, Pencil, Search, X as XIcon, UserMinus } from "lucide-react";
 
 /**
  * GitHub mark — lucide-react v1 dropped brand icons, so we inline the
@@ -62,6 +62,10 @@ import {
 import { ProjectStartDatePicker } from "../projects/components/project-start-date-picker";
 import { ProjectDueDatePicker } from "../projects/components/project-due-date-picker";
 import { PillButton } from "../common/pill-button";
+import {
+  CollabPathInput,
+  collabPathTail,
+} from "../projects/components/collab-path";
 import { githubShortLabel } from "../common/github-url";
 import {
   isDesktopShell,
@@ -74,6 +78,7 @@ import {
   runtimeListOptions,
 } from "@multica/core/runtimes";
 import type { LocalDirectoryExecutionMode } from "@multica/core/types";
+import { normalizeCollabPath, type CollabPathError } from "@multica/core/projects/collab-path";
 import { LocalDirectoryModeOptions } from "../projects/components/local-directory-mode-dialog";
 
 /**
@@ -157,6 +162,9 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const [icon, setIcon] = useState<string | undefined>(draft.icon);
   const [startDate, setStartDate] = useState<string>(draft.startDate ?? "");
   const [dueDate, setDueDate] = useState<string>(draft.dueDate ?? "");
+  const [collabPath, setCollabPath] = useState<string>(draft.collabPath ?? "");
+  const [collabPathError, setCollabPathError] = useState<CollabPathError | null>(null);
+  const [collabPathOpen, setCollabPathOpen] = useState(false);
   // Dates are collapsed into the ⋯ overflow by default (progressive
   // disclosure, mirroring create-issue); these flip a pill inline + open.
   const [startDatePickerOpen, setStartDatePickerOpen] = useState(false);
@@ -305,6 +313,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const updateIcon = (v: string | undefined) => { setIcon(v); setDraft({ icon: v }); };
   const updateStartDate = (v: string) => { setStartDate(v); setDraft({ startDate: v || undefined }); };
   const updateDueDate = (v: string) => { setDueDate(v); setDraft({ dueDate: v || undefined }); };
+  const updateCollabPath = (v: string) => {
+    setCollabPath(v);
+    setCollabPathError(null);
+    setDraft({ collabPath: v || undefined });
+  };
 
   const [leadOpen, setLeadOpen] = useState(false);
   const [leadFilter, setLeadFilter] = useState("");
@@ -325,6 +338,16 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return;
+    // Validated before anything is sent: the path travels in the same call as
+    // the project (and its resources), so a rejected path would fail the whole
+    // creation rather than one field. Reopen the pill so the message is on
+    // screen next to the value that caused it.
+    const path = normalizeCollabPath(collabPath);
+    if (!path.ok) {
+      setCollabPathError(path.reason);
+      setCollabPathOpen(true);
+      return;
+    }
     // `sourceMode` decides which side's stash gets persisted — the other
     // side is silently dropped, so repos picked then abandoned for local
     // mode don't leak into the project.
@@ -365,6 +388,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
         lead_id: leadId,
         start_date: startDate || undefined,
         due_date: dueDate || undefined,
+        collab_path: path.value ?? undefined,
         // Server attaches these in the same transaction as the project.
         resources,
       });
@@ -659,6 +683,38 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               open={dueDatePickerOpen}
               onOpenChange={setDueDatePickerOpen}
             />
+          )}
+
+          {/* Collaboration space — collapsed into ⋯ until it has a value,
+              exactly like the dates above. */}
+          {(collabPath || collabPathOpen) && (
+            <Popover open={collabPathOpen} onOpenChange={setCollabPathOpen}>
+              <PopoverTrigger
+                render={
+                  <PillButton
+                    title={collabPath || undefined}
+                    aria-label={t(($) => $.create_project.collab_path_pill)}
+                  >
+                    <FolderTree className="size-3 shrink-0" />
+                    <span className="truncate">
+                      {collabPath
+                        ? collabPathTail(collabPath)
+                        : t(($) => $.create_project.collab_path_pill)}
+                    </span>
+                  </PillButton>
+                }
+              />
+              <PopoverContent side="top" align="start" className="w-80 p-2">
+                <CollabPathInput
+                  autoFocus
+                  id="create-project-collab-path"
+                  value={collabPath}
+                  onValueChange={updateCollabPath}
+                  error={collabPathError}
+                  hint={tProjects(($) => $.collab_path.hint_project)}
+                />
+              </PopoverContent>
+            </Popover>
           )}
 
           <Popover
@@ -956,7 +1012,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
           {/* Overflow — always the last child so it stays at the end of the
               wrap flow. Only rendered while a date is still collapsible; when
               both are set there is nothing left to add. */}
-          {(!startDate || !dueDate) && (
+          {(!startDate || !dueDate || !collabPath) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -976,6 +1032,12 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                   <DropdownMenuItem onClick={() => setStartDatePickerOpen(true)}>
                     <CalendarClock className="h-3.5 w-3.5" />
                     {t(($) => $.create_project.set_start_date)}
+                  </DropdownMenuItem>
+                )}
+                {!collabPath && (
+                  <DropdownMenuItem onClick={() => setCollabPathOpen(true)}>
+                    <FolderTree className="h-3.5 w-3.5" />
+                    {t(($) => $.create_project.set_collab_path)}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

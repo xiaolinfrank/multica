@@ -105,6 +105,8 @@
     "no_lead": "Aucun responsable",
     "set_start_date": "Définir la date de début...",
     "set_due_date": "Définir la date d'échéance...",
+    "set_collab_path": "Définir l'espace de collaboration...",
+    "collab_path_pill": "Espace de collaboration",
     "more_options_aria": "Plus d'options",
     "lead_placeholder": "Assigner un responsable...",
     "members_group": "Membres",

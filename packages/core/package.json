@@ -96,6 +96,7 @@
     "./projects/queries": "./projects/queries.ts",
     "./projects/mutations": "./projects/mutations.ts",
     "./projects/config": "./projects/config.ts",
+    "./projects/collab-path": "./projects/collab-path.ts",
     "./modules": "./modules/index.ts",
     "./modules/queries": "./modules/queries.ts",
     "./modules/mutations": "./modules/mutations.ts",

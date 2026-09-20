@@ -170,6 +170,11 @@ export const ProjectSchema = z.object({
   // parses to null instead of degrading the batch to the empty fallback.
   start_date: z.string().nullable().default(null),
   due_date: z.string().nullable().default(null),
+  // Shared-storage directory ("人机协作空间路径") people and agents exchange
+  // deliverables through. Same .default(null) reason as the dates: a backend
+  // that predates the field must not drop the whole project (or, via
+  // ListProjectsResponseSchema, the whole list) to the empty fallback.
+  collab_path: z.string().nullable().default(null),
   created_at: z.string(),
   updated_at: z.string(),
   issue_count: z.number().default(0),
@@ -205,6 +210,7 @@ export const EMPTY_PROJECT: Project = {
   lead_id: null,
   start_date: null,
   due_date: null,
+  collab_path: null,
   created_at: "",
   updated_at: "",
   issue_count: 0,

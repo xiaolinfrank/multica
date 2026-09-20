@@ -83,6 +83,20 @@
     "toast_project_deleted": "프로젝트를 삭제했습니다",
     "toast_move_issue_failed": "태스크를 이동하지 못했습니다"
   },
+  "collab_path": {
+    "label": "협업 공간 경로",
+    "module_label": "모듈 협업 공간",
+    "empty": "설정 안 됨",
+    "placeholder": "/Volumes/…",
+    "copy_aria": "경로 복사",
+    "toast_copied": "경로를 복사했습니다",
+    "toast_copy_failed": "경로를 복사하지 못했습니다",
+    "hint_project": "사람과 에이전트가 이 프로젝트의 산출물을 주고받는 공유 디렉터리입니다. 에이전트가 실행되는 컴퓨터에 마운트된 절대 경로를 입력하세요.",
+    "hint_module": "이 모듈의 산출물을 두는 위치로, 프로젝트 공간 안에 있습니다. 에이전트가 실행되는 컴퓨터에 마운트된 절대 경로를 입력하세요.",
+    "error_not_absolute": "절대 경로를 입력하세요. 예: /Volumes/공유/프로젝트",
+    "error_too_long": "디렉터리 경로로 쓰기에 너무 깁니다.",
+    "error_control_characters": "경로에 쓸 수 없는 문자가 포함되어 있습니다."
+  },
   "resources": {
     "section_header": "리소스",
     "empty": "첨부된 리소스가 없습니다.",
@@ -161,6 +175,19 @@
       "toast_created": "모듈이 생성되었습니다",
       "toast_failed": "모듈 생성에 실패했습니다"
     },
+    "edit": {
+      "title": "모듈 편집",
+      "title_label": "이름",
+      "description_label": "설명",
+      "description_placeholder": "이 모듈이 다루는 범위...",
+      "description_hint": "이 모듈의 모든 작업에서 컨텍스트로 에이전트에게 공유됩니다.",
+      "submit": "저장",
+      "submitting": "저장 중...",
+      "cancel": "취소",
+      "toast_saved": "모듈이 업데이트되었습니다",
+      "toast_failed": "모듈 업데이트에 실패했습니다",
+      "not_found": "이 모듈은 더 이상 존재하지 않습니다."
+    },
     "picker": {
       "search_placeholder": "모듈 검색...",
       "none": "모듈 없음",
@@ -178,6 +205,7 @@
     "manage_empty": "아직 모듈이 없습니다",
     "reorder_handle_aria": "드래그하여 모듈 순서 변경",
     "rename_aria": "모듈 이름 바꾸기",
+    "edit_aria": "모듈 편집",
     "delete_aria": "모듈 삭제",
     "delete_title": "{{title}} 을(를) 삭제하시겠습니까?",
     "delete_description": "모듈이 삭제되면 해당 이슈는 프로젝트에 남아 프로젝트 바로 아래에 배치됩니다. 이 작업은 되돌릴 수 없습니다.",
