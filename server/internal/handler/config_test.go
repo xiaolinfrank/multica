@@ -617,3 +617,65 @@ func TestGetConfigDeclaresCommentDeleteKeepsReplies(t *testing.T) {
 		t.Fatalf("comment_delete_keep_replies_supported = %v, want true", raw["comment_delete_keep_replies_supported"])
 	}
 }
+
+// TestGetConfigExposesCollabSpaceHost pins the shape the web client depends on
+// to turn a stored collaboration space path — which names a mount point on the
+// agent's machine — into something a reader's browser can act on.
+func TestGetConfigExposesCollabSpaceHost(t *testing.T) {
+	t.Setenv("MULTICA_COLLAB_SPACE_HOST", "10.0.0.50")
+
+	h := &Handler{}
+	var cfg AppConfig
+	testutil.Call(t, h.GetConfig, httptest.NewRequest(http.MethodGet, "/api/config", nil)).
+		Want(http.StatusOK).
+		JSON(&cfg)
+
+	if cfg.CollabSpaceHost != "10.0.0.50" {
+		t.Fatalf("collab_space_host: want 10.0.0.50, got %q", cfg.CollabSpaceHost)
+	}
+}
+
+// A deployment with no shared storage must emit nothing, so clients keep the
+// clipboard fallback instead of building an address for a host that does not
+// exist.
+func TestGetConfigOmitsCollabSpaceHostWhenUnset(t *testing.T) {
+	t.Setenv("MULTICA_COLLAB_SPACE_HOST", "")
+
+	h := &Handler{}
+	var cfg AppConfig
+	testutil.Call(t, h.GetConfig, httptest.NewRequest(http.MethodGet, "/api/config", nil)).
+		Want(http.StatusOK).
+		JSON(&cfg)
+
+	if cfg.CollabSpaceHost != "" {
+		t.Fatalf("collab_space_host: want empty when unset, got %q", cfg.CollabSpaceHost)
+	}
+}
+
+// Clients append the share segment themselves, from the stored path. An
+// operator who pastes a full SMB URL would otherwise produce
+// smb://smb://nas/share/share/... — so everything that is not the host is
+// stripped here rather than in five client call sites.
+func TestCollabSpaceHostFromEnvKeepsOnlyTheHost(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{"10.0.0.50", "10.0.0.50"},
+		{"  nas.corp  ", "nas.corp"},
+		{"smb://nas.corp", "nas.corp"},
+		{"smb://nas.corp/人机协作空间", "nas.corp"},
+		{"//nas.corp/share", "nas.corp"},
+		{`\\nas.corp\share`, "nas.corp"},
+		{"nas.corp/", "nas.corp"},
+		{"", ""},
+		{"   ", ""},
+		{"smb://", ""},
+		{"nas corp", ""},
+	} {
+		t.Setenv("MULTICA_COLLAB_SPACE_HOST", tc.raw)
+		if got := collabSpaceHostFromEnv(); got != tc.want {
+			t.Errorf("collabSpaceHostFromEnv(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

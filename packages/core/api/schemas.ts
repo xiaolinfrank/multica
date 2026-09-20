@@ -789,6 +789,12 @@ export interface AppConfigResponse {
    * default-select the co-located Claude runtime. Absent/empty when the
    * feature is off. */
   default_issue_assignee_node?: string;
+  /** Host of the file server the shared collaboration storage lives on
+   *  (MULTICA_COLLAB_SPACE_HOST). Absent/empty on every deployment that has
+   *  not configured shared storage, which is what keeps the clipboard
+   *  fallback in place instead of building an address for a host that does
+   *  not exist. */
+  collab_space_host?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1035,6 +1041,7 @@ export const AppConfigSchema = z.object({
   server_version: OptionalStringSchema,
   default_issue_assignee_agent_name: OptionalStringSchema,
   default_issue_assignee_node: OptionalStringSchema,
+  collab_space_host: OptionalStringSchema,
 }).loose();
 
 export const EMPTY_APP_CONFIG: AppConfigResponse = {

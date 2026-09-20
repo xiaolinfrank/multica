@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { cn } from "@multica/ui/lib/utils";
+import { useConfigStore } from "@multica/core/config";
+import { collabPathAddresses } from "@multica/core/projects/collab-path";
 import {
   canOpenLocalPath,
   openLocalPath,
@@ -22,12 +24,20 @@ import { useT } from "../i18n";
  *
  * What a click does is decided by the shell, not by this component's caller:
  *
- *   Desktop — opens the directory in Finder / Explorer.
- *   Browser — copies the path and names, in the reader's own OS terms, where to
- *     paste it. A browser cannot open a local directory: navigating an http(s)
- *     page to `file://` is blocked outright, with no permission to grant. The
- *     clipboard is the whole of what is available, so it is offered as the
- *     action rather than hidden behind a menu.
+ *   Desktop — opens the directory in Finder / Explorer through the preload
+ *     bridge. One click, always.
+ *   Browser on macOS, shared storage configured — hands an `smb://` URL to the
+ *     OS, which is Finder. Also one click. `file://` is blocked outright in
+ *     every browser with no permission to grant, but a custom scheme is not:
+ *     the same directory addressed through the file server it actually lives on
+ *     goes straight to Finder, mounting the share on the way if needed.
+ *   Browser on Windows, shared storage configured — copies the UNC form, which
+ *     is what Explorer's address bar accepts. Windows registers no `smb:`
+ *     handler, so the clipboard is the end of the line there; what changes is
+ *     that the copied value works when pasted, instead of being a POSIX path
+ *     from someone else's Mac.
+ *   Anything else — copies the path and names, in the reader's own OS terms,
+ *     where to paste it.
  *
  * The path is rendered LTR and monospaced. Its segments are frequently Chinese,
  * and the bidi algorithm will otherwise reorder the separators around a CJK run
@@ -53,11 +63,22 @@ export function LocalPathLink({
   wrap?: "break" | "truncate";
 }) {
   const { t } = useT("common");
-  // Resolved after mount: the capability lives on `window`, and reading it
-  // during render would make the server-rendered HTML disagree with the first
-  // client render. `false` is the web answer, which is also the SSR answer.
+  const collabSpaceHost = useConfigStore((state) => state.collabSpaceHost);
+  const addresses = useMemo(
+    () => collabPathAddresses(path, collabSpaceHost),
+    [path, collabSpaceHost],
+  );
+  // Resolved after mount: both the desktop bridge and the user agent live on
+  // `window`, and reading either during render would make the server-rendered
+  // HTML disagree with the first client render. `false` is the SSR answer and
+  // also the conservative one.
   const [canOpen, setCanOpen] = useState(false);
-  useEffect(() => setCanOpen(canOpenLocalPath()), []);
+  useEffect(() => {
+    setCanOpen(
+      canOpenLocalPath() ||
+        (viewerFileManager() === "finder" && addresses.smbUrl !== null),
+    );
+  }, [addresses.smbUrl]);
 
   const copyWithHint = async () => {
     const ok = await copyText(path);
@@ -75,12 +96,38 @@ export function LocalPathLink({
     );
   };
 
+  const openFromBrowser = async () => {
+    const manager = viewerFileManager();
+    if (manager === "finder" && addresses.smbUrl) {
+      handOffToOS(addresses.smbUrl);
+      // Best-effort safety net. Whether the OS actually took the URL is not
+      // observable from here, so the path goes on the clipboard too: if
+      // nothing opens, the reader still has something to paste rather than a
+      // click that did nothing.
+      void copyText(path);
+      toast.success(t(($) => $.local_path.toast_opening_finder));
+      return;
+    }
+    if (manager === "explorer" && addresses.uncPath) {
+      // The UNC form, not the stored path: the stored one names a mount point
+      // on somebody else's Mac and pasting it into Explorer finds nothing.
+      const ok = await copyText(addresses.uncPath);
+      toast[ok ? "success" : "error"](
+        ok
+          ? t(($) => $.local_path.toast_copied_unc)
+          : t(($) => $.local_path.toast_copy_failed),
+      );
+      return;
+    }
+    await copyWithHint();
+  };
+
   const handleClick = async () => {
     // Probed at click time rather than read from state: a click is never part
     // of the first render, so this is the freshest answer and it keeps the
     // action correct even if the effect above has not run.
     if (!canOpenLocalPath()) {
-      await copyWithHint();
+      await openFromBrowser();
       return;
     }
     const result = await openLocalPath(path);
@@ -142,4 +189,24 @@ export function LocalPathLink({
       </span>
     </button>
   );
+}
+
+/**
+ * Hand a non-web URL to the operating system.
+ *
+ * A synthetic anchor click rather than assigning `location.href`: an
+ * unregistered scheme assigned to `location` can leave the page in a
+ * half-navigated state in some browsers, while an anchor that the OS declines
+ * simply does nothing. Either way the outcome is not observable from script,
+ * which is why every caller pairs this with a fallback.
+ */
+function handOffToOS(url: string): void {
+  if (typeof document === "undefined") return;
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }

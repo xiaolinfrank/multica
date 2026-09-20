@@ -140,6 +140,8 @@
     "toast_copied_finder": "已复制路径 —— 在访达里按 ⇧⌘G 粘贴即可打开",
     "toast_copied_explorer": "已复制路径 —— 粘贴到文件资源管理器的地址栏即可打开",
     "toast_copied_generic": "已复制路径 —— 粘贴到文件管理器即可打开",
+    "toast_opening_finder": "正在用访达打开 —— 路径也已复制，万一没反应可以粘贴",
+    "toast_copied_unc": "已复制网络路径 —— 粘贴到文件资源管理器的地址栏即可打开",
     "toast_copy_failed": "复制路径失败",
     "toast_not_found": "这台电脑访问不到该路径，多半是共享存储没有挂载。路径已复制到剪贴板。",
     "toast_failed": "打不开该路径"

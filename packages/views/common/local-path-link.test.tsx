@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { configStore } from "@multica/core/config";
 import { renderWithI18n } from "../test/i18n";
 import { LocalPathLink } from "./local-path-link";
 
@@ -41,11 +42,28 @@ beforeEach(() => {
   mocks.toastSuccess.mockReset();
   mocks.toastError.mockReset();
   setUserAgent(MAC_UA);
+  // Default: a deployment with no shared storage configured.
+  configStore.getState().setCollabSpaceHost("");
 });
 
 afterEach(() => {
   delete (window as unknown as { desktopAPI?: unknown }).desktopAPI;
+  configStore.getState().setCollabSpaceHost("");
+  vi.restoreAllMocks();
 });
+
+/** Capture what the component hands to the OS. jsdom cannot follow a custom
+ *  scheme, and the outcome is not observable from script in a real browser
+ *  either — the href is the whole contract. */
+function captureOSHandoff(): { hrefs: string[] } {
+  const hrefs: string[] = [];
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+    function (this: HTMLAnchorElement) {
+      hrefs.push(this.getAttribute("href") ?? "");
+    },
+  );
+  return { hrefs };
+}
 
 describe("LocalPathLink in a browser", () => {
   // A page served over http(s) may not navigate to file://, in any browser.
@@ -86,6 +104,96 @@ describe("LocalPathLink in a browser", () => {
 
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(mocks.toastError).toHaveBeenCalledWith("Couldn't copy the path");
+  });
+});
+
+describe("LocalPathLink in a browser with shared storage configured", () => {
+  const HOST = "10.0.0.50";
+  const EXPECTED_SMB = `smb://${HOST}/${encodeURIComponent("人机协作空间")}/${encodeURIComponent("AI医药联合创新平台")}/${encodeURIComponent("01高质量数据集")}`;
+
+  beforeEach(() => {
+    configStore.getState().setCollabSpaceHost(HOST);
+  });
+
+  // The point of the whole smb:// route: a browser cannot open a local
+  // directory, but it can hand the OS a URL naming the same directory on the
+  // file server it actually lives on, and macOS routes that to Finder.
+  it("hands macOS an smb:// URL for the same directory", async () => {
+    const { hrefs } = captureOSHandoff();
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(hrefs).toEqual([EXPECTED_SMB]);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Opening in Finder — the path is on your clipboard too, in case it doesn't",
+    );
+  });
+
+  // Whether the OS took the URL is not observable, so a click that opened
+  // nothing must still leave the reader something to act on.
+  it("still puts the path on the clipboard as a safety net", async () => {
+    captureOSHandoff();
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(mocks.copyText).toHaveBeenCalledWith(PATH);
+  });
+
+  // Windows registers no smb: handler, so the clipboard is the end of the
+  // line — but the copied value now works when pasted, which the POSIX path
+  // from somebody else's Mac never did.
+  it("copies the UNC form for a Windows reader, not the stored path", async () => {
+    setUserAgent(WINDOWS_UA);
+    const { hrefs } = captureOSHandoff();
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(mocks.copyText).toHaveBeenCalledWith(
+      "\\\\10.0.0.50\\人机协作空间\\AI医药联合创新平台\\01高质量数据集",
+    );
+    expect(hrefs).toEqual([]);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Network path copied — paste it into the File Explorer address bar",
+    );
+  });
+
+  // A Linux mount point is named by whoever wrote the fstab entry, so the
+  // share cannot be derived. Guessing would produce an address that fails in
+  // a way the reader cannot diagnose.
+  it("falls back to the clipboard when the share cannot be identified", async () => {
+    const { hrefs } = captureOSHandoff();
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path="/mnt/share/项目" />);
+
+    await user.click(screen.getByRole("button", { name: "/mnt/share/项目" }));
+
+    expect(hrefs).toEqual([]);
+    expect(mocks.copyText).toHaveBeenCalledWith("/mnt/share/项目");
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Path copied — press ⇧⌘G in Finder and paste it",
+    );
+  });
+
+  // The desktop bridge opens the real local mount; routing it through the file
+  // server instead would be a slower path to the same folder, and would fail
+  // on a machine that reaches the mount but not the server.
+  it("prefers the desktop bridge over the smb:// route", async () => {
+    const openLocalPath = vi.fn().mockResolvedValue({ ok: true, action: "opened" });
+    installDesktopBridge(openLocalPath);
+    const { hrefs } = captureOSHandoff();
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(openLocalPath).toHaveBeenCalledWith(PATH);
+    expect(hrefs).toEqual([]);
   });
 });
 

@@ -165,13 +165,18 @@ describe("localPathHref / localPathFromHref", () => {
     expect(localPathFromHref(localPathHref(path))).toBe(path);
   });
 
-  it.each([
+  // Typed explicitly: a mixed array of [string, string] and [undefined, string]
+  // infers as a union of tuples, which `it.each` cannot reconcile with a
+  // single callback signature.
+  const rejected: Array<[string | undefined, string]> = [
     ["https://example.com", "an ordinary URL"],
     ["mention://issue/MUL-1", "another internal scheme"],
     ["localpath://", "an empty payload"],
     ["localpath://%E0%A4%A", "a malformed escape"],
     [undefined, "no href at all"],
-  ])("returns null for %s (%s)", (href) => {
+  ];
+
+  it.each(rejected)("returns null for %s (%s)", (href) => {
     expect(localPathFromHref(href)).toBeNull();
   });
 });

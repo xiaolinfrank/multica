@@ -107,6 +107,10 @@ export function AuthInitializer({
           .setCommentDeleteKeepRepliesSupported(
             cfg.comment_delete_keep_replies_supported === true,
           );
+        // Absent on deployments with no shared storage, and on servers that
+        // predate the field. Both must land as "" so a collaboration space
+        // path keeps its clipboard fallback.
+        configStore.getState().setCollabSpaceHost(cfg.collab_space_host);
         if (cfg.posthog_key) {
           initAnalytics({
             key: cfg.posthog_key,

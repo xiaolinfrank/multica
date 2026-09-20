@@ -84,3 +84,83 @@ export function normalizeCollabPath(raw: string): CollabPathResult {
   }
   return { ok: true, value: trimmed };
 }
+
+// ---------------------------------------------------------------------------
+// Addressing the same directory from a reader's machine
+// ---------------------------------------------------------------------------
+
+/**
+ * A collaboration space is stored as the path the AGENT's machine mounts, and
+ * that string is useless to a reader's browser: an http(s) page may not
+ * navigate to `file://`, in any browser, with no permission a user can grant.
+ *
+ * The directory itself is reachable, though — it is on a file server both
+ * machines can see. Given that server's host (the deployment's
+ * `collab_space_host`), the same location has two addresses that do work:
+ *
+ *   smb://host/share/…   macOS hands this to Finder, so a click opens it
+ *   \\host\share\…       what Windows Explorer accepts in its address bar
+ *
+ * Deriving them requires knowing which part of the path is the share name.
+ * Only two forms answer that. A UNC path carries the host and share itself, so
+ * it needs no configuration at all. And macOS mounts a share at
+ * `/Volumes/<share name>`, so the first segment under `/Volumes` IS the share.
+ *
+ * Everything else returns nothing, deliberately. A Linux `/mnt/<anything>` is
+ * named by whoever wrote the fstab entry and a `Z:\…` drive letter hides the
+ * share behind a per-machine mapping; guessing either would produce an address
+ * that fails in a way the reader cannot diagnose, which is worse than the
+ * clipboard.
+ */
+export interface CollabPathAddresses {
+  /** Opens in Finder on macOS. `null` when the share cannot be identified. */
+  smbUrl: string | null;
+  /** Paste-able in the Windows Explorer address bar. */
+  uncPath: string | null;
+}
+
+const NONE: CollabPathAddresses = { smbUrl: null, uncPath: null };
+
+const MACOS_MOUNT_ROOT = "/Volumes/";
+
+/** Percent-encodes each segment while leaving the separators alone. macOS
+ *  writes its own mount URLs this way, so Finder decodes them back. */
+function encodeSmbPath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+export function collabPathAddresses(
+  path: string,
+  host: string,
+): CollabPathAddresses {
+  const value = path.trim();
+  if (!value) return NONE;
+
+  // A UNC path already names its own server. Nothing to configure, and the
+  // deployment's host is irrelevant — this path may well name a different one.
+  if (value.startsWith("\\\\")) {
+    const rest = value.slice(2).replace(/\\/g, "/");
+    const [uncHost, ...segments] = rest.split("/").filter(Boolean);
+    // `\\host` alone is a server, not a directory.
+    if (!uncHost || segments.length === 0) return NONE;
+    return {
+      smbUrl: `smb://${uncHost}/${encodeSmbPath(segments.join("/"))}`,
+      uncPath: value.replace(/\//g, "\\"),
+    };
+  }
+
+  const server = host.trim();
+  if (!server) return NONE;
+  if (!value.startsWith(MACOS_MOUNT_ROOT)) return NONE;
+  const rest = value.slice(MACOS_MOUNT_ROOT.length);
+  // `/Volumes/` alone names the mount root, not a share.
+  if (!rest || rest.startsWith("/")) return NONE;
+
+  return {
+    smbUrl: `smb://${server}/${encodeSmbPath(rest)}`,
+    uncPath: `\\\\${server}\\${rest.replace(/\//g, "\\")}`,
+  };
+}
