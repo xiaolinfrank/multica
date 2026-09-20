@@ -87,6 +87,7 @@ function makeProject(id: string, title: string, icon: string | null): Project {
     lead_id: null,
     start_date: null,
     due_date: null,
+    collab_path: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     issue_count: 0,

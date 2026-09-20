@@ -30,6 +30,7 @@ import { currentPath, useNavigation } from "../../navigation";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
 import { PriorityIcon } from "../../issues/components/priority-icon";
 import { ProjectResourcesSection } from "./project-resources-section";
+import { CollabPathProperty, CollabPathReadout } from "./collab-path";
 import { ProjectStartDatePicker } from "./project-start-date-picker";
 import { ProjectDueDatePicker } from "./project-due-date-picker";
 import { IssueSurface } from "../../issues/surface/issue-surface";
@@ -90,10 +91,27 @@ const NO_MODULE_FILTER = "none";
 function PropRow({
   label,
   children,
+  stacked,
 }: {
   label: string;
   children: React.ReactNode;
+  /** Puts the label on its own line above the value. For properties whose
+   *  label does not fit the 4rem label column in every supported locale, or
+   *  whose value needs the full row width to stay readable — the collaboration
+   *  space is both: "Collaboration space" / 人机协作空间路径 overruns the
+   *  column, and the value is a deep absolute path. */
+  stacked?: boolean;
 }) {
+  if (stacked) {
+    return (
+      <div className="min-h-8 rounded-md px-2 -mx-2 py-1 hover:bg-accent/50 transition-colors">
+        <span className="block text-caption text-muted-foreground">{label}</span>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-caption">
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex min-h-8 items-center gap-2 rounded-md px-2 -mx-2 hover:bg-accent/50 transition-colors">
       <span className="w-16 shrink-0 text-caption text-muted-foreground">{label}</span>
@@ -458,6 +476,30 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <PropRow label={t(($) => $.detail.prop_due_date)}>
             <ProjectDueDatePicker dueDate={project.due_date} onUpdate={handleUpdateField} />
           </PropRow>
+          <PropRow label={t(($) => $.collab_path.label)} stacked>
+            <CollabPathProperty
+              value={project.collab_path}
+              onCommit={(next) => handleUpdateField({ collab_path: next })}
+            />
+          </PropRow>
+          {/* The active module's own space, surfaced here rather than in the
+              breadcrumb: the header already carries the module chip and the
+              path is far too long to sit beside it. Read-only, because this
+              page owns the project row, not the module row — the pencil hands
+              the edit to the module's own modal. */}
+          {activeModuleRecord && (
+            <PropRow label={t(($) => $.collab_path.module_label)} stacked>
+              <CollabPathReadout
+                path={activeModuleRecord.collab_path}
+                onEdit={() =>
+                  useModalStore
+                    .getState()
+                    .open("edit-module", { moduleId: activeModuleRecord.id })
+                }
+                editLabel={t(($) => $.module.edit_aria)}
+              />
+            </PropRow>
+          )}
         </div>}
       </div>
 

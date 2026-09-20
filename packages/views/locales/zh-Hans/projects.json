@@ -83,6 +83,20 @@
     "toast_project_deleted": "已删除项目",
     "toast_move_issue_failed": "移动任务失败"
   },
+  "collab_path": {
+    "label": "人机协作空间路径",
+    "module_label": "模块协作空间路径",
+    "empty": "未设置",
+    "placeholder": "/Volumes/…",
+    "copy_aria": "复制路径",
+    "toast_copied": "已复制路径",
+    "toast_copy_failed": "复制路径失败",
+    "hint_project": "人与智能体交付本项目成果的共享目录。请填写智能体所在机器上挂载的绝对路径。",
+    "hint_module": "本模块成果的存放位置，位于项目空间之内。请填写智能体所在机器上挂载的绝对路径。",
+    "error_not_absolute": "请填写绝对路径，例如 /Volumes/人机协作空间/项目。",
+    "error_too_long": "超出目录路径的长度上限。",
+    "error_control_characters": "包含路径不能使用的字符。"
+  },
   "resources": {
     "section_header": "资源",
     "empty": "还没有关联资源。",
@@ -161,6 +175,19 @@
       "toast_created": "模块已创建",
       "toast_failed": "创建模块失败"
     },
+    "edit": {
+      "title": "编辑模块",
+      "title_label": "名称",
+      "description_label": "描述",
+      "description_placeholder": "这个模块负责什么...",
+      "description_hint": "会作为模块上下文提供给智能体，应用于该模块下的每个任务。",
+      "submit": "保存",
+      "submitting": "保存中...",
+      "cancel": "取消",
+      "toast_saved": "模块已更新",
+      "toast_failed": "更新模块失败",
+      "not_found": "该模块已不存在。"
+    },
     "picker": {
       "search_placeholder": "搜索模块...",
       "none": "无模块",
@@ -178,6 +205,7 @@
     "manage_empty": "暂无模块",
     "reorder_handle_aria": "拖动调整模块顺序",
     "rename_aria": "重命名模块",
+    "edit_aria": "编辑模块",
     "delete_aria": "删除模块",
     "delete_title": "删除 {{title}} 吗？",
     "delete_description": "模块将被删除，其下任务仍保留在项目中并直接归属项目。此操作无法撤销。",

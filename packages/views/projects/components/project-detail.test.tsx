@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   issueSurface: { current: null as Record<string, unknown> | null },
   copyText: vi.fn(),
   deleteProject: vi.fn(),
+  updateProject: vi.fn(),
   getShareableUrl: vi.fn((path: string) => `https://app.example${path}`),
   push: vi.fn(),
   recordVisit: vi.fn(),
@@ -62,7 +63,7 @@ vi.mock("@multica/core/modules/mutations", () => ({
 }));
 
 vi.mock("@multica/core/projects/mutations", () => ({
-  useUpdateProject: () => ({ mutate: vi.fn() }),
+  useUpdateProject: () => ({ mutate: mocks.updateProject }),
   useDeleteProject: () => ({ mutate: mocks.deleteProject }),
 }));
 
@@ -286,6 +287,9 @@ vi.mock("../../layout/animated-right-sidebar", () => ({
   }),
 }));
 
+const PROJECT_PATH = "/Volumes/人机协作空间/AI医药联合创新平台";
+const MODULE_PATH = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集";
+
 const PROJECT: Project = {
   id: "project-1",
   workspace_id: "workspace-1",
@@ -298,6 +302,7 @@ const PROJECT: Project = {
   lead_id: null,
   start_date: null,
   due_date: null,
+  collab_path: null,
   created_at: "2026-06-01T00:00:00Z",
   updated_at: "2026-06-01T00:00:00Z",
   issue_count: 3,
@@ -327,6 +332,7 @@ beforeEach(() => {
   mocks.role = "admin";
   mocks.copyText.mockReset().mockResolvedValue(true);
   mocks.deleteProject.mockReset();
+  mocks.updateProject.mockReset();
   mocks.getShareableUrl.mockClear();
   mocks.push.mockReset();
   mocks.recordVisit.mockReset();
@@ -431,6 +437,7 @@ describe("ProjectDetail module filtering", () => {
         updated_at: "2026-06-01T00:00:00Z",
         issue_count: 3,
         done_count: 1,
+        collab_path: MODULE_PATH,
       },
     ];
   });
@@ -471,6 +478,34 @@ describe("ProjectDetail module filtering", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+  });
+
+  // The inline rename covers the one-field case; description and the
+  // collaboration space have no other surface, so the row hands them to the
+  // module's own modal and closes itself (one overlay at a time).
+  it("opens the module property editor from the manage dialog", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "Manage modules" }));
+    await user.click(screen.getByRole("button", { name: "Edit module" }));
+
+    expect(useModalStore.getState().modal).toBe("edit-module");
+    expect(useModalStore.getState().data).toEqual({ moduleId: "module-1" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the inline rename on the row alongside the property editor", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "Manage modules" }));
+    await user.click(screen.getByRole("button", { name: "Rename module" }));
+
+    expect(screen.getByRole("textbox", { name: "Rename module" })).toHaveValue(
+      "Parser rewrite",
+    );
+    expect(useModalStore.getState().modal).toBeNull();
   });
 
   it("hides module management from regular members", () => {
@@ -526,6 +561,80 @@ describe("ProjectDetail module filtering", () => {
   });
 });
 
+
+describe("ProjectDetail collaboration space", () => {
+  it("offers the project's space as an unset property and writes an absolute path", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "Not set" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Collaboration space" }),
+      `${PROJECT_PATH}{Enter}`,
+    );
+
+    expect(mocks.updateProject).toHaveBeenCalledWith({
+      id: PROJECT.id,
+      collab_path: PROJECT_PATH,
+    });
+  });
+
+  // A relative path is what the server rejects with a 400; the property keeps
+  // it in the editor instead of firing the mutation.
+  it("does not write a path the server would reject", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    await user.click(screen.getByRole("button", { name: "Not set" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Collaboration space" }),
+      "01高质量数据集{Enter}",
+    );
+
+    expect(mocks.updateProject).not.toHaveBeenCalled();
+  });
+});
+
+describe("ProjectDetail module collaboration space", () => {
+  beforeEach(() => {
+    mocks.modules.current = [
+      {
+        id: "module-1",
+        workspace_id: "workspace-1",
+        project_id: PROJECT.id,
+        title: "Parser rewrite",
+        description: null,
+        position: 0,
+        created_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-01T00:00:00Z",
+        issue_count: 3,
+        done_count: 1,
+        collab_path: MODULE_PATH,
+      },
+    ];
+  });
+
+  // The header already carries the module chip; the module's own space is far
+  // too long to sit beside it, so it surfaces in the properties sidebar.
+  it("surfaces the active module's space and hands editing to the module modal", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail("module=module-1");
+
+    expect(screen.getByTitle(MODULE_PATH)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit module" }));
+
+    expect(useModalStore.getState().modal).toBe("edit-module");
+    expect(useModalStore.getState().data).toEqual({ moduleId: "module-1" });
+  });
+
+  it("shows no module space while the project is unfiltered", () => {
+    renderProjectDetail();
+
+    expect(screen.queryByText("Module space")).not.toBeInTheDocument();
+    expect(screen.queryByTitle(MODULE_PATH)).not.toBeInTheDocument();
+  });
+});
 
 describe("ProjectDetail module creation", () => {
   it.each(["owner", "admin", "member"])("prefills the project from the header for %s", async (role) => {

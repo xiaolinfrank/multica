@@ -1529,7 +1529,7 @@ describe("InboxItemListSchema", () => {
   });
 });
 
-describe("SearchProjectsResponseSchema date drift", () => {
+describe("SearchProjectsResponseSchema optional-field drift", () => {
   const ENDPOINT = { endpoint: "GET /api/projects/search" };
 
   const baseProject = {
@@ -1561,10 +1561,34 @@ describe("SearchProjectsResponseSchema date drift", () => {
     expect(parsed.projects[0]?.due_date).toBe("2026-03-31");
   });
 
+  // The collaboration space is a NAS path, so the value carries non-ASCII
+  // segments and a trailing depth no other project field has; it must survive
+  // parsing byte-for-byte rather than be normalized.
+  it("parses collab_path when the backend returns it", () => {
+    const parsed = parseWithFallback(
+      {
+        projects: [
+          {
+            ...baseProject,
+            collab_path:
+              "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集",
+          },
+        ],
+        total: 1,
+      },
+      SearchProjectsResponseSchema,
+      EMPTY_SEARCH_PROJECTS_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed.projects[0]?.collab_path).toBe(
+      "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集",
+    );
+  });
+
   // Frontend deploys before backend: an older backend omits the new keys. The
   // .default(null) must keep the whole batch parseable (→ null), not degrade
   // it to the empty fallback and blank the search results.
-  it("defaults missing start_date / due_date to null without dropping results", () => {
+  it("defaults missing start_date / due_date / collab_path to null without dropping results", () => {
     const parsed = parseWithFallback(
       { projects: [baseProject], total: 1 },
       SearchProjectsResponseSchema,
@@ -1575,6 +1599,19 @@ describe("SearchProjectsResponseSchema date drift", () => {
     expect(parsed.projects).toHaveLength(1);
     expect(parsed.projects[0]?.start_date).toBeNull();
     expect(parsed.projects[0]?.due_date).toBeNull();
+    expect(parsed.projects[0]?.collab_path).toBeNull();
+  });
+
+  // An explicit null is what an unset project actually sends, and it must not
+  // be confused with the absent key above — both land on null.
+  it("keeps an explicit null collab_path", () => {
+    const parsed = parseWithFallback(
+      { projects: [{ ...baseProject, collab_path: null }], total: 1 },
+      SearchProjectsResponseSchema,
+      EMPTY_SEARCH_PROJECTS_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed.projects[0]?.collab_path).toBeNull();
   });
 });
 
@@ -1594,8 +1631,9 @@ describe("Module schemas", () => {
 
   // Frontend deploys before backend: a module row from a server that predates
   // stat enrichment omits the counts, and a list may omit total. Both must
-  // default rather than degrade the whole batch to the empty fallback.
-  it("defaults missing counts and total without dropping modules", () => {
+  // default rather than degrade the whole batch to the empty fallback. A
+  // server older still predates collab_path and omits that too.
+  it("defaults missing counts, total and collab_path without dropping modules", () => {
     const parsed = parseWithFallback(
       { modules: [baseModule] },
       ListModulesResponseSchema,
@@ -1607,7 +1645,35 @@ describe("Module schemas", () => {
     expect(parsed.modules[0]?.issue_count).toBe(0);
     expect(parsed.modules[0]?.done_count).toBe(0);
     expect(parsed.modules[0]?.description).toBeNull();
+    expect(parsed.modules[0]?.collab_path).toBeNull();
     expect(parsed.total).toBe(0);
+  });
+
+  // The module's collaboration space is the project's path narrowed by one
+  // level, so it is the deepest string the module contract carries.
+  it("parses a module collab_path verbatim", () => {
+    const path =
+      "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集/01.01回顾性队列数据集（JIA）";
+    const parsed = parseWithFallback(
+      { modules: [{ ...baseModule, collab_path: path }], total: 1 },
+      ListModulesResponseSchema,
+      EMPTY_LIST_MODULES_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed.modules[0]?.collab_path).toBe(path);
+  });
+
+  // A drifted collab_path (number where the contract says string|null) is a
+  // wrong shape, not a missing key, so it fails the row like a drifted
+  // position rather than being coerced.
+  it("degrades a type-drifted collab_path to the empty fallback", () => {
+    const parsed = parseWithFallback(
+      { modules: [{ ...baseModule, collab_path: 42 }], total: 1 },
+      ListModulesResponseSchema,
+      EMPTY_LIST_MODULES_RESPONSE,
+      ENDPOINT,
+    );
+    expect(parsed).toBe(EMPTY_LIST_MODULES_RESPONSE);
   });
 
   // A genuinely wrong shape (position drifted to a string) still fails the row,
@@ -1672,6 +1738,20 @@ describe("Module schemas", () => {
     expect(parsed.module.id).toBe("m-1");
     expect(parsed.module.issue_count).toBe(0);
     expect(parsed.module.done_count).toBe(0);
+    expect(parsed.module.collab_path).toBeNull();
+  });
+
+  // PUT /api/modules/{id} is the write path for the collaboration space, so
+  // the envelope must hand the saved value back to the editing surface.
+  it("returns the saved collab_path through the single-module envelope", () => {
+    const path = "/Volumes/人机协作空间/平台/模块";
+    const parsed = parseWithFallback(
+      { module: { ...baseModule, collab_path: path } },
+      ModuleResponseSchema,
+      EMPTY_MODULE_RESPONSE,
+      { endpoint: "PUT /api/modules/{id}" },
+    );
+    expect(parsed.module.collab_path).toBe(path);
   });
 
   it("degrades a malformed single-module envelope to the empty fallback", () => {

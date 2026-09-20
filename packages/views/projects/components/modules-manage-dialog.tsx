@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Settings2, Trash2 } from "lucide-react";
+import { FolderCog, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -49,6 +49,7 @@ import { useT } from "../../i18n";
 function SortableModuleRow({
   module,
   onRename,
+  onEdit,
   onDelete,
   renaming,
   renameValue,
@@ -58,6 +59,7 @@ function SortableModuleRow({
 }: {
   module: Module;
   onRename: (module: Module) => void;
+  onEdit: (module: Module) => void;
   onDelete: (module: Module) => void;
   renaming: boolean;
   renameValue: string;
@@ -111,6 +113,17 @@ function SortableModuleRow({
           >
             <Pencil className="size-3.5" />
           </button>
+          {/* Inline rename stays the one-field path; this opens the full
+              property editor (name, description, collaboration space), which
+              is the only surface either of the latter two has. */}
+          <button
+            type="button"
+            aria-label={t(($) => $.module.edit_aria)}
+            onClick={() => onEdit(module)}
+            className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/module-row:opacity-100"
+          >
+            <FolderCog className="size-3.5" />
+          </button>
         </>
       )}
       <button
@@ -158,6 +171,12 @@ export function ModulesManageDialog({
     // One overlay at a time: the create modal takes over from this dialog.
     onOpenChange(false);
     useModalStore.getState().open("create-module", { projectId });
+  };
+
+  const openEditModule = (module: Module) => {
+    // One overlay at a time, same handoff the create flow makes.
+    onOpenChange(false);
+    useModalStore.getState().open("edit-module", { moduleId: module.id });
   };
 
   const beginRename = (module: Module) => {
@@ -234,6 +253,7 @@ export function ModulesManageDialog({
                         <SortableModuleRow
                           module={module}
                           onRename={beginRename}
+                          onEdit={openEditModule}
                           onDelete={setDeleteTarget}
                           renaming={renamingId === module.id}
                           renameValue={renameValue}

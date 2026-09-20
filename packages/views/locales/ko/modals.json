@@ -104,6 +104,8 @@
     "no_lead": "리드 없음",
     "set_start_date": "시작일 설정...",
     "set_due_date": "마감일 설정...",
+    "set_collab_path": "협업 공간 설정...",
+    "collab_path_pill": "협업 공간",
     "more_options_aria": "추가 옵션",
     "lead_placeholder": "리드 지정...",
     "members_group": "멤버",

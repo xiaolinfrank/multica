@@ -12,6 +12,10 @@ interface ProjectDraft {
   // Calendar days ("YYYY-MM-DD"); empty/undefined means unset.
   startDate?: string;
   dueDate?: string;
+  // Absolute shared-storage path ("人机协作空间路径"); empty/undefined means
+  // unset. Part of the draft because it is typed by hand and is the longest
+  // field in the modal — losing it on a reopen costs more than a re-pick.
+  collabPath?: string;
 }
 
 const EMPTY_DRAFT: ProjectDraft = {
@@ -24,6 +28,7 @@ const EMPTY_DRAFT: ProjectDraft = {
   icon: undefined,
   startDate: undefined,
   dueDate: undefined,
+  collabPath: undefined,
 };
 
 export const useProjectDraftStore = createDraftStore<ProjectDraft>({

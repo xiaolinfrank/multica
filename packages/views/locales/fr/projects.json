@@ -82,6 +82,20 @@
     "toast_project_deleted": "Projet supprimé",
     "toast_move_issue_failed": "Échec du déplacement de la tâche"
   },
+  "collab_path": {
+    "label": "Espace de collaboration",
+    "module_label": "Espace du module",
+    "empty": "Non défini",
+    "placeholder": "/Volumes/…",
+    "copy_aria": "Copier le chemin",
+    "toast_copied": "Chemin copié",
+    "toast_copy_failed": "Impossible de copier le chemin",
+    "hint_project": "Répertoire partagé où les personnes et les agents se transmettent les livrables de ce projet. Chemin absolu, tel qu'il est monté sur la machine qui exécute l'agent.",
+    "hint_module": "Emplacement des livrables de ce module, à l'intérieur de l'espace du projet. Chemin absolu, tel qu'il est monté sur la machine qui exécute l'agent.",
+    "error_not_absolute": "Saisissez un chemin absolu, par exemple /Volumes/partage/projet.",
+    "error_too_long": "Trop long pour un chemin de répertoire.",
+    "error_control_characters": "Contient des caractères qu'un chemin ne peut pas comporter."
+  },
   "resources": {
     "section_header": "Ressources",
     "empty": "Aucune ressource rattachée.",
@@ -160,6 +174,19 @@
       "toast_created": "Module créé",
       "toast_failed": "Échec de la création du module"
     },
+    "edit": {
+      "title": "Modifier le module",
+      "title_label": "Nom",
+      "description_label": "Description",
+      "description_placeholder": "Ce que couvre ce module...",
+      "description_hint": "Partagé avec les agents comme contexte à chaque tâche de ce module.",
+      "submit": "Enregistrer",
+      "submitting": "Enregistrement...",
+      "cancel": "Annuler",
+      "toast_saved": "Module mis à jour",
+      "toast_failed": "Échec de la mise à jour du module",
+      "not_found": "Ce module n'existe plus."
+    },
     "picker": {
       "search_placeholder": "Rechercher des modules...",
       "none": "Aucun module",
@@ -177,6 +204,7 @@
     "manage_empty": "Aucun module pour le moment",
     "reorder_handle_aria": "Glisser pour réordonner le module",
     "rename_aria": "Renommer le module",
+    "edit_aria": "Modifier le module",
     "delete_aria": "Supprimer le module",
     "delete_title": "Supprimer {{title}} ?",
     "delete_description": "Le module est supprimé. Ses tickets restent dans le projet, classés directement sous celui-ci. Cette action est irréversible.",

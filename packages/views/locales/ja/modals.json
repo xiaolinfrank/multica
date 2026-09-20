@@ -104,6 +104,8 @@
     "no_lead": "リードなし",
     "set_start_date": "開始日を設定...",
     "set_due_date": "期限を設定...",
+    "set_collab_path": "協働スペースを設定...",
+    "collab_path_pill": "協働スペース",
     "more_options_aria": "その他のオプション",
     "lead_placeholder": "リードを指定...",
     "members_group": "メンバー",

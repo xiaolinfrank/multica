@@ -4,12 +4,14 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useCreateModule } from "@multica/core/modules/mutations";
 import { useCurrentWorkspace } from "@multica/core/paths";
+import { normalizeCollabPath, type CollabPathError } from "@multica/core/projects/collab-path";
 import { cn } from "@multica/ui/lib/utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { TitleEditor } from "../editor";
 import { ProjectPicker } from "../projects/components/project-picker";
+import { CollabPathInput } from "../projects/components/collab-path";
 import { PillButton } from "../common/pill-button";
 import { useT } from "../i18n";
 
@@ -31,17 +33,27 @@ export function CreateModuleModal({
 
   const [projectId, setProjectId] = useState<string | null>(initialProject);
   const [title, setTitle] = useState("");
+  const [collabPath, setCollabPath] = useState("");
+  const [collabPathError, setCollabPathError] = useState<CollabPathError | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const createModule = useCreateModule();
 
   const handleSubmit = async () => {
     if (!title.trim() || !projectId || submitting) return;
+    const path = normalizeCollabPath(collabPath);
+    if (!path.ok) {
+      setCollabPathError(path.reason);
+      return;
+    }
     setSubmitting(true);
     try {
       await createModule.mutateAsync({
         project_id: projectId,
         title: title.trim(),
+        // Omitted rather than sent as null: create has no prior value to
+        // clear, and the server reads an absent key as "no path".
+        ...(path.value ? { collab_path: path.value } : {}),
       });
       // Close only after the server confirms the create, matching the
       // create-project contract — a rejected create keeps the dialog open
@@ -66,7 +78,7 @@ export function CreateModuleModal({
         className={cn(
           "p-0 gap-0 flex flex-col overflow-hidden",
           "!top-1/2 !left-1/2 !-translate-x-1/2",
-          "!max-w-lg !w-full !h-64 !-translate-y-1/2",
+          "!max-w-lg !w-full !h-[22rem] !-translate-y-1/2",
         )}
       >
         <DialogTitle className="sr-only">{t(($) => $.module.create.title)}</DialogTitle>
@@ -87,6 +99,23 @@ export function CreateModuleModal({
             className="text-title font-semibold"
             onChange={(v) => setTitle(v)}
             onSubmit={handleSubmit}
+          />
+        </div>
+
+        {/* Optional from the start: a module is created to hold work, and the
+            directory that work lands in is part of setting it up. Left blank
+            the module simply has no space of its own and agents fall back to
+            the project's. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-2">
+          <CollabPathInput
+            id="create-module-collab-path"
+            value={collabPath}
+            onValueChange={(next) => {
+              setCollabPath(next);
+              setCollabPathError(null);
+            }}
+            error={collabPathError}
+            hint={t(($) => $.collab_path.hint_module)}
           />
         </div>
 

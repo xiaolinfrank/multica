@@ -104,6 +104,8 @@
     "no_lead": "无负责人",
     "set_start_date": "设置开始日期...",
     "set_due_date": "设置截止日期...",
+    "set_collab_path": "设置人机协作空间路径...",
+    "collab_path_pill": "人机协作空间",
     "more_options_aria": "更多选项",
     "lead_placeholder": "指派负责人...",
     "members_group": "成员",
