@@ -427,7 +427,6 @@ type AgentTaskResponse struct {
 	ModuleID          string                `json:"module_id,omitempty"`
 	ModuleTitle       string                `json:"module_title,omitempty"`
 	ModuleDescription string                `json:"module_description,omitempty"`
-	ModuleCollabPath  string                `json:"module_collab_path,omitempty"`
 	ProjectResources  []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
 	CreatedAt         string                `json:"created_at"`
 	PriorSessionID    string                `json:"prior_session_id,omitempty"` // session ID from a previous task on same issue

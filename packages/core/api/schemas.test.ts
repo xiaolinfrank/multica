@@ -1631,9 +1631,8 @@ describe("Module schemas", () => {
 
   // Frontend deploys before backend: a module row from a server that predates
   // stat enrichment omits the counts, and a list may omit total. Both must
-  // default rather than degrade the whole batch to the empty fallback. A
-  // server older still predates collab_path and omits that too.
-  it("defaults missing counts, total and collab_path without dropping modules", () => {
+  // default rather than degrade the whole batch to the empty fallback.
+  it("defaults missing counts and total without dropping modules", () => {
     const parsed = parseWithFallback(
       { modules: [baseModule] },
       ListModulesResponseSchema,
@@ -1645,35 +1644,7 @@ describe("Module schemas", () => {
     expect(parsed.modules[0]?.issue_count).toBe(0);
     expect(parsed.modules[0]?.done_count).toBe(0);
     expect(parsed.modules[0]?.description).toBeNull();
-    expect(parsed.modules[0]?.collab_path).toBeNull();
     expect(parsed.total).toBe(0);
-  });
-
-  // The module's collaboration space is the project's path narrowed by one
-  // level, so it is the deepest string the module contract carries.
-  it("parses a module collab_path verbatim", () => {
-    const path =
-      "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集/01.01回顾性队列数据集（JIA）";
-    const parsed = parseWithFallback(
-      { modules: [{ ...baseModule, collab_path: path }], total: 1 },
-      ListModulesResponseSchema,
-      EMPTY_LIST_MODULES_RESPONSE,
-      ENDPOINT,
-    );
-    expect(parsed.modules[0]?.collab_path).toBe(path);
-  });
-
-  // A drifted collab_path (number where the contract says string|null) is a
-  // wrong shape, not a missing key, so it fails the row like a drifted
-  // position rather than being coerced.
-  it("degrades a type-drifted collab_path to the empty fallback", () => {
-    const parsed = parseWithFallback(
-      { modules: [{ ...baseModule, collab_path: 42 }], total: 1 },
-      ListModulesResponseSchema,
-      EMPTY_LIST_MODULES_RESPONSE,
-      ENDPOINT,
-    );
-    expect(parsed).toBe(EMPTY_LIST_MODULES_RESPONSE);
   });
 
   // A genuinely wrong shape (position drifted to a string) still fails the row,
@@ -1738,20 +1709,6 @@ describe("Module schemas", () => {
     expect(parsed.module.id).toBe("m-1");
     expect(parsed.module.issue_count).toBe(0);
     expect(parsed.module.done_count).toBe(0);
-    expect(parsed.module.collab_path).toBeNull();
-  });
-
-  // PUT /api/modules/{id} is the write path for the collaboration space, so
-  // the envelope must hand the saved value back to the editing surface.
-  it("returns the saved collab_path through the single-module envelope", () => {
-    const path = "/Volumes/人机协作空间/平台/模块";
-    const parsed = parseWithFallback(
-      { module: { ...baseModule, collab_path: path } },
-      ModuleResponseSchema,
-      EMPTY_MODULE_RESPONSE,
-      { endpoint: "PUT /api/modules/{id}" },
-    );
-    expect(parsed.module.collab_path).toBe(path);
   });
 
   it("degrades a malformed single-module envelope to the empty fallback", () => {

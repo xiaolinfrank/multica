@@ -142,7 +142,7 @@ describe("CollabPathProperty", () => {
 
 describe("CollabPathInput", () => {
   it("explains the field until a value is rejected, then explains the rejection", () => {
-    const hint = "Where this module's deliverables go, inside the project's space.";
+    const hint = "Shared directory where people and agents hand this project's deliverables to each other.";
     const { rerender } = renderWithI18n(
       <CollabPathInput value="" onValueChange={vi.fn()} hint={hint} />,
     );

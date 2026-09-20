@@ -85,14 +85,12 @@
   },
   "collab_path": {
     "label": "협업 공간 경로",
-    "module_label": "모듈 협업 공간",
     "empty": "설정 안 됨",
     "placeholder": "/Volumes/…",
     "copy_aria": "경로 복사",
     "toast_copied": "경로를 복사했습니다",
     "toast_copy_failed": "경로를 복사하지 못했습니다",
     "hint_project": "사람과 에이전트가 이 프로젝트의 산출물을 주고받는 공유 디렉터리입니다. 에이전트가 실행되는 컴퓨터에 마운트된 절대 경로를 입력하세요.",
-    "hint_module": "이 모듈의 산출물을 두는 위치로, 프로젝트 공간 안에 있습니다. 에이전트가 실행되는 컴퓨터에 마운트된 절대 경로를 입력하세요.",
     "error_not_absolute": "절대 경로를 입력하세요. 예: /Volumes/공유/프로젝트",
     "error_too_long": "디렉터리 경로로 쓰기에 너무 깁니다.",
     "error_control_characters": "경로에 쓸 수 없는 문자가 포함되어 있습니다."

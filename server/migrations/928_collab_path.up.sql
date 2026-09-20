@@ -1,17 +1,17 @@
--- Fork-only (900-999 range): collab_path binds a project and a module to the
--- directory on the shared NAS where humans and agents exchange work. Agents
--- are told to write deliverables there instead of leaving them in a
--- runtime-local workdir, which is otherwise private to one task.
+-- Fork-only (900-999 range): collab_path binds a PROJECT to the directory on
+-- the shared NAS where humans and agents exchange work. Agents are told to
+-- write deliverables there instead of leaving them in a runtime-local workdir,
+-- which is otherwise private to one task.
+--
+-- Deliberately project-only. Modules sit inside their project both on the
+-- platform and on disk, so a module's directory is found by name under the
+-- project's path — a second stored path would be a value that can drift out of
+-- sync with the folder it names, for a location that was already derivable.
+-- Renaming or re-cutting the module set then stays a one-place edit.
 --
 -- Plain TEXT, nullable, no default: adding a nullable column is a
 -- metadata-only change with no table rewrite. The value is an absolute
 -- filesystem path as mounted on the daemon hosts (e.g.
--- /Volumes/人机协作空间/<project>/<module>); the server does not resolve or
--- stat it, so an unmounted host simply fails at the agent, not at write time.
---
--- Two columns rather than one shared lookup table: module already carries its
--- own title/description/position, and the path is a property of the row, not a
--- separate entity. Project keeps its path even when a module overrides it —
--- the module path is the more specific location, not a replacement.
+-- /Volumes/人机协作空间/<project>); the server does not resolve or stat it, so
+-- an unmounted host fails at the agent, not at write time.
 ALTER TABLE project ADD COLUMN collab_path TEXT;
-ALTER TABLE module ADD COLUMN collab_path TEXT;

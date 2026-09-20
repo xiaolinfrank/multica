@@ -1203,7 +1203,6 @@ type Module struct {
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	CollabPath  pgtype.Text        `json:"collab_path"`
 }
 
 type NotificationPreference struct {

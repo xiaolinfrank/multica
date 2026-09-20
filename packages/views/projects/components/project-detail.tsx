@@ -30,7 +30,7 @@ import { currentPath, useNavigation } from "../../navigation";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
 import { PriorityIcon } from "../../issues/components/priority-icon";
 import { ProjectResourcesSection } from "./project-resources-section";
-import { CollabPathProperty, CollabPathReadout } from "./collab-path";
+import { CollabPathProperty } from "./collab-path";
 import { ProjectStartDatePicker } from "./project-start-date-picker";
 import { ProjectDueDatePicker } from "./project-due-date-picker";
 import { IssueSurface } from "../../issues/surface/issue-surface";
@@ -476,30 +476,16 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <PropRow label={t(($) => $.detail.prop_due_date)}>
             <ProjectDueDatePicker dueDate={project.due_date} onUpdate={handleUpdateField} />
           </PropRow>
+          {/* One collaboration space per project, even when the page is
+              filtered to a module: a module's deliverables live in a folder
+              named after it inside this directory, so there is no second path
+              to show or keep in sync. */}
           <PropRow label={t(($) => $.collab_path.label)} stacked>
             <CollabPathProperty
               value={project.collab_path}
               onCommit={(next) => handleUpdateField({ collab_path: next })}
             />
           </PropRow>
-          {/* The active module's own space, surfaced here rather than in the
-              breadcrumb: the header already carries the module chip and the
-              path is far too long to sit beside it. Read-only, because this
-              page owns the project row, not the module row — the pencil hands
-              the edit to the module's own modal. */}
-          {activeModuleRecord && (
-            <PropRow label={t(($) => $.collab_path.module_label)} stacked>
-              <CollabPathReadout
-                path={activeModuleRecord.collab_path}
-                onEdit={() =>
-                  useModalStore
-                    .getState()
-                    .open("edit-module", { moduleId: activeModuleRecord.id })
-                }
-                editLabel={t(($) => $.module.edit_aria)}
-              />
-            </PropRow>
-          )}
         </div>}
       </div>
 

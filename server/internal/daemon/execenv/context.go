@@ -242,12 +242,13 @@ type projectResourceFile struct {
 	ProjectTitle       string `json:"project_title,omitempty"`
 	ProjectDescription string `json:"project_description,omitempty"`
 	// ProjectCollabPath / Module* mirror the brief's Project Context section so
-	// a skill can read the collaboration space without parsing prose.
+	// a skill can read the collaboration space without parsing prose. The
+	// module carries no path of its own: its directory sits under the project's,
+	// named after the module.
 	ProjectCollabPath string                  `json:"project_collab_path,omitempty"`
 	ModuleID          string                  `json:"module_id,omitempty"`
 	ModuleTitle       string                  `json:"module_title,omitempty"`
 	ModuleDescription string                  `json:"module_description,omitempty"`
-	ModuleCollabPath  string                  `json:"module_collab_path,omitempty"`
 	Resources         []ProjectResourceForEnv `json:"resources"`
 }
 
@@ -300,7 +301,6 @@ func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *side
 		ModuleID:           ctx.ModuleID,
 		ModuleTitle:        ctx.ModuleTitle,
 		ModuleDescription:  ctx.ModuleDescription,
-		ModuleCollabPath:   ctx.ModuleCollabPath,
 		Resources:          resources,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")

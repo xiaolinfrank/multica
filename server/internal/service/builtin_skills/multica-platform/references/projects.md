@@ -46,8 +46,9 @@ Common resource types:
 
 A module subdivides one project: Project → Module → Issue. Modules are a
 grouping layer only — they carry a title, an optional description, and a
-stable order; they have no resources, dates, or status of their own. An
-issue belongs to at most one module, always a module of its own project.
+stable order; they have no resources, dates, status, or collaboration-space
+path of their own. An issue belongs to at most one module, always a module of
+its own project.
 
 ```json
 {
@@ -57,7 +58,6 @@ issue belongs to at most one module, always a module of its own project.
   "title": "Parser rewrite",
   "description": "",
   "position": 0,
-  "collab_path": null,
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z",
   "issue_count": 12,
@@ -71,12 +71,11 @@ owner/admin gated, like project deletion):
 - `GET /api/modules?project_id=<uuid>` → `{ "modules": [...], "total": n }`
   ordered by `position` ascending.
 - `POST /api/modules` with `{ "project_id": "...", "title": "...",
-  "description": "...", "collab_path": "..." }` → `201` with the module.
+  "description": "..." }` → `201` with the module.
 - `GET /api/modules/{id}` and `PUT /api/modules/{id}` with
-  `{ "title": "...", "description": "...", "position": 1,
-  "collab_path": "..." }`. `description` and `collab_path` follow the
-  presence contract: a key absent from the body keeps the stored value, a
-  key present with `null` clears it, and `collab_path` also clears on `""`.
+  `{ "title": "...", "description": "...", "position": 1 }`. `description`
+  follows the presence contract: a key absent from the body keeps the stored
+  value, a key present with `null` clears it.
 - `PUT /api/modules/reorder` with `{ "module_ids": [...] }` — the full
   ordered id list for one project.
 - `DELETE /api/modules/{id}` → `204`. The module is removed and its issues
@@ -89,22 +88,30 @@ Modules are managed from the CLI with `multica module`, documented under
 
 ## Collaboration space
 
-`collab_path` — 人机协作空间路径 — binds a project, and optionally each of its
-modules, to a directory on the shared NAS where people and agents exchange
-finished work. It is the team's drop point, not a runtime path: a task's
-working directory exists only on the machine running that task, while this
-directory is mounted on the daemon hosts and is where a person goes to read
-what an agent produced.
+`collab_path` — 人机协作空间路径 — binds a **project** to a directory on the
+shared NAS where people and agents exchange finished work. It is the team's
+drop point, not a runtime path: a task's working directory exists only on the
+machine running that task, while this directory is mounted on the daemon hosts
+and is where a person goes to read what an agent produced.
+
+Inside it, the layout is derived rather than configured:
 
 ```text
-/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集/01.01回顾性队列数据集（JIA）
+/Volumes/人机协作空间/AI医药联合创新平台   ← the project's collab_path
+└── 01高质量数据集                        ← a module, named after its title
+    └── 01.01回顾性队列数据集（JIA）       ← one task's deliverables
 ```
 
-Both entities carry it — `project.collab_path` and `module.collab_path`, each
-`string | null` on the API. A module path narrows the project's rather than
-replacing it; the project keeps its own. **When both are set, use the module
-path** — it is the narrower one, pointing at this task's slice of the work.
-With only a project path, use that.
+Only the project carries the field — `project.collab_path`, `string | null` on
+the API. **A module has no path of its own, deliberately.** A module always
+lives inside its project, on the platform and on disk alike: its folder sits
+directly under the project's directory, named after the module, so the location
+already follows from data the platform holds. A second stored path would add a
+value that can drift out of sync with the folder it names, add a setting
+someone has to fill in correctly, and make re-cutting a project's module set a
+multi-place edit. There is no `module.collab_path` on any module endpoint, and
+no `--collab-path` on any `multica module` command — if you are looking for
+one, join the project's path with the module's title instead.
 
 Validation (HTTP 400 on failure): the value is trimmed, must be absolute, at
 most 1024 characters, and must not contain control characters. Absolute means
@@ -116,26 +123,28 @@ has not mounted the share fails at the agent rather than at write time, and a
 path that is correct on every other host is never rejected on that host's
 behalf.
 
-Presence semantics on update, identical for both entities: a key absent from
-the request body keeps the stored value, and the key present with `null` or
-`""` clears it to NULL. `POST /api/projects` and `POST /api/modules` accept
-the same field.
+Presence semantics on update: a key absent from the request body keeps the
+stored value, and the key present with `null` or `""` clears it to NULL.
+`POST /api/projects` accepts the same field.
 
-A task that has one is told about it. The brief's `## Project Context` gains a
-`### Collaboration Space` subsection listing the project path and the module
-path, and `.multica/project/resources.json` carries `project_collab_path`,
-`module_collab_path`, and the module identity (`module_id`, `module_title`,
-`module_description`) for tooling that would rather read JSON than prose.
+A task whose project has one is told about it. The brief's `## Project Context`
+gains a `### Collaboration Space` subsection naming the project directory and,
+when the task has a module, saying that this task's work belongs in the folder
+named after that module inside it. `.multica/project/resources.json` carries
+`project_collab_path` plus the module identity (`module_id`, `module_title`,
+`module_description`) for tooling that would rather read JSON than prose — the
+module's directory is `project_collab_path` joined with `module_title`.
 
 ### Delivering into it
 
 The standing rule in every brief is that runtime-local paths are never
 deliverables. The collaboration space is the exception, and the only one:
 
-- Write the finished file into the collaboration-space directory — the
-  module's when the task has one — in a subdirectory when the work warrants
-  one. This is in addition to the surface's own delivery mechanism, not
-  instead of it: an issue comment still carries the file with
+- Write the finished file into the collaboration-space directory: under the
+  folder named after this task's module when it has one, in a further
+  subdirectory when the work warrants one. Create the module's folder if it is
+  not there yet. This is in addition to the surface's own delivery mechanism,
+  not instead of it: an issue comment still carries the file with
   `--attachment <path>`.
 - Name that path in your comment as **plain text**. Never a clickable link,
   never a `file://` URL. The rule against linking filesystem paths is
@@ -143,10 +152,11 @@ deliverables. The collaboration space is the exception, and the only one:
   actually open it.
 - Keep scratch work in your working directory — notes, intermediate output,
   checkouts. Only what is being handed over goes to the share.
-- If the directory does not exist, the share is not mounted on this machine.
-  Say that in your comment and leave the file in the working directory. Do
-  not pick a nearby path that does exist: a deliverable written somewhere
-  else is a deliverable nobody finds.
+- If the *project* directory does not exist, the share is not mounted on this
+  machine. Say that in your comment and leave the file in the working
+  directory. Do not pick a nearby path that does exist: a deliverable written
+  somewhere else is a deliverable nobody finds. (A missing module folder is
+  not that case — that one you create.)
 
 ## CLI
 
@@ -193,10 +203,9 @@ every other argument is the module's own id.
 multica module list --project <project-id> --output json
 multica module get <module-id> --output json
 multica module create --project <project-id> --title "<title>" --output json
-multica module create --project <project-id> --title "<title>" --description "<text>" --collab-path "/Volumes/人机协作空间/<项目>/<模块>" --output json
+multica module create --project <project-id> --title "<title>" --description "<text>" --output json
 multica module update <module-id> --title "<title>" --output json
-multica module update <module-id> --collab-path "/Volumes/人机协作空间/<项目>/<模块>" --output json
-multica module update <module-id> --collab-path "" --output json   # clear the collaboration space
+multica module update <module-id> --description "" --output json   # clear the description
 multica module update <module-id> --position 3 --output json
 multica module delete <module-id>
 ```
@@ -207,6 +216,10 @@ field untouched. `--position` moves one module; reordering a whole project's
 list in one call stays `PUT /api/modules/reorder`, which has no CLI surface.
 `delete` is owner/admin gated and leaves the module's issues in the project
 with `module_id` null.
+
+There is no `--collab-path` here: the collaboration space is set once on the
+project and each module's folder is found by name inside it — see
+[Collaboration space](#collaboration-space).
 
 To file an issue into a module, use `multica issue create --module` /
 `multica issue update --module` — see

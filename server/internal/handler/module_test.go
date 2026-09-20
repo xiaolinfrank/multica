@@ -177,6 +177,101 @@ func TestCreateModuleValidation(t *testing.T) {
 	}
 }
 
+// Modules briefly carried a `collab_path` ("人机协作空间路径") of their own before
+// the value was scoped back to the project alone: a module lives inside its
+// project on disk as well as on the platform, so its folder is found by name
+// under the project's directory and a stored second path would only be
+// something that can drift out of sync with the folder it names.
+//
+// A desktop client pinned to the older build still posts the key. This test
+// pins what the server does with it: IGNORE — no 400, no echo. Rejecting it
+// would break an installed client on an endpoint that is otherwise compatible,
+// and echoing it would let that client keep showing a field the server no
+// longer honours. Both decoders here take the body with plain encoding/json (no
+// DisallowUnknownFields), which is what makes the key inert.
+//
+// "Not persisted" is asserted through the response rather than the column on
+// purpose. It is already structural — CreateModuleParams / UpdateModuleParams
+// have no such field and the generated statements name their columns — and
+// `module.collab_path` exists only in databases that ran this migration's
+// earlier two-column form. Reading it here would make the test pass on those
+// and error on a database built from the migration as it now stands.
+func TestModuleAPIIgnoresCollabPath(t *testing.T) {
+	projectID, _, _ := moduleTestSeed(t)
+
+	const legacyPath = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集"
+
+	created := testutil.Call(t, testHandler.CreateModule, newRequest(http.MethodPost, "/api/modules", map[string]any{
+		"project_id":  projectID,
+		"title":       "Legacy client module",
+		"description": "posted by a client that still knows the field",
+		"collab_path": legacyPath,
+	})).Want(http.StatusCreated)
+
+	var createdModule struct {
+		Module ModuleResponse `json:"module"`
+	}
+	created.JSON(&createdModule)
+	moduleID := createdModule.Module.ID
+	dbfx.Cleanup(t, `DELETE FROM module WHERE id = $1`, moduleID)
+
+	// The rest of the body still applies — the unknown key must not cost the
+	// module its title or description.
+	if createdModule.Module.Title != "Legacy client module" {
+		t.Errorf("title = %q, want the posted title", createdModule.Module.Title)
+	}
+	if createdModule.Module.Description == nil || *createdModule.Module.Description != "posted by a client that still knows the field" {
+		t.Errorf("description = %v, want the posted description", createdModule.Module.Description)
+	}
+	wantNoCollabPath(t, "create", created.Text(), legacyPath)
+
+	updated := testutil.Call(t, testHandler.UpdateModule, withURLParam(
+		newRequest(http.MethodPut, "/api/modules/"+moduleID, map[string]any{
+			"title":       "Legacy client module renamed",
+			"collab_path": legacyPath,
+		}), "id", moduleID)).Want(http.StatusOK)
+
+	var updatedModule struct {
+		Module ModuleResponse `json:"module"`
+	}
+	updated.JSON(&updatedModule)
+	if updatedModule.Module.Title != "Legacy client module renamed" {
+		t.Errorf("title = %q, want the update to have applied", updatedModule.Module.Title)
+	}
+	wantNoCollabPath(t, "update", updated.Text(), legacyPath)
+
+	// And the GET a client polls after either write.
+	fetched := testutil.Call(t, testHandler.GetModule, withURLParam(
+		newRequest(http.MethodGet, "/api/modules/"+moduleID, nil), "id", moduleID)).Want(http.StatusOK)
+	wantNoCollabPath(t, "get", fetched.Text(), legacyPath)
+
+	// A relative value is the one the removed validator used to 400 on. It must
+	// now be just as inert as an absolute one: the field is gone, so there is
+	// nothing left to validate and nothing to reject.
+	rejectedBefore := testutil.Call(t, testHandler.UpdateModule, withURLParam(
+		newRequest(http.MethodPut, "/api/modules/"+moduleID, map[string]any{
+			"collab_path": "deliverables/final",
+		}), "id", moduleID)).Want(http.StatusOK)
+	wantNoCollabPath(t, "relative value", rejectedBefore.Text(), "deliverables/final")
+	if strings.Contains(rejectedBefore.Text(), "absolute path") {
+		t.Errorf("update still validates a field the module no longer has: %s", rejectedBefore.Text())
+	}
+}
+
+// wantNoCollabPath asserts a module payload neither carries a collab_path key
+// nor echoes the value that was posted. The key check is what matters: a field
+// re-added to ModuleResponse would decode into nothing the typed assertions
+// above look at, so only the raw body can see it.
+func wantNoCollabPath(t *testing.T, label, body, posted string) {
+	t.Helper()
+	if strings.Contains(body, "collab_path") {
+		t.Errorf("%s: module payload carries a collab_path key: %s", label, body)
+	}
+	if strings.Contains(body, posted) {
+		t.Errorf("%s: module payload echoes the posted path %q: %s", label, posted, body)
+	}
+}
+
 func TestDeleteModuleRoleGate(t *testing.T) {
 	projectID, moduleA, _ := moduleTestSeed(t)
 	member := modulePermissionTestMember(t, "member")

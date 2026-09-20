@@ -114,8 +114,8 @@ function SortableModuleRow({
             <Pencil className="size-3.5" />
           </button>
           {/* Inline rename stays the one-field path; this opens the full
-              property editor (name, description, collaboration space), which
-              is the only surface either of the latter two has. */}
+              property editor (name and description), the only surface the
+              description has. */}
           <button
             type="button"
             aria-label={t(($) => $.module.edit_aria)}

@@ -107,6 +107,19 @@ func validateProjectStatus(status string) error {
 	return fmt.Errorf("invalid status %q; valid values: %s", status, strings.Join(validProjectStatuses, ", "))
 }
 
+// collabPathCreateHelp and collabPathUpdateHelp describe 人机协作空间路径, the
+// shared-storage directory where people and agents exchange deliverables. The
+// server accepts any absolute path — POSIX, UNC, or a Windows drive — without
+// stating it, because the share is mounted on the daemon host that runs the
+// task, not on the server.
+//
+// Only a project carries one. A module's deliverables go in a folder named
+// after the module inside its project's directory, so `multica module` has no
+// path flag: the location is derived, never stored a second time.
+const collabPathCreateHelp = "Collaboration space: absolute path to the shared-storage directory where people and agents exchange deliverables (e.g. /Volumes/人机协作空间/项目); each module's work goes in a folder named after it inside this directory"
+
+const collabPathUpdateHelp = collabPathCreateHelp + "; pass an empty string to clear it"
+
 func init() {
 	projectCmd.AddCommand(projectListCmd)
 	projectCmd.AddCommand(projectGetCmd)
