@@ -186,9 +186,12 @@ project, so the two fields move together:
   project. Moving an issue into another project's module is rejected.
 - Changing `project_id` without a new `module_id` clears the module: the
   issue lands directly under the new project.
-- There is no CLI module flag yet (no `--module` on create/update). Manage
-  modules over the API — see [projects.md](projects.md#modules) — and do
-  not invent flags.
+- `multica issue create --module <module-id>` files a new issue into a
+  module; `multica issue update <issue-id> --module <module-id>` moves an
+  existing one, and `--module ""` files it directly under its project. On
+  create, `--project` may be omitted — the module's project is adopted.
+- Modules themselves are created and edited with `multica module` — see
+  [projects.md](projects.md#modules).
 
 Issue queries filter with `module_id` (single) or `module_ids` (any of),
 plus `include_no_module=true` for issues filed directly under their
@@ -196,6 +199,12 @@ project. These compile to one OR predicate, so `module_id` together with
 `include_no_module` reads as "this module or no module". Table grouping
 exposes a `module` kind whose group keys are `module:<uuid>` and
 `module:none`.
+
+A module can carry a collaboration space (`collab_path`, 人机协作空间路径).
+When this issue has a module, the claim and the brief hand the agent that
+module's path alongside the project's, and deliverable files go there — see
+[projects.md](projects.md#collaboration-space).
+
 ## Custom properties: typed workflow state
 
 Workspaces may define custom issue properties (Severity, Environment, QA
