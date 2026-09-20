@@ -8,6 +8,7 @@ import { setupAutoUpdater } from "./updater";
 import { setupDaemonManager } from "./daemon-manager";
 import { setupLocalDirectory } from "./local-directory";
 import { openExternalSafely, downloadURLSafely } from "./external-url";
+import { openLocalPathSafely } from "./local-path";
 import { installContextMenu } from "./context-menu";
 import { handleAppShortcut } from "./keyboard-shortcuts";
 import { installNavigationGestures } from "./navigation-gestures";
@@ -659,6 +660,14 @@ if (!gotTheLock) {
     // (the renderer itself runs sandboxed).
     ipcMain.handle("shell:openExternal", (_event, url: string) => {
       return openExternalSafely(url);
+    });
+
+    // IPC: reveal a local directory in Finder / Explorer. The paths arrive
+    // from rendered content (an agent naming where it saved a deliverable), so
+    // openLocalPathSafely — not this handler — owns every check; see the module
+    // header for why a directory is opened and anything else only revealed.
+    ipcMain.handle("shell:open-local-path", (_event, path: unknown) => {
+      return openLocalPathSafely(path);
     });
 
     // Renderer requests its own window close (e.g. Cmd+W on the last main

@@ -3,6 +3,13 @@ export { useDesktopUnreadBadge } from "./use-desktop-unread-badge";
 export { DragStrip } from "./drag-strip";
 export { openExternal } from "./open-external";
 export {
+  canOpenLocalPath,
+  openLocalPath,
+  viewerFileManager,
+  type OpenLocalPathResult,
+  type ViewerFileManager,
+} from "./open-local-path";
+export {
   isDesktopShell,
   pickDirectory,
   validateLocalDirectory,
