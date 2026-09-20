@@ -200,9 +200,10 @@ project. These compile to one OR predicate, so `module_id` together with
 exposes a `module` kind whose group keys are `module:<uuid>` and
 `module:none`.
 
-A module can carry a collaboration space (`collab_path`, 人机协作空间路径).
-When this issue has a module, the claim and the brief hand the agent that
-module's path alongside the project's, and deliverable files go there — see
+A module stores no collaboration space of its own; only its project carries
+`collab_path` (人机协作空间路径). When this issue has a module, the claim and
+the brief hand the agent the project's path plus the module's title, and
+deliverable files go in the folder named after that module inside it — see
 [projects.md](projects.md#collaboration-space).
 
 ## Custom properties: typed workflow state

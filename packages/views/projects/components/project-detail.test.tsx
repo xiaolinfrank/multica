@@ -288,7 +288,6 @@ vi.mock("../../layout/animated-right-sidebar", () => ({
 }));
 
 const PROJECT_PATH = "/Volumes/人机协作空间/AI医药联合创新平台";
-const MODULE_PATH = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集";
 
 const PROJECT: Project = {
   id: "project-1",
@@ -437,7 +436,6 @@ describe("ProjectDetail module filtering", () => {
         updated_at: "2026-06-01T00:00:00Z",
         issue_count: 3,
         done_count: 1,
-        collab_path: MODULE_PATH,
       },
     ];
   });
@@ -593,10 +591,11 @@ describe("ProjectDetail collaboration space", () => {
 
     expect(mocks.updateProject).not.toHaveBeenCalled();
   });
-});
 
-describe("ProjectDetail module collaboration space", () => {
-  beforeEach(() => {
+  // A module's deliverables live in a folder named after it inside this
+  // directory, so narrowing the page to one module must not grow a second
+  // path for someone to fill in and keep in sync with the first.
+  it("keeps one space when the page is filtered to a module", () => {
     mocks.modules.current = [
       {
         id: "module-1",
@@ -609,30 +608,12 @@ describe("ProjectDetail module collaboration space", () => {
         updated_at: "2026-06-01T00:00:00Z",
         issue_count: 3,
         done_count: 1,
-        collab_path: MODULE_PATH,
       },
     ];
-  });
-
-  // The header already carries the module chip; the module's own space is far
-  // too long to sit beside it, so it surfaces in the properties sidebar.
-  it("surfaces the active module's space and hands editing to the module modal", async () => {
-    const user = userEvent.setup();
     renderProjectDetail("module=module-1");
 
-    expect(screen.getByTitle(MODULE_PATH)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Edit module" }));
-
-    expect(useModalStore.getState().modal).toBe("edit-module");
-    expect(useModalStore.getState().data).toEqual({ moduleId: "module-1" });
-  });
-
-  it("shows no module space while the project is unfiltered", () => {
-    renderProjectDetail();
-
-    expect(screen.queryByText("Module space")).not.toBeInTheDocument();
-    expect(screen.queryByTitle(MODULE_PATH)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Collaboration space")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Not set" })).toHaveLength(1);
   });
 });
 

@@ -484,8 +484,13 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 	}
 }
 
-// writeCollaborationSpace emits the shared-storage directories the project and
-// module bind to ("人机协作空间路径").
+// writeCollaborationSpace emits the project's shared-storage directory
+// ("人机协作空间路径") and where inside it this task's work belongs.
+//
+// Only the PROJECT stores a path. A module's folder sits inside it under the
+// module's own name, so the location is derivable and a second stored value
+// would only be something that can drift from the folder it names. That also
+// keeps re-cutting the module set a one-place edit.
 //
 // This is the one filesystem path in the brief an agent is allowed to deliver
 // to, which is why it states the contrast with the working directory in full:
@@ -499,25 +504,16 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 // else is what loses the deliverable.
 func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 	project := strings.TrimSpace(ctx.ProjectCollabPath)
-	module := strings.TrimSpace(ctx.ModuleCollabPath)
-	if project == "" && module == "" {
+	if project == "" {
 		return
 	}
 	b.WriteString("### Collaboration Space\n\n")
 	b.WriteString("Shared storage where this team's people and agents exchange finished work. It is NOT your working directory: it lives on a share the people on this project can open.\n\n")
-	if project != "" {
-		fmt.Fprintf(b, "- Project: `%s`\n", project)
+	fmt.Fprintf(b, "- Project directory: `%s`\n\n", project)
+	if module := strings.TrimSpace(ctx.ModuleTitle); module != "" {
+		fmt.Fprintf(b, "Your work belongs under the folder named after this task's module, `%s/`, inside that directory. Modules have no separate path — the folder is found by name. Create it if it is not there yet.\n\n", module)
 	}
-	if module != "" {
-		fmt.Fprintf(b, "- Module: `%s`\n", module)
-	}
-	b.WriteString("\n")
-	if module != "" && project != "" {
-		b.WriteString("Use the module directory — it is the narrower of the two. ")
-	} else {
-		b.WriteString("Use that directory. ")
-	}
-	b.WriteString("Deliverable files (reports, datasets, decks, exports) go there, in a subdirectory when the task warrants one. Working notes, scratch files and checkouts stay in your working directory.\n\n")
+	b.WriteString("Deliverable files (reports, datasets, decks, exports) go there, in a further subdirectory when the task warrants one. Working notes, scratch files and checkouts stay in your working directory.\n\n")
 	// Whether the agent may NAME the path it wrote is a property of the
 	// surface, not of the collaboration space, and `## Output` is what decides
 	// it. Quick-create in particular forbids any commentary beyond one
@@ -984,7 +980,7 @@ func writeDeliveryInvariant(b *strings.Builder, ctx TaskContextForEnv) {
 	// because this is the rule an agent recalls when it is about to hand a file
 	// over. Emitted only when the task actually has one, so a brief without a
 	// collaboration space stays byte-identical to before this existed.
-	if strings.TrimSpace(ctx.ProjectCollabPath) != "" || strings.TrimSpace(ctx.ModuleCollabPath) != "" {
+	if strings.TrimSpace(ctx.ProjectCollabPath) != "" {
 		b.WriteString("The one exception is this task's **collaboration space** (see `## Project Context`): shared storage the team reads, not runtime-local. Write the finished file there as well. Whether you may name that path, and where, is stated in that section — and when you may, it is plain text, never a clickable link.\n\n")
 	}
 }

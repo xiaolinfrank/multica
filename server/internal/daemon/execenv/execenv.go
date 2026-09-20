@@ -160,15 +160,16 @@ type TaskContextForEnv struct {
 	ProjectID                     string              // active project for this task, when present
 	ProjectTitle                  string              // human-readable project title
 	ProjectDescription            string              // durable project-level context, rendered into the brief's Project Context section
-	// ProjectCollabPath / ModuleCollabPath are shared-storage directories
-	// ("人机协作空间路径") where the team exchanges deliverables. They are
-	// durable configuration like ProjectDescription, not per-run state, so
-	// rendering them into the brief keeps it byte-stable across resumes.
+	// ProjectCollabPath is the shared-storage directory ("人机协作空间路径")
+	// where the team exchanges deliverables. It is durable configuration like
+	// ProjectDescription, not per-run state, so rendering it into the brief
+	// keeps the brief byte-stable across resumes. Only a PROJECT carries one:
+	// a module's directory is found by name underneath it, so storing a second
+	// path would be a value that can drift from the folder it names.
 	ProjectCollabPath string
 	ModuleID          string // issue's module, when present; issue claims only
 	ModuleTitle       string
 	ModuleDescription string
-	ModuleCollabPath  string
 	ProjectResources  []ProjectResourceForEnv // resources attached to the project
 	ChatSessionID     string                  // non-empty for chat tasks
 	// ChatChannelType is the IM platform behind a chat session ("slack",

@@ -977,17 +977,15 @@ type claimModuleContext struct {
 	ModuleID    string
 	Title       string
 	Description string
-	CollabPath  string
 }
 
 // applyTo copies the resolved module context onto a claim response. Like
 // claimProjectContext.applyTo it assigns the whole context or none of it, so a
-// claim can never name a module without the path that module points at.
+// claim can never name a module without the description that explains it.
 func (c claimModuleContext) applyTo(resp *AgentTaskResponse) {
 	resp.ModuleID = c.ModuleID
 	resp.ModuleTitle = c.Title
 	resp.ModuleDescription = c.Description
-	resp.ModuleCollabPath = c.CollabPath
 }
 
 // resolveClaimModuleContext loads the module context for one issue claim.
@@ -1001,8 +999,8 @@ func (c claimModuleContext) applyTo(resp *AgentTaskResponse) {
 // The projectID cross-check is defense in depth. module.project_id is an
 // application-layer relation with no foreign key, and UpdateIssue clears
 // module_id when an issue changes project; a module that survived pointing at
-// another project would otherwise hand the agent a collaboration path
-// belonging to work it is not doing.
+// another project would otherwise name the agent a module belonging to work it
+// is not doing, and send its deliverables to the wrong project's directory.
 func (h *Handler) resolveClaimModuleContext(ctx context.Context, moduleID, projectID, workspaceID pgtype.UUID) (claimModuleContext, error) {
 	if !moduleID.Valid {
 		return claimModuleContext{}, nil
@@ -1025,7 +1023,6 @@ func (h *Handler) resolveClaimModuleContext(ctx context.Context, moduleID, proje
 		ModuleID:    uuidToString(module.ID),
 		Title:       module.Title,
 		Description: module.Description.String,
-		CollabPath:  module.CollabPath.String,
 	}, nil
 }
 

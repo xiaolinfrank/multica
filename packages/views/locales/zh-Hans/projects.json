@@ -85,14 +85,12 @@
   },
   "collab_path": {
     "label": "人机协作空间路径",
-    "module_label": "模块协作空间路径",
     "empty": "未设置",
     "placeholder": "/Volumes/…",
     "copy_aria": "复制路径",
     "toast_copied": "已复制路径",
     "toast_copy_failed": "复制路径失败",
     "hint_project": "人与智能体交付本项目成果的共享目录。请填写智能体所在机器上挂载的绝对路径。",
-    "hint_module": "本模块成果的存放位置，位于项目空间之内。请填写智能体所在机器上挂载的绝对路径。",
     "error_not_absolute": "请填写绝对路径，例如 /Volumes/人机协作空间/项目。",
     "error_too_long": "超出目录路径的长度上限。",
     "error_control_characters": "包含路径不能使用的字符。"

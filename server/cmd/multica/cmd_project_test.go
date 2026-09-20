@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// testCollabPath is a project's 人机协作空间路径. Only a project stores one; a
+// module's deliverables go in a folder named after it inside this directory.
+const testCollabPath = "/Volumes/人机协作空间/AI医药联合创新平台"
+
 // validateProjectStatus must accept the five DB-backed statuses and reject
 // anything else with a message that lists the valid values. `project create`,
 // `project update`, and `project status` all share it (#3925: `--status active`

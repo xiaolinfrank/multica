@@ -1,7 +1,9 @@
 // Client-side mirror of the server's collab_path validation
-// (server/internal/handler/collab_path.go). Both projects and modules carry
-// the field, so this lives beside the project contract rather than inside one
-// UI surface; the module surfaces import it from here.
+// (server/internal/handler/collab_path.go). The path is a project-level field
+// — a module's deliverables live in a folder named after it inside the
+// project's space, with no separate value to validate — so this lives beside
+// the project contract rather than inside one UI surface; every project
+// surface (web, desktop) imports it from here.
 //
 // The point of validating here is not to replace the server check — the server
 // still answers 400 and is the authority — but to name the one mistake users

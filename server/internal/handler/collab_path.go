@@ -14,8 +14,9 @@ import (
 const collabPathMaxLen = 1024
 
 // normalizeCollabPath validates and trims a human-agent collaboration space
-// path ("人机协作空间路径"): the directory on shared storage where a project or
-// module exchanges deliverables between people and agents.
+// path ("人机协作空间路径"): the directory on shared storage where a project
+// exchanges deliverables between people and agents. Only a project stores one —
+// a module's folder sits inside it under the module's own name.
 //
 // The server never stats the path. It is resolved on whichever daemon host
 // runs the task, and a host that has not mounted the share must fail loudly at

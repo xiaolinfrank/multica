@@ -17,7 +17,6 @@ const (
 	testProjectUUID   = "33333333-3333-3333-3333-333333333333"
 	testModuleUUID    = "22222222-2222-2222-2222-222222222222"
 	testModuleAltUUID = "44444444-4444-4444-4444-444444444444"
-	testCollabPath    = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集"
 )
 
 func newModuleCreateTestCmd() *cobra.Command {
@@ -25,7 +24,6 @@ func newModuleCreateTestCmd() *cobra.Command {
 	cmd.Flags().String("project", "", "")
 	cmd.Flags().String("title", "", "")
 	cmd.Flags().String("description", "", "")
-	cmd.Flags().String("collab-path", "", "")
 	cmd.Flags().String("output", "json", "")
 	return cmd
 }
@@ -35,7 +33,6 @@ func newModuleUpdateTestCmd() *cobra.Command {
 	cmd.Flags().String("project", "", "")
 	cmd.Flags().String("title", "", "")
 	cmd.Flags().String("description", "", "")
-	cmd.Flags().String("collab-path", "", "")
 	cmd.Flags().Float64("position", 0, "")
 	cmd.Flags().String("output", "json", "")
 	return cmd
@@ -50,8 +47,10 @@ func newModuleListTestCmd() *cobra.Command {
 }
 
 // moduleRow is the shape ListModules/GetModule answer with, including the
-// issue counters the CLI renders as done/total.
-func moduleRow(id, title, collabPath string) map[string]any {
+// issue counters the CLI renders as done/total. There is no collab_path: a
+// module's deliverables live in a folder named after it inside the project's
+// collaboration space, so the module itself stores no path.
+func moduleRow(id, title string) map[string]any {
 	return map[string]any{
 		"id":           id,
 		"workspace_id": "ws-1",
@@ -59,16 +58,15 @@ func moduleRow(id, title, collabPath string) map[string]any {
 		"title":        title,
 		"description":  nil,
 		"position":     0,
-		"collab_path":  collabPath,
 		"issue_count":  4,
 		"done_count":   1,
 	}
 }
 
-// TestRunModuleCreateSendsCollabPath pins the create payload: the CLI sends
-// collab_path only when the flag carries a value, and prints the module
+// TestRunModuleCreateSendsProjectAndTitle pins the create payload: only the
+// flags the caller actually set are sent, and the CLI prints the module
 // unwrapped from the {"module": ...} envelope the endpoint answers with.
-func TestRunModuleCreateSendsCollabPath(t *testing.T) {
+func TestRunModuleCreateSendsProjectAndTitle(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/modules" {
@@ -80,7 +78,7 @@ func TestRunModuleCreateSendsCollabPath(t *testing.T) {
 			t.Errorf("decode body: %v", err)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"module": moduleRow(testModuleUUID, "01高质量数据集", testCollabPath),
+			"module": moduleRow(testModuleUUID, "01高质量数据集"),
 		})
 	}))
 	defer srv.Close()
@@ -89,7 +87,6 @@ func TestRunModuleCreateSendsCollabPath(t *testing.T) {
 	cmd := newModuleCreateTestCmd()
 	_ = cmd.Flags().Set("project", testProjectUUID)
 	_ = cmd.Flags().Set("title", "01高质量数据集")
-	_ = cmd.Flags().Set("collab-path", testCollabPath)
 
 	out, err := captureStdout(t, func() error { return runModuleCreate(cmd, nil) })
 	if err != nil {
@@ -98,8 +95,8 @@ func TestRunModuleCreateSendsCollabPath(t *testing.T) {
 	if body["project_id"] != testProjectUUID || body["title"] != "01高质量数据集" {
 		t.Fatalf("body = %#v, want project_id and title", body)
 	}
-	if body["collab_path"] != testCollabPath {
-		t.Fatalf("body[collab_path] = %#v, want %q", body["collab_path"], testCollabPath)
+	if _, ok := body["collab_path"]; ok {
+		t.Fatalf("body = %#v, a module has no collaboration-space path of its own", body)
 	}
 	if _, ok := body["description"]; ok {
 		t.Fatalf("body = %#v, an unset --description must not be sent", body)
@@ -109,7 +106,7 @@ func TestRunModuleCreateSendsCollabPath(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("decode stdout JSON: %v\n%s", err, out)
 	}
-	if got["id"] != testModuleUUID || got["collab_path"] != testCollabPath {
+	if got["id"] != testModuleUUID || got["title"] != "01高质量数据集" {
 		t.Fatalf("stdout = %#v, want the created module itself, not the envelope", got)
 	}
 }
@@ -127,10 +124,10 @@ func TestRunModuleCreateRequiresProject(t *testing.T) {
 	}
 }
 
-// TestRunModuleUpdateClearsCollabPath pins the presence semantics shared with
-// `project update`: an explicit empty --collab-path reaches the server as a
+// TestRunModuleUpdateClearsDescription pins the presence semantics shared with
+// `project update`: an explicit empty --description reaches the server as a
 // clear, and flags the caller never typed stay out of the payload entirely.
-func TestRunModuleUpdateClearsCollabPath(t *testing.T) {
+func TestRunModuleUpdateClearsDescription(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut || r.URL.Path != "/api/modules/"+testModuleUUID {
@@ -142,24 +139,24 @@ func TestRunModuleUpdateClearsCollabPath(t *testing.T) {
 			t.Errorf("decode body: %v", err)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"module": moduleRow(testModuleUUID, "01高质量数据集", ""),
+			"module": moduleRow(testModuleUUID, "01高质量数据集"),
 		})
 	}))
 	defer srv.Close()
 	setCLITestServerEnv(t, srv.URL)
 
 	cmd := newModuleUpdateTestCmd()
-	_ = cmd.Flags().Set("collab-path", "")
+	_ = cmd.Flags().Set("description", "")
 
 	if _, err := captureStdout(t, func() error { return runModuleUpdate(cmd, []string{testModuleUUID}) }); err != nil {
 		t.Fatalf("runModuleUpdate: %v", err)
 	}
-	v, ok := body["collab_path"]
+	v, ok := body["description"]
 	if !ok || v != "" {
-		t.Fatalf("body = %#v, want collab_path present and empty", body)
+		t.Fatalf("body = %#v, want description present and empty", body)
 	}
 	if len(body) != 1 {
-		t.Fatalf("body = %#v, want only collab_path", body)
+		t.Fatalf("body = %#v, want only description", body)
 	}
 }
 
@@ -179,17 +176,18 @@ func TestRunModuleUpdateWithoutFieldsNamesEveryFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when no field flag is set")
 	}
-	for _, flag := range []string{"--title", "--description", "--collab-path", "--position"} {
+	for _, flag := range []string{"--title", "--description", "--position"} {
 		if !strings.Contains(err.Error(), flag) {
 			t.Fatalf("error = %q, want it to name %s", err, flag)
 		}
 	}
 }
 
-// TestRunModuleListShowsCollaborationSpace covers the project scoping (the
+// TestRunModuleListScopesAndShowsProgress covers the project scoping (the
 // endpoint only reads project_id; the workspace rides on the header) and the
-// table column that makes the path visible without --output json.
-func TestRunModuleListShowsCollaborationSpace(t *testing.T) {
+// table columns. There is deliberately no collaboration-space column: a module
+// stores no path, so one could only ever render empty.
+func TestRunModuleListScopesAndShowsProgress(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/modules" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -200,7 +198,7 @@ func TestRunModuleListShowsCollaborationSpace(t *testing.T) {
 			t.Errorf("project_id = %q, want %q", got, testProjectUUID)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"modules": []any{moduleRow(testModuleUUID, "01高质量数据集", testCollabPath)},
+			"modules": []any{moduleRow(testModuleUUID, "01高质量数据集")},
 			"total":   1,
 		})
 	}))
@@ -214,8 +212,11 @@ func TestRunModuleListShowsCollaborationSpace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runModuleList: %v", err)
 	}
-	if !strings.Contains(out, "COLLABORATION SPACE") || !strings.Contains(out, testCollabPath) {
-		t.Fatalf("stdout = %q, want the collaboration space column and value", out)
+	if strings.Contains(out, "COLLABORATION SPACE") {
+		t.Fatalf("stdout = %q, a module has no collaboration-space path to show", out)
+	}
+	if !strings.Contains(out, "01高质量数据集") {
+		t.Fatalf("stdout = %q, want the module title", out)
 	}
 	if !strings.Contains(out, "1/4") {
 		t.Fatalf("stdout = %q, want done/total issue counts", out)
@@ -233,8 +234,8 @@ func moduleResolverServer(t *testing.T) *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
-		scoped := moduleRow(testModuleUUID, "回顾性队列数据集", testCollabPath)
-		other := moduleRow(testModuleAltUUID, "回顾性队列数据集", "")
+		scoped := moduleRow(testModuleUUID, "回顾性队列数据集")
+		other := moduleRow(testModuleAltUUID, "回顾性队列数据集")
 		other["project_id"] = "55555555-5555-5555-5555-555555555555"
 		if r.URL.Query().Get("project_id") == testProjectUUID {
 			_ = json.NewEncoder(w).Encode(map[string]any{"modules": []any{scoped}, "total": 1})
@@ -310,7 +311,7 @@ func TestRunIssueCreateResolvesModuleTitle(t *testing.T) {
 				t.Errorf("module lookup project_id = %q, want %q", got, testProjectUUID)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"modules": []any{moduleRow(testModuleUUID, "回顾性队列数据集", testCollabPath)},
+				"modules": []any{moduleRow(testModuleUUID, "回顾性队列数据集")},
 				"total":   1,
 			})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/issues":
@@ -394,7 +395,7 @@ func TestRunIssueListFiltersByModule(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/modules":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"modules": []any{moduleRow(testModuleUUID, "回顾性队列数据集", testCollabPath)},
+				"modules": []any{moduleRow(testModuleUUID, "回顾性队列数据集")},
 				"total":   1,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/issues":

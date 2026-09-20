@@ -12,12 +12,11 @@ import (
 )
 
 const createModule = `-- name: CreateModule :one
-INSERT INTO module (workspace_id, project_id, title, description, position, collab_path)
+INSERT INTO module (workspace_id, project_id, title, description, position)
 VALUES (
     $1, $2, $3, $4,
-    COALESCE((SELECT MAX(position) FROM module WHERE project_id = $2), 0) + 1,
-    $5
-) RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at, collab_path
+    COALESCE((SELECT MAX(position) FROM module WHERE project_id = $2), 0) + 1
+) RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at
 `
 
 type CreateModuleParams struct {
@@ -25,7 +24,6 @@ type CreateModuleParams struct {
 	ProjectID   pgtype.UUID `json:"project_id"`
 	Title       string      `json:"title"`
 	Description pgtype.Text `json:"description"`
-	CollabPath  pgtype.Text `json:"collab_path"`
 }
 
 // Appends to the project: position is MAX+1 computed inside the INSERT. This
@@ -39,7 +37,6 @@ func (q *Queries) CreateModule(ctx context.Context, arg CreateModuleParams) (Mod
 		arg.ProjectID,
 		arg.Title,
 		arg.Description,
-		arg.CollabPath,
 	)
 	var i Module
 	err := row.Scan(
@@ -51,7 +48,6 @@ func (q *Queries) CreateModule(ctx context.Context, arg CreateModuleParams) (Mod
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CollabPath,
 	)
 	return i, err
 }
@@ -139,7 +135,7 @@ func (q *Queries) DetachProjectModuleIssues(ctx context.Context, arg DetachProje
 }
 
 const getModuleInWorkspace = `-- name: GetModuleInWorkspace :one
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, collab_path FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -160,7 +156,6 @@ func (q *Queries) GetModuleInWorkspace(ctx context.Context, arg GetModuleInWorks
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CollabPath,
 	)
 	return i, err
 }
@@ -210,7 +205,7 @@ func (q *Queries) GetModuleIssueStats(ctx context.Context, arg GetModuleIssueSta
 }
 
 const getModulesByIDs = `-- name: GetModulesByIDs :many
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, collab_path FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
 WHERE workspace_id = $1 AND id = ANY($2::uuid[])
 `
 
@@ -240,7 +235,6 @@ func (q *Queries) GetModulesByIDs(ctx context.Context, arg GetModulesByIDsParams
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.CollabPath,
 		); err != nil {
 			return nil, err
 		}
@@ -253,7 +247,7 @@ func (q *Queries) GetModulesByIDs(ctx context.Context, arg GetModulesByIDsParams
 }
 
 const listModules = `-- name: ListModules :many
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, collab_path FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
 WHERE workspace_id = $1
   AND ($2::uuid IS NULL OR project_id = $2)
 ORDER BY position ASC, created_at ASC
@@ -284,7 +278,6 @@ func (q *Queries) ListModules(ctx context.Context, arg ListModulesParams) ([]Mod
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.CollabPath,
 		); err != nil {
 			return nil, err
 		}
@@ -327,10 +320,9 @@ UPDATE module SET
     title = COALESCE($3, title),
     description = $4,
     position = COALESCE($5, position),
-    collab_path = $6,
     updated_at = now()
 WHERE id = $1 AND workspace_id = $2
-RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at, collab_path
+RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at
 `
 
 type UpdateModuleParams struct {
@@ -339,7 +331,6 @@ type UpdateModuleParams struct {
 	Title       pgtype.Text   `json:"title"`
 	Description pgtype.Text   `json:"description"`
 	Position    pgtype.Float8 `json:"position"`
-	CollabPath  pgtype.Text   `json:"collab_path"`
 }
 
 // title and position keep the prior value when absent (COALESCE);
@@ -351,7 +342,6 @@ func (q *Queries) UpdateModule(ctx context.Context, arg UpdateModuleParams) (Mod
 		arg.Title,
 		arg.Description,
 		arg.Position,
-		arg.CollabPath,
 	)
 	var i Module
 	err := row.Scan(
@@ -363,7 +353,6 @@ func (q *Queries) UpdateModule(ctx context.Context, arg UpdateModuleParams) (Mod
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CollabPath,
 	)
 	return i, err
 }

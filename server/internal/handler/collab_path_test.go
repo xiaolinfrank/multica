@@ -8,11 +8,18 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
-// collab_path ("人机协作空间路径") binds a project or a module to a directory on
-// shared NAS storage where people and agents hand finished work to each other.
-// The server never stats it — it is resolved on whichever daemon host runs the
-// task — so validation is the only gate between a typo and an agent writing a
-// deliverable somewhere nobody looks.
+// collab_path ("人机协作空间路径") binds a PROJECT to a directory on shared NAS
+// storage where people and agents hand finished work to each other. The server
+// never stats it — it is resolved on whichever daemon host runs the task — so
+// validation is the only gate between a typo and an agent writing a deliverable
+// somewhere nobody looks.
+//
+// Only projects store one. A module's directory sits under its project's, named
+// after the module, so the location is already derivable: a second stored path
+// would be a value that can drift out of sync with the folder it names, a
+// setting someone has to fill in correctly, and a second edit every time the
+// module set is re-cut. The module API's side of that decision is pinned in
+// module_test.go (TestModuleAPIIgnoresCollabPath).
 
 // collabPathExample is the shape a real deployment stores: a CJK mount point,
 // several levels deep, with full-width parentheses in the leaf.
@@ -130,13 +137,6 @@ func storedProjectCollabPath(t *testing.T, projectID string) *string {
 	return path
 }
 
-func storedModuleCollabPath(t *testing.T, moduleID string) *string {
-	t.Helper()
-	var path *string
-	dbfx.QueryRow(t, `SELECT collab_path FROM module WHERE id = $1`, moduleID).Scan(&path)
-	return path
-}
-
 // wantCollabPath asserts the response field and the stored column agree on one
 // value. They are checked together because either alone hides a real bug: the
 // response can echo the request without persisting, and the column can be
@@ -248,98 +248,10 @@ func TestCreateProjectInvalidCollabPathCreatesNothing(t *testing.T) {
 	}
 }
 
-// The module half of the same contract. Modules carry their own path because a
-// project-wide directory is the wrong granularity once a project has several
-// workstreams delivering into different folders.
-func TestModuleCollabPathLifecycle(t *testing.T) {
-	projectID := dbfx.Project(t, "Module collab path project")
-
-	var created struct {
-		Module ModuleResponse `json:"module"`
-	}
-	testutil.Call(t, testHandler.CreateModule, newRequest(http.MethodPost, "/api/modules", map[string]any{
-		"project_id":  projectID,
-		"title":       "01高质量数据集",
-		"collab_path": "  " + collabPathExample + "  ",
-	})).Want(http.StatusCreated).JSON(&created)
-	moduleID := created.Module.ID
-	dbfx.Cleanup(t, `DELETE FROM module WHERE id = $1`, moduleID)
-	wantCollabPath(t, "create", created.Module.CollabPath, storedModuleCollabPath(t, moduleID), collabPathExample)
-
-	get := func() ModuleResponse {
-		t.Helper()
-		var out struct {
-			Module ModuleResponse `json:"module"`
-		}
-		testutil.Call(t, testHandler.GetModule, withURLParam(
-			newRequest(http.MethodGet, "/api/modules/"+moduleID, nil), "id", moduleID)).
-			Want(http.StatusOK).JSON(&out)
-		return out.Module
-	}
-	update := func(body map[string]any) ModuleResponse {
-		t.Helper()
-		var out struct {
-			Module ModuleResponse `json:"module"`
-		}
-		testutil.Call(t, testHandler.UpdateModule, withURLParam(
-			newRequest(http.MethodPut, "/api/modules/"+moduleID, body), "id", moduleID)).
-			Want(http.StatusOK).JSON(&out)
-		return out.Module
-	}
-
-	wantCollabPath(t, "get", get().CollabPath, storedModuleCollabPath(t, moduleID), collabPathExample)
-
-	renamed := update(map[string]any{"title": "01高质量数据集（改名）"})
-	wantCollabPath(t, "absent key", renamed.CollabPath, storedModuleCollabPath(t, moduleID), collabPathExample)
-
-	const moved = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集/01.02前瞻性队列"
-	changed := update(map[string]any{"collab_path": moved})
-	wantCollabPath(t, "new value", changed.CollabPath, storedModuleCollabPath(t, moduleID), moved)
-
-	cleared := update(map[string]any{"collab_path": nil})
-	wantCollabPath(t, "explicit null", cleared.CollabPath, storedModuleCollabPath(t, moduleID), "")
-
-	update(map[string]any{"collab_path": collabPathExample})
-	emptied := update(map[string]any{"collab_path": ""})
-	wantCollabPath(t, "empty string", emptied.CollabPath, storedModuleCollabPath(t, moduleID), "")
-
-	update(map[string]any{"collab_path": collabPathExample})
-	rejected := testutil.Call(t, testHandler.UpdateModule, withURLParam(
-		newRequest(http.MethodPut, "/api/modules/"+moduleID, map[string]any{
-			"title":       "Renamed by a rejected request",
-			"collab_path": "final.docx",
-		}), "id", moduleID)).Want(http.StatusBadRequest)
-	if !strings.Contains(rejected.Text(), "absolute path") {
-		t.Errorf("400 body = %q, want it to name the absolute-path rule", rejected.Text())
-	}
-	after := get()
-	wantCollabPath(t, "after rejection", after.CollabPath, storedModuleCollabPath(t, moduleID), collabPathExample)
-	if after.Title != "01高质量数据集（改名）" {
-		t.Errorf("title = %q, want the rejected request to have changed nothing", after.Title)
-	}
-}
-
-func TestCreateModuleInvalidCollabPathCreatesNothing(t *testing.T) {
-	projectID := dbfx.Project(t, "Module collab reject project")
-	const title = "zzcollabreject module"
-
-	w := testutil.Call(t, testHandler.CreateModule, newRequest(http.MethodPost, "/api/modules", map[string]any{
-		"project_id":  projectID,
-		"title":       title,
-		"collab_path": "deliverables/final",
-	})).Want(http.StatusBadRequest)
-	if !strings.Contains(w.Text(), "absolute path") {
-		t.Errorf("400 body = %q, want it to name the absolute-path rule", w.Text())
-	}
-	if n := dbfx.Count(t, `SELECT count(*) FROM module WHERE project_id = $1`, projectID); n != 0 {
-		t.Fatalf("%d module rows created by a rejected request, want 0", n)
-	}
-}
-
 // The default state, and the one almost every row is in: no key on create
 // means NULL, never "". An empty string would render as a bullet pointing at
 // nothing in the agent brief and as a bound-but-blank field in the UI.
-func TestCreateWithoutCollabPathStoresNull(t *testing.T) {
+func TestCreateProjectWithoutCollabPathStoresNull(t *testing.T) {
 	var project ProjectResponse
 	testutil.Call(t, testHandler.CreateProject, newRequest(http.MethodPost,
 		"/api/projects?workspace_id="+testWorkspaceID, map[string]any{
@@ -347,16 +259,6 @@ func TestCreateWithoutCollabPathStoresNull(t *testing.T) {
 		})).Want(http.StatusCreated).JSON(&project)
 	dbfx.Cleanup(t, `DELETE FROM project WHERE id = $1`, project.ID)
 	wantCollabPath(t, "project create without the key", project.CollabPath, storedProjectCollabPath(t, project.ID), "")
-
-	var module struct {
-		Module ModuleResponse `json:"module"`
-	}
-	testutil.Call(t, testHandler.CreateModule, newRequest(http.MethodPost, "/api/modules", map[string]any{
-		"project_id": project.ID,
-		"title":      "No collab path module",
-	})).Want(http.StatusCreated).JSON(&module)
-	dbfx.Cleanup(t, `DELETE FROM module WHERE id = $1`, module.Module.ID)
-	wantCollabPath(t, "module create without the key", module.Module.CollabPath, storedModuleCollabPath(t, module.Module.ID), "")
 }
 
 // SearchProjects does not go through sqlc: it builds its column list as a

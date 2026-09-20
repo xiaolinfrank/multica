@@ -16,6 +16,13 @@ import (
 // Module commands — a module (模块) subdivides a project. An issue keeps its
 // project and additionally files into one of that project's modules, so every
 // module reference here resolves within a project when one is given.
+//
+// A module has no collaboration-space path of its own, which is why no command
+// here takes --collab-path. Its deliverables belong in a folder named after the
+// module inside the project's 人机协作空间路径 (`multica project
+// --collab-path`), so the location follows from the module's title. Storing it
+// again per module would add a value that can drift from the folder it names,
+// and make re-cutting a project's modules a multi-place edit.
 // ---------------------------------------------------------------------------
 
 var moduleCmd = &cobra.Command{
@@ -56,15 +63,6 @@ var moduleDeleteCmd = &cobra.Command{
 	RunE:  runModuleDelete,
 }
 
-// collabPathCreateHelp and collabPathUpdateHelp describe 人机协作空间路径, the
-// shared-storage directory where people and agents exchange deliverables. The
-// server accepts any absolute path — POSIX, UNC, or a Windows drive — without
-// stating it, because the share is mounted on the daemon host that runs the
-// task, not on the server.
-const collabPathCreateHelp = "Collaboration space: absolute path to the shared-storage directory where people and agents exchange deliverables (e.g. /Volumes/人机协作空间/项目/模块)"
-
-const collabPathUpdateHelp = collabPathCreateHelp + "; pass an empty string to clear it"
-
 // moduleProjectFlagHelp is shared by the commands that take a module reference:
 // --project only narrows how that reference is resolved, it never moves a
 // module between projects (the API has no such field).
@@ -90,14 +88,12 @@ func init() {
 	moduleCreateCmd.Flags().String("project", "", "Project ID, required (full UUID or unique prefix; run `multica project list` for ids)")
 	moduleCreateCmd.Flags().String("title", "", "Module title (required)")
 	moduleCreateCmd.Flags().String("description", "", "Module description")
-	moduleCreateCmd.Flags().String("collab-path", "", collabPathCreateHelp)
 	moduleCreateCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// module update
 	moduleUpdateCmd.Flags().String("project", "", moduleProjectFlagHelp)
 	moduleUpdateCmd.Flags().String("title", "", "New title")
 	moduleUpdateCmd.Flags().String("description", "", "New description; pass an empty string to clear")
-	moduleUpdateCmd.Flags().String("collab-path", "", collabPathUpdateHelp)
 	moduleUpdateCmd.Flags().Float64("position", 0, "New position within the project's module order (lower sorts first)")
 	moduleUpdateCmd.Flags().String("output", "json", "Output format: table or json")
 
@@ -168,7 +164,7 @@ func runModuleList(cmd *cobra.Command, _ []string) error {
 	}
 
 	fullID, _ := cmd.Flags().GetBool("full-id")
-	headers := []string{"ID", "TITLE", "ISSUES", "COLLABORATION SPACE"}
+	headers := []string{"ID", "TITLE", "ISSUES"}
 	rows := make([][]string, 0, len(modulesRaw))
 	for _, raw := range modulesRaw {
 		m, ok := raw.(map[string]any)
@@ -179,7 +175,6 @@ func runModuleList(cmd *cobra.Command, _ []string) error {
 			displayID(strVal(m, "id"), fullID),
 			strVal(m, "title"),
 			formatModuleProgress(m),
-			strVal(m, "collab_path"),
 		})
 	}
 	cli.PrintTable(os.Stdout, headers, rows)
@@ -212,12 +207,11 @@ func runModuleGet(cmd *cobra.Command, args []string) error {
 
 	output, _ := cmd.Flags().GetString("output")
 	if output == "table" {
-		headers := []string{"ID", "TITLE", "ISSUES", "COLLABORATION SPACE", "DESCRIPTION"}
+		headers := []string{"ID", "TITLE", "ISSUES", "DESCRIPTION"}
 		rows := [][]string{{
 			strVal(module, "id"),
 			strVal(module, "title"),
 			formatModuleProgress(module),
-			strVal(module, "collab_path"),
 			strVal(module, "description"),
 		}}
 		cli.PrintTable(os.Stdout, headers, rows)
@@ -254,9 +248,6 @@ func runModuleCreate(cmd *cobra.Command, _ []string) error {
 	if v, _ := cmd.Flags().GetString("description"); v != "" {
 		body["description"] = v
 	}
-	if v, _ := cmd.Flags().GetString("collab-path"); v != "" {
-		body["collab_path"] = v
-	}
 
 	var result map[string]any
 	if err := client.PostJSON(ctx, "/api/modules", body, &result); err != nil {
@@ -266,11 +257,10 @@ func runModuleCreate(cmd *cobra.Command, _ []string) error {
 
 	output, _ := cmd.Flags().GetString("output")
 	if output == "table" {
-		headers := []string{"ID", "TITLE", "COLLABORATION SPACE"}
+		headers := []string{"ID", "TITLE"}
 		rows := [][]string{{
 			strVal(module, "id"),
 			strVal(module, "title"),
-			strVal(module, "collab_path"),
 		}}
 		cli.PrintTable(os.Stdout, headers, rows)
 		return nil
@@ -302,15 +292,11 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 		v, _ := cmd.Flags().GetString("title")
 		body["title"] = v
 	}
-	// Changed() (not "") so an explicit --description "" or --collab-path ""
-	// reaches the server as a clear, mirroring `project update`.
+	// Changed() (not "") so an explicit --description "" reaches the server as
+	// a clear, mirroring `project update`.
 	if cmd.Flags().Changed("description") {
 		v, _ := cmd.Flags().GetString("description")
 		body["description"] = v
-	}
-	if cmd.Flags().Changed("collab-path") {
-		v, _ := cmd.Flags().GetString("collab-path")
-		body["collab_path"] = v
 	}
 	if cmd.Flags().Changed("position") {
 		v, _ := cmd.Flags().GetFloat64("position")
@@ -318,7 +304,7 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(body) == 0 {
-		return fmt.Errorf("no fields to update; use flags like --title, --description, --collab-path, --position")
+		return fmt.Errorf("no fields to update; use flags like --title, --description, --position")
 	}
 
 	var result map[string]any
@@ -329,11 +315,10 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 
 	output, _ := cmd.Flags().GetString("output")
 	if output == "table" {
-		headers := []string{"ID", "TITLE", "COLLABORATION SPACE"}
+		headers := []string{"ID", "TITLE"}
 		rows := [][]string{{
 			strVal(module, "id"),
 			strVal(module, "title"),
-			strVal(module, "collab_path"),
 		}}
 		cli.PrintTable(os.Stdout, headers, rows)
 		return nil

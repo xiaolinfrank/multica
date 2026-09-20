@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Copy, Pencil } from "lucide-react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { cn } from "@multica/ui/lib/utils";
@@ -11,12 +11,12 @@ import { Label } from "@multica/ui/components/ui/label";
 import { normalizeCollabPath, type CollabPathError } from "@multica/core/projects/collab-path";
 import { useT } from "../../i18n";
 
-// Shared UI for the human-agent collaboration space path ("人机协作空间路径")
-// carried by both projects and modules. The value is a long absolute path on a
-// NAS share, which drives every decision here: it truncates rather than wraps,
-// its full form is always one hover (or one copy) away, and it is rendered in a
-// monospaced, LTR-forced run so mixed Chinese/ASCII segments and separators
-// stay in the order the filesystem uses.
+// Shared UI for a project's human-agent collaboration space path
+// ("人机协作空间路径"). The value is a long absolute path on a NAS share, which
+// drives every decision here: it truncates rather than wraps, its full form is
+// always one hover (or one copy) away, and it is rendered in a monospaced,
+// LTR-forced run so mixed Chinese/ASCII segments and separators stay in the
+// order the filesystem uses.
 
 /** Maps a validation failure to the message shown beside the field. The rules
  *  themselves live in `@multica/core/projects/collab-path`, which mirrors the
@@ -46,14 +46,6 @@ const PATH_TEXT = "font-mono text-caption";
 export function collabPathTail(path: string): string {
   const segments = path.split(/[\\/]+/).filter(Boolean);
   return segments[segments.length - 1] ?? path;
-}
-
-export function CollabPathText({ path, className }: { path: string; className?: string }) {
-  return (
-    <span dir="ltr" title={path} className={cn(PATH_TEXT, "truncate", className)}>
-      {path}
-    </span>
-  );
 }
 
 /** Copy button for a path that is displayed truncated. Separate from the value
@@ -99,8 +91,7 @@ export function CollabPathInput({
 }: {
   value: string;
   onValueChange: (value: string) => void;
-  /** What this particular space is for — the project's, or the narrower
-   *  module one. */
+  /** What this space is for, in the words of the surface asking for it. */
   hint: string;
   error?: CollabPathError | null;
   autoFocus?: boolean;
@@ -138,49 +129,6 @@ export function CollabPathInput({
       >
         {error ? errorMessage(error) : hint}
       </p>
-    </div>
-  );
-}
-
-/**
- * Read-only value with a copy affordance, for a path this surface does not own
- * (the active module's space shown on the project page).
- */
-export function CollabPathReadout({
-  path,
-  onEdit,
-  editLabel,
-}: {
-  path: string | null;
-  /** Omit to render the value alone. */
-  onEdit?: () => void;
-  editLabel?: string;
-}) {
-  const { t } = useT("projects");
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      {path ? (
-        <>
-          <CollabPathText path={path} className="min-w-0 flex-1" />
-          <CollabPathCopyButton path={path} />
-        </>
-      ) : (
-        <span className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
-          {t(($) => $.collab_path.empty)}
-        </span>
-      )}
-      {onEdit && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={editLabel}
-          title={editLabel}
-          className="shrink-0 text-muted-foreground"
-          onClick={onEdit}
-        >
-          <Pencil />
-        </Button>
-      )}
     </div>
   );
 }

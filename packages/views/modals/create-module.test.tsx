@@ -52,8 +52,6 @@ vi.mock("sonner", () => ({
 
 import { CreateModuleModal } from "./create-module";
 
-const PATH = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集";
-
 function renderModal(onClose = vi.fn()) {
   renderWithI18n(<CreateModuleModal onClose={onClose} data={{ projectId: "project-1" }} />);
   return onClose;
@@ -65,52 +63,29 @@ beforeEach(() => {
   mocks.toastError.mockReset();
 });
 
-describe("CreateModuleModal collaboration space", () => {
-  it("sends the collaboration space alongside the title", async () => {
-    const user = userEvent.setup();
-    renderModal();
-
-    await user.type(screen.getByRole("textbox", { name: "Module name" }), "Datasets");
-    await user.type(screen.getByRole("textbox", { name: "Collaboration space" }), PATH);
-    await user.click(screen.getByRole("button", { name: "Create module" }));
-
-    expect(mocks.createModule).toHaveBeenCalledWith({
-      project_id: "project-1",
-      title: "Datasets",
-      collab_path: PATH,
-    });
-  });
-
-  // Create has no prior value to clear, so an untouched field must be absent
-  // from the payload rather than an explicit null.
-  it("omits the field entirely when it is left blank", async () => {
-    const user = userEvent.setup();
-    renderModal();
-
-    await user.type(screen.getByRole("textbox", { name: "Module name" }), "Datasets");
-    await user.click(screen.getByRole("button", { name: "Create module" }));
-
-    expect(mocks.createModule).toHaveBeenCalledWith({
-      project_id: "project-1",
-      title: "Datasets",
-    });
-  });
-
-  it("blocks the create on a path the server would reject", async () => {
+describe("CreateModuleModal", () => {
+  it("creates the module from the project and the title alone", async () => {
     const user = userEvent.setup();
     const onClose = renderModal();
 
     await user.type(screen.getByRole("textbox", { name: "Module name" }), "Datasets");
-    await user.type(
-      screen.getByRole("textbox", { name: "Collaboration space" }),
-      "01高质量数据集",
-    );
     await user.click(screen.getByRole("button", { name: "Create module" }));
 
-    expect(mocks.createModule).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
+    expect(mocks.createModule).toHaveBeenCalledWith({
+      project_id: "project-1",
+      title: "Datasets",
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  // A module's deliverables land in a folder named after it inside the
+  // project's collaboration space, so there is nothing here to set up: an
+  // input would be a second value to keep in sync with that folder.
+  it("asks for no collaboration space of its own", () => {
+    renderModal();
+
     expect(
-      screen.getByText("Enter an absolute path, such as /Volumes/share/project."),
-    ).toBeInTheDocument();
+      screen.queryByRole("textbox", { name: "Collaboration space" }),
+    ).not.toBeInTheDocument();
   });
 });
