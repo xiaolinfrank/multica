@@ -78,14 +78,12 @@ function BannerClock({ locale }: { locale: string }) {
     ? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
     : "—";
   return (
-    <>
-      <span className="text-display-sm font-semibold tracking-wide tabular-nums">
-        {clock}
-      </span>
+    <span className="flex items-baseline gap-1.5">
+      <span className="text-title-sm font-semibold tracking-wide tabular-nums">{clock}</span>
       <span className="text-micro opacity-90">
         {now ? now.toLocaleDateString(locale, { weekday: "long" }) : "—"}
       </span>
-    </>
+    </span>
   );
 }
 
@@ -497,11 +495,11 @@ export function CockpitOverview({
           goal itself in a frosted glass strip at the centre, and the live
           clock pinned top-right. Nothing else; the banner is one glance. */}
       <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-24 py-5 text-white">
-        <span className="absolute top-3 left-5 text-micro font-bold tracking-widest opacity-85">
+        <span className="absolute top-4 left-5 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-micro font-bold tracking-widest">
+          <span aria-hidden>🎯</span>
           {t(($) => $.overview.mvp_label)}
         </span>
         <div className="cockpit-banner-glass">
-          <span aria-hidden>🎯</span>
           <EditableText
             value={board.cockpit.goal_title}
             onCommit={(goal_title) => onPatchBoard({ goal_title })}
@@ -511,7 +509,7 @@ export function CockpitOverview({
             displayClassName="text-title-lg font-extrabold text-white"
           />
         </div>
-        <div className="absolute top-3 right-5 flex flex-col items-end">
+        <div className="absolute top-4 right-5 flex flex-col items-end gap-0.5">
           <span className="text-micro font-bold tracking-widest opacity-85">
             {t(($) => $.overview.clock)}
           </span>

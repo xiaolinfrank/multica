@@ -64,6 +64,7 @@
   --banner-via: var(--color-brand);
   --banner-to: var(--color-info);
   --banner-bloom: rgb(255 255 255 / 0.16);
+  --banner-bloom-low: rgb(255 255 255 / 0.12);
   --banner-glass: rgb(255 255 255 / 0.16);
   --banner-glass-border: rgb(255 255 255 / 0.34);
 
@@ -88,6 +89,7 @@
   --banner-via: color-mix(in oklab, var(--color-brand) 66%, #04091a);
   --banner-to: color-mix(in oklab, var(--color-info) 58%, #04091a);
   --banner-bloom: rgb(255 255 255 / 0.1);
+  --banner-bloom-low: rgb(255 255 255 / 0.07);
   --banner-glass: rgb(255 255 255 / 0.09);
   --banner-glass-border: rgb(255 255 255 / 0.2);
   box-shadow:
@@ -105,9 +107,25 @@
   background: radial-gradient(circle, var(--banner-bloom), transparent 68%);
   pointer-events: none;
 }
-.cockpit-banner > * {
+/* Only the glass needs lifting above the blooms. A blanket `> *` here once
+   un-anchored the corner chip and the clock: Tailwind's `.absolute` is the
+   same specificity and loses the cascade order, so both fell back into the
+   flex column and stretched the masthead into a three-row heap. */
+.cockpit-banner-glass {
   position: relative;
   z-index: 1;
+}
+/* The counter-glow, bottom-left — the sweep reads rounder with two. */
+.cockpit-banner::after {
+  content: "";
+  position: absolute;
+  bottom: -70px;
+  left: -50px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--banner-bloom-low), transparent 70%);
+  pointer-events: none;
 }
 .cockpit-banner-glass {
   display: inline-flex;
@@ -118,9 +136,9 @@
   border-radius: 12px;
   padding: 9px 18px;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.3),
-    0 6px 16px rgb(2 32 71 / 0.16);
-  backdrop-filter: blur(3px);
+    inset 0 1px 0 rgb(255 255 255 / 0.32),
+    0 8px 20px rgb(2 32 71 / 0.22);
+  backdrop-filter: blur(8px) saturate(150%);
 }
 
 /*
