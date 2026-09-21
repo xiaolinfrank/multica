@@ -36,6 +36,14 @@ UPDATE cockpit SET
     summary_next    = COALESCE(sqlc.narg('summary_next')::text, summary_next),
     summary_support = COALESCE(sqlc.narg('summary_support')::text, summary_support),
     basis           = COALESCE(sqlc.narg('basis')::text, basis),
+    -- Where a new meeting's task and folder go. Cleared explicitly (the
+    -- clear_* flags) rather than by sending NULL, which the COALESCE idiom
+    -- above reads as "leave it alone".
+    meeting_project_id = CASE WHEN sqlc.arg('clear_meeting_project')::bool THEN NULL
+                              ELSE COALESCE(sqlc.narg('meeting_project_id')::uuid, meeting_project_id) END,
+    meeting_module_id  = CASE WHEN sqlc.arg('clear_meeting_module')::bool THEN NULL
+                              ELSE COALESCE(sqlc.narg('meeting_module_id')::uuid, meeting_module_id) END,
+    meeting_dir        = COALESCE(sqlc.narg('meeting_dir')::text, meeting_dir),
     updated_at      = now()
 WHERE id = sqlc.arg('id')::uuid
   AND workspace_id = sqlc.arg('workspace_id')::uuid
@@ -274,14 +282,24 @@ WHERE id = sqlc.arg('id')::uuid
 DELETE FROM cockpit_milestone WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 
 -- name: ListCockpitMeetings :many
+-- Newest first, which is what a register reads as. start_time orders the
+-- meetings of one day; time_range is the tiebreak for rows that only ever
+-- carried free text (see migration 929).
 SELECT * FROM cockpit_meeting
 WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
-ORDER BY meet_date DESC NULLS LAST, time_range DESC;
+ORDER BY meet_date DESC NULLS LAST, start_time DESC NULLS LAST, time_range DESC;
+
+-- name: GetCockpitMeeting :one
+SELECT * FROM cockpit_meeting
+WHERE id = sqlc.arg('id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
 
 -- name: CreateCockpitMeeting :one
 INSERT INTO cockpit_meeting (
     workspace_id, cockpit_id, meet_date, time_range, title,
-    attendees, meet_no, link, note
+    attendees, meet_no, link, note,
+    code, kind, status, series, parties, organizer, location,
+    start_time, end_time, minutes, decisions, actions, nas_dir
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -291,7 +309,20 @@ INSERT INTO cockpit_meeting (
     sqlc.arg('attendees')::text,
     sqlc.arg('meet_no')::text,
     sqlc.arg('link')::text,
-    sqlc.arg('note')::text
+    sqlc.arg('note')::text,
+    sqlc.arg('code')::text,
+    sqlc.arg('kind')::text,
+    sqlc.arg('status')::text,
+    sqlc.arg('series')::text,
+    sqlc.arg('parties')::text,
+    sqlc.arg('organizer')::text,
+    sqlc.arg('location')::text,
+    sqlc.narg('start_time')::time,
+    sqlc.narg('end_time')::time,
+    sqlc.arg('minutes')::text,
+    sqlc.arg('decisions')::text,
+    sqlc.arg('actions')::text,
+    sqlc.arg('nas_dir')::text
 )
 RETURNING *;
 
@@ -305,6 +336,21 @@ UPDATE cockpit_meeting SET
     meet_no    = COALESCE(sqlc.narg('meet_no')::text, meet_no),
     link       = COALESCE(sqlc.narg('link')::text, link),
     note       = COALESCE(sqlc.narg('note')::text, note),
+    code       = COALESCE(sqlc.narg('code')::text, code),
+    kind       = COALESCE(sqlc.narg('kind')::text, kind),
+    status     = COALESCE(sqlc.narg('status')::text, status),
+    series     = COALESCE(sqlc.narg('series')::text, series),
+    parties    = COALESCE(sqlc.narg('parties')::text, parties),
+    organizer  = COALESCE(sqlc.narg('organizer')::text, organizer),
+    location   = COALESCE(sqlc.narg('location')::text, location),
+    start_time = CASE WHEN sqlc.arg('clear_start_time')::bool THEN NULL
+                      ELSE COALESCE(sqlc.narg('start_time')::time, start_time) END,
+    end_time   = CASE WHEN sqlc.arg('clear_end_time')::bool THEN NULL
+                      ELSE COALESCE(sqlc.narg('end_time')::time, end_time) END,
+    minutes    = COALESCE(sqlc.narg('minutes')::text, minutes),
+    decisions  = COALESCE(sqlc.narg('decisions')::text, decisions),
+    actions    = COALESCE(sqlc.narg('actions')::text, actions),
+    nas_dir    = COALESCE(sqlc.narg('nas_dir')::text, nas_dir),
     updated_at = now()
 WHERE id = sqlc.arg('id')::uuid
   AND workspace_id = sqlc.arg('workspace_id')::uuid
@@ -317,6 +363,98 @@ WHERE id = sqlc.arg('id')::uuid
 
 -- name: DeleteCockpitMeetings :exec
 DELETE FROM cockpit_meeting WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
+
+-- ---------------------------------------------------------------------------
+-- What a meeting is attached to
+-- ---------------------------------------------------------------------------
+
+-- name: ListCockpitMeetingIssues :many
+-- Joined to issue so a link to a deleted issue simply stops being returned —
+-- there is no foreign key to have cascaded it away (repository rule). Joined
+-- to cockpit_meeting so one read serves the whole board.
+SELECT
+    l.meeting_id, l.issue_id, l.role, l.position,
+    i.number AS issue_number,
+    i.title  AS issue_title,
+    i.status AS issue_status
+FROM cockpit_meeting_issue l
+JOIN cockpit_meeting m ON m.id = l.meeting_id
+JOIN issue i ON i.id = l.issue_id AND i.workspace_id = l.workspace_id
+WHERE m.cockpit_id = sqlc.arg('cockpit_id')::uuid
+ORDER BY l.position, i.number;
+
+-- name: CreateCockpitMeetingIssue :one
+INSERT INTO cockpit_meeting_issue (workspace_id, meeting_id, issue_id, role, position)
+VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('meeting_id')::uuid,
+    sqlc.arg('issue_id')::uuid,
+    sqlc.arg('role')::text,
+    sqlc.arg('position')::double precision
+)
+ON CONFLICT (meeting_id, issue_id) DO UPDATE SET
+    role = EXCLUDED.role, position = EXCLUDED.position
+RETURNING *;
+
+-- name: DeleteCockpitMeetingIssue :exec
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id = sqlc.arg('meeting_id')::uuid
+  AND issue_id = sqlc.arg('issue_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitMeetingIssuesByMeeting :exec
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id = sqlc.arg('meeting_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitMeetingIssuesByCockpit :exec
+-- Import only: clears the board's meeting links before the meetings that own
+-- them are replaced. There is no cascade to do it (repository rule).
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id IN (SELECT id FROM cockpit_meeting WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid);
+
+-- name: ListCockpitMeetingNodes :many
+-- Joined to cockpit_node so a link to a deleted work item stops being
+-- returned, same contract as the issue links above.
+SELECT l.meeting_id, l.node_id, l.position
+FROM cockpit_meeting_node l
+JOIN cockpit_meeting m ON m.id = l.meeting_id
+JOIN cockpit_node n ON n.id = l.node_id
+WHERE m.cockpit_id = sqlc.arg('cockpit_id')::uuid
+ORDER BY l.position, n.code;
+
+-- name: CreateCockpitMeetingNode :one
+INSERT INTO cockpit_meeting_node (workspace_id, meeting_id, node_id, position)
+VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('meeting_id')::uuid,
+    sqlc.arg('node_id')::uuid,
+    sqlc.arg('position')::double precision
+)
+ON CONFLICT (meeting_id, node_id) DO UPDATE SET position = EXCLUDED.position
+RETURNING *;
+
+-- name: DeleteCockpitMeetingNode :exec
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id = sqlc.arg('meeting_id')::uuid
+  AND node_id = sqlc.arg('node_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitMeetingNodesByMeeting :exec
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id = sqlc.arg('meeting_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitMeetingNodesByNode :exec
+-- A deleted work item takes its meeting links with it; nothing cascades.
+DELETE FROM cockpit_meeting_node
+WHERE node_id = sqlc.arg('node_id')::uuid
+  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+
+-- name: DeleteCockpitMeetingNodesByCockpit :exec
+-- Import only, same reason as DeleteCockpitMeetingIssuesByCockpit.
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id IN (SELECT id FROM cockpit_meeting WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid);
 
 -- name: DeleteCockpitPaymentsByCockpit :exec
 -- Import only: clears the board's instalments before the nodes that own them
@@ -340,6 +478,10 @@ WITH del_changes AS (
     DELETE FROM cockpit_snapshot WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_meeting_issues AS (
+    DELETE FROM cockpit_meeting_issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_meeting_nodes AS (
+    DELETE FROM cockpit_meeting_node WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_payments AS (
     DELETE FROM cockpit_payment WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_milestones AS (

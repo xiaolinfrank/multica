@@ -24,6 +24,11 @@ import type {
   CockpitIssueLink,
   CockpitMilestone,
   CockpitMeeting,
+  CockpitMeetingDestination,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
+  CockpitMeetingProvision,
+  CockpitMeetingProvisionResult,
   CockpitSnapshot,
   CockpitImportResult,
   CockpitPatch,
@@ -298,6 +303,10 @@ import {
   CockpitPaymentSchema,
   CockpitMilestoneSchema,
   CockpitMeetingSchema,
+  CockpitMeetingDestinationSchema,
+  CockpitMeetingIssuesResponseSchema,
+  CockpitMeetingNodesResponseSchema,
+  CockpitMeetingProvisionResultSchema,
   CockpitBoardSchema,
   CockpitIssueLinksResponseSchema,
   CockpitImportResultSchema,
@@ -1673,6 +1682,87 @@ export class ApiClient {
 
   async deleteCockpitMeeting(id: string): Promise<void> {
     await this.fetch<void>(`/api/cockpit/meetings/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  /**
+   * Where a new meeting would be filed. Read before the form is submitted so
+   * the destination — the project, the module, the folder about to be created
+   * — is on screen rather than a surprise.
+   */
+  async getCockpitMeetingDestination(
+    params?: { projectId?: string; moduleId?: string },
+  ): Promise<CockpitMeetingDestination> {
+    const query = new URLSearchParams();
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.moduleId) query.set("module_id", params.moduleId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/destination${suffix}`);
+    return parseWithFallback(raw, CockpitMeetingDestinationSchema, emptyCockpitMeetingDestination(), {
+      endpoint: "GET /api/cockpit/meetings/destination",
+    });
+  }
+
+  /**
+   * Opens the meeting's task and creates its folder. Reports each part's own
+   * outcome: the meeting row is already saved, so a failed folder is a retry
+   * rather than a lost record.
+   */
+  async provisionCockpitMeeting(
+    id: string,
+    body: CockpitMeetingProvision,
+  ): Promise<CockpitMeetingProvisionResult> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(id)}/provision`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(
+      raw,
+      CockpitMeetingProvisionResultSchema,
+      { meeting: emptyCockpitMeeting(), issues: [], task: null, task_error: "", dir: "", dir_created: false, dir_error: "" },
+      { endpoint: "POST /api/cockpit/meetings/:id/provision" },
+    );
+  }
+
+  async setCockpitMeetingIssues(
+    meetingId: string,
+    issueIds: string[],
+    options?: { replace?: boolean },
+  ): Promise<{ meeting_id: string; links: CockpitMeetingIssueLink[] }> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/issues`, {
+      method: "PUT",
+      body: JSON.stringify({ issue_ids: issueIds, replace: options?.replace ?? false }),
+    });
+    return parseWithFallback(raw, CockpitMeetingIssuesResponseSchema, { meeting_id: meetingId, links: [] }, {
+      endpoint: "PUT /api/cockpit/meetings/:id/issues",
+    });
+  }
+
+  async deleteCockpitMeetingIssue(meetingId: string, issueId: string): Promise<void> {
+    await this.fetch<void>(
+      `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/issues/${encodeURIComponent(issueId)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async setCockpitMeetingNodes(
+    meetingId: string,
+    nodeIds: string[],
+    options?: { replace?: boolean },
+  ): Promise<{ meeting_id: string; links: CockpitMeetingNodeLink[] }> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/nodes`, {
+      method: "PUT",
+      body: JSON.stringify({ node_ids: nodeIds, replace: options?.replace ?? false }),
+    });
+    return parseWithFallback(raw, CockpitMeetingNodesResponseSchema, { meeting_id: meetingId, links: [] }, {
+      endpoint: "PUT /api/cockpit/meetings/:id/nodes",
+    });
+  }
+
+  async deleteCockpitMeetingNode(meetingId: string, nodeId: string): Promise<void> {
+    await this.fetch<void>(
+      `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/nodes/${encodeURIComponent(nodeId)}`,
+      { method: "DELETE" },
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -5706,10 +5796,37 @@ function emptyCockpitMeeting(): CockpitMeeting {
     id: "",
     meet_date: null,
     time_range: "",
+    start_time: null,
+    end_time: null,
     title: "",
+    code: "",
+    kind: "",
+    status: "",
+    series: "",
+    parties: "",
+    organizer: "",
+    location: "",
     attendees: "",
     meet_no: "",
     link: "",
     note: "",
+    minutes: "",
+    decisions: "",
+    actions: "",
+    nas_dir: "",
+  };
+}
+
+function emptyCockpitMeetingDestination(): CockpitMeetingDestination {
+  return {
+    project_id: "",
+    project_title: "",
+    module_id: "",
+    module_title: "",
+    collab_path: "",
+    base_dir: "",
+    derived: false,
+    base_dir_exists: false,
+    error: "",
   };
 }

@@ -4,6 +4,8 @@ import type {
   CockpitChangedPayload,
   CockpitIssueLink,
   CockpitMeeting,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
   CockpitPayment,
@@ -12,10 +14,14 @@ import {
   cockpitKeys,
   patchCockpitBoard,
   removeCockpitMeeting,
+  removeCockpitMeetingIssue,
+  removeCockpitMeetingNode,
   removeCockpitMilestone,
   removeCockpitNode,
   removeCockpitNodeLink,
   removeCockpitPayment,
+  replaceCockpitMeetingIssues,
+  replaceCockpitMeetingNodes,
   replaceCockpitNodeLinks,
   upsertCockpitMeeting,
   upsertCockpitMilestone,
@@ -124,6 +130,42 @@ export function onCockpitChanged(
           ? removeCockpitMeeting(board, row.id)
           : upsertCockpitMeeting(board, row as CockpitMeeting),
       );
+      return;
+    }
+    case "meeting_issues": {
+      const record = asRecord(entity);
+      const meetingId = record?.["meeting_id"];
+      if (typeof meetingId !== "string" || meetingId === "") return;
+      if (isDeletion(action)) {
+        const issueId = record?.["issue_id"];
+        if (typeof issueId !== "string") return;
+        apply((board) => removeCockpitMeetingIssue(board, meetingId, issueId));
+        return;
+      }
+      const links = record?.["links"];
+      if (!Array.isArray(links)) return;
+      apply((board) => replaceCockpitMeetingIssues(board, meetingId, links as CockpitMeetingIssueLink[]));
+      // Provisioning opens a task as well as linking it, and the meeting row
+      // it echoes carries the folder that was created.
+      const meeting = asRecord(record?.["meeting"]);
+      if (meeting && typeof meeting["id"] === "string") {
+        apply((board) => upsertCockpitMeeting(board, meeting as unknown as CockpitMeeting));
+      }
+      return;
+    }
+    case "meeting_nodes": {
+      const record = asRecord(entity);
+      const meetingId = record?.["meeting_id"];
+      if (typeof meetingId !== "string" || meetingId === "") return;
+      if (isDeletion(action)) {
+        const nodeId = record?.["node_id"];
+        if (typeof nodeId !== "string") return;
+        apply((board) => removeCockpitMeetingNode(board, meetingId, nodeId));
+        return;
+      }
+      const links = record?.["links"];
+      if (!Array.isArray(links)) return;
+      apply((board) => replaceCockpitMeetingNodes(board, meetingId, links as CockpitMeetingNodeLink[]));
       return;
     }
     case "issue_links": {

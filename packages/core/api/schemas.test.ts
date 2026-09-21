@@ -19,10 +19,17 @@ import {
   AutopilotRunSchema,
   FALLBACK_AUTOPILOT_RUN,
   CommentTriggerPreviewSchema,
+  CockpitBoardSchema,
+  CockpitMeetingSchema,
+  CockpitMeetingDestinationSchema,
+  CockpitMeetingIssueLinkSchema,
+  CockpitMeetingNodeLinkSchema,
+  CockpitMeetingProvisionResultSchema,
   CockpitSnapshotListSchema,
   CockpitImportResultSchema,
   CockpitPendingChangeListSchema,
   CockpitIngestResponseSchema,
+  EMPTY_COCKPIT_BOARD,
   EMPTY_COCKPIT_IMPORT_RESULT,
   DashboardAgentRunTimeListSchema,
   DashboardRunTimeDailyListSchema,
@@ -2507,6 +2514,71 @@ describe("Cockpit snapshot schemas", () => {
         { endpoint: "POST /api/cockpit/snapshots/:id/restore" },
       ).unresolved_issues,
     ).toEqual([]);
+  });
+});
+
+describe("Cockpit meeting schemas", () => {
+  it("keeps a meeting an older backend under-populates, and its unknown future fields", () => {
+    const parsed = CockpitMeetingSchema.parse({
+      id: "m1",
+      meet_date: "2026-09-21",
+      time_range: "10:00-11:00",
+      recurrence: "weekly",
+    });
+    expect(parsed).toMatchObject({
+      id: "m1",
+      // Every column added since the log became a register defaults rather
+      // than dropping the row.
+      start_time: null,
+      end_time: null,
+      code: "",
+      parties: "",
+      nas_dir: "",
+    });
+    expect((parsed as Record<string, unknown>)["recurrence"]).toBe("weekly");
+  });
+
+  it("requires both ends of a link, which has no surrogate key", () => {
+    expect(
+      CockpitMeetingIssueLinkSchema.safeParse({ meeting_id: "m1", issue_id: "i1" }).success,
+    ).toBe(true);
+    expect(CockpitMeetingIssueLinkSchema.safeParse({ meeting_id: "m1" }).success).toBe(false);
+    expect(CockpitMeetingNodeLinkSchema.safeParse({ meeting_id: "m1" }).success).toBe(false);
+  });
+
+  it("serves the empty board when the meeting collections are malformed", () => {
+    expect(
+      CockpitBoardSchema.safeParse({ cockpit: { id: "cp" }, meeting_issues: "nope" }).success,
+    ).toBe(false);
+    const board = parseWithFallback(
+      { cockpit: { id: "cp" }, meeting_issues: "nope" },
+      CockpitBoardSchema,
+      EMPTY_COCKPIT_BOARD,
+      { endpoint: "GET /api/cockpit" },
+    );
+    expect(board.meeting_issues).toEqual([]);
+    expect(board.meeting_nodes).toEqual([]);
+  });
+
+  it("reports provisioning's parts separately, defaulting the ones a backend omits", () => {
+    const parsed = CockpitMeetingProvisionResultSchema.parse({
+      meeting: { id: "m1" },
+      dir_error: "meeting folder root is unavailable: /Volumes/share",
+    });
+    expect(parsed.task).toBeNull();
+    expect(parsed.dir_created).toBe(false);
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.dir_error).toContain("unavailable");
+  });
+
+  it("treats a destination with no folder as an answer, not a failure", () => {
+    const parsed = CockpitMeetingDestinationSchema.parse({
+      project_id: "p1",
+      error: "the meeting project has no collaboration space path",
+    });
+    expect(parsed.base_dir).toBe("");
+    expect(parsed.base_dir_exists).toBe(false);
+    expect(parsed.derived).toBe(false);
   });
 });
 

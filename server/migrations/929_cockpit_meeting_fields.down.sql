@@ -1,0 +1,14 @@
+ALTER TABLE cockpit_meeting
+    DROP COLUMN IF EXISTS code,
+    DROP COLUMN IF EXISTS kind,
+    DROP COLUMN IF EXISTS status,
+    DROP COLUMN IF EXISTS series,
+    DROP COLUMN IF EXISTS parties,
+    DROP COLUMN IF EXISTS organizer,
+    DROP COLUMN IF EXISTS location,
+    DROP COLUMN IF EXISTS start_time,
+    DROP COLUMN IF EXISTS end_time,
+    DROP COLUMN IF EXISTS minutes,
+    DROP COLUMN IF EXISTS decisions,
+    DROP COLUMN IF EXISTS actions,
+    DROP COLUMN IF EXISTS nas_dir;

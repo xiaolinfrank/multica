@@ -21,7 +21,7 @@ VALUES (
     $5::text
 )
 ON CONFLICT (workspace_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir
 `
 
 type CreateCockpitParams struct {
@@ -55,6 +55,9 @@ func (q *Queries) CreateCockpit(ctx context.Context, arg CreateCockpitParams) (C
 		&i.Basis,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MeetingProjectID,
+		&i.MeetingModuleID,
+		&i.MeetingDir,
 	)
 	return i, err
 }
@@ -62,7 +65,9 @@ func (q *Queries) CreateCockpit(ctx context.Context, arg CreateCockpitParams) (C
 const createCockpitMeeting = `-- name: CreateCockpitMeeting :one
 INSERT INTO cockpit_meeting (
     workspace_id, cockpit_id, meet_date, time_range, title,
-    attendees, meet_no, link, note
+    attendees, meet_no, link, note,
+    code, kind, status, series, parties, organizer, location,
+    start_time, end_time, minutes, decisions, actions, nas_dir
 ) VALUES (
     $1::uuid,
     $2::uuid,
@@ -72,9 +77,22 @@ INSERT INTO cockpit_meeting (
     $6::text,
     $7::text,
     $8::text,
-    $9::text
+    $9::text,
+    $10::text,
+    $11::text,
+    $12::text,
+    $13::text,
+    $14::text,
+    $15::text,
+    $16::text,
+    $17::time,
+    $18::time,
+    $19::text,
+    $20::text,
+    $21::text,
+    $22::text
 )
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir
 `
 
 type CreateCockpitMeetingParams struct {
@@ -87,6 +105,19 @@ type CreateCockpitMeetingParams struct {
 	MeetNo      string      `json:"meet_no"`
 	Link        string      `json:"link"`
 	Note        string      `json:"note"`
+	Code        string      `json:"code"`
+	Kind        string      `json:"kind"`
+	Status      string      `json:"status"`
+	Series      string      `json:"series"`
+	Parties     string      `json:"parties"`
+	Organizer   string      `json:"organizer"`
+	Location    string      `json:"location"`
+	StartTime   pgtype.Time `json:"start_time"`
+	EndTime     pgtype.Time `json:"end_time"`
+	Minutes     string      `json:"minutes"`
+	Decisions   string      `json:"decisions"`
+	Actions     string      `json:"actions"`
+	NasDir      string      `json:"nas_dir"`
 }
 
 func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMeetingParams) (CockpitMeeting, error) {
@@ -100,6 +131,19 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		arg.MeetNo,
 		arg.Link,
 		arg.Note,
+		arg.Code,
+		arg.Kind,
+		arg.Status,
+		arg.Series,
+		arg.Parties,
+		arg.Organizer,
+		arg.Location,
+		arg.StartTime,
+		arg.EndTime,
+		arg.Minutes,
+		arg.Decisions,
+		arg.Actions,
+		arg.NasDir,
 	)
 	var i CockpitMeeting
 	err := row.Scan(
@@ -115,6 +159,98 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		&i.Note,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Code,
+		&i.Kind,
+		&i.Status,
+		&i.Series,
+		&i.Parties,
+		&i.Organizer,
+		&i.Location,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Minutes,
+		&i.Decisions,
+		&i.Actions,
+		&i.NasDir,
+	)
+	return i, err
+}
+
+const createCockpitMeetingIssue = `-- name: CreateCockpitMeetingIssue :one
+INSERT INTO cockpit_meeting_issue (workspace_id, meeting_id, issue_id, role, position)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::uuid,
+    $4::text,
+    $5::double precision
+)
+ON CONFLICT (meeting_id, issue_id) DO UPDATE SET
+    role = EXCLUDED.role, position = EXCLUDED.position
+RETURNING workspace_id, meeting_id, issue_id, role, position, created_at
+`
+
+type CreateCockpitMeetingIssueParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+	Role        string      `json:"role"`
+	Position    float64     `json:"position"`
+}
+
+func (q *Queries) CreateCockpitMeetingIssue(ctx context.Context, arg CreateCockpitMeetingIssueParams) (CockpitMeetingIssue, error) {
+	row := q.db.QueryRow(ctx, createCockpitMeetingIssue,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.IssueID,
+		arg.Role,
+		arg.Position,
+	)
+	var i CockpitMeetingIssue
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.IssueID,
+		&i.Role,
+		&i.Position,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createCockpitMeetingNode = `-- name: CreateCockpitMeetingNode :one
+INSERT INTO cockpit_meeting_node (workspace_id, meeting_id, node_id, position)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::uuid,
+    $4::double precision
+)
+ON CONFLICT (meeting_id, node_id) DO UPDATE SET position = EXCLUDED.position
+RETURNING workspace_id, meeting_id, node_id, position, created_at
+`
+
+type CreateCockpitMeetingNodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	NodeID      pgtype.UUID `json:"node_id"`
+	Position    float64     `json:"position"`
+}
+
+func (q *Queries) CreateCockpitMeetingNode(ctx context.Context, arg CreateCockpitMeetingNodeParams) (CockpitMeetingNode, error) {
+	row := q.db.QueryRow(ctx, createCockpitMeetingNode,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.NodeID,
+		arg.Position,
+	)
+	var i CockpitMeetingNode
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.NodeID,
+		&i.Position,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -622,6 +758,114 @@ func (q *Queries) DeleteCockpitMeeting(ctx context.Context, arg DeleteCockpitMee
 	return err
 }
 
+const deleteCockpitMeetingIssue = `-- name: DeleteCockpitMeetingIssue :exec
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id = $1::uuid
+  AND issue_id = $2::uuid
+  AND workspace_id = $3::uuid
+`
+
+type DeleteCockpitMeetingIssueParams struct {
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteCockpitMeetingIssue(ctx context.Context, arg DeleteCockpitMeetingIssueParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingIssue, arg.MeetingID, arg.IssueID, arg.WorkspaceID)
+	return err
+}
+
+const deleteCockpitMeetingIssuesByCockpit = `-- name: DeleteCockpitMeetingIssuesByCockpit :exec
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id IN (SELECT id FROM cockpit_meeting WHERE cockpit_id = $1::uuid)
+`
+
+// Import only: clears the board's meeting links before the meetings that own
+// them are replaced. There is no cascade to do it (repository rule).
+func (q *Queries) DeleteCockpitMeetingIssuesByCockpit(ctx context.Context, cockpitID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingIssuesByCockpit, cockpitID)
+	return err
+}
+
+const deleteCockpitMeetingIssuesByMeeting = `-- name: DeleteCockpitMeetingIssuesByMeeting :exec
+DELETE FROM cockpit_meeting_issue
+WHERE meeting_id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type DeleteCockpitMeetingIssuesByMeetingParams struct {
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteCockpitMeetingIssuesByMeeting(ctx context.Context, arg DeleteCockpitMeetingIssuesByMeetingParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingIssuesByMeeting, arg.MeetingID, arg.WorkspaceID)
+	return err
+}
+
+const deleteCockpitMeetingNode = `-- name: DeleteCockpitMeetingNode :exec
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id = $1::uuid
+  AND node_id = $2::uuid
+  AND workspace_id = $3::uuid
+`
+
+type DeleteCockpitMeetingNodeParams struct {
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	NodeID      pgtype.UUID `json:"node_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteCockpitMeetingNode(ctx context.Context, arg DeleteCockpitMeetingNodeParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingNode, arg.MeetingID, arg.NodeID, arg.WorkspaceID)
+	return err
+}
+
+const deleteCockpitMeetingNodesByCockpit = `-- name: DeleteCockpitMeetingNodesByCockpit :exec
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id IN (SELECT id FROM cockpit_meeting WHERE cockpit_id = $1::uuid)
+`
+
+// Import only, same reason as DeleteCockpitMeetingIssuesByCockpit.
+func (q *Queries) DeleteCockpitMeetingNodesByCockpit(ctx context.Context, cockpitID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingNodesByCockpit, cockpitID)
+	return err
+}
+
+const deleteCockpitMeetingNodesByMeeting = `-- name: DeleteCockpitMeetingNodesByMeeting :exec
+DELETE FROM cockpit_meeting_node
+WHERE meeting_id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type DeleteCockpitMeetingNodesByMeetingParams struct {
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteCockpitMeetingNodesByMeeting(ctx context.Context, arg DeleteCockpitMeetingNodesByMeetingParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingNodesByMeeting, arg.MeetingID, arg.WorkspaceID)
+	return err
+}
+
+const deleteCockpitMeetingNodesByNode = `-- name: DeleteCockpitMeetingNodesByNode :exec
+DELETE FROM cockpit_meeting_node
+WHERE node_id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type DeleteCockpitMeetingNodesByNodeParams struct {
+	NodeID      pgtype.UUID `json:"node_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// A deleted work item takes its meeting links with it; nothing cascades.
+func (q *Queries) DeleteCockpitMeetingNodesByNode(ctx context.Context, arg DeleteCockpitMeetingNodesByNodeParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingNodesByNode, arg.NodeID, arg.WorkspaceID)
+	return err
+}
+
 const deleteCockpitMeetings = `-- name: DeleteCockpitMeetings :exec
 DELETE FROM cockpit_meeting WHERE cockpit_id = $1::uuid
 `
@@ -793,6 +1037,10 @@ WITH del_changes AS (
     DELETE FROM cockpit_snapshot WHERE workspace_id = $1::uuid
 ), del_links AS (
     DELETE FROM cockpit_node_issue WHERE workspace_id = $1::uuid
+), del_meeting_issues AS (
+    DELETE FROM cockpit_meeting_issue WHERE workspace_id = $1::uuid
+), del_meeting_nodes AS (
+    DELETE FROM cockpit_meeting_node WHERE workspace_id = $1::uuid
 ), del_payments AS (
     DELETE FROM cockpit_payment WHERE workspace_id = $1::uuid
 ), del_milestones AS (
@@ -816,7 +1064,7 @@ func (q *Queries) DeleteWorkspaceCockpitData(ctx context.Context, workspaceID pg
 
 const getCockpitByWorkspace = `-- name: GetCockpitByWorkspace :one
 
-SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at FROM cockpit
+SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir FROM cockpit
 WHERE workspace_id = $1::uuid
 `
 
@@ -842,6 +1090,53 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 		&i.Basis,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MeetingProjectID,
+		&i.MeetingModuleID,
+		&i.MeetingDir,
+	)
+	return i, err
+}
+
+const getCockpitMeeting = `-- name: GetCockpitMeeting :one
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir FROM cockpit_meeting
+WHERE id = $1::uuid
+  AND workspace_id = $2::uuid
+`
+
+type GetCockpitMeetingParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) GetCockpitMeeting(ctx context.Context, arg GetCockpitMeetingParams) (CockpitMeeting, error) {
+	row := q.db.QueryRow(ctx, getCockpitMeeting, arg.ID, arg.WorkspaceID)
+	var i CockpitMeeting
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.MeetDate,
+		&i.TimeRange,
+		&i.Title,
+		&i.Attendees,
+		&i.MeetNo,
+		&i.Link,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Code,
+		&i.Kind,
+		&i.Status,
+		&i.Series,
+		&i.Parties,
+		&i.Organizer,
+		&i.Location,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Minutes,
+		&i.Decisions,
+		&i.Actions,
+		&i.NasDir,
 	)
 	return i, err
 }
@@ -1067,12 +1362,110 @@ func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, ar
 	return i, err
 }
 
-const listCockpitMeetings = `-- name: ListCockpitMeetings :many
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at FROM cockpit_meeting
-WHERE cockpit_id = $1::uuid
-ORDER BY meet_date DESC NULLS LAST, time_range DESC
+const listCockpitMeetingIssues = `-- name: ListCockpitMeetingIssues :many
+
+SELECT
+    l.meeting_id, l.issue_id, l.role, l.position,
+    i.number AS issue_number,
+    i.title  AS issue_title,
+    i.status AS issue_status
+FROM cockpit_meeting_issue l
+JOIN cockpit_meeting m ON m.id = l.meeting_id
+JOIN issue i ON i.id = l.issue_id AND i.workspace_id = l.workspace_id
+WHERE m.cockpit_id = $1::uuid
+ORDER BY l.position, i.number
 `
 
+type ListCockpitMeetingIssuesRow struct {
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+	Role        string      `json:"role"`
+	Position    float64     `json:"position"`
+	IssueNumber int32       `json:"issue_number"`
+	IssueTitle  string      `json:"issue_title"`
+	IssueStatus string      `json:"issue_status"`
+}
+
+// ---------------------------------------------------------------------------
+// What a meeting is attached to
+// ---------------------------------------------------------------------------
+// Joined to issue so a link to a deleted issue simply stops being returned —
+// there is no foreign key to have cascaded it away (repository rule). Joined
+// to cockpit_meeting so one read serves the whole board.
+func (q *Queries) ListCockpitMeetingIssues(ctx context.Context, cockpitID pgtype.UUID) ([]ListCockpitMeetingIssuesRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitMeetingIssues, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitMeetingIssuesRow{}
+	for rows.Next() {
+		var i ListCockpitMeetingIssuesRow
+		if err := rows.Scan(
+			&i.MeetingID,
+			&i.IssueID,
+			&i.Role,
+			&i.Position,
+			&i.IssueNumber,
+			&i.IssueTitle,
+			&i.IssueStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCockpitMeetingNodes = `-- name: ListCockpitMeetingNodes :many
+SELECT l.meeting_id, l.node_id, l.position
+FROM cockpit_meeting_node l
+JOIN cockpit_meeting m ON m.id = l.meeting_id
+JOIN cockpit_node n ON n.id = l.node_id
+WHERE m.cockpit_id = $1::uuid
+ORDER BY l.position, n.code
+`
+
+type ListCockpitMeetingNodesRow struct {
+	MeetingID pgtype.UUID `json:"meeting_id"`
+	NodeID    pgtype.UUID `json:"node_id"`
+	Position  float64     `json:"position"`
+}
+
+// Joined to cockpit_node so a link to a deleted work item stops being
+// returned, same contract as the issue links above.
+func (q *Queries) ListCockpitMeetingNodes(ctx context.Context, cockpitID pgtype.UUID) ([]ListCockpitMeetingNodesRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitMeetingNodes, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitMeetingNodesRow{}
+	for rows.Next() {
+		var i ListCockpitMeetingNodesRow
+		if err := rows.Scan(&i.MeetingID, &i.NodeID, &i.Position); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCockpitMeetings = `-- name: ListCockpitMeetings :many
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir FROM cockpit_meeting
+WHERE cockpit_id = $1::uuid
+ORDER BY meet_date DESC NULLS LAST, start_time DESC NULLS LAST, time_range DESC
+`
+
+// Newest first, which is what a register reads as. start_time orders the
+// meetings of one day; time_range is the tiebreak for rows that only ever
+// carried free text (see migration 929).
 func (q *Queries) ListCockpitMeetings(ctx context.Context, cockpitID pgtype.UUID) ([]CockpitMeeting, error) {
 	rows, err := q.db.Query(ctx, listCockpitMeetings, cockpitID)
 	if err != nil {
@@ -1095,6 +1488,19 @@ func (q *Queries) ListCockpitMeetings(ctx context.Context, cockpitID pgtype.UUID
 			&i.Note,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Code,
+			&i.Kind,
+			&i.Status,
+			&i.Series,
+			&i.Parties,
+			&i.Organizer,
+			&i.Location,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Minutes,
+			&i.Decisions,
+			&i.Actions,
+			&i.NasDir,
 		); err != nil {
 			return nil, err
 		}
@@ -1492,23 +1898,36 @@ UPDATE cockpit SET
     summary_next    = COALESCE($6::text, summary_next),
     summary_support = COALESCE($7::text, summary_support),
     basis           = COALESCE($8::text, basis),
+    -- Where a new meeting's task and folder go. Cleared explicitly (the
+    -- clear_* flags) rather than by sending NULL, which the COALESCE idiom
+    -- above reads as "leave it alone".
+    meeting_project_id = CASE WHEN $9::bool THEN NULL
+                              ELSE COALESCE($10::uuid, meeting_project_id) END,
+    meeting_module_id  = CASE WHEN $11::bool THEN NULL
+                              ELSE COALESCE($12::uuid, meeting_module_id) END,
+    meeting_dir        = COALESCE($13::text, meeting_dir),
     updated_at      = now()
-WHERE id = $9::uuid
-  AND workspace_id = $10::uuid
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at
+WHERE id = $14::uuid
+  AND workspace_id = $15::uuid
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir
 `
 
 type UpdateCockpitParams struct {
-	Title          pgtype.Text `json:"title"`
-	GoalTitle      pgtype.Text `json:"goal_title"`
-	ClearGoalDate  bool        `json:"clear_goal_date"`
-	GoalDate       pgtype.Date `json:"goal_date"`
-	SummaryOverall pgtype.Text `json:"summary_overall"`
-	SummaryNext    pgtype.Text `json:"summary_next"`
-	SummarySupport pgtype.Text `json:"summary_support"`
-	Basis          pgtype.Text `json:"basis"`
-	ID             pgtype.UUID `json:"id"`
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	Title               pgtype.Text `json:"title"`
+	GoalTitle           pgtype.Text `json:"goal_title"`
+	ClearGoalDate       bool        `json:"clear_goal_date"`
+	GoalDate            pgtype.Date `json:"goal_date"`
+	SummaryOverall      pgtype.Text `json:"summary_overall"`
+	SummaryNext         pgtype.Text `json:"summary_next"`
+	SummarySupport      pgtype.Text `json:"summary_support"`
+	Basis               pgtype.Text `json:"basis"`
+	ClearMeetingProject bool        `json:"clear_meeting_project"`
+	MeetingProjectID    pgtype.UUID `json:"meeting_project_id"`
+	ClearMeetingModule  bool        `json:"clear_meeting_module"`
+	MeetingModuleID     pgtype.UUID `json:"meeting_module_id"`
+	MeetingDir          pgtype.Text `json:"meeting_dir"`
+	ID                  pgtype.UUID `json:"id"`
+	WorkspaceID         pgtype.UUID `json:"workspace_id"`
 }
 
 // COALESCE on a nullable arg is the partial-update idiom used across this
@@ -1523,6 +1942,11 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		arg.SummaryNext,
 		arg.SummarySupport,
 		arg.Basis,
+		arg.ClearMeetingProject,
+		arg.MeetingProjectID,
+		arg.ClearMeetingModule,
+		arg.MeetingModuleID,
+		arg.MeetingDir,
 		arg.ID,
 		arg.WorkspaceID,
 	)
@@ -1539,6 +1963,9 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		&i.Basis,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MeetingProjectID,
+		&i.MeetingModuleID,
+		&i.MeetingDir,
 	)
 	return i, err
 }
@@ -1553,23 +1980,53 @@ UPDATE cockpit_meeting SET
     meet_no    = COALESCE($6::text, meet_no),
     link       = COALESCE($7::text, link),
     note       = COALESCE($8::text, note),
+    code       = COALESCE($9::text, code),
+    kind       = COALESCE($10::text, kind),
+    status     = COALESCE($11::text, status),
+    series     = COALESCE($12::text, series),
+    parties    = COALESCE($13::text, parties),
+    organizer  = COALESCE($14::text, organizer),
+    location   = COALESCE($15::text, location),
+    start_time = CASE WHEN $16::bool THEN NULL
+                      ELSE COALESCE($17::time, start_time) END,
+    end_time   = CASE WHEN $18::bool THEN NULL
+                      ELSE COALESCE($19::time, end_time) END,
+    minutes    = COALESCE($20::text, minutes),
+    decisions  = COALESCE($21::text, decisions),
+    actions    = COALESCE($22::text, actions),
+    nas_dir    = COALESCE($23::text, nas_dir),
     updated_at = now()
-WHERE id = $9::uuid
-  AND workspace_id = $10::uuid
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at
+WHERE id = $24::uuid
+  AND workspace_id = $25::uuid
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir
 `
 
 type UpdateCockpitMeetingParams struct {
-	ClearMeetDate bool        `json:"clear_meet_date"`
-	MeetDate      pgtype.Date `json:"meet_date"`
-	TimeRange     pgtype.Text `json:"time_range"`
-	Title         pgtype.Text `json:"title"`
-	Attendees     pgtype.Text `json:"attendees"`
-	MeetNo        pgtype.Text `json:"meet_no"`
-	Link          pgtype.Text `json:"link"`
-	Note          pgtype.Text `json:"note"`
-	ID            pgtype.UUID `json:"id"`
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ClearMeetDate  bool        `json:"clear_meet_date"`
+	MeetDate       pgtype.Date `json:"meet_date"`
+	TimeRange      pgtype.Text `json:"time_range"`
+	Title          pgtype.Text `json:"title"`
+	Attendees      pgtype.Text `json:"attendees"`
+	MeetNo         pgtype.Text `json:"meet_no"`
+	Link           pgtype.Text `json:"link"`
+	Note           pgtype.Text `json:"note"`
+	Code           pgtype.Text `json:"code"`
+	Kind           pgtype.Text `json:"kind"`
+	Status         pgtype.Text `json:"status"`
+	Series         pgtype.Text `json:"series"`
+	Parties        pgtype.Text `json:"parties"`
+	Organizer      pgtype.Text `json:"organizer"`
+	Location       pgtype.Text `json:"location"`
+	ClearStartTime bool        `json:"clear_start_time"`
+	StartTime      pgtype.Time `json:"start_time"`
+	ClearEndTime   bool        `json:"clear_end_time"`
+	EndTime        pgtype.Time `json:"end_time"`
+	Minutes        pgtype.Text `json:"minutes"`
+	Decisions      pgtype.Text `json:"decisions"`
+	Actions        pgtype.Text `json:"actions"`
+	NasDir         pgtype.Text `json:"nas_dir"`
+	ID             pgtype.UUID `json:"id"`
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
 }
 
 func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMeetingParams) (CockpitMeeting, error) {
@@ -1582,6 +2039,21 @@ func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMee
 		arg.MeetNo,
 		arg.Link,
 		arg.Note,
+		arg.Code,
+		arg.Kind,
+		arg.Status,
+		arg.Series,
+		arg.Parties,
+		arg.Organizer,
+		arg.Location,
+		arg.ClearStartTime,
+		arg.StartTime,
+		arg.ClearEndTime,
+		arg.EndTime,
+		arg.Minutes,
+		arg.Decisions,
+		arg.Actions,
+		arg.NasDir,
 		arg.ID,
 		arg.WorkspaceID,
 	)
@@ -1599,6 +2071,19 @@ func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMee
 		&i.Note,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Code,
+		&i.Kind,
+		&i.Status,
+		&i.Series,
+		&i.Parties,
+		&i.Organizer,
+		&i.Location,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Minutes,
+		&i.Decisions,
+		&i.Actions,
+		&i.NasDir,
 	)
 	return i, err
 }

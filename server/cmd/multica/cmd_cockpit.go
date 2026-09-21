@@ -314,10 +314,23 @@ func init() {
 		c.Flags().String("title", "", "Meeting title")
 		c.Flags().String("date", "", "Meeting date (YYYY-MM-DD; empty string clears)")
 		c.Flags().String("time-range", "", "Time span as written, e.g. 10:00–11:00")
+		c.Flags().String("start", "", "Start time (HH:MM; empty string clears)")
+		c.Flags().String("end", "", "End time (HH:MM; empty string clears)")
+		c.Flags().String("code", "", "Platform meeting number, e.g. 20260921-01")
+		c.Flags().String("kind", "", "Meeting type, in the programme's own words")
+		c.Flags().String("status", "", "Meeting status, in the programme's own words")
+		c.Flags().String("series", "", "Recurring series this meeting belongs to")
+		c.Flags().String("parties", "", "Organisations at the table")
+		c.Flags().String("organizer", "", "Convenor")
+		c.Flags().String("location", "", "Location")
 		c.Flags().String("attendees", "", "Attendees")
 		c.Flags().String("meet-no", "", "Conference number")
 		c.Flags().String("link", "", "Meeting link")
-		c.Flags().String("note", "", "Note")
+		c.Flags().String("note", "", "Agenda and remarks")
+		c.Flags().String("minutes", "", "Minutes")
+		c.Flags().String("decisions", "", "Decisions")
+		c.Flags().String("actions", "", "Action items")
+		c.Flags().String("nas-dir", "", "Absolute path of the meeting's folder on the shared storage")
 		c.Flags().String("output", "json", "Output format: table or json")
 	}
 	cockpitMeetingRemoveCmd.Flags().String("output", "table", "Output format: table or json")
@@ -826,15 +839,43 @@ func runCockpitMilestoneRemove(cmd *cobra.Command, args []string) error {
 // Meetings
 // ---------------------------------------------------------------------------
 
+// cockpitMeetingSpanText renders a meeting's span the way the board does:
+// the structured times when it has them, the free text it was logged with
+// otherwise.
+func cockpitMeetingSpanText(m map[string]any) string {
+	start, end := strVal(m, "start_time"), strVal(m, "end_time")
+	switch {
+	case start != "" && end != "":
+		return start + "–" + end
+	case start != "":
+		return start
+	default:
+		return strVal(m, "time_range")
+	}
+}
+
 func cockpitMeetingBody(cmd *cobra.Command) map[string]any {
 	body := map[string]any{}
 	cockpitStringFlag(cmd, body, "title", "title")
 	cockpitStringFlag(cmd, body, "date", "meet_date")
 	cockpitStringFlag(cmd, body, "time-range", "time_range")
+	cockpitStringFlag(cmd, body, "start", "start_time")
+	cockpitStringFlag(cmd, body, "end", "end_time")
+	cockpitStringFlag(cmd, body, "code", "code")
+	cockpitStringFlag(cmd, body, "kind", "kind")
+	cockpitStringFlag(cmd, body, "status", "status")
+	cockpitStringFlag(cmd, body, "series", "series")
+	cockpitStringFlag(cmd, body, "parties", "parties")
+	cockpitStringFlag(cmd, body, "organizer", "organizer")
+	cockpitStringFlag(cmd, body, "location", "location")
 	cockpitStringFlag(cmd, body, "attendees", "attendees")
 	cockpitStringFlag(cmd, body, "meet-no", "meet_no")
 	cockpitStringFlag(cmd, body, "link", "link")
 	cockpitStringFlag(cmd, body, "note", "note")
+	cockpitStringFlag(cmd, body, "minutes", "minutes")
+	cockpitStringFlag(cmd, body, "decisions", "decisions")
+	cockpitStringFlag(cmd, body, "actions", "actions")
+	cockpitStringFlag(cmd, body, "nas-dir", "nas_dir")
 	return body
 }
 
@@ -855,12 +896,12 @@ func runCockpitMeetingList(cmd *cobra.Command, _ []string) error {
 		return cli.PrintJSON(os.Stdout, meetings)
 	}
 	fullID, _ := cmd.Flags().GetBool("full-id")
-	headers := []string{"ID", "DATE", "TIME", "TITLE", "ATTENDEES"}
+	headers := []string{"ID", "NO", "DATE", "TIME", "TITLE", "PARTIES"}
 	rows := make([][]string, 0, len(meetings))
 	for _, m := range meetings {
 		rows = append(rows, []string{
-			displayID(strVal(m, "id"), fullID), strVal(m, "meet_date"),
-			strVal(m, "time_range"), strVal(m, "title"), strVal(m, "attendees"),
+			displayID(strVal(m, "id"), fullID), strVal(m, "code"), strVal(m, "meet_date"),
+			cockpitMeetingSpanText(m), strVal(m, "title"), strVal(m, "parties"),
 		})
 	}
 	cli.PrintTable(os.Stdout, headers, rows)

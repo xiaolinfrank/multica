@@ -564,17 +564,20 @@ type ClientUsageDaily struct {
 }
 
 type Cockpit struct {
-	ID             pgtype.UUID        `json:"id"`
-	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
-	Title          string             `json:"title"`
-	GoalTitle      string             `json:"goal_title"`
-	GoalDate       pgtype.Date        `json:"goal_date"`
-	SummaryOverall string             `json:"summary_overall"`
-	SummaryNext    string             `json:"summary_next"`
-	SummarySupport string             `json:"summary_support"`
-	Basis          string             `json:"basis"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	Title            string             `json:"title"`
+	GoalTitle        string             `json:"goal_title"`
+	GoalDate         pgtype.Date        `json:"goal_date"`
+	SummaryOverall   string             `json:"summary_overall"`
+	SummaryNext      string             `json:"summary_next"`
+	SummarySupport   string             `json:"summary_support"`
+	Basis            string             `json:"basis"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	MeetingProjectID pgtype.UUID        `json:"meeting_project_id"`
+	MeetingModuleID  pgtype.UUID        `json:"meeting_module_id"`
+	MeetingDir       string             `json:"meeting_dir"`
 }
 
 type CockpitMeeting struct {
@@ -590,6 +593,36 @@ type CockpitMeeting struct {
 	Note        string             `json:"note"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Code        string             `json:"code"`
+	Kind        string             `json:"kind"`
+	Status      string             `json:"status"`
+	Series      string             `json:"series"`
+	Parties     string             `json:"parties"`
+	Organizer   string             `json:"organizer"`
+	Location    string             `json:"location"`
+	StartTime   pgtype.Time        `json:"start_time"`
+	EndTime     pgtype.Time        `json:"end_time"`
+	Minutes     string             `json:"minutes"`
+	Decisions   string             `json:"decisions"`
+	Actions     string             `json:"actions"`
+	NasDir      string             `json:"nas_dir"`
+}
+
+type CockpitMeetingIssue struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	MeetingID   pgtype.UUID        `json:"meeting_id"`
+	IssueID     pgtype.UUID        `json:"issue_id"`
+	Role        string             `json:"role"`
+	Position    float64            `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitMeetingNode struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	MeetingID   pgtype.UUID        `json:"meeting_id"`
+	NodeID      pgtype.UUID        `json:"node_id"`
+	Position    float64            `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type CockpitMilestone struct {

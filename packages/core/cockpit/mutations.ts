@@ -2,9 +2,11 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { issueKeys } from "../issues/queries";
 import type {
   CockpitBoard,
   CockpitMeetingPatch,
+  CockpitMeetingProvision,
   CockpitMilestonePatch,
   CockpitNodePatch,
   CockpitPatch,
@@ -14,10 +16,14 @@ import {
   cockpitKeys,
   patchCockpitBoard,
   removeCockpitMeeting,
+  removeCockpitMeetingIssue,
+  removeCockpitMeetingNode,
   removeCockpitMilestone,
   removeCockpitNode,
   removeCockpitNodeLink,
   removeCockpitPayment,
+  replaceCockpitMeetingIssues,
+  replaceCockpitMeetingNodes,
   replaceCockpitNodeLinks,
   upsertCockpitMeeting,
   upsertCockpitMilestone,
@@ -343,6 +349,99 @@ export function useDeleteCockpitMeeting(wsId: string) {
     mutationFn: (id: string) => api.deleteCockpitMeeting(id),
     onSuccess: (_result, id) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitMeeting(board, id));
+    },
+  });
+}
+
+/**
+ * Opens the meeting's task and creates its folder.
+ *
+ * Deliberately not optimistic, and not foldable into the create: it has side
+ * effects the client cannot predict — an issue in a project this cache knows
+ * nothing about, and a directory on a share that may not be mounted — and it
+ * reports each part's outcome separately so the caller can show what actually
+ * happened and retry only the part that did not.
+ */
+export function useProvisionCockpitMeeting(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CockpitMeetingProvision }) =>
+      api.provisionCockpitMeeting(id, body),
+    onSuccess: (result) => {
+      patchCockpitBoard(queryClient, wsId, (board) =>
+        replaceCockpitMeetingIssues(upsertCockpitMeeting(board, result.meeting), result.meeting.id, result.issues),
+      );
+      // The board is not the only cache that moved: an issue was filed into a
+      // project whose lists are cached elsewhere.
+      if (result.task) {
+        queryClient.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+      }
+    },
+  });
+}
+
+export function useSetCockpitMeetingIssues(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      meetingId,
+      issueIds,
+      replace,
+    }: {
+      meetingId: string;
+      issueIds: string[];
+      replace?: boolean;
+    }) => api.setCockpitMeetingIssues(meetingId, issueIds, { replace }),
+    onSuccess: (result) => {
+      patchCockpitBoard(queryClient, wsId, (board) =>
+        replaceCockpitMeetingIssues(board, result.meeting_id, result.links),
+      );
+    },
+  });
+}
+
+export function useDeleteCockpitMeetingIssue(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meetingId, issueId }: { meetingId: string; issueId: string }) =>
+      api.deleteCockpitMeetingIssue(meetingId, issueId),
+    onSuccess: (_result, { meetingId, issueId }) => {
+      patchCockpitBoard(queryClient, wsId, (board) =>
+        removeCockpitMeetingIssue(board, meetingId, issueId),
+      );
+    },
+  });
+}
+
+export function useSetCockpitMeetingNodes(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      meetingId,
+      nodeIds,
+      replace,
+    }: {
+      meetingId: string;
+      nodeIds: string[];
+      replace?: boolean;
+    }) => api.setCockpitMeetingNodes(meetingId, nodeIds, { replace }),
+    onSuccess: (result) => {
+      patchCockpitBoard(queryClient, wsId, (board) =>
+        replaceCockpitMeetingNodes(board, result.meeting_id, result.links),
+      );
+    },
+  });
+}
+
+export function useDeleteCockpitMeetingNode(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meetingId, nodeId }: { meetingId: string; nodeId: string }) =>
+      api.deleteCockpitMeetingNode(meetingId, nodeId),
+    onSuccess: (_result, { meetingId, nodeId }) => {
+      patchCockpitBoard(queryClient, wsId, (board) =>
+        removeCockpitMeetingNode(board, meetingId, nodeId),
+      );
     },
   });
 }

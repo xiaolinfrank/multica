@@ -4,12 +4,14 @@
 
 import type {
   CockpitIssueLink,
+  CockpitMeeting,
   CockpitNode,
   CockpitNodePatch,
   CockpitPayment,
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import { useEffect, useRef, useState } from "react";
+import { cockpitMeetingSpan } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -41,6 +43,8 @@ export interface CockpitNodePanelProps {
   parent: CockpitNode | undefined;
   payments: CockpitPayment[];
   links: CockpitIssueLink[];
+  /** The meetings that discussed this work item, newest first. */
+  meetings: CockpitMeeting[];
   isBranch: boolean;
   statusSuggestions: string[];
   execStatusSuggestions: string[];
@@ -57,6 +61,8 @@ export interface CockpitNodePanelProps {
   onClose: () => void;
   onLinkIssue: (issueId: string) => void;
   onUnlinkIssue: (issueId: string) => void;
+  /** Opens one of this item's meetings in the register. */
+  onOpenMeeting: (meetingId: string) => void;
   onCreatePayment: () => void;
   onPatchPayment: (paymentId: string, patch: CockpitPaymentPatch) => void;
   onDeletePayment: (paymentId: string) => void;
@@ -68,6 +74,7 @@ export function CockpitNodePanel({
   parent,
   payments,
   links,
+  meetings,
   isBranch,
   statusSuggestions,
   execStatusSuggestions,
@@ -81,6 +88,7 @@ export function CockpitNodePanel({
   onClose,
   onLinkIssue,
   onUnlinkIssue,
+  onOpenMeeting,
   onCreatePayment,
   onPatchPayment,
   onDeletePayment,
@@ -241,6 +249,33 @@ export function CockpitNodePanel({
             disabled={readOnly}
           />
         </CockpitField>
+
+        {/* The other direction of the meeting register: what was discussed
+            here, and when. Read-only — a meeting is attached from the meeting,
+            which is where the rest of its record lives. */}
+        {meetings.length > 0 && (
+          <CockpitField label={t(($) => $.meetings.node_meetings)} className="mt-3">
+            <ul className="flex flex-col gap-0.5">
+              {meetings.slice(0, 5).map((meeting) => (
+                <li key={meeting.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenMeeting(meeting.id)}
+                    className="flex w-full min-w-0 items-baseline gap-2 rounded-sm px-1 text-left hover:bg-accent"
+                  >
+                    <span className="shrink-0 text-micro tabular-nums text-muted-foreground">
+                      {meeting.meet_date ?? "—"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-caption">{meeting.title}</span>
+                    <span className="shrink-0 text-micro text-muted-foreground">
+                      {cockpitMeetingSpan(meeting)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </CockpitField>
+        )}
 
         {taskDetails && (
           <>

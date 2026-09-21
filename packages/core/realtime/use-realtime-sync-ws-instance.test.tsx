@@ -281,6 +281,7 @@ describe("useRealtimeSync — ws instance change", () => {
       cockpit: {
         id: "cp", workspace_id: "ws-1", title: "", goal_title: "", goal_date: null,
         summary_overall: "", summary_next: "", summary_support: "", basis: "",
+        meeting_project_id: null, meeting_module_id: null, meeting_dir: "",
         created_at: "", updated_at: "",
       },
       nodes: [{
@@ -292,6 +293,7 @@ describe("useRealtimeSync — ws instance change", () => {
         updated_by_type: "", updated_by_id: null, created_at: "", updated_at: "",
       }],
       payments: [], issue_links: [], milestones: [], meetings: [],
+      meeting_issues: [], meeting_nodes: [],
     };
     qc.setQueryData(cockpitKeys.board("ws-1"), board);
 

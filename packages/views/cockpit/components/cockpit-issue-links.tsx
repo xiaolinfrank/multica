@@ -156,6 +156,16 @@ function IssueSearchPopover({
   );
 }
 
+/**
+ * The fields a chip renders. Structural rather than one concrete link type:
+ * a work item's issues and a meeting's issues are different rows with the same
+ * resolved display fields, and they read identically to a person.
+ */
+export type CockpitIssueChip = Pick<
+  CockpitIssueLink,
+  "issue_id" | "issue_identifier" | "issue_title" | "issue_status"
+> & { id?: string };
+
 export function CockpitIssueLinks({
   links,
   onLink,
@@ -163,7 +173,7 @@ export function CockpitIssueLinks({
   disabled,
   compact,
 }: {
-  links: CockpitIssueLink[];
+  links: CockpitIssueChip[];
   onLink: (issueId: string) => void;
   onUnlink: (issueId: string) => void;
   disabled?: boolean;

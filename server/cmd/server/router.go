@@ -2050,10 +2050,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Patch("/", h.UpdateCockpitMilestone)
 					r.Delete("/", h.DeleteCockpitMilestone)
 				})
+				r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
 				r.Post("/meetings", h.CreateCockpitMeeting)
 				r.Route("/meetings/{meetingId}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitMeeting)
 					r.Delete("/", h.DeleteCockpitMeeting)
+					// Opens the meeting's task and creates its folder. Separate
+					// from the create above so either can be retried alone.
+					r.Post("/provision", h.ProvisionCockpitMeeting)
+					r.Put("/issues", h.SetCockpitMeetingIssues)
+					r.Delete("/issues/{issueId}", h.DeleteCockpitMeetingIssue)
+					r.Put("/nodes", h.SetCockpitMeetingNodes)
+					r.Delete("/nodes/{nodeId}", h.DeleteCockpitMeetingNode)
 				})
 			})
 

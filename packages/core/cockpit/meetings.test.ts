@@ -1,0 +1,230 @@
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
+import type { CockpitMeeting, CockpitMeetingIssueLink, CockpitMeetingNodeLink } from "../types";
+import {
+  buildCockpitMeetingName,
+  cockpitMeetingFolderName,
+  cockpitMeetingMinutes,
+  cockpitMeetingSpan,
+  cockpitMeetingVocabulary,
+  cockpitMeetingsByDay,
+  cockpitMonthGrid,
+  cockpitWeekDays,
+  cockpitWeekWindow,
+  groupMeetingIssues,
+  groupMeetingNodes,
+  groupMeetingsByNode,
+  nextCockpitMeetingCode,
+  shiftMonthKey,
+  sortCockpitMeetings,
+  splitCockpitMeetings,
+  splitCockpitMeetingParties,
+} from "./model";
+
+function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting {
+  return {
+    meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
+    code: "", kind: "", status: "", series: "", parties: "", organizer: "", location: "",
+    attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
+    nas_dir: "", ...over,
+  };
+}
+
+describe("meeting times", () => {
+  it("reads a wall clock and refuses one that is not one", () => {
+    expect(cockpitMeetingMinutes("10:30")).toBe(630);
+    expect(cockpitMeetingMinutes("9:05")).toBe(545);
+    expect(cockpitMeetingMinutes("24:00")).toBeNull();
+    expect(cockpitMeetingMinutes("10:70")).toBeNull();
+    expect(cockpitMeetingMinutes("")).toBeNull();
+    expect(cockpitMeetingMinutes(null)).toBeNull();
+  });
+
+  it("prefers the structured span and falls back to the text the log recorded", () => {
+    expect(cockpitMeetingSpan(meeting({ id: "a", start_time: "10:00", end_time: "11:00" })))
+      .toBe("10:00–11:00");
+    expect(cockpitMeetingSpan(meeting({ id: "b", start_time: "10:00" }))).toBe("10:00");
+    // A row nobody has re-timed still reads out of the free text it was
+    // written with, en dash and all.
+    expect(cockpitMeetingSpan(meeting({ id: "c", time_range: "15:00–16:00" }))).toBe("15:00–16:00");
+    expect(cockpitMeetingSpan(meeting({ id: "d" }))).toBe("");
+  });
+});
+
+describe("ordering and bucketing", () => {
+  const rows = [
+    meeting({ id: "late", meet_date: "2026-09-21", start_time: "15:00", title: "Afternoon" }),
+    meeting({ id: "early", meet_date: "2026-09-21", start_time: "09:00", title: "Morning" }),
+    meeting({ id: "untimed", meet_date: "2026-09-21", title: "All day" }),
+    meeting({ id: "yesterday", meet_date: "2026-09-20", title: "Yesterday" }),
+    meeting({ id: "draft", title: "No date at all" }),
+  ];
+
+  it("sorts by day then hour, with the untimed meeting leading its day", () => {
+    expect(sortCockpitMeetings(rows).map((m) => m.id)).toEqual([
+      "yesterday", "untimed", "early", "late", "draft",
+    ]);
+  });
+
+  it("buckets by day and keeps each day in time order", () => {
+    const byDay = cockpitMeetingsByDay(rows);
+    expect([...byDay.keys()]).toEqual(["2026-09-20", "2026-09-21"]);
+    expect(byDay.get("2026-09-21")!.map((m) => m.id)).toEqual(["untimed", "early", "late"]);
+    // An undated draft belongs to no day rather than to today.
+    expect([...byDay.values()].flat().some((m) => m.id === "draft")).toBe(false);
+  });
+
+  it("splits into upcoming, held and unscheduled around today", () => {
+    const split = splitCockpitMeetings(rows, "2026-09-21");
+    expect(split.upcoming.map((m) => m.id)).toEqual(["untimed", "early", "late"]);
+    expect(split.past.map((m) => m.id)).toEqual(["yesterday"]);
+    expect(split.undated.map((m) => m.id)).toEqual(["draft"]);
+  });
+
+  it("puts the most recent meeting first in the held list", () => {
+    const split = splitCockpitMeetings(
+      [
+        meeting({ id: "old", meet_date: "2026-08-01" }),
+        meeting({ id: "recent", meet_date: "2026-09-01" }),
+      ],
+      "2026-09-21",
+    );
+    expect(split.past.map((m) => m.id)).toEqual(["recent", "old"]);
+  });
+});
+
+describe("calendar geometry", () => {
+  it("anchors a week on Monday", () => {
+    // 2026-09-21 is a Monday; a Sunday must resolve to the week that just ran,
+    // not the one about to.
+    expect(cockpitWeekWindow("2026-09-21")).toEqual(["2026-09-21", "2026-09-27"]);
+    expect(cockpitWeekWindow("2026-09-27")).toEqual(["2026-09-21", "2026-09-27"]);
+    expect(cockpitWeekDays("2026-09-23")).toEqual([
+      "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27",
+    ]);
+  });
+
+  it("pads a month to whole Monday-start weeks", () => {
+    const grid = cockpitMonthGrid("2026-09");
+    expect(grid.length % 7).toBe(0);
+    // 2026-09-01 is a Tuesday, so the grid opens on the Monday before it.
+    expect(grid[0]).toBe("2026-08-31");
+    expect(grid).toContain("2026-09-30");
+    expect(grid.filter((day) => day.startsWith("2026-09"))).toHaveLength(30);
+  });
+
+  it("steps months across a year boundary", () => {
+    expect(shiftMonthKey("2026-12", 1)).toBe("2027-01");
+    expect(shiftMonthKey("2026-01", -1)).toBe("2025-12");
+  });
+});
+
+describe("the name the platform proposes", () => {
+  it("numbers per day and continues where the day left off", () => {
+    const rows = [
+      meeting({ id: "a", code: "20260921-01" }),
+      meeting({ id: "b", code: "20260921-02" }),
+      meeting({ id: "c", code: "20260920-07" }),
+    ];
+    expect(nextCockpitMeetingCode(rows, "2026-09-21")).toBe("20260921-03");
+    expect(nextCockpitMeetingCode(rows, "2026-09-22")).toBe("20260922-01");
+    expect(nextCockpitMeetingCode([], "2026-09-21")).toBe("20260921-01");
+  });
+
+  it("ignores a number a human wrote in some other shape", () => {
+    const rows = [meeting({ id: "a", code: "W38 例会" })];
+    expect(nextCockpitMeetingCode(rows, "2026-09-21")).toBe("20260921-01");
+  });
+
+  it("splits parties on whichever separator was typed", () => {
+    expect(splitCockpitMeetingParties("复星医药、华大基因")).toEqual(["复星医药", "华大基因"]);
+    expect(splitCockpitMeetingParties("A × B / C")).toEqual(["A", "B", "C"]);
+    expect(splitCockpitMeetingParties("  ")).toEqual([]);
+  });
+
+  it("composes number, parties and subject, dropping what is absent", () => {
+    expect(buildCockpitMeetingName({ code: "20260921-01", parties: "复星医药、华大基因", subject: "数据对接" }))
+      .toBe("20260921-01 复星医药×华大基因 数据对接");
+    expect(buildCockpitMeetingName({ code: "20260921-01" })).toBe("20260921-01");
+    expect(buildCockpitMeetingName({ code: "20260921-01", subject: "周例会" }))
+      .toBe("20260921-01 周例会");
+  });
+});
+
+describe("the folder a meeting files its material in", () => {
+  it("does not write the number twice when the name already carries it", () => {
+    expect(
+      cockpitMeetingFolderName({ code: "20260921-01", title: "20260921-01 复星医药×华大基因" }),
+    ).toBe("20260921-01 复星医药×华大基因");
+  });
+
+  it("prefixes the number onto a name someone typed themselves", () => {
+    expect(cockpitMeetingFolderName({ code: "20260921-01", title: "临时碰头" }))
+      .toBe("20260921-01 临时碰头");
+  });
+
+  it("falls back to whichever half it has", () => {
+    expect(cockpitMeetingFolderName({ code: "20260921-01", title: "" })).toBe("20260921-01");
+    expect(cockpitMeetingFolderName({ code: "", title: "临时碰头" })).toBe("临时碰头");
+    // A number that IS the whole name is not doubled either.
+    expect(cockpitMeetingFolderName({ code: "20260921-01", title: "20260921-01" }))
+      .toBe("20260921-01");
+  });
+});
+
+describe("links", () => {
+  const issues: CockpitMeetingIssueLink[] = [
+    { meeting_id: "m1", issue_id: "i2", role: "", issue_number: 2, issue_identifier: "BIO-2",
+      issue_title: "Second", issue_status: "todo", position: 1 },
+    { meeting_id: "m1", issue_id: "i1", role: "task", issue_number: 1, issue_identifier: "BIO-1",
+      issue_title: "The meeting task", issue_status: "todo", position: -1 },
+    { meeting_id: "m2", issue_id: "i3", role: "", issue_number: 3, issue_identifier: "BIO-3",
+      issue_title: "Other", issue_status: "done", position: 0 },
+  ];
+  const nodeLinks: CockpitMeetingNodeLink[] = [
+    { meeting_id: "m1", node_id: "n1", position: 0 },
+    { meeting_id: "m2", node_id: "n1", position: 0 },
+  ];
+
+  it("groups a meeting's issues in position order, the meeting's own task first", () => {
+    const grouped = groupMeetingIssues(issues);
+    expect(grouped.get("m1")!.map((l) => l.issue_id)).toEqual(["i1", "i2"]);
+    expect(grouped.get("m2")!).toHaveLength(1);
+  });
+
+  it("groups a meeting's work items", () => {
+    expect(groupMeetingNodes(nodeLinks).get("m1")!.map((l) => l.node_id)).toEqual(["n1"]);
+  });
+
+  it("reads the other way round, newest meeting first, and drops links to meetings that are gone", () => {
+    const meetings = [
+      meeting({ id: "m1", meet_date: "2026-09-01", title: "First" }),
+      meeting({ id: "m2", meet_date: "2026-09-15", title: "Second" }),
+    ];
+    const byNode = groupMeetingsByNode(meetings, [
+      ...nodeLinks,
+      { meeting_id: "deleted", node_id: "n1", position: 0 },
+    ]);
+    expect(byNode.get("n1")!.map((m) => m.id)).toEqual(["m2", "m1"]);
+  });
+});
+
+describe("vocabulary", () => {
+  it("offers the words the board already uses, parties split into their own list", () => {
+    const rows = [
+      meeting({ id: "a", kind: "例会", status: "已召开", series: "周例会",
+        parties: "复星医药、华大基因", organizer: "杨涛", location: "大湾区" }),
+      meeting({ id: "b", kind: "研讨", parties: "复星医药、联通", organizer: "杨涛" }),
+      meeting({ id: "c" }),
+    ];
+    const vocabulary = cockpitMeetingVocabulary(rows);
+    expect(vocabulary.kinds).toEqual(["例会", "研讨"].sort((a, b) => a.localeCompare(b)));
+    expect(vocabulary.parties).toContain("华大基因");
+    expect(vocabulary.parties).toContain("联通");
+    // "复星医药" appears in two meetings and must be offered once.
+    expect(vocabulary.parties.filter((p) => p === "复星医药")).toHaveLength(1);
+    // An empty field is not vocabulary.
+    expect(vocabulary.locations).toEqual(["大湾区"]);
+    expect(vocabulary.organizers).toEqual(["杨涛"]);
+  });
+});

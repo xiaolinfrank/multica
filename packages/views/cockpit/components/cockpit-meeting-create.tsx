@@ -1,0 +1,380 @@
+"use client";
+
+// Filing a meeting.
+//
+// Three things happen at once and all three are shown before any of them do:
+// the meeting gets a name the platform composes, a task is opened under the
+// project and module the programme keeps its meetings in, and a folder is
+// created for its material. Each is a checkbox and each says exactly what it
+// will produce — the destination project, the module, the absolute path — so
+// nothing about this form is a surprise afterwards.
+
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { CockpitMeeting, CockpitMeetingProvision } from "@multica/core/types";
+import {
+  buildCockpitMeetingName,
+  cockpitMeetingDestinationOptions,
+  cockpitMeetingFolderName,
+  cockpitMeetingVocabulary,
+  nextCockpitMeetingCode,
+} from "@multica/core/cockpit";
+import { moduleListOptions } from "@multica/core/modules/queries";
+import { projectListOptions } from "@multica/core/projects/queries";
+import { Button } from "@multica/ui/components/ui/button";
+import { Checkbox } from "@multica/ui/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@multica/ui/components/ui/dialog";
+import { Input } from "@multica/ui/components/ui/input";
+import { Label } from "@multica/ui/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@multica/ui/components/ui/select";
+import { Spinner } from "@multica/ui/components/ui/spinner";
+import { useT } from "../../i18n";
+
+export interface CockpitMeetingDraft {
+  meet_date: string;
+  start_time: string;
+  end_time: string;
+  kind: string;
+  parties: string;
+  title: string;
+  code: string;
+}
+
+export interface CockpitMeetingCreateProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  wsId: string;
+  today: string;
+  meetings: CockpitMeeting[];
+  /** The board's remembered destination, pre-selected in the pickers. */
+  defaultProjectId: string | null;
+  defaultModuleId: string | null;
+  /** Resolves once the meeting row exists and provisioning has answered. */
+  onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => Promise<unknown>;
+}
+
+export function CockpitMeetingCreate({
+  open,
+  onOpenChange,
+  wsId,
+  today,
+  meetings,
+  defaultProjectId,
+  defaultModuleId,
+  onSubmit,
+}: CockpitMeetingCreateProps) {
+  const { t } = useT("cockpit");
+  const { t: common } = useT("common");
+
+  const [date, setDate] = useState(today);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [kind, setKind] = useState("");
+  const [parties, setParties] = useState("");
+  const [subject, setSubject] = useState("");
+  // Empty means "follow the generated name"; once someone types, their name
+  // wins and nothing regenerates it under them.
+  const [nameOverride, setNameOverride] = useState("");
+  const [projectId, setProjectId] = useState(defaultProjectId ?? "");
+  const [moduleId, setModuleId] = useState(defaultModuleId ?? "");
+  const [withTask, setWithTask] = useState(true);
+  const [withDir, setWithDir] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Re-opening the form starts a new meeting, not the last one again.
+  useEffect(() => {
+    if (!open) return;
+    setDate(today);
+    setStartTime("");
+    setEndTime("");
+    setKind("");
+    setParties("");
+    setSubject("");
+    setNameOverride("");
+    setProjectId(defaultProjectId ?? "");
+    setModuleId(defaultModuleId ?? "");
+    setWithTask(true);
+    setWithDir(true);
+    setSubmitting(false);
+  }, [open, today, defaultProjectId, defaultModuleId]);
+
+  const projects = useQuery({ ...projectListOptions(wsId), enabled: open && Boolean(wsId) });
+  const modules = useQuery({
+    ...moduleListOptions(wsId, projectId || undefined),
+    enabled: open && Boolean(wsId),
+  });
+  const destination = useQuery({
+    ...cockpitMeetingDestinationOptions(wsId, {
+      projectId: projectId || undefined,
+      moduleId: moduleId || undefined,
+    }),
+    enabled: open && Boolean(wsId) && Boolean(projectId),
+  });
+
+  const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
+  const code = useMemo(() => nextCockpitMeetingCode(meetings, date || today), [meetings, date, today]);
+  const generated = useMemo(
+    () => buildCockpitMeetingName({ code, parties, subject }),
+    [code, parties, subject],
+  );
+  const name = nameOverride.trim() ? nameOverride : generated;
+  const folderName = cockpitMeetingFolderName({ code, title: name });
+
+  const projectTitle =
+    projects.data?.find((p) => p.id === projectId)?.title ?? destination.data?.project_title ?? "";
+  const moduleTitle =
+    modules.data?.find((m) => m.id === moduleId)?.title ?? destination.data?.module_title ?? "";
+  const baseDir = destination.data?.base_dir ?? "";
+  const destinationError = destination.data?.error ?? "";
+  const canFile = Boolean(projectId && moduleId);
+  const canCreateDir = Boolean(baseDir) && (destination.data?.base_dir_exists ?? false);
+
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(
+        {
+          meet_date: date,
+          start_time: startTime.trim(),
+          end_time: endTime.trim(),
+          kind: kind.trim(),
+          parties: parties.trim(),
+          title: name.trim() || code,
+          code,
+        },
+        {
+          create_task: withTask && canFile,
+          create_dir: withDir && canCreateDir,
+          project_id: projectId || undefined,
+          module_id: moduleId || undefined,
+          base_dir: baseDir || undefined,
+          remember: true,
+        },
+      );
+      // Only closes once the write came back — a failed create must leave the
+      // form and everything typed into it exactly where they were.
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (submitting ? undefined : onOpenChange(next))}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{t(($) => $.meetings.create_title)}</DialogTitle>
+          <DialogDescription>{t(($) => $.meetings.create_description)}</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-date">{t(($) => $.meeting.date)}</Label>
+              <Input
+                id="cockpit-meeting-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-start">{t(($) => $.meeting.start_time)}</Label>
+              <Input
+                id="cockpit-meeting-start"
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-end">{t(($) => $.meeting.end_time)}</Label>
+              <Input
+                id="cockpit-meeting-end"
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-kind">{t(($) => $.meeting.kind)}</Label>
+              <Input
+                id="cockpit-meeting-kind"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                list="cockpit-meeting-kinds"
+              />
+              <datalist id="cockpit-meeting-kinds">
+                {vocabulary.kinds.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-parties">{t(($) => $.meeting.parties)}</Label>
+              <Input
+                id="cockpit-meeting-parties"
+                value={parties}
+                onChange={(e) => setParties(e.target.value)}
+                list="cockpit-meeting-parties-list"
+              />
+              <datalist id="cockpit-meeting-parties-list">
+                {vocabulary.parties.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="cockpit-meeting-subject">{t(($) => $.meetings.create_subject)}</Label>
+            <Input
+              id="cockpit-meeting-subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder={t(($) => $.meetings.create_subject_placeholder)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="cockpit-meeting-name">{t(($) => $.meetings.name_preview)}</Label>
+            <Input
+              id="cockpit-meeting-name"
+              value={name}
+              onChange={(e) => setNameOverride(e.target.value)}
+            />
+            <p className="text-caption text-muted-foreground">
+              {t(($) => $.meetings.name_preview_hint)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-md border border-border p-3">
+            <div className="col-span-2 text-micro font-medium tracking-wide text-muted-foreground uppercase">
+              {t(($) => $.meetings.destination)}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-project">
+                {t(($) => $.meetings.destination_project)}
+              </Label>
+              <Select
+                items={(projects.data ?? []).map((p) => ({ value: p.id, label: p.title }))}
+                value={projectId}
+                onValueChange={(value) => {
+                  setProjectId(typeof value === "string" ? value : "");
+                  setModuleId("");
+                }}
+              >
+                <SelectTrigger id="cockpit-meeting-project" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(projects.data ?? []).map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-module">
+                {t(($) => $.meetings.destination_module)}
+              </Label>
+              <Select
+                items={(modules.data ?? []).map((m) => ({ value: m.id, label: m.title }))}
+                value={moduleId}
+                onValueChange={(value) => setModuleId(typeof value === "string" ? value : "")}
+              >
+                <SelectTrigger id="cockpit-meeting-module" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(modules.data ?? []).map((module) => (
+                    <SelectItem key={module.id} value={module.id}>
+                      {module.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <label className="col-span-2 flex items-start gap-2">
+              <Checkbox
+                checked={withTask && canFile}
+                disabled={!canFile}
+                onCheckedChange={(checked) => setWithTask(checked === true)}
+              />
+              <span className="flex min-w-0 flex-col">
+                <span className="text-body">{t(($) => $.meetings.with_task)}</span>
+                <span className="text-caption text-muted-foreground">
+                  {canFile
+                    ? t(($) => $.meetings.with_task_hint, {
+                        project: projectTitle,
+                        module: moduleTitle,
+                      })
+                    : t(($) => $.meetings.with_task_unset)}
+                </span>
+              </span>
+            </label>
+
+            <label className="col-span-2 flex items-start gap-2">
+              <Checkbox
+                checked={withDir && canCreateDir}
+                disabled={!canCreateDir}
+                onCheckedChange={(checked) => setWithDir(checked === true)}
+              />
+              <span className="flex min-w-0 flex-col">
+                <span className="text-body">{t(($) => $.meetings.with_dir)}</span>
+                <span className="text-caption break-all text-muted-foreground">
+                  {destinationError
+                    ? t(($) => $.meetings.with_dir_unavailable, { reason: destinationError })
+                    : !baseDir
+                      ? t(($) => $.meetings.with_dir_unavailable, {
+                          reason: t(($) => $.meetings.with_task_unset),
+                        })
+                      : !canCreateDir
+                        ? t(($) => $.meetings.destination_missing)
+                        : t(($) => $.meetings.with_dir_at, {
+                            path: `${baseDir}/${folderName}`,
+                          })}
+                </span>
+                {canCreateDir && destination.data?.derived && (
+                  <span className="text-caption text-muted-foreground">
+                    {t(($) => $.meetings.destination_derived)}
+                  </span>
+                )}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
+            {common(($) => $.cancel)}
+          </Button>
+          <Button disabled={submitting} aria-busy={submitting} onClick={() => void submit()}>
+            {submitting && <Spinner />}
+            {t(($) => $.meetings.create_submit)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

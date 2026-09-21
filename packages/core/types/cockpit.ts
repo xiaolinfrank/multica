@@ -22,6 +22,15 @@ export interface Cockpit {
   summary_support: string;
   /** Free-text provenance line for the whole board. */
   basis: string;
+  /**
+   * Where a new meeting files its task and its folder: a project, one of its
+   * modules, and the directory their material goes in. Chosen in the product
+   * and remembered here — which project a programme keeps its meetings in is
+   * a property of the programme, not of the code.
+   */
+  meeting_project_id: string | null;
+  meeting_module_id: string | null;
+  meeting_dir: string;
   created_at: string;
   updated_at: string;
 }
@@ -100,13 +109,68 @@ export interface CockpitMilestone {
 export interface CockpitMeeting {
   id: string;
   meet_date: string | null;
-  /** Free text ("10:00–11:00"): recorded as people wrote it. */
+  /** Free text ("10:00–11:00"): what the log recorded before the span was
+   *  structured. Rows written since carry start_time/end_time instead, and
+   *  `cockpitMeetingSpan` is what renders either of them. */
   time_range: string;
+  /** "HH:MM", null for a meeting nobody has timed. The calendar views place a
+   *  meeting by these; an untimed one sits in the all-day lane. */
+  start_time: string | null;
+  end_time: string | null;
   title: string;
+  /** The platform's own number, "20260921-01" — the date and that day's
+   *  sequence. `meet_no` is the conferencing system's dial-in number, which
+   *  belongs to the provider and is a different thing entirely. */
+  code: string;
+  /** Free text, like every other vocabulary field on this board: the
+   *  programme's own words for what kind of meeting it was and where it
+   *  stands. */
+  kind: string;
+  status: string;
+  /** Recurring meetings name their series ("项目组周例会") so a run of them
+   *  reads as one thread. */
+  series: string;
+  /** The organisations at the table. `attendees` lists people. */
+  parties: string;
+  organizer: string;
+  location: string;
   attendees: string;
   meet_no: string;
   link: string;
+  /** The agenda and running remarks, one line per point. */
   note: string;
+  minutes: string;
+  decisions: string;
+  actions: string;
+  /** Absolute path of the meeting's folder on the shared NAS, as the daemon
+   *  hosts mount it. Written by provisioning; rendered through the shared
+   *  local-path affordance, never as a bare link. */
+  nas_dir: string;
+}
+
+/**
+ * One issue a meeting is carried out through. The pair (meeting_id, issue_id)
+ * is the row's identity — there is no surrogate key — so a list keys on both.
+ */
+export interface CockpitMeetingIssueLink {
+  meeting_id: string;
+  issue_id: string;
+  /** "task" for the issue the platform opened with the meeting, "" for one
+   *  someone attached by hand. */
+  role: string;
+  issue_number: number;
+  /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
+  issue_identifier: string;
+  issue_title: string;
+  issue_status: string;
+  position: number;
+}
+
+/** One work-breakdown item a meeting was about. */
+export interface CockpitMeetingNodeLink {
+  meeting_id: string;
+  node_id: string;
+  position: number;
 }
 
 export interface CockpitBoard {
@@ -116,6 +180,8 @@ export interface CockpitBoard {
   issue_links: CockpitIssueLink[];
   milestones: CockpitMilestone[];
   meetings: CockpitMeeting[];
+  meeting_issues: CockpitMeetingIssueLink[];
+  meeting_nodes: CockpitMeetingNodeLink[];
 }
 
 /**
@@ -130,6 +196,8 @@ export type CockpitEventScope =
   | "issue_links"
   | "milestone"
   | "meeting"
+  | "meeting_issues"
+  | "meeting_nodes"
   | "board"
   | "changes"
   | "snapshots";
@@ -151,6 +219,9 @@ export type CockpitPatch = Partial<
     | "summary_next"
     | "summary_support"
     | "basis"
+    | "meeting_project_id"
+    | "meeting_module_id"
+    | "meeting_dir"
   >
 >;
 
@@ -193,8 +264,82 @@ export type CockpitMilestonePatch = Partial<
 >;
 
 export type CockpitMeetingPatch = Partial<
-  Pick<CockpitMeeting, "meet_date" | "time_range" | "title" | "attendees" | "meet_no" | "link" | "note">
+  Pick<
+    CockpitMeeting,
+    | "meet_date"
+    | "time_range"
+    | "start_time"
+    | "end_time"
+    | "title"
+    | "code"
+    | "kind"
+    | "status"
+    | "series"
+    | "parties"
+    | "organizer"
+    | "location"
+    | "attendees"
+    | "meet_no"
+    | "link"
+    | "note"
+    | "minutes"
+    | "decisions"
+    | "actions"
+    | "nas_dir"
+  >
 >;
+
+/**
+ * What filing a meeting asks the server to set up alongside the row: the task
+ * it is carried out through, and the folder its material goes in. Both are
+ * optional and both report their own outcome — an unmounted share must not
+ * cost someone the record of a meeting that happened.
+ */
+export interface CockpitMeetingProvision {
+  create_task?: boolean;
+  create_dir?: boolean;
+  project_id?: string;
+  module_id?: string;
+  /** The folder to create the meeting's folder in, and what to call it.
+   *  Absent means "derive both", which is what the form sends back after
+   *  showing the derivation to a human. */
+  base_dir?: string;
+  folder_name?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  /** Store this destination on the board so later meetings pre-fill it. */
+  remember?: boolean;
+}
+
+export interface CockpitMeetingProvisionResult {
+  meeting: CockpitMeeting;
+  issues: CockpitMeetingIssueLink[];
+  task: CockpitMeetingIssueLink | null;
+  /** Why the task or the folder is missing. Empty on success; a filled one is
+   *  not a failed request — the meeting is saved and the part that failed can
+   *  be retried. */
+  task_error: string;
+  dir: string;
+  dir_created: boolean;
+  dir_error: string;
+}
+
+/** Where a new meeting would be filed, for the form to show before it is. */
+export interface CockpitMeetingDestination {
+  project_id: string;
+  project_title: string;
+  module_id: string;
+  module_title: string;
+  collab_path: string;
+  base_dir: string;
+  /** True when base_dir was worked out from the project and module rather
+   *  than confirmed by someone — the form shows it as a proposal. */
+  derived: boolean;
+  /** True when base_dir exists on the server right now. False is not an
+   *  error: the share may simply not be mounted there. */
+  base_dir_exists: boolean;
+  error: string;
+}
 
 /**
  * One proposed field edit waiting for a human. Nothing on the board moved to

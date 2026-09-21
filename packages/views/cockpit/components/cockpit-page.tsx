@@ -13,7 +13,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type {
   CockpitIssueLink,
+  CockpitMeeting,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
   CockpitMeetingPatch,
+  CockpitMeetingProvision,
   CockpitMilestonePatch,
   CockpitNode,
   CockpitNodePatch,
@@ -31,6 +35,9 @@ import {
   cockpitSummaryCollapseIds,
   cockpitTasksCsv,
   flattenCockpitTree,
+  groupMeetingIssues,
+  groupMeetingNodes,
+  groupMeetingsByNode,
   groupIssueLinksByNode,
   groupPaymentsByNode,
   useCreateCockpitMeeting,
@@ -40,8 +47,13 @@ import {
   useDeleteCockpitMeeting,
   useDeleteCockpitMilestone,
   useDeleteCockpitNode,
+  useDeleteCockpitMeetingIssue,
+  useDeleteCockpitMeetingNode,
   useDeleteCockpitNodeIssue,
   useDeleteCockpitPayment,
+  useProvisionCockpitMeeting,
+  useSetCockpitMeetingIssues,
+  useSetCockpitMeetingNodes,
   useSetCockpitNodeIssues,
   useUpdateCockpit,
   useUpdateCockpitMeeting,
@@ -89,14 +101,17 @@ import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
 import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
+import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meeting-create";
+import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
+import { CockpitMeetings } from "./cockpit-meetings";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
 import { CockpitVersions } from "./cockpit-versions";
 
-type CockpitTab = "overview" | "gantt" | "changes" | "finance";
+type CockpitTab = "overview" | "gantt" | "meetings" | "changes" | "finance";
 
-const TABS: CockpitTab[] = ["overview", "gantt", "changes", "finance"];
+const TABS: CockpitTab[] = ["overview", "gantt", "meetings", "changes", "finance"];
 
 // Stable empty arrays: an inline `?? []` allocates a fresh array on every
 // render while the board query is loading, which invalidates every memo
@@ -104,6 +119,9 @@ const TABS: CockpitTab[] = ["overview", "gantt", "changes", "finance"];
 const EMPTY_NODES: CockpitNode[] = [];
 const EMPTY_PAYMENTS: CockpitPayment[] = [];
 const EMPTY_LINKS: CockpitIssueLink[] = [];
+const EMPTY_MEETINGS: CockpitMeeting[] = [];
+const EMPTY_MEETING_ISSUES: CockpitMeetingIssueLink[] = [];
+const EMPTY_MEETING_NODES: CockpitMeetingNodeLink[] = [];
 
 /**
  * One derived headline figure for the toolbar: a label, a percentage and a
@@ -192,6 +210,8 @@ export function CockpitPage() {
   const [rootIds, setRootIds] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [showFinance, setShowFinance] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(true);
   const [deletion, setDeletion] = useState<{ kind: "meeting" | "milestone" | "payment"; id: string; label: string } | null>(null);
@@ -237,6 +257,11 @@ export function CockpitPage() {
   const createMeeting = useCreateCockpitMeeting(wsId);
   const updateMeeting = useUpdateCockpitMeeting(wsId);
   const deleteMeeting = useDeleteCockpitMeeting(wsId);
+  const provisionMeeting = useProvisionCockpitMeeting(wsId);
+  const setMeetingIssues = useSetCockpitMeetingIssues(wsId);
+  const unlinkMeetingIssue = useDeleteCockpitMeetingIssue(wsId);
+  const setMeetingNodes = useSetCockpitMeetingNodes(wsId);
+  const unlinkMeetingNode = useDeleteCockpitMeetingNode(wsId);
 
   // `board?.nodes ?? []` inline would mint a new array on every render where
   // the query is still loading, invalidating every memo below it.
@@ -248,6 +273,15 @@ export function CockpitPage() {
   const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
   const summaryFlat = useMemo(() => flattenCockpitTree(summaryTree), [summaryTree]);
   const displayCodes = useMemo(() => buildCockpitDisplayCodes(summaryTree), [summaryTree]);
+  // "06.06.02 会议台账与会议号" — how a linked work item reads wherever it is
+  // named outside the gantt itself.
+  const nodeLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const node of nodes) {
+      labels.set(node.id, `${displayCodes.get(node.id) ?? node.code} ${node.name}`.trim());
+    }
+    return labels;
+  }, [nodes, displayCodes]);
   // The summary tree's parent links, for jumps that must open a row whose
   // display parent is a merged group rather than its stored parent.
   const summaryParent = useMemo(() => {
@@ -284,10 +318,30 @@ export function CockpitPage() {
   const ownerSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.owner)), [nodes]);
   const vendorSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.vendor)), [nodes]);
 
+  const meetings = board?.meetings ?? EMPTY_MEETINGS;
+  const meetingIssues = board?.meeting_issues ?? EMPTY_MEETING_ISSUES;
+  const meetingNodes = board?.meeting_nodes ?? EMPTY_MEETING_NODES;
+  const meetingIssuesByMeeting = useMemo(() => groupMeetingIssues(meetingIssues), [meetingIssues]);
+  const meetingNodesByMeeting = useMemo(() => groupMeetingNodes(meetingNodes), [meetingNodes]);
+  const meetingsByNode = useMemo(
+    () => groupMeetingsByNode(meetings, meetingNodes),
+    [meetings, meetingNodes],
+  );
+  const selectedMeeting = useMemo(
+    () => meetings.find((m) => m.id === selectedMeetingId) ?? null,
+    [meetings, selectedMeetingId],
+  );
+
   // A node deleted by someone else must not leave the panel showing a ghost.
   useEffect(() => {
     if (selectedId && !nodeById.has(selectedId)) setSelectedId(null);
   }, [selectedId, nodeById]);
+
+  useEffect(() => {
+    if (selectedMeetingId && !meetings.some((m) => m.id === selectedMeetingId)) {
+      setSelectedMeetingId(null);
+    }
+  }, [selectedMeetingId, meetings]);
 
   const fail = useCallback(
     (error: unknown) => {
@@ -443,7 +497,96 @@ export function CockpitPage() {
     );
   }, [selectedId, nodeById, nodes, createNode, fail]);
 
+  // Linking is additive at this level, same as a work item's issues: the
+  // picker sends the full set it wants rather than a diff.
+  const linkMeetingIssue = useCallback(
+    (meetingId: string, issueId: string) => {
+      const current = (meetingIssuesByMeeting.get(meetingId) ?? []).map((l) => l.issue_id);
+      if (current.includes(issueId)) return;
+      setMeetingIssues.mutate(
+        { meetingId, issueIds: [...current, issueId], replace: true },
+        { onError: fail },
+      );
+    },
+    [meetingIssuesByMeeting, setMeetingIssues, fail],
+  );
+
+  const toggleMeetingNode = useCallback(
+    (meetingId: string, nodeId: string) => {
+      const current = (meetingNodesByMeeting.get(meetingId) ?? []).map((l) => l.node_id);
+      if (current.includes(nodeId)) {
+        unlinkMeetingNode.mutate({ meetingId, nodeId }, { onError: fail });
+        return;
+      }
+      setMeetingNodes.mutate(
+        { meetingId, nodeIds: [...current, nodeId], replace: true },
+        { onError: fail },
+      );
+    },
+    [meetingNodesByMeeting, setMeetingNodes, unlinkMeetingNode, fail],
+  );
+
+  /** Reports what provisioning actually managed, part by part. */
+  const reportProvision = useCallback(
+    (result: { task: { issue_identifier: string } | null; task_error: string; dir_created: boolean; dir_error: string }) => {
+      if (result.task) {
+        toast.success(t(($) => $.meetings.task_opened, { identifier: result.task!.issue_identifier }));
+      }
+      if (result.task_error) {
+        toast.error(t(($) => $.meetings.task_failed, { reason: result.task_error }));
+      }
+      if (result.dir_created) toast.success(t(($) => $.meetings.dir_created));
+      if (result.dir_error) {
+        toast.error(t(($) => $.meetings.dir_failed, { reason: result.dir_error }));
+      }
+    },
+    [t],
+  );
+
+  const provisionSelectedMeeting = useCallback(
+    (meetingId: string, parts: { task?: boolean; dir?: boolean }) => {
+      provisionMeeting.mutate(
+        {
+          id: meetingId,
+          body: { create_task: parts.task === true, create_dir: parts.dir === true, remember: true },
+        },
+        { onSuccess: reportProvision, onError: fail },
+      );
+    },
+    [provisionMeeting, reportProvision, fail],
+  );
+
+  /** Files a meeting: the row first, then whatever the form asked for on top
+   *  of it. The row is what must not be lost, so it is written on its own. */
+  const submitMeeting = useCallback(
+    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => {
+      try {
+        const meeting = await createMeeting.mutateAsync({
+          meet_date: draft.meet_date || null,
+          start_time: draft.start_time || null,
+          end_time: draft.end_time || null,
+          kind: draft.kind,
+          parties: draft.parties,
+          title: draft.title,
+          code: draft.code,
+        });
+        setSelectedMeetingId(meeting.id);
+        setTab("meetings");
+        if (provision.create_task || provision.create_dir) {
+          const result = await provisionMeeting.mutateAsync({ id: meeting.id, body: provision });
+          reportProvision(result);
+        }
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+    },
+    [createMeeting, provisionMeeting, reportProvision, fail],
+  );
+
   const requestDeletion = (kind: "meeting" | "milestone" | "payment", id: string) => {
+    // Deleting the selected meeting closes its panel once the server agrees;
+    // the panel itself only asks.
     deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const label = kind === "meeting"
       ? t(($) => $.meeting.delete, { title: board?.meetings.find((item) => item.id === id)?.title ?? "" })
@@ -510,6 +653,15 @@ export function CockpitPage() {
 
   const roots = tree.map((entry) => entry.node);
   const isBoardView = tab === "gantt" || tab === "finance";
+  // A lookup rather than a ternary chain: five tabs is where the chain stops
+  // being readable and starts hiding a missing label.
+  const tabLabels: Record<CockpitTab, string> = {
+    overview: t(($) => $.tabs.overview),
+    gantt: t(($) => $.tabs.gantt),
+    meetings: t(($) => $.tabs.meetings),
+    changes: t(($) => $.tabs.changes),
+    finance: t(($) => $.tabs.finance),
+  };
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
@@ -537,13 +689,7 @@ export function CockpitPage() {
                   : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
               )}
             >
-              {key === "overview"
-                ? t(($) => $.tabs.overview)
-                : key === "gantt"
-                  ? t(($) => $.tabs.gantt)
-                  : key === "changes"
-                    ? t(($) => $.tabs.changes)
-                    : t(($) => $.tabs.finance)}
+              {tabLabels[key]}
               {key === "changes" && pendingCount > 0 && (
                 <span
                   className="ml-1 rounded-full bg-brand px-1.5 py-px text-micro leading-4 font-medium text-brand-foreground"
@@ -748,10 +894,20 @@ export function CockpitPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button size="sm" className="h-7 gap-1 px-2" onClick={addNode}>
-          <Plus className="size-3.5" />
-          {t(($) => $.toolbar.add_node)}
-        </Button>
+        {/* The register's primary action is a meeting, not a work item —
+            offering "add node" while showing meetings would file the wrong
+            thing in one click. */}
+        {tab === "meetings" ? (
+          <Button size="sm" className="h-7 gap-1 px-2" onClick={() => setCreatingMeeting(true)}>
+            <Plus className="size-3.5" />
+            {t(($) => $.meeting.new)}
+          </Button>
+        ) : (
+          <Button size="sm" className="h-7 gap-1 px-2" onClick={addNode}>
+            <Plus className="size-3.5" />
+            {t(($) => $.toolbar.add_node)}
+          </Button>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -773,6 +929,10 @@ export function CockpitPage() {
                   createMeeting.mutate({ title: t(($) => $.meeting.new), meet_date: today }, { onError: fail })
                 }
                 onDeleteMeeting={(id) => requestDeletion("meeting", id)}
+                onOpenMeetings={(meetingId) => {
+                  setSelectedMeetingId(meetingId ?? null);
+                  setTab("meetings");
+                }}
                 onOpenBranch={(nodeId) => {
                   setRootIds(new Set([nodeId]));
                   setTab("gantt");
@@ -809,8 +969,22 @@ export function CockpitPage() {
               toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
+              onOpenMeeting={(meetingId) => {
+                setSelectedMeetingId(meetingId);
+                setTab("meetings");
+              }}
             />
             </div>
+          )}
+
+          {tab === "meetings" && (
+            <CockpitMeetings
+              board={board}
+              today={today}
+              selectedId={selectedMeetingId}
+              onSelect={setSelectedMeetingId}
+              onCreate={() => setCreatingMeeting(true)}
+            />
           )}
 
           {tab === "changes" && (
@@ -835,13 +1009,37 @@ export function CockpitPage() {
           )}
         </div>
 
-        {selected && (
+        {tab === "meetings" && selectedMeeting && (
+          <CockpitMeetingPanel
+            key={selectedMeeting.id}
+            meeting={selectedMeeting}
+            nodes={nodes}
+            meetings={meetings}
+            issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
+            nodeLinks={meetingNodesByMeeting.get(selectedMeeting.id) ?? []}
+            nodeLabels={nodeLabels}
+            onPatch={(patch) => patchMeeting(selectedMeeting.id, patch)}
+            onClose={() => setSelectedMeetingId(null)}
+            onDelete={() => requestDeletion("meeting", selectedMeeting.id)}
+            onLinkIssue={(issueId) => linkMeetingIssue(selectedMeeting.id, issueId)}
+            onUnlinkIssue={(issueId) =>
+              unlinkMeetingIssue.mutate({ meetingId: selectedMeeting.id, issueId }, { onError: fail })
+            }
+            onToggleNode={(nodeId) => toggleMeetingNode(selectedMeeting.id, nodeId)}
+            onOpenNode={openTask}
+            onProvision={(parts) => provisionSelectedMeeting(selectedMeeting.id, parts)}
+            provisioning={provisionMeeting.isPending}
+          />
+        )}
+
+        {tab !== "meetings" && selected && (
           <CockpitNodePanel
             key={selected.id}
             node={selected}
             parent={selected.parent_id ? nodeById.get(selected.parent_id) : undefined}
             payments={paymentsByNode.get(selected.id) ?? []}
             links={linksByNode.get(selected.id) ?? []}
+            meetings={meetingsByNode.get(selected.id) ?? []}
             isBranch={(selectedEntry?.children.length ?? 0) > 0}
             depth={selectedEntry?.depth ?? 0}
             deleteConfirmationDescription={(selectedEntry?.children.length ?? 0) > 0
@@ -864,6 +1062,10 @@ export function CockpitPage() {
             onUnlinkIssue={(issueId) =>
               unlinkIssue.mutate({ nodeId: selected.id, issueId }, { onError: fail })
             }
+            onOpenMeeting={(meetingId) => {
+              setSelectedMeetingId(meetingId);
+              setTab("meetings");
+            }}
             onCreatePayment={() =>
               createPayment.mutate(
                 {
@@ -884,6 +1086,16 @@ export function CockpitPage() {
           />
         )}
       </div>
+      <CockpitMeetingCreate
+        open={creatingMeeting}
+        onOpenChange={setCreatingMeeting}
+        wsId={wsId}
+        today={today}
+        meetings={meetings}
+        defaultProjectId={board.cockpit.meeting_project_id}
+        defaultModuleId={board.cockpit.meeting_module_id}
+        onSubmit={submitMeeting}
+      />
       <AlertDialog open={deletion !== null} onOpenChange={(open) => {
         if (!open && !deletionLock.current) setDeletion(null);
       }}>

@@ -466,6 +466,72 @@ describe("ApiClient server Table query", () => {
     expect(board.cockpit.title).toBe("");
   });
 
+  it("falls back per part when provisioning a meeting answers badly", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ meeting: null, task: "nope" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    const result = await client.provisionCockpitMeeting("m1", { create_task: true });
+    // The meeting itself is what the caller re-renders; an empty one is the
+    // honest answer to a response that cannot be read.
+    expect(result.meeting.id).toBe("");
+    expect(result.task).toBeNull();
+    expect(result.issues).toEqual([]);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/cockpit/meetings/m1/provision");
+  });
+
+  it("asks the destination endpoint for the project and module the form is showing", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ project_id: "p1", base_dir: "/Volumes/share/06.06" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    const destination = await client.getCockpitMeetingDestination({
+      projectId: "p1",
+      moduleId: "m9",
+    });
+    expect(destination.base_dir).toBe("/Volumes/share/06.06");
+    expect(destination.base_dir_exists).toBe(false);
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("project_id=p1");
+    expect(url).toContain("module_id=m9");
+  });
+
+  it("returns an empty link set when a meeting's links come back malformed", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ meeting_id: "m1", links: "not-an-array" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    await expect(client.setCockpitMeetingIssues("m1", ["BIO-1"])).resolves.toEqual({
+      meeting_id: "m1",
+      links: [],
+    });
+    await expect(client.setCockpitMeetingNodes("m1", ["06.06.02"])).resolves.toEqual({
+      meeting_id: "m1",
+      links: [],
+    });
+  });
+
   it("keeps a cockpit node an older backend under-populates", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(

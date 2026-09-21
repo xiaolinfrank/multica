@@ -53,8 +53,14 @@ type CockpitResponse struct {
 	SummaryNext    string  `json:"summary_next"`
 	SummarySupport string  `json:"summary_support"`
 	Basis          string  `json:"basis"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
+	// Where a new meeting's task and folder go. Chosen once per board and
+	// echoed here so the create-meeting form can show the destination before
+	// anything is created. Null until someone picks one.
+	MeetingProjectID *string `json:"meeting_project_id"`
+	MeetingModuleID  *string `json:"meeting_module_id"`
+	MeetingDir       string  `json:"meeting_dir"`
+	CreatedAt        string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
 }
 
 type CockpitNodeResponse struct {
@@ -122,14 +128,56 @@ type CockpitMilestoneResponse struct {
 }
 
 type CockpitMeetingResponse struct {
-	ID        string  `json:"id"`
-	MeetDate  *string `json:"meet_date"`
-	TimeRange string  `json:"time_range"`
+	ID       string  `json:"id"`
+	MeetDate *string `json:"meet_date"`
+	// The span as free text, kept from the log this register grew out of. New
+	// writes set start_time/end_time instead; a row that only ever carried
+	// text still reads out of here.
+	TimeRange string `json:"time_range"`
+	// "HH:MM", or null for a meeting nobody has timed.
+	StartTime *string `json:"start_time"`
+	EndTime   *string `json:"end_time"`
 	Title     string  `json:"title"`
-	Attendees string  `json:"attendees"`
-	MeetNo    string  `json:"meet_no"`
-	Link      string  `json:"link"`
-	Note      string  `json:"note"`
+	// The platform's own number for the meeting ("20260921-01"): the date and
+	// that day's sequence. MeetNo is the conferencing system's dial-in number.
+	Code      string `json:"code"`
+	Kind      string `json:"kind"`
+	Status    string `json:"status"`
+	Series    string `json:"series"`
+	Parties   string `json:"parties"`
+	Organizer string `json:"organizer"`
+	Location  string `json:"location"`
+	Attendees string `json:"attendees"`
+	MeetNo    string `json:"meet_no"`
+	Link      string `json:"link"`
+	Note      string `json:"note"`
+	Minutes   string `json:"minutes"`
+	Decisions string `json:"decisions"`
+	Actions   string `json:"actions"`
+	NasDir    string `json:"nas_dir"`
+}
+
+// CockpitMeetingIssueResponse is one issue a meeting is carried out through.
+// The pair (meeting_id, issue_id) is the row's identity — there is no
+// surrogate key — so a client keys on both.
+type CockpitMeetingIssueResponse struct {
+	MeetingID string `json:"meeting_id"`
+	IssueID   string `json:"issue_id"`
+	// "task" for the issue the platform opened with the meeting, "" for a
+	// link someone made by hand.
+	Role            string  `json:"role"`
+	IssueNumber     int32   `json:"issue_number"`
+	IssueIdentifier string  `json:"issue_identifier"`
+	IssueTitle      string  `json:"issue_title"`
+	IssueStatus     string  `json:"issue_status"`
+	Position        float64 `json:"position"`
+}
+
+// CockpitMeetingNodeResponse is one work-breakdown item a meeting was about.
+type CockpitMeetingNodeResponse struct {
+	MeetingID string  `json:"meeting_id"`
+	NodeID    string  `json:"node_id"`
+	Position  float64 `json:"position"`
 }
 
 // CockpitBoardResponse is the single read every view starts from.
@@ -140,6 +188,12 @@ type CockpitBoardResponse struct {
 	IssueLinks []CockpitNodeIssueResponse `json:"issue_links"`
 	Milestones []CockpitMilestoneResponse `json:"milestones"`
 	Meetings   []CockpitMeetingResponse   `json:"meetings"`
+	// What each meeting is attached to. Flat lists rather than nested inside
+	// the meeting, matching issue_links: the client groups them once and the
+	// realtime frame can replace one meeting's set without resending a
+	// meeting row.
+	MeetingIssues []CockpitMeetingIssueResponse `json:"meeting_issues"`
+	MeetingNodes  []CockpitMeetingNodeResponse  `json:"meeting_nodes"`
 }
 
 // ---------------------------------------------------------------------------
@@ -195,17 +249,20 @@ func floatPtrToNumeric(f *float64) pgtype.Numeric {
 
 func cockpitToResponse(c db.Cockpit) CockpitResponse {
 	return CockpitResponse{
-		ID:             uuidToString(c.ID),
-		WorkspaceID:    uuidToString(c.WorkspaceID),
-		Title:          c.Title,
-		GoalTitle:      c.GoalTitle,
-		GoalDate:       dateToPtr(c.GoalDate),
-		SummaryOverall: c.SummaryOverall,
-		SummaryNext:    c.SummaryNext,
-		SummarySupport: c.SummarySupport,
-		Basis:          c.Basis,
-		CreatedAt:      timestampToString(c.CreatedAt),
-		UpdatedAt:      timestampToString(c.UpdatedAt),
+		ID:               uuidToString(c.ID),
+		WorkspaceID:      uuidToString(c.WorkspaceID),
+		Title:            c.Title,
+		GoalTitle:        c.GoalTitle,
+		GoalDate:         dateToPtr(c.GoalDate),
+		SummaryOverall:   c.SummaryOverall,
+		SummaryNext:      c.SummaryNext,
+		SummarySupport:   c.SummarySupport,
+		Basis:            c.Basis,
+		MeetingProjectID: uuidToPtr(c.MeetingProjectID),
+		MeetingModuleID:  uuidToPtr(c.MeetingModuleID),
+		MeetingDir:       c.MeetingDir,
+		CreatedAt:        timestampToString(c.CreatedAt),
+		UpdatedAt:        timestampToString(c.UpdatedAt),
 	}
 }
 
@@ -271,11 +328,45 @@ func cockpitMeetingToResponse(m db.CockpitMeeting) CockpitMeetingResponse {
 		ID:        uuidToString(m.ID),
 		MeetDate:  dateToPtr(m.MeetDate),
 		TimeRange: m.TimeRange,
+		StartTime: clockToPtr(m.StartTime),
+		EndTime:   clockToPtr(m.EndTime),
 		Title:     m.Title,
+		Code:      m.Code,
+		Kind:      m.Kind,
+		Status:    m.Status,
+		Series:    m.Series,
+		Parties:   m.Parties,
+		Organizer: m.Organizer,
+		Location:  m.Location,
 		Attendees: m.Attendees,
 		MeetNo:    m.MeetNo,
 		Link:      m.Link,
 		Note:      m.Note,
+		Minutes:   m.Minutes,
+		Decisions: m.Decisions,
+		Actions:   m.Actions,
+		NasDir:    m.NasDir,
+	}
+}
+
+func cockpitMeetingIssueToResponse(l db.ListCockpitMeetingIssuesRow, prefix string) CockpitMeetingIssueResponse {
+	return CockpitMeetingIssueResponse{
+		MeetingID:       uuidToString(l.MeetingID),
+		IssueID:         uuidToString(l.IssueID),
+		Role:            l.Role,
+		IssueNumber:     l.IssueNumber,
+		IssueIdentifier: fmt.Sprintf("%s-%d", prefix, l.IssueNumber),
+		IssueTitle:      l.IssueTitle,
+		IssueStatus:     l.IssueStatus,
+		Position:        l.Position,
+	}
+}
+
+func cockpitMeetingNodeToResponse(l db.ListCockpitMeetingNodesRow) CockpitMeetingNodeResponse {
+	return CockpitMeetingNodeResponse{
+		MeetingID: uuidToString(l.MeetingID),
+		NodeID:    uuidToString(l.NodeID),
+		Position:  l.Position,
 	}
 }
 
@@ -561,6 +652,38 @@ func cockpitDate(w http.ResponseWriter, raw map[string]json.RawMessage, key stri
 	return d, false, true
 }
 
+// clockToPtr renders a stored wall-clock time as "HH:MM". Seconds are dropped
+// deliberately: a meeting is scheduled to the minute, and rendering ":00" on
+// every row is noise the reader has to skip.
+func clockToPtr(t pgtype.Time) *string {
+	if !t.Valid {
+		return nil
+	}
+	total := t.Microseconds / 1_000_000
+	s := fmt.Sprintf("%02d:%02d", total/3600, (total%3600)/60)
+	return &s
+}
+
+// cockpitClock reads one optional "HH:MM" field out of a partial update, with
+// the same three states as cockpitDate: absent leaves it, empty clears it, set
+// writes it. A meeting whose time is withdrawn goes back to the all-day lane,
+// which is an edit rather than the absence of one.
+func cockpitClock(w http.ResponseWriter, raw map[string]json.RawMessage, key string, value *string) (pgtype.Time, bool, bool) {
+	if _, touched := raw[key]; !touched {
+		return pgtype.Time{}, false, true
+	}
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return pgtype.Time{}, true, true
+	}
+	parsed, err := time.Parse("15:04", strings.TrimSpace(*value))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid "+key+" format, expected HH:MM")
+		return pgtype.Time{}, false, false
+	}
+	micros := int64(parsed.Hour())*3600_000_000 + int64(parsed.Minute())*60_000_000
+	return pgtype.Time{Microseconds: micros, Valid: true}, false, true
+}
+
 func optionalText(v *string) pgtype.Text {
 	if v == nil {
 		return pgtype.Text{}
@@ -632,15 +755,29 @@ func (h *Handler) GetCockpit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
 		return
 	}
+	meetingIssues, err := h.Queries.ListCockpitMeetingIssues(ctx, cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitMeetingIssues failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
+	meetingNodes, err := h.Queries.ListCockpitMeetingNodes(ctx, cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitMeetingNodes failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
 
 	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
 	resp := CockpitBoardResponse{
-		Cockpit:    cockpitToResponse(cc.cockpit),
-		Nodes:      make([]CockpitNodeResponse, len(nodes)),
-		Payments:   make([]CockpitPaymentResponse, len(payments)),
-		IssueLinks: make([]CockpitNodeIssueResponse, len(links)),
-		Milestones: make([]CockpitMilestoneResponse, len(milestones)),
-		Meetings:   make([]CockpitMeetingResponse, len(meetings)),
+		Cockpit:       cockpitToResponse(cc.cockpit),
+		Nodes:         make([]CockpitNodeResponse, len(nodes)),
+		Payments:      make([]CockpitPaymentResponse, len(payments)),
+		IssueLinks:    make([]CockpitNodeIssueResponse, len(links)),
+		Milestones:    make([]CockpitMilestoneResponse, len(milestones)),
+		Meetings:      make([]CockpitMeetingResponse, len(meetings)),
+		MeetingIssues: make([]CockpitMeetingIssueResponse, len(meetingIssues)),
+		MeetingNodes:  make([]CockpitMeetingNodeResponse, len(meetingNodes)),
 	}
 	for i, n := range nodes {
 		resp.Nodes[i] = cockpitNodeToResponse(n)
@@ -656,6 +793,12 @@ func (h *Handler) GetCockpit(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, m := range meetings {
 		resp.Meetings[i] = cockpitMeetingToResponse(m)
+	}
+	for i, l := range meetingIssues {
+		resp.MeetingIssues[i] = cockpitMeetingIssueToResponse(l, prefix)
+	}
+	for i, l := range meetingNodes {
+		resp.MeetingNodes[i] = cockpitMeetingNodeToResponse(l)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -673,6 +816,11 @@ type UpdateCockpitRequest struct {
 	SummaryNext    *string `json:"summary_next"`
 	SummarySupport *string `json:"summary_support"`
 	Basis          *string `json:"basis"`
+	// Where new meetings file their task and their folder. Sent as an empty
+	// string to clear, like every other optional field on this endpoint.
+	MeetingProjectID *string `json:"meeting_project_id"`
+	MeetingModuleID  *string `json:"meeting_module_id"`
+	MeetingDir       *string `json:"meeting_dir"`
 }
 
 func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
@@ -692,17 +840,45 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The meeting destination is validated before it is stored: a project or
+	// module id that names nothing, or a module belonging to another project,
+	// would only fail later at the moment someone files a meeting — with a
+	// board setting they cannot see as the cause.
+	project, module, ok := h.resolveMeetingDestination(w, r, cc, raw, req.MeetingProjectID, req.MeetingModuleID)
+	if !ok {
+		return
+	}
+	dir := req.MeetingDir
+	if dir != nil {
+		normalized, err := normalizeCollabPath(*dir)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		blank := ""
+		if normalized.Valid {
+			dir = &normalized.String
+		} else {
+			dir = &blank
+		}
+	}
+
 	board, err := h.Queries.UpdateCockpit(r.Context(), db.UpdateCockpitParams{
-		ID:             cc.cockpit.ID,
-		WorkspaceID:    cc.workspaceID,
-		Title:          optionalText(req.Title),
-		GoalTitle:      optionalText(req.GoalTitle),
-		GoalDate:       goalDate,
-		ClearGoalDate:  clearGoalDate,
-		SummaryOverall: optionalText(req.SummaryOverall),
-		SummaryNext:    optionalText(req.SummaryNext),
-		SummarySupport: optionalText(req.SummarySupport),
-		Basis:          optionalText(req.Basis),
+		ID:                  cc.cockpit.ID,
+		WorkspaceID:         cc.workspaceID,
+		Title:               optionalText(req.Title),
+		GoalTitle:           optionalText(req.GoalTitle),
+		GoalDate:            goalDate,
+		ClearGoalDate:       clearGoalDate,
+		SummaryOverall:      optionalText(req.SummaryOverall),
+		SummaryNext:         optionalText(req.SummaryNext),
+		SummarySupport:      optionalText(req.SummarySupport),
+		Basis:               optionalText(req.Basis),
+		MeetingProjectID:    project.id,
+		ClearMeetingProject: project.clear,
+		MeetingModuleID:     module.id,
+		ClearMeetingModule:  module.clear,
+		MeetingDir:          optionalText(dir),
 	})
 	if err != nil {
 		slog.Warn("UpdateCockpit failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -1013,6 +1189,14 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitNodeIssuesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
+	if err := h.Queries.DeleteCockpitMeetingNodesByNode(ctx, db.DeleteCockpitMeetingNodesByNodeParams{
+		NodeID:      node.ID,
+		WorkspaceID: cc.workspaceID,
+	}); err != nil {
+		slog.Warn("DeleteCockpitMeetingNodesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
@@ -1465,11 +1649,26 @@ func (h *Handler) DeleteCockpitMilestone(w http.ResponseWriter, r *http.Request)
 type CockpitMeetingRequest struct {
 	MeetDate  *string `json:"meet_date"`
 	TimeRange *string `json:"time_range"`
+	StartTime *string `json:"start_time"`
+	EndTime   *string `json:"end_time"`
 	Title     *string `json:"title"`
+	Code      *string `json:"code"`
+	Kind      *string `json:"kind"`
+	Status    *string `json:"status"`
+	Series    *string `json:"series"`
+	Parties   *string `json:"parties"`
+	Organizer *string `json:"organizer"`
+	Location  *string `json:"location"`
 	Attendees *string `json:"attendees"`
 	MeetNo    *string `json:"meet_no"`
 	Link      *string `json:"link"`
 	Note      *string `json:"note"`
+	Minutes   *string `json:"minutes"`
+	Decisions *string `json:"decisions"`
+	Actions   *string `json:"actions"`
+	// The meeting's folder on the shared NAS. Set by provisioning rather than
+	// typed, but writable so a folder that already existed can be adopted.
+	NasDir *string `json:"nas_dir"`
 }
 
 func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
@@ -1487,17 +1686,42 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	startTime, _, ok := cockpitClock(w, raw, "start_time", req.StartTime)
+	if !ok {
+		return
+	}
+	endTime, _, ok := cockpitClock(w, raw, "end_time", req.EndTime)
+	if !ok {
+		return
+	}
+	nasDir, ok := h.meetingDirOrError(w, cc, req.NasDir)
+	if !ok {
+		return
+	}
 
 	meeting, err := h.Queries.CreateCockpitMeeting(r.Context(), db.CreateCockpitMeetingParams{
 		WorkspaceID: cc.workspaceID,
 		CockpitID:   cc.cockpit.ID,
 		MeetDate:    meetDate,
 		TimeRange:   textOrEmpty(req.TimeRange),
+		StartTime:   startTime,
+		EndTime:     endTime,
 		Title:       textOrEmpty(req.Title),
+		Code:        textOrEmpty(req.Code),
+		Kind:        textOrEmpty(req.Kind),
+		Status:      textOrEmpty(req.Status),
+		Series:      textOrEmpty(req.Series),
+		Parties:     textOrEmpty(req.Parties),
+		Organizer:   textOrEmpty(req.Organizer),
+		Location:    textOrEmpty(req.Location),
 		Attendees:   textOrEmpty(req.Attendees),
 		MeetNo:      textOrEmpty(req.MeetNo),
 		Link:        textOrEmpty(req.Link),
 		Note:        textOrEmpty(req.Note),
+		Minutes:     textOrEmpty(req.Minutes),
+		Decisions:   textOrEmpty(req.Decisions),
+		Actions:     textOrEmpty(req.Actions),
+		NasDir:      nasDir,
 	})
 	if err != nil {
 		slog.Warn("CreateCockpitMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -1529,18 +1753,46 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	startTime, clearStartTime, ok := cockpitClock(w, raw, "start_time", req.StartTime)
+	if !ok {
+		return
+	}
+	endTime, clearEndTime, ok := cockpitClock(w, raw, "end_time", req.EndTime)
+	if !ok {
+		return
+	}
+	if req.NasDir != nil {
+		if _, ok := h.meetingDirOrError(w, cc, req.NasDir); !ok {
+			return
+		}
+	}
 
 	meeting, err := h.Queries.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
-		ID:            id,
-		WorkspaceID:   cc.workspaceID,
-		MeetDate:      meetDate,
-		ClearMeetDate: clearMeetDate,
-		TimeRange:     optionalText(req.TimeRange),
-		Title:         optionalText(req.Title),
-		Attendees:     optionalText(req.Attendees),
-		MeetNo:        optionalText(req.MeetNo),
-		Link:          optionalText(req.Link),
-		Note:          optionalText(req.Note),
+		ID:             id,
+		WorkspaceID:    cc.workspaceID,
+		MeetDate:       meetDate,
+		ClearMeetDate:  clearMeetDate,
+		StartTime:      startTime,
+		ClearStartTime: clearStartTime,
+		EndTime:        endTime,
+		ClearEndTime:   clearEndTime,
+		TimeRange:      optionalText(req.TimeRange),
+		Title:          optionalText(req.Title),
+		Code:           optionalText(req.Code),
+		Kind:           optionalText(req.Kind),
+		Status:         optionalText(req.Status),
+		Series:         optionalText(req.Series),
+		Parties:        optionalText(req.Parties),
+		Organizer:      optionalText(req.Organizer),
+		Location:       optionalText(req.Location),
+		Attendees:      optionalText(req.Attendees),
+		MeetNo:         optionalText(req.MeetNo),
+		Link:           optionalText(req.Link),
+		Note:           optionalText(req.Note),
+		Minutes:        optionalText(req.Minutes),
+		Decisions:      optionalText(req.Decisions),
+		Actions:        optionalText(req.Actions),
+		NasDir:         optionalText(req.NasDir),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1566,7 +1818,27 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeeting(r.Context(), db.DeleteCockpitMeetingParams{
+	// No cascading deletes in the schema (repository rule): the meeting's own
+	// links go first, in the same request, so a re-used UUID can never adopt
+	// another meeting's attachments.
+	ctx := r.Context()
+	if err := h.Queries.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
+		MeetingID:   id,
+		WorkspaceID: cc.workspaceID,
+	}); err != nil {
+		slog.Warn("DeleteCockpitMeetingIssuesByMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
+		return
+	}
+	if err := h.Queries.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
+		MeetingID:   id,
+		WorkspaceID: cc.workspaceID,
+	}); err != nil {
+		slog.Warn("DeleteCockpitMeetingNodesByMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
+		return
+	}
+	if err := h.Queries.DeleteCockpitMeeting(ctx, db.DeleteCockpitMeetingParams{
 		ID:          id,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -1635,11 +1907,35 @@ type CockpitImportMilestone struct {
 type CockpitImportMeeting struct {
 	MeetDate  string `json:"meet_date"`
 	TimeRange string `json:"time_range"`
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
 	Title     string `json:"title"`
+	Code      string `json:"code"`
+	Kind      string `json:"kind"`
+	Status    string `json:"status"`
+	Series    string `json:"series"`
+	Parties   string `json:"parties"`
+	Organizer string `json:"organizer"`
+	Location  string `json:"location"`
 	Attendees string `json:"attendees"`
 	MeetNo    string `json:"meet_no"`
 	Link      string `json:"link"`
 	Note      string `json:"note"`
+	Minutes   string `json:"minutes"`
+	Decisions string `json:"decisions"`
+	Actions   string `json:"actions"`
+	NasDir    string `json:"nas_dir"`
+	// What the meeting was attached to, named the way the document names
+	// everything else: issues by identifier, work items by code. Unresolvable
+	// issue references are reported alongside the node ones rather than
+	// failing the import.
+	IssueIDs  []string `json:"issue_ids"`
+	NodeCodes []string `json:"node_codes"`
+	// Which of IssueIDs is the task the platform opened WITH the meeting.
+	// Carried separately because the role is what tells "the meeting's own
+	// task" from "an issue someone attached", and a restore that forgot it
+	// would quietly demote the task to an ordinary link.
+	TaskIssueID string `json:"task_issue_id"`
 }
 
 type CockpitImportRequest struct {
@@ -1689,6 +1985,19 @@ const cockpitSnapshotKeep = 50
 // interval, so milestone snapshots (imports, restores, manual saves) are not
 // evicted from the keep window by field-level churn.
 const cockpitAutoSnapshotInterval = 5 * time.Minute
+
+func importClock(s string) (pgtype.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return pgtype.Time{}, nil
+	}
+	parsed, err := time.Parse("15:04", s)
+	if err != nil {
+		return pgtype.Time{}, err
+	}
+	micros := int64(parsed.Hour())*3600_000_000 + int64(parsed.Minute())*60_000_000
+	return pgtype.Time{Microseconds: micros, Valid: true}, nil
+}
 
 func importDate(s string) (pgtype.Date, error) {
 	s = strings.TrimSpace(s)
@@ -1765,8 +2074,8 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	issueByRef := make(map[string]pgtype.UUID)
 	var unresolved []string
 	seenUnresolved := make(map[string]bool)
-	for _, n := range req.Nodes {
-		for _, ref := range n.IssueIDs {
+	resolveRefs := func(refs []string) {
+		for _, ref := range refs {
 			ref = strings.TrimSpace(ref)
 			if ref == "" {
 				continue
@@ -1784,6 +2093,12 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			}
 			issueByRef[ref] = issue.ID
 		}
+	}
+	for _, n := range req.Nodes {
+		resolveRefs(n.IssueIDs)
+	}
+	for _, m := range req.Meetings {
+		resolveRefs(m.IssueIDs)
 	}
 
 	tx, err := h.TxStarter.Begin(ctx)
@@ -1827,6 +2142,12 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		},
 		func() error {
 			return qtx.DeleteCockpitNodeIssuesByCockpit(ctx, board.ID)
+		},
+		func() error {
+			return qtx.DeleteCockpitMeetingIssuesByCockpit(ctx, board.ID)
+		},
+		func() error {
+			return qtx.DeleteCockpitMeetingNodesByCockpit(ctx, board.ID)
 		},
 		// Pending changes and their history name node ids that are about to
 		// stop existing; the review queue restarts empty with the new board.
@@ -2006,19 +2327,84 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		if err != nil {
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid meeting meet_date: " + m.Title}
 		}
-		if _, err := qtx.CreateCockpitMeeting(ctx, db.CreateCockpitMeetingParams{
+		startTime, err := importClock(m.StartTime)
+		if err != nil {
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid meeting start_time: " + m.Title}
+		}
+		endTime, err := importClock(m.EndTime)
+		if err != nil {
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "invalid meeting end_time: " + m.Title}
+		}
+		meeting, err := qtx.CreateCockpitMeeting(ctx, db.CreateCockpitMeetingParams{
 			WorkspaceID: cc.workspaceID,
 			CockpitID:   board.ID,
 			MeetDate:    meetDate,
 			TimeRange:   m.TimeRange,
+			StartTime:   startTime,
+			EndTime:     endTime,
 			Title:       m.Title,
+			Code:        m.Code,
+			Kind:        m.Kind,
+			Status:      m.Status,
+			Series:      m.Series,
+			Parties:     m.Parties,
+			Organizer:   m.Organizer,
+			Location:    m.Location,
 			Attendees:   m.Attendees,
 			MeetNo:      m.MeetNo,
 			Link:        m.Link,
 			Note:        m.Note,
-		}); err != nil {
+			Minutes:     m.Minutes,
+			Decisions:   m.Decisions,
+			Actions:     m.Actions,
+			NasDir:      m.NasDir,
+		})
+		if err != nil {
 			slog.Warn("cockpit import meeting failed", append(logger.RequestAttrs(r), "error", err)...)
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
+		}
+		taskRef := strings.TrimSpace(m.TaskIssueID)
+		position := 0
+		for _, ref := range m.IssueIDs {
+			ref = strings.TrimSpace(ref)
+			issueID, found := issueByRef[ref]
+			if !found {
+				continue
+			}
+			// The meeting's own task keeps its role and its lead position, the
+			// same two things openMeetingTask wrote when it opened it.
+			role, at := "", float64(position)
+			if taskRef != "" && ref == taskRef {
+				role, at = "task", -1
+			}
+			if _, err := qtx.CreateCockpitMeetingIssue(ctx, db.CreateCockpitMeetingIssueParams{
+				WorkspaceID: cc.workspaceID,
+				MeetingID:   meeting.ID,
+				IssueID:     issueID,
+				Role:        role,
+				Position:    at,
+			}); err != nil {
+				slog.Warn("cockpit import meeting issue failed", append(logger.RequestAttrs(r), "error", err)...)
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
+			}
+			position++
+		}
+		position = 0
+		for _, code := range m.NodeCodes {
+			nodeID, found := idByCode[strings.TrimSpace(code)]
+			if !found {
+				continue
+			}
+			if _, err := qtx.CreateCockpitMeetingNode(ctx, db.CreateCockpitMeetingNodeParams{
+				WorkspaceID: cc.workspaceID,
+				MeetingID:   meeting.ID,
+				NodeID:      nodeID,
+				Position:    float64(position),
+			}); err != nil {
+				slog.Warn("cockpit import meeting node failed", append(logger.RequestAttrs(r), "error", err)...)
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
+			}
+			position++
 		}
 	}
 
@@ -2154,6 +2540,14 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 	if err != nil {
 		return CockpitImportRequest{}, false, err
 	}
+	meetingIssues, err := qtx.ListCockpitMeetingIssues(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
+	meetingNodes, err := qtx.ListCockpitMeetingNodes(ctx, board.ID)
+	if err != nil {
+		return CockpitImportRequest{}, false, err
+	}
 
 	empty := len(nodes) == 0 && len(milestones) == 0 && len(meetings) == 0 &&
 		board.Title == "" && board.GoalTitle == "" && !board.GoalDate.Valid &&
@@ -2182,6 +2576,20 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 	issuesByNode := make(map[pgtype.UUID][]string)
 	for _, l := range links {
 		issuesByNode[l.NodeID] = append(issuesByNode[l.NodeID], uuidToString(l.IssueID))
+	}
+	issuesByMeeting := make(map[pgtype.UUID][]string)
+	taskByMeeting := make(map[pgtype.UUID]string)
+	for _, l := range meetingIssues {
+		issuesByMeeting[l.MeetingID] = append(issuesByMeeting[l.MeetingID], uuidToString(l.IssueID))
+		if l.Role == "task" {
+			taskByMeeting[l.MeetingID] = uuidToString(l.IssueID)
+		}
+	}
+	nodesByMeeting := make(map[pgtype.UUID][]string)
+	for _, l := range meetingNodes {
+		if code, ok := codeByID[l.NodeID]; ok {
+			nodesByMeeting[l.MeetingID] = append(nodesByMeeting[l.MeetingID], code)
+		}
 	}
 
 	dateStr := func(d pgtype.Date) string {
@@ -2250,15 +2658,37 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 			Position:   m.Position,
 		})
 	}
+	clockStr := func(t pgtype.Time) string {
+		if s := clockToPtr(t); s != nil {
+			return *s
+		}
+		return ""
+	}
 	for _, m := range meetings {
 		doc.Meetings = append(doc.Meetings, CockpitImportMeeting{
-			MeetDate:  dateStr(m.MeetDate),
-			TimeRange: m.TimeRange,
-			Title:     m.Title,
-			Attendees: m.Attendees,
-			MeetNo:    m.MeetNo,
-			Link:      m.Link,
-			Note:      m.Note,
+			MeetDate:    dateStr(m.MeetDate),
+			TimeRange:   m.TimeRange,
+			StartTime:   clockStr(m.StartTime),
+			EndTime:     clockStr(m.EndTime),
+			Title:       m.Title,
+			Code:        m.Code,
+			Kind:        m.Kind,
+			Status:      m.Status,
+			Series:      m.Series,
+			Parties:     m.Parties,
+			Organizer:   m.Organizer,
+			Location:    m.Location,
+			Attendees:   m.Attendees,
+			MeetNo:      m.MeetNo,
+			Link:        m.Link,
+			Note:        m.Note,
+			Minutes:     m.Minutes,
+			Decisions:   m.Decisions,
+			Actions:     m.Actions,
+			NasDir:      m.NasDir,
+			IssueIDs:    issuesByMeeting[m.ID],
+			NodeCodes:   nodesByMeeting[m.ID],
+			TaskIssueID: taskByMeeting[m.ID],
 		})
 	}
 	return doc, true, nil

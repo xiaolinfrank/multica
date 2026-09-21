@@ -2,6 +2,7 @@ export {
   cockpitKeys,
   cockpitBoardOptions,
   cockpitChangesOptions,
+  cockpitMeetingDestinationOptions,
   patchCockpitBoard,
   upsertCockpitNode,
   removeCockpitNode,
@@ -13,6 +14,11 @@ export {
   removeCockpitMilestone,
   upsertCockpitMeeting,
   removeCockpitMeeting,
+  replaceCockpitMeetingIssues,
+  removeCockpitMeetingIssue,
+  replaceCockpitMeetingNodes,
+  removeCockpitMeetingNode,
+  cockpitSnapshotsOptions,
 } from "./queries";
 export * from "./mutations";
 export * from "./model";

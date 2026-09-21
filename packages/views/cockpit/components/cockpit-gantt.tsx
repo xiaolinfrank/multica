@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CockpitBoard,
   CockpitIssueLink,
+  CockpitMeeting,
   CockpitNode,
   CockpitNodePatch,
   CockpitPayment,
@@ -32,6 +33,7 @@ import {
   cockpitCoreNodes,
   cockpitEffectiveProgress,
   cockpitGoalProgress,
+  cockpitMeetingSpan,
   cockpitStatusColor,
   cockpitSubtreeAverage,
   computeCockpitAxis,
@@ -40,9 +42,11 @@ import {
   groupIssueLinksByNode,
   groupPaymentsByNode,
   groupSubtreePayments,
+  groupMeetingsByNode,
   isCockpitExecNode,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
+  subtreeIds,
   parseDay,
   type CockpitCoreNodeKind,
   type CockpitGoalProgress,
@@ -105,6 +109,9 @@ export interface CockpitGanttProps {
   scrollToTodayNonce: number;
   /** Locate-and-flash one row; the nonce re-triggers repeat clicks. */
   focusTarget: { nodeId: string; nonce: number } | null;
+  /** Opens one meeting in the register. Absent hides the meeting markers —
+   *  a marker that cannot be followed is decoration. */
+  onOpenMeeting?: (meetingId: string) => void;
   readOnly?: boolean;
 }
 
@@ -369,6 +376,81 @@ const CORE_KIND_META: Record<CockpitCoreNodeKind | "goal", { icon: string; color
  * The pill rides the bottom strip of the row; a click opens the tasks behind
  * the glyph.
  */
+/**
+ * The meetings that discussed a direction, on the day they happened. Rides the
+ * same direction rows as the payment and core markers and for the same reason:
+ * a marker that moves as the reader expands the tree is a marker nobody can
+ * point at twice.
+ */
+function MeetingMarker({
+  date,
+  meetings,
+  left,
+  onOpenMeeting,
+}: {
+  date: string;
+  meetings: CockpitMeeting[];
+  left: number;
+  onOpenMeeting: (meetingId: string) => void;
+}) {
+  const { t } = useT("cockpit");
+  const summary = t(($) => $.gantt.meetings_on, { date, count: meetings.length });
+  const marker = (
+    <button
+      type="button"
+      aria-label={summary}
+      className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-info bg-card px-1 text-micro leading-none font-bold text-info shadow-sm"
+      style={{ left, top: "12%" }}
+    >
+      {meetings.length > 1 ? `📅${meetings.length}` : "📅"}
+    </button>
+  );
+  return (
+    <Dialog>
+      <Tooltip>
+        <TooltipTrigger render={<DialogTrigger render={marker} />} />
+        <TooltipContent>
+          <div className="flex max-w-80 flex-col gap-0.5">
+            <span className="font-medium">{summary}</span>
+            {meetings.slice(0, 5).map((meeting) => (
+              <span key={meeting.id} className="text-caption">
+                {cockpitMeetingSpan(meeting)} {meeting.title}
+              </span>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{summary}</DialogTitle>
+        </DialogHeader>
+        <ul className="flex flex-col divide-y divide-border">
+          {meetings.map((meeting) => (
+            <li key={meeting.id}>
+              <DialogClose
+                render={
+                  <Button
+                    variant="link"
+                    className="h-auto w-full justify-start px-0 py-2 text-left"
+                    onClick={() => onOpenMeeting(meeting.id)}
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{meeting.title}</span>
+                      <span className="text-caption text-muted-foreground">
+                        {[cockpitMeetingSpan(meeting), meeting.parties].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                  </Button>
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CoreMarker({
   kind,
   date,
@@ -574,6 +656,7 @@ export function CockpitGantt({
   toolbarOpen,
   scrollToTodayNonce,
   focusTarget,
+  onOpenMeeting,
   readOnly,
 }: CockpitGanttProps) {
   const { t } = useT("cockpit");
@@ -732,6 +815,42 @@ export function CockpitGantt({
     }
     return map;
   }, [rows, today, axisStartKey, goalDate, rootOf]);
+
+  /**
+   * The meetings that discussed each direction, merged by day and clamped onto
+   * the axis like every other marker. Built over the whole subtree so a
+   * meeting recorded against one L3 task still shows on the direction row the
+   * reader is actually looking at.
+   */
+  const meetingMarks = useMemo(() => {
+    const map = new Map<string, { date: string; meetings: CockpitMeeting[] }[]>();
+    if (!onOpenMeeting) return map;
+    const byNode = groupMeetingsByNode(board.meetings, board.meeting_nodes);
+    if (byNode.size === 0) return map;
+    for (const entry of rows) {
+      if (!carriesMarkers(entry)) continue;
+      const seen = new Set<string>();
+      const byDate = new Map<string, CockpitMeeting[]>();
+      for (const id of subtreeIds(entry)) {
+        for (const meeting of byNode.get(id) ?? []) {
+          if (!meeting.meet_date || seen.has(meeting.id)) continue;
+          seen.add(meeting.id);
+          const date = meeting.meet_date < axisStartKey ? axisStartKey : meeting.meet_date;
+          const bucket = byDate.get(date);
+          if (bucket) bucket.push(meeting);
+          else byDate.set(date, [meeting]);
+        }
+      }
+      if (byDate.size === 0) continue;
+      map.set(
+        entry.node.id,
+        [...byDate.entries()]
+          .map(([date, meetings]) => ({ date, meetings }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
+      );
+    }
+    return map;
+  }, [rows, board.meetings, board.meeting_nodes, axisStartKey, onOpenMeeting]);
 
   const treeWidth = showFinance ? 800 : 680;
 
@@ -1354,6 +1473,7 @@ export function CockpitGantt({
                 const endDate = parseDay(end);
                 const groups = paymentGroups.get(node.id) ?? [];
                 const marks = coreMarks.get(node.id) ?? [];
+                const meetingDays = meetingMarks.get(node.id) ?? [];
                 const isSelected = selectedId === node.id;
                 const barColor = isBranch
                   ? cockpitAggStatusColor(entry)
@@ -1501,6 +1621,17 @@ export function CockpitGantt({
                         {t(($) => $.gantt.unscheduled)}
                       </span>
                     )}
+
+                    {onOpenMeeting &&
+                      meetingDays.map((day) => (
+                        <MeetingMarker
+                          key={`${node.id}-meet-${day.date}`}
+                          date={day.date}
+                          meetings={day.meetings}
+                          left={markerX(day.date)}
+                          onOpenMeeting={onOpenMeeting}
+                        />
+                      ))}
 
                     {groups.map((group) => (
                       <PaymentMarker

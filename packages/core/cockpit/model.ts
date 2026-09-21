@@ -1,6 +1,9 @@
 import type {
   CockpitBoard,
   CockpitIssueLink,
+  CockpitMeeting,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
   CockpitPayment,
@@ -2172,4 +2175,277 @@ export function computeCockpitFinanceRows(
 
   tree.forEach((root) => walk(root, root.node.code, root.color));
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Meetings
+// ---------------------------------------------------------------------------
+//
+// The register is the board's diary: the meetings a programme holds, what each
+// one was about, and the work it opened. Everything below is pure and takes
+// `today` from the caller for the same reason the rest of this module does —
+// the overview card, the calendar and the agenda must never disagree about
+// what "this week" is.
+
+/** Minutes past midnight, or null for a meeting nobody has timed. */
+export function cockpitMeetingMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/**
+ * The span as a reader sees it. Prefers the structured times and falls back to
+ * the free text the log recorded before they existed — a formatter, not a
+ * second source of truth: nothing writes both.
+ */
+export function cockpitMeetingSpan(meeting: CockpitMeeting): string {
+  const start = meeting.start_time?.trim();
+  const end = meeting.end_time?.trim();
+  if (start && end) return `${start}–${end}`;
+  if (start) return start;
+  return meeting.time_range.trim();
+}
+
+/** Sort key: the day, then the hour, then the name, so a day's meetings read
+ *  in the order they happen and an untimed one leads the day. */
+function meetingOrderKey(meeting: CockpitMeeting): string {
+  const day = meeting.meet_date ?? "9999-99-99";
+  const minutes = cockpitMeetingMinutes(meeting.start_time);
+  const slot = minutes === null ? "----" : String(minutes).padStart(4, "0");
+  return `${day}T${slot}|${meeting.title}`;
+}
+
+/** Oldest first. The register reads newest-first, the calendar reads
+ *  oldest-first; both start here and one of them reverses. */
+export function sortCockpitMeetings(meetings: CockpitMeeting[]): CockpitMeeting[] {
+  return [...meetings].sort((a, b) => meetingOrderKey(a).localeCompare(meetingOrderKey(b)));
+}
+
+/** Meetings keyed by their day, each day already in time order. */
+export function cockpitMeetingsByDay(meetings: CockpitMeeting[]): Map<string, CockpitMeeting[]> {
+  const byDay = new Map<string, CockpitMeeting[]>();
+  for (const meeting of sortCockpitMeetings(meetings)) {
+    if (!meeting.meet_date) continue;
+    const day = byDay.get(meeting.meet_date);
+    if (day) day.push(meeting);
+    else byDay.set(meeting.meet_date, [meeting]);
+  }
+  return byDay;
+}
+
+export interface CockpitMeetingSplit {
+  /** Today's, then everything still ahead, soonest first. */
+  upcoming: CockpitMeeting[];
+  /** Everything before today, most recent first. */
+  past: CockpitMeeting[];
+  /** Meetings with no date at all — drafts someone has not scheduled. */
+  undated: CockpitMeeting[];
+}
+
+export function splitCockpitMeetings(meetings: CockpitMeeting[], today: string): CockpitMeetingSplit {
+  const sorted = sortCockpitMeetings(meetings);
+  const upcoming: CockpitMeeting[] = [];
+  const past: CockpitMeeting[] = [];
+  const undated: CockpitMeeting[] = [];
+  for (const meeting of sorted) {
+    if (!meeting.meet_date) undated.push(meeting);
+    else if (meeting.meet_date >= today) upcoming.push(meeting);
+    else past.unshift(meeting);
+  }
+  return { upcoming, past, undated };
+}
+
+/** The Monday–Sunday window a day falls in, as two day strings. */
+export function cockpitWeekWindow(day: string): [string, string] | null {
+  const date = parseDay(day);
+  if (!date) return null;
+  const offset = (date.getUTCDay() + 6) % 7;
+  const start = addDays(date, -offset);
+  return [formatDay(start), formatDay(addDays(start, 6))];
+}
+
+/** The seven days of the week `day` falls in. */
+export function cockpitWeekDays(day: string): string[] {
+  const window = cockpitWeekWindow(day);
+  if (!window) return [];
+  const start = parseDay(window[0]);
+  if (!start) return [];
+  return Array.from({ length: 7 }, (_, i) => formatDay(addDays(start, i)));
+}
+
+/**
+ * The days of a month grid ("YYYY-MM"), padded to whole Monday–Sunday weeks so
+ * the calendar renders a rectangle. Days from the neighbouring months are
+ * included and are told apart by their own month prefix.
+ */
+export function cockpitMonthGrid(month: string): string[] {
+  const first = parseDay(`${month}-01`);
+  if (!first) return [];
+  const lead = (first.getUTCDay() + 6) % 7;
+  const start = addDays(first, -lead);
+  const nextMonth = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1));
+  const span = daysBetween(start, nextMonth);
+  const weeks = Math.ceil(span / 7);
+  return Array.from({ length: weeks * 7 }, (_, i) => formatDay(addDays(start, i)));
+}
+
+/** Shifts a "YYYY-MM" key by whole months. */
+export function shiftMonthKey(month: string, delta: number): string {
+  const first = parseDay(`${month}-01`);
+  if (!first) return month;
+  return monthKey(new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + delta, 1)));
+}
+
+/**
+ * The next free number for a meeting on `day`: "20260921-01", then -02.
+ *
+ * Numbered per day rather than per year because that is what the register is
+ * read by — the date is the index, and a gap left by a deleted meeting is not
+ * worth renumbering the day for. Existing numbers are respected, so a day
+ * whose meetings were numbered by hand continues where they left off.
+ */
+export function nextCockpitMeetingCode(meetings: CockpitMeeting[], day: string): string {
+  const prefix = day.replaceAll("-", "");
+  let highest = 0;
+  for (const meeting of meetings) {
+    const match = new RegExp(`^${prefix}-(\\d{2,})$`).exec(meeting.code.trim());
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `${prefix}-${String(highest + 1).padStart(2, "0")}`;
+}
+
+/** The separators a person might already have typed between parties. */
+const PARTY_SEPARATORS = /[、,，;；/|×x]+/;
+
+export function splitCockpitMeetingParties(parties: string): string[] {
+  return parties
+    .split(PARTY_SEPARATORS)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The name the platform proposes for a new meeting: its number, the parties at
+ * the table, and the subject when one is given —
+ * "20260921-01 复星医药×华大基因 数据对接".
+ *
+ * A proposal, not a rule. It is shown in the form before anything is created
+ * precisely so it can be overtyped; nothing regenerates it afterwards.
+ */
+export function buildCockpitMeetingName(input: {
+  code: string;
+  parties?: string;
+  subject?: string;
+}): string {
+  const parties = splitCockpitMeetingParties(input.parties ?? "").join("×");
+  return [input.code.trim(), parties, (input.subject ?? "").trim()]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * What a meeting's folder is called: its number and its name.
+ *
+ * The generated name already opens with the number, so prefixing it again
+ * would file "20260921-01 20260921-01 …". One rule, mirrored by the server's
+ * own default (meetingFolderName in cockpit_meeting.go) so the path the form
+ * promises is the path that gets created.
+ */
+export function cockpitMeetingFolderName(input: { code: string; title: string }): string {
+  const code = input.code.trim();
+  const title = input.title.trim();
+  if (!title) return code;
+  if (!code || title === code || title.startsWith(`${code} `)) return title;
+  return `${code} ${title}`;
+}
+
+/** Links grouped by the meeting they belong to, each already in order. */
+export function groupMeetingIssues(
+  links: CockpitMeetingIssueLink[],
+): Map<string, CockpitMeetingIssueLink[]> {
+  const byMeeting = new Map<string, CockpitMeetingIssueLink[]>();
+  for (const link of links) {
+    const list = byMeeting.get(link.meeting_id);
+    if (list) list.push(link);
+    else byMeeting.set(link.meeting_id, [link]);
+  }
+  for (const list of byMeeting.values()) list.sort((a, b) => a.position - b.position);
+  return byMeeting;
+}
+
+export function groupMeetingNodes(
+  links: CockpitMeetingNodeLink[],
+): Map<string, CockpitMeetingNodeLink[]> {
+  const byMeeting = new Map<string, CockpitMeetingNodeLink[]>();
+  for (const link of links) {
+    const list = byMeeting.get(link.meeting_id);
+    if (list) list.push(link);
+    else byMeeting.set(link.meeting_id, [link]);
+  }
+  for (const list of byMeeting.values()) list.sort((a, b) => a.position - b.position);
+  return byMeeting;
+}
+
+/**
+ * The other direction: the meetings that touched each work item, newest first.
+ * This is what puts "last discussed on" on a gantt row.
+ */
+export function groupMeetingsByNode(
+  meetings: CockpitMeeting[],
+  links: CockpitMeetingNodeLink[],
+): Map<string, CockpitMeeting[]> {
+  const byId = new Map(meetings.map((m) => [m.id, m]));
+  const byNode = new Map<string, CockpitMeeting[]>();
+  for (const link of links) {
+    const meeting = byId.get(link.meeting_id);
+    if (!meeting) continue;
+    const list = byNode.get(link.node_id);
+    if (list) list.push(meeting);
+    else byNode.set(link.node_id, [meeting]);
+  }
+  for (const list of byNode.values()) {
+    list.sort((a, b) => meetingOrderKey(b).localeCompare(meetingOrderKey(a)));
+  }
+  return byNode;
+}
+
+/**
+ * The vocabulary already on the board, per field, for the pickers to offer.
+ * Same principle as the node fields' suggestions: a programme's second meeting
+ * should be able to reuse the words its first one chose instead of inventing
+ * them again.
+ */
+export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
+  kinds: string[];
+  statuses: string[];
+  series: string[];
+  parties: string[];
+  organizers: string[];
+  locations: string[];
+} {
+  const collect = (pick: (m: CockpitMeeting) => string) => {
+    const seen = new Set<string>();
+    for (const meeting of meetings) {
+      const value = pick(meeting).trim();
+      if (value) seen.add(value);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  };
+  const parties = new Set<string>();
+  for (const meeting of meetings) {
+    for (const party of splitCockpitMeetingParties(meeting.parties)) parties.add(party);
+  }
+  return {
+    kinds: collect((m) => m.kind),
+    statuses: collect((m) => m.status),
+    series: collect((m) => m.series),
+    parties: [...parties].sort((a, b) => a.localeCompare(b)),
+    organizers: collect((m) => m.organizer),
+    locations: collect((m) => m.location),
+  };
 }

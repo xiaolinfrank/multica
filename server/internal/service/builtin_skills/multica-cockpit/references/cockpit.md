@@ -10,7 +10,7 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | Method | Path | What it does |
 | --- | --- | --- |
 | GET | `/api/cockpit` | the whole board in one read |
-| PATCH | `/api/cockpit` | board title, goal, goal date, basis |
+| PATCH | `/api/cockpit` | board title, goal, goal date, basis, meeting destination |
 | PUT | `/api/cockpit/import` | replace the board (owner/admin only) |
 | POST | `/api/cockpit/nodes` | add a work-breakdown node |
 | PATCH | `/api/cockpit/nodes/{id}` | edit a node |
@@ -24,6 +24,12 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | PATCH | `/api/cockpit/milestones/{milestoneId}` | edit a milestone |
 | DELETE | `/api/cockpit/milestones/{milestoneId}` | delete a milestone |
 | POST | `/api/cockpit/meetings` | add a meeting |
+| GET | `/api/cockpit/meetings/destination` | where a new meeting would be filed; `project_id`/`module_id` override the board's stored choice |
+| POST | `/api/cockpit/meetings/{meetingId}/provision` | open the meeting's task and create its folder |
+| PUT | `/api/cockpit/meetings/{meetingId}/issues` | replace a meeting's issue links |
+| DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
+| PUT | `/api/cockpit/meetings/{meetingId}/nodes` | replace a meeting's work-item links |
+| DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
 | GET | `/api/cockpit/changes` | the review queue: open proposals first, then decision history |
 | POST | `/api/cockpit/changes` | file one proposed field edit for review |
 | POST | `/api/cockpit/changes/ingest` | file a batch of proposals (the agent write-back funnel) |
@@ -39,7 +45,41 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 
 `{id}` on a node route accepts either a UUID or the node's own `code`, so
 `L3-01-08` works everywhere a UUID does. `{issueId}` accepts either a UUID or
-the workspace issue identifier such as `BIO-314`.
+the workspace issue identifier such as `BIO-314`. `{nodeId}` on a meeting's
+work-item routes takes the same two forms as `{id}`.
+
+## Meetings
+
+A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
+`time_range` for the free text older rows were logged with, `title`, `code`,
+`kind`, `status`, `series`, `parties`, `organizer`, `location`, `attendees`,
+`meet_no`, `link`) and what it LEFT BEHIND (`note` for the agenda and remarks,
+`minutes`, `decisions`, `actions`, `nas_dir`).
+
+`code` is the platform's own number — the date plus that day's sequence,
+`20260921-01`. `meet_no` is the conferencing system's dial-in number and is a
+different thing. `parties` lists the organisations at the table; `attendees`
+lists people.
+
+Two link sets hang off a meeting and ride on the board read as
+`meeting_issues` and `meeting_nodes`. Neither has a surrogate key: the pair
+(`meeting_id`, `issue_id`) or (`meeting_id`, `node_id`) IS the row. An issue
+link carries a `role`: `task` marks the issue the platform opened WITH the
+meeting, `""` is one someone attached by hand.
+
+`POST .../provision` is the compound step and reports each part on its own
+(`task`, `task_error`, `dir`, `dir_created`, `dir_error`). It never fails the
+meeting: a share that is not mounted on the server must not cost the record of
+a meeting that happened, so re-running it is safe and an existing folder is
+accepted as-is. The task is assigned to the member filing the meeting unless
+`assignee_type`/`assignee_id` say otherwise — leaving it unassigned would hand
+a diary entry to the workspace's fallback agent and start a run.
+
+Where the task and the folder go is board configuration, not code:
+`meeting_project_id`, `meeting_module_id` and `meeting_dir` on the cockpit row,
+set through `PATCH /api/cockpit` or remembered by a provision. A folder is only
+ever created directly under the configured root, with the name sanitised to one
+path component.
 
 ## Field semantics
 
@@ -147,7 +187,13 @@ carries its own `node` scope frame with the row it wrote.
     {"name": "验收", "plan_date": "2026-11-30", "status": "前置准备", "node_code": "L1-01"}
   ],
   "meetings": [
-    {"title": "周例会", "meet_date": "2026-09-01", "time_range": "10:00–11:00"}
+    {
+      "title": "20260901-01 复星医药×华大基因 周例会", "code": "20260901-01",
+      "meet_date": "2026-09-01", "start_time": "10:00", "end_time": "11:00",
+      "kind": "例会", "parties": "复星医药、华大基因", "organizer": "杨涛",
+      "issue_ids": ["BIO-314"], "task_issue_id": "BIO-314",
+      "node_codes": ["L3-01-08"]
+    }
   ]
 }
 ```
@@ -158,8 +204,12 @@ untouched.
 
 ## Storage
 
-The board is one record per workspace with five collections hanging off it:
-nodes, instalments, node-to-issue links, milestones and meetings. Deleting a
-node clears its own instalments and its own issue links. A node that still has
-children is refused with 409 rather than cascaded, so delete or reparent the
-children first.
+The board is one record per workspace with seven collections hanging off it:
+nodes, instalments, node-to-issue links, milestones, meetings, meeting-to-issue
+links and meeting-to-work-item links. Deleting a node clears its own
+instalments, its own issue links and its meeting links; deleting a meeting
+clears both of its link sets. A node that still has children is refused with
+409 rather than cascaded, so delete or reparent the children first.
+
+A meeting's folder on the shared storage is NEVER deleted with the meeting: it
+may hold the only copy of the minutes.

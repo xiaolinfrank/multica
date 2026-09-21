@@ -32,7 +32,7 @@ A board is a tree of **nodes** plus four things hanging off it.
 - **Payment** — one instalment of a node's budget: label, date, amount.
 - **Issue link** — the issues that carry the work out. Many per node.
 - **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
-- **Meeting** — the decision record: date, time, attendees, link, note.
+- **Meeting** — the register entry: when, which parties, what was decided, plus the task it opened and the folder holding its material.
 
 **`code` is the address.** Every node command accepts the human code the plan
 uses (`L1-02`, `L3-01-08`) as well as a UUID. Prefer the code — it is what the
@@ -99,12 +99,12 @@ the node's `progress` and `status` still match — the board does not infer them
 ```bash
 multica cockpit payment add L3-01-08 --label 第1笔 --pay-date 2026-09-05 --amount 15
 multica cockpit milestone add --name "高质量数据集验收" --plan-date 2026-11-30 --node L1-01
-multica cockpit meeting add --title "工作组周例会" --date 2026-09-08 --attendees "项目组全体"
+multica cockpit meeting add --title "20260908-01 工作组周例会" --code 20260908-01 --date 2026-09-08 --start 10:00 --end 11:00 --parties "复星医药、华大基因"
 ```
 
 Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
-milestone with an `actual_date` reads as done regardless of its status label —
-set the date when it actually lands.
+milestone with an `actual_date` reads as done whatever its status label says. A
+meeting's task, folder and links are HTTP-only — see `references/cockpit.md`.
 
 ## Versions
 

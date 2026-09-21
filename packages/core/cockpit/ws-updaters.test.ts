@@ -19,6 +19,9 @@ function seedBoard(over?: Partial<CockpitBoard>): { qc: QueryClient; board: Cock
       summary_next: "",
       summary_support: "",
       basis: "",
+      meeting_project_id: null,
+      meeting_module_id: null,
+      meeting_dir: "",
       created_at: "",
       updated_at: "",
     },
@@ -68,6 +71,8 @@ function seedBoard(over?: Partial<CockpitBoard>): { qc: QueryClient; board: Cock
     ],
     milestones: [],
     meetings: [],
+    meeting_issues: [],
+    meeting_nodes: [],
     ...over,
   };
   const qc = new QueryClient();
@@ -219,6 +224,106 @@ describe("onCockpitChanged", () => {
       onCockpitChanged(qc, WS, { scope: "issue_links", action: "replaced", entity: { node_id: "n1" } }),
     ).not.toThrow();
     expect(read(qc).nodes).toHaveLength(1);
+  });
+
+  it("replaces a meeting's issue links and carries the meeting row provisioning moved", () => {
+    const { qc } = seedBoard({
+      meetings: [
+        {
+          id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
+          title: "Weekly", code: "20260921-01", kind: "", status: "", series: "", parties: "",
+          organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
+          minutes: "", decisions: "", actions: "", nas_dir: "",
+        },
+      ],
+    });
+    onCockpitChanged(qc, WS, {
+      scope: "meeting_issues",
+      action: "provisioned",
+      entity: {
+        meeting_id: "m1",
+        // Provisioning creates the folder in the same breath as the task, so
+        // the frame carries the meeting row too.
+        meeting: {
+          id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
+          title: "Weekly", code: "20260921-01", kind: "", status: "", series: "", parties: "",
+          organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
+          minutes: "", decisions: "", actions: "", nas_dir: "/Volumes/share/20260921-01 Weekly",
+        },
+        links: [
+          {
+            meeting_id: "m1", issue_id: "i9", role: "task", issue_number: 9,
+            issue_identifier: "BIO-9", issue_title: "Weekly", issue_status: "todo", position: -1,
+          },
+        ],
+      },
+    });
+
+    const board = read(qc);
+    expect(board.meeting_issues).toHaveLength(1);
+    expect(board.meeting_issues[0]!.role).toBe("task");
+    expect(board.meetings[0]!.nas_dir).toBe("/Volumes/share/20260921-01 Weekly");
+  });
+
+  it("removes one meeting link without touching the others", () => {
+    const { qc } = seedBoard({
+      meeting_issues: [
+        { meeting_id: "m1", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+          issue_title: "One", issue_status: "todo", position: 0 },
+        { meeting_id: "m2", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+          issue_title: "One", issue_status: "todo", position: 0 },
+      ],
+      meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],
+    });
+    onCockpitChanged(qc, WS, {
+      scope: "meeting_issues",
+      action: "removed",
+      entity: { meeting_id: "m1", issue_id: "i1" },
+    });
+    onCockpitChanged(qc, WS, {
+      scope: "meeting_nodes",
+      action: "removed",
+      entity: { meeting_id: "m1", node_id: "n1" },
+    });
+
+    const board = read(qc);
+    expect(board.meeting_issues.map((l) => l.meeting_id)).toEqual(["m2"]);
+    expect(board.meeting_nodes).toHaveLength(0);
+  });
+
+  it("takes a deleted meeting's links with it, the way the server did", () => {
+    const { qc } = seedBoard({
+      meetings: [
+        {
+          id: "m1", meet_date: null, time_range: "", start_time: null, end_time: null,
+          title: "Weekly", code: "", kind: "", status: "", series: "", parties: "",
+          organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
+          minutes: "", decisions: "", actions: "", nas_dir: "",
+        },
+      ],
+      meeting_issues: [
+        { meeting_id: "m1", issue_id: "i1", role: "task", issue_number: 1, issue_identifier: "BIO-1",
+          issue_title: "One", issue_status: "todo", position: 0 },
+      ],
+      meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],
+    });
+    onCockpitChanged(qc, WS, { scope: "meeting", action: "deleted", entity: { id: "m1" } });
+
+    const board = read(qc);
+    expect(board.meetings).toHaveLength(0);
+    expect(board.meeting_issues).toHaveLength(0);
+    expect(board.meeting_nodes).toHaveLength(0);
+  });
+
+  it("drops a deleted node's meeting links", () => {
+    const { qc } = seedBoard({
+      meeting_nodes: [
+        { meeting_id: "m1", node_id: "n1", position: 0 },
+        { meeting_id: "m1", node_id: "n2", position: 1 },
+      ],
+    });
+    onCockpitChanged(qc, WS, { scope: "node", action: "deleted", entity: { id: "n1" } });
+    expect(read(qc).meeting_nodes.map((l) => l.node_id)).toEqual(["n2"]);
   });
 
   it("does nothing when no board is cached yet", () => {

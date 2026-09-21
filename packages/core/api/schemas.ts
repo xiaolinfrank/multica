@@ -1701,6 +1701,9 @@ export const CockpitSchema = z.object({
   summary_next: z.string().default(""),
   summary_support: z.string().default(""),
   basis: z.string().default(""),
+  meeting_project_id: z.string().nullable().default(null),
+  meeting_module_id: z.string().nullable().default(null),
+  meeting_dir: z.string().default(""),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
@@ -1771,11 +1774,75 @@ export const CockpitMeetingSchema = z.object({
   id: z.string(),
   meet_date: z.string().nullable().default(null),
   time_range: z.string().default(""),
+  start_time: z.string().nullable().default(null),
+  end_time: z.string().nullable().default(null),
   title: z.string().default(""),
+  code: z.string().default(""),
+  kind: z.string().default(""),
+  status: z.string().default(""),
+  series: z.string().default(""),
+  parties: z.string().default(""),
+  organizer: z.string().default(""),
+  location: z.string().default(""),
   attendees: z.string().default(""),
   meet_no: z.string().default(""),
   link: z.string().default(""),
   note: z.string().default(""),
+  minutes: z.string().default(""),
+  decisions: z.string().default(""),
+  actions: z.string().default(""),
+  nas_dir: z.string().default(""),
+}).loose();
+
+// The two link tables have no surrogate key: the pair IS the row. Both ids
+// are therefore required — a link missing either end names nothing.
+export const CockpitMeetingIssueLinkSchema = z.object({
+  meeting_id: z.string(),
+  issue_id: z.string(),
+  role: z.string().default(""),
+  issue_number: z.number().default(0),
+  issue_identifier: z.string().default(""),
+  issue_title: z.string().default(""),
+  issue_status: z.string().default(""),
+  position: z.number().default(0),
+}).loose();
+
+export const CockpitMeetingNodeLinkSchema = z.object({
+  meeting_id: z.string(),
+  node_id: z.string(),
+  position: z.number().default(0),
+}).loose();
+
+export const CockpitMeetingIssuesResponseSchema = z.object({
+  meeting_id: z.string().default(""),
+  links: z.array(CockpitMeetingIssueLinkSchema).default([]),
+}).loose();
+
+export const CockpitMeetingNodesResponseSchema = z.object({
+  meeting_id: z.string().default(""),
+  links: z.array(CockpitMeetingNodeLinkSchema).default([]),
+}).loose();
+
+export const CockpitMeetingProvisionResultSchema = z.object({
+  meeting: CockpitMeetingSchema,
+  issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
+  task: CockpitMeetingIssueLinkSchema.nullable().default(null),
+  task_error: z.string().default(""),
+  dir: z.string().default(""),
+  dir_created: z.boolean().default(false),
+  dir_error: z.string().default(""),
+}).loose();
+
+export const CockpitMeetingDestinationSchema = z.object({
+  project_id: z.string().default(""),
+  project_title: z.string().default(""),
+  module_id: z.string().default(""),
+  module_title: z.string().default(""),
+  collab_path: z.string().default(""),
+  base_dir: z.string().default(""),
+  derived: z.boolean().default(false),
+  base_dir_exists: z.boolean().default(false),
+  error: z.string().default(""),
 }).loose();
 
 export const CockpitBoardSchema = z.object({
@@ -1785,6 +1852,8 @@ export const CockpitBoardSchema = z.object({
   issue_links: z.array(CockpitIssueLinkSchema).default([]),
   milestones: z.array(CockpitMilestoneSchema).default([]),
   meetings: z.array(CockpitMeetingSchema).default([]),
+  meeting_issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
+  meeting_nodes: z.array(CockpitMeetingNodeLinkSchema).default([]),
 }).loose();
 
 export const CockpitPendingChangeSchema = z.object({
@@ -1918,6 +1987,9 @@ export const EMPTY_COCKPIT_BOARD: CockpitBoard = {
     summary_next: "",
     summary_support: "",
     basis: "",
+    meeting_project_id: null,
+    meeting_module_id: null,
+    meeting_dir: "",
     created_at: "",
     updated_at: "",
   },
@@ -1926,6 +1998,8 @@ export const EMPTY_COCKPIT_BOARD: CockpitBoard = {
   issue_links: [],
   milestones: [],
   meetings: [],
+  meeting_issues: [],
+  meeting_nodes: [],
 };
 
 export const ChildIssueProgressResponseSchema = z.object({

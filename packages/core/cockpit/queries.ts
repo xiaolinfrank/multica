@@ -4,6 +4,8 @@ import type {
   CockpitBoard,
   CockpitIssueLink,
   CockpitMeeting,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
   CockpitPayment,
@@ -17,6 +19,8 @@ export const cockpitKeys = {
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
+  meetingDestination: (wsId: string, projectId: string, moduleId: string) =>
+    [...cockpitKeys.all(wsId), "meeting-destination", projectId, moduleId] as const,
 };
 
 export function cockpitBoardOptions(wsId: string) {
@@ -49,6 +53,23 @@ export function cockpitChangesOptions(wsId: string) {
   return queryOptions({
     queryKey: cockpitKeys.changes(wsId),
     queryFn: () => api.listCockpitChanges(),
+    enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * Where a new meeting would be filed. Its own query rather than part of the
+ * board: the answer depends on a share the server may or may not have mounted
+ * right now, and on the project and module the form is currently showing —
+ * neither of which the board read knows about.
+ */
+export function cockpitMeetingDestinationOptions(
+  wsId: string,
+  params: { projectId?: string; moduleId?: string } = {},
+) {
+  return queryOptions({
+    queryKey: cockpitKeys.meetingDestination(wsId, params.projectId ?? "", params.moduleId ?? ""),
+    queryFn: () => api.getCockpitMeetingDestination(params),
     enabled: Boolean(wsId),
   });
 }
@@ -89,6 +110,7 @@ export function removeCockpitNode(board: CockpitBoard, nodeId: string): CockpitB
     nodes: board.nodes.filter((n) => n.id !== nodeId),
     payments: board.payments.filter((p) => p.node_id !== nodeId),
     issue_links: board.issue_links.filter((l) => l.node_id !== nodeId),
+    meeting_nodes: board.meeting_nodes.filter((l) => l.node_id !== nodeId),
   };
 }
 
@@ -138,5 +160,61 @@ export function upsertCockpitMeeting(board: CockpitBoard, meeting: CockpitMeetin
 }
 
 export function removeCockpitMeeting(board: CockpitBoard, meetingId: string): CockpitBoard {
-  return { ...board, meetings: board.meetings.filter((m) => m.id !== meetingId) };
+  // Same contract as removeCockpitNode: what the server deleted alongside the
+  // row leaves the cache with it, or the meetings tab keeps counting links to
+  // a meeting nobody can open.
+  return {
+    ...board,
+    meetings: board.meetings.filter((m) => m.id !== meetingId),
+    meeting_issues: board.meeting_issues.filter((l) => l.meeting_id !== meetingId),
+    meeting_nodes: board.meeting_nodes.filter((l) => l.meeting_id !== meetingId),
+  };
+}
+
+export function replaceCockpitMeetingIssues(
+  board: CockpitBoard,
+  meetingId: string,
+  links: CockpitMeetingIssueLink[],
+): CockpitBoard {
+  return {
+    ...board,
+    meeting_issues: [...board.meeting_issues.filter((l) => l.meeting_id !== meetingId), ...links],
+  };
+}
+
+export function removeCockpitMeetingIssue(
+  board: CockpitBoard,
+  meetingId: string,
+  issueId: string,
+): CockpitBoard {
+  return {
+    ...board,
+    meeting_issues: board.meeting_issues.filter(
+      (l) => !(l.meeting_id === meetingId && l.issue_id === issueId),
+    ),
+  };
+}
+
+export function replaceCockpitMeetingNodes(
+  board: CockpitBoard,
+  meetingId: string,
+  links: CockpitMeetingNodeLink[],
+): CockpitBoard {
+  return {
+    ...board,
+    meeting_nodes: [...board.meeting_nodes.filter((l) => l.meeting_id !== meetingId), ...links],
+  };
+}
+
+export function removeCockpitMeetingNode(
+  board: CockpitBoard,
+  meetingId: string,
+  nodeId: string,
+): CockpitBoard {
+  return {
+    ...board,
+    meeting_nodes: board.meeting_nodes.filter(
+      (l) => !(l.meeting_id === meetingId && l.node_id === nodeId),
+    ),
+  };
 }

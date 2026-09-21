@@ -76,6 +76,9 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
       summary_next: "",
       summary_support: "",
       basis: "",
+      meeting_project_id: null,
+      meeting_module_id: null,
+      meeting_dir: "",
       created_at: "",
       updated_at: "",
     },
@@ -84,6 +87,8 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
     issue_links: [],
     milestones: [],
     meetings: [],
+    meeting_issues: [],
+    meeting_nodes: [],
     ...over,
   };
 }

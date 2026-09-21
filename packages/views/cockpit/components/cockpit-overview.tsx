@@ -28,6 +28,7 @@ import {
   addDays,
   buildCockpitDisplayCodes,
   buildCockpitTree,
+  cockpitMeetingSpan,
   cockpitMilestoneStatusColor,
   cockpitModuleHighlights,
   computeCockpitDigest,
@@ -403,6 +404,8 @@ export interface CockpitOverviewProps {
   onPatchMeeting: (id: string, patch: CockpitMeetingPatch) => void;
   onCreateMeeting: () => void;
   onDeleteMeeting: (id: string) => void;
+  /** Opens the meeting register, on one meeting when named. */
+  onOpenMeetings: (meetingId?: string) => void;
   onOpenBranch: (nodeId: string) => void;
   /** Locates and highlights one task row in the gantt. */
   onOpenTask?: (nodeId: string) => void;
@@ -425,6 +428,7 @@ export function CockpitOverview({
   onPatchMeeting,
   onCreateMeeting,
   onDeleteMeeting,
+  onOpenMeetings,
   onOpenBranch,
   onOpenTask,
   onOpenModule,
@@ -668,6 +672,7 @@ export function CockpitOverview({
           readOnly={readOnly}
         />
         <MeetingsCard
+          onOpenMeetings={onOpenMeetings}
           meetings={board.meetings}
           today={today}
           locale={locale}
@@ -1432,6 +1437,7 @@ function MeetingsCard({
   onPatch,
   onCreate,
   onDelete,
+  onOpenMeetings,
   readOnly,
 }: {
   meetings: CockpitMeeting[];
@@ -1440,6 +1446,7 @@ function MeetingsCard({
   onPatch: (id: string, patch: CockpitMeetingPatch) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  onOpenMeetings: (meetingId?: string) => void;
   readOnly?: boolean;
 }) {
   const { t } = useT("cockpit");
@@ -1473,12 +1480,22 @@ function MeetingsCard({
       cap="meetings"
       hint={t(($) => $.overview.card_meetings_hint)}
       action={
-        !readOnly && (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
-            <Plus className="size-3.5" />
-            {t(($) => $.overview.add_meeting)}
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2"
+            onClick={() => onOpenMeetings()}
+          >
+            {t(($) => $.meetings.open_register)}
           </Button>
-        )
+          {!readOnly && (
+            <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
+              <Plus className="size-3.5" />
+              {t(($) => $.overview.add_meeting)}
+            </Button>
+          )}
+        </>
       }
     >
       {list.length === 0 ? (
@@ -1499,6 +1516,7 @@ function MeetingsCard({
               }
               onPatch={(patch) => onPatch(meeting.id, patch)}
               onDelete={() => onDelete(meeting.id)}
+              onOpen={() => onOpenMeetings(meeting.id)}
               readOnly={readOnly}
             />
           ))}
@@ -1526,6 +1544,7 @@ function MeetingRow({
   tag,
   onPatch,
   onDelete,
+  onOpen,
   readOnly,
 }: {
   meeting: CockpitMeeting;
@@ -1533,6 +1552,7 @@ function MeetingRow({
   tag: string | null;
   onPatch: (patch: CockpitMeetingPatch) => void;
   onDelete: () => void;
+  onOpen: () => void;
   readOnly?: boolean;
 }) {
   const { t } = useT("cockpit");
@@ -1587,8 +1607,8 @@ function MeetingRow({
               )}
             </div>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-micro text-muted-foreground">
-              <span>⏰ {meeting.time_range || t(($) => $.common.unset)}</span>
-              <span>👥 {meeting.attendees || t(($) => $.common.unset)}</span>
+              <span>⏰ {cockpitMeetingSpan(meeting) || t(($) => $.common.unset)}</span>
+              <span>👥 {meeting.parties || meeting.attendees || t(($) => $.common.unset)}</span>
               {meeting.meet_no && <span>#{meeting.meet_no}</span>}
             </div>
           </div>
@@ -1670,6 +1690,9 @@ function MeetingRow({
           )}
         </div>
         <DialogFooter>
+          <DialogClose render={<Button variant="outline" size="sm" onClick={onOpen} />}>
+            {t(($) => $.meetings.open_register)}
+          </DialogClose>
           {!readOnly && (
             <DialogClose
               render={

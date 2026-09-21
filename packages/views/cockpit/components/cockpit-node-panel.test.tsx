@@ -27,12 +27,12 @@ const node: CockpitNode = {
 
 function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
-    node, parent: undefined, depth: 2, payments: [], links: [], isBranch: false,
+    node, parent: undefined, depth: 2, payments: [], links: [], meetings: [], isBranch: false,
     statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [],
     vendorSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
     deleteConfirmationDescription: "This permanently deletes the item and its payments and issue links.",
-    onLinkIssue: vi.fn(), onUnlinkIssue: vi.fn(), onCreatePayment: vi.fn(),
+    onLinkIssue: vi.fn(), onUnlinkIssue: vi.fn(), onOpenMeeting: vi.fn(), onCreatePayment: vi.fn(),
     onPatchPayment: vi.fn(), onDeletePayment: vi.fn(), ...overrides,
   };
   const view = render(
