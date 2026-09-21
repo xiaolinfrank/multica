@@ -43,6 +43,8 @@ UPDATE cockpit SET
                               ELSE COALESCE(sqlc.narg('meeting_project_id')::uuid, meeting_project_id) END,
     meeting_module_id  = CASE WHEN sqlc.arg('clear_meeting_module')::bool THEN NULL
                               ELSE COALESCE(sqlc.narg('meeting_module_id')::uuid, meeting_module_id) END,
+    meeting_node_id    = CASE WHEN sqlc.arg('clear_meeting_node')::bool THEN NULL
+                              ELSE COALESCE(sqlc.narg('meeting_node_id')::uuid, meeting_node_id) END,
     meeting_dir        = COALESCE(sqlc.narg('meeting_dir')::text, meeting_dir),
     updated_at      = now()
 WHERE id = sqlc.arg('id')::uuid
@@ -299,7 +301,7 @@ INSERT INTO cockpit_meeting (
     workspace_id, cockpit_id, meet_date, time_range, title,
     attendees, meet_no, link, note,
     code, kind, status, series, parties, organizer, location,
-    start_time, end_time, minutes, decisions, actions, nas_dir
+    start_time, end_time, minutes, decisions, actions, nas_dir, detected
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -322,7 +324,8 @@ INSERT INTO cockpit_meeting (
     sqlc.arg('minutes')::text,
     sqlc.arg('decisions')::text,
     sqlc.arg('actions')::text,
-    sqlc.arg('nas_dir')::text
+    sqlc.arg('nas_dir')::text,
+    sqlc.arg('detected')::bool
 )
 RETURNING *;
 
@@ -351,6 +354,7 @@ UPDATE cockpit_meeting SET
     decisions  = COALESCE(sqlc.narg('decisions')::text, decisions),
     actions    = COALESCE(sqlc.narg('actions')::text, actions),
     nas_dir    = COALESCE(sqlc.narg('nas_dir')::text, nas_dir),
+    detected   = COALESCE(sqlc.narg('detected')::bool, detected),
     updated_at = now()
 WHERE id = sqlc.arg('id')::uuid
   AND workspace_id = sqlc.arg('workspace_id')::uuid

@@ -3,6 +3,7 @@ export {
   cockpitBoardOptions,
   cockpitChangesOptions,
   cockpitMeetingDestinationOptions,
+  cockpitMeetingScanOptions,
   patchCockpitBoard,
   upsertCockpitNode,
   removeCockpitNode,

@@ -58,9 +58,13 @@ type CockpitResponse struct {
 	// anything is created. Null until someone picks one.
 	MeetingProjectID *string `json:"meeting_project_id"`
 	MeetingModuleID  *string `json:"meeting_module_id"`
-	MeetingDir       string  `json:"meeting_dir"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	// The sub-item under the module that meeting material is archived in —
+	// a node on this board's tree ("06.06.03 会议纪要与素材"). Its code opens
+	// the meeting task's title and its folder holds the material.
+	MeetingNodeID *string `json:"meeting_node_id"`
+	MeetingDir    string  `json:"meeting_dir"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 type CockpitNodeResponse struct {
@@ -155,6 +159,10 @@ type CockpitMeetingResponse struct {
 	Decisions string `json:"decisions"`
 	Actions   string `json:"actions"`
 	NasDir    string `json:"nas_dir"`
+	// True when the row was read off the share rather than typed: its date,
+	// number, parties and subject are guesses from a folder name and want
+	// checking. Cleared by whoever checks them.
+	Detected bool `json:"detected"`
 }
 
 // CockpitMeetingIssueResponse is one issue a meeting is carried out through.
@@ -260,6 +268,7 @@ func cockpitToResponse(c db.Cockpit) CockpitResponse {
 		Basis:            c.Basis,
 		MeetingProjectID: uuidToPtr(c.MeetingProjectID),
 		MeetingModuleID:  uuidToPtr(c.MeetingModuleID),
+		MeetingNodeID:    uuidToPtr(c.MeetingNodeID),
 		MeetingDir:       c.MeetingDir,
 		CreatedAt:        timestampToString(c.CreatedAt),
 		UpdatedAt:        timestampToString(c.UpdatedAt),
@@ -346,6 +355,7 @@ func cockpitMeetingToResponse(m db.CockpitMeeting) CockpitMeetingResponse {
 		Decisions: m.Decisions,
 		Actions:   m.Actions,
 		NasDir:    m.NasDir,
+		Detected:  m.Detected,
 	}
 }
 
@@ -691,6 +701,13 @@ func optionalText(v *string) pgtype.Text {
 	return pgtype.Text{String: *v, Valid: true}
 }
 
+func optionalBool(v *bool) pgtype.Bool {
+	if v == nil {
+		return pgtype.Bool{}
+	}
+	return pgtype.Bool{Bool: *v, Valid: true}
+}
+
 func optionalFloat(v *float64) pgtype.Float8 {
 	if v == nil {
 		return pgtype.Float8{}
@@ -820,6 +837,7 @@ type UpdateCockpitRequest struct {
 	// string to clear, like every other optional field on this endpoint.
 	MeetingProjectID *string `json:"meeting_project_id"`
 	MeetingModuleID  *string `json:"meeting_module_id"`
+	MeetingNodeID    *string `json:"meeting_node_id"`
 	MeetingDir       *string `json:"meeting_dir"`
 }
 
@@ -844,7 +862,8 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 	// module id that names nothing, or a module belonging to another project,
 	// would only fail later at the moment someone files a meeting — with a
 	// board setting they cannot see as the cause.
-	project, module, ok := h.resolveMeetingDestination(w, r, cc, raw, req.MeetingProjectID, req.MeetingModuleID)
+	project, module, node, ok := h.resolveMeetingDestination(
+		w, r, cc, raw, req.MeetingProjectID, req.MeetingModuleID, req.MeetingNodeID)
 	if !ok {
 		return
 	}
@@ -878,6 +897,8 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 		ClearMeetingProject: project.clear,
 		MeetingModuleID:     module.id,
 		ClearMeetingModule:  module.clear,
+		MeetingNodeID:       node.id,
+		ClearMeetingNode:    node.clear,
 		MeetingDir:          optionalText(dir),
 	})
 	if err != nil {
@@ -1669,6 +1690,9 @@ type CockpitMeetingRequest struct {
 	// The meeting's folder on the shared NAS. Set by provisioning rather than
 	// typed, but writable so a folder that already existed can be adopted.
 	NasDir *string `json:"nas_dir"`
+	// Sent as false by whoever has checked a row the scan guessed at. Only
+	// the scan sets it to true.
+	Detected *bool `json:"detected"`
 }
 
 func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
@@ -1722,6 +1746,7 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Decisions:   textOrEmpty(req.Decisions),
 		Actions:     textOrEmpty(req.Actions),
 		NasDir:      nasDir,
+		Detected:    req.Detected != nil && *req.Detected,
 	})
 	if err != nil {
 		slog.Warn("CreateCockpitMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -1793,6 +1818,7 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Decisions:      optionalText(req.Decisions),
 		Actions:        optionalText(req.Actions),
 		NasDir:         optionalText(req.NasDir),
+		Detected:       optionalBool(req.Detected),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1925,6 +1951,9 @@ type CockpitImportMeeting struct {
 	Decisions string `json:"decisions"`
 	Actions   string `json:"actions"`
 	NasDir    string `json:"nas_dir"`
+	// Whether the row was read off the share rather than typed, and still
+	// unchecked. A restore that dropped it would present guesses as facts.
+	Detected bool `json:"detected"`
 	// What the meeting was attached to, named the way the document names
 	// everything else: issues by identifier, work items by code. Unresolvable
 	// issue references are reported alongside the node ones rather than
@@ -2358,6 +2387,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			Decisions:   m.Decisions,
 			Actions:     m.Actions,
 			NasDir:      m.NasDir,
+			Detected:    m.Detected,
 		})
 		if err != nil {
 			slog.Warn("cockpit import meeting failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -2686,6 +2716,7 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 			Decisions:   m.Decisions,
 			Actions:     m.Actions,
 			NasDir:      m.NasDir,
+			Detected:    m.Detected,
 			IssueIDs:    issuesByMeeting[m.ID],
 			NodeCodes:   nodesByMeeting[m.ID],
 			TaskIssueID: taskByMeeting[m.ID],

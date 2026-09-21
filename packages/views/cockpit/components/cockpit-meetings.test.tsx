@@ -53,6 +53,8 @@ vi.mock("@multica/core/api", () => ({
     deleteCockpitMeeting: vi.fn(),
     provisionCockpitMeeting: vi.fn(),
     getCockpitMeetingDestination: vi.fn(),
+    scanCockpitMeetingFolders: vi.fn(),
+    importCockpitMeetingFolders: vi.fn(),
     setCockpitMeetingIssues: vi.fn(),
     deleteCockpitMeetingIssue: vi.fn(),
     setCockpitMeetingNodes: vi.fn(),
@@ -103,7 +105,7 @@ function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
     code: "", kind: "", status: "", series: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
-    nas_dir: "", ...over,
+    nas_dir: "", detected: false, ...over,
   };
 }
 
@@ -120,6 +122,7 @@ const board: CockpitBoard = {
     basis: "",
     meeting_project_id: "project-06",
     meeting_module_id: "module-0606",
+    meeting_node_id: "node-060603",
     meeting_dir: "",
     created_at: "",
     updated_at: "",
@@ -210,11 +213,36 @@ beforeEach(() => {
     project_title: "06 Programme management",
     module_id: "module-0606",
     module_title: "06.06 Joint working and meetings",
+    node_id: "node-060603",
+    node_code: "06.06.03",
+    node_title: "Minutes and material",
     collab_path: "/Volumes/share",
-    base_dir: "/Volumes/share/06.06",
+    base_dir: "/Volumes/share/06.06/06.06.03",
     derived: true,
     base_dir_exists: true,
+    creatable: true,
     error: "",
+  });
+  vi.mocked(api.scanCockpitMeetingFolders).mockResolvedValue({
+    base_dir: "/Volumes/share/06.06/06.06.03",
+    base_dir_exists: true,
+    matched: 1,
+    truncated: false,
+    error: "",
+    entries: [
+      {
+        name: "20260921-01 Working group weekly",
+        path: "/Volumes/share/06.06/06.06.03/20260921-01 Working group weekly",
+        modified_at: "", files: 3, meeting_id: "meet-1",
+        code: "20260921-01", meet_date: "2026-09-21", parties: "", title: "Working group weekly",
+      },
+      {
+        name: "20260920 Unicom trusted connector",
+        path: "/Volumes/share/06.06/06.06.03/20260920 Unicom trusted connector",
+        modified_at: "", files: 5, meeting_id: "",
+        code: "", meet_date: "2026-09-20", parties: "", title: "Unicom trusted connector",
+      },
+    ],
   });
 });
 
@@ -285,14 +313,18 @@ describe("the meeting register", () => {
     const code = `${codeDay()}-02`;
     const name = within(dialog).getByLabelText("Name") as HTMLInputElement;
     expect(name.value).toBe(`${code} Fosun Pharma×BGI Data handover`);
-    // The destination is named, not implied: the project, the module and the
-    // absolute path the folder will be created at.
+    // The destination is named, not implied: the project, the module, the
+    // archive sub-item and the absolute path the folder will be created at —
+    // one level below the module, where the programme keeps its material.
     expect(within(dialog).getByText(/06 Programme management/)).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        within(dialog).getByText(new RegExp(`/Volumes/share/06\\.06/${code}`)),
+        within(dialog).getByText(new RegExp(`/Volumes/share/06\\.06/06\\.06\\.03/${code}`)),
       ).toBeInTheDocument(),
     );
+    // And the number the task will open with, because the sub-item is what
+    // gives it one.
+    expect(within(dialog).getByText(/as 06\.06\.03, assigned to you/)).toBeInTheDocument();
   });
 
   it("files the meeting first and provisions it second, reporting what each did", async () => {
@@ -332,5 +364,74 @@ describe("the meeting register", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Open the meeting register" }));
     expect(await screen.findByRole("button", { name: "List", pressed: true })).toBeInTheDocument();
+  });
+});
+
+describe("reading meetings back off the share", () => {
+  it("offers only the folders no meeting records, with what it guessed editable", async () => {
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Read from the share" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("20260920 Unicom trusted connector");
+    // The folder that already has a meeting is not offered again.
+    expect(within(dialog).queryByText("20260921-01 Working group weekly")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("/Volumes/share/06.06/06.06.03")).toBeInTheDocument();
+
+    // Every guess is an input, because a guess has to be correctable before
+    // it becomes a row.
+    const subject = within(dialog).getByLabelText(
+      "Subject of 20260920 Unicom trusted connector",
+    ) as HTMLInputElement;
+    expect(subject.value).toBe("Unicom trusted connector");
+    expect(
+      (within(dialog).getByLabelText("Date of 20260920 Unicom trusted connector") as HTMLInputElement)
+        .value,
+    ).toBe("2026-09-20");
+
+    fireEvent.change(subject, { target: { value: "Trusted connector review" } });
+    vi.mocked(api.importCockpitMeetingFolders).mockResolvedValue({
+      meetings: [meeting({ id: "meet-2", title: "Trusted connector review", detected: true })],
+      issues: [],
+      skipped: [],
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import 1" }));
+
+    await waitFor(() =>
+      expect(api.importCockpitMeetingFolders).toHaveBeenCalledWith({
+        items: [
+          {
+            name: "20260920 Unicom trusted connector",
+            code: "",
+            meet_date: "2026-09-20",
+            title: "Trusted connector review",
+            parties: "",
+          },
+        ],
+        project_id: "project-06",
+        module_id: "module-0606",
+        node_id: "node-060603",
+        // These meetings have already been held; opening a task for each is
+        // opt-in, not the default.
+        create_task: false,
+      }),
+    );
+  });
+
+  it("says a row was read off the share until someone has checked it", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue({
+      ...structuredClone(board),
+      meetings: [meeting({ id: "meet-1", title: "Guessed meeting", meet_date: todayString(), detected: true })],
+    });
+    await openRegister();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Guessed meeting" }));
+    const panel = await screen.findByText(/guessed from the folder name/i);
+    expect(panel).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Checked" }));
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { detected: false }),
+    );
   });
 });

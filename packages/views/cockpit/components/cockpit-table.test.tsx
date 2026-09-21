@@ -23,7 +23,7 @@ const nodes = [
 function show(overrides: Partial<CockpitTableProps> = {}) {
   const board: CockpitBoard = {
     cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
-      summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_dir: "", created_at: "", updated_at: "" },
+      summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
     nodes, payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
   };
   const onSelect = vi.fn();
@@ -68,7 +68,7 @@ describe("CockpitTable execution rows", () => {
   it("does not treat optional missing fields or zero progress as core warnings", () => {
     show({ board: {
       cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
-        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_dir: "", created_at: "", updated_at: "" },
+        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
       nodes: [node({ id: "leaf", code: "01", name: "Complete core fields", progress: 0 })],
       payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
     } });
@@ -80,7 +80,7 @@ describe("CockpitTable execution rows", () => {
   it("labels core gaps separately from suggested additions", () => {
     show({ board: {
       cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
-        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_dir: "", created_at: "", updated_at: "" },
+        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
       nodes: [node({ id: "leaf", code: "01", owner: "" })],
       payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
     } });

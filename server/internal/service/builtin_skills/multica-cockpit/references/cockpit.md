@@ -24,7 +24,9 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | PATCH | `/api/cockpit/milestones/{milestoneId}` | edit a milestone |
 | DELETE | `/api/cockpit/milestones/{milestoneId}` | delete a milestone |
 | POST | `/api/cockpit/meetings` | add a meeting |
-| GET | `/api/cockpit/meetings/destination` | where a new meeting would be filed; `project_id`/`module_id` override the board's stored choice |
+| GET | `/api/cockpit/meetings/destination` | where a new meeting would be filed; `project_id`/`module_id`/`node_id` override the board's stored choice |
+| GET | `/api/cockpit/meetings/scan` | archive folders no meeting records, with what their names give up |
+| POST | `/api/cockpit/meetings/import` | turn chosen archive folders into meeting rows |
 | POST | `/api/cockpit/meetings/{meetingId}/provision` | open the meeting's task and create its folder |
 | PUT | `/api/cockpit/meetings/{meetingId}/issues` | replace a meeting's issue links |
 | DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
@@ -54,7 +56,8 @@ A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
 `time_range` for the free text older rows were logged with, `title`, `code`,
 `kind`, `status`, `series`, `parties`, `organizer`, `location`, `attendees`,
 `meet_no`, `link`) and what it LEFT BEHIND (`note` for the agenda and remarks,
-`minutes`, `decisions`, `actions`, `nas_dir`).
+`minutes`, `decisions`, `actions`, `nas_dir`). `detected` marks a row the
+scan read off the share rather than one somebody typed.
 
 `code` is the platform's own number — the date plus that day's sequence,
 `20260921-01`. `meet_no` is the conferencing system's dial-in number and is a
@@ -76,10 +79,24 @@ accepted as-is. The task is assigned to the member filing the meeting unless
 a diary entry to the workspace's fallback agent and start a run.
 
 Where the task and the folder go is board configuration, not code:
-`meeting_project_id`, `meeting_module_id` and `meeting_dir` on the cockpit row,
-set through `PATCH /api/cockpit` or remembered by a provision. A folder is only
-ever created directly under the configured root, with the name sanitised to one
-path component.
+`meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`
+on the cockpit row, set through `PATCH /api/cockpit` or remembered by a
+provision. `meeting_node_id` is the archive sub-item — a node on this board's
+tree, one level below the module ("06.06.03 会议纪要与素材"): its folder holds
+the material and its `code` opens the meeting task's title. The folder chain
+below the project's collaboration space is created if it is missing, one level
+at a time; the collaboration space itself never is, because an unmounted share
+must fail rather than be rebuilt as local directories.
+
+`GET .../meetings/scan` reads the archive folder and reports each sub-folder
+with the meeting already recording it (`meeting_id`, empty when none) and what
+its NAME gives up — `code`, `meet_date`, `parties`, `title`, all guesses. The
+folder is always the board's own; the endpoint takes no path. `POST
+.../meetings/import` turns chosen folders into rows with `detected: true` and
+`nas_dir` set to the folder; a folder that has gone, is already recorded, or
+resolves outside the archive folder is reported in `skipped` rather than
+failing the batch. `create_task` defaults to false there: those meetings have
+already been held.
 
 ## Field semantics
 
@@ -191,7 +208,7 @@ carries its own `node` scope frame with the row it wrote.
       "title": "20260901-01 复星医药×华大基因 周例会", "code": "20260901-01",
       "meet_date": "2026-09-01", "start_time": "10:00", "end_time": "11:00",
       "kind": "例会", "parties": "复星医药、华大基因", "organizer": "杨涛",
-      "issue_ids": ["BIO-314"], "task_issue_id": "BIO-314",
+      "issue_ids": ["BIO-314"], "task_issue_id": "BIO-314", "detected": false,
       "node_codes": ["L3-01-08"]
     }
   ]

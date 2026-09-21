@@ -5,6 +5,7 @@ import { api } from "../api";
 import { issueKeys } from "../issues/queries";
 import type {
   CockpitBoard,
+  CockpitMeetingImportItem,
   CockpitMeetingPatch,
   CockpitMeetingProvision,
   CockpitMilestonePatch,
@@ -376,6 +377,45 @@ export function useProvisionCockpitMeeting(wsId: string) {
       if (result.task) {
         queryClient.invalidateQueries({ queryKey: issueKeys.all(wsId) });
       }
+    },
+  });
+}
+
+/**
+ * Turns archive folders the scan found into meeting rows.
+ *
+ * The rows land flagged as read-off-the-share rather than typed, so the
+ * register can show that their fields are guesses. Not optimistic for the
+ * same reason provisioning is not: the server decides which folders were
+ * still there, and reports the ones it skipped.
+ */
+export function useImportCockpitMeetingFolders(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      items: CockpitMeetingImportItem[];
+      project_id?: string;
+      module_id?: string;
+      node_id?: string;
+      create_task?: boolean;
+    }) => api.importCockpitMeetingFolders(body),
+    onSuccess: (result) => {
+      patchCockpitBoard(queryClient, wsId, (board) => {
+        let next = board;
+        for (const meeting of result.meetings) {
+          next = upsertCockpitMeeting(next, meeting);
+        }
+        for (const meeting of result.meetings) {
+          const links = result.issues.filter((link) => link.meeting_id === meeting.id);
+          if (links.length > 0) next = replaceCockpitMeetingIssues(next, meeting.id, links);
+        }
+        return next;
+      });
+      if (result.issues.length > 0) {
+        queryClient.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+      }
+      // The folders that were just imported are no longer unrecorded.
+      queryClient.invalidateQueries({ queryKey: [...cockpitKeys.all(wsId), "meeting-scan"] });
     },
   });
 }

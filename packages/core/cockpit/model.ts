@@ -2449,3 +2449,51 @@ export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
     locations: collect((m) => m.location),
   };
 }
+
+/**
+ * The sub-items a meeting could be archived under.
+ *
+ * The board's tree and Multica's project→module hierarchy are two shapes over
+ * the same programme, and the platform never stores a link between them. What
+ * it can do is recognise one: the programme numbers both sides the same way,
+ * so the module "06.06 多方协同与会议" and the node whose code is "06.06" are
+ * the same thing said twice. That node's children are the archive folders on
+ * the share, which is exactly the list to choose from.
+ *
+ * The number is tried first because it survives a rename of either side; the
+ * whole title, minus the spacing the two sides disagree about, answers for a
+ * module that carries no number.
+ *
+ * A node already chosen is always offered, even when the module moved out
+ * from under it — a form that silently dropped the board's own setting would
+ * change it the next time anyone pressed save.
+ */
+export function cockpitArchiveNodeOptions(
+  nodes: CockpitNode[],
+  moduleTitle: string,
+  selectedId?: string | null,
+): CockpitNode[] {
+  const squash = (value: string) => value.replace(/\s+/gu, "");
+  const title = (moduleTitle ?? "").trim();
+  const options: CockpitNode[] = [];
+  if (title) {
+    const lead = title.split(/\s+/u)[0] ?? "";
+    const numbered = /^[0-9][0-9.]*$/u.test(lead) ? lead : "";
+    const parent =
+      (numbered ? nodes.find((node) => node.code.trim() === numbered) : undefined) ??
+      nodes.find((node) => squash(`${node.code} ${node.name}`) === squash(title));
+    if (parent) {
+      options.push(...nodes.filter((node) => node.parent_id === parent.id));
+    }
+  }
+  if (selectedId && !options.some((node) => node.id === selectedId)) {
+    const selected = nodes.find((node) => node.id === selectedId);
+    if (selected) options.unshift(selected);
+  }
+  return options;
+}
+
+/** "06.06.03 会议纪要与素材" — how a work item reads in a picker. */
+export function cockpitNodeLabel(node: CockpitNode): string {
+  return `${node.code} ${node.name}`.trim();
+}

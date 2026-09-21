@@ -11,11 +11,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CockpitMeeting, CockpitMeetingProvision } from "@multica/core/types";
+import type { CockpitMeeting, CockpitMeetingProvision, CockpitNode } from "@multica/core/types";
 import {
   buildCockpitMeetingName,
+  cockpitArchiveNodeOptions,
   cockpitMeetingDestinationOptions,
   cockpitMeetingFolderName,
+  cockpitNodeLabel,
   cockpitMeetingVocabulary,
   nextCockpitMeetingCode,
 } from "@multica/core/cockpit";
@@ -53,15 +55,22 @@ export interface CockpitMeetingDraft {
   code: string;
 }
 
+/** The archive sub-item picker's "file at the module level" answer. Select
+ *  items cannot carry an empty value, and "" is a meaningful answer here. */
+const MODULE_LEVEL = "__module__";
+
 export interface CockpitMeetingCreateProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   wsId: string;
   today: string;
   meetings: CockpitMeeting[];
+  /** The board's tree, which the archive sub-item is chosen from. */
+  nodes: CockpitNode[];
   /** The board's remembered destination, pre-selected in the pickers. */
   defaultProjectId: string | null;
   defaultModuleId: string | null;
+  defaultNodeId: string | null;
   /** Resolves once the meeting row exists and provisioning has answered. */
   onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => Promise<unknown>;
 }
@@ -72,8 +81,10 @@ export function CockpitMeetingCreate({
   wsId,
   today,
   meetings,
+  nodes,
   defaultProjectId,
   defaultModuleId,
+  defaultNodeId,
   onSubmit,
 }: CockpitMeetingCreateProps) {
   const { t } = useT("cockpit");
@@ -90,6 +101,7 @@ export function CockpitMeetingCreate({
   const [nameOverride, setNameOverride] = useState("");
   const [projectId, setProjectId] = useState(defaultProjectId ?? "");
   const [moduleId, setModuleId] = useState(defaultModuleId ?? "");
+  const [nodeId, setNodeId] = useState(defaultNodeId ?? "");
   const [withTask, setWithTask] = useState(true);
   const [withDir, setWithDir] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -106,10 +118,11 @@ export function CockpitMeetingCreate({
     setNameOverride("");
     setProjectId(defaultProjectId ?? "");
     setModuleId(defaultModuleId ?? "");
+    setNodeId(defaultNodeId ?? "");
     setWithTask(true);
     setWithDir(true);
     setSubmitting(false);
-  }, [open, today, defaultProjectId, defaultModuleId]);
+  }, [open, today, defaultProjectId, defaultModuleId, defaultNodeId]);
 
   const projects = useQuery({ ...projectListOptions(wsId), enabled: open && Boolean(wsId) });
   const modules = useQuery({
@@ -120,6 +133,9 @@ export function CockpitMeetingCreate({
     ...cockpitMeetingDestinationOptions(wsId, {
       projectId: projectId || undefined,
       moduleId: moduleId || undefined,
+      // Always sent: "" means "file at the module level", which is a
+      // different answer from "use whatever the board remembers".
+      nodeId,
     }),
     enabled: open && Boolean(wsId) && Boolean(projectId),
   });
@@ -137,10 +153,18 @@ export function CockpitMeetingCreate({
     projects.data?.find((p) => p.id === projectId)?.title ?? destination.data?.project_title ?? "";
   const moduleTitle =
     modules.data?.find((m) => m.id === moduleId)?.title ?? destination.data?.module_title ?? "";
+  const archiveNodes = useMemo(
+    () => cockpitArchiveNodeOptions(nodes, moduleTitle, nodeId || null),
+    [nodes, moduleTitle, nodeId],
+  );
   const baseDir = destination.data?.base_dir ?? "";
   const destinationError = destination.data?.error ?? "";
   const canFile = Boolean(projectId && moduleId);
-  const canCreateDir = Boolean(baseDir) && (destination.data?.base_dir_exists ?? false);
+  // What decides this is whether the server could CREATE the path, not
+  // whether every folder on it exists: an archive folder nobody has made yet
+  // is an ordinary state of a share that is mounted.
+  const canCreateDir = Boolean(baseDir) && (destination.data?.creatable ?? false);
+  const willCreateBase = canCreateDir && !(destination.data?.base_dir_exists ?? false);
 
   const submit = async () => {
     if (submitting) return;
@@ -161,6 +185,7 @@ export function CockpitMeetingCreate({
           create_dir: withDir && canCreateDir,
           project_id: projectId || undefined,
           module_id: moduleId || undefined,
+          node_id: nodeId,
           base_dir: baseDir || undefined,
           remember: true,
         },
@@ -279,6 +304,7 @@ export function CockpitMeetingCreate({
                 onValueChange={(value) => {
                   setProjectId(typeof value === "string" ? value : "");
                   setModuleId("");
+                  setNodeId("");
                 }}
               >
                 <SelectTrigger id="cockpit-meeting-project" className="w-full">
@@ -300,7 +326,10 @@ export function CockpitMeetingCreate({
               <Select
                 items={(modules.data ?? []).map((m) => ({ value: m.id, label: m.title }))}
                 value={moduleId}
-                onValueChange={(value) => setModuleId(typeof value === "string" ? value : "")}
+                onValueChange={(value) => {
+                  setModuleId(typeof value === "string" ? value : "");
+                  setNodeId("");
+                }}
               >
                 <SelectTrigger id="cockpit-meeting-module" className="w-full">
                   <SelectValue />
@@ -315,6 +344,37 @@ export function CockpitMeetingCreate({
               </Select>
             </div>
 
+            <div className="col-span-2 flex flex-col gap-1">
+              <Label htmlFor="cockpit-meeting-node">{t(($) => $.meetings.destination_node)}</Label>
+              <Select
+                items={[
+                  { value: MODULE_LEVEL, label: t(($) => $.meetings.destination_node_none) },
+                  ...archiveNodes.map((node) => ({ value: node.id, label: cockpitNodeLabel(node) })),
+                ]}
+                value={nodeId || MODULE_LEVEL}
+                onValueChange={(value) =>
+                  setNodeId(typeof value === "string" && value !== MODULE_LEVEL ? value : "")
+                }
+              >
+                <SelectTrigger id="cockpit-meeting-node" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={MODULE_LEVEL}>
+                    {t(($) => $.meetings.destination_node_none)}
+                  </SelectItem>
+                  {archiveNodes.map((node) => (
+                    <SelectItem key={node.id} value={node.id}>
+                      {cockpitNodeLabel(node)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-caption text-muted-foreground">
+                {t(($) => $.meetings.destination_node_hint)}
+              </p>
+            </div>
+
             <label className="col-span-2 flex items-start gap-2">
               <Checkbox
                 checked={withTask && canFile}
@@ -324,12 +384,18 @@ export function CockpitMeetingCreate({
               <span className="flex min-w-0 flex-col">
                 <span className="text-body">{t(($) => $.meetings.with_task)}</span>
                 <span className="text-caption text-muted-foreground">
-                  {canFile
-                    ? t(($) => $.meetings.with_task_hint, {
-                        project: projectTitle,
-                        module: moduleTitle,
-                      })
-                    : t(($) => $.meetings.with_task_unset)}
+                  {!canFile
+                    ? t(($) => $.meetings.with_task_unset)
+                    : destination.data?.node_code
+                      ? t(($) => $.meetings.with_task_hint_numbered, {
+                          project: projectTitle,
+                          module: moduleTitle,
+                          code: destination.data.node_code,
+                        })
+                      : t(($) => $.meetings.with_task_hint, {
+                          project: projectTitle,
+                          module: moduleTitle,
+                        })}
                 </span>
               </span>
             </label>
@@ -355,6 +421,11 @@ export function CockpitMeetingCreate({
                             path: `${baseDir}/${folderName}`,
                           })}
                 </span>
+                {canCreateDir && willCreateBase && (
+                  <span className="text-caption text-muted-foreground">
+                    {t(($) => $.meetings.with_dir_creates_base)}
+                  </span>
+                )}
                 {canCreateDir && destination.data?.derived && (
                   <span className="text-caption text-muted-foreground">
                     {t(($) => $.meetings.destination_derived)}

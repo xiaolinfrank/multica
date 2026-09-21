@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
@@ -50,22 +51,22 @@ type meetingRef struct {
 	clear bool
 }
 
-// resolveMeetingDestination validates the project/module pair a board wants
-// its meetings filed under. Absent fields leave the board's current choice
-// alone; an empty string clears it.
+// resolveMeetingDestination validates the project/module/sub-item a board
+// wants its meetings filed under. Absent fields leave the board's current
+// choice alone; an empty string clears it.
 //
-// The names ("06项目管理与规划", "06.06 多方协同与会议") are deliberately not
-// in the code. Which project a programme keeps its meetings in is a property
-// of that programme, so it is chosen in the product, validated here, and
-// remembered on the board.
+// The names ("06项目管理与规划", "06.06 多方协同与会议", "06.06.03 会议纪要与
+// 素材") are deliberately not in the code. Which project a programme keeps its
+// meetings in is a property of that programme, so it is chosen in the
+// product, validated here, and remembered on the board.
 func (h *Handler) resolveMeetingDestination(
 	w http.ResponseWriter,
 	r *http.Request,
 	cc cockpitContext,
 	raw map[string]json.RawMessage,
-	projectRef, moduleRef *string,
-) (meetingRef, meetingRef, bool) {
-	var project, module meetingRef
+	projectRef, moduleRef, nodeRef *string,
+) (meetingRef, meetingRef, meetingRef, bool) {
+	var project, module, node meetingRef
 
 	if _, touched := raw["meeting_project_id"]; touched {
 		if projectRef == nil || strings.TrimSpace(*projectRef) == "" {
@@ -73,13 +74,13 @@ func (h *Handler) resolveMeetingDestination(
 		} else {
 			id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*projectRef), "meeting_project_id")
 			if !ok {
-				return project, module, false
+				return project, module, node, false
 			}
 			if _, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{
 				ID: id, WorkspaceID: cc.workspaceID,
 			}); err != nil {
 				writeError(w, http.StatusBadRequest, "project not found in this workspace")
-				return project, module, false
+				return project, module, node, false
 			}
 			project.id = id
 		}
@@ -91,14 +92,14 @@ func (h *Handler) resolveMeetingDestination(
 		} else {
 			id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*moduleRef), "meeting_module_id")
 			if !ok {
-				return project, module, false
+				return project, module, node, false
 			}
 			row, err := h.Queries.GetModuleInWorkspace(r.Context(), db.GetModuleInWorkspaceParams{
 				ID: id, WorkspaceID: cc.workspaceID,
 			})
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "module not found in this workspace")
-				return project, module, false
+				return project, module, node, false
 			}
 			// The module names its own project, so the pair is checked against
 			// whichever project this request settles on — the one it is
@@ -112,13 +113,38 @@ func (h *Handler) resolveMeetingDestination(
 			}
 			if target.Valid && row.ProjectID != target {
 				writeError(w, http.StatusBadRequest, "module does not belong to the meeting project")
-				return project, module, false
+				return project, module, node, false
 			}
 			module.id = id
 		}
 	}
 
-	return project, module, true
+	if _, touched := raw["meeting_node_id"]; touched {
+		if nodeRef == nil || strings.TrimSpace(*nodeRef) == "" {
+			node.clear = true
+		} else {
+			id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*nodeRef), "meeting_node_id")
+			if !ok {
+				return project, module, node, false
+			}
+			// A node off another board would name a folder this programme
+			// does not own, so only this board's tree is accepted. Which
+			// module it hangs under is NOT checked: the tree and the
+			// project→module hierarchy are two independent shapes over the
+			// same programme, and forcing them to agree would reject a
+			// legitimate re-organisation of either.
+			row, err := h.Queries.GetCockpitNode(r.Context(), db.GetCockpitNodeParams{
+				ID: id, WorkspaceID: cc.workspaceID,
+			})
+			if err != nil || row.CockpitID != cc.cockpit.ID {
+				writeError(w, http.StatusBadRequest, "work item not found on this board")
+				return project, module, node, false
+			}
+			node.id = id
+		}
+	}
+
+	return project, module, node, true
 }
 
 // meetingDirOrError validates a meeting's stored folder. Same contract as a
@@ -202,59 +228,165 @@ func normalizeDirMatch(s string) string {
 	}, s)
 }
 
+// collabFolderName is a platform title written the way the share writes it.
+//
+// The programme separates a code from its name with a space on the platform
+// ("06.06 多方协同与会议") and runs them together on disk
+// ("06.06多方协同与会议"). Proposing a folder is only useful if the proposal
+// looks like the ones already there, so the leading code is rejoined to the
+// name. Titles that do not open with a code are left alone.
+func collabFolderName(title string) string {
+	trimmed := strings.TrimSpace(title)
+	head, rest, found := strings.Cut(trimmed, " ")
+	if !found || head == "" {
+		return trimmed
+	}
+	for _, r := range head {
+		if r != '.' && !unicode.IsDigit(r) {
+			return trimmed
+		}
+	}
+	return head + strings.TrimSpace(rest)
+}
+
+// childDirNamed finds the folder inside parent that answers to want, matched
+// without the spacing the platform and the share disagree about. Returns ""
+// when parent cannot be read — an unmounted share, or a folder nobody has
+// created yet — which the caller answers with a proposal.
+func childDirNamed(parent, want string) string {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return ""
+	}
+	target := normalizeDirMatch(want)
+	for _, entry := range entries {
+		if entry.IsDir() && normalizeDirMatch(entry.Name()) == target {
+			return entry.Name()
+		}
+	}
+	return ""
+}
+
+// meetingDirPlan is where this board's meeting folders go, and how far up
+// that path the server is allowed to create what is missing.
+type meetingDirPlan struct {
+	// The project's collaboration space. Nothing above it is ever created:
+	// a /Volumes path whose share is not mounted must fail, not be rebuilt
+	// as local directories that the next mount hides.
+	Root string
+	// The folder new meeting folders are created in.
+	Dir string
+	// Dir was worked out from the module and sub-item rather than confirmed
+	// by someone. A derived path is shown as a proposal.
+	Derived bool
+}
+
 // meetingBaseDir answers "which folder do this board's meeting folders go in".
 //
 // A board that has confirmed a folder uses it, full stop. Otherwise the answer
-// is derived: the project's collaboration space, then the child folder that
-// answers to the module — matched by name, because a module's directory is
-// found by name rather than stored (see migration 928). The derivation is a
-// SUGGESTION: it is returned to the caller to show and confirm, and only a
-// confirmed value is stored on the board.
+// is derived by walking down from the project's collaboration space: the
+// folder that answers to the module, then the folder that answers to the
+// archive sub-item ("06.06.03 会议纪要与素材"). Both are matched by name,
+// because those directories are found by name rather than stored (see
+// migration 928). The derivation is a SUGGESTION: it is returned to the
+// caller to show and confirm, and only a confirmed value is stored.
 func (h *Handler) meetingBaseDir(
 	ctx context.Context,
 	cc cockpitContext,
-	projectID, moduleID pgtype.UUID,
-) (dir string, derived bool, err error) {
-	if strings.TrimSpace(cc.cockpit.MeetingDir) != "" {
-		return cc.cockpit.MeetingDir, false, nil
+	projectID, moduleID, nodeID pgtype.UUID,
+) (meetingDirPlan, error) {
+	if confirmed := strings.TrimSpace(cc.cockpit.MeetingDir); confirmed != "" {
+		clean := filepath.Clean(confirmed)
+		return meetingDirPlan{Root: clean, Dir: clean}, nil
 	}
 	if !projectID.Valid {
-		return "", false, errors.New("no meeting project is set for this board")
+		return meetingDirPlan{}, errors.New("no meeting project is set for this board")
 	}
 	project, err := h.Queries.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{
 		ID: projectID, WorkspaceID: cc.workspaceID,
 	})
 	if err != nil {
-		return "", false, errors.New("meeting project not found in this workspace")
+		return meetingDirPlan{}, errors.New("meeting project not found in this workspace")
 	}
 	base := ""
 	if project.CollabPath.Valid {
 		base = strings.TrimSpace(project.CollabPath.String)
 	}
 	if base == "" {
-		return "", false, errors.New("the meeting project has no collaboration space path")
+		return meetingDirPlan{}, errors.New("the meeting project has no collaboration space path")
 	}
-	if !moduleID.Valid {
-		return filepath.Clean(base), true, nil
-	}
-	module, err := h.Queries.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
-		ID: moduleID, WorkspaceID: cc.workspaceID,
-	})
-	if err != nil {
-		return "", false, errors.New("meeting module not found in this workspace")
+	plan := meetingDirPlan{Root: filepath.Clean(base), Derived: true}
+	plan.Dir = plan.Root
+
+	descend := func(want string) error {
+		name := childDirNamed(plan.Dir, want)
+		if name == "" {
+			// Nothing answers to it yet — name the folder the way the share
+			// names the others and let the caller see the path before
+			// anything is created.
+			name = sanitizeMeetingFolderName(collabFolderName(want))
+		}
+		if name == "" {
+			return errors.New("the meeting destination has no folder name")
+		}
+		plan.Dir = filepath.Join(plan.Dir, name)
+		return nil
 	}
 
-	want := normalizeDirMatch(module.Title)
-	if entries, readErr := os.ReadDir(base); readErr == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && normalizeDirMatch(entry.Name()) == want {
-				return filepath.Join(base, entry.Name()), true, nil
-			}
+	if moduleID.Valid {
+		module, err := h.Queries.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
+			ID: moduleID, WorkspaceID: cc.workspaceID,
+		})
+		if err != nil {
+			return meetingDirPlan{}, errors.New("meeting module not found in this workspace")
+		}
+		if err := descend(module.Title); err != nil {
+			return meetingDirPlan{}, err
 		}
 	}
-	// No folder answers to the module yet — name it after the module and let
-	// the caller see the path before anything is created.
-	return filepath.Join(base, sanitizeMeetingFolderName(module.Title)), true, nil
+	if nodeID.Valid {
+		node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{
+			ID: nodeID, WorkspaceID: cc.workspaceID,
+		})
+		if err != nil {
+			return meetingDirPlan{}, errors.New("meeting sub-item not found on this board")
+		}
+		if err := descend(strings.TrimSpace(node.Code + " " + node.Name)); err != nil {
+			return meetingDirPlan{}, err
+		}
+	}
+	return plan, nil
+}
+
+// ensureMeetingBase creates the folders between root and dir that are not
+// there yet, one level at a time.
+//
+// Root itself is never created. Everything below it is fair game: an archive
+// sub-item that nobody has made a folder for is an ordinary state of a share
+// that IS mounted, and refusing to file a meeting over it would send someone
+// to Finder to create one empty directory.
+func ensureMeetingBase(root, dir string) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	dir = filepath.Clean(strings.TrimSpace(dir))
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return fmt.Errorf("meeting folder root is unavailable: %s", root)
+	}
+	if dir == root {
+		return nil
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return errors.New("meeting folder would fall outside its root")
+	}
+	current := root
+	for _, component := range strings.Split(rel, string(os.PathSeparator)) {
+		next, err := createMeetingDir(current, component)
+		if err != nil {
+			return err
+		}
+		current = next
+	}
+	return nil
 }
 
 // createMeetingDir creates one folder under base and returns its path.
@@ -300,15 +432,26 @@ type CockpitMeetingDestinationResponse struct {
 	ProjectTitle string `json:"project_title"`
 	ModuleID     string `json:"module_id"`
 	ModuleTitle  string `json:"module_title"`
-	CollabPath   string `json:"collab_path"`
+	// The archive sub-item under the module, and the code its task titles
+	// open with.
+	NodeID     string `json:"node_id"`
+	NodeCode   string `json:"node_code"`
+	NodeTitle  string `json:"node_title"`
+	CollabPath string `json:"collab_path"`
 	// The folder new meeting folders are created in.
 	BaseDir string `json:"base_dir"`
-	// True when base_dir was derived from the project and module rather than
-	// confirmed by someone. The form shows a derived path as a proposal.
+	// True when base_dir was derived from the project, module and sub-item
+	// rather than confirmed by someone. A derived path shows as a proposal.
 	Derived bool `json:"derived"`
 	// True when base_dir exists on this server right now. False is not an
-	// error: the share may simply not be mounted here.
+	// error: the share may not be mounted here, or the archive folder may
+	// simply not have been created yet.
 	BaseDirExists bool `json:"base_dir_exists"`
+	// True when this server could create what is missing — i.e. the project's
+	// collaboration space is mounted and readable here. This, not
+	// base_dir_exists, is what decides whether filing a folder can be asked
+	// for.
+	Creatable bool `json:"creatable"`
 	// Why no folder could be worked out, when base_dir is empty.
 	Error string `json:"error"`
 }
@@ -342,10 +485,24 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 		}
 		moduleID = id
 	}
+	nodeID := cc.cockpit.MeetingNodeID
+	if _, sent := r.URL.Query()["node_id"]; sent {
+		v := strings.TrimSpace(r.URL.Query().Get("node_id"))
+		nodeID = pgtype.UUID{}
+		if v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid node_id")
+				return
+			}
+			nodeID = id
+		}
+	}
 
 	resp := CockpitMeetingDestinationResponse{
 		ProjectID: uuidToString(projectID),
 		ModuleID:  uuidToString(moduleID),
+		NodeID:    uuidToString(nodeID),
 	}
 	if projectID.Valid {
 		if project, err := h.Queries.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{
@@ -364,24 +521,36 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 			resp.ModuleTitle = module.Title
 		}
 	}
+	if nodeID.Valid {
+		if node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{
+			ID: nodeID, WorkspaceID: cc.workspaceID,
+		}); err == nil {
+			resp.NodeCode = node.Code
+			resp.NodeTitle = node.Name
+		}
+	}
 
-	// The board's own override is what a preview of a DIFFERENT module must
-	// not inherit: a stored folder answers for the stored module only.
+	// The board's own override is what a preview of a DIFFERENT destination
+	// must not inherit: a stored folder answers for the stored one only.
 	probe := cc
 	if uuidToString(moduleID) != uuidToString(cc.cockpit.MeetingModuleID) ||
-		uuidToString(projectID) != uuidToString(cc.cockpit.MeetingProjectID) {
+		uuidToString(projectID) != uuidToString(cc.cockpit.MeetingProjectID) ||
+		uuidToString(nodeID) != uuidToString(cc.cockpit.MeetingNodeID) {
 		probe.cockpit.MeetingDir = ""
 	}
-	base, derived, err := h.meetingBaseDir(ctx, probe, projectID, moduleID)
+	plan, err := h.meetingBaseDir(ctx, probe, projectID, moduleID, nodeID)
 	if err != nil {
 		resp.Error = err.Error()
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
-	resp.BaseDir = base
-	resp.Derived = derived
-	if info, statErr := os.Stat(base); statErr == nil && info.IsDir() {
+	resp.BaseDir = plan.Dir
+	resp.Derived = plan.Derived
+	if info, statErr := os.Stat(plan.Dir); statErr == nil && info.IsDir() {
 		resp.BaseDirExists = true
+	}
+	if info, statErr := os.Stat(plan.Root); statErr == nil && info.IsDir() {
+		resp.Creatable = true
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -397,6 +566,9 @@ type CockpitMeetingProvisionRequest struct {
 	// Override the board's stored destination for this one meeting.
 	ProjectID *string `json:"project_id"`
 	ModuleID  *string `json:"module_id"`
+	// The archive sub-item. Sent as an empty string to file at the module
+	// level instead, which is why "absent" and "empty" differ here.
+	NodeID *string `json:"node_id"`
 	// The folder to create the meeting's folder in, and what to call it.
 	// Absent means "derive both", which is what the form sends back after
 	// showing the derivation to a human.
@@ -484,30 +656,45 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		}
 		moduleID = id
 	}
+	nodeID := cc.cockpit.MeetingNodeID
+	if req.NodeID != nil {
+		nodeID = pgtype.UUID{}
+		if v := strings.TrimSpace(*req.NodeID); v != "" {
+			id, ok := parseUUIDOrBadRequest(w, v, "node_id")
+			if !ok {
+				return
+			}
+			nodeID = id
+		}
+	}
 
 	resp := CockpitMeetingProvisionResponse{}
 
 	// --- the folder -----------------------------------------------------
 	dir := meeting.NasDir
+	plan, planErr := h.meetingBaseDir(ctx, cc, projectID, moduleID, nodeID)
 	if boolOrDefault(req.CreateDir, true) {
-		base := ""
-		if req.BaseDir != nil {
-			base = strings.TrimSpace(*req.BaseDir)
+		if planErr != nil {
+			resp.DirError = planErr.Error()
 		}
-		if base == "" {
-			derivedBase, _, baseErr := h.meetingBaseDir(ctx, cc, projectID, moduleID)
-			if baseErr != nil {
-				resp.DirError = baseErr.Error()
+		if req.BaseDir != nil && strings.TrimSpace(*req.BaseDir) != "" {
+			// A caller that names the folder itself is taken at its word, but
+			// still only allowed to create BELOW the collaboration space the
+			// plan resolved — never to build a mount point out of thin air.
+			plan.Dir = filepath.Clean(strings.TrimSpace(*req.BaseDir))
+			if plan.Root == "" || !strings.HasPrefix(plan.Dir, filepath.Clean(plan.Root)+string(os.PathSeparator)) {
+				plan.Root = plan.Dir
 			}
-			base = derivedBase
+			resp.DirError = ""
 		}
 		if resp.DirError == "" {
 			name := meetingFolderName(meeting)
 			if req.FolderName != nil && strings.TrimSpace(*req.FolderName) != "" {
 				name = strings.TrimSpace(*req.FolderName)
 			}
-			created, dirErr := createMeetingDir(base, name)
-			if dirErr != nil {
+			if baseErr := ensureMeetingBase(plan.Root, plan.Dir); baseErr != nil {
+				resp.DirError = baseErr.Error()
+			} else if created, dirErr := createMeetingDir(plan.Dir, name); dirErr != nil {
 				resp.DirError = dirErr.Error()
 			} else {
 				dir = created
@@ -519,7 +706,14 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 
 	// --- the task -------------------------------------------------------
 	if boolOrDefault(req.CreateTask, true) {
-		link, taskErr := h.openMeetingTask(r, cc, meeting, projectID, moduleID, req, dir)
+		link, taskErr := h.openMeetingTask(r, cc, meeting, meetingTaskPlacement{
+			projectID:    projectID,
+			moduleID:     moduleID,
+			codePrefix:   h.meetingNodeCode(ctx, cc, nodeID),
+			assigneeType: req.AssigneeType,
+			assigneeID:   req.AssigneeID,
+			dir:          dir,
+		})
 		if taskErr != "" {
 			resp.TaskError = taskErr
 		} else {
@@ -544,6 +738,8 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		params := db.UpdateCockpitParams{ID: cc.cockpit.ID, WorkspaceID: cc.workspaceID}
 		params.MeetingProjectID = projectID
 		params.MeetingModuleID = moduleID
+		params.MeetingNodeID = nodeID
+		params.ClearMeetingNode = !nodeID.Valid
 		// Only a folder that was actually used is worth remembering, and only
 		// its parent: the board stores where meeting folders go, not where one
 		// meeting went.
@@ -642,6 +838,55 @@ func meetingSpan(m db.CockpitMeeting) string {
 	}
 }
 
+// meetingNodeCode reads the archive sub-item's number, which the meeting
+// task's title opens with. An unset or unreadable node is not an error: the
+// task is simply titled without a number.
+func (h *Handler) meetingNodeCode(ctx context.Context, cc cockpitContext, nodeID pgtype.UUID) string {
+	if !nodeID.Valid {
+		return ""
+	}
+	node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{
+		ID: nodeID, WorkspaceID: cc.workspaceID,
+	})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(node.Code)
+}
+
+// meetingTaskPlacement is everything about WHERE a meeting's task goes, kept
+// apart from the request shape so scan-and-import can open the same task
+// without borrowing a provisioning request it never received.
+type meetingTaskPlacement struct {
+	projectID, moduleID pgtype.UUID
+	// The archive sub-item's number ("06.06.03"), which the title opens with
+	// so the task sorts and reads like the rest of the programme's work.
+	codePrefix   string
+	assigneeType *string
+	assigneeID   *string
+	dir          string
+}
+
+// meetingTaskTitle is what the meeting's task is called: the archive
+// sub-item's number, then the meeting's own name.
+func meetingTaskTitle(prefix string, meeting db.CockpitMeeting) string {
+	name := strings.TrimSpace(meeting.Title)
+	if name == "" {
+		name = meetingFolderName(meeting)
+	}
+	prefix = strings.TrimSpace(prefix)
+	switch {
+	case prefix == "":
+		return name
+	case name == "":
+		return prefix
+	case name == prefix || strings.HasPrefix(name, prefix+" "):
+		return name
+	default:
+		return prefix + " " + name
+	}
+}
+
 // openMeetingTask files the meeting's issue and links it. Returns a
 // human-readable reason instead of an error when the task could not be
 // opened: the caller reports it alongside a meeting that was still saved.
@@ -649,15 +894,10 @@ func (h *Handler) openMeetingTask(
 	r *http.Request,
 	cc cockpitContext,
 	meeting db.CockpitMeeting,
-	projectID, moduleID pgtype.UUID,
-	req CockpitMeetingProvisionRequest,
-	dir string,
+	placement meetingTaskPlacement,
 ) (*CockpitMeetingIssueResponse, string) {
 	ctx := r.Context()
-	title := strings.TrimSpace(meeting.Title)
-	if title == "" {
-		title = meetingFolderName(meeting)
-	}
+	title := meetingTaskTitle(placement.codePrefix, meeting)
 	if title == "" {
 		return nil, "the meeting has no name to open a task with"
 	}
@@ -668,11 +908,11 @@ func (h *Handler) openMeetingTask(
 	// one for the minutes of a meeting.
 	assigneeType := pgtype.Text{String: "member", Valid: true}
 	assigneeID := cc.member.UserID
-	if req.AssigneeType != nil && strings.TrimSpace(*req.AssigneeType) != "" {
-		assigneeType = pgtype.Text{String: strings.TrimSpace(*req.AssigneeType), Valid: true}
+	if placement.assigneeType != nil && strings.TrimSpace(*placement.assigneeType) != "" {
+		assigneeType = pgtype.Text{String: strings.TrimSpace(*placement.assigneeType), Valid: true}
 		assigneeID = pgtype.UUID{}
-		if req.AssigneeID != nil && strings.TrimSpace(*req.AssigneeID) != "" {
-			id, err := util.ParseUUID(strings.TrimSpace(*req.AssigneeID))
+		if placement.assigneeID != nil && strings.TrimSpace(*placement.assigneeID) != "" {
+			id, err := util.ParseUUID(strings.TrimSpace(*placement.assigneeID))
 			if err != nil {
 				return nil, "invalid assignee_id"
 			}
@@ -688,15 +928,15 @@ func (h *Handler) openMeetingTask(
 	result, err := h.IssueService.Create(ctx, service.IssueCreateParams{
 		WorkspaceID:  cc.workspaceID,
 		Title:        title,
-		Description:  pgtype.Text{String: meetingTaskDescription(meeting, dir), Valid: true},
+		Description:  pgtype.Text{String: meetingTaskDescription(meeting, placement.dir), Valid: true},
 		Status:       "todo",
 		Priority:     "none",
 		AssigneeType: assigneeType,
 		AssigneeID:   assigneeID,
 		CreatorType:  "member",
 		CreatorID:    cc.member.UserID,
-		ProjectID:    projectID,
-		ModuleID:     moduleID,
+		ProjectID:    placement.projectID,
+		ModuleID:     placement.moduleID,
 		StartDate:    meeting.MeetDate,
 		DueDate:      meeting.MeetDate,
 		// A programme runs the same weekly meeting all year; two of them
@@ -1039,4 +1279,472 @@ func (h *Handler) resolveCockpitNode(ctx context.Context, cc cockpitContext, ref
 		return db.CockpitNode{}, false
 	}
 	return node, true
+}
+
+// ---------------------------------------------------------------------------
+// Reading meetings back off the share
+// ---------------------------------------------------------------------------
+//
+// Meetings happen whether or not anybody opens the register, and their
+// material lands in the archive folder either way — dropped there from a
+// laptop, by someone who has never used the board. Those folders ARE the
+// record; the register just does not know about them yet. Scanning turns them
+// into rows.
+//
+// Everything the scan reads is a guess off a folder name a human wrote
+// freehand, so nothing it produces is presented as fact: the rows it creates
+// are flagged (cockpit_meeting.detected) and the form shows every guessed
+// field for correction before anything is written.
+
+// meetingFolderGuess is what a folder name gives up about the meeting that
+// filled it.
+type meetingFolderGuess struct {
+	Code     string
+	MeetDate string
+	Parties  string
+	Title    string
+}
+
+// partySeparators are the characters the programme writes between the sides
+// of a meeting. The register stores them separated by "、"; folder names use
+// whichever one was to hand.
+const partySeparators = "×xX/／、&＆"
+
+// leadingDate pulls a date off the front of a folder name, in the shapes the
+// programme actually writes: 20260921, 2026-09-21, 2026.09.21. Returns the
+// ISO date and how many bytes it consumed.
+func leadingDate(name string) (string, int) {
+	digits := func(s string, n int) bool {
+		if len(s) < n {
+			return false
+		}
+		for i := 0; i < n; i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	valid := func(iso string) bool {
+		_, err := time.Parse("2006-01-02", iso)
+		return err == nil
+	}
+	if digits(name, 8) {
+		iso := name[0:4] + "-" + name[4:6] + "-" + name[6:8]
+		if valid(iso) {
+			return iso, 8
+		}
+	}
+	if digits(name, 4) && len(name) >= 10 &&
+		(name[4] == '-' || name[4] == '.' || name[4] == '_') && name[4] == name[7] &&
+		digits(name[5:], 2) && digits(name[8:], 2) {
+		iso := name[0:4] + "-" + name[5:7] + "-" + name[8:10]
+		if valid(iso) {
+			return iso, 10
+		}
+	}
+	return "", 0
+}
+
+// parseMeetingFolderName reads a folder name the way the register writes one
+// ("20260921-01 复星医药×华大基因 数据对接") and degrades, field by field,
+// for names that were written some other way. Whatever it cannot work out it
+// leaves empty rather than inventing — an empty field asks to be filled in,
+// a wrong one has to be spotted first.
+func parseMeetingFolderName(name string) meetingFolderGuess {
+	guess := meetingFolderGuess{Title: strings.TrimSpace(name)}
+	rest := strings.TrimSpace(name)
+
+	if iso, n := leadingDate(rest); n > 0 {
+		guess.MeetDate = iso
+		head, tail := rest[:n], rest[n:]
+		// "20260921-01": the day's sequence number, which is the register's
+		// own numbering. "20260921-复星" is a separator, not a sequence.
+		if len(tail) > 1 && tail[0] == '-' {
+			seq := 0
+			for seq+1 < len(tail) && tail[seq+1] >= '0' && tail[seq+1] <= '9' {
+				seq++
+			}
+			if seq > 0 && seq <= 3 {
+				guess.Code = head + tail[:seq+1]
+				tail = tail[seq+1:]
+			}
+		}
+		rest = strings.TrimLeft(tail, " \t-_—–、.")
+	}
+
+	fields := strings.Fields(rest)
+	if len(fields) >= 2 && strings.ContainsAny(fields[0], partySeparators) {
+		parties := strings.FieldsFunc(fields[0], func(r rune) bool {
+			return strings.ContainsRune(partySeparators, r)
+		})
+		cleaned := make([]string, 0, len(parties))
+		for _, party := range parties {
+			if trimmed := strings.TrimSpace(party); trimmed != "" {
+				cleaned = append(cleaned, trimmed)
+			}
+		}
+		if len(cleaned) > 1 {
+			guess.Parties = strings.Join(cleaned, "、")
+			rest = strings.Join(fields[1:], " ")
+		}
+	}
+	if trimmed := strings.TrimSpace(rest); trimmed != "" {
+		guess.Title = trimmed
+	}
+	return guess
+}
+
+// meetingScanLimit bounds one scan. An archive folder holds a programme's
+// meetings, not a filesystem; a folder with more entries than this is not
+// the one that was configured, and reading all of it would be the wrong
+// thing to do about that.
+const meetingScanLimit = 500
+
+type CockpitMeetingScanEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// When the folder was last touched and how much is in it — the two
+	// things that say whether it holds a real meeting's material.
+	ModifiedAt string `json:"modified_at"`
+	Files      int    `json:"files"`
+	// The meeting already recording this folder, or empty when nothing does.
+	MeetingID string `json:"meeting_id"`
+	// Guessed from the folder name; every one of them is editable before
+	// import and the imported row stays flagged afterwards.
+	Code     string `json:"code"`
+	MeetDate string `json:"meet_date"`
+	Parties  string `json:"parties"`
+	Title    string `json:"title"`
+}
+
+type CockpitMeetingScanResponse struct {
+	BaseDir       string                    `json:"base_dir"`
+	BaseDirExists bool                      `json:"base_dir_exists"`
+	Entries       []CockpitMeetingScanEntry `json:"entries"`
+	// How many of the folders are already in the register. Reported rather
+	// than filtered out so "nothing new" reads as "I looked" instead of
+	// "I found nothing at all".
+	Matched int `json:"matched"`
+	// The archive folder holds more than one scan will read.
+	Truncated bool   `json:"truncated"`
+	Error     string `json:"error"`
+}
+
+// ScanCockpitMeetingFolders lists the archive folder and says which of its
+// folders no meeting records.
+//
+// The folder is resolved from the board's own destination, never taken from
+// the request: this endpoint would otherwise be a way to list any directory
+// the server can read.
+func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+
+	projectID := cc.cockpit.MeetingProjectID
+	if v := strings.TrimSpace(r.URL.Query().Get("project_id")); v != "" {
+		id, err := util.ParseUUID(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid project_id")
+			return
+		}
+		projectID = id
+	}
+	moduleID := cc.cockpit.MeetingModuleID
+	if v := strings.TrimSpace(r.URL.Query().Get("module_id")); v != "" {
+		id, err := util.ParseUUID(v)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid module_id")
+			return
+		}
+		moduleID = id
+	}
+	nodeID := cc.cockpit.MeetingNodeID
+	if _, sent := r.URL.Query()["node_id"]; sent {
+		v := strings.TrimSpace(r.URL.Query().Get("node_id"))
+		nodeID = pgtype.UUID{}
+		if v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid node_id")
+				return
+			}
+			nodeID = id
+		}
+	}
+
+	resp := CockpitMeetingScanResponse{Entries: []CockpitMeetingScanEntry{}}
+	plan, err := h.meetingBaseDir(ctx, cc, projectID, moduleID, nodeID)
+	if err != nil {
+		resp.Error = err.Error()
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	resp.BaseDir = plan.Dir
+
+	entries, err := os.ReadDir(plan.Dir)
+	if err != nil {
+		resp.Error = fmt.Sprintf("the archive folder cannot be read here: %s", plan.Dir)
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	resp.BaseDirExists = true
+
+	meetings, err := h.Queries.ListCockpitMeetings(ctx, cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitMeetings failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load meetings")
+		return
+	}
+	byDir := make(map[string]string, len(meetings))
+	byName := make(map[string]string, len(meetings))
+	for _, m := range meetings {
+		if dir := strings.TrimSpace(m.NasDir); dir != "" {
+			byDir[filepath.Clean(dir)] = uuidToString(m.ID)
+		}
+		// A meeting filed before its folder existed still answers to the name
+		// it would have created, which is how a folder someone made by hand
+		// under the same name is recognised instead of imported twice.
+		if name := normalizeDirMatch(meetingFolderName(m)); name != "" {
+			byName[name] = uuidToString(m.ID)
+		}
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		if len(resp.Entries) >= meetingScanLimit {
+			resp.Truncated = true
+			break
+		}
+		path := filepath.Join(plan.Dir, entry.Name())
+		guess := parseMeetingFolderName(entry.Name())
+		row := CockpitMeetingScanEntry{
+			Name:     entry.Name(),
+			Path:     path,
+			Code:     guess.Code,
+			MeetDate: guess.MeetDate,
+			Parties:  guess.Parties,
+			Title:    guess.Title,
+		}
+		if id, found := byDir[path]; found {
+			row.MeetingID = id
+		} else if id, found := byName[normalizeDirMatch(entry.Name())]; found {
+			row.MeetingID = id
+		}
+		if row.MeetingID != "" {
+			resp.Matched++
+		}
+		if info, statErr := entry.Info(); statErr == nil {
+			row.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
+		}
+		if inner, readErr := os.ReadDir(path); readErr == nil {
+			for _, child := range inner {
+				if !strings.HasPrefix(child.Name(), ".") {
+					row.Files++
+				}
+			}
+		}
+		resp.Entries = append(resp.Entries, row)
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ---------------------------------------------------------------------------
+// Importing what the scan found
+// ---------------------------------------------------------------------------
+
+type CockpitMeetingImportItem struct {
+	// The folder, as the scan reported it. Resolved under the archive folder
+	// and required to exist: importing invents a row FOR a folder, never a
+	// row about one that is not there.
+	Name string `json:"name"`
+	// The scan's guesses, as corrected by whoever is importing.
+	Code     string `json:"code"`
+	MeetDate string `json:"meet_date"`
+	Title    string `json:"title"`
+	Parties  string `json:"parties"`
+	Kind     string `json:"kind"`
+	Series   string `json:"series"`
+}
+
+type CockpitMeetingImportRequest struct {
+	Items []CockpitMeetingImportItem `json:"items"`
+	// Override the board's destination, the same way provisioning does.
+	ProjectID *string `json:"project_id"`
+	ModuleID  *string `json:"module_id"`
+	NodeID    *string `json:"node_id"`
+	// Off by default: these meetings already happened, and opening a task
+	// per historical folder is a worse default than opening none.
+	CreateTask *bool `json:"create_task"`
+}
+
+type CockpitMeetingImportSkip struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+type CockpitMeetingImportResponse struct {
+	Meetings []CockpitMeetingResponse      `json:"meetings"`
+	Issues   []CockpitMeetingIssueResponse `json:"issues"`
+	// Folders that were asked for and not imported, each with why. Reported
+	// rather than failing the batch: one folder that disappeared between the
+	// scan and the import must not cost the other nine.
+	Skipped []CockpitMeetingImportSkip `json:"skipped"`
+}
+
+// ImportCockpitMeetingFolders turns archive folders into meeting rows.
+func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+
+	var req CockpitMeetingImportRequest
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	if len(req.Items) == 0 {
+		writeError(w, http.StatusBadRequest, "no folders to import")
+		return
+	}
+	if len(req.Items) > meetingScanLimit {
+		writeError(w, http.StatusBadRequest, "too many folders in one import")
+		return
+	}
+
+	projectID := cc.cockpit.MeetingProjectID
+	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
+		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id")
+		if !ok {
+			return
+		}
+		projectID = id
+	}
+	moduleID := cc.cockpit.MeetingModuleID
+	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
+		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id")
+		if !ok {
+			return
+		}
+		moduleID = id
+	}
+	nodeID := cc.cockpit.MeetingNodeID
+	if req.NodeID != nil {
+		nodeID = pgtype.UUID{}
+		if v := strings.TrimSpace(*req.NodeID); v != "" {
+			id, ok := parseUUIDOrBadRequest(w, v, "node_id")
+			if !ok {
+				return
+			}
+			nodeID = id
+		}
+	}
+
+	plan, err := h.meetingBaseDir(ctx, cc, projectID, moduleID, nodeID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	existing, err := h.Queries.ListCockpitMeetings(ctx, cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitMeetings failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load meetings")
+		return
+	}
+	recorded := make(map[string]bool, len(existing))
+	for _, m := range existing {
+		if dir := strings.TrimSpace(m.NasDir); dir != "" {
+			recorded[filepath.Clean(dir)] = true
+		}
+	}
+
+	codePrefix := h.meetingNodeCode(ctx, cc, nodeID)
+	createTask := req.CreateTask != nil && *req.CreateTask
+	resp := CockpitMeetingImportResponse{
+		Meetings: []CockpitMeetingResponse{},
+		Issues:   []CockpitMeetingIssueResponse{},
+		Skipped:  []CockpitMeetingImportSkip{},
+	}
+
+	for _, item := range req.Items {
+		name := sanitizeMeetingFolderName(item.Name)
+		if name == "" {
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "empty folder name"})
+			continue
+		}
+		path := filepath.Clean(filepath.Join(plan.Dir, name))
+		if !strings.HasPrefix(path, filepath.Clean(plan.Dir)+string(os.PathSeparator)) {
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "folder is outside the archive folder"})
+			continue
+		}
+		if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "folder no longer exists"})
+			continue
+		}
+		if recorded[path] {
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "already in the register"})
+			continue
+		}
+
+		meetDate, dateErr := importDate(strings.TrimSpace(item.MeetDate))
+		if dateErr != nil {
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "invalid meeting date"})
+			continue
+		}
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			title = name
+		}
+		meeting, err := h.Queries.CreateCockpitMeeting(ctx, db.CreateCockpitMeetingParams{
+			WorkspaceID: cc.workspaceID,
+			CockpitID:   cc.cockpit.ID,
+			MeetDate:    meetDate,
+			Title:       title,
+			Code:        strings.TrimSpace(item.Code),
+			Parties:     strings.TrimSpace(item.Parties),
+			Kind:        strings.TrimSpace(item.Kind),
+			Series:      strings.TrimSpace(item.Series),
+			NasDir:      path,
+			Detected:    true,
+		})
+		if err != nil {
+			slog.Warn("import meeting folder failed", append(logger.RequestAttrs(r), "error", err)...)
+			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "failed to record the meeting"})
+			continue
+		}
+		recorded[path] = true
+
+		row := cockpitMeetingToResponse(meeting)
+		resp.Meetings = append(resp.Meetings, row)
+		h.publishCockpit(r, cc, "meeting", "created", row)
+
+		if createTask {
+			link, taskErr := h.openMeetingTask(r, cc, meeting, meetingTaskPlacement{
+				projectID:  projectID,
+				moduleID:   moduleID,
+				codePrefix: codePrefix,
+				dir:        path,
+			})
+			if taskErr != "" {
+				resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, taskErr})
+			} else if link != nil {
+				resp.Issues = append(resp.Issues, *link)
+				// One announcement per meeting: the link scope is keyed on a
+				// single meeting_id, and a batch payload would be dropped.
+				h.publishCockpit(r, cc, "meeting_issues", "provisioned", map[string]any{
+					"meeting_id": uuidToString(meeting.ID),
+					"links":      []CockpitMeetingIssueResponse{*link},
+				})
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }

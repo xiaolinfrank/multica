@@ -2051,6 +2051,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/", h.DeleteCockpitMilestone)
 				})
 				r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
+				// Reads the archive folder for meetings nobody recorded, and
+				// turns the chosen ones into rows.
+				r.Get("/meetings/scan", h.ScanCockpitMeetingFolders)
+				r.Post("/meetings/import", h.ImportCockpitMeetingFolders)
 				r.Post("/meetings", h.CreateCockpitMeeting)
 				r.Route("/meetings/{meetingId}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitMeeting)

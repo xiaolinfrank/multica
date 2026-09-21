@@ -16,7 +16,7 @@ import type {
 import { cockpitMeetingVocabulary } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
-import { ExternalLink, FolderPlus, ListChecks, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, FolderPlus, ListChecks, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import { LocalPathLink } from "../../common/local-path-link";
 import {
@@ -109,6 +109,30 @@ export function CockpitMeetingPanel({
           <X className="size-4" />
         </button>
       </header>
+
+      {/* A row the scan read off the share says so, until someone says they
+          have checked it. Its date, number, parties and subject came from a
+          folder name, and presenting a guess as a fact is the one thing the
+          scan must not do. */}
+      {meeting.detected && (
+        <div className="flex items-start gap-2 border-b border-border bg-warning-subtle px-3 py-2">
+          <ScanSearch className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <p className="min-w-0 flex-1 text-caption text-muted-foreground">
+            {t(($) => $.meeting.detected_hint)}
+          </p>
+          {!readOnly && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
+              onClick={() => onPatch({ detected: false })}
+            >
+              <Check className="size-3" />
+              {t(($) => $.meeting.detected_confirm)}
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-2 gap-3">

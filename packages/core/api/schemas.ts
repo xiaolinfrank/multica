@@ -1703,6 +1703,7 @@ export const CockpitSchema = z.object({
   basis: z.string().default(""),
   meeting_project_id: z.string().nullable().default(null),
   meeting_module_id: z.string().nullable().default(null),
+  meeting_node_id: z.string().nullable().default(null),
   meeting_dir: z.string().default(""),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
@@ -1792,6 +1793,7 @@ export const CockpitMeetingSchema = z.object({
   decisions: z.string().default(""),
   actions: z.string().default(""),
   nas_dir: z.string().default(""),
+  detected: z.boolean().default(false),
 }).loose();
 
 // The two link tables have no surrogate key: the pair IS the row. Both ids
@@ -1838,11 +1840,47 @@ export const CockpitMeetingDestinationSchema = z.object({
   project_title: z.string().default(""),
   module_id: z.string().default(""),
   module_title: z.string().default(""),
+  node_id: z.string().default(""),
+  node_code: z.string().default(""),
+  node_title: z.string().default(""),
   collab_path: z.string().default(""),
   base_dir: z.string().default(""),
   derived: z.boolean().default(false),
   base_dir_exists: z.boolean().default(false),
+  creatable: z.boolean().default(false),
   error: z.string().default(""),
+}).loose();
+
+// What the archive folder holds that the register does not. Every guessed
+// field defaults to empty rather than to something plausible: an empty field
+// asks to be filled in, a wrong one has to be spotted first.
+export const CockpitMeetingScanEntrySchema = z.object({
+  name: z.string(),
+  path: z.string().default(""),
+  modified_at: z.string().default(""),
+  files: z.number().default(0),
+  meeting_id: z.string().default(""),
+  code: z.string().default(""),
+  meet_date: z.string().default(""),
+  parties: z.string().default(""),
+  title: z.string().default(""),
+}).loose();
+
+export const CockpitMeetingScanSchema = z.object({
+  base_dir: z.string().default(""),
+  base_dir_exists: z.boolean().default(false),
+  entries: z.array(CockpitMeetingScanEntrySchema).default([]),
+  matched: z.number().default(0),
+  truncated: z.boolean().default(false),
+  error: z.string().default(""),
+}).loose();
+
+export const CockpitMeetingImportResultSchema = z.object({
+  meetings: z.array(CockpitMeetingSchema).default([]),
+  issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
+  skipped: z
+    .array(z.object({ name: z.string().default(""), reason: z.string().default("") }).loose())
+    .default([]),
 }).loose();
 
 export const CockpitBoardSchema = z.object({
@@ -1989,6 +2027,7 @@ export const EMPTY_COCKPIT_BOARD: CockpitBoard = {
     basis: "",
     meeting_project_id: null,
     meeting_module_id: null,
+    meeting_node_id: null,
     meeting_dir: "",
     created_at: "",
     updated_at: "",

@@ -17,6 +17,7 @@ import type {
   CockpitMeetingIssueLink,
   CockpitMeetingNodeLink,
   CockpitMeetingPatch,
+  CockpitMeetingImportItem,
   CockpitMeetingProvision,
   CockpitMilestonePatch,
   CockpitNode,
@@ -51,6 +52,7 @@ import {
   useDeleteCockpitMeetingNode,
   useDeleteCockpitNodeIssue,
   useDeleteCockpitPayment,
+  useImportCockpitMeetingFolders,
   useProvisionCockpitMeeting,
   useSetCockpitMeetingIssues,
   useSetCockpitMeetingNodes,
@@ -102,6 +104,7 @@ import { CockpitChanges } from "./cockpit-changes";
 import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meeting-create";
+import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
 import { CockpitMeetings } from "./cockpit-meetings";
 import { CockpitNodePanel } from "./cockpit-node-panel";
@@ -212,6 +215,7 @@ export function CockpitPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
+  const [scanningMeetings, setScanningMeetings] = useState(false);
   const [showFinance, setShowFinance] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(true);
   const [deletion, setDeletion] = useState<{ kind: "meeting" | "milestone" | "payment"; id: string; label: string } | null>(null);
@@ -258,6 +262,7 @@ export function CockpitPage() {
   const updateMeeting = useUpdateCockpitMeeting(wsId);
   const deleteMeeting = useDeleteCockpitMeeting(wsId);
   const provisionMeeting = useProvisionCockpitMeeting(wsId);
+  const importMeetings = useImportCockpitMeetingFolders(wsId);
   const setMeetingIssues = useSetCockpitMeetingIssues(wsId);
   const unlinkMeetingIssue = useDeleteCockpitMeetingIssue(wsId);
   const setMeetingNodes = useSetCockpitMeetingNodes(wsId);
@@ -582,6 +587,35 @@ export function CockpitPage() {
       }
     },
     [createMeeting, provisionMeeting, reportProvision, fail],
+  );
+
+  /** Turns the archive folders someone picked into meeting rows. */
+  const submitMeetingImport = useCallback(
+    async (items: CockpitMeetingImportItem[], createTask: boolean) => {
+      try {
+        const result = await importMeetings.mutateAsync({
+          items,
+          project_id: board?.cockpit.meeting_project_id ?? undefined,
+          module_id: board?.cockpit.meeting_module_id ?? undefined,
+          node_id: board?.cockpit.meeting_node_id ?? undefined,
+          create_task: createTask,
+        });
+        if (result.meetings.length > 0) {
+          toast.success(t(($) => $.meetings.scan_imported, { n: result.meetings.length }));
+          setTab("meetings");
+          setSelectedMeetingId(result.meetings[0]!.id);
+        }
+        // Every folder that was asked for and not taken says why, one by one:
+        // a batch that half worked must not read as a batch that worked.
+        for (const skip of result.skipped) {
+          toast.error(t(($) => $.meetings.scan_skipped, { folder: skip.name, reason: skip.reason }));
+        }
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+    },
+    [importMeetings, board, t, fail],
   );
 
   const requestDeletion = (kind: "meeting" | "milestone" | "payment", id: string) => {
@@ -984,6 +1018,7 @@ export function CockpitPage() {
               selectedId={selectedMeetingId}
               onSelect={setSelectedMeetingId}
               onCreate={() => setCreatingMeeting(true)}
+              onScan={() => setScanningMeetings(true)}
             />
           )}
 
@@ -1092,9 +1127,20 @@ export function CockpitPage() {
         wsId={wsId}
         today={today}
         meetings={meetings}
+        nodes={nodes}
         defaultProjectId={board.cockpit.meeting_project_id}
         defaultModuleId={board.cockpit.meeting_module_id}
+        defaultNodeId={board.cockpit.meeting_node_id}
         onSubmit={submitMeeting}
+      />
+      <CockpitMeetingImport
+        open={scanningMeetings}
+        onOpenChange={setScanningMeetings}
+        wsId={wsId}
+        projectId={board.cockpit.meeting_project_id}
+        moduleId={board.cockpit.meeting_module_id}
+        nodeId={board.cockpit.meeting_node_id}
+        onSubmit={submitMeetingImport}
       />
       <AlertDialog open={deletion !== null} onOpenChange={(open) => {
         if (!open && !deletionLock.current) setDeletion(null);

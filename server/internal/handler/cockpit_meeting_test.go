@@ -1032,3 +1032,431 @@ func TestCockpitMeetingSnapshotRestoreRoundTrip(t *testing.T) {
 		t.Logf("note: the restored node kept its id %s", node.ID)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The archive sub-item, and reading meetings back off the share
+// ---------------------------------------------------------------------------
+
+// The platform separates a code from its name with a space and the share runs
+// them together. A proposal written the platform's way creates a second,
+// near-identical folder next to the real one — which is exactly what
+// normalizeDirMatch exists to prevent on the reading side.
+func TestCockpitMeetingCollabFolderName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"06.06 多方协同与会议", "06.06多方协同与会议"},
+		{"06.06.03 会议纪要与素材", "06.06.03会议纪要与素材"},
+		{"06.06多方协同与会议", "06.06多方协同与会议"},
+		{"多方协同与会议", "多方协同与会议"},
+		{"Q3 planning space", "Q3 planning space"}, // no leading code, left alone
+		{"  06.01 计划与决策  ", "06.01计划与决策"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := collabFolderName(tc.in); got != tc.want {
+			t.Errorf("collabFolderName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// The archive folder is one level below the module and nobody may have made
+// it yet. Creating it is fine; creating the collaboration space above it is
+// not — an unmounted share must fail rather than be rebuilt as local
+// directories that the next mount hides.
+func TestCockpitMeetingEnsureBaseCreatesBelowTheRootOnly(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "06.06多方协同与会议", "06.06.03会议纪要与素材")
+	if err := ensureMeetingBase(root, dir); err != nil {
+		t.Fatalf("ensureMeetingBase: %v", err)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("the archive folder was not created: stat %v", err)
+	}
+	// Re-running is the normal case: provisioning is retried per part.
+	if err := ensureMeetingBase(root, dir); err != nil {
+		t.Errorf("second run: %v", err)
+	}
+
+	missing := filepath.Join(root, "not-mounted")
+	if err := ensureMeetingBase(missing, filepath.Join(missing, "06.06.03会议纪要与素材")); err == nil {
+		t.Error("a root that is not there was accepted")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Errorf("the missing root was created anyway: stat %v", err)
+	}
+	if err := ensureMeetingBase(root, filepath.Join(root, "..", "elsewhere")); err == nil {
+		t.Error("a path outside the root was accepted")
+	}
+}
+
+// Everything the scan produces is a guess off a name a human wrote freehand.
+// A wrong guess has to be spotted before it is corrected, so the parser
+// leaves a field empty rather than filling it with something plausible.
+func TestParseMeetingFolderName(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want meetingFolderGuess
+	}{
+		{
+			"the name the register writes",
+			"20260921-01 复星医药×华大基因 数据对接",
+			meetingFolderGuess{Code: "20260921-01", MeetDate: "2026-09-21", Parties: "复星医药、华大基因", Title: "数据对接"},
+		},
+		{
+			"a date with no sequence number",
+			"20260920与联通一体机可信连接器方案沟通",
+			meetingFolderGuess{MeetDate: "2026-09-20", Title: "与联通一体机可信连接器方案沟通"},
+		},
+		{
+			"a dashed date",
+			"2026-09-20 周例会",
+			meetingFolderGuess{MeetDate: "2026-09-20", Title: "周例会"},
+		},
+		{
+			"a dotted date",
+			"2026.09.20 周例会",
+			meetingFolderGuess{MeetDate: "2026-09-20", Title: "周例会"},
+		},
+		{
+			"a separator after the date is not a sequence number",
+			"20260921-复星医药 对接",
+			meetingFolderGuess{MeetDate: "2026-09-21", Title: "复星医药 对接"},
+		},
+		{
+			"parties written with a slash",
+			"20260921-02 复星/明略 数据治理",
+			meetingFolderGuess{Code: "20260921-02", MeetDate: "2026-09-21", Parties: "复星、明略", Title: "数据治理"},
+		},
+		{
+			"one field is a subject, not a list of parties",
+			"20260921-03 复星×明略",
+			meetingFolderGuess{Code: "20260921-03", MeetDate: "2026-09-21", Title: "复星×明略"},
+		},
+		{
+			"no date at all",
+			"临时碰头",
+			meetingFolderGuess{Title: "临时碰头"},
+		},
+		{
+			"a number that is not a date",
+			"20261340 会议",
+			meetingFolderGuess{Title: "20261340 会议"},
+		},
+		{
+			"a date and nothing else keeps the folder name as the subject",
+			"20260921",
+			meetingFolderGuess{MeetDate: "2026-09-21", Title: "20260921"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseMeetingFolderName(tc.in); got != tc.want {
+				t.Errorf("parseMeetingFolderName(%q) =\n  %+v\nwant\n  %+v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// meetingTaskTitle opens the task with the archive sub-item's number so the
+// meeting's work sorts and reads like the rest of the programme's.
+func TestCockpitMeetingTaskTitle(t *testing.T) {
+	meeting := db.CockpitMeeting{Code: "20260921-01", Title: "20260921-01 复星医药×华大基因 数据对接"}
+	if got, want := meetingTaskTitle("06.06.03", meeting), "06.06.03 20260921-01 复星医药×华大基因 数据对接"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	// A board with no sub-item chosen still files a task, just without a
+	// number in front of it.
+	if got, want := meetingTaskTitle("", meeting), meeting.Title; got != want {
+		t.Errorf("unnumbered title = %q, want %q", got, want)
+	}
+	// Re-provisioning a meeting whose name already carries the number must
+	// not write it twice.
+	numbered := db.CockpitMeeting{Title: "06.06.03 周例会"}
+	if got, want := meetingTaskTitle("06.06.03", numbered), "06.06.03 周例会"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	// A meeting with no name of its own falls back to what its folder is
+	// called, which is never empty.
+	unnamed := db.CockpitMeeting{Code: "20260921-02"}
+	if got, want := meetingTaskTitle("06.06.03", unnamed), "06.06.03 20260921-02"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+}
+
+// meetingArchiveFixture is the shape the programme actually files under: a
+// project with a collaboration space, the module folder, and the archive
+// sub-item that meeting material goes in.
+type meetingArchiveFixture struct {
+	wsID       string
+	project    string
+	module     string
+	node       string
+	root       string
+	moduleDir  string
+	archiveDir string
+}
+
+func newMeetingArchiveFixture(t *testing.T, name string, makeArchiveDir bool) meetingArchiveFixture {
+	t.Helper()
+	f := meetingArchiveFixture{wsID: cockpitMeetingFixture(t, name)}
+	f.root = t.TempDir()
+	f.moduleDir = filepath.Join(f.root, "06.06多方协同与会议")
+	f.archiveDir = filepath.Join(f.moduleDir, "06.06.03会议纪要与素材")
+	if err := os.Mkdir(f.moduleDir, 0o755); err != nil {
+		t.Fatalf("setup: create the module folder: %v", err)
+	}
+	if makeArchiveDir {
+		if err := os.Mkdir(f.archiveDir, 0o755); err != nil {
+			t.Fatalf("setup: create the archive folder: %v", err)
+		}
+	}
+	f.project = dbfx.Project(t, "06项目管理与规划", testutil.Cols{
+		"workspace_id": f.wsID, "collab_path": f.root,
+	})
+	f.module = dbfx.Module(t, f.project, "06.06 多方协同与会议", testutil.Cols{"workspace_id": f.wsID})
+	f.node = createNode(t, f.wsID, map[string]any{"code": "06.06.03", "name": "会议纪要与素材"}).ID
+
+	// The task is opened through IssueService, which dbfx did not create.
+	dbfx.Cleanup(t, "DELETE FROM issue WHERE workspace_id = $1", f.wsID)
+	dbfx.Cleanup(t, "DELETE FROM activity_log WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
+	dbfx.Cleanup(t, "DELETE FROM inbox_item WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
+	dbfx.Cleanup(t, "DELETE FROM issue_subscriber WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
+	return f
+}
+
+func (f meetingArchiveFixture) provision(t *testing.T, meetingID string, body map[string]any) CockpitMeetingProvisionResponse {
+	t.Helper()
+	var resp CockpitMeetingProvisionResponse
+	testutil.Call(t, cockpitHandler(testHandler.ProvisionCockpitMeeting),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/meetings/"+meetingID+"/provision", f.wsID, body),
+			"meetingId", meetingID,
+		)).
+		Want(http.StatusOK).
+		JSON(&resp)
+	return resp
+}
+
+// A module is not the last level the programme files by: meeting material
+// belongs in the archive sub-item under it, and the task carries that
+// sub-item's number.
+func TestCockpitMeetingProvisionFilesUnderTheArchiveSubItem(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting archive", true)
+	meeting := createMeeting(t, f.wsID, map[string]any{
+		"title": "20260921-01 复星医药×华大基因 数据对接", "code": "20260921-01",
+		"meet_date": "2026-09-21",
+	})
+
+	resp := f.provision(t, meeting.ID, map[string]any{
+		"project_id": f.project, "module_id": f.module, "node_id": f.node,
+	})
+
+	wantDir := filepath.Join(f.archiveDir, "20260921-01 复星医药×华大基因 数据对接")
+	if resp.DirError != "" || resp.Dir != wantDir {
+		t.Errorf("dir = %q err = %q, want %q", resp.Dir, resp.DirError, wantDir)
+	}
+	if info, err := os.Stat(wantDir); err != nil || !info.IsDir() {
+		t.Errorf("the meeting folder was not created under the sub-item: stat %v", err)
+	}
+	if resp.TaskError != "" || resp.Task == nil {
+		t.Fatalf("task_error = %q task = %+v", resp.TaskError, resp.Task)
+	}
+	wantTitle := "06.06.03 20260921-01 复星医药×华大基因 数据对接"
+	if resp.Task.IssueTitle != wantTitle {
+		t.Errorf("task title = %q, want %q", resp.Task.IssueTitle, wantTitle)
+	}
+	// The path is in the task body: whoever opens the task from their inbox
+	// must not have to come back to the board to find the material.
+	var description *string
+	dbfx.QueryRow(t, "SELECT description FROM issue WHERE id = $1", resp.Task.IssueID).Scan(&description)
+	if description == nil || !strings.Contains(*description, wantDir) {
+		t.Errorf("task description does not state the folder: %v", description)
+	}
+
+	board := getBoard(t, f.wsID)
+	if board.Cockpit.MeetingNodeID == nil || *board.Cockpit.MeetingNodeID != f.node {
+		t.Errorf("board meeting_node_id = %v, want %s", board.Cockpit.MeetingNodeID, f.node)
+	}
+	if board.Cockpit.MeetingDir != f.archiveDir {
+		t.Errorf("board meeting_dir = %q, want the archive folder %q", board.Cockpit.MeetingDir, f.archiveDir)
+	}
+}
+
+// The archive folder may simply not have been created yet on a share that IS
+// mounted. Refusing to file a meeting over one missing empty directory would
+// send someone to Finder for it.
+func TestCockpitMeetingProvisionCreatesTheMissingArchiveFolder(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting archive missing", false)
+	meeting := createMeeting(t, f.wsID, map[string]any{
+		"title": "20260921-01 周例会", "code": "20260921-01", "meet_date": "2026-09-21",
+	})
+
+	resp := f.provision(t, meeting.ID, map[string]any{
+		"project_id": f.project, "module_id": f.module, "node_id": f.node,
+		"create_task": false,
+	})
+
+	wantDir := filepath.Join(f.archiveDir, "20260921-01 周例会")
+	if resp.DirError != "" || resp.Dir != wantDir {
+		t.Fatalf("dir = %q err = %q, want %q", resp.Dir, resp.DirError, wantDir)
+	}
+	if info, err := os.Stat(wantDir); err != nil || !info.IsDir() {
+		t.Errorf("the meeting folder was not created: stat %v", err)
+	}
+	// The sub-item folder is named the way the share names the others, not
+	// the way the platform writes the title.
+	if entries, err := os.ReadDir(f.moduleDir); err == nil {
+		for _, entry := range entries {
+			if entry.Name() != "06.06.03会议纪要与素材" {
+				t.Errorf("created a second folder beside the archive one: %q", entry.Name())
+			}
+		}
+	}
+}
+
+// Meetings happen whether or not anybody opens the register, and their
+// material lands in the archive folder either way. The scan is how those
+// folders become rows.
+func TestCockpitMeetingScanFindsUnrecordedFolders(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting scan", true)
+	for _, name := range []string{
+		"20260921-01 复星医药×华大基因 数据对接",
+		"20260920与联通一体机可信连接器方案沟通",
+		".DS_Store_folder",
+	} {
+		if err := os.Mkdir(filepath.Join(f.archiveDir, name), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(f.archiveDir, "读我.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	// One of them is already in the register, by the folder it remembers.
+	recorded := createMeeting(t, f.wsID, map[string]any{
+		"title":   "20260921-01 复星医药×华大基因 数据对接",
+		"nas_dir": filepath.Join(f.archiveDir, "20260921-01 复星医药×华大基因 数据对接"),
+	})
+
+	var resp CockpitMeetingScanResponse
+	testutil.Call(t, cockpitHandler(testHandler.ScanCockpitMeetingFolders),
+		cockpitRequest(http.MethodGet,
+			"/api/cockpit/meetings/scan?project_id="+f.project+"&module_id="+f.module+"&node_id="+f.node,
+			f.wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&resp)
+
+	if resp.Error != "" || !resp.BaseDirExists || resp.BaseDir != f.archiveDir {
+		t.Fatalf("base_dir = %q exists=%v err=%q", resp.BaseDir, resp.BaseDirExists, resp.Error)
+	}
+	// A hidden folder and a loose file are not meetings.
+	if len(resp.Entries) != 2 {
+		t.Fatalf("scanned %d entries, want 2: %+v", len(resp.Entries), resp.Entries)
+	}
+	if resp.Matched != 1 {
+		t.Errorf("matched = %d, want 1", resp.Matched)
+	}
+	byName := map[string]CockpitMeetingScanEntry{}
+	for _, entry := range resp.Entries {
+		byName[entry.Name] = entry
+	}
+	if got := byName["20260921-01 复星医药×华大基因 数据对接"]; got.MeetingID != recorded.ID {
+		t.Errorf("the recorded folder was not matched: meeting_id = %q", got.MeetingID)
+	}
+	fresh := byName["20260920与联通一体机可信连接器方案沟通"]
+	if fresh.MeetingID != "" {
+		t.Errorf("an unrecorded folder claims meeting %q", fresh.MeetingID)
+	}
+	if fresh.MeetDate != "2026-09-20" || fresh.Title != "与联通一体机可信连接器方案沟通" {
+		t.Errorf("guessed %+v, want the date and subject off the name", fresh)
+	}
+}
+
+// Importing writes rows that say, in the data, that nobody has checked them.
+func TestCockpitMeetingImportFlagsWhatItGuessed(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting import", true)
+	present := "20260920 复星医药×联通 可信连接器"
+	if err := os.Mkdir(filepath.Join(f.archiveDir, present), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var resp CockpitMeetingImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
+			"project_id": f.project, "module_id": f.module, "node_id": f.node,
+			"create_task": true,
+			"items": []map[string]any{
+				{"name": present, "meet_date": "2026-09-20", "title": "可信连接器", "parties": "复星医药、联通"},
+				{"name": "folder-that-went-away", "meet_date": "2026-09-19", "title": "x"},
+			},
+		})).
+		Want(http.StatusOK).
+		JSON(&resp)
+
+	if len(resp.Meetings) != 1 {
+		t.Fatalf("imported %d meetings, want 1: %+v", len(resp.Meetings), resp.Meetings)
+	}
+	imported := resp.Meetings[0]
+	if !imported.Detected {
+		t.Error("an imported row is not flagged as detected")
+	}
+	if imported.NasDir != filepath.Join(f.archiveDir, present) {
+		t.Errorf("nas_dir = %q, want the folder it was read from", imported.NasDir)
+	}
+	if imported.Title != "可信连接器" || imported.Parties != "复星医药、联通" {
+		t.Errorf("imported %+v, want the corrected fields", imported)
+	}
+	// A folder that disappeared between the scan and the import is reported,
+	// not fatal: it must not cost the other rows.
+	if len(resp.Skipped) != 1 || resp.Skipped[0].Name != "folder-that-went-away" {
+		t.Errorf("skipped = %+v, want the missing folder", resp.Skipped)
+	}
+	if len(resp.Issues) != 1 || resp.Issues[0].Role != "task" {
+		t.Fatalf("issues = %+v, want the meeting's own task", resp.Issues)
+	}
+	if want := "06.06.03 可信连接器"; resp.Issues[0].IssueTitle != want {
+		t.Errorf("task title = %q, want %q", resp.Issues[0].IssueTitle, want)
+	}
+
+	// Running the import again over the same folder must not file it twice.
+	var again CockpitMeetingImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
+			"project_id": f.project, "module_id": f.module, "node_id": f.node,
+			"items": []map[string]any{{"name": present, "meet_date": "2026-09-20", "title": "可信连接器"}},
+		})).
+		Want(http.StatusOK).
+		JSON(&again)
+	if len(again.Meetings) != 0 || len(again.Skipped) != 1 {
+		t.Errorf("re-import created %+v skipped %+v, want nothing created", again.Meetings, again.Skipped)
+	}
+
+	// Clearing the flag is how someone says they have checked the guesses.
+	if checked := patchMeeting(t, f.wsID, imported.ID, map[string]any{"detected": false}); checked.Detected {
+		t.Error("detected stayed set after it was cleared")
+	}
+}
+
+// A folder name is not a path. Importing must never be a way to write a row
+// that points somewhere else on the share.
+func TestCockpitMeetingImportRefusesToLeaveTheArchiveFolder(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting import escape", true)
+
+	var resp CockpitMeetingImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
+			"project_id": f.project, "module_id": f.module, "node_id": f.node,
+			"items": []map[string]any{
+				{"name": "../06.06.01协作方名录与协议", "title": "elsewhere"},
+				{"name": "/etc", "title": "absolute"},
+			},
+		})).
+		Want(http.StatusOK).
+		JSON(&resp)
+
+	if len(resp.Meetings) != 0 {
+		t.Errorf("imported %+v, want nothing", resp.Meetings)
+	}
+	if len(resp.Skipped) != 2 {
+		t.Errorf("skipped = %+v, want both refused", resp.Skipped)
+	}
+}

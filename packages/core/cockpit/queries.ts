@@ -19,8 +19,10 @@ export const cockpitKeys = {
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
-  meetingDestination: (wsId: string, projectId: string, moduleId: string) =>
-    [...cockpitKeys.all(wsId), "meeting-destination", projectId, moduleId] as const,
+  meetingDestination: (wsId: string, projectId: string, moduleId: string, nodeId: string) =>
+    [...cockpitKeys.all(wsId), "meeting-destination", projectId, moduleId, nodeId] as const,
+  meetingScan: (wsId: string, projectId: string, moduleId: string, nodeId: string) =>
+    [...cockpitKeys.all(wsId), "meeting-scan", projectId, moduleId, nodeId] as const,
 };
 
 export function cockpitBoardOptions(wsId: string) {
@@ -65,12 +67,42 @@ export function cockpitChangesOptions(wsId: string) {
  */
 export function cockpitMeetingDestinationOptions(
   wsId: string,
-  params: { projectId?: string; moduleId?: string } = {},
+  params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
 ) {
   return queryOptions({
-    queryKey: cockpitKeys.meetingDestination(wsId, params.projectId ?? "", params.moduleId ?? ""),
+    queryKey: cockpitKeys.meetingDestination(
+      wsId,
+      params.projectId ?? "",
+      params.moduleId ?? "",
+      params.nodeId ?? "",
+    ),
     queryFn: () => api.getCockpitMeetingDestination(params),
     enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * What the archive folder holds that the register does not. Never
+ * automatically fetched: reading a share is slow, can hang on an unmounted
+ * mount point, and is only ever wanted because somebody asked for it.
+ */
+export function cockpitMeetingScanOptions(
+  wsId: string,
+  params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
+) {
+  return queryOptions({
+    queryKey: cockpitKeys.meetingScan(
+      wsId,
+      params.projectId ?? "",
+      params.moduleId ?? "",
+      params.nodeId ?? "",
+    ),
+    queryFn: () => api.scanCockpitMeetingFolders(params),
+    enabled: Boolean(wsId),
+    // The folder changes behind the platform's back, so a scan is only ever
+    // as good as the moment it ran.
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

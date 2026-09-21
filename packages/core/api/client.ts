@@ -25,10 +25,13 @@ import type {
   CockpitMilestone,
   CockpitMeeting,
   CockpitMeetingDestination,
+  CockpitMeetingImportItem,
+  CockpitMeetingImportResult,
   CockpitMeetingIssueLink,
   CockpitMeetingNodeLink,
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
+  CockpitMeetingScan,
   CockpitSnapshot,
   CockpitImportResult,
   CockpitPatch,
@@ -304,6 +307,8 @@ import {
   CockpitMilestoneSchema,
   CockpitMeetingSchema,
   CockpitMeetingDestinationSchema,
+  CockpitMeetingImportResultSchema,
+  CockpitMeetingScanSchema,
   CockpitMeetingIssuesResponseSchema,
   CockpitMeetingNodesResponseSchema,
   CockpitMeetingProvisionResultSchema,
@@ -1690,11 +1695,14 @@ export class ApiClient {
    * — is on screen rather than a surprise.
    */
   async getCockpitMeetingDestination(
-    params?: { projectId?: string; moduleId?: string },
+    params?: { projectId?: string; moduleId?: string; nodeId?: string | null },
   ): Promise<CockpitMeetingDestination> {
     const query = new URLSearchParams();
     if (params?.projectId) query.set("project_id", params.projectId);
     if (params?.moduleId) query.set("module_id", params.moduleId);
+    // Sent even when empty: "" means "file at the module level", which is a
+    // different answer from "use whatever the board remembers".
+    if (params?.nodeId !== undefined && params.nodeId !== null) query.set("node_id", params.nodeId);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const raw = await this.fetch<unknown>(`/api/cockpit/meetings/destination${suffix}`);
     return parseWithFallback(raw, CockpitMeetingDestinationSchema, emptyCockpitMeetingDestination(), {
@@ -1721,6 +1729,45 @@ export class ApiClient {
       { meeting: emptyCockpitMeeting(), issues: [], task: null, task_error: "", dir: "", dir_created: false, dir_error: "" },
       { endpoint: "POST /api/cockpit/meetings/:id/provision" },
     );
+  }
+
+  /**
+   * Lists the archive folder and says which of its folders no meeting
+   * records. The folder is the board's own; this never takes a path.
+   */
+  async scanCockpitMeetingFolders(
+    params?: { projectId?: string; moduleId?: string; nodeId?: string | null },
+  ): Promise<CockpitMeetingScan> {
+    const query = new URLSearchParams();
+    if (params?.projectId) query.set("project_id", params.projectId);
+    if (params?.moduleId) query.set("module_id", params.moduleId);
+    if (params?.nodeId !== undefined && params.nodeId !== null) query.set("node_id", params.nodeId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/scan${suffix}`);
+    return parseWithFallback(
+      raw,
+      CockpitMeetingScanSchema,
+      { base_dir: "", base_dir_exists: false, entries: [], matched: 0, truncated: false, error: "" },
+      { endpoint: "GET /api/cockpit/meetings/scan" },
+    );
+  }
+
+  /** Turns the chosen archive folders into meeting rows, flagged as read
+   *  rather than typed. */
+  async importCockpitMeetingFolders(body: {
+    items: CockpitMeetingImportItem[];
+    project_id?: string;
+    module_id?: string;
+    node_id?: string;
+    create_task?: boolean;
+  }): Promise<CockpitMeetingImportResult> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/import`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, CockpitMeetingImportResultSchema, { meetings: [], issues: [], skipped: [] }, {
+      endpoint: "POST /api/cockpit/meetings/import",
+    });
   }
 
   async setCockpitMeetingIssues(
@@ -5814,6 +5861,7 @@ function emptyCockpitMeeting(): CockpitMeeting {
     decisions: "",
     actions: "",
     nas_dir: "",
+    detected: false,
   };
 }
 
@@ -5823,10 +5871,14 @@ function emptyCockpitMeetingDestination(): CockpitMeetingDestination {
     project_title: "",
     module_id: "",
     module_title: "",
+    node_id: "",
+    node_code: "",
+    node_title: "",
     collab_path: "",
     base_dir: "",
     derived: false,
     base_dir_exists: false,
+    creatable: false,
     error: "",
   };
 }

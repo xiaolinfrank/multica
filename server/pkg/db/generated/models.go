@@ -578,6 +578,7 @@ type Cockpit struct {
 	MeetingProjectID pgtype.UUID        `json:"meeting_project_id"`
 	MeetingModuleID  pgtype.UUID        `json:"meeting_module_id"`
 	MeetingDir       string             `json:"meeting_dir"`
+	MeetingNodeID    pgtype.UUID        `json:"meeting_node_id"`
 }
 
 type CockpitMeeting struct {
@@ -606,6 +607,7 @@ type CockpitMeeting struct {
 	Decisions   string             `json:"decisions"`
 	Actions     string             `json:"actions"`
 	NasDir      string             `json:"nas_dir"`
+	Detected    bool               `json:"detected"`
 }
 
 type CockpitMeetingIssue struct {

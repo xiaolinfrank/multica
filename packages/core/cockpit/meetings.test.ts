@@ -1,8 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { CockpitMeeting, CockpitMeetingIssueLink, CockpitMeetingNodeLink } from "../types";
+import type {
+  CockpitMeeting,
+  CockpitMeetingIssueLink,
+  CockpitMeetingNodeLink,
+  CockpitNode,
+} from "../types";
 import {
   buildCockpitMeetingName,
+  cockpitArchiveNodeOptions,
+  cockpitNodeLabel,
   cockpitMeetingFolderName,
   cockpitMeetingMinutes,
   cockpitMeetingSpan,
@@ -26,7 +33,7 @@ function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
     code: "", kind: "", status: "", series: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
-    nas_dir: "", ...over,
+    nas_dir: "", detected: false, ...over,
   };
 }
 
@@ -226,5 +233,54 @@ describe("vocabulary", () => {
     // An empty field is not vocabulary.
     expect(vocabulary.locations).toEqual(["大湾区"]);
     expect(vocabulary.organizers).toEqual(["杨涛"]);
+  });
+});
+
+describe("the sub-item a meeting is archived under", () => {
+  const nodes = [
+    { id: "n6", parent_id: null, code: "06", name: "项目管理与规划" },
+    { id: "n66", parent_id: "n6", code: "06.06", name: "多方协同与会议" },
+    { id: "n6601", parent_id: "n66", code: "06.06.01", name: "协作方名录与协议" },
+    { id: "n6603", parent_id: "n66", code: "06.06.03", name: "会议纪要与素材" },
+    { id: "n67", parent_id: "n6", code: "06.07", name: "别的模块" },
+  ].map((node) => ({ ...node, position: 0, color: "", owner: "" }) as unknown as CockpitNode);
+
+  it("offers the children of the node the module answers to, spacing and all", () => {
+    // The platform writes the module with a space and the tree without one.
+    expect(cockpitArchiveNodeOptions(nodes, "06.06 多方协同与会议").map((n) => n.id))
+      .toEqual(["n6601", "n6603"]);
+    expect(cockpitArchiveNodeOptions(nodes, "06.06多方协同与会议").map((n) => n.id))
+      .toEqual(["n6601", "n6603"]);
+  });
+
+  it("matches on the number first, so a rename of either side still resolves", () => {
+    expect(cockpitArchiveNodeOptions(nodes, "06.06 会议与协同（改过名）").map((n) => n.id))
+      .toEqual(["n6601", "n6603"]);
+  });
+
+  it("falls back to the whole title for a module that carries no number", () => {
+    const unnumbered = nodes.map((node) =>
+      node.code === "06.06" ? ({ ...node, code: "" } as CockpitNode) : node,
+    );
+    expect(cockpitArchiveNodeOptions(unnumbered, "多方协同与会议").map((n) => n.id))
+      .toEqual(["n6601", "n6603"]);
+  });
+
+  it("offers nothing when no node answers to the module", () => {
+    expect(cockpitArchiveNodeOptions(nodes, "09 某个模块")).toEqual([]);
+    expect(cockpitArchiveNodeOptions(nodes, "")).toEqual([]);
+  });
+
+  it("keeps a node the board already chose, even from under another module", () => {
+    // Silently dropping the board's own setting would change it the next
+    // time anyone pressed save.
+    expect(cockpitArchiveNodeOptions(nodes, "06.07 别的模块", "n6603").map((n) => n.id))
+      .toEqual(["n6603"]);
+    expect(cockpitArchiveNodeOptions(nodes, "06.06 多方协同与会议", "n6603").map((n) => n.id))
+      .toEqual(["n6601", "n6603"]);
+  });
+
+  it("reads a node the way a picker shows it", () => {
+    expect(cockpitNodeLabel(nodes[3]!)).toBe("06.06.03 会议纪要与素材");
   });
 });

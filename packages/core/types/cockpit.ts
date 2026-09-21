@@ -30,6 +30,10 @@ export interface Cockpit {
    */
   meeting_project_id: string | null;
   meeting_module_id: string | null;
+  /** The sub-item under the module that meeting material is archived in — a
+   *  node on this board's tree ("06.06.03 会议纪要与素材"). Its code opens the
+   *  meeting task's title and its folder holds the material. */
+  meeting_node_id: string | null;
   meeting_dir: string;
   created_at: string;
   updated_at: string;
@@ -146,6 +150,10 @@ export interface CockpitMeeting {
    *  hosts mount it. Written by provisioning; rendered through the shared
    *  local-path affordance, never as a bare link. */
   nas_dir: string;
+  /** True when the row was read off the share rather than typed: its date,
+   *  number, parties and subject are guesses from a folder name and want
+   *  checking. Cleared by whoever checks them. */
+  detected: boolean;
 }
 
 /**
@@ -221,6 +229,7 @@ export type CockpitPatch = Partial<
     | "basis"
     | "meeting_project_id"
     | "meeting_module_id"
+    | "meeting_node_id"
     | "meeting_dir"
   >
 >;
@@ -286,6 +295,7 @@ export type CockpitMeetingPatch = Partial<
     | "decisions"
     | "actions"
     | "nas_dir"
+    | "detected"
   >
 >;
 
@@ -300,6 +310,9 @@ export interface CockpitMeetingProvision {
   create_dir?: boolean;
   project_id?: string;
   module_id?: string;
+  /** The archive sub-item. An empty string files at the module level
+   *  instead, which is why absent and empty differ. */
+  node_id?: string;
   /** The folder to create the meeting's folder in, and what to call it.
    *  Absent means "derive both", which is what the form sends back after
    *  showing the derivation to a human. */
@@ -330,15 +343,72 @@ export interface CockpitMeetingDestination {
   project_title: string;
   module_id: string;
   module_title: string;
+  /** The archive sub-item under the module, and the code its task titles
+   *  open with. */
+  node_id: string;
+  node_code: string;
+  node_title: string;
   collab_path: string;
   base_dir: string;
-  /** True when base_dir was worked out from the project and module rather
-   *  than confirmed by someone — the form shows it as a proposal. */
+  /** True when base_dir was worked out from the project, module and sub-item
+   *  rather than confirmed by someone — the form shows it as a proposal. */
   derived: boolean;
   /** True when base_dir exists on the server right now. False is not an
-   *  error: the share may simply not be mounted there. */
+   *  error: the share may not be mounted there, or the archive folder may
+   *  simply not have been created yet. */
   base_dir_exists: boolean;
+  /** True when the server could create what is missing. This, not
+   *  base_dir_exists, is what decides whether a folder can be asked for. */
+  creatable: boolean;
   error: string;
+}
+
+/**
+ * One folder in the archive folder, and what its name gives up about the
+ * meeting that filled it. Every guessed field is editable before import and
+ * the row it creates stays flagged afterwards.
+ */
+export interface CockpitMeetingScanEntry {
+  name: string;
+  path: string;
+  modified_at: string;
+  files: number;
+  /** The meeting already recording this folder, or "" when nothing does. */
+  meeting_id: string;
+  code: string;
+  meet_date: string;
+  parties: string;
+  title: string;
+}
+
+export interface CockpitMeetingScan {
+  base_dir: string;
+  base_dir_exists: boolean;
+  entries: CockpitMeetingScanEntry[];
+  /** How many of the folders are already in the register. Reported rather
+   *  than filtered out so "nothing new" reads as "I looked". */
+  matched: number;
+  truncated: boolean;
+  error: string;
+}
+
+export interface CockpitMeetingImportItem {
+  name: string;
+  code?: string;
+  meet_date?: string;
+  title?: string;
+  parties?: string;
+  kind?: string;
+  series?: string;
+}
+
+export interface CockpitMeetingImportResult {
+  meetings: CockpitMeeting[];
+  issues: CockpitMeetingIssueLink[];
+  /** Folders that were asked for and not imported, each with why. One folder
+   *  that disappeared between the scan and the import must not cost the
+   *  other nine. */
+  skipped: { name: string; reason: string }[];
 }
 
 /**

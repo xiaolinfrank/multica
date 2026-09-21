@@ -25,7 +25,15 @@ import {
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import { Badge } from "@multica/ui/components/ui/badge";
-import { CalendarDays, ChevronLeft, ChevronRight, FolderOpen, Link2, Plus } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  Link2,
+  Plus,
+  ScanSearch,
+} from "lucide-react";
 import { useLocale, useT } from "../../i18n";
 
 export type CockpitMeetingsView = "list" | "month" | "week" | "agenda";
@@ -38,6 +46,8 @@ export interface CockpitMeetingsProps {
   selectedId: string | null;
   onSelect: (meetingId: string) => void;
   onCreate: () => void;
+  /** Reads the archive folder for meetings nobody recorded. */
+  onScan: () => void;
   readOnly?: boolean;
 }
 
@@ -78,6 +88,7 @@ export function CockpitMeetings({
   selectedId,
   onSelect,
   onCreate,
+  onScan,
   readOnly,
 }: CockpitMeetingsProps) {
   const { t } = useT("cockpit");
@@ -185,10 +196,17 @@ export function CockpitMeetings({
         )}
 
         {/* The page toolbar carries "New meeting" — this bar says what is on
-            screen, it does not repeat the primary action beside it. */}
+            screen, it does not repeat the primary action beside it. Reading
+            the share back IS about what is on screen, so it lives here. */}
         <span className="ml-auto text-caption text-muted-foreground">
           {t(($) => $.meetings.count, { n: meetings.length })}
         </span>
+        {!readOnly && (
+          <Button variant="outline" size="sm" className="h-7 gap-1 px-2" onClick={onScan}>
+            <ScanSearch className="size-3.5" />
+            {t(($) => $.meetings.scan)}
+          </Button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -196,10 +214,18 @@ export function CockpitMeetings({
           <div className="flex flex-col items-start gap-2">
             <p className="text-body text-muted-foreground">{t(($) => $.meetings.empty)}</p>
             {!readOnly && (
-              <Button size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
-                <Plus className="size-3.5" />
-                {t(($) => $.meeting.new)}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
+                  <Plus className="size-3.5" />
+                  {t(($) => $.meeting.new)}
+                </Button>
+                {/* An empty register over a share that already holds meeting
+                    folders is exactly when reading them back is wanted. */}
+                <Button variant="outline" size="sm" className="h-7 gap-1 px-2" onClick={onScan}>
+                  <ScanSearch className="size-3.5" />
+                  {t(($) => $.meetings.scan)}
+                </Button>
+              </div>
             )}
           </div>
         ) : view === "list" ? (
@@ -244,6 +270,12 @@ export function CockpitMeetings({
                     >
                       {meeting.title || t(($) => $.meeting.title_placeholder)}
                     </button>
+                    {meeting.detected && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-micro text-muted-foreground">
+                        <ScanSearch className="size-3" aria-hidden />
+                        {t(($) => $.meeting.detected)}
+                      </span>
+                    )}
                   </td>
                   <td className="py-1 pr-3">
                     {meeting.kind && <Badge variant="secondary">{meeting.kind}</Badge>}

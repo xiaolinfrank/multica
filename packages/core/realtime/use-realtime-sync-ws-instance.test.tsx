@@ -281,7 +281,8 @@ describe("useRealtimeSync — ws instance change", () => {
       cockpit: {
         id: "cp", workspace_id: "ws-1", title: "", goal_title: "", goal_date: null,
         summary_overall: "", summary_next: "", summary_support: "", basis: "",
-        meeting_project_id: null, meeting_module_id: null, meeting_dir: "",
+        meeting_project_id: null, meeting_module_id: null, meeting_node_id: null,
+        meeting_dir: "",
         created_at: "", updated_at: "",
       },
       nodes: [{

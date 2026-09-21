@@ -78,6 +78,7 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
       basis: "",
       meeting_project_id: null,
       meeting_module_id: null,
+    meeting_node_id: null,
       meeting_dir: "",
       created_at: "",
       updated_at: "",

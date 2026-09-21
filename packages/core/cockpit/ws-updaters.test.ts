@@ -21,6 +21,7 @@ function seedBoard(over?: Partial<CockpitBoard>): { qc: QueryClient; board: Cock
       basis: "",
       meeting_project_id: null,
       meeting_module_id: null,
+    meeting_node_id: null,
       meeting_dir: "",
       created_at: "",
       updated_at: "",
@@ -233,7 +234,7 @@ describe("onCockpitChanged", () => {
           id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
           title: "Weekly", code: "20260921-01", kind: "", status: "", series: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
-          minutes: "", decisions: "", actions: "", nas_dir: "",
+          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
         },
       ],
     });
@@ -298,7 +299,7 @@ describe("onCockpitChanged", () => {
           id: "m1", meet_date: null, time_range: "", start_time: null, end_time: null,
           title: "Weekly", code: "", kind: "", status: "", series: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
-          minutes: "", decisions: "", actions: "", nas_dir: "",
+          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
         },
       ],
       meeting_issues: [
