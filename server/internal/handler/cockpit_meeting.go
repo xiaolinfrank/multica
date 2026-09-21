@@ -1569,7 +1569,6 @@ type CockpitMeetingImportItem struct {
 	Title    string `json:"title"`
 	Parties  string `json:"parties"`
 	Kind     string `json:"kind"`
-	Series   string `json:"series"`
 }
 
 type CockpitMeetingImportRequest struct {
@@ -1710,7 +1709,6 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			Code:        strings.TrimSpace(item.Code),
 			Parties:     strings.TrimSpace(item.Parties),
 			Kind:        strings.TrimSpace(item.Kind),
-			Series:      strings.TrimSpace(item.Series),
 			NasDir:      path,
 			Detected:    true,
 		})

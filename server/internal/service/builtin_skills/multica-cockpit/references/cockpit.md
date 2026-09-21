@@ -54,7 +54,7 @@ work-item routes takes the same two forms as `{id}`.
 
 A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
 `time_range` for the free text older rows were logged with, `title`, `code`,
-`kind`, `status`, `series`, `parties`, `organizer`, `location`, `attendees`,
+`kind`, `status`, `parties`, `organizer`, `location`, `attendees`,
 `meet_no`, `link`) and what it LEFT BEHIND (`note` for the agenda and remarks,
 `minutes`, `decisions`, `actions`, `nas_dir`). `detected` marks a row the
 scan read off the share rather than one somebody typed.

@@ -300,7 +300,7 @@ WHERE id = sqlc.arg('id')::uuid
 INSERT INTO cockpit_meeting (
     workspace_id, cockpit_id, meet_date, time_range, title,
     attendees, meet_no, link, note,
-    code, kind, status, series, parties, organizer, location,
+    code, kind, status, parties, organizer, location,
     start_time, end_time, minutes, decisions, actions, nas_dir, detected
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
@@ -315,7 +315,6 @@ INSERT INTO cockpit_meeting (
     sqlc.arg('code')::text,
     sqlc.arg('kind')::text,
     sqlc.arg('status')::text,
-    sqlc.arg('series')::text,
     sqlc.arg('parties')::text,
     sqlc.arg('organizer')::text,
     sqlc.arg('location')::text,
@@ -342,7 +341,6 @@ UPDATE cockpit_meeting SET
     code       = COALESCE(sqlc.narg('code')::text, code),
     kind       = COALESCE(sqlc.narg('kind')::text, kind),
     status     = COALESCE(sqlc.narg('status')::text, status),
-    series     = COALESCE(sqlc.narg('series')::text, series),
     parties    = COALESCE(sqlc.narg('parties')::text, parties),
     organizer  = COALESCE(sqlc.narg('organizer')::text, organizer),
     location   = COALESCE(sqlc.narg('location')::text, location),

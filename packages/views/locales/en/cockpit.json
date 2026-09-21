@@ -242,7 +242,6 @@
     "provision_dir": "Create the folder",
     "provision_retry": "Retry",
     "provision_task": "Open the task",
-    "series": "Series",
     "show_all": "Show all {{n}}",
     "show_upcoming": "Show upcoming only",
     "start_time": "Start",
@@ -287,6 +286,8 @@
     "node_meetings_hint": "Meetings that discussed this work item.",
     "open_register": "Open the meeting register",
     "past_section": "Held",
+    "pick": "Choose",
+    "pick_or_type": "Choose or type",
     "previous": "Previous",
     "scan": "Read from the share",
     "scan_again": "Scan again",
@@ -382,6 +383,8 @@
     "no_support_needed": "Nothing overdue or blocked."
   },
   "common": {
+    "add_value": "Add “{{value}}”",
+    "remove_value": "Remove {{value}}",
     "unset": "—"
   },
   "errors": {

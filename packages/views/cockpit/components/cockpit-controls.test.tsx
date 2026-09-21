@@ -185,7 +185,6 @@ const board: CockpitBoard = {
       code: "",
       kind: "",
       status: "",
-      series: "",
       parties: "",
       organizer: "",
       location: "",

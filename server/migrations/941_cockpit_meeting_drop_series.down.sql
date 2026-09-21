@@ -1,0 +1,2 @@
+ALTER TABLE cockpit_meeting
+    ADD COLUMN IF NOT EXISTS series TEXT NOT NULL DEFAULT '';

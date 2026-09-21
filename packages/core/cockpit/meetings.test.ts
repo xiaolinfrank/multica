@@ -7,9 +7,14 @@ import type {
   CockpitNode,
 } from "../types";
 import {
+  COCKPIT_MEETING_KINDS,
+  COCKPIT_MEETING_STATUSES,
   buildCockpitMeetingName,
   cockpitArchiveNodeOptions,
+  cockpitMeetingPeopleOptions,
   cockpitNodeLabel,
+  joinCockpitMeetingValues,
+  splitCockpitMeetingPeople,
   cockpitMeetingFolderName,
   cockpitMeetingMinutes,
   cockpitMeetingSpan,
@@ -31,7 +36,7 @@ import {
 function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting {
   return {
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
-    code: "", kind: "", status: "", series: "", parties: "", organizer: "", location: "",
+    code: "", kind: "", status: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
     nas_dir: "", detected: false, ...over,
   };
@@ -217,15 +222,17 @@ describe("links", () => {
 });
 
 describe("vocabulary", () => {
-  it("offers the words the board already uses, parties split into their own list", () => {
-    const rows = [
-      meeting({ id: "a", kind: "例会", status: "已召开", series: "周例会",
-        parties: "复星医药、华大基因", organizer: "杨涛", location: "大湾区" }),
-      meeting({ id: "b", kind: "研讨", parties: "复星医药、联通", organizer: "杨涛" }),
-      meeting({ id: "c" }),
-    ];
+  const rows = [
+    meeting({ id: "a", kind: "例会", status: "已召开",
+      parties: "复星医药、华大基因", organizer: "杨涛", location: "大湾区",
+      attendees: "杨涛、王工" }),
+    meeting({ id: "b", kind: "研讨", parties: "复星医药、联通", organizer: "杨涛",
+      attendees: "王工" }),
+    meeting({ id: "c" }),
+  ];
+
+  it("offers the words the board already uses, multi-value fields split apart", () => {
     const vocabulary = cockpitMeetingVocabulary(rows);
-    expect(vocabulary.kinds).toEqual(["例会", "研讨"].sort((a, b) => a.localeCompare(b)));
     expect(vocabulary.parties).toContain("华大基因");
     expect(vocabulary.parties).toContain("联通");
     // "复星医药" appears in two meetings and must be offered once.
@@ -233,6 +240,54 @@ describe("vocabulary", () => {
     // An empty field is not vocabulary.
     expect(vocabulary.locations).toEqual(["大湾区"]);
     expect(vocabulary.organizers).toEqual(["杨涛"]);
+    expect(vocabulary.attendees).toEqual(["王工", "杨涛"].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it("leads type and status with the programme's own words, then whatever else was typed", () => {
+    const vocabulary = cockpitMeetingVocabulary(rows);
+    // An empty board still opens on a vocabulary; "研讨" is not one of the
+    // programme's words and follows them rather than replacing them.
+    expect(vocabulary.kinds.slice(0, COCKPIT_MEETING_KINDS.length)).toEqual([
+      ...COCKPIT_MEETING_KINDS,
+    ]);
+    expect(vocabulary.kinds).toContain("研讨");
+    expect(vocabulary.kinds.filter((k) => k === "例会")).toHaveLength(1);
+    expect(vocabulary.statuses[0]).toBe(COCKPIT_MEETING_STATUSES[0]);
+    expect(vocabulary.statuses).toContain("已召开");
+    expect(cockpitMeetingVocabulary([]).kinds).toEqual([...COCKPIT_MEETING_KINDS]);
+  });
+});
+
+describe("multi-value meeting fields", () => {
+  it("splits people on list punctuation but not on the marks that join parties", () => {
+    expect(splitCockpitMeetingPeople("杨涛、王工，李博")).toEqual(["杨涛", "王工", "李博"]);
+    // "×" joins two SIDES of a meeting and "/" turns up inside a job title;
+    // neither splits a list of names.
+    expect(splitCockpitMeetingPeople("杨涛（研发/数据）")).toEqual(["杨涛（研发/数据）"]);
+    expect(splitCockpitMeetingPeople("  ")).toEqual([]);
+  });
+
+  it("keeps a separator inside brackets out of it", () => {
+    // Real board data: one way of describing a group, not two people.
+    expect(splitCockpitMeetingPeople("项目组全体（各领导、老师）"))
+      .toEqual(["项目组全体（各领导、老师）"]);
+    expect(splitCockpitMeetingPeople("杨涛、项目组全体（各领导、老师）、王工"))
+      .toEqual(["杨涛", "项目组全体（各领导、老师）", "王工"]);
+    expect(splitCockpitMeetingParties("复星医药（大湾区、上海）、华大基因"))
+      .toEqual(["复星医药（大湾区、上海）", "华大基因"]);
+    // An unclosed bracket must not swallow the rest of the list.
+    expect(splitCockpitMeetingPeople("杨涛（研发、王工")).toEqual(["杨涛（研发、王工"]);
+  });
+
+  it("writes a multi-value field back with one separator and no repeats", () => {
+    expect(joinCockpitMeetingValues(["复星医药", "华大基因", "复星医药", " "]))
+      .toBe("复星医药、华大基因");
+    expect(joinCockpitMeetingValues([])).toBe("");
+  });
+
+  it("offers workspace members first and the board's other names after them", () => {
+    expect(cockpitMeetingPeopleOptions(["杨涛", "李博"], ["王工", "杨涛"]))
+      .toEqual(["杨涛", "李博", "王工"]);
   });
 });
 

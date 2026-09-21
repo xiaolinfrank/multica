@@ -103,7 +103,7 @@ function codeDay(offsetDays = 0): string {
 function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting {
   return {
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
-    code: "", kind: "", status: "", series: "", parties: "", organizer: "", location: "",
+    code: "", kind: "", status: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
     nas_dir: "", detected: false, ...over,
   };
@@ -200,7 +200,8 @@ beforeEach(() => {
   vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
   vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
   vi.mocked(api.listMembers).mockResolvedValue([
-    { user_id: "user-1", role: "owner" },
+    { user_id: "user-1", role: "owner", name: "Yang Tao", email: "yangtao@example.com", avatar_url: null },
+    { user_id: "user-2", role: "member", name: "Wang Gong", email: "wanggong@example.com", avatar_url: null },
   ] as unknown as Awaited<ReturnType<typeof api.listMembers>>);
   vi.mocked(api.listProjects).mockResolvedValue([
     { id: "project-06", title: "06 Programme management" },
@@ -304,8 +305,21 @@ describe("the meeting register", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New meeting" }));
 
     const dialog = await screen.findByRole("dialog");
-    const parties = within(dialog).getByLabelText("Parties");
-    fireEvent.change(parties, { target: { value: "Fosun Pharma、BGI" } });
+    // Parties is a list, edited as a list: the organisations the board has
+    // already met with are ticked rather than retyped, and the search box
+    // narrows a long list down to one of them.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Parties" }));
+    const partyBox = screen.getByRole("textbox", { name: "Parties" });
+    fireEvent.click(screen.getByRole("option", { name: "Fosun Pharma" }));
+    fireEvent.change(partyBox, { target: { value: "bg" } });
+    expect(screen.queryByRole("option", { name: "Fosun Pharma" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "BGI" }));
+    // A name nobody has used yet is offered as something to add.
+    fireEvent.change(partyBox, { target: { value: "Unicom" } });
+    expect(screen.getByRole("button", { name: 'Add “Unicom”' })).toBeInTheDocument();
+    fireEvent.change(partyBox, { target: { value: "" } });
+    fireEvent.keyDown(partyBox, { key: "Enter" });
+
     fireEvent.change(within(dialog).getByLabelText("Subject"), {
       target: { value: "Data handover" },
     });
@@ -432,6 +446,49 @@ describe("reading meetings back off the share", () => {
     fireEvent.click(screen.getByRole("button", { name: "Checked" }));
     await waitFor(() =>
       expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { detected: false }),
+    );
+  });
+});
+
+describe("the people at a meeting", () => {
+  it("offers workspace members and accepts anyone else", async () => {
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Attendees" }));
+    const box = screen.getByRole("textbox", { name: "Attendees" });
+    // The workspace's own people are the list, and the address is there to
+    // tell two of the same name apart.
+    expect(screen.getByRole("option", { name: /Yang Tao/ })).toBeInTheDocument();
+    expect(screen.getByText("wanggong@example.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Yang Tao/ }));
+
+    // Half the room at a joint meeting has no account here.
+    fireEvent.change(box, { target: { value: "Zhang from BGI" } });
+    fireEvent.click(screen.getByRole("button", { name: 'Add “Zhang from BGI”' }));
+    // The list is shorter now and a different row sits under the cursor.
+    // Enter must still mean "done" rather than "tick whatever moved there".
+    fireEvent.mouseEnter(screen.getByRole("option", { name: /Wang Gong/ }));
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", {
+        attendees: "Yang Tao、Zhang from BGI",
+      }),
+    );
+  });
+
+  it("starts the meeting type from the programme's own words", async () => {
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Type" }));
+    // An empty board still opens on a vocabulary rather than on a blank box.
+    expect(screen.getByRole("option", { name: "例会" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "对接会" }));
+
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { kind: "对接会" }),
     );
   });
 });

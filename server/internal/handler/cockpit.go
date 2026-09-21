@@ -147,7 +147,6 @@ type CockpitMeetingResponse struct {
 	Code      string `json:"code"`
 	Kind      string `json:"kind"`
 	Status    string `json:"status"`
-	Series    string `json:"series"`
 	Parties   string `json:"parties"`
 	Organizer string `json:"organizer"`
 	Location  string `json:"location"`
@@ -343,7 +342,6 @@ func cockpitMeetingToResponse(m db.CockpitMeeting) CockpitMeetingResponse {
 		Code:      m.Code,
 		Kind:      m.Kind,
 		Status:    m.Status,
-		Series:    m.Series,
 		Parties:   m.Parties,
 		Organizer: m.Organizer,
 		Location:  m.Location,
@@ -1676,7 +1674,6 @@ type CockpitMeetingRequest struct {
 	Code      *string `json:"code"`
 	Kind      *string `json:"kind"`
 	Status    *string `json:"status"`
-	Series    *string `json:"series"`
 	Parties   *string `json:"parties"`
 	Organizer *string `json:"organizer"`
 	Location  *string `json:"location"`
@@ -1734,7 +1731,6 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Code:        textOrEmpty(req.Code),
 		Kind:        textOrEmpty(req.Kind),
 		Status:      textOrEmpty(req.Status),
-		Series:      textOrEmpty(req.Series),
 		Parties:     textOrEmpty(req.Parties),
 		Organizer:   textOrEmpty(req.Organizer),
 		Location:    textOrEmpty(req.Location),
@@ -1806,7 +1802,6 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Code:           optionalText(req.Code),
 		Kind:           optionalText(req.Kind),
 		Status:         optionalText(req.Status),
-		Series:         optionalText(req.Series),
 		Parties:        optionalText(req.Parties),
 		Organizer:      optionalText(req.Organizer),
 		Location:       optionalText(req.Location),
@@ -1939,7 +1934,6 @@ type CockpitImportMeeting struct {
 	Code      string `json:"code"`
 	Kind      string `json:"kind"`
 	Status    string `json:"status"`
-	Series    string `json:"series"`
 	Parties   string `json:"parties"`
 	Organizer string `json:"organizer"`
 	Location  string `json:"location"`
@@ -2375,7 +2369,6 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			Code:        m.Code,
 			Kind:        m.Kind,
 			Status:      m.Status,
-			Series:      m.Series,
 			Parties:     m.Parties,
 			Organizer:   m.Organizer,
 			Location:    m.Location,
@@ -2704,7 +2697,6 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 			Code:        m.Code,
 			Kind:        m.Kind,
 			Status:      m.Status,
-			Series:      m.Series,
 			Parties:     m.Parties,
 			Organizer:   m.Organizer,
 			Location:    m.Location,

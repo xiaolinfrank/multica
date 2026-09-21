@@ -242,7 +242,6 @@
     "provision_dir": "폴더 만들기",
     "provision_retry": "다시 시도",
     "provision_task": "작업 만들기",
-    "series": "시리즈",
     "show_all": "전체 {{n}}건 보기",
     "show_upcoming": "다가오는 일정만",
     "start_time": "시작",
@@ -287,6 +286,8 @@
     "node_meetings_hint": "이 실행 항목을 다룬 회의입니다.",
     "open_register": "회의 관리 열기",
     "past_section": "진행 완료",
+    "pick": "선택",
+    "pick_or_type": "선택 또는 입력",
     "previous": "이전",
     "scan": "공유에서 읽기",
     "scan_again": "다시 검색",
@@ -382,6 +383,8 @@
     "no_support_needed": "지연되거나 막힌 작업이 없습니다."
   },
   "common": {
+    "add_value": "「{{value}}」 추가",
+    "remove_value": "{{value}} 제거",
     "unset": "—"
   },
   "errors": {

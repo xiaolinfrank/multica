@@ -242,7 +242,6 @@
     "provision_dir": "フォルダを作成",
     "provision_retry": "再試行",
     "provision_task": "タスクを作成",
-    "series": "シリーズ",
     "show_all": "すべて表示（{{n}} 件）",
     "show_upcoming": "直近のみ表示",
     "start_time": "開始",
@@ -287,6 +286,8 @@
     "node_meetings_hint": "この作業項目を扱った会議です。",
     "open_register": "会議管理を開く",
     "past_section": "開催済み",
+    "pick": "選択",
+    "pick_or_type": "選択または入力",
     "previous": "前へ",
     "scan": "共有から読み取る",
     "scan_again": "再スキャン",
@@ -382,6 +383,8 @@
     "no_support_needed": "遅延・ブロック中のタスクはありません。"
   },
   "common": {
+    "add_value": "「{{value}}」を追加",
+    "remove_value": "{{value}} を外す",
     "unset": "—"
   },
   "errors": {

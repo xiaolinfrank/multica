@@ -11,10 +11,12 @@
 // mid-keystroke, so a half-typed value never reaches other people's screens.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { joinCockpitMeetingValues } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import { Textarea } from "@multica/ui/components/ui/textarea";
+import { Check, Plus, X } from "lucide-react";
 import { useT } from "../../i18n";
 
 interface EditableProps {
@@ -347,6 +349,7 @@ export function EditableSuggest({
   placeholder,
   disabled,
   renderDisplay,
+  renderOption,
   displayValue,
   displayClassName,
 }: {
@@ -357,6 +360,9 @@ export function EditableSuggest({
   placeholder: string;
   disabled?: boolean;
   renderDisplay?: (value: string) => React.ReactNode;
+  /** How one row of the dropdown reads, when the bare value is not enough —
+   *  a person's name beside the account it belongs to. */
+  renderOption?: (option: string) => React.ReactNode;
   /**
    * What the idle state shows, when that differs from what editing edits — a
    * dense row can only fit "李林" where the field holds "李林（POOL 超饱和）".
@@ -514,12 +520,267 @@ export function EditableSuggest({
                   onClick={() => pick(i)}
                   title={option}
                   className={cn(
-                    "w-full truncate rounded-sm px-2 py-1 text-left text-caption",
+                    "flex w-full min-w-0 rounded-sm px-2 py-1 text-left text-caption",
                     i === highlighted ? "bg-accent" : "hover:bg-accent/50",
                     option === value && "font-medium",
                   )}
                 >
-                  {option}
+                  <span className="min-w-0 flex-1 truncate">
+                    {renderOption ? renderOption(option) : option}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Several vocabulary values in one field.
+ *
+ * The parties at a meeting and the people in the room are lists, and the
+ * board stores each as one "、"-joined string. Editing them as free text
+ * meant every reader inventing their own separator and every later picker
+ * offering "复星医药、华大基因" as though it were one organisation — so the
+ * list is edited as a list: tick what is already known, type what is not.
+ *
+ * The same rule as every other editor here, adapted to a control that stays
+ * open: Enter adds, Escape reverts, and closing the popup saves.
+ */
+export function EditableTokens({
+  value,
+  onCommit,
+  split,
+  suggestions,
+  label,
+  placeholder,
+  disabled,
+  renderOption,
+  renderToken,
+  triggerClassName,
+}: {
+  value: string;
+  /** Receives the field's whole new value, already joined. */
+  onCommit: (next: string) => void;
+  /** How this field's stored string comes apart — parties and people do not
+   *  agree about "×" and "/". */
+  split: (value: string) => string[];
+  suggestions: string[];
+  label: string;
+  placeholder: string;
+  disabled?: boolean;
+  renderOption?: (option: string) => React.ReactNode;
+  renderToken?: (token: string) => React.ReactNode;
+  triggerClassName?: string;
+}) {
+  const { t } = useT("cockpit");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string[]>(() => split(value));
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(-1);
+
+  const committed = useMemo(() => split(value), [split, value]);
+  useEffect(() => {
+    if (!editing) {
+      setDraft(committed);
+      setQuery("");
+    }
+  }, [committed, editing]);
+
+  const chosen = useMemo(() => new Set(draft), [draft]);
+  const needle = query.trim().toLowerCase();
+  const filtered = useMemo(
+    () => (needle ? suggestions.filter((s) => s.toLowerCase().includes(needle)) : suggestions),
+    [suggestions, needle],
+  );
+  // Only offer to add what is not already an option or already picked —
+  // otherwise "add 复星医药" sits above the very row that would tick it.
+  const addable =
+    query.trim() &&
+    !chosen.has(query.trim()) &&
+    !filtered.some((option) => option === query.trim())
+      ? query.trim()
+      : "";
+
+  useEffect(() => {
+    setHighlighted((h) => Math.min(h, filtered.length - 1));
+  }, [filtered.length]);
+
+  const finish = (next: string[]) => {
+    setEditing(false);
+    setHighlighted(-1);
+    setQuery("");
+    const joined = joinCockpitMeetingValues(next);
+    if (joined !== joinCockpitMeetingValues(committed)) onCommit(joined);
+  };
+
+  const revert = () => {
+    setEditing(false);
+    setHighlighted(-1);
+    setQuery("");
+    setDraft(committed);
+  };
+
+  const toggle = (option: string) =>
+    setDraft((current) =>
+      current.includes(option) ? current.filter((v) => v !== option) : [...current, option],
+    );
+
+  const display = renderToken
+    ? committed.map((token) => <span key={token}>{renderToken(token)}</span>)
+    : committed.map((token) => (
+        <span key={token} className="rounded-sm bg-muted px-1 text-caption">
+          {token}
+        </span>
+      ));
+
+  const trigger = (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => setEditing(true)}
+      aria-label={label}
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-1 rounded-sm px-1 text-left",
+        !disabled &&
+          "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        triggerClassName,
+      )}
+    >
+      {committed.length > 0 ? (
+        display
+      ) : (
+        <span className="text-caption text-muted-foreground italic">{placeholder}</span>
+      )}
+    </button>
+  );
+
+  if (disabled || !editing) return trigger;
+
+  return (
+    <Popover
+      open
+      onOpenChange={(open, details) => {
+        if (open) return;
+        if (details.reason === "escape-key") revert();
+        else finish(draft);
+      }}
+    >
+      <PopoverTrigger render={trigger} />
+      <PopoverContent align="start" tabIndex={-1} className="w-64 gap-1 p-1" aria-label={label}>
+        {draft.length > 0 && (
+          <ul className="flex flex-wrap gap-1 px-1 pt-1">
+            {draft.map((token) => (
+              <li key={token}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => toggle(token)}
+                  aria-label={t(($) => $.common.remove_value, { value: token })}
+                  className="flex items-center gap-0.5 rounded-sm bg-muted px-1 text-caption hover:bg-accent"
+                >
+                  <span className="max-w-32 truncate">{token}</span>
+                  <X className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Input
+          autoFocus
+          aria-label={label}
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setHighlighted(-1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const option = filtered[highlighted];
+              if (option != null) toggle(option);
+              else if (addable) toggle(addable);
+              // Enter on an empty box is how the keyboard says "done": the
+              // popup stays open while there is anything left to add.
+              else if (!query.trim()) {
+                finish(draft);
+                return;
+              }
+              setQuery("");
+              setHighlighted(-1);
+            } else if (e.key === "Backspace" && !query) {
+              setDraft((current) => current.slice(0, -1));
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlighted((h) => Math.min(h + 1, filtered.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlighted((h) => Math.max(h - 1, -1));
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              revert();
+            }
+          }}
+          className="h-7 px-2 text-caption"
+        />
+        {(filtered.length > 0 || addable) && (
+          <ul role="listbox" aria-multiselectable aria-label={label} className="max-h-64 overflow-y-auto">
+            {addable && (
+              <li>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    toggle(addable);
+                    setQuery("");
+                    setHighlighted(-1);
+                  }}
+                  className="flex w-full items-center gap-1 rounded-sm px-2 py-1 text-left text-caption hover:bg-accent/50"
+                >
+                  <Plus className="size-3 shrink-0" aria-hidden />
+                  <span className="truncate">{t(($) => $.common.add_value, { value: addable })}</span>
+                </button>
+              </li>
+            )}
+            {filtered.map((option, i) => (
+              <li key={option}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={chosen.has(option)}
+                  ref={(el) => {
+                    if (i === highlighted && typeof el?.scrollIntoView === "function") {
+                      el.scrollIntoView({ block: "nearest" });
+                    }
+                  }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  // Move, not enter: the list re-renders under a cursor that
+                  // has not moved (adding a name shortens it), and an
+                  // "enter" fired by the list moving would hand the keyboard
+                  // highlight to whatever landed under the pointer — so the
+                  // next Enter would tick a row nobody pointed at.
+                  onMouseMove={() => setHighlighted(i)}
+                  onClick={() => {
+                    toggle(option);
+                    setHighlighted(-1);
+                  }}
+                  title={option}
+                  className={cn(
+                    "flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-caption",
+                    i === highlighted ? "bg-accent" : "hover:bg-accent/50",
+                  )}
+                >
+                  <Check
+                    className={cn("size-3 shrink-0", chosen.has(option) ? "" : "opacity-0")}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {renderOption ? renderOption(option) : option}
+                  </span>
                 </button>
               </li>
             ))}

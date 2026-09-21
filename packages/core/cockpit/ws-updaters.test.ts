@@ -232,7 +232,7 @@ describe("onCockpitChanged", () => {
       meetings: [
         {
           id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
-          title: "Weekly", code: "20260921-01", kind: "", status: "", series: "", parties: "",
+          title: "Weekly", code: "20260921-01", kind: "", status: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
           minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
         },
@@ -247,7 +247,7 @@ describe("onCockpitChanged", () => {
         // the frame carries the meeting row too.
         meeting: {
           id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
-          title: "Weekly", code: "20260921-01", kind: "", status: "", series: "", parties: "",
+          title: "Weekly", code: "20260921-01", kind: "", status: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
           minutes: "", decisions: "", actions: "", nas_dir: "/Volumes/share/20260921-01 Weekly",
         },
@@ -297,7 +297,7 @@ describe("onCockpitChanged", () => {
       meetings: [
         {
           id: "m1", meet_date: null, time_range: "", start_time: null, end_time: null,
-          title: "Weekly", code: "", kind: "", status: "", series: "", parties: "",
+          title: "Weekly", code: "", kind: "", status: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
           minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
         },

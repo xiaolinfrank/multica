@@ -131,11 +131,12 @@ export interface CockpitMeeting {
    *  stands. */
   kind: string;
   status: string;
-  /** Recurring meetings name their series ("项目组周例会") so a run of them
-   *  reads as one thread. */
-  series: string;
-  /** The organisations at the table. `attendees` lists people. */
+  /** The organisations at the table, separated by "、". `attendees` lists
+   *  people, the same way. */
   parties: string;
+  /** People. A name that matches a workspace member is shown as that member;
+   *  anyone else is an ordinary name, because half the room at a joint
+   *  meeting has no account here. */
   organizer: string;
   location: string;
   attendees: string;
@@ -283,7 +284,6 @@ export type CockpitMeetingPatch = Partial<
     | "code"
     | "kind"
     | "status"
-    | "series"
     | "parties"
     | "organizer"
     | "location"
@@ -399,7 +399,6 @@ export interface CockpitMeetingImportItem {
   title?: string;
   parties?: string;
   kind?: string;
-  series?: string;
 }
 
 export interface CockpitMeetingImportResult {

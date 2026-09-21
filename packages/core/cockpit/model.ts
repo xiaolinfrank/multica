@@ -2320,14 +2320,116 @@ export function nextCockpitMeetingCode(meetings: CockpitMeeting[], day: string):
 }
 
 /** The separators a person might already have typed between parties. */
-const PARTY_SEPARATORS = /[、,，;；/|×x]+/;
+const PARTY_SEPARATORS = /[、,，;；/|×x]/;
+
+/**
+ * People are separated by the ordinary list punctuation and nothing else.
+ * "×" joins two SIDES of a meeting and "/" turns up inside job titles, so
+ * neither may split a list of names the way it splits a list of parties.
+ */
+const PEOPLE_SEPARATORS = /[、,，;；\n]/;
+
+const BRACKETS = new Map([
+  ["（", "）"],
+  ["(", ")"],
+  ["【", "】"],
+  ["[", "]"],
+  ["〔", "〕"],
+  ["《", "》"],
+]);
+const CLOSERS = new Set(BRACKETS.values());
+
+/**
+ * Splits a list, ignoring separators inside brackets.
+ *
+ * "项目组全体（各领导、老师）" is ONE entry: the "、" inside the bracket is
+ * part of how somebody described a group, not a break between two of them.
+ * Splitting on it produced "项目组全体（各领导" and "老师）" — two halves of a
+ * phrase offered back as two people.
+ */
+function splitOutsideBrackets(value: string, separator: RegExp): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+  const flush = () => {
+    const trimmed = current.trim();
+    if (trimmed) out.push(trimmed);
+    current = "";
+  };
+  for (const char of value) {
+    if (depth === 0 && separator.test(char)) {
+      flush();
+      continue;
+    }
+    if (BRACKETS.has(char)) depth += 1;
+    else if (CLOSERS.has(char) && depth > 0) depth -= 1;
+    current += char;
+  }
+  flush();
+  return out;
+}
 
 export function splitCockpitMeetingParties(parties: string): string[] {
-  return parties
-    .split(PARTY_SEPARATORS)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  return splitOutsideBrackets(parties, PARTY_SEPARATORS);
 }
+
+export function splitCockpitMeetingPeople(people: string): string[] {
+  return splitOutsideBrackets(people, PEOPLE_SEPARATORS);
+}
+
+/** How a multi-value meeting field is written back: one canonical separator. */
+export function joinCockpitMeetingValues(values: string[]): string {
+  return dedupeCockpitValues(values).join("、");
+}
+
+/**
+ * One list of choices out of several sources, in the order they were given
+ * and without repeats. The programme's own words come first and whatever the
+ * board has actually used follows, so a picker opens on the vocabulary
+ * somebody decided on rather than on whatever was typed most recently.
+ */
+export function dedupeCockpitValues(...lists: readonly (readonly string[])[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const raw of list) {
+      const value = raw.trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+/**
+ * The meeting types and states this programme runs on.
+ *
+ * Board vocabulary, not a server enum and not UI chrome: the words are what
+ * the register is read in, the same way the export's column headers are (see
+ * export.ts). They seed an empty board — every picker also offers what the
+ * board has used, and typing something outside the list is still accepted,
+ * because a programme that invents a sixth kind of meeting should not have to
+ * wait for a release to record one.
+ */
+export const COCKPIT_MEETING_KINDS: readonly string[] = [
+  "例会",
+  "对接会",
+  "评审会",
+  "研讨会",
+  "启动会",
+  "验收会",
+  "汇报会",
+  "培训",
+];
+
+export const COCKPIT_MEETING_STATUSES: readonly string[] = [
+  "待确认",
+  "已确认",
+  "已召开",
+  "已延期",
+  "已取消",
+];
 
 /**
  * The name the platform proposes for a new meeting: its number, the parties at
@@ -2423,9 +2525,9 @@ export function groupMeetingsByNode(
 export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
   kinds: string[];
   statuses: string[];
-  series: string[];
   parties: string[];
   organizers: string[];
+  attendees: string[];
   locations: string[];
 } {
   const collect = (pick: (m: CockpitMeeting) => string) => {
@@ -2436,18 +2538,40 @@ export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
     }
     return [...seen].sort((a, b) => a.localeCompare(b));
   };
-  const parties = new Set<string>();
-  for (const meeting of meetings) {
-    for (const party of splitCockpitMeetingParties(meeting.parties)) parties.add(party);
-  }
+  const spread = (pick: (m: CockpitMeeting) => string[]) => {
+    const seen = new Set<string>();
+    for (const meeting of meetings) {
+      for (const value of pick(meeting)) seen.add(value);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  };
   return {
-    kinds: collect((m) => m.kind),
-    statuses: collect((m) => m.status),
-    series: collect((m) => m.series),
-    parties: [...parties].sort((a, b) => a.localeCompare(b)),
+    // The programme's words first, then anything else the board has used.
+    kinds: dedupeCockpitValues(COCKPIT_MEETING_KINDS, collect((m) => m.kind)),
+    statuses: dedupeCockpitValues(COCKPIT_MEETING_STATUSES, collect((m) => m.status)),
+    parties: spread((m) => splitCockpitMeetingParties(m.parties)),
+    // Organisers and attendees are the same kind of thing — a person — so one
+    // name typed into either is offered in both.
     organizers: collect((m) => m.organizer),
+    attendees: spread((m) => splitCockpitMeetingPeople(m.attendees)),
     locations: collect((m) => m.location),
   };
+}
+
+/**
+ * The people a meeting field offers: everyone on the workspace first, then
+ * every other name the board has already recorded.
+ *
+ * Both halves matter. The platform's own members are who a meeting is usually
+ * with, and offering them is what ties the field to real accounts; but half
+ * the room at a joint meeting has no account here, and a field that only
+ * accepted members would be a field nobody could fill in truthfully.
+ */
+export function cockpitMeetingPeopleOptions(
+  memberNames: readonly string[],
+  usedNames: readonly string[],
+): string[] {
+  return dedupeCockpitValues(memberNames, usedNames);
 }
 
 /**

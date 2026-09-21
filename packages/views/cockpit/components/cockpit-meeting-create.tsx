@@ -11,15 +11,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CockpitMeeting, CockpitMeetingProvision, CockpitNode } from "@multica/core/types";
+import type {
+  CockpitMeeting,
+  CockpitMeetingProvision,
+  CockpitNode,
+  MemberWithUser,
+} from "@multica/core/types";
 import {
   buildCockpitMeetingName,
   cockpitArchiveNodeOptions,
   cockpitMeetingDestinationOptions,
   cockpitMeetingFolderName,
+  cockpitMeetingPeopleOptions,
   cockpitNodeLabel,
   cockpitMeetingVocabulary,
   nextCockpitMeetingCode,
+  splitCockpitMeetingParties,
+  splitCockpitMeetingPeople,
 } from "@multica/core/cockpit";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
@@ -44,13 +52,23 @@ import {
 } from "@multica/ui/components/ui/select";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
+import { EditableSuggest, EditableTokens } from "./cockpit-fields";
+import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
+
+/** A picker inside this form reads as a form control, not as a table cell. */
+const FIELD_TRIGGER =
+  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-title-sm";
 
 export interface CockpitMeetingDraft {
   meet_date: string;
   start_time: string;
   end_time: string;
   kind: string;
+  status: string;
   parties: string;
+  organizer: string;
+  attendees: string;
+  location: string;
   title: string;
   code: string;
 }
@@ -67,6 +85,10 @@ export interface CockpitMeetingCreateProps {
   meetings: CockpitMeeting[];
   /** The board's tree, which the archive sub-item is chosen from. */
   nodes: CockpitNode[];
+  /** The workspace's people, offered by name in the person fields. */
+  members: MemberWithUser[];
+  /** Pre-selected as the convenor: whoever is filing the meeting. */
+  currentUserName: string;
   /** The board's remembered destination, pre-selected in the pickers. */
   defaultProjectId: string | null;
   defaultModuleId: string | null;
@@ -82,6 +104,8 @@ export function CockpitMeetingCreate({
   today,
   meetings,
   nodes,
+  members,
+  currentUserName,
   defaultProjectId,
   defaultModuleId,
   defaultNodeId,
@@ -94,7 +118,11 @@ export function CockpitMeetingCreate({
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [kind, setKind] = useState("");
+  const [status, setStatus] = useState("");
   const [parties, setParties] = useState("");
+  const [organizer, setOrganizer] = useState("");
+  const [attendees, setAttendees] = useState("");
+  const [location, setLocation] = useState("");
   const [subject, setSubject] = useState("");
   // Empty means "follow the generated name"; once someone types, their name
   // wins and nothing regenerates it under them.
@@ -113,7 +141,13 @@ export function CockpitMeetingCreate({
     setStartTime("");
     setEndTime("");
     setKind("");
+    setStatus("");
     setParties("");
+    // Whoever is filing the meeting is the convenor until they say otherwise;
+    // it is the answer in almost every case and it is one fewer box.
+    setOrganizer(currentUserName);
+    setAttendees("");
+    setLocation("");
     setSubject("");
     setNameOverride("");
     setProjectId(defaultProjectId ?? "");
@@ -122,7 +156,7 @@ export function CockpitMeetingCreate({
     setWithTask(true);
     setWithDir(true);
     setSubmitting(false);
-  }, [open, today, defaultProjectId, defaultModuleId, defaultNodeId]);
+  }, [open, today, currentUserName, defaultProjectId, defaultModuleId, defaultNodeId]);
 
   const projects = useQuery({ ...projectListOptions(wsId), enabled: open && Boolean(wsId) });
   const modules = useQuery({
@@ -141,6 +175,14 @@ export function CockpitMeetingCreate({
   });
 
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
+  const people = useCockpitPeople(members);
+  const personOptions = useMemo(
+    () => cockpitMeetingPeopleOptions(people.names, [...vocabulary.organizers, ...vocabulary.attendees]),
+    [people.names, vocabulary.organizers, vocabulary.attendees],
+  );
+  const renderPerson = (name: string) => (
+    <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
+  );
   const code = useMemo(() => nextCockpitMeetingCode(meetings, date || today), [meetings, date, today]);
   const generated = useMemo(
     () => buildCockpitMeetingName({ code, parties, subject }),
@@ -176,7 +218,11 @@ export function CockpitMeetingCreate({
           start_time: startTime.trim(),
           end_time: endTime.trim(),
           kind: kind.trim(),
+          status: status.trim(),
           parties: parties.trim(),
+          organizer: organizer.trim(),
+          attendees: attendees.trim(),
+          location: location.trim(),
           title: name.trim() || code,
           code,
         },
@@ -237,34 +283,92 @@ export function CockpitMeetingCreate({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="cockpit-meeting-kind">{t(($) => $.meeting.kind)}</Label>
-              <Input
-                id="cockpit-meeting-kind"
+              <Label>{t(($) => $.meeting.kind)}</Label>
+              <EditableSuggest
                 value={kind}
-                onChange={(e) => setKind(e.target.value)}
-                list="cockpit-meeting-kinds"
+                onCommit={setKind}
+                suggestions={vocabulary.kinds}
+                label={t(($) => $.meeting.kind)}
+                placeholder={t(($) => $.meetings.pick)}
+                displayClassName={FIELD_TRIGGER}
               />
-              <datalist id="cockpit-meeting-kinds">
-                {vocabulary.kinds.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="cockpit-meeting-parties">{t(($) => $.meeting.parties)}</Label>
-              <Input
-                id="cockpit-meeting-parties"
-                value={parties}
-                onChange={(e) => setParties(e.target.value)}
-                list="cockpit-meeting-parties-list"
+              <Label>{t(($) => $.meeting.status)}</Label>
+              <EditableSuggest
+                value={status}
+                onCommit={setStatus}
+                suggestions={vocabulary.statuses}
+                label={t(($) => $.meeting.status)}
+                placeholder={t(($) => $.meetings.pick)}
+                displayClassName={FIELD_TRIGGER}
               />
-              <datalist id="cockpit-meeting-parties-list">
-                {vocabulary.parties.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>{t(($) => $.meeting.location)}</Label>
+              <EditableSuggest
+                value={location}
+                onCommit={setLocation}
+                suggestions={vocabulary.locations}
+                label={t(($) => $.meeting.location)}
+                placeholder={t(($) => $.meetings.pick_or_type)}
+                displayClassName={FIELD_TRIGGER}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label>{t(($) => $.meeting.parties)}</Label>
+            <EditableTokens
+              value={parties}
+              onCommit={setParties}
+              split={splitCockpitMeetingParties}
+              suggestions={vocabulary.parties}
+              label={t(($) => $.meeting.parties)}
+              placeholder={t(($) => $.meetings.pick_or_type)}
+              triggerClassName={FIELD_TRIGGER}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <Label>{t(($) => $.meeting.organizer)}</Label>
+              <EditableSuggest
+                value={organizer}
+                onCommit={setOrganizer}
+                suggestions={personOptions}
+                label={t(($) => $.meeting.organizer)}
+                placeholder={t(($) => $.meetings.pick_or_type)}
+                displayClassName={FIELD_TRIGGER}
+                renderDisplay={(name) =>
+                  name ? (
+                    <CockpitPersonLabel name={name} member={people.byName.get(name)} />
+                  ) : (
+                    <span className="text-caption text-muted-foreground italic">
+                      {t(($) => $.meetings.pick_or_type)}
+                    </span>
+                  )
+                }
+                renderOption={renderPerson}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>{t(($) => $.meeting.attendees)}</Label>
+              <EditableTokens
+                value={attendees}
+                onCommit={setAttendees}
+                split={splitCockpitMeetingPeople}
+                suggestions={personOptions}
+                label={t(($) => $.meeting.attendees)}
+                placeholder={t(($) => $.meetings.pick_or_type)}
+                triggerClassName={FIELD_TRIGGER}
+                renderToken={(name) => (
+                  <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
+                )}
+                renderOption={renderPerson}
+              />
             </div>
           </div>
 

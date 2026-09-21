@@ -597,7 +597,6 @@ type CockpitMeeting struct {
 	Code        string             `json:"code"`
 	Kind        string             `json:"kind"`
 	Status      string             `json:"status"`
-	Series      string             `json:"series"`
 	Parties     string             `json:"parties"`
 	Organizer   string             `json:"organizer"`
 	Location    string             `json:"location"`

@@ -242,7 +242,6 @@
     "provision_dir": "建立目录",
     "provision_retry": "重试",
     "provision_task": "新建任务",
-    "series": "所属系列",
     "show_all": "查看全部 {{n}} 场",
     "show_upcoming": "只看近期",
     "start_time": "开始",
@@ -287,6 +286,8 @@
     "node_meetings_hint": "讨论过这项工作的会议。",
     "open_register": "打开会议管理",
     "past_section": "已召开",
+    "pick": "请选择",
+    "pick_or_type": "选择或输入",
     "previous": "上一段",
     "scan": "从 NAS 识别",
     "scan_again": "重新扫描",
@@ -382,6 +383,8 @@
     "no_support_needed": "没有逾期或受阻的任务。"
   },
   "common": {
+    "add_value": "新增「{{value}}」",
+    "remove_value": "移除 {{value}}",
     "unset": "—"
   },
   "errors": {

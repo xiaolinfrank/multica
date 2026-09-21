@@ -67,7 +67,7 @@ const createCockpitMeeting = `-- name: CreateCockpitMeeting :one
 INSERT INTO cockpit_meeting (
     workspace_id, cockpit_id, meet_date, time_range, title,
     attendees, meet_no, link, note,
-    code, kind, status, series, parties, organizer, location,
+    code, kind, status, parties, organizer, location,
     start_time, end_time, minutes, decisions, actions, nas_dir, detected
 ) VALUES (
     $1::uuid,
@@ -85,16 +85,15 @@ INSERT INTO cockpit_meeting (
     $13::text,
     $14::text,
     $15::text,
-    $16::text,
+    $16::time,
     $17::time,
-    $18::time,
+    $18::text,
     $19::text,
     $20::text,
     $21::text,
-    $22::text,
-    $23::bool
+    $22::bool
 )
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected
 `
 
 type CreateCockpitMeetingParams struct {
@@ -110,7 +109,6 @@ type CreateCockpitMeetingParams struct {
 	Code        string      `json:"code"`
 	Kind        string      `json:"kind"`
 	Status      string      `json:"status"`
-	Series      string      `json:"series"`
 	Parties     string      `json:"parties"`
 	Organizer   string      `json:"organizer"`
 	Location    string      `json:"location"`
@@ -137,7 +135,6 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		arg.Code,
 		arg.Kind,
 		arg.Status,
-		arg.Series,
 		arg.Parties,
 		arg.Organizer,
 		arg.Location,
@@ -166,7 +163,6 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		&i.Code,
 		&i.Kind,
 		&i.Status,
-		&i.Series,
 		&i.Parties,
 		&i.Organizer,
 		&i.Location,
@@ -1104,7 +1100,7 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 }
 
 const getCockpitMeeting = `-- name: GetCockpitMeeting :one
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected FROM cockpit_meeting
 WHERE id = $1::uuid
   AND workspace_id = $2::uuid
 `
@@ -1133,7 +1129,6 @@ func (q *Queries) GetCockpitMeeting(ctx context.Context, arg GetCockpitMeetingPa
 		&i.Code,
 		&i.Kind,
 		&i.Status,
-		&i.Series,
 		&i.Parties,
 		&i.Organizer,
 		&i.Location,
@@ -1465,7 +1460,7 @@ func (q *Queries) ListCockpitMeetingNodes(ctx context.Context, cockpitID pgtype.
 }
 
 const listCockpitMeetings = `-- name: ListCockpitMeetings :many
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected FROM cockpit_meeting
 WHERE cockpit_id = $1::uuid
 ORDER BY meet_date DESC NULLS LAST, start_time DESC NULLS LAST, time_range DESC
 `
@@ -1498,7 +1493,6 @@ func (q *Queries) ListCockpitMeetings(ctx context.Context, cockpitID pgtype.UUID
 			&i.Code,
 			&i.Kind,
 			&i.Status,
-			&i.Series,
 			&i.Parties,
 			&i.Organizer,
 			&i.Location,
@@ -1998,23 +1992,22 @@ UPDATE cockpit_meeting SET
     code       = COALESCE($9::text, code),
     kind       = COALESCE($10::text, kind),
     status     = COALESCE($11::text, status),
-    series     = COALESCE($12::text, series),
-    parties    = COALESCE($13::text, parties),
-    organizer  = COALESCE($14::text, organizer),
-    location   = COALESCE($15::text, location),
-    start_time = CASE WHEN $16::bool THEN NULL
-                      ELSE COALESCE($17::time, start_time) END,
-    end_time   = CASE WHEN $18::bool THEN NULL
-                      ELSE COALESCE($19::time, end_time) END,
-    minutes    = COALESCE($20::text, minutes),
-    decisions  = COALESCE($21::text, decisions),
-    actions    = COALESCE($22::text, actions),
-    nas_dir    = COALESCE($23::text, nas_dir),
-    detected   = COALESCE($24::bool, detected),
+    parties    = COALESCE($12::text, parties),
+    organizer  = COALESCE($13::text, organizer),
+    location   = COALESCE($14::text, location),
+    start_time = CASE WHEN $15::bool THEN NULL
+                      ELSE COALESCE($16::time, start_time) END,
+    end_time   = CASE WHEN $17::bool THEN NULL
+                      ELSE COALESCE($18::time, end_time) END,
+    minutes    = COALESCE($19::text, minutes),
+    decisions  = COALESCE($20::text, decisions),
+    actions    = COALESCE($21::text, actions),
+    nas_dir    = COALESCE($22::text, nas_dir),
+    detected   = COALESCE($23::bool, detected),
     updated_at = now()
-WHERE id = $25::uuid
-  AND workspace_id = $26::uuid
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, series, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected
+WHERE id = $24::uuid
+  AND workspace_id = $25::uuid
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected
 `
 
 type UpdateCockpitMeetingParams struct {
@@ -2029,7 +2022,6 @@ type UpdateCockpitMeetingParams struct {
 	Code           pgtype.Text `json:"code"`
 	Kind           pgtype.Text `json:"kind"`
 	Status         pgtype.Text `json:"status"`
-	Series         pgtype.Text `json:"series"`
 	Parties        pgtype.Text `json:"parties"`
 	Organizer      pgtype.Text `json:"organizer"`
 	Location       pgtype.Text `json:"location"`
@@ -2059,7 +2051,6 @@ func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMee
 		arg.Code,
 		arg.Kind,
 		arg.Status,
-		arg.Series,
 		arg.Parties,
 		arg.Organizer,
 		arg.Location,
@@ -2092,7 +2083,6 @@ func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMee
 		&i.Code,
 		&i.Kind,
 		&i.Status,
-		&i.Series,
 		&i.Parties,
 		&i.Organizer,
 		&i.Location,

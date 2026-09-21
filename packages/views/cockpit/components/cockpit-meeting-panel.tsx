@@ -12,8 +12,14 @@ import type {
   CockpitMeetingNodeLink,
   CockpitMeetingPatch,
   CockpitNode,
+  MemberWithUser,
 } from "@multica/core/types";
-import { cockpitMeetingVocabulary } from "@multica/core/cockpit";
+import {
+  cockpitMeetingPeopleOptions,
+  cockpitMeetingVocabulary,
+  splitCockpitMeetingParties,
+  splitCockpitMeetingPeople,
+} from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
 import { Check, ExternalLink, FolderPlus, ListChecks, ScanSearch, Trash2, X } from "lucide-react";
@@ -25,7 +31,9 @@ import {
   EditableSuggest,
   EditableText,
   EditableTextArea,
+  EditableTokens,
 } from "./cockpit-fields";
+import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { CockpitIssueLinks } from "./cockpit-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
 
@@ -33,8 +41,10 @@ export interface CockpitMeetingPanelProps {
   meeting: CockpitMeeting;
   nodes: CockpitNode[];
   /** Every meeting on the board — the vocabulary pickers offer what the
-   *  programme has already used rather than an invented enum. */
+   *  programme has already used on top of the words it starts with. */
   meetings: CockpitMeeting[];
+  /** The workspace's people, offered by name in the person fields. */
+  members: MemberWithUser[];
   issueLinks: CockpitMeetingIssueLink[];
   nodeLinks: CockpitMeetingNodeLink[];
   /** Display codes ("06.06.02") for the linked work items, resolved by the
@@ -57,6 +67,7 @@ export function CockpitMeetingPanel({
   meeting,
   nodes,
   meetings,
+  members,
   issueLinks,
   nodeLinks,
   nodeLabels,
@@ -74,6 +85,11 @@ export function CockpitMeetingPanel({
   const { t } = useT("cockpit");
   const unset = t(($) => $.common.unset);
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
+  const people = useCockpitPeople(members);
+  const personOptions = useMemo(
+    () => cockpitMeetingPeopleOptions(people.names, [...vocabulary.organizers, ...vocabulary.attendees]),
+    [people.names, vocabulary.organizers, vocabulary.attendees],
+  );
   const linkedNodeIds = useMemo(() => new Set(nodeLinks.map((l) => l.node_id)), [nodeLinks]);
   const hasTask = issueLinks.some((link) => link.role === "task");
 
@@ -185,45 +201,6 @@ export function CockpitMeetingPanel({
               disabled={readOnly}
             />
           </CockpitField>
-          <CockpitField label={t(($) => $.meeting.series)}>
-            <EditableSuggest
-              value={meeting.series}
-              onCommit={(series) => onPatch({ series })}
-              suggestions={vocabulary.series}
-              label={t(($) => $.meeting.series)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.parties)} className="col-span-2">
-            <EditableText
-              value={meeting.parties}
-              onCommit={(parties) => onPatch({ parties })}
-              label={t(($) => $.meeting.parties)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
-            <EditableTextArea
-              value={meeting.attendees}
-              onCommit={(attendees) => onPatch({ attendees })}
-              label={t(($) => $.meeting.attendees)}
-              placeholder={unset}
-              disabled={readOnly}
-              rows={2}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.organizer)}>
-            <EditableSuggest
-              value={meeting.organizer}
-              onCommit={(organizer) => onPatch({ organizer })}
-              suggestions={vocabulary.organizers}
-              label={t(($) => $.meeting.organizer)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
           <CockpitField label={t(($) => $.meeting.location)}>
             <EditableSuggest
               value={meeting.location}
@@ -232,6 +209,54 @@ export function CockpitMeetingPanel({
               label={t(($) => $.meeting.location)}
               placeholder={unset}
               disabled={readOnly}
+            />
+          </CockpitField>
+          <CockpitField label={t(($) => $.meeting.parties)} className="col-span-2">
+            <EditableTokens
+              value={meeting.parties}
+              onCommit={(parties) => onPatch({ parties })}
+              split={splitCockpitMeetingParties}
+              suggestions={vocabulary.parties}
+              label={t(($) => $.meeting.parties)}
+              placeholder={unset}
+              disabled={readOnly}
+            />
+          </CockpitField>
+          <CockpitField label={t(($) => $.meeting.organizer)} className="col-span-2">
+            <EditableSuggest
+              value={meeting.organizer}
+              onCommit={(organizer) => onPatch({ organizer })}
+              suggestions={personOptions}
+              label={t(($) => $.meeting.organizer)}
+              placeholder={unset}
+              disabled={readOnly}
+              renderDisplay={(name) =>
+                name ? (
+                  <CockpitPersonLabel name={name} member={people.byName.get(name)} />
+                ) : (
+                  <span className="text-caption text-muted-foreground italic">{unset}</span>
+                )
+              }
+              renderOption={(name) => (
+                <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
+              )}
+            />
+          </CockpitField>
+          <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
+            <EditableTokens
+              value={meeting.attendees}
+              onCommit={(attendees) => onPatch({ attendees })}
+              split={splitCockpitMeetingPeople}
+              suggestions={personOptions}
+              label={t(($) => $.meeting.attendees)}
+              placeholder={unset}
+              disabled={readOnly}
+              renderToken={(name) => (
+                <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
+              )}
+              renderOption={(name) => (
+                <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
+              )}
             />
           </CockpitField>
           <CockpitField label={t(($) => $.meeting.meet_no)}>

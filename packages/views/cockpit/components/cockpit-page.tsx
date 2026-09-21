@@ -19,6 +19,7 @@ import type {
   CockpitMeetingPatch,
   CockpitMeetingImportItem,
   CockpitMeetingProvision,
+  MemberWithUser,
   CockpitMilestonePatch,
   CockpitNode,
   CockpitNodePatch,
@@ -120,6 +121,7 @@ const TABS: CockpitTab[] = ["overview", "gantt", "meetings", "changes", "finance
 // render while the board query is loading, which invalidates every memo
 // downstream of it.
 const EMPTY_NODES: CockpitNode[] = [];
+const EMPTY_MEMBERS: MemberWithUser[] = [];
 const EMPTY_PAYMENTS: CockpitPayment[] = [];
 const EMPTY_LINKS: CockpitIssueLink[] = [];
 const EMPTY_MEETINGS: CockpitMeeting[] = [];
@@ -245,6 +247,10 @@ export function CockpitPage() {
     const mine = (members ?? []).find((m) => m.user_id === currentUserId);
     return mine?.role === "owner" || mine?.role === "admin";
   }, [members, currentUserId]);
+  const currentUserName = useMemo(
+    () => (members ?? []).find((m) => m.user_id === currentUserId)?.name ?? "",
+    [members, currentUserId],
+  );
 
   const updateBoard = useUpdateCockpit(wsId);
   const createNode = useCreateCockpitNode(wsId);
@@ -571,7 +577,11 @@ export function CockpitPage() {
           start_time: draft.start_time || null,
           end_time: draft.end_time || null,
           kind: draft.kind,
+          status: draft.status,
           parties: draft.parties,
+          organizer: draft.organizer,
+          attendees: draft.attendees,
+          location: draft.location,
           title: draft.title,
           code: draft.code,
         });
@@ -1050,6 +1060,7 @@ export function CockpitPage() {
             meeting={selectedMeeting}
             nodes={nodes}
             meetings={meetings}
+            members={members ?? EMPTY_MEMBERS}
             issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
             nodeLinks={meetingNodesByMeeting.get(selectedMeeting.id) ?? []}
             nodeLabels={nodeLabels}
@@ -1128,6 +1139,8 @@ export function CockpitPage() {
         today={today}
         meetings={meetings}
         nodes={nodes}
+        members={members ?? EMPTY_MEMBERS}
+        currentUserName={currentUserName}
         defaultProjectId={board.cockpit.meeting_project_id}
         defaultModuleId={board.cockpit.meeting_module_id}
         defaultNodeId={board.cockpit.meeting_node_id}
