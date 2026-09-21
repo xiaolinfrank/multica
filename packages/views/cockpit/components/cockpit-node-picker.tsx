@@ -33,6 +33,12 @@ export interface CockpitNodePickerProps {
   onToggle: (nodeId: string) => void;
   label: string;
   disabled?: boolean;
+  /** Display codes for the menu labels. Omitted, they derive from the raw
+   *  tree — right inside the cockpit page, where that is what the surrounding
+   *  surface numbers by. Pass the summary-tree codes when the picker lives
+   *  elsewhere (the gantt and the register number by the summary tree), so
+   *  the menu quotes the same code the caller's rows do. */
+  codes?: Map<string, string>;
 }
 
 function NodeBranch({
@@ -92,10 +98,14 @@ export function CockpitNodePicker({
   onToggle,
   label,
   disabled,
+  codes: codesOverride,
 }: CockpitNodePickerProps) {
   const { t } = useT("cockpit");
   const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
-  const codes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  const codes = useMemo(
+    () => codesOverride ?? buildCockpitDisplayCodes(tree),
+    [codesOverride, tree],
+  );
 
   return (
     <DropdownMenu>

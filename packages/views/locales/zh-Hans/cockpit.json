@@ -368,6 +368,12 @@
     "none": "未关联",
     "unlink_issue": "取消关联 {{identifier}}"
   },
+  "issue_detail": {
+    "title": "关联执行任务",
+    "none": "暂无关联执行任务。",
+    "link": "添加执行任务",
+    "unlink": "取消关联「{{label}}」"
+  },
   "panel": {
     "close": "关闭详情",
     "delete_node": "删除该任务",

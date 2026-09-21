@@ -410,7 +410,10 @@ type cockpitContext struct {
 //
 // Lazy creation rather than a seed on workspace create: the cockpit is opt-in
 // programme tooling, and back-filling a row into every workspace that will
-// never open it buys nothing. CreateCockpit is idempotent, so a first visit
+// never open it buys nothing. "First use" is any board read — which, since the
+// issue detail page grew a work-items section that reads the board, includes
+// opening any issue; the row an empty board leaves behind sits inert until
+// somebody builds a breakdown. CreateCockpit is idempotent, so a first visit
 // racing itself across two pods still yields one board.
 func (h *Handler) ensureCockpit(ctx context.Context, workspaceID pgtype.UUID) (db.Cockpit, error) {
 	board, err := h.Queries.GetCockpitByWorkspace(ctx, workspaceID)

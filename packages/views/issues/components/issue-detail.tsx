@@ -106,6 +106,7 @@ import { WorkspaceFilesSection } from "./workspace-files-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestList } from "./pull-request-list";
+import { CockpitNodesSection } from "./cockpit-nodes-section";
 import { useGitHubSettings } from "@multica/core/github";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
@@ -2580,6 +2581,11 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           {pullRequestsOpen && <div className="pl-2"><PullRequestList issueId={id} /></div>}
         </div>
       )}
+
+      {/* Cockpit work items — the gantt tasks this issue is carried out
+          through, editable from either end of the relation. Self-contained;
+          hides itself when the workspace's board has no work breakdown. */}
+      <CockpitNodesSection issueId={id} />
 
       {/* Execution log — active runs + collapsed past runs, each carrying its
           own token spend, with the issue total on the section header.

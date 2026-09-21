@@ -368,6 +368,12 @@
     "none": "no issues",
     "unlink_issue": "Unlink {{identifier}}"
   },
+  "issue_detail": {
+    "title": "Work items",
+    "none": "No work items linked.",
+    "link": "Add work item",
+    "unlink": "Unlink {{label}}"
+  },
   "panel": {
     "close": "Close panel",
     "delete_node": "Delete this item",
