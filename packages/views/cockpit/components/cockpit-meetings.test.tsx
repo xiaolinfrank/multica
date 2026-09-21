@@ -270,6 +270,20 @@ describe("the meeting register", () => {
     }
   });
 
+  // The confirmation names the record. It used to be handed the delete
+  // button's own accessible name, so it offered to permanently remove
+  // "Delete meeting Working group weekly".
+  it("names the meeting, not the button, when it asks before deleting", async () => {
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText("Working group weekly will be permanently removed. This cannot be undone."),
+    ).toBeInTheDocument();
+  });
+
   it("opens one meeting in a panel, with its task, its work item and its folder", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));

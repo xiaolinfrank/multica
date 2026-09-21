@@ -632,11 +632,16 @@ export function CockpitPage() {
     // Deleting the selected meeting closes its panel once the server agrees;
     // the panel itself only asks.
     deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // What the confirmation names is the record, not the button that asked:
+    // "meeting.delete" is the delete control's accessible name and reading it
+    // back in makes the prompt say it will delete "delete meeting X".
+    const named = (value: string | undefined, fallback: string) =>
+      value?.trim() ? value.trim() : fallback;
     const label = kind === "meeting"
-      ? t(($) => $.meeting.delete, { title: board?.meetings.find((item) => item.id === id)?.title ?? "" })
+      ? named(board?.meetings.find((item) => item.id === id)?.title, t(($) => $.meeting.title_placeholder))
       : kind === "milestone"
-        ? t(($) => $.milestone.delete, { name: board?.milestones.find((item) => item.id === id)?.name ?? "" })
-        : `${t(($) => $.payment.delete)} · ${board?.payments.find((item) => item.id === id)?.label ?? ""}`;
+        ? named(board?.milestones.find((item) => item.id === id)?.name, t(($) => $.milestone.new))
+        : named(board?.payments.find((item) => item.id === id)?.label, t(($) => $.payment.label));
     setDeletion({ kind, id, label });
   };
 
