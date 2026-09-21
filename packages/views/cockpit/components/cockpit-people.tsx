@@ -54,7 +54,7 @@ function PersonAvatar({ member, name }: { member?: MemberWithUser; name: string 
     <span
       aria-hidden
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-full text-[0.5rem] leading-none",
+        "flex size-4 shrink-0 items-center justify-center rounded-full text-micro leading-none",
         member ? "bg-brand/15 text-brand" : "bg-muted text-muted-foreground",
       )}
     >

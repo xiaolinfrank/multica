@@ -326,7 +326,7 @@ export function CockpitMeetings({
                   <span
                     className={cn(
                       "text-micro tabular-nums",
-                      inMonth ? "text-muted-foreground" : "text-muted-foreground/60",
+                      inMonth ? "text-muted-foreground" : "text-faint-foreground",
                       day === today && "font-semibold text-foreground",
                     )}
                   >
@@ -372,7 +372,7 @@ export function CockpitMeetings({
                     </span>
                   </div>
                   {dayMeetings.length === 0 ? (
-                    <span className="text-micro text-muted-foreground/60">—</span>
+                    <span className="text-micro text-faint-foreground">—</span>
                   ) : (
                     dayMeetings.map((meeting) => (
                       <button

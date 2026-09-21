@@ -169,8 +169,8 @@ export function LocalPathLink({
       data-local-path=""
       className={cn(
         "inline-flex max-w-full items-baseline gap-1 rounded-xs text-left align-baseline",
-        "font-mono text-[0.95em] underline decoration-dotted underline-offset-2",
-        "text-foreground/90 hover:text-foreground hover:decoration-solid transition-colors",
+        "font-mono underline decoration-dotted underline-offset-2",
+        "text-foreground hover:decoration-solid transition-colors",
         wrap === "truncate" && "min-w-0",
         className,
       )}
