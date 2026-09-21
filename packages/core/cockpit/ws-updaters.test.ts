@@ -227,6 +227,89 @@ describe("onCockpitChanged", () => {
     expect(read(qc).nodes).toHaveLength(1);
   });
 
+  // A frame crosses a version boundary. A server that predates a column simply
+  // leaves it out of the row, and the board promises every one of them is a
+  // string — the register calls .trim() and .split() on them during render, so
+  // a hole reaches the cache as a crash on the next keystroke, not as a
+  // missing value. This is the pre-929 meeting row, verbatim.
+  it("fills in the columns an older server's meeting frame does not carry", () => {
+    const { qc } = seedBoard();
+
+    onCockpitChanged(qc, WS, {
+      scope: "meeting",
+      action: "created",
+      entity: {
+        id: "m1", meet_date: "2026-09-21", time_range: "", title: "Kickoff",
+        attendees: "", meet_no: "", link: "", note: "",
+      },
+    });
+
+    const meeting = read(qc).meetings[0]!;
+    expect(meeting.id).toBe("m1");
+    expect(meeting.title).toBe("Kickoff");
+    for (const field of ["code", "kind", "status", "parties", "organizer", "location", "nas_dir"] as const) {
+      expect(meeting[field]).toBe("");
+    }
+    expect(meeting.start_time).toBeNull();
+    expect(meeting.detected).toBe(false);
+  });
+
+  it("fills in the columns an older server's node frame does not carry", () => {
+    const { qc } = seedBoard();
+
+    onCockpitChanged(qc, WS, {
+      scope: "node",
+      action: "created",
+      entity: { id: "n2", cockpit_id: "cp", code: "L1-02", name: "Platform" },
+    });
+
+    const node = read(qc).nodes.find((n) => n.id === "n2")!;
+    expect(node.name).toBe("Platform");
+    expect(node.owner).toBe("");
+    expect(node.progress).toBe(0);
+    expect(node.parent_id).toBeNull();
+  });
+
+  // Filling gaps must not overwrite: a field the frame does not mention is one
+  // the sender had no opinion about, and the cache already holds the answer.
+  it("keeps what the board knew about a field the frame leaves out", () => {
+    const { qc } = seedBoard({
+      meetings: [
+        {
+          id: "m1", meet_date: "2026-09-21", time_range: "", start_time: null, end_time: null,
+          title: "Weekly", code: "20260921-01", kind: "例会", status: "已召开", parties: "复星医药",
+          organizer: "杨涛", location: "大湾区", attendees: "杨涛、周洋", meet_no: "", link: "",
+          note: "", minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
+        },
+      ],
+    });
+
+    onCockpitChanged(qc, WS, {
+      scope: "meeting",
+      action: "updated",
+      entity: { id: "m1", meet_date: "2026-09-22", time_range: "", title: "Weekly", attendees: "杨涛、周洋", meet_no: "", link: "", note: "" },
+    });
+
+    const meeting = read(qc).meetings[0]!;
+    expect(meeting.meet_date).toBe("2026-09-22");
+    expect(meeting.kind).toBe("例会");
+    expect(meeting.location).toBe("大湾区");
+  });
+
+  it("re-reads the board rather than caching a row it cannot make sense of", () => {
+    const { qc } = seedBoard();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+
+    onCockpitChanged(qc, WS, {
+      scope: "meeting",
+      action: "updated",
+      entity: { id: "m1", title: 42 },
+    });
+
+    expect(read(qc).meetings).toHaveLength(0);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board(WS) });
+  });
+
   it("replaces a meeting's issue links and carries the meeting row provisioning moved", () => {
     const { qc } = seedBoard({
       meetings: [
