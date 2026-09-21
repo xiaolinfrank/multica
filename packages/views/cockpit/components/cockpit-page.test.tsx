@@ -303,6 +303,22 @@ describe("CockpitPage", () => {
     expect(api.updateCockpitNode).not.toHaveBeenCalled();
   });
 
+  it("picks an owner from the board's existing owners in the gantt dropdown", async () => {
+    const twoOwners = structuredClone(board);
+    twoOwners.nodes[1]!.owner = "Wang";
+    vi.mocked(api.getCockpit).mockResolvedValue(twoOwners);
+    vi.mocked(api.updateCockpitNode).mockResolvedValue({ ...twoOwners.nodes[1]!, owner: "Li" });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+
+    const ownerButtons = await screen.findAllByRole("button", { name: "Owner" });
+    fireEvent.click(ownerButtons[1]!);
+    // The dropdown lists the owners the board already uses; one click sets one.
+    fireEvent.click(await screen.findByRole("option", { name: "Li" }));
+
+    await waitFor(() => expect(api.updateCockpitNode).toHaveBeenCalledWith("task", { owner: "Li" }));
+  });
+
   it("opens the node panel from the gantt and shows the fields the row has no room for", async () => {
     useDetailedBoard();
     renderPage();
@@ -411,6 +427,26 @@ describe("CockpitPage detail tables", () => {
     expect(rows).toHaveLength(2);
     // Contracted, not paid: the planned date shows and the actual one does not.
     expect(within(rows[1]!).getAllByText("2026-09-05")).toHaveLength(1);
+  });
+
+  it("offers vendor names, not owners, as vendor picks and keeps linked issues read-only", async () => {
+    const vendored = structuredClone(board);
+    vendored.nodes[1]!.vendor = "Acme Cloud";
+    vi.mocked(api.getCockpit).mockResolvedValue(vendored);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Spend" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Vendor" }));
+    // The vendor dropdown draws from the board's vendor values; owners never
+    // leak into it through a mis-wired suggestion list.
+    expect(await screen.findByRole("option", { name: "Acme Cloud" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Li" })).not.toBeInTheDocument();
+
+    // Linked issues on the spend table are reference chips, not an editable
+    // field: the association is maintained from the node panel, never here.
+    expect(screen.getByText("BIO-314")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Linked issues" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Linked issues" })).not.toBeInTheDocument();
   });
 
   it("shows budget and instalment badges on the gantt only once money is turned on", async () => {

@@ -312,7 +312,7 @@ describe("Cockpit secondary interactions", () => {
       <CockpitGantt board={board} today="2026-09-18" zoom="week" query=""
         rootIds={new Set()} collapsed={new Set(["root"])} onToggleCollapse={vi.fn()}
         onSelect={select} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
-        showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
+        ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
     </I18nProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));
     const dialog = await screen.findByRole("dialog");

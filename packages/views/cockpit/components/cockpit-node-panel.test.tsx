@@ -29,6 +29,7 @@ function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
     node, parent: undefined, depth: 2, payments: [], links: [], isBranch: false,
     statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [],
+    vendorSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
     deleteConfirmationDescription: "This permanently deletes the item and its payments and issue links.",
     onLinkIssue: vi.fn(), onUnlinkIssue: vi.fn(), onCreatePayment: vi.fn(),

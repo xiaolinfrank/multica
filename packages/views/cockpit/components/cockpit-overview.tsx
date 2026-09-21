@@ -58,7 +58,7 @@ import {
 } from "@multica/ui/components/ui/dialog";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { useT, useLocale } from "../../i18n";
-import { EditableDate, EditableText, EditableTextArea } from "./cockpit-fields";
+import { EditableDate, EditableSuggest, EditableText, EditableTextArea } from "./cockpit-fields";
 
 /** The banner's live clock, read off local Date components — the wall clock
  * the room reads, not the UTC one a date formatter hands back. First paint
@@ -411,6 +411,8 @@ export interface CockpitOverviewProps {
   /** Opens a module's slice of the execution gantt — when wired, the whole
    * module card clicks through. */
   onOpenModule?: (rootCode: string) => void;
+  /** The owners the board already uses, offered on the module cards. */
+  ownerSuggestions: string[];
   readOnly?: boolean;
 }
 
@@ -428,6 +430,7 @@ export function CockpitOverview({
   onOpenBranch,
   onOpenTask,
   onOpenModule,
+  ownerSuggestions,
   readOnly,
 }: CockpitOverviewProps) {
   const { t } = useT("cockpit");
@@ -572,6 +575,7 @@ export function CockpitOverview({
               today={today}
               readOnly={readOnly}
               emptyLabel={emptyLabel}
+              ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
               onOpenModule={onOpenModule}
               onPatchNode={onPatchNode}
@@ -588,6 +592,7 @@ export function CockpitOverview({
               today={today}
               readOnly={readOnly}
               emptyLabel={emptyLabel}
+              ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
               onOpenModule={onOpenModule}
               onPatchNode={onPatchNode}
@@ -969,6 +974,7 @@ interface ModuleCardProps {
   today: string;
   readOnly?: boolean;
   emptyLabel: string;
+  ownerSuggestions: string[];
   onOpenBranch: (nodeId: string) => void;
   /** When the host wires it, the whole card opens the module's gantt slice. */
   onOpenModule?: (rootCode: string) => void;
@@ -982,6 +988,7 @@ function ModuleBigCard({
   today,
   readOnly,
   emptyLabel,
+  ownerSuggestions,
   onOpenBranch,
   onOpenModule,
   onPatchNode,
@@ -1026,9 +1033,10 @@ function ModuleBigCard({
           disabled={readOnly}
           displayClassName="flex-1 font-medium"
         />
-        <EditableText
+        <EditableSuggest
           value={entry.node.owner}
           onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
+          suggestions={ownerSuggestions}
           label={t(($) => $.node.owner)}
           placeholder={emptyLabel}
           disabled={readOnly}
@@ -1096,6 +1104,7 @@ function ModuleSmallCard({
   rollup,
   readOnly,
   emptyLabel,
+  ownerSuggestions,
   onOpenBranch,
   onOpenModule,
   onPatchNode,
@@ -1154,9 +1163,10 @@ function ModuleSmallCard({
             pct,
           })}
         </span>
-        <EditableText
+        <EditableSuggest
           value={entry.node.owner}
           onCommit={(owner) => onPatchNode(entry.node.id, { owner })}
+          suggestions={ownerSuggestions}
           label={t(($) => $.node.owner)}
           placeholder={emptyLabel}
           disabled={readOnly}

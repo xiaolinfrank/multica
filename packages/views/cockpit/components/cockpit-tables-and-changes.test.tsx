@@ -29,7 +29,7 @@ function provider(children: React.ReactNode) {
 }
 function table(query = "") {
   const onSelect = vi.fn();
-  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [], issue_links: [] } as unknown as CockpitBoard} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} /></>);
+  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [], issue_links: [] } as unknown as CockpitBoard} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} vendorSuggestions={[]} /></>);
   return onSelect;
 }
 function change(id: string): CockpitPendingChange {

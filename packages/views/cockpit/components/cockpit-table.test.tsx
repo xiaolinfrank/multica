@@ -29,7 +29,7 @@ function show(overrides: Partial<CockpitTableProps> = {}) {
   const onSelect = vi.fn();
   const props: CockpitTableProps = { board, mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
     onSelect, onPatchNode: vi.fn(), statusSuggestions: [], execStatusSuggestions: [],
-    budgetCategorySuggestions: [], ownerSuggestions: [], ...overrides };
+    budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [], ...overrides };
   const view = render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
     <input aria-label="Search the board" />
     <CockpitTable {...props} />

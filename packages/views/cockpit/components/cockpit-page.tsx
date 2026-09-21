@@ -282,6 +282,7 @@ export function CockpitPage() {
     [nodes],
   );
   const ownerSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.owner)), [nodes]);
+  const vendorSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.vendor)), [nodes]);
 
   // A node deleted by someone else must not leave the panel showing a ghost.
   useEffect(() => {
@@ -784,6 +785,7 @@ export function CockpitPage() {
                   }
                 }}
                 onOpenTask={openTask}
+                ownerSuggestions={ownerSuggestions}
               />
             </div>
           )}
@@ -802,6 +804,7 @@ export function CockpitPage() {
               selectedId={selectedId}
               onPatchNode={patchNode}
               statusSuggestions={statusSuggestions}
+              ownerSuggestions={ownerSuggestions}
               showFinance={showFinance}
               toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
@@ -827,6 +830,7 @@ export function CockpitPage() {
               execStatusSuggestions={execStatusSuggestions}
               budgetCategorySuggestions={budgetCategorySuggestions}
               ownerSuggestions={ownerSuggestions}
+              vendorSuggestions={vendorSuggestions}
             />
           )}
         </div>
@@ -847,6 +851,7 @@ export function CockpitPage() {
             execStatusSuggestions={execStatusSuggestions}
             budgetCategorySuggestions={budgetCategorySuggestions}
             ownerSuggestions={ownerSuggestions}
+            vendorSuggestions={vendorSuggestions}
             onPatch={(patch) => patchNode(selected.id, patch)}
             onDelete={() =>
               deleteNode.mutateAsync(selected.id, {

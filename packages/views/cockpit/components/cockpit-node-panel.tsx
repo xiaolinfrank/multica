@@ -46,6 +46,7 @@ export interface CockpitNodePanelProps {
   execStatusSuggestions: string[];
   budgetCategorySuggestions: string[];
   ownerSuggestions: string[];
+  vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
@@ -72,6 +73,7 @@ export function CockpitNodePanel({
   execStatusSuggestions,
   budgetCategorySuggestions,
   ownerSuggestions,
+  vendorSuggestions,
   onPatch,
   onDelete,
   deleteConfirmationDescription,
@@ -246,9 +248,10 @@ export function CockpitNodePanel({
 
             <div className="grid grid-cols-2 gap-3">
               <CockpitField label={t(($) => $.node.vendor)}>
-                <EditableText
+                <EditableSuggest
                   value={node.vendor}
                   onCommit={(vendor) => onPatch({ vendor })}
+                  suggestions={vendorSuggestions}
                   label={t(($) => $.node.vendor)}
                   placeholder={unset}
                   disabled={readOnly}

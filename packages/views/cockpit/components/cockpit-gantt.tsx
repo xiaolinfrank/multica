@@ -95,6 +95,8 @@ export interface CockpitGanttProps {
   selectedId: string | null;
   onPatchNode: (nodeId: string, patch: CockpitNodePatch) => void;
   statusSuggestions: string[];
+  /** The owners the board already uses, offered as one-click picks. */
+  ownerSuggestions: string[];
   /** Show budget and instalment badges on every row. */
   showFinance: boolean;
   /** Whether the toolbar is open; a collapsed toolbar takes the legend with it. */
@@ -567,6 +569,7 @@ export function CockpitGantt({
   selectedId,
   onPatchNode,
   statusSuggestions,
+  ownerSuggestions,
   showFinance,
   toolbarOpen,
   scrollToTodayNonce,
@@ -1043,31 +1046,32 @@ export function CockpitGantt({
                   {/* The row shows the name; the full string, POOL and
                       saturation notes included, is what editing opens on. A
                       direction with no owner of its own answers through its
-                      mainline, and says so. */}
+                      mainline, and says so. The span wrapper keeps the tooltip
+                      anchored around the combobox rather than inside it. */}
                   <div className="flex w-16 shrink-0 justify-end overflow-hidden">
                     {inheritedOwner ? (
                       <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <EditableText
-                              value={node.owner}
-                              onCommit={(owner) => onPatchNode(node.id, { owner })}
-                              label={t(($) => $.node.owner)}
-                              placeholder={emptyLabel}
-                              disabled={readOnly}
-                              displayClassName="text-caption"
-                              displayValue={shortOwner(inheritedOwner)}
-                            />
-                          }
-                        />
+                        <TooltipTrigger render={<span className="min-w-0 truncate" />}>
+                          <EditableSuggest
+                            value={node.owner}
+                            onCommit={(owner) => onPatchNode(node.id, { owner })}
+                            suggestions={ownerSuggestions}
+                            label={t(($) => $.node.owner)}
+                            placeholder={emptyLabel}
+                            disabled={readOnly}
+                            displayClassName="text-caption"
+                            displayValue={shortOwner(inheritedOwner)}
+                          />
+                        </TooltipTrigger>
                         <TooltipContent>
                           {t(($) => $.gantt.owner_inherited, { owner: inheritedOwner })}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <EditableText
+                      <EditableSuggest
                         value={node.owner}
                         onCommit={(owner) => onPatchNode(node.id, { owner })}
+                        suggestions={ownerSuggestions}
                         label={t(($) => $.node.owner)}
                         placeholder={emptyLabel}
                         disabled={readOnly}

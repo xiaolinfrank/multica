@@ -49,6 +49,7 @@ export interface CockpitTableProps {
   execStatusSuggestions: string[];
   budgetCategorySuggestions: string[];
   ownerSuggestions: string[];
+  vendorSuggestions: string[];
   readOnly?: boolean;
 }
 
@@ -158,6 +159,7 @@ export function CockpitTable({
   execStatusSuggestions,
   budgetCategorySuggestions,
   ownerSuggestions,
+  vendorSuggestions,
   readOnly,
 }: CockpitTableProps) {
   const { t } = useT("cockpit");
@@ -347,7 +349,7 @@ export function CockpitTable({
                       <EditableSuggest
                         value={node.vendor}
                         onCommit={(vendor) => onPatchNode(node.id, { vendor })}
-                        suggestions={ownerSuggestions}
+                        suggestions={vendorSuggestions}
                         label={t(($) => $.node.vendor)}
                         placeholder={emptyLabel}
                         disabled={readOnly}
@@ -580,7 +582,7 @@ export function CockpitTable({
                     <EditableSuggest
                       value={node.vendor}
                       onCommit={(vendor) => onPatchNode(node.id, { vendor })}
-                      suggestions={ownerSuggestions}
+                      suggestions={vendorSuggestions}
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}
                       disabled={readOnly}
