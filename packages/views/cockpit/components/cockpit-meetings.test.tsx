@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCockpit from "../../locales/en/cockpit.json";
 import enCommon from "../../locales/en/common.json";
+// The folder field reuses the project collaboration path's wording, because
+// the server applies one rule to both and a rule is stated once.
+import enProjects from "../../locales/en/projects.json";
 import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
 
 // The register's wiring: the tab renders the board's meetings, the four views
@@ -182,7 +185,7 @@ function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
+      <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon, projects: enProjects } }}>
         <CockpitPage />
       </I18nProvider>
     </QueryClientProvider>,
@@ -311,6 +314,36 @@ describe("the meeting register", () => {
 
     await waitFor(() =>
       expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { location: "Room 2" }),
+    );
+  });
+
+  it("rebinds the folder to one that already exists, and refuses a relative path", async () => {
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit path" }));
+    const input = screen.getByRole("textbox", { name: "Material folder" });
+
+    // A path relative to the reader's own machine is the mistake this field
+    // exists to catch: it names it here rather than letting the server answer
+    // 400 into a toast after the panel has already closed.
+    fireEvent.change(input, { target: { value: "share/06.06/weekly" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/absolute path/i);
+    expect(api.updateCockpitMeeting).not.toHaveBeenCalled();
+
+    vi.mocked(api.updateCockpitMeeting).mockResolvedValue(
+      meeting({ id: "meet-1", nas_dir: "/Volumes/share/legacy/weekly" }),
+    );
+    fireEvent.change(input, { target: { value: "  /Volumes/share/legacy/weekly  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Stored trimmed: the same string is later compared against the folder
+    // provisioning would have made.
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", {
+        nas_dir: "/Volumes/share/legacy/weekly",
+      }),
     );
   });
 

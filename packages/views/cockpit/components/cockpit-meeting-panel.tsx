@@ -24,7 +24,6 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
 import { Check, ExternalLink, FolderPlus, ListChecks, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
-import { LocalPathLink } from "../../common/local-path-link";
 import {
   CockpitField,
   EditableDate,
@@ -36,6 +35,7 @@ import {
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { CockpitIssueLinks } from "./cockpit-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
+import { CockpitPathField } from "./cockpit-path-field";
 
 export interface CockpitMeetingPanelProps {
   meeting: CockpitMeeting;
@@ -411,28 +411,29 @@ export function CockpitMeetingPanel({
         </CockpitField>
 
         <CockpitField label={t(($) => $.meeting.folder)} className="mt-3">
-          {meeting.nas_dir ? (
-            <LocalPathLink path={meeting.nas_dir} wrap="truncate" />
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-caption text-muted-foreground">
-                {t(($) => $.meeting.no_folder)}
-              </span>
-              {!readOnly && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-1 px-1.5 text-caption"
-                  disabled={provisioning}
-                  aria-busy={provisioning}
-                  onClick={() => onProvision({ dir: true })}
-                >
-                  <FolderPlus className="size-3" />
-                  {t(($) => $.meeting.provision_dir)}
-                </Button>
-              )}
-            </div>
-          )}
+          {/* Provisioning names the folder this board would have used; typing
+              binds one that already exists. Both sit on the empty row, because
+              which of the two applies depends on where the meeting's material
+              was put, and only the reader knows that. */}
+          <CockpitPathField
+            value={meeting.nas_dir}
+            label={t(($) => $.meeting.folder)}
+            empty={t(($) => $.meeting.no_folder)}
+            readOnly={readOnly}
+            onCommit={(nas_dir) => onPatch({ nas_dir })}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
+              disabled={provisioning}
+              aria-busy={provisioning}
+              onClick={() => onProvision({ dir: true })}
+            >
+              <FolderPlus className="size-3" />
+              {t(($) => $.meeting.provision_dir)}
+            </Button>
+          </CockpitPathField>
         </CockpitField>
       </div>
 

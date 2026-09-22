@@ -1799,10 +1799,17 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The stored path is the normalized one, not what the caller typed: the
+	// same string is later compared against the directory provisioning would
+	// have created, and an untrimmed copy of that path would read as a
+	// different folder.
+	nasDir := pgtype.Text{}
 	if req.NasDir != nil {
-		if _, ok := h.meetingDirOrError(w, cc, req.NasDir); !ok {
+		normalized, ok := h.meetingDirOrError(w, cc, req.NasDir)
+		if !ok {
 			return
 		}
+		nasDir = pgtype.Text{String: normalized, Valid: true}
 	}
 
 	meeting, err := h.Queries.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
@@ -1829,7 +1836,7 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Minutes:        optionalText(req.Minutes),
 		Decisions:      optionalText(req.Decisions),
 		Actions:        optionalText(req.Actions),
-		NasDir:         optionalText(req.NasDir),
+		NasDir:         nasDir,
 		Detected:       optionalBool(req.Detected),
 	})
 	if err != nil {
