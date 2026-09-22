@@ -362,6 +362,7 @@ export function EditableSuggest({
   renderOption,
   displayValue,
   displayClassName,
+  clearLabel,
 }: {
   value: string;
   onCommit: (next: string) => void;
@@ -379,6 +380,12 @@ export function EditableSuggest({
    */
   displayValue?: string;
   displayClassName?: string;
+  /**
+   * A named way to unset the field, pinned first in the list. Picking it — or
+   * typing the words out — commits an empty string, so the stored value stays
+   * the canonical empty rather than the display words as a literal.
+   */
+  clearLabel?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -397,13 +404,20 @@ export function EditableSuggest({
     }
   }, [value, editing]);
 
+  // The clear option rides at the top of the list when the field offers one,
+  // listed once even if the board already stores the same words as a literal.
+  const options = useMemo(() => {
+    if (!clearLabel) return suggestions;
+    return [clearLabel, ...suggestions.filter((s) => s !== clearLabel)];
+  }, [suggestions, clearLabel]);
+
   const filtered = useMemo(() => {
-    if (!typed) return suggestions;
+    if (!typed) return options;
     const needle = draft.trim().toLowerCase();
     return needle
-      ? suggestions.filter((s) => s.toLowerCase().includes(needle))
-      : suggestions;
-  }, [suggestions, draft, typed]);
+      ? options.filter((s) => s.toLowerCase().includes(needle))
+      : options;
+  }, [options, draft, typed]);
 
   // A narrower list must not leave the highlight past its end.
   useEffect(() => {
@@ -418,7 +432,8 @@ export function EditableSuggest({
   const commit = (next: string) => {
     stopEditing();
     const trimmed = next.trim();
-    if (trimmed !== value) onCommit(trimmed);
+    const mapped = clearLabel && trimmed === clearLabel ? "" : trimmed;
+    if (mapped !== value) onCommit(mapped);
   };
 
   // Uniform with the other editors: Enter (or a click away) saves, Escape
@@ -532,7 +547,7 @@ export function EditableSuggest({
                   className={cn(
                     "flex w-full min-w-0 rounded-sm px-2 py-1 text-left text-caption",
                     i === highlighted ? "bg-accent" : "hover:bg-accent/50",
-                    option === value && "font-medium",
+                    (option === value || (option === clearLabel && !value)) && "font-medium",
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">

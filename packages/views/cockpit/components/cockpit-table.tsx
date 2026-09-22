@@ -512,6 +512,7 @@ export function CockpitTable({
                       value={node.status}
                       onCommit={(status) => onPatchNode(node.id, { status })}
                       suggestions={statusSuggestions}
+                      clearLabel={t(($) => $.node.status_unscheduled)}
                       label={t(($) => $.node.status)}
                       placeholder={emptyLabel}
                       disabled={readOnly}

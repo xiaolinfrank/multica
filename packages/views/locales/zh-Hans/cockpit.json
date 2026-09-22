@@ -175,6 +175,7 @@
     "start_date": "开始",
     "end_date": "结束",
     "status": "状态",
+    "status_unscheduled": "未排期",
     "progress": "进度",
     "progress_bar": "已完成 {{percent}}%",
     "linked_issues": "关联任务",

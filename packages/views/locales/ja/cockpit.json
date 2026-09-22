@@ -175,6 +175,7 @@
     "start_date": "開始",
     "end_date": "終了",
     "status": "ステータス",
+    "status_unscheduled": "日程未定",
     "progress": "進捗",
     "progress_bar": "{{percent}}% 完了",
     "linked_issues": "関連イシュー",

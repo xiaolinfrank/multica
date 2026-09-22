@@ -175,6 +175,7 @@
     "start_date": "시작",
     "end_date": "종료",
     "status": "상태",
+    "status_unscheduled": "일정 미정",
     "progress": "진행률",
     "progress_bar": "{{percent}}% 완료",
     "linked_issues": "연결된 이슈",

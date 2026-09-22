@@ -175,6 +175,7 @@
     "start_date": "Start",
     "end_date": "End",
     "status": "Status",
+    "status_unscheduled": "Unscheduled",
     "progress": "Progress",
     "progress_bar": "{{percent}}% complete",
     "linked_issues": "Linked issues",

@@ -193,6 +193,7 @@ export function CockpitNodePanel({
               value={node.status}
               onCommit={(status) => onPatch({ status })}
               suggestions={statusSuggestions}
+              clearLabel={t(($) => $.node.status_unscheduled)}
               label={t(($) => $.node.status)}
               placeholder={unset}
               disabled={readOnly}
