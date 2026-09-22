@@ -23,5 +23,10 @@ export {
 } from "./queries";
 export * from "./mutations";
 export * from "./model";
+export {
+  cockpitNodeIssueFiling,
+  type CockpitFilingModule,
+  type CockpitNodeIssueFiling,
+} from "./node-filing";
 export * from "./export";
 export { onCockpitChanged } from "./ws-updaters";

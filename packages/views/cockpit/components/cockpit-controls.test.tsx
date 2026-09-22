@@ -61,6 +61,7 @@ vi.mock("@multica/core/api", () => ({
     rejectCockpitChange: vi.fn(),
     withdrawCockpitChange: vi.fn(),
     listMembers: vi.fn(),
+    listModules: vi.fn(),
   },
 }));
 
@@ -218,6 +219,7 @@ describe("Cockpit controls regressions", () => {
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
+    vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",

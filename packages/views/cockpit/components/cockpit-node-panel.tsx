@@ -61,6 +61,9 @@ export interface CockpitNodePanelProps {
   onClose: () => void;
   onLinkIssue: (issueId: string) => void;
   onUnlinkIssue: (issueId: string) => void;
+  /** Opens a create dialog filed under this work item's module, with the title
+   *  opened on its row code. Absent when that module cannot be resolved. */
+  onCreateIssue?: () => void;
   /** Opens one of this item's meetings in the register. */
   onOpenMeeting: (meetingId: string) => void;
   onCreatePayment: () => void;
@@ -88,6 +91,7 @@ export function CockpitNodePanel({
   onClose,
   onLinkIssue,
   onUnlinkIssue,
+  onCreateIssue,
   onOpenMeeting,
   onCreatePayment,
   onPatchPayment,
@@ -247,6 +251,7 @@ export function CockpitNodePanel({
             links={links}
             onLink={onLinkIssue}
             onUnlink={onUnlinkIssue}
+            onCreate={onCreateIssue}
             disabled={readOnly}
           />
         </CockpitField>

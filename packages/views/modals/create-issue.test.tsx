@@ -728,6 +728,47 @@ describe("CreateIssueModal", () => {
     expect(screen.getByRole("button", { name: "Upload file" })).toHaveAttribute("data-size", "sm");
   });
 
+  it("hands the new issue back to the opener that filed it", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+
+    renderModal(
+      <CreateIssueModal onClose={vi.fn()} data={{ title: "01.01.01", on_created: onCreated }} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "01.01.01 Governance agreement" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "issue-123" })),
+    );
+  });
+
+  it("keeps a committed issue committed when the opener's follow-up fails", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onCreated = vi.fn().mockRejectedValue(new Error("link failed"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      renderModal(
+        <CreateIssueModal onClose={onClose} data={{ on_created: onCreated }} />,
+      );
+
+      fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+        target: { value: "Governance agreement" },
+      });
+      await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(mockCreateIssue).toHaveBeenCalledTimes(1);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   it("shows success feedback with a direct path to the new issue", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

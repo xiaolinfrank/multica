@@ -26,6 +26,8 @@ import type {
   CockpitPatch,
   CockpitPayment,
   CockpitPaymentPatch,
+  Issue,
+  Module,
 } from "@multica/core/types";
 import {
   buildCockpitDisplayCodes,
@@ -33,6 +35,7 @@ import {
   buildCockpitTree,
   cockpitBoardOptions,
   cockpitChangesOptions,
+  cockpitNodeIssueFiling,
   cockpitOverallProgress,
   cockpitSummaryCollapseIds,
   cockpitTasksCsv,
@@ -99,6 +102,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@multica/core/auth";
 import { memberListOptions } from "@multica/core/workspace/queries";
+import { moduleListOptions } from "@multica/core/modules/queries";
+import { useModalStore } from "@multica/core/modals";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
@@ -122,6 +127,7 @@ const TABS: CockpitTab[] = ["overview", "gantt", "meetings", "changes", "finance
 // downstream of it.
 const EMPTY_NODES: CockpitNode[] = [];
 const EMPTY_MEMBERS: MemberWithUser[] = [];
+const EMPTY_MODULES: Module[] = [];
 const EMPTY_PAYMENTS: CockpitPayment[] = [];
 const EMPTY_LINKS: CockpitIssueLink[] = [];
 const EMPTY_MEETINGS: CockpitMeeting[] = [];
@@ -243,6 +249,10 @@ export function CockpitPage() {
   // The role check here only decides whether the affordance is offered.
   const currentUserId = useAuthStore((s) => s.user?.id ?? "");
   const { data: members } = useQuery(memberListOptions(wsId));
+  // The workspace's modules, read for one reason: a work item files its
+  // issues into the module its row code names.
+  const { data: modules } = useQuery(moduleListOptions(wsId));
+  const openModal = useModalStore((state) => state.open);
   const canRestore = useMemo(() => {
     const mine = (members ?? []).find((m) => m.user_id === currentUserId);
     return mine?.role === "owner" || mine?.role === "admin";
@@ -383,19 +393,51 @@ export function CockpitPage() {
     [updateMeeting, fail],
   );
 
+  // Read at call time, not captured: a linker can outlive the render that
+  // produced it — the create dialog keeps its callback across a whole run of
+  // "Create another" — and a replace built from a captured set would drop
+  // every link made in between.
+  const linksByNodeRef = useRef(linksByNode);
+  useEffect(() => {
+    linksByNodeRef.current = linksByNode;
+  }, [linksByNode]);
+
   const linkIssue = useCallback(
     (nodeId: string, issueId: string) => {
       // Sent as a replace of the full set rather than as an append, so the
       // server writes the order this client is showing. Both clients derive
       // that set from the same realtime-synced board, so the last write wins
       // on a set that already agrees.
-      const existing = (linksByNode.get(nodeId) ?? []).map((l) => l.issue_id);
+      const existing = (linksByNodeRef.current.get(nodeId) ?? []).map((l) => l.issue_id);
+      if (existing.includes(issueId)) return;
       setNodeIssues.mutate(
         { nodeId, issueIds: [...existing, issueId], replace: true },
         { onError: fail },
       );
     },
-    [linksByNode, setNodeIssues, fail],
+    [setNodeIssues, fail],
+  );
+
+  /**
+   * Open a new issue on a work item. The board and the tracker are numbered by
+   * the same outline, so the row code says where the issue belongs: its leading
+   * segments name the module, the module carries its project, and the code
+   * itself opens the title the way the module's own "+" does.
+   *
+   * The issue is linked to the row as soon as it exists. Creating work from a
+   * work item and then having to search for it to attach it would leave the
+   * board no better off than before the link table.
+   */
+  const createIssueForNode = useCallback(
+    (nodeId: string, filing: NonNullable<ReturnType<typeof cockpitNodeIssueFiling>>) => {
+      openModal("create-issue", {
+        title: filing.title,
+        project_id: filing.project_id,
+        module_id: filing.module_id,
+        on_created: (issue: Issue) => linkIssue(nodeId, issue.id),
+      });
+    },
+    [openModal, linkIssue],
   );
 
   /**
@@ -687,6 +729,19 @@ export function CockpitPage() {
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
+  // Resolved from the DISPLAY code, which is the number the gantt shows and the
+  // number the modules are titled with — the stored code carries the
+  // programme's history and names nothing outside the board.
+  const selectedFiling = useMemo(
+    () =>
+      selected
+        ? cockpitNodeIssueFiling(
+            displayCodes.get(selected.id) ?? selected.code,
+            modules ?? EMPTY_MODULES,
+          )
+        : null,
+    [selected, displayCodes, modules],
+  );
 
   if (isLoading || !board) {
     return (
@@ -1115,6 +1170,11 @@ export function CockpitPage() {
             onLinkIssue={(issueId) => linkIssue(selected.id, issueId)}
             onUnlinkIssue={(issueId) =>
               unlinkIssue.mutate({ nodeId: selected.id, issueId }, { onError: fail })
+            }
+            onCreateIssue={
+              selectedFiling
+                ? () => createIssueForNode(selected.id, selectedFiling)
+                : undefined
             }
             onOpenMeeting={(meetingId) => {
               setSelectedMeetingId(meetingId);

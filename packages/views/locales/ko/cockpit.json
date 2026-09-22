@@ -362,6 +362,7 @@
   },
   "issues": {
     "link": "이슈 연결",
+    "create": "새 태스크",
     "search_placeholder": "제목 또는 식별자로 검색…",
     "search_hint": "입력해서 이 워크스페이스를 검색",
     "searching": "검색 중…",

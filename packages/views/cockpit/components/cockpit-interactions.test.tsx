@@ -66,6 +66,7 @@ vi.mock("@multica/core/api", () => ({
     rejectCockpitChange: vi.fn(),
     withdrawCockpitChange: vi.fn(),
     listMembers: vi.fn(),
+    listModules: vi.fn(),
   },
 }));
 
@@ -79,6 +80,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
+import { useModalStore } from "@multica/core/modals";
 import { CockpitPage } from "./cockpit-page";
 import { captureCockpitGantt, printCockpitGantt } from "./cockpit-export";
 vi.mock("./cockpit-export", () => ({ captureCockpitGantt: vi.fn(), printCockpitGantt: vi.fn(), downloadCockpitPng: vi.fn() }));
@@ -225,6 +227,7 @@ describe("Cockpit secondary interactions", () => {
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
+    vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -306,6 +309,80 @@ describe("Cockpit secondary interactions", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(api.deleteCockpitPayment).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("opens a new issue in the module the work item's row code names, and links it", async () => {
+    const threeLevel = structuredClone(board);
+    threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root" }));
+    threeLevel.nodes[1]!.parent_id = "module";
+    vi.mocked(api.getCockpit).mockResolvedValue(threeLevel);
+    vi.mocked(api.listModules).mockResolvedValue({
+      modules: [
+        { id: "m-0101", project_id: "p-01", title: "01.01 Retrospective cohort" },
+        { id: "m-other", project_id: "p-09", title: "Meeting material" },
+      ],
+    } as unknown as Awaited<ReturnType<typeof api.listModules>>);
+    // Echo the node's whole set back, as the server does — the next link is
+    // built from it.
+    vi.mocked(api.setCockpitNodeIssues).mockImplementation(async (_nodeId, issueIds) =>
+      ({
+        node_id: "task",
+        links: issueIds.map((issue_id, position) => ({
+          id: `link-${issue_id}`,
+          node_id: "task",
+          issue_id,
+          issue_number: 0,
+          issue_identifier: issue_id.toUpperCase(),
+          issue_title: issue_id,
+          issue_status: "todo",
+          position,
+        })),
+      }) as unknown as Awaited<ReturnType<typeof api.setCockpitNodeIssues>>);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
+
+    // A direction row's number names a project, not a module, so it has
+    // nothing to offer.
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01" }));
+    expect(screen.queryByRole("button", { name: "New issue" })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New issue" }));
+
+    const modal = useModalStore.getState();
+    expect(modal.modal).toBe("create-issue");
+    expect(modal.data).toMatchObject({
+      title: "01.01.01",
+      project_id: "p-01",
+      module_id: "m-0101",
+    });
+
+    // The dialog reports the issue it created; the row it was created from
+    // picks it up without the user going looking for it.
+    const onCreated = modal.data!.on_created as (issue: { id: string }) => unknown;
+    await onCreated({ id: "issue-9" });
+    await waitFor(() =>
+      expect(api.setCockpitNodeIssues).toHaveBeenCalledWith(
+        "task",
+        ["issue-1", "issue-9"],
+        { replace: true },
+      ),
+    );
+
+    // "Create another" keeps the same callback for the whole run, so the
+    // second issue must not replace the set the first one joined.
+    await waitFor(() => expect(screen.getByText("issue-9")).toBeInTheDocument());
+    await onCreated({ id: "issue-10" });
+    await waitFor(() =>
+      expect(api.setCockpitNodeIssues).toHaveBeenLastCalledWith(
+        "task",
+        ["issue-1", "issue-9", "issue-10"],
+        { replace: true },
+      ),
+    );
+    useModalStore.getState().close();
   });
 
   it("exports the actual Gantt in an isolated popup rather than a substitute task report", async () => {

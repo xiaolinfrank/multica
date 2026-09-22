@@ -362,6 +362,7 @@
   },
   "issues": {
     "link": "イシューを関連付け",
+    "create": "新規タスク",
     "search_placeholder": "タイトルまたは識別子で検索…",
     "search_hint": "入力してこのワークスペースを検索",
     "searching": "検索中…",

@@ -597,6 +597,19 @@ export function ManualCreatePanel({
         });
       }
 
+      // An opener that files the new issue somewhere of its own — the cockpit's
+      // "New issue" on a work item, which attaches it to that row — is told the
+      // moment the issue exists. It reports its own failures; the issue is
+      // already committed, so one here must not read as a failed create.
+      const onCreated = data?.on_created;
+      if (typeof onCreated === "function") {
+        try {
+          await (onCreated as (created: Issue) => unknown)(issue);
+        } catch (err) {
+          console.error("[create-issue] on_created hook failed", err);
+        }
+      }
+
       // Custom-property values can only be addressed once the issue has an
       // id. Keep the modal in its submitting state until every value settles
       // so closing or "Create another" cannot race the fan-out.

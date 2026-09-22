@@ -362,6 +362,7 @@
   },
   "issues": {
     "link": "Link issue",
+    "create": "New issue",
     "search_placeholder": "Search issues by title or identifier…",
     "search_hint": "Type to search this workspace",
     "searching": "Searching…",

@@ -170,12 +170,17 @@ export function CockpitIssueLinks({
   links,
   onLink,
   onUnlink,
+  onCreate,
   disabled,
   compact,
 }: {
   links: CockpitIssueChip[];
   onLink: (issueId: string) => void;
   onUnlink: (issueId: string) => void;
+  /** Opens a create dialog already filed where this work item files its work.
+   *  Absent when the caller cannot say where that is, which is what keeps the
+   *  action off rows whose number names no module. */
+  onCreate?: () => void;
   disabled?: boolean;
   /** Chips only, no picker — the gantt row has no space for one. */
   compact?: boolean;
@@ -222,6 +227,21 @@ export function CockpitIssueLinks({
           linkedIssueIds={linkedIds}
           onToggle={(issue, linked) => (linked ? onUnlink(issue.id) : onLink(issue.id))}
         />
+      )}
+
+      {/* The other half of the same question: work that exists is searched for,
+          work that does not is opened here — and either way it ends up on this
+          row. */}
+      {!compact && !disabled && onCreate && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 text-caption"
+          onClick={onCreate}
+        >
+          <Plus className="size-3" />
+          {t(($) => $.issues.create)}
+        </Button>
       )}
 
       {links.length === 0 && compact && (

@@ -362,6 +362,7 @@
   },
   "issues": {
     "link": "关联任务",
+    "create": "新建任务",
     "search_placeholder": "按标题或编号检索任务…",
     "search_hint": "输入关键字检索本工作区任务",
     "searching": "检索中…",
