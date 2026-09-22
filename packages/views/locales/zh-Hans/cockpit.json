@@ -271,7 +271,7 @@
     "destination_missing": "服务器当前未挂载该目录，无法在此创建。",
     "destination_module": "模块",
     "destination_node": "归档子项",
-    "destination_node_hint": "它的目录存放会议资料，它的编号作为会议任务标题的前缀。",
+    "destination_node_hint": "会议资料存进它的目录，会议任务归在它下面，编号作为任务标题前缀。",
     "destination_node_none": "直接归到模块下",
     "destination_project": "项目",
     "dir_created": "资料目录已创建",
@@ -325,7 +325,7 @@
     "with_task": "同时新建会议任务",
     "task_assignee": "受理人",
     "with_task_hint": "建在「{{project}} › {{module}}」下。",
-    "with_task_hint_numbered": "归入 {{project}} › {{module}}，编号 {{code}}。",
+    "with_task_hint_numbered": "归入 {{project}} › {{module}} › {{code}}。",
     "with_task_unset": "先选定会议任务归属的项目与模块，才能开启。"
   },
   "payment": {

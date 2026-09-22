@@ -390,9 +390,8 @@ describe("the meeting register", () => {
         within(dialog).getByText(new RegExp(`/Volumes/share/06\\.06/06\\.06\\.03/${code}`)),
       ).toBeInTheDocument(),
     );
-    // And the number the task will open with, because the sub-item is what
-    // gives it one.
-    expect(within(dialog).getByText(/as 06\.06\.03\./)).toBeInTheDocument();
+    // And where the task lands: under the sub-item, not merely numbered by it.
+    expect(within(dialog).getByText(/› 06\.06\.03\./)).toBeInTheDocument();
   });
 
   it("files the meeting first and provisions it second, reporting what each did", async () => {

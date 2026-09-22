@@ -271,7 +271,7 @@
     "destination_missing": "서버에 지금 마운트되어 있지 않아 여기서는 만들 수 없습니다.",
     "destination_module": "모듈",
     "destination_node": "보관 하위 항목",
-    "destination_node_hint": "해당 폴더에 회의 자료를 두고, 그 번호를 회의 작업 제목 앞에 붙입니다.",
+    "destination_node_hint": "해당 폴더에 회의 자료를 두고, 회의 작업도 그 아래에 두며, 번호를 작업 제목 앞에 붙입니다.",
     "destination_node_none": "모듈 바로 아래에 보관",
     "destination_project": "프로젝트",
     "dir_created": "자료 폴더를 만들었습니다",
@@ -325,7 +325,7 @@
     "with_task": "회의 작업도 만들기",
     "task_assignee": "담당자",
     "with_task_hint": "「{{project}} › {{module}}」 아래에 만듭니다.",
-    "with_task_hint_numbered": "{{project}} › {{module}}에 {{code}}로 등록합니다.",
+    "with_task_hint_numbered": "{{project}} › {{module}} › {{code}}에 등록합니다.",
     "with_task_unset": "회의 작업을 둘 프로젝트와 모듈을 먼저 고르면 켤 수 있습니다."
   },
   "payment": {

@@ -271,7 +271,7 @@
     "destination_missing": "Not mounted on the server right now — the folder cannot be created from here.",
     "destination_module": "Module",
     "destination_node": "Archive sub-item",
-    "destination_node_hint": "Its folder holds the material and its number opens the task's title.",
+    "destination_node_hint": "The material goes in its folder, the task is filed under it, and its number opens the task's title.",
     "destination_node_none": "File directly under the module",
     "destination_project": "Project",
     "dir_created": "Folder created",
@@ -325,7 +325,7 @@
     "with_task": "Open a task for it",
     "task_assignee": "Assignee",
     "with_task_hint": "Filed under {{project}} › {{module}}.",
-    "with_task_hint_numbered": "Filed under {{project}} › {{module}} as {{code}}.",
+    "with_task_hint_numbered": "Filed under {{project}} › {{module}} › {{code}}.",
     "with_task_unset": "Choose where meeting tasks are filed to turn this on."
   },
   "payment": {

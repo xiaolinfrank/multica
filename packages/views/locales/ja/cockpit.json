@@ -271,7 +271,7 @@
     "destination_missing": "サーバーに現在マウントされていないため、ここからは作成できません。",
     "destination_module": "モジュール",
     "destination_node": "保管先の小項目",
-    "destination_node_hint": "そのフォルダーに資料を置き、その番号を会議タスク名の先頭に付けます。",
+    "destination_node_hint": "そのフォルダーに資料を置き、会議タスクもその下に登録し、番号をタスク名の先頭に付けます。",
     "destination_node_none": "モジュール直下に保管",
     "destination_project": "プロジェクト",
     "dir_created": "資料フォルダを作成しました",
@@ -325,7 +325,7 @@
     "with_task": "会議タスクも作成する",
     "task_assignee": "担当者",
     "with_task_hint": "「{{project}} › {{module}}」の下に作成します。",
-    "with_task_hint_numbered": "{{project}} › {{module}} に {{code}} として登録します。",
+    "with_task_hint_numbered": "{{project}} › {{module}} › {{code}} に登録します。",
     "with_task_unset": "会議タスクの保存先プロジェクトとモジュールを選ぶと有効になります。"
   },
   "payment": {
