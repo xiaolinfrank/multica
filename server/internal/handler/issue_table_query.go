@@ -166,6 +166,12 @@ type issueTableSQL struct {
 	args        []any
 	fingerprint string
 	workspaceID pgtype.UUID
+	// moduleCatalog writes the WHERE that selects the `module` rows this query
+	// can name, for grouping that lists a module the query matched no issue in.
+	// It takes the caller's own placeholder writer, so nothing is appended to
+	// `args` for a request that never groups by module. An empty string means
+	// the query can name no module at all.
+	moduleCatalog func(addArg func(any) string) string
 }
 
 type issueTableCursor struct {
@@ -489,6 +495,7 @@ func (h *Handler) compileIssueTableQuery(w http.ResponseWriter, r *http.Request,
 		}
 		return true
 	}
+	var scopeProjectID *pgtype.UUID
 	switch spec.Scope.Kind {
 	case "workspace":
 		if !appendAssigneeTypes() {
@@ -500,6 +507,7 @@ func (h *Handler) compileIssueTableQuery(w http.ResponseWriter, r *http.Request,
 			writeError(w, http.StatusBadRequest, "invalid scope.project_id")
 			return issueTableSQL{}, false
 		}
+		scopeProjectID = &projectID
 		where = append(where, fmt.Sprintf("i.project_id = %s::uuid", addArg(projectID)))
 		if !appendAssigneeTypes() {
 			return issueTableSQL{}, false
@@ -709,5 +717,32 @@ func (h *Handler) compileIssueTableQuery(w http.ResponseWriter, r *http.Request,
 		args:        args,
 		fingerprint: fingerprint,
 		workspaceID: workspaceUUID,
+		moduleCatalog: func(catalogArg func(any) string) string {
+			// "No module" is not a module, so a query narrowed to the unfiled
+			// bucket alone can name none.
+			if len(moduleIDs) == 0 && spec.Filters.IncludeNoModule {
+				return ""
+			}
+			conditions := []string{"m.workspace_id = $1"}
+			if scopeProjectID != nil {
+				conditions = append(conditions, fmt.Sprintf("m.project_id = %s::uuid", catalogArg(*scopeProjectID)))
+			}
+			if len(projectIDs) > 0 {
+				conditions = append(conditions, fmt.Sprintf("m.project_id = ANY(%s::uuid[])", catalogArg(projectIDs)))
+			}
+			if len(moduleIDs) > 0 {
+				conditions = append(conditions, fmt.Sprintf("m.id = ANY(%s::uuid[])", catalogArg(moduleIDs)))
+			}
+			if len(spec.Filters.ProjectStatuses) > 0 {
+				// Same bound as the issue-side predicate above: with no foreign
+				// keys, a stale module.project_id can name another tenant's
+				// project, so the workspace is compared explicitly.
+				conditions = append(conditions, fmt.Sprintf(
+					"EXISTS (SELECT 1 FROM project p WHERE p.id = m.project_id AND p.workspace_id = m.workspace_id AND p.status = ANY(%s::text[]))",
+					catalogArg(spec.Filters.ProjectStatuses),
+				))
+			}
+			return strings.Join(conditions, " AND ")
+		},
 	}, true
 }

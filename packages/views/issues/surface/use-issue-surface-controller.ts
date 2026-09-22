@@ -29,6 +29,7 @@ import {
   assigneeTypesForActorKind,
   type IssueScope,
 } from "@multica/core/issues/surface/scope";
+import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
 import type { IssueDateFilter, SortField } from "@multica/core/issues/stores/view-store";
 import { propertyListOptions } from "@multica/core/properties";
 import { propertyIdFromViewKey } from "@multica/core/issues/stores/view-store";
@@ -651,7 +652,9 @@ export function useIssueSurfaceController({
       };
     }
     if (effectiveGrouping === "project") return { kind: "project" };
-    if (effectiveGrouping === "module") return { kind: "module" };
+    if (effectiveGrouping === "module") {
+      return issueTableModuleGroupSpec(tableQuerySpec);
+    }
     const propertyId = propertyIdFromViewKey(effectiveGrouping);
     if (propertyId) {
       return {
@@ -666,6 +669,7 @@ export function useIssueSurfaceController({
     effectiveViewMode,
     serverStatuses,
     swimlaneGrouping,
+    tableQuerySpec,
   ]);
   const serverGroupQuery = useMemo<IssueTableQuerySpec>(() => {
     if (effectiveViewMode !== "swimlane") return tableQuerySpec;
@@ -680,7 +684,10 @@ export function useIssueSurfaceController({
       effectiveViewMode === "swimlane" ? serverStatuses : undefined,
     observeEmptyBranches:
       effectiveViewMode === "swimlane" ||
-      (effectiveViewMode === "board" && activeGroupingProperty !== null),
+      // Board columns the server listed with no cards still need a live head:
+      // they are drop targets, so a card dragged in has to land somewhere.
+      (effectiveViewMode === "board" &&
+        (activeGroupingProperty !== null || effectiveGrouping === "module")),
     enabled: usesServerGroupSurface && !statusFilterUnresolved,
   });
 

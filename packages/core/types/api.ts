@@ -378,7 +378,10 @@ export type IssueTableGroupSpec =
   | { kind: "status_category"; category_format?: "lifecycle" }
   | { kind: "assignee" }
   | { kind: "project" }
-  | { kind: "module" }
+  /** `include_empty` adds every module the query could name — a module with no
+   *  matching issue is still a level of the project's hierarchy. Bounded by the
+   *  query's own project/module narrowing; an older server ignores the flag. */
+  | { kind: "module"; include_empty?: boolean }
   | { kind: "parent" }
   | {
       kind: "compound";

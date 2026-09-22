@@ -91,6 +91,7 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyListOptions } from "@multica/core/properties";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buildActorNameResolver, useActorName } from "@multica/core/workspace/hooks";
 import {
@@ -263,11 +264,14 @@ function rebaseServerBranchState(
   return { identity, structureIdentity, branches };
 }
 
-function tableGroupSpec(grouping: string): IssueTableGroupSpec {
+function tableGroupSpec(
+  grouping: string,
+  query: IssueTableQuerySpec,
+): IssueTableGroupSpec {
   if (grouping === "status") return { kind: "status" };
   if (grouping === "assignee") return { kind: "assignee" };
   if (grouping === "project") return { kind: "project" };
-  if (grouping === "module") return { kind: "module" };
+  if (grouping === "module") return issueTableModuleGroupSpec(query);
   const propertyId = propertyIdFromViewKey(grouping);
   if (propertyId) return { kind: "property", property_id: propertyId };
   return { kind: "none" };
@@ -860,35 +864,60 @@ type IssueTableGroupRowProps = React.ComponentProps<"tr"> & {
   group: Extract<IssueTableDisplayRow, { kind: "group" }>;
   colSpan: number;
   onToggle: () => void;
+  /** Creates an issue inside this group. Omitted for groups whose dimension
+   *  a new issue cannot be filed into from here. */
+  onCreate?: () => void;
 };
 
 export function IssueTableGroupRow({
   group,
   colSpan,
   onToggle,
+  onCreate,
   ...rowProps
 }: IssueTableGroupRowProps) {
+  const { t } = useT("issues");
   return (
     <TableRow
       {...rowProps}
-      className="bg-muted/40 hover:bg-muted/60"
+      className="group/table-group bg-muted/40 hover:bg-muted/60"
       onClick={onToggle}
     >
       <TableCell colSpan={colSpan} className="h-9 px-4 py-1.5">
-        <button
-          type="button"
-          className="sticky left-4 flex w-fit items-center gap-2 text-caption font-medium"
-        >
-          {group.collapsed ? (
-            <ChevronRight className="size-3.5" />
-          ) : (
-            <ChevronDown className="size-3.5" />
+        {/* The toggle stays the row's only wide target; the add button is its
+            sibling, so neither nests inside the other's accessible name. */}
+        <div className="sticky left-4 flex w-fit items-center gap-1">
+          <button
+            type="button"
+            className="flex w-fit items-center gap-2 text-caption font-medium"
+          >
+            {group.collapsed ? (
+              <ChevronRight className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
+            {group.label}
+            <span className="font-normal tabular-nums text-muted-foreground">
+              {group.count}
+            </span>
+          </button>
+          {onCreate && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t(($) => $.table.group_add_issue, {
+                group: group.label,
+              })}
+              className="rounded-full text-muted-foreground opacity-0 transition-opacity group-hover/table-group:opacity-100 focus-visible:opacity-100"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCreate();
+              }}
+            >
+              <Plus className="size-3.5" />
+            </Button>
           )}
-          {group.label}
-          <span className="font-normal tabular-nums text-muted-foreground">
-            {group.count}
-          </span>
-        </button>
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -1391,8 +1420,8 @@ export function TableView({
   ]);
 
   const serverGroupSpec = useMemo(
-    () => tableGroupSpec(effectiveTableGrouping),
-    [effectiveTableGrouping],
+    () => tableGroupSpec(effectiveTableGrouping, serverQuery),
+    [effectiveTableGrouping, serverQuery],
   );
   const usesServerGrouping = serverGroupSpec.kind !== "none";
   // Project group rows carry only a project id; the title comes from the
@@ -1875,9 +1904,15 @@ export function TableView({
       parentId: string | null,
       depth: number,
       ancestorIds: string[],
+      /** Rows the server counted in this branch. A group the server listed with
+       *  none holds no rows to fetch, so it renders as its header alone — and
+       *  never as a "Loading…" line that would also drag the whole table into
+       *  the cold-load skeleton below. */
+      branchCount?: number,
     ) => {
       const key = serverBranchKey(groupKey, parentId);
       const data = serverBranchData[key];
+      if (!data && branchCount === 0) return;
       if (!data) {
         const registered = activeServerBranches.has(key);
         result.push({
@@ -1960,8 +1995,11 @@ export function TableView({
           label: serverGroupLabel(descriptor),
           count: descriptor.count,
           collapsed,
+          value: descriptor.value,
         });
-        if (!collapsed) appendBranch(descriptor.key, null, 0, []);
+        if (!collapsed) {
+          appendBranch(descriptor.key, null, 0, [], descriptor.count);
+        }
       }
     } else {
       appendBranch(null, null, 0, []);
@@ -2204,6 +2242,24 @@ export function TableView({
         ...(issue.project_id ? { project_id: issue.project_id } : {}),
       }),
     [onCreateIssue],
+  );
+
+  // Module grouping is the only table grouping whose header stands for a place
+  // an issue is filed, so it is the only one that offers to create there. The
+  // module carries its own project, which the create dialog resolves from it.
+  const createInGroup = useCallback(
+    (group: Extract<IssueTableDisplayRow, { kind: "group" }>) => {
+      const value = group.value;
+      if (value?.kind !== "module") return undefined;
+      return () =>
+        onCreateIssue({
+          ...(serverQuery.scope.kind === "project"
+            ? { project_id: serverQuery.scope.project_id }
+            : {}),
+          module_id: value.module_id ?? null,
+        });
+    },
+    [onCreateIssue, serverQuery.scope],
   );
 
   const onSort = useCallback(
@@ -2541,11 +2597,13 @@ export function TableView({
             }}
             renderRow={(row) => {
               if (row.original.kind === "group") {
+                const groupRow = row.original;
                 return (
                   <IssueTableGroupRow
-                    group={row.original}
+                    group={groupRow}
                     colSpan={table.getVisibleLeafColumns().length}
-                    onToggle={() => toggleTableGroupCollapsed(row.original.key)}
+                    onToggle={() => toggleTableGroupCollapsed(groupRow.key)}
+                    onCreate={createInGroup(groupRow)}
                   />
                 );
               }

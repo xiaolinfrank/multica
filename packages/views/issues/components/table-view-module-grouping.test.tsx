@@ -7,7 +7,7 @@
  * exists to catch.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiInstance } from "@multica/core/api";
 import type { ApiClient } from "@multica/core/api/client";
@@ -16,6 +16,7 @@ import { getIssueSurfaceViewStore } from "@multica/core/issues/stores/surface-vi
 import type {
   Issue,
   IssueTableGroupsRequest,
+  IssueTableGroupsResponse,
   IssueTableQuerySpec,
   IssueTableRowsRequest,
 } from "@multica/core/types";
@@ -175,6 +176,16 @@ const serverQuery: IssueTableQuerySpec = {
   sort: { field: "position", direction: "asc" },
 };
 
+/** The project page's query: this is what turns the module catalog on. */
+const projectQuery: IssueTableQuerySpec = {
+  scope: { kind: "project", project_id: PROJECT_ID },
+  filters: {},
+  sort: { field: "position", direction: "asc" },
+};
+
+/** A module of this project that nothing is filed under yet. */
+const EMPTY_MOD_ID = "55555555-5555-4555-8555-555555555555";
+
 const selection: IssueSurfaceSelection = {
   selectedIds: new Set<string>(),
   toggle: () => {},
@@ -186,10 +197,29 @@ const selection: IssueSurfaceSelection = {
 describe("Table grouped by module", () => {
   let queryClient: QueryClient;
   let groupRequests: IssueTableGroupsRequest[];
+  let rowRequests: IssueTableRowsRequest[];
+  let moduleCatalog: ReturnType<typeof makeModule>[];
+  let groupsByQuery: IssueTableGroupsResponse["groups"];
   let surfaceKey: string;
 
   beforeEach(() => {
     groupRequests = [];
+    rowRequests = [];
+    moduleCatalog = [makeModule(MOD_ID, "Parser rewrite", 0)];
+    groupsByQuery = [
+      // No-module first, then by title — the server's own group order.
+      { key: "module:none", value: { kind: "module", module_id: null }, count: 1 },
+      {
+        key: "module:" + MOD_ID,
+        value: { kind: "module", module_id: MOD_ID },
+        count: 1,
+      },
+      {
+        key: "module:" + GHOST_MOD_ID,
+        value: { kind: "module", module_id: GHOST_MOD_ID },
+        count: 1,
+      },
+    ];
     surfaceKey = "module-grouping-" + Math.floor(Math.random() * 1e9);
     vi.stubGlobal("IntersectionObserver", VisibleIntersectionObserver);
     vi.stubGlobal("ResizeObserver", ObserverStub);
@@ -205,32 +235,20 @@ describe("Table grouped by module", () => {
       listIssueStatuses: async () => ({ statuses: [] }),
       listProjects: async () => ({ projects: [], total: 0 }),
       listModules: async () => ({
-        modules: [makeModule(MOD_ID, "Parser rewrite", 0)],
-        total: 1,
+        modules: moduleCatalog,
+        total: moduleCatalog.length,
       }),
       listIssueTableGroups: async (request: IssueTableGroupsRequest) => {
         groupRequests.push(request);
         return {
           query_fingerprint: "test",
           total: 3,
-          // No-module first, then by title — the server's own group order.
-          groups: [
-            { key: "module:none", value: { kind: "module", module_id: null }, count: 1 },
-            {
-              key: "module:" + MOD_ID,
-              value: { kind: "module", module_id: MOD_ID },
-              count: 1,
-            },
-            {
-              key: "module:" + GHOST_MOD_ID,
-              value: { kind: "module", module_id: GHOST_MOD_ID },
-              count: 1,
-            },
-          ],
+          groups: groupsByQuery,
           next_cursor: null,
         };
       },
       listIssueTableRows: async (request: IssueTableRowsRequest) => {
+        rowRequests.push(request);
         const rows = ROWS_BY_GROUP[request.group_key ?? ""] ?? [];
         return {
           query_fingerprint: "test",
@@ -250,7 +268,10 @@ describe("Table grouped by module", () => {
     vi.unstubAllGlobals();
   });
 
-  function render() {
+  function render(
+    query: IssueTableQuerySpec = serverQuery,
+    onCreateIssue: (defaults: Record<string, unknown>) => void = () => {},
+  ) {
     const store = getIssueSurfaceViewStore(surfaceKey);
     store.getState().setTableGrouping("module");
     renderWithI18n(
@@ -258,12 +279,12 @@ describe("Table grouped by module", () => {
         <ViewStoreProvider store={store}>
           <IssueSurfaceSelectionProvider selection={selection}>
             <TableView
-              serverQuery={serverQuery}
+              serverQuery={query}
               childProgressMap={new Map()}
               search=""
               onSearchChange={() => {}}
               onLoadedIssuesChange={() => {}}
-              onCreateIssue={() => {}}
+              onCreateIssue={onCreateIssue}
               exportIssues={() => Promise.resolve([])}
               resolveExportLookups={() =>
                 Promise.resolve({
@@ -321,5 +342,68 @@ describe("Table grouped by module", () => {
     render();
     await screen.findByText("MUL-filed");
     await screen.findByText("MUL-loose");
+  });
+
+  it("groups by the modules that hold work when no project narrows the query", async () => {
+    render();
+    await waitFor(() => expect(groupRequests).not.toHaveLength(0));
+    // Workspace-wide, the catalog would be every module in the workspace.
+    expect(groupRequests[0]?.group).toEqual({ kind: "module" });
+  });
+
+  describe("inside a project", () => {
+    beforeEach(() => {
+      moduleCatalog = [
+        makeModule(MOD_ID, "Parser rewrite", 0),
+        makeModule(EMPTY_MOD_ID, "Zero work", 1),
+      ];
+      groupsByQuery = [
+        { key: "module:none", value: { kind: "module", module_id: null }, count: 1 },
+        {
+          key: "module:" + MOD_ID,
+          value: { kind: "module", module_id: MOD_ID },
+          count: 1,
+        },
+        // What include_empty adds: a module the query matched no issue in.
+        {
+          key: "module:" + EMPTY_MOD_ID,
+          value: { kind: "module", module_id: EMPTY_MOD_ID },
+          count: 0,
+        },
+      ];
+    });
+
+    it("asks the server for the project's empty modules too", async () => {
+      render(projectQuery);
+      await waitFor(() => expect(groupRequests).not.toHaveLength(0));
+      expect(groupRequests[0]?.group).toEqual({
+        kind: "module",
+        include_empty: true,
+      });
+    });
+
+    it("shows a module with no tasks as its own group, and asks for no rows under it", async () => {
+      render(projectQuery);
+      await screen.findByText("Zero work");
+      await screen.findByText("MUL-filed");
+      expect(
+        rowRequests.some(
+          (request) => request.group_key === "module:" + EMPTY_MOD_ID,
+        ),
+      ).toBe(false);
+    });
+
+    it("creates in the module the header stands for", async () => {
+      const onCreateIssue = vi.fn();
+      render(projectQuery, onCreateIssue);
+      await screen.findByText("Zero work");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add issue to Zero work" }),
+      );
+      expect(onCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT_ID,
+        module_id: EMPTY_MOD_ID,
+      });
+    });
   });
 });

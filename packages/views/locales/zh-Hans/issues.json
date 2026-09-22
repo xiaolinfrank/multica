@@ -256,6 +256,7 @@
     "loading_branch": "加载中...",
     "no_more": "没有更多了",
     "value_unavailable": "不可用的值",
+    "group_add_issue": "在{{group}}下新建任务",
     "group_property_unavailable": "用于分组的属性已不可用，分组已清除。",
     "hierarchy": "层级",
     "hierarchy_description": "将子任务嵌套显示在父任务下方",

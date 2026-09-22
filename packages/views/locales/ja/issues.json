@@ -256,6 +256,7 @@
     "loading_branch": "読み込み中…",
     "no_more": "これ以上ありません",
     "value_unavailable": "利用できない値",
+    "group_add_issue": "{{group}} にタスクを追加",
     "group_property_unavailable": "グループ化に使っていたプロパティは利用できないため、グループ化を解除しました。",
     "hierarchy": "階層",
     "hierarchy_description": "サブタスクを親タスクの下に入れ子で表示",

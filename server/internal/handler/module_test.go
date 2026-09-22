@@ -635,6 +635,88 @@ func TestListGroupedIssuesModuleFilter(t *testing.T) {
 	}
 }
 
+func TestIssueTableModuleGroupingIncludeEmpty(t *testing.T) {
+	projectID, moduleA, moduleB := moduleTestSeed(t)
+	dbfx.Issue(t, "Filed under A", testutil.Cols{"project_id": projectID, "module_id": moduleA})
+	// A second project's module must not ride along into this project's groups.
+	otherProject := dbfx.Project(t, "Other module project")
+	otherModule := dbfx.Module(t, otherProject, "Other module", testutil.Cols{"position": 1.0})
+
+	spec := issueTableQuerySpec{
+		Scope: issueTableScope{Kind: "project", ProjectID: projectID},
+		Sort:  issueTableSortRequest{Field: "title", Direction: "asc"},
+	}
+	groupsFor := func(t *testing.T, query issueTableQuerySpec, group issueTableGroupSpec) (map[string]int64, int64) {
+		t.Helper()
+		var response issueTableGroupsResponse
+		testutil.Call(t, testHandler.ListIssueTableGroups, newRequest(http.MethodPost, "/api/issues/table/groups", issueTableGroupsRequest{
+			Query: query,
+			Group: group,
+		})).Want(http.StatusOK).JSON(&response)
+		counts := map[string]int64{}
+		for _, descriptor := range response.Groups {
+			counts[descriptor.Key] = descriptor.Count
+		}
+		return counts, response.Total
+	}
+
+	counts, total := groupsFor(t, spec, issueTableGroupSpec{Kind: "module", IncludeEmpty: true})
+	// Total counts issues, so the empty module must not inflate it.
+	if total != 1 {
+		t.Fatalf("total = %d, want the one issue: %v", total, counts)
+	}
+	if counts["module:"+moduleA] != 1 {
+		t.Fatalf("module A count = %d, want 1: %v", counts["module:"+moduleA], counts)
+	}
+	if count, ok := counts["module:"+moduleB]; !ok || count != 0 {
+		t.Fatalf("empty module B missing or counted: %v", counts)
+	}
+	if _, ok := counts["module:"+otherModule]; ok {
+		t.Fatalf("another project's module leaked in: %v", counts)
+	}
+	// The unfiled bucket is not a module, so it stays absent while empty.
+	if _, ok := counts["module:none"]; ok {
+		t.Fatalf("no-module group appeared without issues: %v", counts)
+	}
+
+	// The module strip narrows the catalog with it.
+	narrowed := spec
+	narrowed.Filters.ModuleIDs = []string{moduleA}
+	counts, _ = groupsFor(t, narrowed, issueTableGroupSpec{Kind: "module", IncludeEmpty: true})
+	if _, ok := counts["module:"+moduleB]; ok {
+		t.Fatalf("module filtered out of the query still listed: %v", counts)
+	}
+
+	// Asking for the unfiled bucket alone can name no module.
+	unfiled := spec
+	unfiled.Filters.IncludeNoModule = true
+	counts, _ = groupsFor(t, unfiled, issueTableGroupSpec{Kind: "module", IncludeEmpty: true})
+	if len(counts) != 0 {
+		t.Fatalf("no-module filter listed modules: %v", counts)
+	}
+
+	// Without the flag the endpoint answers exactly as before.
+	counts, _ = groupsFor(t, spec, issueTableGroupSpec{Kind: "module"})
+	if len(counts) != 1 || counts["module:"+moduleA] != 1 {
+		t.Fatalf("plain module grouping changed: %v", counts)
+	}
+}
+
+func TestIssueTableModuleCatalogBindsGroupCursorIdentity(t *testing.T) {
+	plain := issueTableGroupIdentity(issueTableGroupSpec{Kind: "module"})
+	catalog := issueTableGroupIdentity(issueTableGroupSpec{Kind: "module", IncludeEmpty: true})
+	if plain == catalog {
+		t.Fatalf("module cursors share an identity across the catalog flag: %q", catalog)
+	}
+	if plain != "group:module" {
+		t.Fatalf("plain module identity changed to %q, invalidating cursors in flight", plain)
+	}
+	// The flag is meaningless for the kinds that do not read the module table.
+	if got := issueTableGroupIdentity(issueTableGroupSpec{Kind: "project", IncludeEmpty: true}); got != "group:project" {
+		t.Fatalf("project identity changed to %q", got)
+	}
+}
+
 func TestIssueTableModuleGrouping(t *testing.T) {
 	projectID, moduleA, _ := moduleTestSeed(t)
 	inA := dbfx.Issue(t, "Table module grouped", testutil.Cols{"project_id": projectID, "module_id": moduleA})

@@ -822,7 +822,12 @@ describe("useIssueSurfaceController", () => {
   it.each([
     { grouping: "assignee" as const, expected: { kind: "assignee" } },
     { grouping: "project" as const, expected: { kind: "project" } },
-    { grouping: "module" as const, expected: { kind: "module" } },
+    // A project board lists the project's modules, including the ones no card
+    // is filed under yet.
+    {
+      grouping: "module" as const,
+      expected: { kind: "module", include_empty: true },
+    },
   ])(
     "asks the server for $grouping groups when the board is grouped that way",
     async ({ grouping, expected }) => {

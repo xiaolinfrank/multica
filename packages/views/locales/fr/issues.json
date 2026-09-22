@@ -259,6 +259,7 @@
     "loading_branch": "Chargement…",
     "no_more": "Fin de la liste",
     "value_unavailable": "Valeur indisponible",
+    "group_add_issue": "Ajouter une tâche à {{group}}",
     "group_property_unavailable": "La propriété de regroupement n'est plus disponible. Le regroupement a été supprimé.",
     "hierarchy": "Hiérarchie",
     "hierarchy_description": "Imbriquer les sous-tâches sous leur parent",

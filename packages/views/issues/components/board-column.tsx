@@ -245,6 +245,9 @@ export const BoardColumn = memo(function BoardColumn({
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  // The tooltip only names the button once it is open, which a
+                  // keyboard or screen-reader user never reaches.
+                  aria-label={t(($) => $.board.add_issue_tooltip)}
                   className="rounded-full text-muted-foreground"
                   onClick={() => {
                     const data = {

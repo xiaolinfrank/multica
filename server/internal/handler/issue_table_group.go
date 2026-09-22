@@ -192,9 +192,27 @@ func issueTableGroupBaseIdentity(group issueTableGroupSpec) string {
 		if group.SecondaryValues != nil {
 			identity += ":visible=" + strings.Join(group.SecondaryValues, ",")
 		}
-		return identity
+		return withModuleCatalogIdentity(identity, group)
 	}
-	return "group:" + group.Kind
+	return withModuleCatalogIdentity("group:"+group.Kind, group)
+}
+
+// The module catalog changes which groups a page holds, so a cursor minted
+// without it must not be replayed against a request that asks for it. Appended
+// only when the catalog is on, so every identity already in flight keeps its
+// exact shape.
+func withModuleCatalogIdentity(identity string, group issueTableGroupSpec) string {
+	if issueTableGroupCatalogsModules(group) {
+		return identity + ":empty=true"
+	}
+	return identity
+}
+
+// Grouping that lists a module the query matched no issue in. Kept as one
+// predicate so the cursor identity and the SQL below cannot disagree about
+// which requests carry the catalog.
+func issueTableGroupCatalogsModules(group issueTableGroupSpec) bool {
+	return group.IncludeEmpty && group.Kind == "module"
 }
 
 func (h *Handler) resolveIssueTableGroup(w http.ResponseWriter, r *http.Request, workspaceID pgtype.UUID, group issueTableGroupSpec, allowNone bool) (resolvedIssueTableGroup, bool) {
@@ -1001,6 +1019,29 @@ func (h *Handler) ListIssueTableGroups(w http.ResponseWriter, r *http.Request) {
   WHERE %s
   GROUP BY 1
 )`, groupExpr, compiled.where)
+	// A module the query matched no issue in still owns a level of the
+	// project's hierarchy, so it is read off the module table and joined in
+	// with a zero count. The catalog is empty when nothing in the query can
+	// name a module, which leaves the plain aggregate above untouched.
+	if issueTableGroupCatalogsModules(request.Group) && compiled.moduleCatalog != nil {
+		if catalogWhere := compiled.moduleCatalog(addArg); catalogWhere != "" {
+			groupedCTE = fmt.Sprintf(`actual AS (
+  SELECT %s AS group_value, COUNT(*)::bigint AS issue_count
+  FROM issue i
+  WHERE %s
+  GROUP BY 1
+), grouped AS (
+  SELECT group_value, issue_count, issue_count AS visible_count,
+         '{}'::jsonb AS secondary_counts
+  FROM actual
+  UNION ALL
+  SELECT m.id::text, 0::bigint, 0::bigint, '{}'::jsonb
+  FROM module m
+  WHERE %s
+    AND NOT EXISTS (SELECT 1 FROM actual a WHERE a.group_value = m.id::text)
+)`, groupExpr, compiled.where, catalogWhere)
+		}
+	}
 	if request.Group.IncludeEmpty && group.kind == "property" {
 		expectedValues := []string{"unset:"}
 		if group.propertyType == "select" {

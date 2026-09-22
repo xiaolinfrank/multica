@@ -260,6 +260,7 @@
     "loading_branch": "Loading…",
     "no_more": "No more",
     "value_unavailable": "Unavailable value",
+    "group_add_issue": "Add issue to {{group}}",
     "group_property_unavailable": "The grouped property is no longer available. Grouping was cleared.",
     "hierarchy": "Hierarchy",
     "hierarchy_description": "Nest sub-issues beneath their parents",

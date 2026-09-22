@@ -6,6 +6,7 @@ import type {
 import type {
   Issue,
   IssuePropertyValue,
+  IssueTableGroupValue,
 } from "@multica/core/types";
 
 /** Export must fail closed when paged Table responses cannot prove that the
@@ -25,6 +26,10 @@ export type IssueTableDisplayRow =
       label: string;
       count: number;
       collapsed: boolean;
+      /** What the group stands for, kept alongside the resolved label so a
+       *  header can offer an action scoped to it (creating an issue in a
+       *  module). Absent for callers that only render a header. */
+      value?: IssueTableGroupValue;
     }
   | {
       kind: "issue";
