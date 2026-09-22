@@ -36,7 +36,10 @@ import type {
 import { useViewStore, useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
 import { useViewBaseline } from "../surface/view-baseline-context";
 import { filterIssues, type IssueFilters } from "../utils/filter";
+import { useModalStore } from "@multica/core/modals";
+import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { getMoveAnchors, moduleGroupId } from "../utils/drag-utils";
+import { moduleDetachIntent } from "../actions/module-detach-gate";
 import type { SwimlaneGrouping } from "@multica/core/issues/stores/view-store";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -768,6 +771,7 @@ function SwimLaneViewImpl({
   const wsId = useWorkspaceId();
   const statusCatalog = useIssueStatuses(wsId);
   const { categoryOf, entryOf } = statusCatalog;
+  const openModal = useModalStore((state) => state.open);
   // Board order for `sort=status`, archived included: an issue can still sit
   // on an archived status and has to rank with the rest (MUL-7379).
   const statusSortOrder = useMemo(() => statusColumnKeys(statusCatalog, true), [statusCatalog]);
@@ -1422,6 +1426,17 @@ function SwimLaneViewImpl({
         return;
       }
 
+      // A sub-issue is filed where its parent is, so a drop into another
+      // module's lane is asking to break that link. The card returns to its
+      // lane and the dialog writes the move and the detach together.
+      const detach =
+        currentIssue && moduleDetachIntent(currentIssue, targetLane.moveUpdates);
+      if (detach) {
+        reset();
+        openModal("issue-module-detach-confirm", detach);
+        return;
+      }
+
       isSettlingRef.current = true;
       onMoveIssue(
         activeId,
@@ -1441,7 +1456,7 @@ function SwimLaneViewImpl({
         },
       );
     },
-    [cells, cellSet, laneByKey, laneGroups, onMoveIssue, swimlaneGrouping, viewStoreApi, entryOf],
+    [cells, cellSet, laneByKey, laneGroups, onMoveIssue, openModal, swimlaneGrouping, viewStoreApi, entryOf],
   );
 
   // Grid template: one column per status, fixed width COLUMN_WIDTH, gap COLUMN_GAP.
@@ -1910,6 +1925,12 @@ function SwimLaneCell({
       status: status,
       ...lane.moveUpdates,
     };
+    // Numbered modules number the work inside them, so a create from a module
+    // lane opens on the module's own number.
+    const numberPrefix = lane.module
+      ? moduleTitleNumberPrefix(lane.module.title)
+      : "";
+    if (numberPrefix) data.title = numberPrefix;
     // Per-page project override takes precedence (e.g. Project Detail
     // pre-fills its own project id regardless of grouping).
     if (projectId) data.project_id = projectId;

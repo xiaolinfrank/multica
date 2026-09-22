@@ -321,6 +321,7 @@ describe("useIssueActions", () => {
     expect(mockOpenModal).toHaveBeenLastCalledWith("create-issue", {
       parent_issue_id: "issue-1",
       parent_issue_identifier: "TES-1",
+      module_id: null,
     });
 
     act(() => {
@@ -333,10 +334,11 @@ describe("useIssueActions", () => {
     });
   });
 
-  it("openCreateSubIssue seeds the parent's project and assignee so the sub-issue inherits them", () => {
+  it("openCreateSubIssue seeds the parent's project, module and assignee so the sub-issue inherits them", () => {
     const parentIssue = {
       ...mockIssue,
       project_id: "project-1",
+      module_id: "module-1",
       assignee_type: "agent",
       assignee_id: "agent-1",
     } as Issue;
@@ -346,10 +348,13 @@ describe("useIssueActions", () => {
       result.current.openCreateSubIssue();
     });
 
+    // The module is not optional context like the assignee: a sub-issue is
+    // filed where its parent is, and the server refuses the pair otherwise.
     expect(mockOpenModal).toHaveBeenLastCalledWith("create-issue", {
       parent_issue_id: "issue-1",
       parent_issue_identifier: "TES-1",
       project_id: "project-1",
+      module_id: "module-1",
       assignee_type: "agent",
       assignee_id: "agent-1",
     });
@@ -372,6 +377,7 @@ describe("useIssueActions", () => {
       parent_issue_id: "issue-1",
       parent_issue_identifier: "TES-1",
       project_id: "project-1",
+      module_id: null,
     });
   });
 

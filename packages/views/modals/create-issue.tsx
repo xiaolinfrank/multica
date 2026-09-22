@@ -251,7 +251,17 @@ export function ManualCreatePanel({
   const manualFields = useIssueCreateSettingsStore((s) => s.manualCreateFields);
 
   const sendShortcut = useShortcut("send");
-  const [title, setTitle] = useState(draft.manual.title);
+  // A seeded title says where the issue is being created — the outline number
+  // of the module whose "+" was clicked, for teams that number their work. The
+  // persisted draft wins over it: that is a sentence the user started typing,
+  // and seeding over it would delete their text.
+  const [title, setTitle] = useState(() =>
+    draft.manual.title.trim()
+      ? draft.manual.title
+      : typeof data?.title === "string"
+        ? data.title
+        : "",
+  );
   const [formResetKey, setFormResetKey] = useState(0);
   const titleEditorRef = useRef<TitleEditorRef>(null);
   const descEditorRef = useRef<ContentEditorRef>(null);
@@ -426,6 +436,18 @@ export function ManualCreatePanel({
     // the old choice, and the server would reject the pair on create.
     setModuleId(undefined);
   };
+
+  // A sub-issue is filed where its parent is, so a chosen parent owns the
+  // project and module of the issue being created. Both pickers lock below
+  // rather than offering a choice the server would refuse
+  // (`child_module_mismatch`); removing the parent gives them back.
+  const parentProjectId = parentIssue?.project_id ?? undefined;
+  const parentModuleId = parentIssue?.module_id ?? undefined;
+  useEffect(() => {
+    if (!parentIssueId || !parentIssue) return;
+    setProjectId(parentProjectId);
+    setModuleId(parentModuleId);
+  }, [parentIssueId, parentIssue, parentProjectId, parentModuleId]);
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };
   const updateDueDate = (v: string | null) => { setDueDate(v); setShared({ dueDate: v }); };
   const updateLabelIds = (ids: string[]) => { setLabelIds(ids); setManual({ labelIds: ids }); };
@@ -1083,9 +1105,14 @@ export function ManualCreatePanel({
                 <ProjectPicker
                   projectId={projectId ?? null}
                   onUpdate={(u) => updateProject(u.project_id ?? undefined)}
+                  disabled={!!parentIssueId}
                   triggerRender={
                     <ClearablePillButton
-                      onClear={projectId ? () => updateProject(undefined) : undefined}
+                      onClear={
+                        projectId && !parentIssueId
+                          ? () => updateProject(undefined)
+                          : undefined
+                      }
                       clearLabel={tProjects(($) => $.picker.clear_aria)}
                     />
                   }
@@ -1102,9 +1129,14 @@ export function ManualCreatePanel({
                   moduleId={moduleId ?? null}
                   projectId={projectId ?? null}
                   onUpdate={(u) => setModuleId(u.module_id ?? undefined)}
+                  disabled={!!parentIssueId}
                   triggerRender={
                     <ClearablePillButton
-                      onClear={moduleId ? () => setModuleId(undefined) : undefined}
+                      onClear={
+                        moduleId && !parentIssueId
+                          ? () => setModuleId(undefined)
+                          : undefined
+                      }
                       clearLabel={tProjects(($) => $.picker.clear_aria)}
                     />
                   }

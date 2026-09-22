@@ -1744,6 +1744,106 @@ func (q *Queries) MaterializeIssueChannelMediaMarkdown(ctx context.Context, arg 
 	return i, err
 }
 
+const refileIssueSubtree = `-- name: RefileIssueSubtree :many
+WITH RECURSIVE descendants AS (
+    SELECT i.id, 1 AS depth
+    FROM issue AS i
+    WHERE i.parent_issue_id = $4::uuid
+      AND i.workspace_id = $3::uuid
+  UNION ALL
+    SELECT i.id, d.depth + 1
+    FROM issue AS i
+    JOIN descendants AS d ON i.parent_issue_id = d.id
+    WHERE i.workspace_id = $3::uuid
+      AND d.depth < 10
+)
+UPDATE issue AS i SET
+    project_id = $1::uuid,
+    module_id = $2::uuid,
+    revision = i.revision + 1,
+    last_activity_at = GREATEST(COALESCE(i.last_activity_at, i.updated_at), now()),
+    updated_at = now()
+WHERE i.id IN (SELECT id FROM descendants)
+  AND i.workspace_id = $3::uuid
+  AND (i.project_id IS DISTINCT FROM $1::uuid
+    OR i.module_id IS DISTINCT FROM $2::uuid)
+RETURNING i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.module_id
+`
+
+type RefileIssueSubtreeParams struct {
+	ProjectID     pgtype.UUID `json:"project_id"`
+	ModuleID      pgtype.UUID `json:"module_id"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ParentIssueID pgtype.UUID `json:"parent_issue_id"`
+}
+
+// Move every descendant of an issue into the project/module the issue itself
+// was just filed into. A sub-issue always sits in its parent's module, so a
+// parent that moves takes its whole subtree with it.
+//
+// The tree carries no foreign keys, so the workspace bound is re-applied at
+// every hop instead of being inherited from the root row, and the walk is
+// depth-capped like the handler's cycle check — a cycle written before that
+// guard existed must not spin here.
+//
+// Rows already filed where they belong are excluded, so the returned set is
+// exactly the rows that changed and is what the caller broadcasts.
+func (q *Queries) RefileIssueSubtree(ctx context.Context, arg RefileIssueSubtreeParams) ([]Issue, error) {
+	rows, err := q.db.Query(ctx, refileIssueSubtree,
+		arg.ProjectID,
+		arg.ModuleID,
+		arg.WorkspaceID,
+		arg.ParentIssueID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Issue{}
+	for rows.Next() {
+		var i Issue
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.Priority,
+			&i.AssigneeType,
+			&i.AssigneeID,
+			&i.CreatorType,
+			&i.CreatorID,
+			&i.ParentIssueID,
+			&i.AcceptanceCriteria,
+			&i.ContextRefs,
+			&i.Position,
+			&i.DueDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.ProjectID,
+			&i.OriginType,
+			&i.OriginID,
+			&i.FirstExecutedAt,
+			&i.StartDate,
+			&i.Metadata,
+			&i.Stage,
+			&i.Properties,
+			&i.Revision,
+			&i.LastActivityAt,
+			&i.TriageState,
+			&i.ModuleID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setIssueMetadataKey = `-- name: SetIssueMetadataKey :one
 
 UPDATE issue SET

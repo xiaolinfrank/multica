@@ -38,6 +38,10 @@ export type IssueTableDisplayRow =
       depth: number;
       hasChildren: boolean;
       collapsed: boolean;
+      /** The group this row was loaded under, so a drop anywhere inside a
+       *  group resolves to it without having to hit its header. Absent when
+       *  the table is not grouped. */
+      groupKey?: string | null;
     }
   // Stands in for a row that has not arrived yet. Cold loads render these in
   // the table's own grid rather than swapping the surface for a generic

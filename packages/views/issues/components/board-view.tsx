@@ -45,6 +45,9 @@ import type {
   IssueGroupBranches,
   IssueGroupPageState,
 } from "../surface/use-issue-group-branches";
+import { useModalStore } from "@multica/core/modals";
+import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
+import { moduleDetachIntent } from "../actions/module-detach-gate";
 import { useDragSettle } from "./use-drag-settle";
 import { useBoardDragPan } from "./use-board-drag-pan";
 import { useT } from "../../i18n";
@@ -164,7 +167,15 @@ function moduleColumn(
     projectId: module?.project_id ?? null,
     totalCount,
     createData: module
-      ? { project_id: module.project_id, module_id: module.id }
+      ? {
+          project_id: module.project_id,
+          module_id: module.id,
+          // Numbered modules number the work inside them, so the create
+          // opens on the module's own number.
+          ...(moduleTitleNumberPrefix(module.title)
+            ? { title: moduleTitleNumberPrefix(module.title) }
+            : {}),
+        }
       : undefined,
   };
 }
@@ -580,6 +591,8 @@ function BoardViewImpl({
 
   // --- Drag state ---
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
+  const openModal = useModalStore((state) => state.open);
+
   // Shared drag/settle primitive: owns the local column mirror, the
   // dragging/settling locks, the post-move animation-frame throttle, and the
   // settle callback. Shared with list-view (and swimlane) so the surfaces
@@ -733,6 +746,18 @@ function BoardViewImpl({
           }
           return;
         }
+        // A sub-issue is filed where its parent is, so a drop onto another
+        // module's column is asking to break that link. The card goes back
+        // where it came from and the dialog writes both changes together.
+        const detachAcross = moduleDetachIntent(
+          currentIssue,
+          getMoveUpdates(finalGroup, currentIssue.position, currentIssue),
+        );
+        if (detachAcross) {
+          resetColumns();
+          openModal("issue-module-detach-confirm", detachAcross);
+          return;
+        }
         // Optimistically move the card into the target column *now*. Without
         // this, the sortBy != "position" path never touches local columns on
         // drop, so onDragOver having been a no-op leaves the card in its origin
@@ -774,6 +799,18 @@ function BoardViewImpl({
         return;
       }
 
+      const detach =
+        currentIssue &&
+        moduleDetachIntent(
+          currentIssue,
+          getMoveUpdates(finalGroup, newPosition, currentIssue),
+        );
+      if (detach) {
+        resetColumns();
+        openModal("issue-module-detach-confirm", detach);
+        return;
+      }
+
       // beginSettle() holds the lock and returns the onSettled callback that
       // releases it and resyncs local columns from the cache: a no-op on
       // success (onSuccess already patched the moved card in place), the revert
@@ -789,7 +826,7 @@ function BoardViewImpl({
       );
       applyPropertyGroupValue(finalGroup, activeId);
     },
-    [groupedIssues, groups, grouping, groupingOptionIds, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, columnsRef, isDraggingRef, setColumns, applyPropertyGroupValue, catalog, t],
+    [groupedIssues, groups, grouping, groupingOptionIds, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, columnsRef, isDraggingRef, setColumns, applyPropertyGroupValue, catalog, openModal, t],
   );
 
   // An aborted drag (pointercancel, window resize, tab hide, Escape) fires

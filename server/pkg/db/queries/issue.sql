@@ -289,6 +289,42 @@ WHERE i.id = changed.id
   AND (sqlc.narg('expected_revision')::bigint IS NULL OR i.revision = sqlc.narg('expected_revision')::bigint)
 RETURNING i.*;
 
+-- name: RefileIssueSubtree :many
+-- Move every descendant of an issue into the project/module the issue itself
+-- was just filed into. A sub-issue always sits in its parent's module, so a
+-- parent that moves takes its whole subtree with it.
+--
+-- The tree carries no foreign keys, so the workspace bound is re-applied at
+-- every hop instead of being inherited from the root row, and the walk is
+-- depth-capped like the handler's cycle check — a cycle written before that
+-- guard existed must not spin here.
+--
+-- Rows already filed where they belong are excluded, so the returned set is
+-- exactly the rows that changed and is what the caller broadcasts.
+WITH RECURSIVE descendants AS (
+    SELECT i.id, 1 AS depth
+    FROM issue AS i
+    WHERE i.parent_issue_id = @parent_issue_id::uuid
+      AND i.workspace_id = @workspace_id::uuid
+  UNION ALL
+    SELECT i.id, d.depth + 1
+    FROM issue AS i
+    JOIN descendants AS d ON i.parent_issue_id = d.id
+    WHERE i.workspace_id = @workspace_id::uuid
+      AND d.depth < 10
+)
+UPDATE issue AS i SET
+    project_id = sqlc.narg('project_id')::uuid,
+    module_id = sqlc.narg('module_id')::uuid,
+    revision = i.revision + 1,
+    last_activity_at = GREATEST(COALESCE(i.last_activity_at, i.updated_at), now()),
+    updated_at = now()
+WHERE i.id IN (SELECT id FROM descendants)
+  AND i.workspace_id = @workspace_id::uuid
+  AND (i.project_id IS DISTINCT FROM sqlc.narg('project_id')::uuid
+    OR i.module_id IS DISTINCT FROM sqlc.narg('module_id')::uuid)
+RETURNING i.*;
+
 -- name: UpdateIssueStatus :one
 -- Workspace_id in the WHERE clause is a SQL-layer tenant guard; see DeleteIssue.
 -- Repositioning lives here rather than in the callers (GitHub sync, agent task

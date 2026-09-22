@@ -63,6 +63,14 @@
     "create_will_start_squad": "创建后 {{name}} 的队长会评估并开始安排任务。",
     "create_parked": "已指派——在 backlog 中不会开始工作。"
   },
+  "module_detach": {
+    "title": "移出父任务的模块？",
+    "description": "「{{title}}」是子任务，归属父任务所在的模块。移到别的模块会解除它与父任务的关系。",
+    "confirm": "移动并解除关系",
+    "cancel": "取消",
+    "submitting": "移动中…",
+    "toast_failed": "移动任务失败"
+  },
   "create_squad": {
     "title": "创建小队",
     "description": "创建一个由队长智能体协调团队的协作小队，可选添加成员。",

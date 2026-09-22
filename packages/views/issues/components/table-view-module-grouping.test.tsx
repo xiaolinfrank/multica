@@ -432,5 +432,36 @@ describe("Table grouped by module", () => {
         module_id: EMPTY_MOD_ID,
       });
     });
+
+    it("opens the title on a numbered module's own number", async () => {
+      moduleCatalog = [
+        makeModule(MOD_ID, "Parser rewrite", 0),
+        makeModule(EMPTY_MOD_ID, "01.01 采样流程", 1),
+      ];
+      const onCreateIssue = vi.fn();
+      render(projectQuery, onCreateIssue);
+      await screen.findByText("01.01 采样流程");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add issue to 01.01 采样流程" }),
+      );
+      expect(onCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT_ID,
+        module_id: EMPTY_MOD_ID,
+        title: "01.01",
+      });
+    });
+
+    it("leaves the title empty for a module that carries no number", async () => {
+      const onCreateIssue = vi.fn();
+      render(projectQuery, onCreateIssue);
+      await screen.findByText("Parser rewrite");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add issue to Parser rewrite" }),
+      );
+      expect(onCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT_ID,
+        module_id: MOD_ID,
+      });
+    });
   });
 });

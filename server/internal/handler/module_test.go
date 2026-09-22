@@ -363,7 +363,7 @@ func TestReorderModules(t *testing.T) {
 // ---- issue-side module behaviors -------------------------------------------
 
 func TestCreateIssueModuleScoping(t *testing.T) {
-	projectID, moduleA, _ := moduleTestSeed(t)
+	projectID, moduleA, moduleB := moduleTestSeed(t)
 	otherProject := dbfx.Project(t, "Module other project")
 	foreignWS := dbfx.Workspace(t, "Issue module foreign ws", "issue-module-foreign-"+moduleSuffix(), nil)
 	foreignModule := dbfx.Insert(t, "module", testutil.Cols{
@@ -406,7 +406,8 @@ func TestCreateIssueModuleScoping(t *testing.T) {
 		t.Fatalf("expected 400 boundary error, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Sub-issues inherit the parent's project but NOT its module.
+	// Sub-issues inherit the parent's project AND its module: a child is filed
+	// where its parent is filed.
 	parentID := created.ID
 	var child IssueResponse
 	testutil.Call(t, testHandler.CreateIssue, newRequest(http.MethodPost, "/api/issues", map[string]any{
@@ -416,8 +417,114 @@ func TestCreateIssueModuleScoping(t *testing.T) {
 	if child.ProjectID == nil || *child.ProjectID != projectID {
 		t.Fatalf("child project = %v, want %s", child.ProjectID, projectID)
 	}
-	if child.ModuleID != nil {
-		t.Fatalf("child module = %v, want nil (sub-issues never inherit the module)", child.ModuleID)
+	if child.ModuleID == nil || *child.ModuleID != moduleA {
+		t.Fatalf("child module = %v, want inherited %s", child.ModuleID, moduleA)
+	}
+
+	// Naming the parent's own module is the same outcome, not a conflict.
+	var sameModuleChild IssueResponse
+	testutil.Call(t, testHandler.CreateIssue, newRequest(http.MethodPost, "/api/issues", map[string]any{
+		"title":           "Child pinned to the parent's module",
+		"parent_issue_id": parentID,
+		"module_id":       moduleA,
+	})).Want(http.StatusCreated).JSON(&sameModuleChild)
+	if sameModuleChild.ModuleID == nil || *sameModuleChild.ModuleID != moduleA {
+		t.Fatalf("child module = %v, want %s", sameModuleChild.ModuleID, moduleA)
+	}
+
+	// A different module under the same parent cannot be created at all.
+	w = httptest.NewRecorder()
+	testHandler.CreateIssue(w, newRequest(http.MethodPost, "/api/issues", map[string]any{
+		"title":           "Child in another module",
+		"parent_issue_id": parentID,
+		"module_id":       moduleB,
+	}))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), errCodeChildModuleMismatch) {
+		t.Fatalf("expected 400 %s, got %d: %s", errCodeChildModuleMismatch, w.Code, w.Body.String())
+	}
+}
+
+// TestSubIssueFollowsParentModule covers the rule that a sub-issue's module is
+// its parent's: the subtree travels when the parent moves, and re-filing a
+// child on its own is refused unless the same write detaches it.
+func TestSubIssueFollowsParentModule(t *testing.T) {
+	projectID, moduleA, moduleB := moduleTestSeed(t)
+	parentID := dbfx.Issue(t, "Parent in module A", testutil.Cols{
+		"project_id": projectID,
+		"module_id":  moduleA,
+	})
+	childID := dbfx.Issue(t, "Child in module A", testutil.Cols{
+		"project_id":      projectID,
+		"module_id":       moduleA,
+		"parent_issue_id": parentID,
+	})
+	grandchildID := dbfx.Issue(t, "Grandchild in module A", testutil.Cols{
+		"project_id":      projectID,
+		"module_id":       moduleA,
+		"parent_issue_id": childID,
+	})
+
+	storedModule := func(id string) string {
+		t.Helper()
+		var moduleID string
+		dbfx.QueryRow(t, `SELECT COALESCE(module_id::text, '') FROM issue WHERE id = $1`, id).Scan(&moduleID)
+		return moduleID
+	}
+
+	// Moving the parent carries the whole subtree, not just its direct children.
+	testutil.Call(t, testHandler.UpdateIssue, withURLParam(
+		newRequest(http.MethodPut, "/api/issues/"+parentID, map[string]any{"module_id": moduleB}), "id", parentID)).
+		Want(http.StatusOK).JSON(&IssueResponse{})
+	if got := storedModule(childID); got != moduleB {
+		t.Fatalf("child module = %q, want %s", got, moduleB)
+	}
+	if got := storedModule(grandchildID); got != moduleB {
+		t.Fatalf("grandchild module = %q, want %s", got, moduleB)
+	}
+
+	// The child cannot be re-filed on its own.
+	w := httptest.NewRecorder()
+	testHandler.UpdateIssue(w, withURLParam(
+		newRequest(http.MethodPut, "/api/issues/"+childID, map[string]any{"module_id": moduleA}), "id", childID))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), errCodeChildModuleMismatch) {
+		t.Fatalf("expected 400 %s, got %d: %s", errCodeChildModuleMismatch, w.Code, w.Body.String())
+	}
+	if got := storedModule(childID); got != moduleB {
+		t.Fatalf("refused move must leave the child put, got %q", got)
+	}
+
+	// Unrelated edits on a sub-issue stay unaffected by the rule.
+	testutil.Call(t, testHandler.UpdateIssue, withURLParam(
+		newRequest(http.MethodPut, "/api/issues/"+childID, map[string]any{"priority": "high"}), "id", childID)).
+		Want(http.StatusOK).JSON(&IssueResponse{})
+
+	// Detaching in the same write is the way through, and it takes the
+	// grandchild with it — the child is now a parent filed in module A.
+	var detached IssueResponse
+	testutil.Call(t, testHandler.UpdateIssue, withURLParam(
+		newRequest(http.MethodPut, "/api/issues/"+childID, map[string]any{
+			"module_id":       moduleA,
+			"parent_issue_id": nil,
+		}), "id", childID)).Want(http.StatusOK).JSON(&detached)
+	if detached.ParentIssueID != nil {
+		t.Fatalf("parent = %v, want detached", detached.ParentIssueID)
+	}
+	if detached.ModuleID == nil || *detached.ModuleID != moduleA {
+		t.Fatalf("detached module = %v, want %s", detached.ModuleID, moduleA)
+	}
+	if got := storedModule(grandchildID); got != moduleA {
+		t.Fatalf("grandchild module = %q, want %s", got, moduleA)
+	}
+
+	// Attaching an issue to a parent re-files it under that parent.
+	adopteeID := dbfx.Issue(t, "Adoptee with no module", testutil.Cols{"project_id": projectID})
+	var adopted IssueResponse
+	testutil.Call(t, testHandler.UpdateIssue, withURLParam(
+		newRequest(http.MethodPut, "/api/issues/"+adopteeID, map[string]any{
+			"parent_issue_id": parentID,
+		}), "id", adopteeID)).Want(http.StatusOK).JSON(&adopted)
+	if adopted.ModuleID == nil || *adopted.ModuleID != moduleB {
+		t.Fatalf("adopted module = %v, want the parent's %s", adopted.ModuleID, moduleB)
 	}
 }
 

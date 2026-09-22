@@ -50,7 +50,14 @@ interface DataTableProps<TData> extends React.ComponentProps<"div"> {
   onRowClick?: (row: Row<TData>, event: React.MouseEvent) => void;
   // Optional escape hatch for semantic rows such as collapsible group
   // headers. Return null/undefined to use the standard data row renderer.
-  renderRow?: (row: Row<TData>) => React.ReactNode;
+  // `renderDefault` builds that standard row on demand, so a caller can wrap
+  // it — to make the row draggable, say — without restating how its cells are
+  // rendered. It is a function, not a prebuilt element, so rows that replace
+  // the default entirely never pay for building it.
+  renderRow?: (
+    row: Row<TData>,
+    renderDefault: () => React.ReactElement,
+  ) => React.ReactNode;
   // A caller-supplied <tfoot> (summary / quick-create rows, for example).
   footer?: React.ReactNode;
   // Render only the visible row window for large tables. Callers should use
@@ -575,7 +582,10 @@ interface DataTableBodyProps<TData> {
   rows: Row<TData>[];
   emptyMessage: React.ReactNode;
   onRowClick?: (row: Row<TData>, event: React.MouseEvent) => void;
-  renderRow?: (row: Row<TData>) => React.ReactNode;
+  renderRow?: (
+    row: Row<TData>,
+    renderDefault: () => React.ReactElement,
+  ) => React.ReactNode;
   hasExplicitSize: (columnId: string) => boolean;
   // The virtualizer's own measuring ref; rows report their height through it.
   measureRow: (element: HTMLElement | null) => void;
@@ -600,27 +610,17 @@ function DataTableBody<TData>({
 }: DataTableBodyProps<TData>) {
   const renderDataRow = (row: Row<TData>, index?: number) => {
     // The virtualizer reads an element's own height off `data-index`, so a row
-    // has to be tagged and handed the measuring ref. renderRow returns a <tr>
-    // the caller built; cloning is how it joins in without every caller having
-    // to thread the two through.
+    // has to be tagged and handed the measuring ref. Cloning is how those two
+    // join whatever came back — the default row, a <tr> the caller built, or
+    // the default row wrapped by one — without every caller threading them
+    // through by hand.
     const measured =
       index === undefined
         ? {}
         : { "data-index": index, ref: measureRow };
 
-    const customRow = renderRow?.(row);
-    if (customRow != null) {
-      return React.isValidElement(customRow) && index !== undefined
-        ? React.cloneElement(
-            customRow as React.ReactElement<Record<string, unknown>>,
-            { key: row.id, ...measured },
-          )
-        : <React.Fragment key={row.id}>{customRow}</React.Fragment>;
-    }
-    return (
+    const renderDefault = () => (
       <TableRow
-        key={row.id}
-        {...measured}
         data-state={row.getIsSelected() && "selected"}
         onClick={
           onRowClick
@@ -673,6 +673,14 @@ function DataTableBody<TData>({
         })}
       </TableRow>
     );
+
+    const finalRow = renderRow?.(row, renderDefault) ?? renderDefault();
+    return React.isValidElement(finalRow)
+      ? React.cloneElement(
+          finalRow as React.ReactElement<Record<string, unknown>>,
+          { key: row.id, ...measured },
+        )
+      : <React.Fragment key={row.id}>{finalRow}</React.Fragment>;
   };
 
   const renderVirtualSpacer = (position: "top" | "bottom", height: number) =>

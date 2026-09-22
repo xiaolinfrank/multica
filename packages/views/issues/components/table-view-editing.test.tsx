@@ -400,7 +400,7 @@ describe("TableView cell editors under data refresh", () => {
     expect(identifiers()).toEqual(["MUL-b", "MUL-a"]);
   }, 60_000);
 
-  it("opens creation with the row as parent and inherits its project", async () => {
+  it("opens creation with the row as parent and inherits its filing", async () => {
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     const onCreateIssue = vi.fn();
     const issue = {
@@ -427,6 +427,7 @@ describe("TableView cell editors under data refresh", () => {
     expect(onCreateIssue).toHaveBeenCalledWith({
       parent_issue_id: "a",
       parent_issue_identifier: "MUL-a",
+      module_id: null,
       project_id: "project-1",
     });
   });

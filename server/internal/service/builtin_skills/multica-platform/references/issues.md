@@ -175,6 +175,21 @@ project, so the two fields move together:
 - Modules themselves are created and edited with `multica module` — see
   [projects.md](projects.md#modules).
 
+A sub-issue is filed where its parent is filed, and the server holds the pair
+to it:
+
+- Creating an issue under a parent inherits the parent's project **and** its
+  module. Naming a different module (or a project that puts it in one) fails
+  with 400 `child_module_mismatch`.
+- Moving an issue that has a parent — `module_id`, or a `project_id` that
+  re-files it — fails the same way, unless the same request also sends
+  `parent_issue_id: null`. That pair is how the UI's confirmation applies a
+  move the user insisted on: it detaches and moves in one write.
+- Moving a parent carries its whole subtree, to a depth of 10. Each descendant
+  that actually changed is broadcast as its own `issue:updated`.
+- Attaching an existing issue to a parent (`parent_issue_id: <id>` with no
+  project or module in the same request) re-files it under that parent.
+
 Issue queries filter with `module_id` (single) or `module_ids` (any of),
 plus `include_no_module=true` for issues filed directly under their
 project. These compile to one OR predicate, so `module_id` together with

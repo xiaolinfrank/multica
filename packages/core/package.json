@@ -100,6 +100,7 @@
     "./modules": "./modules/index.ts",
     "./modules/queries": "./modules/queries.ts",
     "./modules/mutations": "./modules/mutations.ts",
+    "./modules/title-number": "./modules/title-number.ts",
     "./plugins": "./plugins/index.ts",
     "./plugins/queries": "./plugins/queries.ts",
     "./plugins/mutations": "./plugins/mutations.ts",

@@ -63,6 +63,14 @@
     "create_will_start_squad": "Le chef de {{name}} l'examinera et commencera à répartir le travail juste après la création.",
     "create_parked": "Assigné — ne démarrera pas tant que la tâche est dans À planifier."
   },
+  "module_detach": {
+    "title": "Sortir du module du parent ?",
+    "description": "« {{title}} » est une sous-tâche, donc classée dans le module de son parent. La déplacer ailleurs la détache de ce parent.",
+    "confirm": "Déplacer et détacher",
+    "cancel": "Annuler",
+    "submitting": "Déplacement…",
+    "toast_failed": "Échec du déplacement de la tâche"
+  },
   "create_squad": {
     "title": "Créer un squad",
     "description": "Créez un squad collaboratif avec un agent chef et, éventuellement, des membres supplémentaires.",

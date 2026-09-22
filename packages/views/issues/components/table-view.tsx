@@ -11,15 +11,15 @@ import {
 } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
-  PointerSensor,
-  closestCenter,
   useDndContext,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -92,6 +92,7 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyListOptions } from "@multica/core/properties";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buildActorNameResolver, useActorName } from "@multica/core/workspace/hooks";
@@ -125,6 +126,19 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { runConfirmIntent } from "../actions/run-confirm-gate";
+import { moduleDetachIntent } from "../actions/module-detach-gate";
+import {
+  DraggableIssueRow,
+  DroppableGroupRow,
+  ROW_DRAG_TYPE,
+  ROW_DROP_TYPE,
+  TableDragSensor,
+  moduleDropUpdates,
+  restrictColumnDragToHorizontalAxis,
+  tableCollisionDetection,
+  type IssueRowDragData,
+  type ModuleDropData,
+} from "./table-row-drag";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { LabelChip } from "../../labels/label-chip";
 import { resolveClickIntent, useIntentNavigate } from "../../navigation";
@@ -875,13 +889,16 @@ export function IssueTableGroupRow({
   colSpan,
   onToggle,
   onCreate,
+  className,
   ...rowProps
 }: IssueTableGroupRowProps) {
   const { t } = useT("issues");
   return (
     <TableRow
       {...rowProps}
-      className="group/table-group bg-muted/40 hover:bg-muted/60"
+      // Merged, not replaced: a drop target wraps this row and marks it by
+      // adding a class.
+      className={cn("group/table-group bg-muted/40 hover:bg-muted/60", className)}
       onClick={onToggle}
     >
       <TableCell colSpan={colSpan} className="h-9 px-4 py-1.5">
@@ -1497,6 +1514,21 @@ export function TableView({
     () => serverGroupsData?.pages.flatMap((page) => page.groups) ?? [],
     [serverGroupsData?.pages],
   );
+  // Dropping a row under another module is only a move the user means when the
+  // headers stand for modules; every other grouping shows a value the row
+  // carries, which the cell editors own.
+  const moduleDragEnabled =
+    usesServerGrouping && serverGroupSpec.kind === "module";
+  const moduleByGroupKey = useMemo(() => {
+    const map = new Map<string, string | null>();
+    if (!moduleDragEnabled) return map;
+    for (const group of serverGroups) {
+      if (group.value.kind === "module") {
+        map.set(group.key, group.value.module_id ?? null);
+      }
+    }
+    return map;
+  }, [moduleDragEnabled, serverGroups]);
   const serverIdentity = useMemo(
     () => JSON.stringify([serverQuery, serverGroupSpec, tableHierarchy]),
     [serverGroupSpec, serverQuery, tableHierarchy],
@@ -1961,6 +1993,7 @@ export function TableView({
           depth,
           hasChildren: tableHierarchy && row.direct_child_count > 0,
           collapsed,
+          groupKey,
         });
         if (tableHierarchy && row.direct_child_count > 0 && !collapsed) {
           appendBranch(groupKey, row.issue.id, depth + 1, [
@@ -2223,6 +2256,14 @@ export function TableView({
   // starts a run, and must confirm rather than fire from one click (MUL-6463).
   const updateIssue = useCallback(
     (issue: Issue, updates: Partial<UpdateIssueRequest>) => {
+      // A sub-issue cannot be re-filed without losing its parent, so the module
+      // column confirms that trade before writing — same gate the picker in the
+      // issue detail routes on.
+      const detach = moduleDetachIntent(issue, updates);
+      if (detach) {
+        openModal("issue-module-detach-confirm", detach);
+        return;
+      }
       const intent = runConfirmIntent(issue, updates, { entryOf });
       if (intent) {
         openModal("issue-run-confirm", intent);
@@ -2253,6 +2294,9 @@ export function TableView({
         parent_issue_id: issue.id,
         parent_issue_identifier: issue.identifier,
         ...(issue.project_id ? { project_id: issue.project_id } : {}),
+        // A sub-issue is filed where its parent is, so the dialog opens on the
+        // parent's module instead of on none.
+        module_id: issue.module_id ?? null,
       }),
     [onCreateIssue],
   );
@@ -2264,15 +2308,22 @@ export function TableView({
     (group: Extract<IssueTableDisplayRow, { kind: "group" }>) => {
       const value = group.value;
       if (value?.kind !== "module") return undefined;
+      const moduleId = value.module_id ?? null;
+      // Numbered modules number the work inside them, so the title opens on
+      // the module's own number and the user continues from there.
+      const prefix = moduleId
+        ? moduleTitleNumberPrefix(groupModuleMap.get(moduleId)?.title ?? "")
+        : "";
       return () =>
         onCreateIssue({
           ...(serverQuery.scope.kind === "project"
             ? { project_id: serverQuery.scope.project_id }
             : {}),
-          module_id: value.module_id ?? null,
+          module_id: moduleId,
+          ...(prefix ? { title: prefix } : {}),
         });
     },
-    [onCreateIssue, serverQuery.scope],
+    [groupModuleMap, onCreateIssue, serverQuery.scope],
   );
 
   const onSort = useCallback(
@@ -2377,16 +2428,81 @@ export function TableView({
   });
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TableDragSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  // The row under the pointer, so the overlay can carry its title. Also the
+  // flag the context reads to hand vertical auto-scrolling back for the length
+  // of a row drag — the header drag switched it off, because a header that
+  // drifts a few pixels off its strip must not send the rows scrolling.
+  const [draggingRowIssue, setDraggingRowIssue] = useState<Issue | null>(null);
+  // The group a drop would land in right now, so its header can say so. Set
+  // from the context's own onDragOver — the headers are rendered by this
+  // component, so there is no monitor to read it from inside.
+  const [overGroupKey, setOverGroupKey] = useState<string | null>(null);
+  // A pointer-up that lands back on the row it started from still produces a
+  // click, and the table's rows open the issue on click. Recorded at the end
+  // of a drag so that click can be recognised as its tail rather than a new
+  // one; a real click is never this close behind a drag.
+  const rowDragEndedAtRef = useRef(0);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current as IssueRowDragData | undefined;
+    if (data?.type === ROW_DRAG_TYPE) setDraggingRowIssue(data.issue);
+  }, []);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const dragged = event.active.data.current as IssueRowDragData | undefined;
+    if (dragged?.type !== ROW_DRAG_TYPE) return;
+    const target = event.over?.data.current as ModuleDropData | undefined;
+    const groupKey =
+      target?.type === ROW_DROP_TYPE && target.groupKey ? target.groupKey : null;
+    // The group the row came from is not a destination, so its header does not
+    // light up while the row is still hovering over its own neighbours.
+    setOverGroupKey(groupKey === dragged.groupKey ? null : groupKey);
+  }, []);
+
+  // Filing a row by drag is the same write the module cell's picker makes, so
+  // it goes through the same gate: the sub-issue confirmation, then the run
+  // confirmation, then the update.
+  const moveIssueToGroup = useCallback(
+    (issue: Issue, groupKey: string) => {
+      if (!moduleByGroupKey.has(groupKey)) return;
+      const targetModuleId = moduleByGroupKey.get(groupKey) ?? null;
+      const updates = moduleDropUpdates(
+        issue,
+        targetModuleId,
+        targetModuleId ? groupModuleMap.get(targetModuleId) : undefined,
+      );
+      if (updates) updateIssue(issue, updates);
+    },
+    [groupModuleMap, moduleByGroupKey, updateIssue],
+  );
+
   const handleDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
+      const dragged = active.data.current as IssueRowDragData | undefined;
+      if (dragged?.type === ROW_DRAG_TYPE) {
+        setDraggingRowIssue(null);
+        setOverGroupKey(null);
+        rowDragEndedAtRef.current = performance.now();
+        const target = over?.data.current as ModuleDropData | undefined;
+        if (target?.type !== ROW_DROP_TYPE) return;
+        if (target.groupKey === dragged.groupKey) return;
+        moveIssueToGroup(dragged.issue, target.groupKey);
+        return;
+      }
       if (!over || active.id === over.id) return;
       reorderTableColumn(active.id as TableColumnKey, over.id as TableColumnKey);
     },
-    [reorderTableColumn],
+    [moveIssueToGroup, reorderTableColumn],
   );
+
+  const handleDragCancel = useCallback(() => {
+    setDraggingRowIssue(null);
+    setOverGroupKey(null);
+    rowDragEndedAtRef.current = performance.now();
+  }, []);
 
   const handleExport = async (mode: "all" | "selected") => {
     setExporting(mode);
@@ -2580,20 +2696,29 @@ export function TableView({
       </div>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        // One context for both gestures — a nested one would capture the
+        // header handles, which resolve their sortable through the nearest
+        // provider. Each of these three reads the active drag's type and
+        // answers for that gesture alone.
+        collisionDetection={tableCollisionDetection}
         // Columns only ever swap sideways, so the header should not follow the
         // pointer up out of its own strip — same constraint the desktop tab bar
-        // puts on tab reordering.
-        modifiers={[restrictToHorizontalAxis]}
+        // puts on tab reordering. A row travels the other way and keeps both
+        // axes.
+        modifiers={[restrictColumnDragToHorizontalAxis]}
         // Modifiers constrain the drag's movement but not its auto-scrolling,
         // which reads raw pointer coordinates: drifting a few pixels vertically
         // while dragging a header sent the rows scrolling underneath it. Zero
         // on y removes an axis the gesture cannot act on. On x it stays, since
         // a table wider than its viewport needs it to reach a distant slot, but
         // the default 0.2 arms it a fifth of the way in from either edge, which
-        // is most of a wide header.
-        autoScroll={{ threshold: { x: 0.05, y: 0 } }}
+        // is most of a wide header. A row drag needs y back: the group it is
+        // heading for is usually off screen.
+        autoScroll={{ threshold: { x: 0.05, y: draggingRowIssue ? 0.15 : 0 } }}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
         <SortableContext
           items={visibleColumnConfigs.map((column) => column.key)}
@@ -2604,20 +2729,48 @@ export function TableView({
             virtualizeRows
             emptyMessage={t(($) => $.table.empty)}
             onRowClick={(row, event) => {
+              // The click that ends a drag on the row it started from is the
+              // tail of that gesture, not a request to open the issue.
+              if (performance.now() - rowDragEndedAtRef.current < 250) return;
               if (row.original.kind === "issue") {
                 openIssue(row.original.issue, event);
               }
             }}
-            renderRow={(row) => {
+            renderRow={(row, renderDefault) => {
               if (row.original.kind === "group") {
                 const groupRow = row.original;
-                return (
+                const header = (
                   <IssueTableGroupRow
                     group={groupRow}
                     colSpan={table.getVisibleLeafColumns().length}
                     onToggle={() => toggleTableGroupCollapsed(groupRow.key)}
                     onCreate={createInGroup(groupRow)}
                   />
+                );
+                return moduleDragEnabled ? (
+                  <DroppableGroupRow
+                    groupKey={groupRow.key}
+                    isDropTarget={overGroupKey === groupRow.key}
+                  >
+                    {header}
+                  </DroppableGroupRow>
+                ) : (
+                  header
+                );
+              }
+              if (row.original.kind === "issue" && moduleDragEnabled) {
+                const issueRow = row.original;
+                return (
+                  <DraggableIssueRow
+                    id={issueRow.issue.id}
+                    data={{
+                      type: ROW_DRAG_TYPE,
+                      issue: issueRow.issue,
+                      groupKey: issueRow.groupKey ?? null,
+                    }}
+                  >
+                    {renderDefault()}
+                  </DraggableIssueRow>
                 );
               }
               if (row.original.kind === "load_more") {
@@ -2656,6 +2809,15 @@ export function TableView({
             className="min-h-0 flex-1"
           />
         </SortableContext>
+        {/* A row lifted out of a table has no shape of its own to travel in,
+            so the pointer carries a chip naming what is in hand. */}
+        <DragOverlay dropAnimation={null}>
+          {draggingRowIssue ? (
+            <div className="pointer-events-none max-w-80 truncate rounded-md border bg-background px-3 py-1.5 text-caption shadow-md">
+              {draggingRowIssue.title}
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

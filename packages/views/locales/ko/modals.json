@@ -63,6 +63,14 @@
     "create_will_start_squad": "생성 후 {{name}}의 리더가 내용을 평가한 뒤 작업 배분을 시작합니다.",
     "create_parked": "할당됨 — 백로그에서는 작업을 시작하지 않습니다."
   },
+  "module_detach": {
+    "title": "상위 이슈의 모듈에서 옮길까요?",
+    "description": "'{{title}}'은(는) 하위 이슈이므로 상위 이슈와 같은 모듈에 속합니다. 다른 모듈로 옮기면 상위 이슈와의 관계가 해제됩니다.",
+    "confirm": "옮기고 관계 해제",
+    "cancel": "취소",
+    "submitting": "옮기는 중…",
+    "toast_failed": "이슈를 옮기지 못했습니다"
+  },
   "create_squad": {
     "title": "스쿼드 만들기",
     "description": "리더 에이전트와 선택 멤버로 협업 스쿼드를 만듭니다.",

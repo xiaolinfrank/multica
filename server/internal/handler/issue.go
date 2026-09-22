@@ -3298,6 +3298,11 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "module does not belong to project")
 		return
 	}
+	if errors.Is(err, service.ErrChildModuleMismatch) {
+		writeErrorCode(w, http.StatusBadRequest, errCodeChildModuleMismatch,
+			"a sub-issue must stay in its parent's module")
+		return
+	}
 	if errors.Is(err, service.ErrIssueLabelNotFound) {
 		writeError(w, http.StatusBadRequest, "one or more labels not found in this workspace")
 		return
@@ -3807,6 +3812,14 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		params.ModuleID = pgtype.UUID{Valid: false}
 	}
 
+	// A sub-issue is filed where its parent is filed. Checked on the RESOLVED
+	// params so the project-move clear above is included, and only for a write
+	// that actually moves the issue or hands it a new parent.
+	if status, code, msg := h.applyIssueParentFiling(r.Context(), &params, prevIssue, rawFields); status != 0 {
+		writeErrorCode(w, status, code, msg)
+		return
+	}
+
 	// Validate the resulting (assignee_type, assignee_id) pair when the caller
 	// touches either field. Existing data on the issue is left alone if the
 	// caller is not changing it.
@@ -3927,6 +3940,12 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			"issue_id":       uuidToString(issue.ID),
 			"issue_revision": issue.Revision,
 		})
+	}
+	// Sub-issues follow their parent, so a filing change carries the subtree.
+	// After the issue's own event, which is the snapshot clients reconcile the
+	// children against.
+	if issueFilingChanged(prevIssue, issue) {
+		h.refileIssueSubtree(r.Context(), issue, workspaceID, actorType, actorID)
 	}
 
 	// Reconcile the task queue. Whether this write starts an agent run — and
@@ -4606,6 +4625,14 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			// their modules.
 			params.ModuleID = pgtype.UUID{Valid: false}
 		}
+		// Same sub-issue rule as the single update: a child stays filed where
+		// its parent is. Rejected for the whole batch rather than skipped for
+		// one issue, like the module/project guard above — a caller moving a
+		// set into one module means all of them.
+		if status, code, msg := h.applyIssueParentFiling(r.Context(), &params, prevIssue, rawUpdates); status != 0 {
+			writeErrorCode(w, status, code, msg)
+			return
+		}
 		if _, ok := rawUpdates["stage"]; ok {
 			if req.Updates.Stage != nil {
 				if *req.Updates.Stage < 1 {
@@ -4684,6 +4711,12 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			"project_changed":  projectChanged,
 			"module_changed":   moduleChanged,
 		})
+		// Sub-issues follow their parent here too. A batch that moves a parent
+		// and one of its children in the same request settles on the same
+		// destination either way, since both are filed where the batch says.
+		if issueFilingChanged(prevIssue, issue) {
+			h.refileIssueSubtree(r.Context(), issue, workspaceID, actorType, actorID)
+		}
 
 		// Reassignment does not cancel existing tasks (#4963 / MUL-4113) —
 		// mirrors UpdateIssue. See that handler for the rationale.

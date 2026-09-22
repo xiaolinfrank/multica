@@ -73,8 +73,9 @@ type IssueCreateParams struct {
 	// ModuleID files the new issue into one of the project's modules. A
 	// module names its own project: when ProjectID is absent the module's
 	// project is adopted, and when the two disagree the create fails with
-	// ErrModuleNotInProject. Sub-issues inherit the parent's project but
-	// never its module.
+	// ErrModuleNotInProject. Sub-issues inherit the parent's project AND its
+	// module; a module that disagrees with the parent's fails with
+	// ErrChildModuleMismatch.
 	ModuleID   pgtype.UUID
 	StartDate  pgtype.Date
 	DueDate       pgtype.Date
@@ -168,6 +169,13 @@ var ErrModuleNotFound = errors.New("module not found in this workspace")
 // project other than the issue's resolved project. Callers translate this
 // into 400.
 var ErrModuleNotInProject = errors.New("module does not belong to project")
+
+// ErrChildModuleMismatch signals that the new issue would sit in a different
+// module than the parent it is being filed under. A sub-issue always shares
+// its parent's module, so the pair cannot be created: the caller either drops
+// the module and inherits, or drops the parent. Callers translate this into
+// 400.
+var ErrChildModuleMismatch = errors.New("a sub-issue must stay in its parent's module")
 
 // ErrIssueLabelNotFound signals that one of the supplied LabelIDs does not
 // exist in the issue's workspace or is not an issue-scoped label. The whole
@@ -289,6 +297,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	// WorkspaceID — there is no path from this service to a row in a
 	// foreign workspace.
 	projectID := p.ProjectID
+	moduleID := p.ModuleID
+	parentModuleID := pgtype.UUID{}
+	hasParent := false
 	if p.ParentIssueID.Valid {
 		parent, err := qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
 			ID:          p.ParentIssueID,
@@ -297,18 +308,27 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		if err != nil || !parent.ID.Valid {
 			return IssueCreateResult{}, ErrParentIssueNotFound
 		}
+		hasParent = true
+		parentModuleID = parent.ModuleID
 		// Back-fill project from parent when the caller did not pin
 		// one explicitly. Matches the long-standing HTTP behavior: a
 		// sub-issue inherits its parent's project unless overridden.
 		if !projectID.Valid {
 			projectID = parent.ProjectID
 		}
+		// And its module with it: a sub-issue is filed where its parent is
+		// filed. Only when the child stays in the parent's project — a caller
+		// that pinned a different project has already moved the child out of
+		// the parent's module, and the mismatch check below is what refuses
+		// that rather than a module/project pair that cannot validate.
+		if !moduleID.Valid && projectID == parent.ProjectID {
+			moduleID = parent.ModuleID
+		}
 	}
 	// A module must live in the issue's project. A create that names a
 	// project adopts the module's project when it omitted one, and is
 	// rejected when the two disagree — the same one-place boundary the
 	// project check below enforces.
-	moduleID := p.ModuleID
 	if moduleID.Valid {
 		module, err := qtx.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
 			ID:          moduleID,
@@ -324,6 +344,12 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		} else {
 			projectID = module.ProjectID
 		}
+	}
+	// The sub-issue invariant, checked once on the RESOLVED module so every
+	// way of reaching a mismatch — an explicit module, or a project pin that
+	// suppressed the inheritance above — lands on the same refusal.
+	if hasParent && moduleID != parentModuleID {
+		return IssueCreateResult{}, ErrChildModuleMismatch
 	}
 	if projectID.Valid {
 		if _, err := qtx.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{

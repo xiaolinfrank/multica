@@ -16,6 +16,7 @@ import { copyText } from "@multica/ui/lib/clipboard";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { runConfirmIntent } from "./run-confirm-gate";
+import { moduleDetachIntent } from "./module-detach-gate";
 import { useExportIssue } from "../hooks/use-export-issue";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import type { IssueSurfaceMutationOptions } from "../surface/actions-context";
@@ -73,6 +74,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
   const issueId = issue?.id ?? null;
   const issueIdentifier = issue?.identifier ?? null;
   const issueProjectId = issue?.project_id ?? null;
+  const issueModuleId = issue?.module_id ?? null;
   const issueAssigneeType = issue?.assignee_type ?? null;
   const issueAssigneeId = issue?.assignee_id ?? null;
   const { entryOf } = useIssueStatuses(wsId);
@@ -82,6 +84,16 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
       options?: IssueSurfaceMutationOptions,
     ) => {
       if (!issueId) return;
+      // Re-filing a sub-issue is really two changes: the move, and the loss of
+      // the parent link the module was standing in for. The server refuses the
+      // pair, so the dialog is where the second one is agreed to — and it
+      // sends both together. Checked before the run gate: they touch disjoint
+      // fields, and this one decides whether the write can happen at all.
+      const detach = issue && moduleDetachIntent(issue, updates);
+      if (detach) {
+        openModal("issue-module-detach-confirm", detach);
+        return;
+      }
       // The two writes that can hand work to an agent — giving it an owner, and
       // promoting it out of the parking lot — confirm first, through the shared
       // gate every single-issue entry point routes on (runConfirmIntent). The
@@ -179,6 +191,9 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
       parent_issue_id: issueId,
       parent_issue_identifier: issueIdentifier,
       ...(issueProjectId ? { project_id: issueProjectId } : {}),
+      // And the parent's module with it: a sub-issue is filed where its parent
+      // is, so the dialog opens on that module rather than on none.
+      module_id: issueModuleId,
       // Inherit the parent's assignee (member/agent/squad) so a sub-issue
       // created from the "Add sub-issue" entry starts with the same owner
       // (discussion #1728). The modal keys off whether these fields are
@@ -195,6 +210,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
     issueId,
     issueIdentifier,
     issueProjectId,
+    issueModuleId,
     issueAssigneeType,
     issueAssigneeId,
   ]);

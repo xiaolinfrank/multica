@@ -12,6 +12,7 @@ import { useAuthStore } from "@multica/core/auth";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import { useModalStore } from "@multica/core/modals";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { useUpdateProject, useDeleteProject } from "@multica/core/projects/mutations";
 import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
@@ -593,7 +594,19 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 onClick={() =>
                   openCreateIssueWithPreference({
                     project_id: projectId,
-                    ...(activeModuleRecord && { module_id: activeModuleRecord.id }),
+                    ...(activeModuleRecord && {
+                      module_id: activeModuleRecord.id,
+                      // Numbered modules number the work inside them, so a
+                      // create while the strip is narrowed to one opens on
+                      // that module's own number.
+                      ...(moduleTitleNumberPrefix(activeModuleRecord.title)
+                        ? {
+                            title: moduleTitleNumberPrefix(
+                              activeModuleRecord.title,
+                            ),
+                          }
+                        : {}),
+                    }),
                   })
                 }
               >
