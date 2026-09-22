@@ -251,7 +251,7 @@ describe("the meeting register", () => {
   it("lists the board's meetings with their number, span and links", async () => {
     await openRegister();
 
-    const row = (await screen.findByText("20260921-01")).closest("tr")!;
+    const row = (await screen.findByText(`${codeDay()}-01`)).closest("tr")!;
     expect(within(row).getByText(/10:00–11:00/)).toBeInTheDocument();
     expect(within(row).getByText("Fosun Pharma、BGI")).toBeInTheDocument();
     // One issue and one work item are two links, counted together.
@@ -261,7 +261,7 @@ describe("the meeting register", () => {
 
   it("switches between the four views without losing the board", async () => {
     await openRegister();
-    await screen.findByText("20260921-01");
+    await screen.findByText(`${codeDay()}-01`);
 
     for (const view of ["Month", "Week", "Agenda"]) {
       fireEvent.click(screen.getByRole("button", { name: view, pressed: false }));
