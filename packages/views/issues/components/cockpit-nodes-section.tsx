@@ -130,7 +130,7 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
                     <AppLink
                       href={paths.cockpit()}
                       newTabTitle={label}
-                      className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground"
+                      className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground hover:underline"
                     >
                       <span className="font-mono text-muted-foreground">{code}</span> {node.name}
                     </AppLink>

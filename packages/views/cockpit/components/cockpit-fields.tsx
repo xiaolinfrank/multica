@@ -19,6 +19,15 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Check, Plus, X } from "lucide-react";
 import { useT } from "../../i18n";
 
+/**
+ * The idle face of an inline editor. The caret is what tells it apart from
+ * everything else on this board that answers a click: a caret means the click
+ * puts you inside the value, a pointer means it takes you somewhere else.
+ * Without it every one of these reads as static text until tried.
+ */
+const EDITABLE_IDLE =
+  "cursor-text hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
+
 interface EditableProps {
   value: string;
   onCommit: (next: string) => void;
@@ -81,7 +90,8 @@ export function EditableText({
         onClick={() => setEditing(true)}
         aria-label={label}
         className={cn(
-          "min-w-0 truncate rounded-sm px-1 text-left text-body hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          "min-w-0 truncate rounded-sm px-1 text-left text-body",
+          EDITABLE_IDLE,
           !value && "text-muted-foreground italic",
           displayClassName,
         )}
@@ -145,7 +155,7 @@ export function EditableTextArea({
         aria-label={label}
         className={cn(
           "w-full rounded-sm px-1 py-0.5 text-left text-body whitespace-pre-wrap",
-          !disabled && "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          !disabled && EDITABLE_IDLE,
           !value && "text-muted-foreground italic",
         )}
       >
@@ -213,7 +223,7 @@ export function EditableDate({
         aria-label={label}
         className={cn(
           "rounded-sm px-1 text-left text-caption tabular-nums",
-          !disabled && "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          !disabled && EDITABLE_IDLE,
           !value && "text-muted-foreground italic",
           className,
           displayClassName,
@@ -298,7 +308,7 @@ export function EditableNumber({
         aria-label={label}
         className={cn(
           "rounded-sm px-1 text-left text-caption tabular-nums",
-          !disabled && "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          !disabled && EDITABLE_IDLE,
           value == null && "text-muted-foreground italic",
           className,
         )}
@@ -436,7 +446,7 @@ export function EditableSuggest({
         aria-label={label}
         className={cn(
           "rounded-sm px-1 text-left",
-          !disabled && "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          !disabled && EDITABLE_IDLE,
           displayClassName,
         )}
       >
@@ -646,7 +656,7 @@ export function EditableTokens({
       className={cn(
         "flex min-w-0 flex-wrap items-center gap-1 rounded-sm px-1 text-left",
         !disabled &&
-          "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          EDITABLE_IDLE,
         triggerClassName,
       )}
     >
