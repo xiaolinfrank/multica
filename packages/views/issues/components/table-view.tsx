@@ -82,6 +82,7 @@ import {
 } from "@multica/core/issues/queries";
 import {
   TABLE_SYSTEM_COLUMNS,
+  isIssueTableGroupCollapsed,
   propertyIdFromViewKey,
   type SortField,
   type TableColumnKey,
@@ -1376,6 +1377,7 @@ export function TableView({
   const tableGrouping = useViewStore((state) => state.tableGrouping);
   const setTableGrouping = useViewStore((state) => state.setTableGrouping);
   const tableCollapsedGroups = useViewStore((state) => state.tableCollapsedGroups);
+  const tableExpandedGroups = useViewStore((state) => state.tableExpandedGroups);
   const toggleTableGroupCollapsed = useViewStore(
     (state) => state.toggleTableGroupCollapsed,
   );
@@ -1507,6 +1509,17 @@ export function TableView({
     () => new Set(tableCollapsedGroups),
     [tableCollapsedGroups],
   );
+  const expandedGroupSet = useMemo(
+    () => new Set(tableExpandedGroups),
+    [tableExpandedGroups],
+  );
+  // Module rows start folded, so "is this row folded" is not a lookup in one
+  // list — it reads the row's own default first.
+  const isGroupCollapsed = useCallback(
+    (key: string) =>
+      isIssueTableGroupCollapsed(key, collapsedGroupSet, expandedGroupSet),
+    [collapsedGroupSet, expandedGroupSet],
+  );
   const collapsedParentSet = useMemo(
     () => new Set(tableCollapsedParents),
     [tableCollapsedParents],
@@ -1592,12 +1605,12 @@ export function TableView({
           ...(placeholder ? { placeholderData: placeholder } : {}),
           enabled:
             (branch.groupKey === null ||
-              !collapsedGroupSet.has(branch.groupKey)) &&
+              !isGroupCollapsed(branch.groupKey)) &&
             !branch.ancestorIds.some((id) => collapsedParentSet.has(id)),
         };
       }),
     [
-      collapsedGroupSet,
+      isGroupCollapsed,
       collapsedParentSet,
       serverBranchPageTargets,
       serverGroupSpec,
@@ -1988,7 +2001,7 @@ export function TableView({
 
     if (usesServerGrouping) {
       for (const descriptor of serverGroups) {
-        const collapsed = collapsedGroupSet.has(descriptor.key);
+        const collapsed = isGroupCollapsed(descriptor.key);
         result.push({
           kind: "group",
           key: descriptor.key,
@@ -2048,7 +2061,7 @@ export function TableView({
 
     return result;
   }, [
-    collapsedGroupSet,
+    isGroupCollapsed,
     collapsedParentSet,
     activeServerBranches,
     activateServerBranch,

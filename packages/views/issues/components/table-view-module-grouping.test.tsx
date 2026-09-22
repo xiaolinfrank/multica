@@ -305,6 +305,12 @@ describe("Table grouped by module", () => {
     expect(groupRequests[0]?.group).toEqual({ kind: "module" });
   });
 
+  /** Module groups render folded, so a test about ROWS opens its group first. */
+  async function openGroup(label: RegExp) {
+    const header = await screen.findByRole("button", { name: label });
+    fireEvent.click(header);
+  }
+
   /** Group headers only exist while the branch catalog is settled, so every
    * assertion about a header runs inside one retried block rather than after
    * a separate await — a header read between two catalog states proves
@@ -340,6 +346,8 @@ describe("Table grouped by module", () => {
 
   it("lands each row under its own module group", async () => {
     render();
+    await openGroup(/Parser rewrite\s*1/);
+    await openGroup(/No module\s*1/);
     await screen.findByText("MUL-filed");
     await screen.findByText("MUL-loose");
   });
@@ -385,12 +393,31 @@ describe("Table grouped by module", () => {
     it("shows a module with no tasks as its own group, and asks for no rows under it", async () => {
       render(projectQuery);
       await screen.findByText("Zero work");
+      // Opened, so the branch would be requested if the group held anything —
+      // the server counted it at zero, so there is nothing to ask for.
+      await openGroup(/Zero work\s*0/);
+      await openGroup(/Parser rewrite\s*1/);
       await screen.findByText("MUL-filed");
       expect(
         rowRequests.some(
           (request) => request.group_key === "module:" + EMPTY_MOD_ID,
         ),
       ).toBe(false);
+    });
+
+    it("opens folded, and keeps a module the user opened open", async () => {
+      // Every module is listed, so the table reads as an outline until the
+      // reader opens one; the choice is persisted per surface by the store.
+      const store = getIssueSurfaceViewStore(surfaceKey);
+      render(projectQuery);
+      await screen.findByText("Parser rewrite");
+      expect(screen.queryByText("MUL-filed")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: /Parser rewrite\s*1/ }));
+      await screen.findByText("MUL-filed");
+      expect(store.getState().tableExpandedGroups).toEqual([
+        "module:" + MOD_ID,
+      ]);
     });
 
     it("creates in the module the header stands for", async () => {

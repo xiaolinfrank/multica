@@ -155,6 +155,30 @@ export function propertyIdFromViewKey(key: string): string | null {
 }
 
 export type StaticSortField = Exclude<SortField, `property:${string}`>;
+/**
+ * Group rows that start folded rather than open.
+ *
+ * A module group is a folder in the project's structure, and the table lists
+ * every module — including the ones holding no task. An outline of closed
+ * folders is what the reader opens; a wall of open ones is what they scroll
+ * past. Group keys are dimension-prefixed, so this never matches another
+ * dimension's row.
+ */
+export function issueTableGroupStartsCollapsed(key: string): boolean {
+  return key.startsWith("module:");
+}
+
+/** Whether a group row renders folded, given both persisted toggle lists. */
+export function isIssueTableGroupCollapsed(
+  key: string,
+  collapsed: ReadonlySet<string>,
+  expanded: ReadonlySet<string>,
+): boolean {
+  return issueTableGroupStartsCollapsed(key)
+    ? !expanded.has(key)
+    : collapsed.has(key);
+}
+
 export type StaticIssueGrouping = Exclude<IssueGrouping, `property:${string}`>;
 
 export const SORT_OPTIONS: { value: StaticSortField; label: string }[] = [
@@ -318,6 +342,11 @@ export interface IssueViewState {
    *  Persisted so an explicit "none" survives reloads. */
   tableGroupingTouched: boolean;
   tableCollapsedGroups: string[];
+  /** Counterpart for group rows that start folded (see
+   *  `issueTableGroupStartsCollapsed`): membership means the user opened it.
+   *  Kept apart from `tableCollapsedGroups` so neither list's meaning depends
+   *  on which dimension the table is grouped by. */
+  tableExpandedGroups: string[];
   tableCollapsedParents: string[];
   tableHierarchy: boolean;
   tableCalculation: TableCalculation;
@@ -411,6 +440,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   tableGrouping: "none",
   tableGroupingTouched: false,
   tableCollapsedGroups: [],
+  tableExpandedGroups: [],
   tableCollapsedParents: [],
   tableHierarchy: true,
   tableCalculation: "none",
@@ -666,11 +696,15 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
         : { tableGrouping },
     ),
   toggleTableGroupCollapsed: (key) =>
-    set((state) => ({
-      tableCollapsedGroups: state.tableCollapsedGroups.includes(key)
-        ? state.tableCollapsedGroups.filter((item) => item !== key)
-        : [...state.tableCollapsedGroups, key],
-    })),
+    set((state) => {
+      const toggle = (list: string[]) =>
+        list.includes(key)
+          ? list.filter((item) => item !== key)
+          : [...list, key];
+      return issueTableGroupStartsCollapsed(key)
+        ? { tableExpandedGroups: toggle(state.tableExpandedGroups) }
+        : { tableCollapsedGroups: toggle(state.tableCollapsedGroups) };
+    }),
   toggleTableParentCollapsed: (issueId) =>
     set((state) => ({
       tableCollapsedParents: state.tableCollapsedParents.includes(issueId)
@@ -721,6 +755,7 @@ export const viewStorePersistOptions = (name: string) => ({
     tableGrouping: state.tableGrouping,
     tableGroupingTouched: state.tableGroupingTouched,
     tableCollapsedGroups: state.tableCollapsedGroups,
+    tableExpandedGroups: state.tableExpandedGroups,
     tableCollapsedParents: state.tableCollapsedParents,
     tableHierarchy: state.tableHierarchy,
     tableCalculation: state.tableCalculation,
@@ -813,6 +848,9 @@ export function mergeViewStatePersisted<T extends IssueViewState>(
     tableCollapsedGroups: Array.isArray(p.tableCollapsedGroups)
       ? p.tableCollapsedGroups
       : current.tableCollapsedGroups,
+    tableExpandedGroups: Array.isArray(p.tableExpandedGroups)
+      ? p.tableExpandedGroups
+      : current.tableExpandedGroups,
     tableCollapsedParents: Array.isArray(p.tableCollapsedParents)
       ? p.tableCollapsedParents
       : current.tableCollapsedParents,
