@@ -600,6 +600,16 @@ html[data-dnd-dragging="true"] * {
 }
 
 @layer base {
+  /* Tailwind v4's preflight dropped v3's `button { cursor: pointer }`, and with
+   * it the one signal that says a thing answers a click. Buttons that carry no
+   * border or fill — an inline editor's idle state, an icon-only action, a row
+   * that opens something — became indistinguishable from static text under the
+   * pointer. Put it back the way the v4 upgrade guide prescribes; a disabled
+   * control keeps the arrow, since it answers nothing. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
   * {
     @apply border-border outline-ring/50;
     scrollbar-width: thin;
