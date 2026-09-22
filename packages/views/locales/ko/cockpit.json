@@ -159,7 +159,7 @@
     "goal_flag": "연간 산출 {{month}}",
     "goal_line_note": "연간 목표(작업 막대가 아니라 목표일에 타임라인에 표시): {{date}}",
     "owner_inherited": "담당: {{owner}}(메인라인과 동일)",
-    "status_unconfirmed": "확인 필요",
+    "status_unscheduled": "일정 미정",
     "core_goal": "🎯 연간 목표 {{title}}({{date}} 잠정)",
     "core_more": "……외 {{count}}건",
     "core_goal_body": "{{title}} · 목표일 {{date}}(잠정)",

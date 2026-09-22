@@ -498,7 +498,7 @@ function CoreMarker({
             <span className="font-medium">{summary}</span>
             {nodes.slice(0, 5).map((node) => (
               <span key={node.id} className="text-caption">
-                {node.name} · {node.status || t(($) => $.gantt.status_unconfirmed)}
+                {node.name} · {node.status || t(($) => $.gantt.status_unscheduled)}
               </span>
             ))}
             {nodes.length > 5 && (
@@ -1228,7 +1228,7 @@ export function CockpitGantt({
                             <StatusChip status={value} />
                           ) : (
                             <span className="text-caption text-muted-foreground">
-                              {t(($) => $.gantt.status_unconfirmed)}
+                              {t(($) => $.gantt.status_unscheduled)}
                             </span>
                           )
                         }

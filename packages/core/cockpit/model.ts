@@ -398,7 +398,8 @@ export interface CockpitLiveCounts {
 }
 
 export interface CockpitRollup {
-  /** Leaf tasks in this subtree — a branch's own row is not counted as work. */
+  /** Leaf tasks in this subtree — a branch's own row is not counted as work,
+   * and an unscheduled leaf is not counted until it joins the plan. */
   leafCount: number;
   doneCount: number;
   /** Leaves with work underway (in progress or under review). */
@@ -467,6 +468,20 @@ const WAITING_STATUSES = new Set(["等待期", "等待中", "waiting", "on hold"
 export function isCockpitNodeWaiting(node: CockpitNode): boolean {
   const status = node.status.trim();
   return WAITING_STATUSES.has(status) || WAITING_STATUSES.has(status.toLowerCase());
+}
+
+/**
+ * Statuses that mean the row has not been scheduled into the plan yet. The
+ * gantt paints an empty status as "未排期", and the same words typed out
+ * (including the former "待确认" wording) mean the same thing. Unscheduled
+ * rows are excluded from every progress tally — they are not yet work the
+ * plan has to account for, so they must not drag a percentage down.
+ */
+const UNSCHEDULED_STATUSES = new Set(["未排期", "待确认", "unscheduled", "to confirm", ""]);
+
+export function isCockpitNodeUnscheduled(node: CockpitNode): boolean {
+  const status = node.status.trim();
+  return UNSCHEDULED_STATUSES.has(status) || UNSCHEDULED_STATUSES.has(status.toLowerCase());
 }
 
 /**
@@ -550,19 +565,24 @@ export function computeCockpitRollups(
     };
 
     // Only execution rows are work. A childless direction is structure the
-    // tasks hang under, not a task itself, so it tallies as nothing.
+    // tasks hang under, not a task itself, so it tallies as nothing. An
+    // unscheduled row is work the plan has not taken up yet: it still keeps
+    // its budget and its dates (the bar spans them), but no progress tally
+    // counts it.
     if (children.length === 0 && isCockpitExecNode(node.code)) {
-      own.leafCount = 1;
-      own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
-      own.activeCount = isCockpitNodeActive(node) ? 1 : 0;
-      own.lateCount = isCockpitNodeLate(node, today) ? 1 : 0;
-      if (!isCockpitNodeCancelled(node)) {
-        own.live.leafCount = 1;
-        own.live.doneCount = own.doneCount;
-        own.live.activeCount = own.activeCount;
-        own.live.lateCount = own.lateCount;
-        own.live.blockedCount = isCockpitNodeBlocked(node) ? 1 : 0;
-        own.live.doneRatio = own.live.doneCount * 100;
+      if (!isCockpitNodeUnscheduled(node)) {
+        own.leafCount = 1;
+        own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
+        own.activeCount = isCockpitNodeActive(node) ? 1 : 0;
+        own.lateCount = isCockpitNodeLate(node, today) ? 1 : 0;
+        if (!isCockpitNodeCancelled(node)) {
+          own.live.leafCount = 1;
+          own.live.doneCount = own.doneCount;
+          own.live.activeCount = own.activeCount;
+          own.live.lateCount = own.lateCount;
+          own.live.blockedCount = isCockpitNodeBlocked(node) ? 1 : 0;
+          own.live.doneRatio = own.live.doneCount * 100;
+        }
       }
       rollups.set(node.id, own);
       return own;
@@ -912,9 +932,11 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
     }
   }
   // Only real work counts as "due": a branch row is a heading, and a cancelled
-  // or parked task is not something the month is expected to land.
+  // or parked task is not something the month is expected to land. Neither is
+  // an unscheduled row — it has not joined the plan yet.
   for (const leaf of leaves) {
     if (isCockpitNodeCancelled(leaf) || isCockpitNodeWaiting(leaf)) continue;
+    if (isCockpitNodeUnscheduled(leaf)) continue;
     const date = parseDay(leaf.end_date);
     if (!date) continue;
     const cell = touch(monthKey(date));
@@ -1518,7 +1540,9 @@ const SUBTREE_STATUS_PROGRESS: Record<string, number> = {
  * The mean effective progress of a branch's execution leaves: the level a
  * summary bar fills to and the percentage an L2 row badge shows. Unlike
  * cockpitEffectiveProgress, review and waiting count as 0 here — the source
- * sheet's average treats only the four statuses above as started.
+ * sheet's average treats only the four statuses above as started. Cancelled
+ * and unscheduled leaves are skipped entirely rather than scored as zero:
+ * they are not work the plan currently weighs.
  */
 export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
   let sum = 0;
@@ -1530,6 +1554,7 @@ export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
     }
     const node = branch.node;
     if (!isCockpitExecNode(node.code) || isCockpitNodeCancelled(node)) return;
+    if (isCockpitNodeUnscheduled(node)) return;
     sum +=
       node.progress > 0
         ? Math.min(node.progress, 100)
@@ -1700,9 +1725,12 @@ export function cockpitGoalProgress(
     }
     const node = branch.node;
     // Structure rows are not work: an empty direction must not drag a
-    // module's forecast to zero by counting as a task at 0%.
+    // module's forecast to zero by counting as a task at 0%. Nor must an
+    // unscheduled row — it has not joined the plan, so no figure here counts
+    // it, not even the cross-year tally.
     if (!isCockpitExecNode(node.code)) return;
     if (isCockpitNodeCancelled(node)) return;
+    if (isCockpitNodeUnscheduled(node)) return;
     if (goalDate && node.end_date && node.end_date > goalDate) {
       crossYearCount += 1;
       return;
@@ -1783,7 +1811,7 @@ export interface CockpitOverallProgress {
  * The mean runs over execution rows rather than leaves — a task that carries
  * sub-tasks still counts once, beside them, exactly as the source sheet's
  * overallProgress does. The year figure only includes rows with both dates
- * set, ending on or before the goal.
+ * set, ending on or before the goal. Unscheduled rows are out of both means.
  */
 export function cockpitOverallProgress(
   nodes: CockpitNode[],
@@ -1800,6 +1828,7 @@ export function cockpitOverallProgress(
   for (const node of nodes) {
     if (!isCockpitExecNode(node.code)) continue;
     if (isCockpitNodeCancelled(node)) continue;
+    if (isCockpitNodeUnscheduled(node)) continue;
     const progress =
       node.progress > 0
         ? Math.min(node.progress, 100)
@@ -1846,6 +1875,7 @@ const MILESTONE_STATUS_COLOR_VARS = new Map<string, string>([
   ["前置准备", "var(--muted-foreground)"],
   ["按计划后置", "var(--faint-foreground)"],
   ["待确认", "var(--faint-foreground)"],
+  ["未排期", "var(--faint-foreground)"],
 ]);
 
 export function cockpitMilestoneStatusColor(status: string): string {

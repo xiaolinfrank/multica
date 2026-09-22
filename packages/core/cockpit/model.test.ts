@@ -30,6 +30,7 @@ import {
   isCockpitMilestoneDone,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
+  isCockpitNodeUnscheduled,
   sortCockpitMilestones,
 } from "./model";
 
@@ -152,6 +153,7 @@ describe("computeCockpitRollups", () => {
       code: "B",
       parent_id: "r",
       progress: 0,
+      status: "未开始",
       budget_amount: 10,
       start_date: "2026-03-01",
       end_date: "2026-03-20",
@@ -195,9 +197,11 @@ describe("computeCockpitRollups", () => {
     nodes.push(node({ id: "big", code: "BIG", parent_id: "root" }));
     nodes.push(node({ id: "small", code: "SMALL", parent_id: "root" }));
     for (let i = 0; i < 9; i++) {
-      nodes.push(node({ id: `big-${i}`, code: `BIG-${i}`, parent_id: "big", progress: 0 }));
+      nodes.push(
+        node({ id: `big-${i}`, code: `BIG-${i}`, parent_id: "big", progress: 0, status: "未开始" }),
+      );
     }
-    nodes.push(node({ id: "small-0", code: "SMALL-0", parent_id: "small", progress: 100 }));
+    nodes.push(node({ id: "small-0", code: "SMALL-0", parent_id: "small", progress: 100, status: "已完成" }));
 
     const rolled = computeCockpitRollups(buildCockpitTree(nodes), "2026-01-01");
     expect(rolled.get("root")!.leafCount).toBe(10);
@@ -281,7 +285,7 @@ describe("computeCockpitMonths", () => {
       board({
         nodes: [
           node({ id: "a", code: "A", end_date: "2026-01-20", status: "已完成" }),
-          node({ id: "b", code: "B", end_date: "2026-04-10" }),
+          node({ id: "b", code: "B", end_date: "2026-04-10", status: "未开始" }),
         ],
         payments: [{ id: "1", node_id: "a", label: "", pay_date: "2026-01-05", amount: 15, position: 0 }],
       }),
@@ -339,7 +343,7 @@ describe("computeCockpitMonths", () => {
             end_date: "2026-03-20",
           }),
           node({ id: "b", code: "B", status: "已完成", end_date: "2026-02-01" }),
-          node({ id: "c", code: "C", end_date: "2026-04-01" }),
+          node({ id: "c", code: "C", status: "未开始", end_date: "2026-04-01" }),
         ],
         payments: [
           { id: "1", node_id: "a", label: "", pay_date: "2026-01-05", amount: 3, position: 0 },
@@ -810,11 +814,11 @@ describe("cockpitCoreNodes", () => {
 // One schedule matrix owns the arithmetic for both module and toolbar figures.
 describe("goal and overall progress", () => {
   const nodes = [
-    node({ id: "r", code: "R", progress: 100 }),
+    node({ id: "r", code: "R", progress: 100, status: "已完成" }),
     node({ id: "a", code: "A", parent_id: "r", status: "进行中", start_date: "2026-06-01", end_date: "2026-06-21" }),
-    node({ id: "b", code: "B", parent_id: "r", progress: 20, start_date: "2026-06-01", end_date: "2026-06-21" }),
+    node({ id: "b", code: "B", parent_id: "r", progress: 20, status: "未开始", start_date: "2026-06-01", end_date: "2026-06-21" }),
     node({ id: "undated", code: "U", parent_id: "r", status: "受阻" }),
-    node({ id: "cross", code: "X", parent_id: "r", progress: 100, end_date: "2027-01-01" }),
+    node({ id: "cross", code: "X", parent_id: "r", progress: 100, status: "已完成", end_date: "2027-01-01" }),
     node({ id: "cancelled", code: "C", parent_id: "r", status: "已取消", progress: 100 }),
   ];
   it("excludes cancelled leaves and cross-year work from the annual goal, but not undated work", () => {
@@ -837,7 +841,7 @@ describe("goal and overall progress", () => {
     },
   );
   it("reports nulls rather than fabricated percentages when all work is cancelled or cross-year", () => {
-    const cross = node({ id: "x", code: "X", end_date: "2027-01-01", progress: 20 });
+    const cross = node({ id: "x", code: "X", end_date: "2027-01-01", progress: 20, status: "进行中" });
     expect(cockpitGoalProgress(buildCockpitTree([cross])[0]!, "2026-06-11", "2026-12-31")).toEqual({
       actual: null, scheduled: null, gapPts: null, latestEnd: null, planVsGoalDays: null,
       taskCount: 0, crossYearCount: 1, behind: false,
@@ -847,15 +851,63 @@ describe("goal and overall progress", () => {
   });
   it("does not schedule undated, same-day, or reversed windows", () => {
     const invalid = [
-      node({ id: "r", code: "R" }),
+      node({ id: "r", code: "R", status: "未开始" }),
       node({ id: "a", code: "A", parent_id: "r", status: "已完成" }),
-      node({ id: "b", code: "B", parent_id: "r", start_date: "2026-06-11", end_date: "2026-06-11" }),
-      node({ id: "c", code: "C", parent_id: "r", start_date: "2026-06-12", end_date: "2026-06-11" }),
+      node({ id: "b", code: "B", parent_id: "r", status: "未开始", start_date: "2026-06-11", end_date: "2026-06-11" }),
+      node({ id: "c", code: "C", parent_id: "r", status: "未开始", start_date: "2026-06-12", end_date: "2026-06-11" }),
     ];
     expect(cockpitGoalProgress(buildCockpitTree(invalid)[0]!, "2026-06-11", "2026-06-11")).toMatchObject({
       actual: 33, scheduled: null, gapPts: null, taskCount: 3, crossYearCount: 0, planVsGoalDays: 0, behind: false,
     });
     expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 25, thisYear: 0, scheduled: null, behind: false });
+  });
+});
+
+// An unscheduled row — empty status, or the 未排期/待确认 wording — is shown
+// as "未排期" in the gantt, and no progress tally counts it.
+describe("unscheduled rows stay out of every progress tally", () => {
+  const tree = buildCockpitTree([
+    node({ id: "r", code: "L1-01" }),
+    node({ id: "done", code: "D", parent_id: "r", status: "已完成", progress: 100 }),
+    node({ id: "empty", code: "E", parent_id: "r", end_date: "2026-01-01" }),
+    node({ id: "legacy", code: "L", parent_id: "r", status: "待确认", progress: 30 }),
+    node({ id: "worded", code: "W", parent_id: "r", status: "未排期", progress: 60 }),
+  ]);
+
+  it("recognises an empty status and both wordings", () => {
+    expect(isCockpitNodeUnscheduled(node({ id: "1", code: "A" }))).toBe(true);
+    expect(isCockpitNodeUnscheduled(node({ id: "2", code: "B", status: " 待确认 " }))).toBe(true);
+    expect(isCockpitNodeUnscheduled(node({ id: "3", code: "C", status: "未排期" }))).toBe(true);
+    expect(isCockpitNodeUnscheduled(node({ id: "4", code: "D", status: "Unscheduled" }))).toBe(true);
+    expect(isCockpitNodeUnscheduled(node({ id: "5", code: "E", status: "进行中" }))).toBe(false);
+  });
+
+  it("drops them from roll-up counts and averages, even when a progress figure was typed", () => {
+    const rollups = computeCockpitRollups(tree, "2026-06-01");
+    expect(rollups.get("r")!).toMatchObject({ leafCount: 1, doneCount: 1, progress: 100, lateCount: 0 });
+    expect(rollups.get("r")!.live).toMatchObject({ leafCount: 1, doneCount: 1, doneRatio: 100 });
+    expect(cockpitSubtreeAverage(tree[0]!)).toBe(100);
+  });
+
+  it("drops them from the annual goal and the toolbar means", () => {
+    expect(cockpitGoalProgress(tree[0]!, "2026-06-11", "2026-12-31")).toMatchObject({
+      actual: 100, taskCount: 1, crossYearCount: 0,
+    });
+    expect(cockpitOverallProgress(tree[0]!.children.map((c) => c.node), "2026-06-11", "2026-12-31")).toEqual({
+      overall: 100, thisYear: null, scheduled: null, behind: false,
+    });
+  });
+
+  it("does not count them as work a month is expected to land", () => {
+    const cells = computeCockpitMonths(
+      board({
+        nodes: [
+          node({ id: "a", code: "A", status: "未开始", end_date: "2026-03-10" }),
+          node({ id: "u", code: "U", end_date: "2026-03-20" }),
+        ],
+      }),
+    );
+    expect(cells.find((c) => c.month === "2026-03")!).toMatchObject({ dueCount: 1, doneCount: 0 });
   });
 });
 

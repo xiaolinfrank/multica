@@ -159,7 +159,7 @@
     "goal_flag": "年度输出 {{month}}",
     "goal_line_note": "年度目标（不作为任务条，按目标日期立于时间线）：{{date}}",
     "owner_inherited": "负责人：{{owner}}（与主线对齐）",
-    "status_unconfirmed": "待确认",
+    "status_unscheduled": "未排期",
     "core_goal": "🎯 年度目标 {{title}}（{{date}} 暂定）",
     "core_more": "……另有 {{count}} 项",
     "core_goal_body": "{{title}} · 目标日期 {{date}}（暂定，不作为任务条）",

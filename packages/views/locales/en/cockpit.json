@@ -159,7 +159,7 @@
     "goal_flag": "Year-end output {{month}}",
     "goal_line_note": "Annual objective (not a task bar; pinned to the timeline at its target date): {{date}}",
     "owner_inherited": "Owner: {{owner}} (aligned with the mainline)",
-    "status_unconfirmed": "To confirm",
+    "status_unscheduled": "Unscheduled",
     "core_goal": "🎯 Annual objective {{title}} ({{date}}, tentative)",
     "core_more": "…and {{count}} more",
     "core_goal_body": "{{title}} · target date {{date}} (tentative; not a task bar)",

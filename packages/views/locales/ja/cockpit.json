@@ -159,7 +159,7 @@
     "goal_flag": "年度成果 {{month}}",
     "goal_line_note": "年度目標（タスクバーではなく、目標日にタイムラインへ表示）：{{date}}",
     "owner_inherited": "担当：{{owner}}（メインラインに準拠）",
-    "status_unconfirmed": "要確認",
+    "status_unscheduled": "日程未定",
     "core_goal": "🎯 年度目標 {{title}}（{{date}} 仮）",
     "core_more": "……ほか {{count}} 件",
     "core_goal_body": "{{title}} · 目標日 {{date}}（仮）",
