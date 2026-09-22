@@ -1876,6 +1876,44 @@ func TestCockpitMeetingImportNumbersUnnumberedFolders(t *testing.T) {
 	}
 }
 
+// A meeting filed by hand and one filed by the board should look the same
+// on the share, so adopting a folder gives it the drawers too.
+func TestCockpitMeetingImportGivesAdoptedFoldersTheirDrawers(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting import drawers", true)
+	const folder = "20260920-11 手工建的会议目录"
+	if err := os.Mkdir(filepath.Join(f.archiveDir, folder), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	// Material already in the folder must survive being adopted.
+	kept := filepath.Join(f.archiveDir, folder, "纪要.md")
+	if err := os.WriteFile(kept, []byte("minutes"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var resp CockpitMeetingImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
+			"project_id": f.project, "module_id": f.module, "node_id": f.node,
+			"items": []map[string]any{
+				{"name": folder, "meet_date": "2026-09-20", "title": "手工建的会议目录"},
+			},
+		})).
+		Want(http.StatusOK).
+		JSON(&resp)
+
+	if len(resp.Meetings) != 1 {
+		t.Fatalf("imported %d meetings, want 1: %+v", len(resp.Meetings), resp.Skipped)
+	}
+	for _, name := range []string{"会议纪要与录音转写", "会议材料", "照片"} {
+		if info, err := os.Stat(filepath.Join(f.archiveDir, folder, name)); err != nil || !info.IsDir() {
+			t.Errorf("drawer %q was not created in the adopted folder: stat %v", name, err)
+		}
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Errorf("adopting the folder lost what was already in it: stat %v", err)
+	}
+}
+
 // A folder name is not a path. Importing must never be a way to write a row
 // that points somewhere else on the share.
 func TestCockpitMeetingImportRefusesToLeaveTheArchiveFolder(t *testing.T) {

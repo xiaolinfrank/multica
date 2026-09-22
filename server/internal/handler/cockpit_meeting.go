@@ -1937,6 +1937,14 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 		recorded[path] = true
 		existing = append(existing, meeting)
 
+		// An adopted folder gets the same drawers a newly created one does,
+		// so a meeting filed by hand and one filed by the board look alike.
+		// Not fatal, for the same reason it is not when creating the folder.
+		if subErr := createMeetingSubdirs(path); subErr != nil {
+			slog.Warn("createMeetingSubdirs for an imported folder failed",
+				append(logger.RequestAttrs(r), "error", subErr, "dir", path)...)
+		}
+
 		row := cockpitMeetingToResponse(meeting)
 		resp.Meetings = append(resp.Meetings, row)
 		h.publishCockpit(r, cc, "meeting", "created", row)
