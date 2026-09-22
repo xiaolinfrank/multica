@@ -476,6 +476,30 @@ func createMeetingDir(base, name string) (string, error) {
 	return target, nil
 }
 
+// meetingSubdirs are the drawers every meeting folder is given. Three fixed
+// names, so material lands in the same place whoever files it and whoever
+// goes looking for it a year later knows where to look.
+var meetingSubdirs = []string{"会议纪要与录音转写", "会议材料", "照片"}
+
+// createMeetingSubdirs fills a meeting folder with its drawers.
+//
+// Re-runnable like the folder itself: drawers that are already there are
+// left alone, and one that was renamed or removed by hand comes back. The
+// error names what could not be created rather than stopping at the first
+// failure — a share that half-answers should report both.
+func createMeetingSubdirs(dir string) error {
+	var failed []string
+	for _, name := range meetingSubdirs {
+		if _, err := createMeetingDir(dir, name); err != nil {
+			failed = append(failed, name)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("meeting subfolders not created: %s", strings.Join(failed, ", "))
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Destination preview
 // ---------------------------------------------------------------------------
@@ -753,6 +777,12 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 				dir = created
 				resp.Dir = created
 				resp.DirCreated = true
+				// Not fatal: the folder is what the register points at, and a
+				// drawer that is missing is one anyone can add in Finder.
+				if subErr := createMeetingSubdirs(created); subErr != nil {
+					slog.Warn("createMeetingSubdirs failed",
+						append(logger.RequestAttrs(r), "error", subErr, "dir", created)...)
+				}
 			}
 		}
 	}

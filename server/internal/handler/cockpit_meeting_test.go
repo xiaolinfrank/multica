@@ -178,6 +178,72 @@ func TestCockpitMeetingDirCreation(t *testing.T) {
 	})
 }
 
+func TestCockpitMeetingSubdirCreation(t *testing.T) {
+	t.Run("gives a meeting folder its three drawers", func(t *testing.T) {
+		root := t.TempDir()
+		dir, err := createMeetingDir(root, "20260922-01 周例会")
+		if err != nil {
+			t.Fatalf("createMeetingDir: %v", err)
+		}
+		if err := createMeetingSubdirs(dir); err != nil {
+			t.Fatalf("createMeetingSubdirs: %v", err)
+		}
+		for _, name := range []string{"会议纪要与录音转写", "会议材料", "照片"} {
+			if info, statErr := os.Stat(filepath.Join(dir, name)); statErr != nil || !info.IsDir() {
+				t.Errorf("drawer %q was not created: stat %v", name, statErr)
+			}
+		}
+		entries, _ := os.ReadDir(dir)
+		if len(entries) != 3 {
+			t.Errorf("the meeting folder holds %d entries, want exactly the 3 drawers", len(entries))
+		}
+	})
+
+	// Provisioning is retried, and a drawer someone removed by hand should
+	// come back rather than make the retry fail.
+	t.Run("is re-runnable and restores a removed drawer", func(t *testing.T) {
+		root := t.TempDir()
+		dir, err := createMeetingDir(root, "20260922-02 周例会")
+		if err != nil {
+			t.Fatalf("createMeetingDir: %v", err)
+		}
+		if err := createMeetingSubdirs(dir); err != nil {
+			t.Fatalf("first run: %v", err)
+		}
+		kept := filepath.Join(dir, "会议材料", "议程.md")
+		if err := os.WriteFile(kept, []byte("agenda"), 0o644); err != nil {
+			t.Fatalf("write into a drawer: %v", err)
+		}
+		if err := os.Remove(filepath.Join(dir, "照片")); err != nil {
+			t.Fatalf("remove a drawer: %v", err)
+		}
+
+		if err := createMeetingSubdirs(dir); err != nil {
+			t.Fatalf("second run: %v", err)
+		}
+		if info, statErr := os.Stat(filepath.Join(dir, "照片")); statErr != nil || !info.IsDir() {
+			t.Errorf("the removed drawer did not come back: stat %v", statErr)
+		}
+		if _, statErr := os.Stat(kept); statErr != nil {
+			t.Errorf("re-running emptied a drawer that already had material: stat %v", statErr)
+		}
+	})
+
+	t.Run("names every drawer it could not create", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "20260922-03 周例会")
+
+		err := createMeetingSubdirs(missing)
+		if err == nil {
+			t.Fatal("drawers were reported created inside a folder that is not there")
+		}
+		for _, name := range []string{"会议纪要与录音转写", "会议材料", "照片"} {
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("error = %q, want it to name %q", err, name)
+			}
+		}
+	})
+}
+
 // clockAt builds the stored wall-clock value for "HH:MM".
 func clockAt(hour, minute int) pgtype.Time {
 	return pgtype.Time{
