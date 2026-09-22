@@ -767,6 +767,46 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// nextMeetingCode is the next free number for a meeting on day: "20260921-01",
+// then -02. Numbered per day because the register is read by date, so a gap a
+// deleted meeting left is not worth renumbering the day for. Numbers already
+// on the board are respected, so a day someone numbered by hand carries on
+// where they stopped.
+//
+// The rule is the one the meeting form applies in nextCockpitMeetingCode, and
+// it lives here as well because the form is not the only way a meeting is
+// filed: the overview's quick add and a folder scan both reach the register
+// without a number, and an unnumbered row files its folder and its task
+// without the prefix the rest of the register carries.
+func nextMeetingCode(existing []db.CockpitMeeting, day time.Time) string {
+	prefix := day.Format("20060102")
+	highest := 0
+	for _, m := range existing {
+		if n, ok := meetingCodeNumber(strings.TrimSpace(m.Code), prefix); ok && n > highest {
+			highest = n
+		}
+	}
+	return fmt.Sprintf("%s-%02d", prefix, highest+1)
+}
+
+// meetingCodeNumber reads the "-NN" off a code already on prefix's day. Two
+// digits at least, digits only: a code shaped some other way is somebody's own
+// and must not move the day's count.
+func meetingCodeNumber(code, prefix string) (int, bool) {
+	rest, ok := strings.CutPrefix(code, prefix+"-")
+	if !ok || len(rest) < 2 {
+		return 0, false
+	}
+	n := 0
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n, true
+}
+
 // meetingFolderName is what a meeting's folder is called when nobody says
 // otherwise: its platform number and its name, which is how the register
 // reads and how the folders sort.
@@ -1701,12 +1741,18 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 		if title == "" {
 			title = name
 		}
+		// A folder whose name opens with a number keeps it; one scanned out
+		// of a folder named by hand is numbered into the day it belongs to.
+		code := strings.TrimSpace(item.Code)
+		if code == "" && meetDate.Valid {
+			code = nextMeetingCode(existing, meetDate.Time)
+		}
 		meeting, err := h.Queries.CreateCockpitMeeting(ctx, db.CreateCockpitMeetingParams{
 			WorkspaceID: cc.workspaceID,
 			CockpitID:   cc.cockpit.ID,
 			MeetDate:    meetDate,
 			Title:       title,
-			Code:        strings.TrimSpace(item.Code),
+			Code:        code,
 			Parties:     strings.TrimSpace(item.Parties),
 			Kind:        strings.TrimSpace(item.Kind),
 			NasDir:      path,
@@ -1718,6 +1764,7 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			continue
 		}
 		recorded[path] = true
+		existing = append(existing, meeting)
 
 		row := cockpitMeetingToResponse(meeting)
 		resp.Meetings = append(resp.Meetings, row)

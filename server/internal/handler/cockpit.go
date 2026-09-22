@@ -1723,6 +1723,20 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The form sends the number it previewed; every other way of filing a
+	// meeting — the overview's quick add, a bare API call — sends none, and
+	// numbering here is what keeps those rows in the register's sequence.
+	code := textOrEmpty(req.Code)
+	if strings.TrimSpace(code) == "" && meetDate.Valid {
+		existing, err := h.Queries.ListCockpitMeetings(r.Context(), cc.cockpit.ID)
+		if err != nil {
+			slog.Warn("ListCockpitMeetings failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to load meetings")
+			return
+		}
+		code = nextMeetingCode(existing, meetDate.Time)
+	}
+
 	meeting, err := h.Queries.CreateCockpitMeeting(r.Context(), db.CreateCockpitMeetingParams{
 		WorkspaceID: cc.workspaceID,
 		CockpitID:   cc.cockpit.ID,
@@ -1731,7 +1745,7 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		StartTime:   startTime,
 		EndTime:     endTime,
 		Title:       textOrEmpty(req.Title),
-		Code:        textOrEmpty(req.Code),
+		Code:        code,
 		Kind:        textOrEmpty(req.Kind),
 		Status:      textOrEmpty(req.Status),
 		Parties:     textOrEmpty(req.Parties),

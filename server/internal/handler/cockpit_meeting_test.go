@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -206,6 +207,48 @@ func TestCockpitMeetingFolderNameDoesNotDoubleTheCode(t *testing.T) {
 	}
 }
 
+func TestNextMeetingCode(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+		return d
+	}
+	codes := func(list ...string) []db.CockpitMeeting {
+		rows := make([]db.CockpitMeeting, 0, len(list))
+		for _, c := range list {
+			rows = append(rows, db.CockpitMeeting{Code: c})
+		}
+		return rows
+	}
+
+	cases := []struct {
+		name     string
+		existing []db.CockpitMeeting
+		day      string
+		want     string
+	}{
+		{"an empty register opens the day", nil, "2026-09-21", "20260921-01"},
+		{"the day continues where it stopped", codes("20260921-01", "20260921-02"), "2026-09-21", "20260921-03"},
+		{"a gap is not backfilled", codes("20260921-01", "20260921-03"), "2026-09-21", "20260921-04"},
+		{"another day does not count", codes("20260921-01", "20260921-02"), "2026-09-22", "20260922-01"},
+		{"an unnumbered row does not count", codes("", "  "), "2026-09-21", "20260921-01"},
+		{"a code of another shape is left alone", codes("周会", "20260921"), "2026-09-21", "20260921-01"},
+		{"one digit is not the register's shape", codes("20260921-7"), "2026-09-21", "20260921-01"},
+		{"surrounding space is still the day's number", codes(" 20260921-04 "), "2026-09-21", "20260921-05"},
+		{"past ninety-nine keeps counting", codes("20260921-99"), "2026-09-21", "20260921-100"},
+		{"the highest wins, not the last", codes("20260921-05", "20260921-02"), "2026-09-21", "20260921-06"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := nextMeetingCode(tc.existing, day(tc.day)); got != tc.want {
+				t.Errorf("nextMeetingCode() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCockpitMeetingSpan(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -397,6 +440,48 @@ func TestCockpitMeetingCreateRoundTripsTheNewFields(t *testing.T) {
 	fromCreate, _ := json.Marshal(meeting)
 	if string(fromBoard) != string(fromCreate) {
 		t.Errorf("the board read differs from the create response:\n got %s\nwant %s", fromBoard, fromCreate)
+	}
+}
+
+// The register numbers by day, and the form is not the only way in: the
+// overview's quick add files a row with a title and a date and nothing else,
+// and a row with no number files its folder and its task without the prefix
+// the rest of the register carries.
+func TestCockpitMeetingCreateNumbersTheDay(t *testing.T) {
+	wsID := cockpitMeetingFixture(t, "Cockpit meeting numbering")
+
+	first := createMeeting(t, wsID, map[string]any{"meet_date": "2026-09-21", "title": "新会议"})
+	if first.Code != "20260921-01" {
+		t.Errorf("code = %q, want the day's first number", first.Code)
+	}
+	second := createMeeting(t, wsID, map[string]any{"meet_date": "2026-09-21", "title": "内部周例会"})
+	if second.Code != "20260921-02" {
+		t.Errorf("code = %q, want the day's second number", second.Code)
+	}
+	// The next day opens its own count.
+	next := createMeeting(t, wsID, map[string]any{"meet_date": "2026-09-22", "title": "周二例会"})
+	if next.Code != "20260922-01" {
+		t.Errorf("code = %q, want the next day's first number", next.Code)
+	}
+
+	// The form previews the number it is about to file, so a number that was
+	// sent is the one that is kept.
+	sent := createMeeting(t, wsID, map[string]any{
+		"meet_date": "2026-09-21", "title": "赛陆孙博", "code": "20260921-40",
+	})
+	if sent.Code != "20260921-40" {
+		t.Errorf("code = %q, want the number the caller sent", sent.Code)
+	}
+	after := createMeeting(t, wsID, map[string]any{"meet_date": "2026-09-21", "title": "明略王佼佼"})
+	if after.Code != "20260921-41" {
+		t.Errorf("code = %q, want the day to continue from the number that was sent", after.Code)
+	}
+
+	// A meeting nobody has dated yet has no day to be numbered into; it gets
+	// its number when the date is filled in and the folder is filed.
+	undated := createMeeting(t, wsID, map[string]any{"title": "待定"})
+	if undated.Code != "" {
+		t.Errorf("code = %q, want no number without a date", undated.Code)
 	}
 }
 
@@ -1430,6 +1515,44 @@ func TestCockpitMeetingImportFlagsWhatItGuessed(t *testing.T) {
 	// Clearing the flag is how someone says they have checked the guesses.
 	if checked := patchMeeting(t, f.wsID, imported.ID, map[string]any{"detected": false}); checked.Detected {
 		t.Error("detected stayed set after it was cleared")
+	}
+}
+
+// A scan reads the number off a folder that has one. A folder someone named
+// by hand has none, and it is numbered into the day it belongs to rather than
+// landing in the register unnumbered.
+func TestCockpitMeetingImportNumbersUnnumberedFolders(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting import numbering", true)
+	named := []string{"复星医药×联通 可信连接器", "复星医药×华大 专病库", "20260920-07 已有编号的目录"}
+	for _, name := range named {
+		if err := os.Mkdir(filepath.Join(f.archiveDir, name), 0o755); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+
+	var resp CockpitMeetingImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
+			"project_id": f.project, "module_id": f.module, "node_id": f.node,
+			"items": []map[string]any{
+				{"name": named[2], "meet_date": "2026-09-20", "title": "已有编号的目录", "code": "20260920-07"},
+				{"name": named[0], "meet_date": "2026-09-20", "title": "可信连接器"},
+				{"name": named[1], "meet_date": "2026-09-20", "title": "专病库"},
+			},
+		})).
+		Want(http.StatusOK).
+		JSON(&resp)
+
+	if len(resp.Meetings) != 3 {
+		t.Fatalf("imported %d meetings, want 3: %+v", len(resp.Meetings), resp.Meetings)
+	}
+	// The one that carried a number keeps it, and the two that did not are
+	// numbered after it — one batch must not file three rows as -01.
+	want := []string{"20260920-07", "20260920-08", "20260920-09"}
+	for i, w := range want {
+		if resp.Meetings[i].Code != w {
+			t.Errorf("meeting %d code = %q, want %q", i, resp.Meetings[i].Code, w)
+		}
 	}
 }
 
