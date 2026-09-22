@@ -19,7 +19,6 @@ import type {
   MemberWithUser,
 } from "@multica/core/types";
 import {
-  buildCockpitMeetingName,
   cockpitArchiveNodeOptions,
   cockpitMeetingDestinationOptions,
   cockpitMeetingFolderName,
@@ -133,7 +132,6 @@ export function CockpitMeetingCreate({
   const [subject, setSubject] = useState("");
   // Empty means "follow the generated name"; once someone types, their name
   // wins and nothing regenerates it under them.
-  const [nameOverride, setNameOverride] = useState("");
   const [projectId, setProjectId] = useState(defaultProjectId ?? "");
   const [moduleId, setModuleId] = useState(defaultModuleId ?? "");
   const [nodeId, setNodeId] = useState(defaultNodeId ?? "");
@@ -163,7 +161,6 @@ export function CockpitMeetingCreate({
     setAttendees("");
     setLocation("");
     setSubject("");
-    setNameOverride("");
     setProjectId(defaultProjectId ?? "");
     setModuleId(defaultModuleId ?? "");
     setNodeId(defaultNodeId ?? "");
@@ -209,12 +206,12 @@ export function CockpitMeetingCreate({
     <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
   );
   const code = useMemo(() => nextCockpitMeetingCode(meetings, date || today), [meetings, date, today]);
-  const generated = useMemo(
-    () => buildCockpitMeetingName({ code, parties, subject }),
-    [code, parties, subject],
-  );
-  const name = nameOverride.trim() ? nameOverride : generated;
-  const folderName = cockpitMeetingFolderName({ code, title: name });
+  // A meeting is called by its number and its subject — the same two parts
+  // the folder and the task are named after, composed in one place so the
+  // three cannot drift. It is shown, not offered: a hand-written name is a
+  // name the register cannot be read against.
+  const name = cockpitMeetingFolderName({ code, title: subject.trim() });
+  const folderName = name;
 
   const projectTitle =
     projects.data?.find((p) => p.id === projectId)?.title ?? destination.data?.project_title ?? "";
@@ -248,7 +245,7 @@ export function CockpitMeetingCreate({
           organizer: organizer.trim(),
           attendees: attendees.trim(),
           location: location.trim(),
-          title: name.trim() || code,
+          title: subject.trim(),
           code,
         },
         {
@@ -413,12 +410,14 @@ export function CockpitMeetingCreate({
           </div>
 
           <div className="flex flex-col gap-1">
-            <Label htmlFor="cockpit-meeting-name">{t(($) => $.meetings.name_preview)}</Label>
-            <Input
-              id="cockpit-meeting-name"
-              value={name}
-              onChange={(e) => setNameOverride(e.target.value)}
-            />
+            <span className="text-caption text-muted-foreground">
+              {t(($) => $.meetings.name_preview)}
+            </span>
+            {/* Never empty: with no subject yet it is the number alone,
+                which is still what the folder and the task will be called. */}
+            <p className="font-mono text-body break-all" data-testid="meeting-name-preview">
+              {name}
+            </p>
             <p className="text-caption text-muted-foreground">
               {t(($) => $.meetings.name_preview_hint)}
             </p>

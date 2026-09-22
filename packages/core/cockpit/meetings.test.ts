@@ -9,7 +9,6 @@ import type {
 import {
   COCKPIT_MEETING_KINDS,
   COCKPIT_MEETING_STATUSES,
-  buildCockpitMeetingName,
   cockpitArchiveNodeOptions,
   cockpitMeetingPeopleOptions,
   cockpitNodeLabel,
@@ -152,14 +151,6 @@ describe("the name the platform proposes", () => {
     expect(splitCockpitMeetingParties("复星医药、华大基因")).toEqual(["复星医药", "华大基因"]);
     expect(splitCockpitMeetingParties("A × B / C")).toEqual(["A", "B", "C"]);
     expect(splitCockpitMeetingParties("  ")).toEqual([]);
-  });
-
-  it("composes number, parties and subject, dropping what is absent", () => {
-    expect(buildCockpitMeetingName({ code: "20260921-01", parties: "复星医药、华大基因", subject: "数据对接" }))
-      .toBe("20260921-01 复星医药×华大基因 数据对接");
-    expect(buildCockpitMeetingName({ code: "20260921-01" })).toBe("20260921-01");
-    expect(buildCockpitMeetingName({ code: "20260921-01", subject: "周例会" }))
-      .toBe("20260921-01 周例会");
   });
 });
 

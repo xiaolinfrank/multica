@@ -373,9 +373,14 @@ describe("the meeting register", () => {
       target: { value: "Data handover" },
     });
 
+    // The name is shown, not offered: it is the number and the subject, and
+    // it is what the folder and the task are named after. The parties are on
+    // the row above it and deliberately not in it — one meeting here has ten.
     const code = `${codeDay()}-02`;
-    const name = within(dialog).getByLabelText("Name") as HTMLInputElement;
-    expect(name.value).toBe(`${code} Fosun Pharma×BGI Data handover`);
+    expect(within(dialog).getByTestId("meeting-name-preview").textContent).toBe(
+      `${code} Data handover`,
+    );
+    expect(within(dialog).queryByRole("textbox", { name: "Name" })).toBeNull();
     // The destination is named, not implied: the project, the module, the
     // archive sub-item and the absolute path the folder will be created at —
     // one level below the module, where the programme keeps its material.

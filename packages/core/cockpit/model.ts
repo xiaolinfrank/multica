@@ -2432,25 +2432,6 @@ export const COCKPIT_MEETING_STATUSES: readonly string[] = [
 ];
 
 /**
- * The name the platform proposes for a new meeting: its number, the parties at
- * the table, and the subject when one is given —
- * "20260921-01 复星医药×华大基因 数据对接".
- *
- * A proposal, not a rule. It is shown in the form before anything is created
- * precisely so it can be overtyped; nothing regenerates it afterwards.
- */
-export function buildCockpitMeetingName(input: {
-  code: string;
-  parties?: string;
-  subject?: string;
-}): string {
-  const parties = splitCockpitMeetingParties(input.parties ?? "").join("×");
-  return [input.code.trim(), parties, (input.subject ?? "").trim()]
-    .filter(Boolean)
-    .join(" ");
-}
-
-/**
  * What a meeting's folder is called: its number and its name.
  *
  * The generated name already opens with the number, so prefixing it again
