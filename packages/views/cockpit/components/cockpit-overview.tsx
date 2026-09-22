@@ -1492,7 +1492,7 @@ function MeetingsCard({
           {!readOnly && (
             <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
               <Plus className="size-3.5" />
-              {t(($) => $.overview.add_meeting)}
+              {t(($) => $.meeting.new)}
             </Button>
           )}
         </>

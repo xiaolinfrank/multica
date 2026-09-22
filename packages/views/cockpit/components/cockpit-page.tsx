@@ -974,9 +974,12 @@ export function CockpitPage() {
                 }
                 onDeleteMilestone={(id) => requestDeletion("milestone", id)}
                 onPatchMeeting={patchMeeting}
-                onCreateMeeting={() =>
-                  createMeeting.mutate({ title: t(($) => $.meeting.new), meet_date: today }, { onError: fail })
-                }
+                // The same dialog the register's own "new meeting" opens.
+                // A meeting is not a row someone fills in afterwards: it
+                // decides a number, a folder and a task at the moment it is
+                // filed, and a quick-add that skipped all three left rows the
+                // rest of the register could not be read against.
+                onCreateMeeting={() => setCreatingMeeting(true)}
                 onDeleteMeeting={(id) => requestDeletion("meeting", id)}
                 onOpenMeetings={(meetingId) => {
                   setSelectedMeetingId(meetingId ?? null);
