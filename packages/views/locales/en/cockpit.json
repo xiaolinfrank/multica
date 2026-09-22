@@ -374,6 +374,14 @@
     "link": "Add work item",
     "unlink": "Unlink {{label}}"
   },
+  "issue_meetings": {
+    "title": "Meetings",
+    "none": "No meetings linked.",
+    "link": "Add meeting",
+    "unlink": "Unlink {{label}}",
+    "search_placeholder": "Search by number, name or parties",
+    "no_results": "No meeting matches."
+  },
   "panel": {
     "close": "Close panel",
     "delete_node": "Delete this item",

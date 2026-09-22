@@ -107,6 +107,7 @@ import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestList } from "./pull-request-list";
 import { CockpitNodesSection } from "./cockpit-nodes-section";
+import { CockpitMeetingsSection } from "./cockpit-meetings-section";
 import { useGitHubSettings } from "@multica/core/github";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
@@ -2586,6 +2587,11 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           through, editable from either end of the relation. Self-contained;
           hides itself when the workspace's board has no work breakdown. */}
       <CockpitNodesSection issueId={id} />
+
+      {/* Cockpit meetings — the register entries this issue is recorded
+          against, including the meeting that filed it. Editable from either
+          end; hides itself when the workspace keeps no register. */}
+      <CockpitMeetingsSection issueId={id} />
 
       {/* Execution log — active runs + collapsed past runs, each carrying its
           own token spend, with the issue total on the section header.

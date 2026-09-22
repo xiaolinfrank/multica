@@ -374,6 +374,14 @@
     "link": "作業項目を追加",
     "unlink": "「{{label}}」の関連を解除"
   },
+  "issue_meetings": {
+    "title": "関連会議",
+    "none": "関連する会議はありません。",
+    "link": "会議を追加",
+    "unlink": "「{{label}}」の関連を解除",
+    "search_placeholder": "番号・名称・参加者で検索",
+    "no_results": "該当する会議はありません。"
+  },
   "panel": {
     "close": "パネルを閉じる",
     "delete_node": "この項目を削除",

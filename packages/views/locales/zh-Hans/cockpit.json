@@ -374,6 +374,14 @@
     "link": "添加执行任务",
     "unlink": "取消关联「{{label}}」"
   },
+  "issue_meetings": {
+    "title": "关联会议",
+    "none": "暂无关联会议。",
+    "link": "添加会议",
+    "unlink": "取消关联「{{label}}」",
+    "search_placeholder": "按编号、名称或参会方搜索",
+    "no_results": "没有匹配的会议。"
+  },
   "panel": {
     "close": "关闭详情",
     "delete_node": "删除该任务",
