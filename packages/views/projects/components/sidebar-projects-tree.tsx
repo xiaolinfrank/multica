@@ -25,6 +25,11 @@ import { useT } from "../../i18n";
 const ROW_CLASS_NAME =
   "text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground";
 
+/** True while the route is the project's own page or anything under it. */
+function isOnProject(pathname: string, projectHref: string) {
+  return pathname === projectHref || pathname.startsWith(projectHref + "/");
+}
+
 function ProjectTreeRow({
   project,
   modules,
@@ -43,7 +48,7 @@ function ProjectTreeRow({
   // still be overridden by an explicit collapse.
   const route = pathname + "?module=" + (activeModuleId ?? "");
   const [override, setOverride] = useState<{ route: string; open: boolean } | null>(null);
-  const inProject = pathname === projectHref || pathname.startsWith(projectHref + "/");
+  const inProject = isOnProject(pathname, projectHref);
   const autoOpen = inProject && modules.some((m) => m.id === activeModuleId);
   const open = override?.route === route ? override.open : autoOpen;
   const activeProject =
@@ -149,6 +154,21 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     return map;
   }, [modules]);
 
+  // This subtree is a quick-navigation list, so a paused project stays out of
+  // it; the projects page still lists every status. Excluding the one status
+  // (rather than allow-listing the rest) keeps a status introduced by a newer
+  // backend visible here. The project currently open is the exception — the
+  // row you are looking at should never be the one missing from the tree.
+  const visibleProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          project.status !== "paused" ||
+          isOnProject(pathname, wsPaths.projectDetail(project.id)),
+      ),
+    [pathname, projects, wsPaths],
+  );
+
   const route = pathname + "?module=" + (activeModuleId ?? "");
   const [override, setOverride] = useState<{ route: string; open: boolean } | null>(null);
   const inProjects = pathname === href || pathname.startsWith(href + "/");
@@ -170,7 +190,7 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
       </div>
       <div hidden={!open}>
         <SidebarMenu className="gap-0.5 pl-2">
-          {projects.map((project) => (
+          {visibleProjects.map((project) => (
             <ProjectTreeRow
               key={project.id}
               project={project}

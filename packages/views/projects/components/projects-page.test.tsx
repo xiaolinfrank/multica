@@ -251,6 +251,17 @@ beforeEach(() => {
   mocks.projectViewState.filters = { statuses: [], priorities: [], leads: [] };
 });
 
+describe("ProjectsPage status coverage", () => {
+  it("lists a paused project, which the sidebar tree leaves out", () => {
+    // The sidebar's projects subtree hides paused projects on purpose; this
+    // page is where they stay reachable, so the two must not drift together.
+    mocks.projects = [PROJECT, { ...PROJECT, id: "project-2", title: "On Hold", status: "paused" }];
+    renderProjects();
+
+    expect(screen.getByText("On Hold")).toBeInTheDocument();
+  });
+});
+
 describe("ProjectsPage compact row navigation", () => {
   it("renders the project name as text, not a title link", () => {
     renderProjects();

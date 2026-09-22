@@ -630,6 +630,32 @@ describe("Work projects tree", () => {
     expect(openModal).toHaveBeenCalledWith("create-module", { projectId: "project-b" });
   });
 
+  it("leaves a paused project out of the tree unless it is the one open", () => {
+    projectsTree.projects = [
+      { id: "project-a", title: "Project Alpha", status: "in_progress" },
+      { id: "project-b", title: "Project Beta", status: "paused" },
+    ];
+    const { rerender } = renderWithI18n(<AppSidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Toggle projects" }));
+    expect(screen.getByRole("button", { name: "Project Alpha" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Project Beta" })).not.toBeInTheDocument();
+    // Its modules go with it — they only ever render inside their project row.
+    expect(screen.queryByRole("button", { name: "Toggle modules Project Beta" })).not.toBeInTheDocument();
+
+    navigation.current = { pathname: "/acme/projects/project-b", search: "" };
+    rerender(<AppSidebar />);
+    expect(screen.getByRole("button", { name: "Project Beta" })).toHaveAttribute("data-active", "true");
+  });
+
+  it("keeps a status this client does not know about in the tree", () => {
+    projectsTree.projects = [
+      { id: "project-a", title: "Project Alpha", status: "someday" },
+    ];
+    renderWithI18n(<AppSidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Toggle projects" }));
+    expect(screen.getByRole("button", { name: "Project Alpha" })).toBeInTheDocument();
+  });
+
   it("auto-opens a module deep link, scopes selection to its project, and allows collapse", () => {
     navigation.current = { pathname: "/acme/projects/project-a", search: "module=module-a" };
     const { rerender } = renderWithI18n(<AppSidebar />);
