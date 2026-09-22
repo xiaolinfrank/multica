@@ -297,49 +297,6 @@ export function CockpitMeetingPanel({
 
         <Separator className="my-3" />
 
-        <CockpitField label={t(($) => $.meeting.agenda)}>
-          <EditableTextArea
-            value={meeting.note}
-            onCommit={(note) => onPatch({ note })}
-            label={t(($) => $.meeting.agenda)}
-            placeholder={t(($) => $.meeting.no_agenda)}
-            disabled={readOnly}
-            rows={3}
-          />
-        </CockpitField>
-        <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
-          <EditableTextArea
-            value={meeting.minutes}
-            onCommit={(minutes) => onPatch({ minutes })}
-            label={t(($) => $.meeting.minutes)}
-            placeholder={unset}
-            disabled={readOnly}
-            rows={4}
-          />
-        </CockpitField>
-        <CockpitField label={t(($) => $.meeting.decisions)} className="mt-3">
-          <EditableTextArea
-            value={meeting.decisions}
-            onCommit={(decisions) => onPatch({ decisions })}
-            label={t(($) => $.meeting.decisions)}
-            placeholder={unset}
-            disabled={readOnly}
-            rows={3}
-          />
-        </CockpitField>
-        <CockpitField label={t(($) => $.meeting.actions)} className="mt-3">
-          <EditableTextArea
-            value={meeting.actions}
-            onCommit={(actions) => onPatch({ actions })}
-            label={t(($) => $.meeting.actions)}
-            placeholder={unset}
-            disabled={readOnly}
-            rows={3}
-          />
-        </CockpitField>
-
-        <Separator className="my-3" />
-
         {/* The tasks the meeting is carried out through. The one the platform
             opened with the meeting leads the list and reads no differently —
             it is an ordinary issue, and unlinking it does not delete it. */}
@@ -434,6 +391,49 @@ export function CockpitMeetingPanel({
               {t(($) => $.meeting.provision_dir)}
             </Button>
           </CockpitPathField>
+        </CockpitField>
+
+        <Separator className="my-3" />
+
+        <CockpitField label={t(($) => $.meeting.agenda)}>
+          <EditableTextArea
+            value={meeting.note}
+            onCommit={(note) => onPatch({ note })}
+            label={t(($) => $.meeting.agenda)}
+            placeholder={t(($) => $.meeting.no_agenda)}
+            disabled={readOnly}
+            rows={3}
+          />
+        </CockpitField>
+        <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
+          <EditableTextArea
+            value={meeting.minutes}
+            onCommit={(minutes) => onPatch({ minutes })}
+            label={t(($) => $.meeting.minutes)}
+            placeholder={unset}
+            disabled={readOnly}
+            rows={4}
+          />
+        </CockpitField>
+        <CockpitField label={t(($) => $.meeting.decisions)} className="mt-3">
+          <EditableTextArea
+            value={meeting.decisions}
+            onCommit={(decisions) => onPatch({ decisions })}
+            label={t(($) => $.meeting.decisions)}
+            placeholder={unset}
+            disabled={readOnly}
+            rows={3}
+          />
+        </CockpitField>
+        <CockpitField label={t(($) => $.meeting.actions)} className="mt-3">
+          <EditableTextArea
+            value={meeting.actions}
+            onCommit={(actions) => onPatch({ actions })}
+            label={t(($) => $.meeting.actions)}
+            placeholder={unset}
+            disabled={readOnly}
+            rows={3}
+          />
         </CockpitField>
       </div>
 
