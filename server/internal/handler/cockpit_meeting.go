@@ -908,13 +908,25 @@ type meetingTaskPlacement struct {
 }
 
 // meetingTaskTitle is what the meeting's task is called: the archive
-// sub-item's number, then the meeting's own name.
+// sub-item's number, then the meeting's own number, then its name.
+//
+// The meeting's number is part of the title rather than left to the name
+// because the task is read away from the board — in an inbox, in a list of
+// everything assigned to someone — where the number is the only thing tying
+// it back to a row in the register and to a folder on the share.
 func meetingTaskTitle(prefix string, meeting db.CockpitMeeting) string {
 	name := strings.TrimSpace(meeting.Title)
 	if name == "" {
 		name = meetingFolderName(meeting)
 	}
-	prefix = strings.TrimSpace(prefix)
+	return prefixTitleOnce(strings.TrimSpace(prefix),
+		prefixTitleOnce(strings.TrimSpace(meeting.Code), name))
+}
+
+// prefixTitleOnce puts a number in front of a name, unless the name already
+// opens with it — a meeting named by the form carries its own number, and
+// "20260921-01 20260921-01 周例会" is nobody's idea of a title.
+func prefixTitleOnce(prefix, name string) string {
 	switch {
 	case prefix == "":
 		return name

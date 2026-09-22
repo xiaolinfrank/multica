@@ -900,8 +900,10 @@ func TestCockpitMeetingProvisionOpensTaskAndFolder(t *testing.T) {
 	if resp.Task.Role != "task" {
 		t.Errorf("task link role = %q, want \"task\"", resp.Task.Role)
 	}
-	if resp.Task.IssueTitle != "复星明略数据治理对接会" {
-		t.Errorf("task title = %q, want the meeting's name", resp.Task.IssueTitle)
+	// The meeting's number leads its name: the task is read in an inbox,
+	// away from the row it came from.
+	if want := "20260921-01 复星明略数据治理对接会"; resp.Task.IssueTitle != want {
+		t.Errorf("task title = %q, want %q", resp.Task.IssueTitle, want)
 	}
 
 	// The task is filed under the programme's meeting project and module, and
@@ -1263,6 +1265,18 @@ func TestCockpitMeetingTaskTitle(t *testing.T) {
 	if got, want := meetingTaskTitle("06.06.03", unnamed), "06.06.03 20260921-02"; got != want {
 		t.Errorf("title = %q, want %q", got, want)
 	}
+	// A meeting whose name does not repeat its number — every row imported
+	// from a transcript is shaped this way — still opens a task that names
+	// the meeting it came from.
+	plain := db.CockpitMeeting{Code: "20260914-02", Title: "华大与复星自免疾病专病库建设"}
+	if got, want := meetingTaskTitle("06.06.03", plain),
+		"06.06.03 20260914-02 华大与复星自免疾病专病库建设"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	// With no sub-item chosen the meeting's own number still leads.
+	if got, want := meetingTaskTitle("", plain), "20260914-02 华大与复星自免疾病专病库建设"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
 }
 
 // meetingArchiveFixture is the shape the programme actually files under: a
@@ -1495,7 +1509,9 @@ func TestCockpitMeetingImportFlagsWhatItGuessed(t *testing.T) {
 	if len(resp.Issues) != 1 || resp.Issues[0].Role != "task" {
 		t.Fatalf("issues = %+v, want the meeting's own task", resp.Issues)
 	}
-	if want := "06.06.03 可信连接器"; resp.Issues[0].IssueTitle != want {
+	// The folder carried no number, so the import gave it the day's first
+	// one and the task is titled with it.
+	if want := "06.06.03 20260920-01 可信连接器"; resp.Issues[0].IssueTitle != want {
 		t.Errorf("task title = %q, want %q", resp.Issues[0].IssueTitle, want)
 	}
 
