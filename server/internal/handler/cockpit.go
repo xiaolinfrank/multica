@@ -63,8 +63,12 @@ type CockpitResponse struct {
 	// the meeting task's title and its folder holds the material.
 	MeetingNodeID *string `json:"meeting_node_id"`
 	MeetingDir    string  `json:"meeting_dir"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	// Who a new meeting's task is assigned to. Empty means the member filing
+	// the meeting, which is the behaviour a board starts with.
+	MeetingAssigneeType string  `json:"meeting_assignee_type"`
+	MeetingAssigneeID   *string `json:"meeting_assignee_id"`
+	CreatedAt           string  `json:"created_at"`
+	UpdatedAt           string  `json:"updated_at"`
 }
 
 type CockpitNodeResponse struct {
@@ -269,8 +273,12 @@ func cockpitToResponse(c db.Cockpit) CockpitResponse {
 		MeetingModuleID:  uuidToPtr(c.MeetingModuleID),
 		MeetingNodeID:    uuidToPtr(c.MeetingNodeID),
 		MeetingDir:       c.MeetingDir,
-		CreatedAt:        timestampToString(c.CreatedAt),
-		UpdatedAt:        timestampToString(c.UpdatedAt),
+
+		MeetingAssigneeType: c.MeetingAssigneeType,
+		MeetingAssigneeID:   uuidToPtr(c.MeetingAssigneeID),
+
+		CreatedAt: timestampToString(c.CreatedAt),
+		UpdatedAt: timestampToString(c.UpdatedAt),
 	}
 }
 
@@ -840,6 +848,10 @@ type UpdateCockpitRequest struct {
 	MeetingModuleID  *string `json:"meeting_module_id"`
 	MeetingNodeID    *string `json:"meeting_node_id"`
 	MeetingDir       *string `json:"meeting_dir"`
+	// Who new meetings assign their task to. The pair travels together: a
+	// type with no id, or an id with no type, names nothing.
+	MeetingAssigneeType *string `json:"meeting_assignee_type"`
+	MeetingAssigneeID   *string `json:"meeting_assignee_id"`
 }
 
 func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
@@ -883,6 +895,12 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	assigneeType, assignee, ok := h.resolveMeetingAssignee(
+		w, r, cc, raw, req.MeetingAssigneeType, req.MeetingAssigneeID)
+	if !ok {
+		return
+	}
+
 	board, err := h.Queries.UpdateCockpit(r.Context(), db.UpdateCockpitParams{
 		ID:                  cc.cockpit.ID,
 		WorkspaceID:         cc.workspaceID,
@@ -901,6 +919,10 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 		MeetingNodeID:       node.id,
 		ClearMeetingNode:    node.clear,
 		MeetingDir:          optionalText(dir),
+
+		MeetingAssigneeType:  assigneeType,
+		MeetingAssigneeID:    assignee.id,
+		ClearMeetingAssignee: assignee.clear,
 	})
 	if err != nil {
 		slog.Warn("UpdateCockpit failed", append(logger.RequestAttrs(r), "error", err)...)

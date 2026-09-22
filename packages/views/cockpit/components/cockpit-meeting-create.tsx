@@ -15,6 +15,7 @@ import type {
   CockpitMeeting,
   CockpitMeetingProvision,
   CockpitNode,
+  IssueAssigneeType,
   MemberWithUser,
 } from "@multica/core/types";
 import {
@@ -54,6 +55,7 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
+import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
 
 /** A picker inside this form reads as a form control, not as a table cell. */
 const FIELD_TRIGGER =
@@ -93,6 +95,9 @@ export interface CockpitMeetingCreateProps {
   defaultProjectId: string | null;
   defaultModuleId: string | null;
   defaultNodeId: string | null;
+  /** Who the board files meeting tasks to. Null means the member filing it. */
+  defaultAssigneeType: string | null;
+  defaultAssigneeId: string | null;
   /** Resolves once the meeting row exists and provisioning has answered. */
   onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => Promise<unknown>;
 }
@@ -109,6 +114,8 @@ export function CockpitMeetingCreate({
   defaultProjectId,
   defaultModuleId,
   defaultNodeId,
+  defaultAssigneeType,
+  defaultAssigneeId,
   onSubmit,
 }: CockpitMeetingCreateProps) {
   const { t } = useT("cockpit");
@@ -132,6 +139,13 @@ export function CockpitMeetingCreate({
   const [nodeId, setNodeId] = useState(defaultNodeId ?? "");
   const [withTask, setWithTask] = useState(true);
   const [withDir, setWithDir] = useState(true);
+  // Null is "the member filing the meeting", which is also what an empty
+  // assignee tells the server — not "unassigned", a state that would hand the
+  // minutes to the workspace's fallback agent and start a run.
+  const [assigneeType, setAssigneeType] = useState<IssueAssigneeType | null>(
+    (defaultAssigneeType || null) as IssueAssigneeType | null,
+  );
+  const [assigneeId, setAssigneeId] = useState<string | null>(defaultAssigneeId);
   const [submitting, setSubmitting] = useState(false);
 
   // Re-opening the form starts a new meeting, not the last one again.
@@ -155,8 +169,19 @@ export function CockpitMeetingCreate({
     setNodeId(defaultNodeId ?? "");
     setWithTask(true);
     setWithDir(true);
+    setAssigneeType((defaultAssigneeType || null) as IssueAssigneeType | null);
+    setAssigneeId(defaultAssigneeId);
     setSubmitting(false);
-  }, [open, today, currentUserName, defaultProjectId, defaultModuleId, defaultNodeId]);
+  }, [
+    open,
+    today,
+    currentUserName,
+    defaultProjectId,
+    defaultModuleId,
+    defaultNodeId,
+    defaultAssigneeType,
+    defaultAssigneeId,
+  ]);
 
   const projects = useQuery({ ...projectListOptions(wsId), enabled: open && Boolean(wsId) });
   const modules = useQuery({
@@ -233,6 +258,11 @@ export function CockpitMeetingCreate({
           module_id: moduleId || undefined,
           node_id: nodeId,
           base_dir: baseDir || undefined,
+          // Always sent, including empty: this is the board's stored choice
+          // being confirmed or cleared, and an absent key would mean "leave
+          // it alone".
+          assignee_type: assigneeType ?? "",
+          assignee_id: assigneeId ?? "",
           remember: true,
         },
       );
@@ -503,6 +533,28 @@ export function CockpitMeetingCreate({
                 </span>
               </span>
             </label>
+
+            {/* Who writes the minutes is a standing answer, not a per-meeting
+                one, so the choice made here becomes the board's default.
+                Assigning an agent starts a run the moment the task is filed —
+                that is the point when the minutes are an agent's job, and the
+                reason the fallback is a person rather than the workspace's
+                cluster agent. */}
+            {withTask && canFile && (
+              <div className="col-span-2 flex items-center gap-2 pl-6">
+                <span className="shrink-0 text-caption text-muted-foreground">
+                  {t(($) => $.meetings.task_assignee)}
+                </span>
+                <AssigneePicker
+                  assigneeType={assigneeType}
+                  assigneeId={assigneeId}
+                  onUpdate={(update) => {
+                    setAssigneeType(update.assignee_type ?? null);
+                    setAssigneeId(update.assignee_id ?? null);
+                  }}
+                />
+              </div>
+            )}
 
             <label className="col-span-2 flex items-start gap-2">
               <Checkbox

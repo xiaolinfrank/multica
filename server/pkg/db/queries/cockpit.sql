@@ -46,6 +46,12 @@ UPDATE cockpit SET
     meeting_node_id    = CASE WHEN sqlc.arg('clear_meeting_node')::bool THEN NULL
                               ELSE COALESCE(sqlc.narg('meeting_node_id')::uuid, meeting_node_id) END,
     meeting_dir        = COALESCE(sqlc.narg('meeting_dir')::text, meeting_dir),
+    -- Who the meeting's task goes to. The type is a plain text column, so ''
+    -- is how it is cleared back to "the member filing the meeting"; the id
+    -- needs the explicit flag for the same reason the ids above do.
+    meeting_assignee_type = COALESCE(sqlc.narg('meeting_assignee_type')::text, meeting_assignee_type),
+    meeting_assignee_id   = CASE WHEN sqlc.arg('clear_meeting_assignee')::bool THEN NULL
+                              ELSE COALESCE(sqlc.narg('meeting_assignee_id')::uuid, meeting_assignee_id) END,
     updated_at      = now()
 WHERE id = sqlc.arg('id')::uuid
   AND workspace_id = sqlc.arg('workspace_id')::uuid

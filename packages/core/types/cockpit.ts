@@ -35,6 +35,11 @@ export interface Cockpit {
    *  meeting task's title and its folder holds the material. */
   meeting_node_id: string | null;
   meeting_dir: string;
+  /** Who a new meeting's task is assigned to. The pair travels together:
+   *  "member" | "agent" | "squad" says which table the id points into, and
+   *  an empty type means the member filing the meeting. */
+  meeting_assignee_type: string;
+  meeting_assignee_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -232,6 +237,8 @@ export type CockpitPatch = Partial<
     | "meeting_module_id"
     | "meeting_node_id"
     | "meeting_dir"
+    | "meeting_assignee_type"
+    | "meeting_assignee_id"
   >
 >;
 

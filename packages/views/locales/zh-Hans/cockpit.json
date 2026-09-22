@@ -323,8 +323,9 @@
     "with_dir_creates_base": "归档目录尚不存在，将一并创建。",
     "with_dir_unavailable": "{{reason}}",
     "with_task": "同时新建会议任务",
-    "with_task_hint": "建在「{{project}} › {{module}}」下，指派给你。",
-    "with_task_hint_numbered": "归入 {{project}} › {{module}}，编号 {{code}}，指派给你。",
+    "task_assignee": "受理人",
+    "with_task_hint": "建在「{{project}} › {{module}}」下。",
+    "with_task_hint_numbered": "归入 {{project}} › {{module}}，编号 {{code}}。",
     "with_task_unset": "先选定会议任务归属的项目与模块，才能开启。"
   },
   "payment": {

@@ -76,6 +76,8 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
       summary_next: "",
       summary_support: "",
       basis: "",
+      meeting_assignee_type: "",
+      meeting_assignee_id: null,
       meeting_project_id: null,
       meeting_module_id: null,
     meeting_node_id: null,

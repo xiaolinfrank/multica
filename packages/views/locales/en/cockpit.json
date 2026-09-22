@@ -323,8 +323,9 @@
     "with_dir_creates_base": "The archive folder does not exist yet and will be created with it.",
     "with_dir_unavailable": "{{reason}}",
     "with_task": "Open a task for it",
-    "with_task_hint": "Filed under {{project}} › {{module}}, assigned to you.",
-    "with_task_hint_numbered": "Filed under {{project}} › {{module}} as {{code}}, assigned to you.",
+    "task_assignee": "Assignee",
+    "with_task_hint": "Filed under {{project}} › {{module}}.",
+    "with_task_hint_numbered": "Filed under {{project}} › {{module}} as {{code}}.",
     "with_task_unset": "Choose where meeting tasks are filed to turn this on."
   },
   "payment": {

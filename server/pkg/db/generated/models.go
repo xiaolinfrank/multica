@@ -564,21 +564,23 @@ type ClientUsageDaily struct {
 }
 
 type Cockpit struct {
-	ID               pgtype.UUID        `json:"id"`
-	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
-	Title            string             `json:"title"`
-	GoalTitle        string             `json:"goal_title"`
-	GoalDate         pgtype.Date        `json:"goal_date"`
-	SummaryOverall   string             `json:"summary_overall"`
-	SummaryNext      string             `json:"summary_next"`
-	SummarySupport   string             `json:"summary_support"`
-	Basis            string             `json:"basis"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
-	MeetingProjectID pgtype.UUID        `json:"meeting_project_id"`
-	MeetingModuleID  pgtype.UUID        `json:"meeting_module_id"`
-	MeetingDir       string             `json:"meeting_dir"`
-	MeetingNodeID    pgtype.UUID        `json:"meeting_node_id"`
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	Title               string             `json:"title"`
+	GoalTitle           string             `json:"goal_title"`
+	GoalDate            pgtype.Date        `json:"goal_date"`
+	SummaryOverall      string             `json:"summary_overall"`
+	SummaryNext         string             `json:"summary_next"`
+	SummarySupport      string             `json:"summary_support"`
+	Basis               string             `json:"basis"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	MeetingProjectID    pgtype.UUID        `json:"meeting_project_id"`
+	MeetingModuleID     pgtype.UUID        `json:"meeting_module_id"`
+	MeetingDir          string             `json:"meeting_dir"`
+	MeetingNodeID       pgtype.UUID        `json:"meeting_node_id"`
+	MeetingAssigneeType string             `json:"meeting_assignee_type"`
+	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
 }
 
 type CockpitMeeting struct {

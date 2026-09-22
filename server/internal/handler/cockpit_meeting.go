@@ -147,6 +147,59 @@ func (h *Handler) resolveMeetingDestination(
 	return project, module, node, true
 }
 
+// resolveMeetingAssignee validates the default assignee a board wants its
+// meeting tasks to go to. Absent fields leave the board's current choice
+// alone; an empty type clears it back to "the member filing the meeting".
+//
+// Who that is stays a property of the programme, not of the code: here the
+// minutes are an agent's job ("会议纪要整理专员"), elsewhere they are a
+// person's, so the pair is chosen in the product and validated here against
+// the same rules an issue's own assignee is held to.
+func (h *Handler) resolveMeetingAssignee(
+	w http.ResponseWriter,
+	r *http.Request,
+	cc cockpitContext,
+	raw map[string]json.RawMessage,
+	kind *string,
+	id *string,
+) (pgtype.Text, meetingRef, bool) {
+	_, typeSent := raw["meeting_assignee_type"]
+	_, idSent := raw["meeting_assignee_id"]
+	if !typeSent && !idSent {
+		return pgtype.Text{}, meetingRef{}, true
+	}
+
+	wantType := strings.TrimSpace(derefOr(kind, cc.cockpit.MeetingAssigneeType))
+	wantID := strings.TrimSpace(derefOr(id, uuidToString(cc.cockpit.MeetingAssigneeID)))
+	// Clearing either half clears both: a type with no id names no row, and
+	// an id with no type does not say which table to look in.
+	if wantType == "" || wantID == "" {
+		return pgtype.Text{String: "", Valid: true}, meetingRef{clear: true}, true
+	}
+
+	parsed, err := util.ParseUUID(wantID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid meeting_assignee_id")
+		return pgtype.Text{}, meetingRef{}, false
+	}
+	if status, msg := h.validateAssigneePair(
+		r.Context(), r, uuidToString(cc.workspaceID),
+		pgtype.Text{String: wantType, Valid: true}, parsed,
+	); status != 0 {
+		writeError(w, status, msg)
+		return pgtype.Text{}, meetingRef{}, false
+	}
+	return pgtype.Text{String: wantType, Valid: true}, meetingRef{id: parsed}, true
+}
+
+// derefOr reads an optional field, falling back to what is already stored.
+func derefOr(value *string, stored string) string {
+	if value == nil {
+		return stored
+	}
+	return *value
+}
+
 // meetingDirOrError validates a meeting's stored folder. Same contract as a
 // project's collaboration space: absolute, no control characters, bounded —
 // the server stores what it is told and never resolves it on read.
@@ -705,6 +758,13 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 	}
 
 	// --- the task -------------------------------------------------------
+	// An explicitly empty assignee means "whoever is filing it", and that has
+	// to hold for this meeting as well as the ones after it — the board's own
+	// default is cleared further down, too late for the task opened here.
+	if req.AssigneeType != nil && strings.TrimSpace(*req.AssigneeType) == "" {
+		cc.cockpit.MeetingAssigneeType = ""
+		cc.cockpit.MeetingAssigneeID = pgtype.UUID{}
+	}
 	if boolOrDefault(req.CreateTask, true) {
 		link, taskErr := h.openMeetingTask(r, cc, meeting, meetingTaskPlacement{
 			projectID:    projectID,
@@ -745,6 +805,25 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		// meeting went.
 		if resp.DirCreated && resp.Dir != "" {
 			params.MeetingDir = pgtype.Text{String: filepath.Dir(resp.Dir), Valid: true}
+		}
+		// Who writes the minutes is part of the destination the form just
+		// confirmed, so it is stored with it: naming someone once makes them
+		// the board's default, and sending an empty type hands the job back to
+		// whoever files the meeting.
+		if kind := strings.TrimSpace(derefOr(req.AssigneeType, "")); req.AssigneeType != nil {
+			id := strings.TrimSpace(derefOr(req.AssigneeID, ""))
+			switch {
+			case kind == "" || id == "":
+				params.MeetingAssigneeType = pgtype.Text{String: "", Valid: true}
+				params.ClearMeetingAssignee = true
+			default:
+				parsed, err := util.ParseUUID(id)
+				candidate := pgtype.Text{String: kind, Valid: true}
+				if status, _ := h.validateAssigneePair(ctx, r, uuidToString(cc.workspaceID), candidate, parsed); err == nil && status == 0 {
+					params.MeetingAssigneeType = candidate
+					params.MeetingAssigneeID = parsed
+				}
+			}
 		}
 		board, err := h.Queries.UpdateCockpit(ctx, params)
 		if err != nil {
@@ -960,6 +1039,20 @@ func (h *Handler) openMeetingTask(
 	// one for the minutes of a meeting.
 	assigneeType := pgtype.Text{String: "member", Valid: true}
 	assigneeID := cc.member.UserID
+	// A board that named someone whose job the minutes are overrides that:
+	// the person who opened the row is rarely the person who writes them up.
+	// Validated on use rather than trusted, and a setting that no longer
+	// resolves — an archived agent, a member who left — falls back to the
+	// filer instead of refusing to file the meeting at all.
+	if kind := strings.TrimSpace(cc.cockpit.MeetingAssigneeType); kind != "" && cc.cockpit.MeetingAssigneeID.Valid {
+		boardType := pgtype.Text{String: kind, Valid: true}
+		if status, _ := h.validateAssigneePair(
+			ctx, r, uuidToString(cc.workspaceID), boardType, cc.cockpit.MeetingAssigneeID,
+		); status == 0 {
+			assigneeType = boardType
+			assigneeID = cc.cockpit.MeetingAssigneeID
+		}
+	}
 	if placement.assigneeType != nil && strings.TrimSpace(*placement.assigneeType) != "" {
 		assigneeType = pgtype.Text{String: strings.TrimSpace(*placement.assigneeType), Valid: true}
 		assigneeID = pgtype.UUID{}

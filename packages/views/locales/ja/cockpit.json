@@ -323,8 +323,9 @@
     "with_dir_creates_base": "保管先フォルダーがまだないため、あわせて作成します。",
     "with_dir_unavailable": "{{reason}}",
     "with_task": "会議タスクも作成する",
-    "with_task_hint": "「{{project}} › {{module}}」の下に作成し、自分に割り当てます。",
-    "with_task_hint_numbered": "{{project}} › {{module}} に {{code}} として登録し、自分に割り当てます。",
+    "task_assignee": "担当者",
+    "with_task_hint": "「{{project}} › {{module}}」の下に作成します。",
+    "with_task_hint_numbered": "{{project}} › {{module}} に {{code}} として登録します。",
     "with_task_unset": "会議タスクの保存先プロジェクトとモジュールを選ぶと有効になります。"
   },
   "payment": {

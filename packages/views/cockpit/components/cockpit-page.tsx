@@ -1152,6 +1152,8 @@ export function CockpitPage() {
         defaultProjectId={board.cockpit.meeting_project_id}
         defaultModuleId={board.cockpit.meeting_module_id}
         defaultNodeId={board.cockpit.meeting_node_id}
+        defaultAssigneeType={board.cockpit.meeting_assignee_type || null}
+        defaultAssigneeId={board.cockpit.meeting_assignee_id}
         onSubmit={submitMeeting}
       />
       <CockpitMeetingImport

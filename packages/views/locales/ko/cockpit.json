@@ -323,8 +323,9 @@
     "with_dir_creates_base": "보관 폴더가 아직 없어 함께 만듭니다.",
     "with_dir_unavailable": "{{reason}}",
     "with_task": "회의 작업도 만들기",
-    "with_task_hint": "「{{project}} › {{module}}」 아래에 만들고 나에게 배정합니다.",
-    "with_task_hint_numbered": "{{project}} › {{module}}에 {{code}}로 등록하고 나에게 배정합니다.",
+    "task_assignee": "담당자",
+    "with_task_hint": "「{{project}} › {{module}}」 아래에 만듭니다.",
+    "with_task_hint_numbered": "{{project}} › {{module}}에 {{code}}로 등록합니다.",
     "with_task_unset": "회의 작업을 둘 프로젝트와 모듈을 먼저 고르면 켤 수 있습니다."
   },
   "payment": {

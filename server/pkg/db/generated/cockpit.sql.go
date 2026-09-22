@@ -21,7 +21,7 @@ VALUES (
     $5::text
 )
 ON CONFLICT (workspace_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id
 `
 
 type CreateCockpitParams struct {
@@ -59,6 +59,8 @@ func (q *Queries) CreateCockpit(ctx context.Context, arg CreateCockpitParams) (C
 		&i.MeetingModuleID,
 		&i.MeetingDir,
 		&i.MeetingNodeID,
+		&i.MeetingAssigneeType,
+		&i.MeetingAssigneeID,
 	)
 	return i, err
 }
@@ -1065,7 +1067,7 @@ func (q *Queries) DeleteWorkspaceCockpitData(ctx context.Context, workspaceID pg
 
 const getCockpitByWorkspace = `-- name: GetCockpitByWorkspace :one
 
-SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id FROM cockpit
+SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id FROM cockpit
 WHERE workspace_id = $1::uuid
 `
 
@@ -1095,6 +1097,8 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 		&i.MeetingModuleID,
 		&i.MeetingDir,
 		&i.MeetingNodeID,
+		&i.MeetingAssigneeType,
+		&i.MeetingAssigneeID,
 	)
 	return i, err
 }
@@ -1910,30 +1914,39 @@ UPDATE cockpit SET
     meeting_node_id    = CASE WHEN $13::bool THEN NULL
                               ELSE COALESCE($14::uuid, meeting_node_id) END,
     meeting_dir        = COALESCE($15::text, meeting_dir),
+    -- Who the meeting's task goes to. The type is a plain text column, so ''
+    -- is how it is cleared back to "the member filing the meeting"; the id
+    -- needs the explicit flag for the same reason the ids above do.
+    meeting_assignee_type = COALESCE($16::text, meeting_assignee_type),
+    meeting_assignee_id   = CASE WHEN $17::bool THEN NULL
+                              ELSE COALESCE($18::uuid, meeting_assignee_id) END,
     updated_at      = now()
-WHERE id = $16::uuid
-  AND workspace_id = $17::uuid
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id
+WHERE id = $19::uuid
+  AND workspace_id = $20::uuid
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id
 `
 
 type UpdateCockpitParams struct {
-	Title               pgtype.Text `json:"title"`
-	GoalTitle           pgtype.Text `json:"goal_title"`
-	ClearGoalDate       bool        `json:"clear_goal_date"`
-	GoalDate            pgtype.Date `json:"goal_date"`
-	SummaryOverall      pgtype.Text `json:"summary_overall"`
-	SummaryNext         pgtype.Text `json:"summary_next"`
-	SummarySupport      pgtype.Text `json:"summary_support"`
-	Basis               pgtype.Text `json:"basis"`
-	ClearMeetingProject bool        `json:"clear_meeting_project"`
-	MeetingProjectID    pgtype.UUID `json:"meeting_project_id"`
-	ClearMeetingModule  bool        `json:"clear_meeting_module"`
-	MeetingModuleID     pgtype.UUID `json:"meeting_module_id"`
-	ClearMeetingNode    bool        `json:"clear_meeting_node"`
-	MeetingNodeID       pgtype.UUID `json:"meeting_node_id"`
-	MeetingDir          pgtype.Text `json:"meeting_dir"`
-	ID                  pgtype.UUID `json:"id"`
-	WorkspaceID         pgtype.UUID `json:"workspace_id"`
+	Title                pgtype.Text `json:"title"`
+	GoalTitle            pgtype.Text `json:"goal_title"`
+	ClearGoalDate        bool        `json:"clear_goal_date"`
+	GoalDate             pgtype.Date `json:"goal_date"`
+	SummaryOverall       pgtype.Text `json:"summary_overall"`
+	SummaryNext          pgtype.Text `json:"summary_next"`
+	SummarySupport       pgtype.Text `json:"summary_support"`
+	Basis                pgtype.Text `json:"basis"`
+	ClearMeetingProject  bool        `json:"clear_meeting_project"`
+	MeetingProjectID     pgtype.UUID `json:"meeting_project_id"`
+	ClearMeetingModule   bool        `json:"clear_meeting_module"`
+	MeetingModuleID      pgtype.UUID `json:"meeting_module_id"`
+	ClearMeetingNode     bool        `json:"clear_meeting_node"`
+	MeetingNodeID        pgtype.UUID `json:"meeting_node_id"`
+	MeetingDir           pgtype.Text `json:"meeting_dir"`
+	MeetingAssigneeType  pgtype.Text `json:"meeting_assignee_type"`
+	ClearMeetingAssignee bool        `json:"clear_meeting_assignee"`
+	MeetingAssigneeID    pgtype.UUID `json:"meeting_assignee_id"`
+	ID                   pgtype.UUID `json:"id"`
+	WorkspaceID          pgtype.UUID `json:"workspace_id"`
 }
 
 // COALESCE on a nullable arg is the partial-update idiom used across this
@@ -1955,6 +1968,9 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		arg.ClearMeetingNode,
 		arg.MeetingNodeID,
 		arg.MeetingDir,
+		arg.MeetingAssigneeType,
+		arg.ClearMeetingAssignee,
+		arg.MeetingAssigneeID,
 		arg.ID,
 		arg.WorkspaceID,
 	)
@@ -1975,6 +1991,8 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		&i.MeetingModuleID,
 		&i.MeetingDir,
 		&i.MeetingNodeID,
+		&i.MeetingAssigneeType,
+		&i.MeetingAssigneeID,
 	)
 	return i, err
 }

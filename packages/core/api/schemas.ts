@@ -1705,6 +1705,8 @@ export const CockpitSchema = z.object({
   meeting_module_id: z.string().nullable().default(null),
   meeting_node_id: z.string().nullable().default(null),
   meeting_dir: z.string().default(""),
+  meeting_assignee_type: z.string().default(""),
+  meeting_assignee_id: z.string().nullable().default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
@@ -2028,6 +2030,8 @@ export const EMPTY_COCKPIT_BOARD: CockpitBoard = {
     meeting_module_id: null,
     meeting_node_id: null,
     meeting_dir: "",
+    meeting_assignee_type: "",
+    meeting_assignee_id: null,
     created_at: "",
     updated_at: "",
   },

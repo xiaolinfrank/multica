@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -935,6 +936,74 @@ func TestCockpitMeetingProvisionOpensTaskAndFolder(t *testing.T) {
 	}
 }
 
+// Who writes the minutes is a property of the programme, not of whoever
+// happened to open the row. A board that names one files every meeting task
+// to them; a board that names nobody keeps the old behaviour.
+func TestCockpitMeetingTaskGoesToTheBoardsAssignee(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting default assignee", true)
+	minuteTaker := dbfx.User(t, "会议纪要整理专员", "minutes-"+uuid.NewString()+"@example.com")
+	dbfx.Member(t, f.wsID, minuteTaker, "member")
+
+	patchCockpit(t, f.wsID, map[string]any{
+		"meeting_project_id":    f.project,
+		"meeting_module_id":     f.module,
+		"meeting_node_id":       f.node,
+		"meeting_assignee_type": "member",
+		"meeting_assignee_id":   minuteTaker,
+	}).Want(http.StatusOK)
+
+	assigneeOf := func(issueID string) (string, string) {
+		t.Helper()
+		var kind, id *string
+		dbfx.QueryRow(t, "SELECT assignee_type, assignee_id::text FROM issue WHERE id = $1", issueID).
+			Scan(&kind, &id)
+		if kind == nil || id == nil {
+			t.Fatalf("task %s is unassigned", issueID)
+		}
+		return *kind, *id
+	}
+
+	first := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "周例会"})
+	opened := f.provision(t, first.ID, map[string]any{"create_task": true, "create_dir": false})
+	if opened.Task == nil {
+		t.Fatal("no task was opened for the meeting")
+	}
+	if kind, id := assigneeOf(opened.Task.IssueID); kind != "member" || id != minuteTaker {
+		t.Errorf("task assignee = %s/%s, want member/%s", kind, id, minuteTaker)
+	}
+
+	// An assignee sent with the request still wins: the board's choice is a
+	// default, not a lock.
+	second := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "临时对接"})
+	sent := f.provision(t, second.ID, map[string]any{
+		"create_task": true, "create_dir": false,
+		"assignee_type": "member", "assignee_id": testUserID,
+	})
+	if sent.Task == nil {
+		t.Fatal("no task was opened for the second meeting")
+	}
+	if kind, id := assigneeOf(sent.Task.IssueID); kind != "member" || id != testUserID {
+		t.Errorf("task assignee = %s/%s, want the one the request sent", kind, id)
+	}
+
+	// Clearing the board's choice goes back to the member filing the meeting.
+	var cleared CockpitResponse
+	patchCockpit(t, f.wsID, map[string]any{"meeting_assignee_type": ""}).
+		Want(http.StatusOK).JSON(&cleared)
+	if cleared.MeetingAssigneeType != "" || cleared.MeetingAssigneeID != nil {
+		t.Errorf("board assignee after clearing = %q/%v, want empty",
+			cleared.MeetingAssigneeType, cleared.MeetingAssigneeID)
+	}
+	third := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "复盘"})
+	back := f.provision(t, third.ID, map[string]any{"create_task": true, "create_dir": false})
+	if back.Task == nil {
+		t.Fatal("no task was opened for the third meeting")
+	}
+	if kind, id := assigneeOf(back.Task.IssueID); kind != "member" || id != testUserID {
+		t.Errorf("task assignee = %s/%s, want the filing member back", kind, id)
+	}
+}
+
 // Attaching an issue to a meeting from either end re-sends the meeting's link
 // set, and the meeting's own task is one of those links. The role belongs to
 // the pair, not to the request — a picker has no way to send it — so a link
@@ -986,6 +1055,87 @@ func TestCockpitMeetingLinkKeepsTheTaskRole(t *testing.T) {
 	}
 	if got := roleOf(appended.Links, opened.Task.IssueID); got != "task" {
 		t.Errorf("appending demoted the meeting's task to role %q", got)
+	}
+}
+
+// The form names the minute-taker beside the destination and the server keeps
+// both: picking someone once is what makes them the board's default, the same
+// way picking a module is. Sending an empty assignee hands the job back to
+// whoever files the meeting, for this meeting as well as the next one.
+func TestCockpitMeetingProvisionRemembersTheAssignee(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting remembered assignee", true)
+	minuteTaker := dbfx.User(t, "会议纪要整理专员", "minutes-"+uuid.NewString()+"@example.com")
+	dbfx.Member(t, f.wsID, minuteTaker, "member")
+
+	first := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "周例会"})
+	f.provision(t, first.ID, map[string]any{
+		"create_task": true, "create_dir": false,
+		"project_id": f.project, "module_id": f.module, "node_id": f.node,
+		"assignee_type": "member", "assignee_id": minuteTaker,
+	})
+
+	board := getBoard(t, f.wsID)
+	if board.Cockpit.MeetingAssigneeType != "member" ||
+		board.Cockpit.MeetingAssigneeID == nil || *board.Cockpit.MeetingAssigneeID != minuteTaker {
+		t.Fatalf("board assignee = %q/%v, want member/%s",
+			board.Cockpit.MeetingAssigneeType, board.Cockpit.MeetingAssigneeID, minuteTaker)
+	}
+
+	// A later meeting inherits it without the form saying so again.
+	second := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "复盘"})
+	inherited := f.provision(t, second.ID, map[string]any{"create_task": true, "create_dir": false})
+	if inherited.Task == nil {
+		t.Fatal("no task was opened for the second meeting")
+	}
+	var kind, id *string
+	dbfx.QueryRow(t, "SELECT assignee_type, assignee_id::text FROM issue WHERE id = $1",
+		inherited.Task.IssueID).Scan(&kind, &id)
+	if kind == nil || *kind != "member" || id == nil || *id != minuteTaker {
+		t.Errorf("inherited task assignee = %v/%v, want member/%s", kind, id, minuteTaker)
+	}
+
+	// Clearing it takes effect on the meeting doing the clearing, not only on
+	// the ones after it.
+	third := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "临时会"})
+	cleared := f.provision(t, third.ID, map[string]any{
+		"create_task": true, "create_dir": false, "assignee_type": "", "assignee_id": "",
+	})
+	if cleared.Task == nil {
+		t.Fatal("no task was opened for the third meeting")
+	}
+	dbfx.QueryRow(t, "SELECT assignee_type, assignee_id::text FROM issue WHERE id = $1",
+		cleared.Task.IssueID).Scan(&kind, &id)
+	if kind == nil || *kind != "member" || id == nil || *id != testUserID {
+		t.Errorf("task assignee after clearing = %v/%v, want the filing member %s", kind, id, testUserID)
+	}
+	after := getBoard(t, f.wsID)
+	if after.Cockpit.MeetingAssigneeType != "" || after.Cockpit.MeetingAssigneeID != nil {
+		t.Errorf("board assignee after clearing = %q/%v, want empty",
+			after.Cockpit.MeetingAssigneeType, after.Cockpit.MeetingAssigneeID)
+	}
+}
+
+// A pair is a pair. Half of one names no row, and an id that is not a member
+// of this workspace must be refused where it is set rather than where it is
+// later used.
+func TestCockpitMeetingAssigneeIsValidatedOnTheBoard(t *testing.T) {
+	wsID := cockpitMeetingFixture(t, "Cockpit meeting assignee validation")
+	stranger := dbfx.User(t, "外人", "stranger-"+uuid.NewString()+"@example.com")
+
+	patchCockpit(t, wsID, map[string]any{
+		"meeting_assignee_type": "member", "meeting_assignee_id": stranger,
+	}).Want(http.StatusBadRequest)
+	patchCockpit(t, wsID, map[string]any{
+		"meeting_assignee_type": "member", "meeting_assignee_id": "not-a-uuid",
+	}).Want(http.StatusBadRequest)
+
+	// An id with no type does not say which table to look in, so it clears
+	// rather than half-stores.
+	var half CockpitResponse
+	patchCockpit(t, wsID, map[string]any{"meeting_assignee_id": testUserID}).
+		Want(http.StatusOK).JSON(&half)
+	if half.MeetingAssigneeType != "" || half.MeetingAssigneeID != nil {
+		t.Errorf("board assignee = %q/%v, want empty", half.MeetingAssigneeType, half.MeetingAssigneeID)
 	}
 }
 

@@ -123,6 +123,8 @@ const board: CockpitBoard = {
     summary_next: "",
     summary_support: "",
     basis: "",
+    meeting_assignee_type: "",
+    meeting_assignee_id: null,
     meeting_project_id: "project-06",
     meeting_module_id: "module-0606",
     meeting_node_id: "node-060603",
@@ -385,7 +387,7 @@ describe("the meeting register", () => {
     );
     // And the number the task will open with, because the sub-item is what
     // gives it one.
-    expect(within(dialog).getByText(/as 06\.06\.03, assigned to you/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/as 06\.06\.03\./)).toBeInTheDocument();
   });
 
   it("files the meeting first and provisions it second, reporting what each did", async () => {

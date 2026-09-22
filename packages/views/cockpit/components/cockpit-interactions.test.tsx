@@ -125,6 +125,8 @@ const board: CockpitBoard = {
     summary_next: "",
     summary_support: "",
     basis: "Source: the programme master sheet",
+    meeting_assignee_type: "",
+    meeting_assignee_id: null,
     meeting_project_id: null,
     meeting_module_id: null,
     meeting_node_id: null,
