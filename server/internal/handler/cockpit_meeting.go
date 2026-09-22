@@ -1131,6 +1131,19 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 		resolved = append(resolved, issue.ID)
 	}
 
+	// A link's role ("task" — the meeting's own issue) is a property of the
+	// pair, not of this request: a picker re-sending the set has no way to
+	// know about it. Dropping it would leave the meeting looking task-less and
+	// offer to provision a second one.
+	roles := map[string]string{}
+	if existing, err := h.Queries.ListCockpitMeetingIssues(ctx, cc.cockpit.ID); err == nil {
+		for _, row := range existing {
+			if row.MeetingID == meeting.ID && row.Role != "" {
+				roles[uuidToString(row.IssueID)] = row.Role
+			}
+		}
+	}
+
 	if req.Replace {
 		if err := h.Queries.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
 			MeetingID:   meeting.ID,
@@ -1146,6 +1159,7 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 			WorkspaceID: cc.workspaceID,
 			MeetingID:   meeting.ID,
 			IssueID:     issueID,
+			Role:        roles[uuidToString(issueID)],
 			Position:    float64(i),
 		}); err != nil {
 			slog.Warn("CreateCockpitMeetingIssue failed", append(logger.RequestAttrs(r), "error", err)...)

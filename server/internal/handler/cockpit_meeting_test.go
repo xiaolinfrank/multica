@@ -935,6 +935,60 @@ func TestCockpitMeetingProvisionOpensTaskAndFolder(t *testing.T) {
 	}
 }
 
+// Attaching an issue to a meeting from either end re-sends the meeting's link
+// set, and the meeting's own task is one of those links. The role belongs to
+// the pair, not to the request — a picker has no way to send it — so a link
+// that survives the write keeps it. Losing it would leave the meeting looking
+// task-less and offer to open a second one.
+func TestCockpitMeetingLinkKeepsTheTaskRole(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting link roles", true)
+	patchCockpit(t, f.wsID, map[string]any{
+		"meeting_project_id": f.project, "meeting_module_id": f.module, "meeting_node_id": f.node,
+	}).Want(http.StatusOK)
+
+	meeting := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "周例会"})
+	opened := f.provision(t, meeting.ID, map[string]any{"create_task": true, "create_dir": false})
+	if opened.Task == nil {
+		t.Fatal("no task was opened for the meeting")
+	}
+	attached := dbfx.Issue(t, "手工关联的任务", testutil.Cols{"workspace_id": f.wsID})
+
+	roleOf := func(links []CockpitMeetingIssueResponse, issueID string) string {
+		t.Helper()
+		for _, l := range links {
+			if l.IssueID == issueID {
+				return l.Role
+			}
+		}
+		t.Fatalf("issue %s is not linked to the meeting: %+v", issueID, links)
+		return ""
+	}
+
+	// The register's own picker: the whole set, re-sent with one appended.
+	var replaced meetingLinksResponse
+	setMeetingIssues(t, f.wsID, meeting.ID, map[string]any{
+		"issue_ids": []string{opened.Task.IssueID, attached}, "replace": true,
+	}).Want(http.StatusOK).JSON(&replaced)
+	if got := roleOf(replaced.Links, opened.Task.IssueID); got != "task" {
+		t.Errorf("the meeting's own task came back with role %q, want \"task\"", got)
+	}
+	if got := roleOf(replaced.Links, attached); got != "" {
+		t.Errorf("the hand-attached issue came back with role %q, want none", got)
+	}
+
+	// The issue side sends only its own link, appended.
+	third := dbfx.Issue(t, "从任务页关联", testutil.Cols{"workspace_id": f.wsID})
+	var appended meetingLinksResponse
+	setMeetingIssues(t, f.wsID, meeting.ID, map[string]any{"issue_ids": []string{third}}).
+		Want(http.StatusOK).JSON(&appended)
+	if len(appended.Links) != 3 {
+		t.Fatalf("links after appending = %d, want 3: %+v", len(appended.Links), appended.Links)
+	}
+	if got := roleOf(appended.Links, opened.Task.IssueID); got != "task" {
+		t.Errorf("appending demoted the meeting's task to role %q", got)
+	}
+}
+
 // The snapshot payload IS the import document: anything the document does not
 // carry is silently lost the moment someone restores a version. The meeting's
 // new fields and its links are the regression that matters most here.
