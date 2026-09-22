@@ -29,7 +29,10 @@ import {
   assigneeTypesForActorKind,
   type IssueScope,
 } from "@multica/core/issues/surface/scope";
-import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
+import {
+  issueTableCompoundCatalogsModules,
+  issueTableModuleGroupSpec,
+} from "@multica/core/issues/surface/group-spec";
 import type { IssueDateFilter, SortField } from "@multica/core/issues/stores/view-store";
 import { propertyListOptions } from "@multica/core/properties";
 import { propertyIdFromViewKey } from "@multica/core/issues/stores/view-store";
@@ -649,6 +652,11 @@ export function useIssueSurfaceController({
         primary: swimlaneGrouping,
         secondary: "status",
         secondary_values: serverStatuses,
+        // Lanes are the project's modules, so the ones holding no task are
+        // still lanes.
+        ...(issueTableCompoundCatalogsModules(swimlaneGrouping, tableQuerySpec)
+          ? { include_empty: true }
+          : {}),
       };
     }
     if (effectiveGrouping === "project") return { kind: "project" };

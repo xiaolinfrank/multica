@@ -567,7 +567,12 @@ function buildServerLanes(
 ): LaneGroup[] {
   const visibleStatusSet = new Set(visibleStatuses);
   const lanes = descriptors.flatMap((descriptor): LaneGroup[] => {
+    // A lane the server counted at zero holds no card at all: that is the
+    // module catalog naming a module nothing is filed under yet, and it is a
+    // lane of its own. A lane that DOES hold cards, all of them in statuses
+    // this board hides, stays hidden — the status filter's existing meaning.
     if (
+      descriptor.count > 0 &&
       (descriptor.secondary_groups ?? []).every(
         (secondary) =>
           secondary.value.kind !== "status" ||

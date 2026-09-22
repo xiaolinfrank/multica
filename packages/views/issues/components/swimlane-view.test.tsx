@@ -103,7 +103,7 @@ vi.mock("../../navigation", () => ({
 // Mock issue config
 // Use the real status configuration so category fixtures cannot drift.
 
-type SwimlaneGroupingMock = "parent" | "project" | "assignee";
+type SwimlaneGroupingMock = "parent" | "project" | "module" | "assignee";
 
 // Mock view store. The lane order and collapsed-lane fields are mutable
 // records on the captured object so tests can simulate persisted state
@@ -138,8 +138,8 @@ const mockViewState: {
   sortDirection: "asc",
   cardProperties: { priority: true, description: true, assignee: true, dueDate: true, project: true, childProgress: true, labels: true },
   swimlaneGrouping: "parent",
-  swimlaneOrders: { parent: [], project: [], assignee: [] },
-  collapsedSwimlanes: { parent: [], project: [], assignee: [] },
+  swimlaneOrders: { parent: [], project: [], module: [], assignee: [] },
+  collapsedSwimlanes: { parent: [], project: [], module: [], assignee: [] },
   setSwimlaneGrouping: vi.fn(),
   setSwimlaneOrder: vi.fn(),
   toggleSwimlaneCollapsed: vi.fn(),
@@ -369,8 +369,8 @@ describe("SwimLaneView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockViewState.swimlaneGrouping = "parent";
-    mockViewState.swimlaneOrders = { parent: [], project: [], assignee: [] };
-    mockViewState.collapsedSwimlanes = { parent: [], project: [], assignee: [] };
+    mockViewState.swimlaneOrders = { parent: [], project: [], module: [], assignee: [] };
+    mockViewState.collapsedSwimlanes = { parent: [], project: [], module: [], assignee: [] };
     mockViewState.priorityFilters = [];
     mockViewState.assigneeFilters = [];
     mockViewState.includeNoAssignee = false;
@@ -701,6 +701,73 @@ describe("SwimLaneView", () => {
     expect(
       screen.queryByRole("link", { name: "Open parent issue" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps a module lane the server counted at zero, and still drops a hidden-only lane", () => {
+    // Module lanes are the project's structure: a module nobody has filed work
+    // into is a lane of its own. A module that DOES hold cards, all of them in
+    // a hidden status, keeps disappearing — that is the status filter working.
+    const card = { ...mockIssues[0]!, module_id: "module-worked", status: "todo" as const };
+    mockViewState.swimlaneGrouping = "module";
+    const laneCells = (key: string, counts: Partial<Record<string, number>>) =>
+      (["todo", "done"] as const).map((status) => ({
+        key: `compound:${key}:status:${status}`,
+        value: { kind: "status" as const, status },
+        count: counts[status] ?? 0,
+      }));
+    const descriptors: IssueTableGroupDescriptor[] = [
+      {
+        key: "module:module-worked",
+        value: { kind: "module", module_id: "module-worked" },
+        count: 1,
+        secondary_groups: laneCells("module-worked", { todo: 1 }),
+      },
+      {
+        key: "module:module-empty",
+        value: { kind: "module", module_id: "module-empty" },
+        count: 0,
+        secondary_groups: laneCells("module-empty", {}),
+      },
+      {
+        key: "module:module-hidden",
+        value: { kind: "module", module_id: "module-hidden" },
+        count: 3,
+        secondary_groups: laneCells("module-hidden", { done: 3 }),
+      },
+    ];
+    const makeModule = (id: string, title: string) => ({
+      id,
+      workspace_id: "ws-1",
+      project_id: "project-1",
+      title,
+      description: null,
+      position: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      issue_count: 0,
+      done_count: 0,
+    });
+
+    renderWithI18n(
+      <SwimLaneView
+        issues={[card]}
+        visibleStatuses={["todo"]}
+        hiddenStatuses={["done"]}
+        moduleMap={
+          new Map([
+            ["module-worked", makeModule("module-worked", "Parser rewrite")],
+            ["module-empty", makeModule("module-empty", "Zero work")],
+            ["module-hidden", makeModule("module-hidden", "All done")],
+          ])
+        }
+        groupBranches={makeServerBranches(descriptors, [card])}
+        onMoveIssue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+    expect(screen.getByText("Zero work")).toBeInTheDocument();
+    expect(screen.queryByText("All done")).not.toBeInTheDocument();
   });
 
   it("does not render a server parent header again as a No-parent card", () => {

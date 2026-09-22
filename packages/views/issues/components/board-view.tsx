@@ -171,7 +171,9 @@ function moduleColumn(
 
 /**
  * Keep the "No module" column present as a drop target, mirroring
- * withNoProjectColumn.
+ * withNoProjectColumn. It goes last, where the server also orders the
+ * `module:none` group it returns — the two must not disagree about where
+ * unfiled work sits.
  */
 function withNoModuleColumn(
   columns: BoardColumnGroup[],
@@ -181,8 +183,8 @@ function withNoModuleColumn(
   if (columns.length === 0) return columns;
   if (columns.some((column) => column.moduleId === null)) return columns;
   return [
-    moduleColumn(moduleGroupId(null), null, moduleMap, labels, 0),
     ...columns,
+    moduleColumn(moduleGroupId(null), null, moduleMap, labels, 0),
   ];
 }
 

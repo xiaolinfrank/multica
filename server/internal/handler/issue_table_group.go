@@ -208,11 +208,16 @@ func withModuleCatalogIdentity(identity string, group issueTableGroupSpec) strin
 	return identity
 }
 
-// Grouping that lists a module the query matched no issue in. Kept as one
-// predicate so the cursor identity and the SQL below cannot disagree about
-// which requests carry the catalog.
+// Grouping that lists a module the query matched no issue in — module groups
+// and the compound lane axis built on them. Kept as one predicate so the cursor
+// identity and the SQL below cannot disagree about which requests carry the
+// catalog.
 func issueTableGroupCatalogsModules(group issueTableGroupSpec) bool {
-	return group.IncludeEmpty && group.Kind == "module"
+	if !group.IncludeEmpty {
+		return false
+	}
+	return group.Kind == "module" ||
+		(group.Kind == "compound" && group.Primary == "module")
 }
 
 func (h *Handler) resolveIssueTableGroup(w http.ResponseWriter, r *http.Request, workspaceID pgtype.UUID, group issueTableGroupSpec, allowNone bool) (resolvedIssueTableGroup, bool) {
@@ -538,7 +543,9 @@ func (group resolvedIssueTableGroup) orderExpression(addArg func(any) string) st
 	case "project":
 		return "CASE WHEN group_value = '__no_project__' THEN 0 ELSE 1 END"
 	case "module":
-		return "CASE WHEN group_value = '__no_module__' THEN 0 ELSE 1 END"
+		// Unfiled work sorts after the modules: the module list is the
+		// project's structure, and "no module" is the leftovers below it.
+		return "CASE WHEN group_value = '__no_module__' THEN 1 ELSE 0 END"
 	case "parent":
 		return "CASE WHEN group_value = '__no_parent__' THEN 0 ELSE 1 END"
 	case "property":
@@ -1020,12 +1027,27 @@ func (h *Handler) ListIssueTableGroups(w http.ResponseWriter, r *http.Request) {
   GROUP BY 1
 )`, groupExpr, compiled.where)
 	// A module the query matched no issue in still owns a level of the
-	// project's hierarchy, so it is read off the module table and joined in
-	// with a zero count. The catalog is empty when nothing in the query can
-	// name a module, which leaves the plain aggregate above untouched.
+	// project's hierarchy, so it is read off the module table and unioned into
+	// `grouped` with a zero count. `source` is the CTE that already holds the
+	// modules the issues themselves produced, so a module is added exactly
+	// once. Returns "" when nothing in the query can name a module, which
+	// leaves every aggregate below untouched.
+	moduleCatalogUnion := func(string) string { return "" }
 	if issueTableGroupCatalogsModules(request.Group) && compiled.moduleCatalog != nil {
 		if catalogWhere := compiled.moduleCatalog(addArg); catalogWhere != "" {
-			groupedCTE = fmt.Sprintf(`actual AS (
+			moduleCatalogUnion = func(source string) string {
+				return fmt.Sprintf(`
+  UNION ALL
+  SELECT m.id::text, 0::bigint, 0::bigint, '{}'::jsonb
+  FROM module m
+  WHERE %s
+    AND NOT EXISTS (SELECT 1 FROM %s x WHERE x.group_value = m.id::text)`,
+					catalogWhere, source)
+			}
+		}
+	}
+	if union := moduleCatalogUnion("actual"); union != "" && group.kind == "module" {
+		groupedCTE = fmt.Sprintf(`actual AS (
   SELECT %s AS group_value, COUNT(*)::bigint AS issue_count
   FROM issue i
   WHERE %s
@@ -1033,14 +1055,8 @@ func (h *Handler) ListIssueTableGroups(w http.ResponseWriter, r *http.Request) {
 ), grouped AS (
   SELECT group_value, issue_count, issue_count AS visible_count,
          '{}'::jsonb AS secondary_counts
-  FROM actual
-  UNION ALL
-  SELECT m.id::text, 0::bigint, 0::bigint, '{}'::jsonb
-  FROM module m
-  WHERE %s
-    AND NOT EXISTS (SELECT 1 FROM actual a WHERE a.group_value = m.id::text)
-)`, groupExpr, compiled.where, catalogWhere)
-		}
+  FROM actual%s
+)`, groupExpr, compiled.where, union)
 	}
 	if request.Group.IncludeEmpty && group.kind == "property" {
 		expectedValues := []string{"unset:"}
@@ -1089,8 +1105,8 @@ func (h *Handler) ListIssueTableGroups(w http.ResponseWriter, r *http.Request) {
          SUM(cell_count)::bigint AS visible_count,
          jsonb_object_agg(secondary_value, cell_count)::jsonb AS secondary_counts
   FROM cells
-  GROUP BY group_value
-)`, groupExpr, secondaryExpr, compiled.where)
+  GROUP BY group_value%s
+)`, groupExpr, secondaryExpr, compiled.where, moduleCatalogUnion("cells"))
 		if group.secondaryFiltered {
 			visibleRef := addArg(group.secondaryValues)
 			// promoted_parents matches raw `child.status`, so a category axis has
@@ -1140,8 +1156,8 @@ func (h *Handler) ListIssueTableGroups(w http.ResponseWriter, r *http.Request) {
   HAVING COALESCE(
     SUM(cell_count) FILTER (WHERE secondary_value = ANY(%s::text[])),
     0
-  ) > 0
-)`, compiled.where, promotedParentsCTE, groupExpr, secondaryExpr, headerPredicate, visibleRef, visibleRef)
+  ) > 0%s
+)`, compiled.where, promotedParentsCTE, groupExpr, secondaryExpr, headerPredicate, visibleRef, visibleRef, moduleCatalogUnion("cells"))
 		}
 	}
 	query := fmt.Sprintf(`WITH %s, sorted AS (

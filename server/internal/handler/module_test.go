@@ -700,6 +700,46 @@ func TestIssueTableModuleGroupingIncludeEmpty(t *testing.T) {
 	if len(counts) != 1 || counts["module:"+moduleA] != 1 {
 		t.Fatalf("plain module grouping changed: %v", counts)
 	}
+
+	// The swimlane lane axis reads the same catalog, and an empty lane still
+	// carries a full set of status cells so the board can lay it out.
+	var lanes issueTableGroupsResponse
+	testutil.Call(t, testHandler.ListIssueTableGroups, newRequest(http.MethodPost, "/api/issues/table/groups", issueTableGroupsRequest{
+		Query: spec,
+		Group: issueTableGroupSpec{Kind: "compound", Primary: "module", Secondary: "status", IncludeEmpty: true},
+	})).Want(http.StatusOK).JSON(&lanes)
+	var emptyLane *issueTableGroupDescriptorResponse
+	for i := range lanes.Groups {
+		if lanes.Groups[i].Key == "module:"+moduleB {
+			emptyLane = &lanes.Groups[i]
+		}
+	}
+	if emptyLane == nil {
+		t.Fatalf("empty module lane missing: %+v", lanes.Groups)
+	}
+	if emptyLane.Count != 0 || len(emptyLane.SecondaryGroups) == 0 {
+		t.Fatalf("empty module lane wrong: %+v", *emptyLane)
+	}
+	for _, cell := range emptyLane.SecondaryGroups {
+		if cell.Count != 0 {
+			t.Fatalf("empty module lane has a counted cell: %+v", cell)
+		}
+	}
+	if lanes.Total != 1 {
+		t.Fatalf("lane total = %d, want the one issue", lanes.Total)
+	}
+
+	// Another lane axis ignores the flag rather than reading the module table.
+	var parentLanes issueTableGroupsResponse
+	testutil.Call(t, testHandler.ListIssueTableGroups, newRequest(http.MethodPost, "/api/issues/table/groups", issueTableGroupsRequest{
+		Query: spec,
+		Group: issueTableGroupSpec{Kind: "compound", Primary: "parent", Secondary: "status", IncludeEmpty: true},
+	})).Want(http.StatusOK).JSON(&parentLanes)
+	for _, lane := range parentLanes.Groups {
+		if strings.HasPrefix(lane.Key, "module:") {
+			t.Fatalf("parent lanes picked up the module catalog: %+v", parentLanes.Groups)
+		}
+	}
 }
 
 func TestIssueTableModuleCatalogBindsGroupCursorIdentity(t *testing.T) {
@@ -714,6 +754,16 @@ func TestIssueTableModuleCatalogBindsGroupCursorIdentity(t *testing.T) {
 	// The flag is meaningless for the kinds that do not read the module table.
 	if got := issueTableGroupIdentity(issueTableGroupSpec{Kind: "project", IncludeEmpty: true}); got != "group:project" {
 		t.Fatalf("project identity changed to %q", got)
+	}
+	// Same rule on the compound lane axis: bound for module, inert elsewhere.
+	laneSpec := func(primary string, empty bool) issueTableGroupSpec {
+		return issueTableGroupSpec{Kind: "compound", Primary: primary, Secondary: "status", IncludeEmpty: empty}
+	}
+	if issueTableGroupIdentity(laneSpec("module", false)) == issueTableGroupIdentity(laneSpec("module", true)) {
+		t.Fatal("module lane cursors share an identity across the catalog flag")
+	}
+	if issueTableGroupIdentity(laneSpec("parent", false)) != issueTableGroupIdentity(laneSpec("parent", true)) {
+		t.Fatal("parent lane identity moved for a flag it does not honour")
 	}
 }
 
@@ -736,6 +786,11 @@ func TestIssueTableModuleGrouping(t *testing.T) {
 	byKey := map[string]issueTableGroupDescriptorResponse{}
 	for _, group := range groups.Groups {
 		byKey[group.Key] = group
+	}
+	// Unfiled work reads as the leftovers under the module list, so it sorts
+	// after every module rather than ahead of them.
+	if last := groups.Groups[len(groups.Groups)-1].Key; last != "module:none" {
+		t.Fatalf("no-module group is not last: %+v", groups.Groups)
 	}
 	if group, ok := byKey["module:"+moduleA]; !ok || group.Count != 1 || group.Value.ModuleID == nil || *group.Value.ModuleID != moduleA || group.Value.Kind != "module" {
 		t.Fatalf("module group missing or wrong: %+v", group)

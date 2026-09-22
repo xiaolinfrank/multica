@@ -217,6 +217,15 @@ describe("Board grouped by module", () => {
     expect(empty.textContent).toContain("0");
   });
 
+  it("puts the No module column last, where the server also orders it", () => {
+    render();
+
+    const titles = screen
+      .getAllByText(/Parser rewrite|Zero work|No module/)
+      .map((node) => node.textContent);
+    expect(titles).toEqual(["Parser rewrite", "Zero work", "No module"]);
+  });
+
   it("files a card created from an empty column under that module", () => {
     const onCreateIssue = vi.fn();
     render(onCreateIssue);

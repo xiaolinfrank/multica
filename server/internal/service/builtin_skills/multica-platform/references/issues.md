@@ -183,7 +183,9 @@ exposes a `module` kind whose group keys are `module:<uuid>` and
 `module:none`. With `include_empty: true` that grouping also returns a
 zero-count group for every module the query could name, so a project's empty
 modules stay visible as their own level; the set is bounded by the query's own
-project and module narrowing, and `module:none` is not part of it.
+project and module narrowing, and `module:none` is not part of it. The same
+flag applies to a compound group whose `primary` is `module`, where it adds the
+empty lanes; other primaries ignore it.
 
 A module stores no collaboration space of its own; only its project carries
 `collab_path` (人机协作空间路径). When this issue has a module, the claim and

@@ -867,6 +867,50 @@ describe("useIssueSurfaceController", () => {
     },
   );
 
+  it.each([
+    { grouping: "module" as const, catalog: true },
+    { grouping: "parent" as const, catalog: false },
+  ])(
+    "asks for the $grouping lane axis, catalog=$catalog",
+    async ({ grouping, catalog }) => {
+      // Module lanes are the project's own structure, so the axis includes the
+      // modules holding no task. Every other lane axis is derived from cards.
+      const store = getIssueSurfaceViewStore("project:p1");
+      store.getState().setViewMode("swimlane");
+      store.getState().setSwimlaneGrouping(grouping);
+      const tableMethods = statusTableMethodsFromLegacy(listIssues);
+      const listIssueTableGroups = vi.fn(tableMethods.listIssueTableGroups);
+      setApiInstance({
+        listIssueStatuses: async () => ({ statuses: [], categories: [], total: 0 }),
+        listIssues,
+        ...tableMethods,
+        listIssueTableGroups,
+        listGroupedIssues: vi.fn(() => never()),
+        listProjects: vi.fn(() => Promise.resolve({ projects: [], total: 0 })),
+        listModules: vi.fn(() => Promise.resolve({ modules: [], total: 0 })),
+        getAgentTaskSnapshot: vi.fn(() => Promise.resolve([])),
+        getChildIssueProgress: vi.fn(() => Promise.resolve([])),
+      } as unknown as ApiClient);
+
+      renderHook(
+        () =>
+          useIssueSurfaceController({
+            scope: { type: "project", projectId: "p1" },
+            modes: ["board", "list", "swimlane"],
+          }),
+        { wrapper: makeWrapper(qc, "project:p1") },
+      );
+
+      await waitFor(() => expect(listIssueTableGroups).toHaveBeenCalled());
+      const group = listIssueTableGroups.mock.calls[0]?.[0]?.group as
+        | { kind: string; primary?: string; include_empty?: boolean }
+        | undefined;
+      expect(group?.kind).toBe("compound");
+      expect(group?.primary).toBe(grouping);
+      expect(group?.include_empty).toBe(catalog ? true : undefined);
+    },
+  );
+
   it("fails Table export closed when schema fallback would truncate the CSV", async () => {
     const store = getIssueSurfaceViewStore("project:p1");
     store.getState().setViewMode("table");

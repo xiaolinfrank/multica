@@ -394,6 +394,10 @@ export type IssueTableGroupSpec =
        * only primary groups that contain at least one matching card and
        * returns `total` for that complete visible result set. */
       secondary_values?: IssueStatus[] | IssueStatusCategory[];
+      /** Only honoured with `primary: "module"`, where it adds a zero-count
+       *  lane for every module the query could name. Same bounding as the
+       *  module group kind above. */
+      include_empty?: boolean;
     }
   | { kind: "property"; property_id: string; include_empty?: boolean };
 

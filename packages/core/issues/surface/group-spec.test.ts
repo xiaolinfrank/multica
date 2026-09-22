@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { IssueTableQuerySpec } from "../../types";
-import { issueTableModuleGroupSpec } from "./group-spec";
+import {
+  issueTableCompoundCatalogsModules,
+  issueTableModuleGroupSpec,
+} from "./group-spec";
 
 function query(
   overrides: Partial<IssueTableQuerySpec> = {},
@@ -34,5 +37,23 @@ describe("issueTableModuleGroupSpec", () => {
     expect(
       issueTableModuleGroupSpec(query({ filters: { project_ids: [] } })),
     ).toEqual({ kind: "module" });
+  });
+});
+
+describe("issueTableCompoundCatalogsModules", () => {
+  const inProject = query({ scope: { kind: "project", project_id: "p1" } });
+
+  it("catalogs modules for the module lane axis inside a project", () => {
+    expect(issueTableCompoundCatalogsModules("module", inProject)).toBe(true);
+  });
+
+  it("leaves every other lane axis derived from cards", () => {
+    for (const primary of ["parent", "project", "assignee"]) {
+      expect(issueTableCompoundCatalogsModules(primary, inProject)).toBe(false);
+    }
+  });
+
+  it("needs a project to bound the catalog", () => {
+    expect(issueTableCompoundCatalogsModules("module", query())).toBe(false);
   });
 });

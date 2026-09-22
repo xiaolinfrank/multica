@@ -30,3 +30,16 @@ export function issueTableModuleGroupSpec(
     ? { kind: "module", include_empty: true }
     : { kind: "module" };
 }
+
+/**
+ * Whether a compound (lane x status) request should carry the module catalog.
+ *
+ * Only the module lane axis has one, under the same project-narrowing rule as
+ * the module group kind.
+ */
+export function issueTableCompoundCatalogsModules(
+  primary: string,
+  query: IssueTableQuerySpec,
+): boolean {
+  return primary === "module" && issueTableQueryNamesProject(query);
+}
