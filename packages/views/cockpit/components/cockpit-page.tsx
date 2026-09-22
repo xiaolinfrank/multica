@@ -113,6 +113,7 @@ import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meetin
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
 import { CockpitMeetings } from "./cockpit-meetings";
+import type { CockpitNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
@@ -429,12 +430,18 @@ export function CockpitPage() {
    * board no better off than before the link table.
    */
   const createIssueForNode = useCallback(
-    (nodeId: string, filing: NonNullable<ReturnType<typeof cockpitNodeIssueFiling>>) => {
+    (option: CockpitNodeIssueOption) => {
       openModal("create-issue", {
-        title: filing.title,
-        project_id: filing.project_id,
-        module_id: filing.module_id,
-        on_created: (issue: Issue) => linkIssue(nodeId, issue.id),
+        title: option.code,
+        project_id: option.project_id,
+        module_id: option.module_id,
+        // The row travels whole so the dialog can name it, and show it as a
+        // field the user can move off: the row it proposes is a guess from
+        // where the click came from, not a decision.
+        cockpit_node: option,
+        on_created: (issue: Issue, state: { cockpit_node_id: string | null }) => {
+          if (state.cockpit_node_id) linkIssue(state.cockpit_node_id, issue.id);
+        },
       });
     },
     [openModal, linkIssue],
@@ -732,16 +739,19 @@ export function CockpitPage() {
   // Resolved from the DISPLAY code, which is the number the gantt shows and the
   // number the modules are titled with — the stored code carries the
   // programme's history and names nothing outside the board.
-  const selectedFiling = useMemo(
-    () =>
-      selected
-        ? cockpitNodeIssueFiling(
-            displayCodes.get(selected.id) ?? selected.code,
-            modules ?? EMPTY_MODULES,
-          )
-        : null,
-    [selected, displayCodes, modules],
-  );
+  const selectedFiling = useMemo((): CockpitNodeIssueOption | null => {
+    if (!selected) return null;
+    const code = displayCodes.get(selected.id) ?? selected.code;
+    const filing = cockpitNodeIssueFiling(code, modules ?? EMPTY_MODULES);
+    if (!filing) return null;
+    return {
+      node_id: selected.id,
+      code,
+      label: nodeLabels.get(selected.id) ?? code,
+      project_id: filing.project_id,
+      module_id: filing.module_id,
+    };
+  }, [selected, displayCodes, nodeLabels, modules]);
 
   if (isLoading || !board) {
     return (
@@ -1172,9 +1182,7 @@ export function CockpitPage() {
               unlinkIssue.mutate({ nodeId: selected.id, issueId }, { onError: fail })
             }
             onCreateIssue={
-              selectedFiling
-                ? () => createIssueForNode(selected.id, selectedFiling)
-                : undefined
+              selectedFiling ? () => createIssueForNode(selectedFiling) : undefined
             }
             onOpenMeeting={(meetingId) => {
               setSelectedMeetingId(meetingId);

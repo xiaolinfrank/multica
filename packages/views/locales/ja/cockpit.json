@@ -360,6 +360,12 @@
     "payment_planned": "支払予定",
     "payment_month": "{{month}} 支払予定 {{count}} 件 · 合計 {{total}}"
   },
+  "node_picker": {
+    "label": "作業項目",
+    "none": "作業項目に紐付けない",
+    "search_placeholder": "コードまたは名称で検索…",
+    "empty": "このワークスペースにはイシューを紐付けられる作業項目がありません。"
+  },
   "issues": {
     "link": "イシューを関連付け",
     "create": "新規タスク",

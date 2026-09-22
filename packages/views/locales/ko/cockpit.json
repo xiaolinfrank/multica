@@ -360,6 +360,12 @@
     "payment_planned": "지급 예정",
     "payment_month": "{{month}} 지급 예정 {{count}}건 · 합계 {{total}}"
   },
+  "node_picker": {
+    "label": "실행 항목",
+    "none": "실행 항목에 연결 안 함",
+    "search_placeholder": "코드 또는 이름으로 검색…",
+    "empty": "이 워크스페이스에는 이슈를 연결할 실행 항목이 없습니다."
+  },
   "issues": {
     "link": "이슈 연결",
     "create": "새 태스크",

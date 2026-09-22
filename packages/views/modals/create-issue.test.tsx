@@ -511,6 +511,34 @@ vi.mock("../projects/components/project-picker", () => ({
   ),
 }));
 
+// The picker's own list (which rows the board can file into, how they search)
+// is covered in cockpit/components/cockpit-node-issue-picker.test.tsx. Here it
+// stands in for "the user moved the issue to another row".
+vi.mock("../cockpit/components/cockpit-node-issue-picker", () => ({
+  CockpitNodeIssuePicker: ({ value, onUpdate }: any) => (
+    <div>
+      <span data-testid="work-item">{value ? value.label : "none"}</span>
+      <button
+        type="button"
+        onClick={() =>
+          onUpdate({
+            node_id: "node-b",
+            code: "01.02.03",
+            label: "01.02.03 Cohort handover",
+            project_id: "proj-b",
+            module_id: "mod-b",
+          })
+        }
+      >
+        Change work item
+      </button>
+      <button type="button" onClick={() => onUpdate(null)}>
+        Clear work item
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock("@multica/ui/components/ui/dialog", () => ({
   Dialog: ({ children }: { children: React.ReactNode }) => <div data-testid="dialog-root">{children}</div>,
   DialogContent: ({ children, className }: { children: React.ReactNode; className?: string }) => (
@@ -728,6 +756,15 @@ describe("CreateIssueModal", () => {
     expect(screen.getByRole("button", { name: "Upload file" })).toHaveAttribute("data-size", "sm");
   });
 
+  it("opens the title on the seed the opener supplied", async () => {
+    // The seed is the outline number of the module or work item the create
+    // came from. It is not written to the persisted draft, so the field has to
+    // render it from this invocation's own state.
+    renderModal(<CreateIssueModal onClose={vi.fn()} data={{ title: "01.01.01" }} />);
+
+    expect(screen.getByPlaceholderText("Issue title")).toHaveValue("01.01.01");
+  });
+
   it("hands the new issue back to the opener that filed it", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
@@ -742,7 +779,113 @@ describe("CreateIssueModal", () => {
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() =>
-      expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "issue-123" })),
+      expect(onCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "issue-123" }),
+        { cockpit_node_id: null },
+      ),
+    );
+  });
+
+  const WORK_ITEM = {
+    node_id: "node-a",
+    code: "01.01.01",
+    label: "01.01.01 Data rights registration",
+    project_id: "proj-a",
+    module_id: "mod-a",
+  };
+
+  it("names the work item the create came from", () => {
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          title: WORK_ITEM.code,
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("work-item")).toHaveTextContent(WORK_ITEM.label);
+  });
+
+  it("refiles and renumbers when the issue is moved to another work item", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          title: WORK_ITEM.code,
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+          on_created: onCreated,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "01.01.01 Governance agreement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change work item" }));
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() =>
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // Only the number the field opened on is rewritten; the sentence
+          // after it is the user's.
+          title: "01.02.03 Governance agreement",
+          project_id: "proj-b",
+          module_id: "mod-b",
+        }),
+      ),
+    );
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "issue-123" }),
+      { cockpit_node_id: "node-b" },
+    );
+  });
+
+  it("leaves the title and the filing alone when the work item is cleared", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          title: WORK_ITEM.code,
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+          on_created: onCreated,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "01.01.01 Governance agreement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Clear work item" }));
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() =>
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "01.01.01 Governance agreement",
+          project_id: "proj-a",
+          module_id: "mod-a",
+        }),
+      ),
+    );
+    // Nothing to file it against, so the board is not written to at all.
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "issue-123" }),
+      { cockpit_node_id: null },
     );
   });
 

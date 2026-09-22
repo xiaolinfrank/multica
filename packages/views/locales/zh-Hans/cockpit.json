@@ -360,6 +360,12 @@
     "payment_planned": "待支付",
     "payment_month": "{{month}} 待支付 {{count}} 笔 · 合计 {{total}}"
   },
+  "node_picker": {
+    "label": "执行任务",
+    "none": "不关联执行任务",
+    "search_placeholder": "按编号或名称检索…",
+    "empty": "本工作区还没有可归档任务的执行任务。"
+  },
   "issues": {
     "link": "关联任务",
     "create": "新建任务",

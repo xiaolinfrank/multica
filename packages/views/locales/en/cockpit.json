@@ -360,6 +360,12 @@
     "payment_planned": "Scheduled",
     "payment_month": "{{month}} · {{count}} scheduled · {{total}} in total"
   },
+  "node_picker": {
+    "label": "Work item",
+    "none": "No work item",
+    "search_placeholder": "Search by code or name…",
+    "empty": "This workspace has no work item an issue can be filed against."
+  },
   "issues": {
     "link": "Link issue",
     "create": "New issue",

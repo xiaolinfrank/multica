@@ -357,12 +357,23 @@ describe("Cockpit secondary interactions", () => {
       title: "01.01.01",
       project_id: "p-01",
       module_id: "m-0101",
+      // The row travels whole so the dialog can name it and offer another.
+      cockpit_node: {
+        node_id: "task",
+        code: "01.01.01",
+        label: "01.01.01 Sign the governance agreement",
+        project_id: "p-01",
+        module_id: "m-0101",
+      },
     });
 
     // The dialog reports the issue it created; the row it was created from
     // picks it up without the user going looking for it.
-    const onCreated = modal.data!.on_created as (issue: { id: string }) => unknown;
-    await onCreated({ id: "issue-9" });
+    const onCreated = modal.data!.on_created as (
+      issue: { id: string },
+      state: { cockpit_node_id: string | null },
+    ) => unknown;
+    await onCreated({ id: "issue-9" }, { cockpit_node_id: "task" });
     await waitFor(() =>
       expect(api.setCockpitNodeIssues).toHaveBeenCalledWith(
         "task",
@@ -374,7 +385,7 @@ describe("Cockpit secondary interactions", () => {
     // "Create another" keeps the same callback for the whole run, so the
     // second issue must not replace the set the first one joined.
     await waitFor(() => expect(screen.getByText("issue-9")).toBeInTheDocument());
-    await onCreated({ id: "issue-10" });
+    await onCreated({ id: "issue-10" }, { cockpit_node_id: "task" });
     await waitFor(() =>
       expect(api.setCockpitNodeIssues).toHaveBeenLastCalledWith(
         "task",
@@ -382,6 +393,12 @@ describe("Cockpit secondary interactions", () => {
         { replace: true },
       ),
     );
+
+    // The dialog owns the final answer: an issue moved off this row is filed
+    // where the user left it, and one with no row is not filed at all.
+    vi.mocked(api.setCockpitNodeIssues).mockClear();
+    await onCreated({ id: "issue-11" }, { cockpit_node_id: null });
+    expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
     useModalStore.getState().close();
   });
 

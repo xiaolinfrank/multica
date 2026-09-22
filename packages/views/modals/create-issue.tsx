@@ -59,6 +59,10 @@ import { StatusIcon, StatusPicker, PriorityIcon, PriorityPicker, StagePicker, As
 import { maxSiblingStage } from "../issues/components/pickers/stage-picker";
 import { ProjectPicker } from "../projects/components/project-picker";
 import { ModulePicker } from "../projects/components/module-picker";
+import {
+  CockpitNodeIssuePicker,
+  type CockpitNodeIssueOption,
+} from "../cockpit/components/cockpit-node-issue-picker";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
@@ -307,6 +311,14 @@ export function ManualCreatePanel({
       ? (data.module_id as string | null) ?? undefined
       : undefined,
   );
+  // The work item this issue is being opened against, when the create came
+  // from one. Seeded whole rather than as an id: the field names the row
+  // before the board query has answered, and the opener had already resolved
+  // it to decide the project, the module and the title's number.
+  const [cockpitNode, setCockpitNode] = useState<CockpitNodeIssueOption | null>(() =>
+    (data?.cockpit_node as CockpitNodeIssueOption | undefined) ?? null,
+  );
+  const cockpitNodeSeeded = data != null && "cockpit_node" in data;
   const parentIssueLocked = anchorCommentId !== null
     && typeof data?.parent_issue_id === "string"
     && data.parent_issue_id.length > 0;
@@ -437,6 +449,27 @@ export function ManualCreatePanel({
     setModuleId(undefined);
   };
 
+  /**
+   * Choosing a different work item is the same act as choosing the first one,
+   * so it carries the same three consequences: the issue files into that row's
+   * module (which names its project), and the title is renumbered.
+   *
+   * The renumber only rewrites the number the field opened on — everything
+   * typed after it is the user's sentence and is kept. A title the user has
+   * replaced outright no longer starts with the old code, and is left alone.
+   */
+  const updateCockpitNode = (next: CockpitNodeIssueOption | null) => {
+    const previous = cockpitNode;
+    setCockpitNode(next);
+    if (!next) return;
+    setProjectId(next.project_id);
+    setShared({ projectId: next.project_id });
+    setModuleId(next.module_id);
+    if (previous && title.startsWith(previous.code)) {
+      updateTitle(next.code + title.slice(previous.code.length));
+    }
+  };
+
   // A sub-issue is filed where its parent is, so a chosen parent owns the
   // project and module of the issue being created. Both pickers lock below
   // rather than offering a choice the server would refuse
@@ -479,7 +512,10 @@ export function ManualCreatePanel({
   const attachLabelMutation = useAttachLabelToIssue();
   const setIssuePropertyMutation = useSetIssueProperty();
   const resetForNextIssue = () => {
-    setTitle("");
+    // A held work item survives the batch: "Create another" under a cockpit
+    // row means the next task belongs to the same row, so its filing and its
+    // number are the next issue's starting point rather than a blank field.
+    setTitle(cockpitNode?.code ?? "");
     setStatus("todo");
     setPriority("none");
     setStartDate(null);
@@ -487,7 +523,8 @@ export function ManualCreatePanel({
     setLabelIds([]);
     setPropertyValues({});
     setCustomPropertyPickerId(null);
-    setProjectId(undefined);
+    setProjectId(cockpitNode?.project_id);
+    setModuleId(cockpitNode?.module_id);
     setParentIssueId(undefined);
     setStage(null);
     setChildIssues([]);
@@ -505,7 +542,7 @@ export function ManualCreatePanel({
     });
     setShared({
       priority: "none",
-      projectId: undefined,
+      projectId: cockpitNode?.project_id,
       dueDate: null,
       attachments: [],
     });
@@ -604,7 +641,13 @@ export function ManualCreatePanel({
       const onCreated = data?.on_created;
       if (typeof onCreated === "function") {
         try {
-          await (onCreated as (created: Issue) => unknown)(issue);
+          // The dialog's own answer travels with the issue: the work item may
+          // have been changed here, and the opener files against what the user
+          // ended on, not what it proposed.
+          await (onCreated as (
+            created: Issue,
+            state: { cockpit_node_id: string | null },
+          ) => unknown)(issue, { cockpit_node_id: cockpitNode?.node_id ?? null });
         } catch (err) {
           console.error("[create-issue] on_created hook failed", err);
         }
@@ -900,6 +943,9 @@ export function ManualCreatePanel({
     const carry: Record<string, unknown> = {};
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (carryParentIdentifier) carry.parent_issue_identifier = carryParentIdentifier;
+    // The work item rides along so a flip back to manual restores the field
+    // rather than silently dropping the row this create belongs to.
+    if (cockpitNode) carry.cockpit_node = cockpitNode;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);
   };
 
@@ -1013,7 +1059,15 @@ export function ManualCreatePanel({
                 key={formResetKey}
                 ref={titleEditorRef}
                 autoFocus
-                defaultValue={draft.manual.title}
+                // `title`, not the draft: the draft is only one of the two
+                // things this field can open on. A seeded title (the outline
+                // number of the module or work item the create came from) is
+                // never written to the persisted draft — it belongs to this
+                // invocation, not to the next one — so reading the draft here
+                // left the field looking empty while the issue would have been
+                // created under the seed. Keystrokes round-trip through
+                // `title` and arrive back equal, which the editor ignores.
+                defaultValue={title}
                 placeholder={t(($) => $.create_issue.title_placeholder)}
                 className="text-title font-semibold"
                 onChange={(v) => updateTitle(v)}
@@ -1153,6 +1207,20 @@ export function ManualCreatePanel({
                       clearLabel={tProjects(($) => $.picker.clear_aria)}
                     />
                   }
+                  align="start"
+                />
+              )}
+
+              {/* Work item — the cockpit row this issue was opened against, and
+                  what decided the module and the title's number. Shown only
+                  when the create came from one; elsewhere the board is linked
+                  from its own panel. */}
+              {cockpitNodeSeeded && (
+                <CockpitNodeIssuePicker
+                  value={cockpitNode}
+                  onUpdate={updateCockpitNode}
+                  disabled={!!parentIssueId}
+                  triggerRender={<PillButton />}
                   align="start"
                 />
               )}
