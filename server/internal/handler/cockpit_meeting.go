@@ -769,6 +769,7 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		link, taskErr := h.openMeetingTask(r, cc, meeting, meetingTaskPlacement{
 			projectID:    projectID,
 			moduleID:     moduleID,
+			nodeID:       nodeID,
 			codePrefix:   h.meetingNodeCode(ctx, cc, nodeID),
 			assigneeType: req.AssigneeType,
 			assigneeID:   req.AssigneeID,
@@ -978,6 +979,10 @@ func (h *Handler) meetingNodeCode(ctx context.Context, cc cockpitContext, nodeID
 // without borrowing a provisioning request it never received.
 type meetingTaskPlacement struct {
 	projectID, moduleID pgtype.UUID
+	// The archive sub-item the meeting is filed under. Its number opens the
+	// task's title, and the task is linked to it as well: a title says where
+	// the work belongs, a link is what makes the board show it there.
+	nodeID pgtype.UUID
 	// The archive sub-item's number ("06.06.03"), which the title opens with
 	// so the task sorts and reads like the rest of the programme's work.
 	codePrefix   string
@@ -1121,6 +1126,23 @@ func (h *Handler) openMeetingTask(
 	}); err != nil {
 		slog.Warn("CreateCockpitMeetingIssue failed", append(logger.RequestAttrs(r), "error", err)...)
 		return nil, "the task was opened but could not be linked to the meeting"
+	}
+
+	// File the task under the archive sub-item as well. Its number was already
+	// in the title, which is how it reads in an inbox; the link is what puts
+	// it under that item on the board and in the issue's own sidebar. Not
+	// fatal: a task that exists but is not filed is recoverable by hand, and
+	// refusing the meeting over it is not.
+	if placement.nodeID.Valid {
+		if _, err := h.Queries.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{
+			WorkspaceID: cc.workspaceID,
+			NodeID:      placement.nodeID,
+			IssueID:     result.Issue.ID,
+			Position:    0,
+		}); err != nil {
+			slog.Warn("CreateCockpitNodeIssue for meeting task failed",
+				append(logger.RequestAttrs(r), "error", err)...)
+		}
 	}
 
 	return &CockpitMeetingIssueResponse{
@@ -1893,6 +1915,7 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			link, taskErr := h.openMeetingTask(r, cc, meeting, meetingTaskPlacement{
 				projectID:  projectID,
 				moduleID:   moduleID,
+				nodeID:     nodeID,
 				codePrefix: codePrefix,
 				dir:        path,
 			})

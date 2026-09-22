@@ -1004,6 +1004,40 @@ func TestCockpitMeetingTaskGoesToTheBoardsAssignee(t *testing.T) {
 	}
 }
 
+// The archive sub-item's number already opens the task's title. The board
+// only shows the task under that item once the link exists, which is what
+// "the minutes are filed under 06.06.03" has to mean for a reader looking at
+// the breakdown rather than at the title.
+func TestCockpitMeetingTaskIsFiledUnderTheArchiveNode(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Cockpit meeting task node", true)
+	dbfx.Cleanup(t, "DELETE FROM cockpit_node_issue WHERE workspace_id = $1", f.wsID)
+	patchCockpit(t, f.wsID, map[string]any{
+		"meeting_project_id": f.project, "meeting_module_id": f.module, "meeting_node_id": f.node,
+	}).Want(http.StatusOK)
+
+	meeting := createMeeting(t, f.wsID, map[string]any{"meet_date": "2026-09-21", "title": "周例会"})
+	opened := f.provision(t, meeting.ID, map[string]any{"create_task": true, "create_dir": false})
+	if opened.Task == nil {
+		t.Fatalf("no task was opened: %q", opened.TaskError)
+	}
+
+	var board CockpitBoardResponse
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpit),
+		cockpitRequest(http.MethodGet, "/api/cockpit", f.wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&board)
+
+	filed := false
+	for _, link := range board.IssueLinks {
+		if link.IssueID == opened.Task.IssueID && link.NodeID == f.node {
+			filed = true
+		}
+	}
+	if !filed {
+		t.Errorf("the meeting's task is not filed under %s: %+v", f.node, board.IssueLinks)
+	}
+}
+
 // Attaching an issue to a meeting from either end re-sends the meeting's link
 // set, and the meeting's own task is one of those links. The role belongs to
 // the pair, not to the request — a picker has no way to send it — so a link
