@@ -21,6 +21,7 @@ import { useModalStore } from "@multica/core/modals";
 import { useConfigStore } from "@multica/core/config";
 import { isDesktopShell } from "../platform/local-directory";
 import { useT } from "../i18n";
+import { docsLocalePrefix } from "../common/docs-locale";
 
 const DOCS_URL = "https://multica.ai/docs";
 const CHANGELOG_URL = "https://multica.ai/changelog";
@@ -31,7 +32,7 @@ const CHANGELOG_URL = "https://multica.ai/changelog";
 const DOWNLOAD_URL = "https://multica.ai/download";
 
 export function HelpLauncher() {
-  const { t } = useT("layout");
+  const { t, i18n } = useT("layout");
   const serverVersion = useConfigStore((state) => state.serverVersion);
   // Web-only: offering "download the desktop app" inside the desktop app is
   // nonsense, and this sidebar is shared — apps/desktop renders the same
@@ -78,7 +79,11 @@ export function HelpLauncher() {
         )}
         <DropdownMenuItem
           render={
-            <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" />
+            <a
+              href={`${DOCS_URL}${docsLocalePrefix(i18n.language)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            />
           }
         >
           <BookOpen className="h-3.5 w-3.5" />

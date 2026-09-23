@@ -159,6 +159,14 @@ export interface IssueSourceContext {
   snapshot: SourceContextSnapshot;
 }
 
+/** The original a duplicate points at: enough to link it and show its status. */
+export interface IssueDuplicateOf {
+  id: string;
+  identifier: string;
+  title: string;
+  status: IssueStatus;
+}
+
 export interface Issue {
   id: string;
   workspace_id: string;
@@ -188,6 +196,12 @@ export interface Issue {
   creator_type: IssueAssigneeType;
   creator_id: string;
   parent_issue_id: string | null;
+  /**
+   * The original this issue duplicates (MUL-7349): present only while the
+   * issue is cancelled and the original still exists, resolved by the server.
+   * Absent when connected to an older backend.
+   */
+  duplicate_of?: IssueDuplicateOf | null;
   project_id: string | null;
   // The module this issue sits under, when the project uses modules. Optional
   // rather than `string | null` so literals typed as Issue (mobile's empty-issue

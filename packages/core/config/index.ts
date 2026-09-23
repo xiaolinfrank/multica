@@ -53,7 +53,10 @@ interface ConfigState {
   // deployment without shared storage — and empty must mean "offer the
   // clipboard", never "guess a host".
   collabSpaceHost: string;
-    // Whether deleting a comment keeps its replies (#8296). Older servers
+  // Whether POST /api/issues atomically persists custom-property values.
+  // Older servers silently drop the field, so absent must fail closed.
+  issueCreatePropertiesSupported: boolean;
+  // Whether deleting a comment keeps its replies (#8296). Older servers
   // deleted the replies too, so absent must fail closed: the client then
   // promises nothing about replies and uses the legacy delete route.
   commentDeleteKeepRepliesSupported: boolean;
@@ -75,6 +78,7 @@ interface ConfigState {
   setDefaultIssueAssigneeNode: (node?: string) => void;
   setLocalWorktreeSupported: (supported?: boolean) => void;
   setAgentConversationStartersSupported: (supported?: boolean) => void;
+  setIssueCreatePropertiesSupported: (supported?: boolean) => void;
   setCommentDeleteKeepRepliesSupported: (supported?: boolean) => void;
 }
 
@@ -94,6 +98,7 @@ export const configStore = createStore<ConfigState>((set) => ({
   defaultIssueAssigneeNode: "",
   localWorktreeSupported: false,
   agentConversationStartersSupported: false,
+  issueCreatePropertiesSupported: false,
   commentDeleteKeepRepliesSupported: false,
   setCdnConfig: ({ cdnDomain, cdnSigned = false }) => set({ cdnDomain, cdnSigned }),
   setAuthConfig: ({
@@ -112,6 +117,8 @@ export const configStore = createStore<ConfigState>((set) => ({
     set({ localWorktreeSupported: supported === true }),
   setAgentConversationStartersSupported: (supported = false) =>
     set({ agentConversationStartersSupported: supported === true }),
+  setIssueCreatePropertiesSupported: (supported = false) =>
+    set({ issueCreatePropertiesSupported: supported === true }),
   setCommentDeleteKeepRepliesSupported: (supported = false) =>
     set({ commentDeleteKeepRepliesSupported: supported === true }),
   setCollabSpaceHost: (host = "") => set({ collabSpaceHost: host }),

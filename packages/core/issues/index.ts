@@ -20,3 +20,4 @@ export {
   normalizeStatusPatch,
 } from "./status-category";
 export * from "./pending-creations";
+export * from "./wakeups";
