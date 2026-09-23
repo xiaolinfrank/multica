@@ -31,6 +31,7 @@ import {
   cockpitMeetingSpan,
   cockpitMilestoneStatusColor,
   cockpitModuleHighlights,
+  cockpitSubtreeAverage,
   computeCockpitDigest,
   computeCockpitFinance,
   computeCockpitMonths,
@@ -997,9 +998,10 @@ function ModuleBigCard({
   onPatchNode,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
-  // Cancelled work is not work the module owes anyone, so the headline ratio
-  // counts what is live — which is also what the progress bar fills to.
-  const pct = rollup?.live.doneRatio ?? Math.round(entry.node.progress);
+  // One number, one answer: the card's progress is the gantt row's — the mean
+  // effective progress of the module's live leaves, and zero where the gantt
+  // draws none. The done/total tile next to it keeps the completion count.
+  const pct = cockpitSubtreeAverage(entry) ?? 0;
   const color = entry.color || "var(--color-brand)";
   const highlights = useMemo(() => cockpitModuleHighlights(entry, today), [entry, today]);
   const interaction = onOpenModule
@@ -1113,7 +1115,7 @@ function ModuleSmallCard({
   onPatchNode,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
-  const pct = rollup?.live.doneRatio ?? Math.round(entry.node.progress);
+  const pct = cockpitSubtreeAverage(entry) ?? 0;
   const color = entry.color || "var(--color-brand)";
   const interaction = onOpenModule
     ? moduleCardInteraction(

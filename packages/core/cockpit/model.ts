@@ -11,8 +11,8 @@ import type {
 
 // Derivations over a cockpit board. Everything here is pure: the same board
 // always yields the same tree, the same roll-ups and the same finance summary,
-// so the numbers a person reads on the overview and the numbers on the gantt
-// cannot disagree.
+// and every view quotes progress through cockpitSubtreeAverage — the overview's
+// module cards and the gantt's rows answer with one number.
 //
 // The source board this feature replaces recomputed these inline in three
 // render functions and drifted between them. One module, one answer.

@@ -270,6 +270,44 @@ describe("CockpitPage", () => {
     expect(within(finance).getByText("30万")).toBeInTheDocument();
   });
 
+  // Regression: the module card's progress used to be the done ratio (0% here
+  // with the one task at 40%), disagreeing with the gantt row for the same
+  // branch. Both views now quote the same subtree average.
+  it("quotes the gantt's subtree average on the module cards", async () => {
+    renderPage();
+    await screen.findAllByText("High-quality datasets");
+    const tile = screen.getByText("Progress").closest("div")!;
+    expect(within(tile).getByText("40%")).toBeInTheDocument();
+    // The completion count stays a count.
+    const doneTile = screen.getByText("Done/total").closest("div")!;
+    expect(within(doneTile).getByText("0/1")).toBeInTheDocument();
+  });
+
+  it("quotes the same average on the small module cards", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue(
+      structuredClone({
+        ...board,
+        nodes: [
+          ...board.nodes,
+          node({ id: "root-b", code: "L1-02", name: "Platform", color: "#0891b2" }),
+          node({ id: "root-c", code: "L1-03", name: "Agents", color: "#7c3aed" }),
+          node({
+            id: "task-c",
+            code: "L3-03-01",
+            name: "Pilot",
+            parent_id: "root-c",
+            status: "In progress",
+            progress: 40,
+          }),
+        ],
+      }),
+    );
+    renderPage();
+    // The third module falls past MODULE_BIG_COUNT into the small grid; its
+    // summary line carries the same subtree average, not the done ratio (0%).
+    expect(await screen.findByText(/0\/1 items · 40%/)).toBeInTheDocument();
+  });
+
   it("stretches the stacked spend column to the fixed-height track", async () => {
     const { container } = renderPage();
     await screen.findByText("Monthly task progress × spend budget");
