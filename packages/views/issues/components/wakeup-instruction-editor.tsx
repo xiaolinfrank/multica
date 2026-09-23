@@ -181,7 +181,7 @@ function InstructionForm({
         id={id}
         value={value}
         rows={8}
-        className="max-h-[45dvh] resize-y text-base md:text-body"
+        className="max-h-[45dvh] resize-y text-title-sm md:text-body"
         disabled={mutation.isPending}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
