@@ -31,6 +31,7 @@ import {
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   isCockpitNodeUnscheduled,
+  isCockpitSummaryGroup,
   sortCockpitMilestones,
 } from "./model";
 
@@ -696,6 +697,18 @@ describe("isCockpitExecNode", () => {
   });
 });
 
+describe("isCockpitSummaryGroup", () => {
+  it("recognises the merged-direction group ids and nothing shaped like them", () => {
+    for (const id of ["02.02-09", "03.01-02", "03.03-05", "03.06-07"]) {
+      expect(isCockpitSummaryGroup(id)).toBe(true);
+    }
+    // A member's own code and a task's hyphenated code are not group ids.
+    for (const code of ["02.02", "02.09", "L1-02", "L3-02-02", "04.04-01", ""]) {
+      expect(isCockpitSummaryGroup(code)).toBe(false);
+    }
+  });
+});
+
 describe("buildCockpitSummaryTree", () => {
   it("folds the merged directions into one row with their tasks flattened and renumbered", () => {
     const nodes = [
@@ -725,6 +738,34 @@ describe("buildCockpitSummaryTree", () => {
     ]);
     // First paint folds at the direction rows, tasks one click away.
     expect(new Set(cockpitSummaryCollapseIds(tree))).toEqual(new Set(["d1", "02.02-09"]));
+  });
+
+  it("carries the merged directions' instalments on the group row like a direction's own", () => {
+    const nodes = [
+      node({ id: "l1", code: "L1-02" }),
+      node({ id: "m1", code: "02.02", parent_id: "l1" }),
+      node({ id: "m2", code: "02.03", parent_id: "l1" }),
+      node({ id: "t2", code: "L3-02-02-01", parent_id: "m1" }),
+      node({ id: "t3", code: "L3-02-03-01", parent_id: "m2" }),
+    ];
+    const payments = [
+      { id: "p1", node_id: "t2", label: "第1笔", pay_date: "2026-10-08", amount: 10, position: 0 },
+      { id: "p2", node_id: "t3", label: "1次", pay_date: "2026-10-15", amount: 5, position: 0 },
+      { id: "p3", node_id: "t3", label: "尾款", pay_date: "2026-12-15", amount: 7, position: 1 },
+    ];
+    const tree = buildCockpitSummaryTree(buildCockpitTree(nodes));
+    const group = flattenCockpitTree(tree).find((e) => e.node.id === "02.02-09")!;
+    const groups = groupSubtreePayments(
+      group,
+      groupPaymentsByNode(payments),
+      new Map(nodes.map((n) => [n.id, n])),
+    );
+    // Both members' instalments roll up: October buckets onto the month's
+    // last instalment, December on its own.
+    expect(groups.map((g) => [g.date, g.month, g.paid, g.total])).toEqual([
+      ["2026-10-15", "2026-10", false, 15],
+      ["2026-12-15", "2026-12", false, 7],
+    ]);
   });
 });
 

@@ -46,6 +46,7 @@ import {
   isCockpitExecNode,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
+  isCockpitSummaryGroup,
   subtreeIds,
   parseDay,
   type CockpitCoreNodeKind,
@@ -182,10 +183,16 @@ function visibleRows(
  * Which rows carry the payment markers: the direction rows. One row per
  * direction, always the same one — drawing an instalment on whichever row
  * happens to be collapsed right now moves it around as the reader expands the
- * tree, and drawing it on every ancestor draws it three times.
+ * tree, and drawing it on every ancestor draws it three times. A merged
+ * summary group is its members' one direction row.
  */
 function carriesMarkers(entry: CockpitTreeNode): boolean {
-  return entry.depth === 1 && !isCockpitExecNode(entry.node.code);
+  // The group's synthetic id deliberately fails the definition regex, so
+  // recognise it before the exec check classifies it as a task.
+  return (
+    entry.depth === 1 &&
+    (isCockpitSummaryGroup(entry.node.code) || !isCockpitExecNode(entry.node.code))
+  );
 }
 
 /** Trims "李林（POOL 超饱和）" down to the name the row has space for. */

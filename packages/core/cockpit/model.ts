@@ -188,6 +188,16 @@ export const COCKPIT_SUMMARY_RENAMES: Record<string, string> = {
   "02.10": "院端一体机与部署",
 };
 
+/**
+ * Whether `code` names a synthetic summary-group row rather than a stored
+ * node. Group ids ("02.02-09") deliberately fail the definition-code regex,
+ * so anything classifying rows must treat them as directions in their own
+ * right, not as execution work.
+ */
+export function isCockpitSummaryGroup(code: string): boolean {
+  return COCKPIT_SUMMARY_GROUPS.some((group) => group.id === code);
+}
+
 /** A blank row object for a synthetic group node. */
 function summaryGroupNode(
   group: CockpitSummaryGroup,
