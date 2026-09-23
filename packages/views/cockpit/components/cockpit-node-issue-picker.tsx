@@ -19,6 +19,7 @@ import {
   buildCockpitTree,
   cockpitBoardOptions,
   cockpitNodeIssueFiling,
+  cockpitStoredDirectionCode,
 } from "@multica/core/cockpit";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
@@ -56,7 +57,8 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
     const nodes = board?.nodes ?? [];
     if (nodes.length === 0 || !modules) return [];
     // The summary tree, because that is the shape the gantt ships and the
-    // codes it numbers by; the stored codes name nothing outside the board.
+    // codes the module numbering follows; each row's stored direction code
+    // rides along as the drift cross-check.
     const codes = buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes)));
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const options: CockpitNodeIssueOption[] = [];
@@ -65,7 +67,11 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
       // A merged group row is synthetic — it stands in for its members and has
       // no row of its own to link against.
       if (!node) continue;
-      const filing = cockpitNodeIssueFiling(code, modules);
+      const filing = cockpitNodeIssueFiling(
+        code,
+        modules,
+        cockpitStoredDirectionCode(node, byId),
+      );
       if (!filing) continue;
       options.push({
         node_id: id,

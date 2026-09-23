@@ -25,6 +25,7 @@ export * from "./mutations";
 export * from "./model";
 export {
   cockpitNodeIssueFiling,
+  cockpitStoredDirectionCode,
   type CockpitFilingModule,
   type CockpitNodeIssueFiling,
 } from "./node-filing";

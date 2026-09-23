@@ -37,6 +37,7 @@ import {
   cockpitChangesOptions,
   cockpitNodeIssueFiling,
   cockpitOverallProgress,
+  cockpitStoredDirectionCode,
   cockpitSummaryCollapseIds,
   cockpitTasksCsv,
   flattenCockpitTree,
@@ -736,13 +737,19 @@ export function CockpitPage() {
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
-  // Resolved from the DISPLAY code, which is the number the gantt shows and the
-  // number the modules are titled with — the stored code carries the
-  // programme's history and names nothing outside the board.
+  // The display code is the join key (the module numbering follows the shipped
+  // tree), cross-checked against the row's stored direction code: when a
+  // summary merge has renumbered the tree and the modules have not been re-cut
+  // to match, the two keys disagree and filing withdraws rather than file into
+  // the wrong module.
   const selectedFiling = useMemo((): CockpitNodeIssueOption | null => {
     if (!selected) return null;
     const code = displayCodes.get(selected.id) ?? selected.code;
-    const filing = cockpitNodeIssueFiling(code, modules ?? EMPTY_MODULES);
+    const filing = cockpitNodeIssueFiling(
+      code,
+      modules ?? EMPTY_MODULES,
+      cockpitStoredDirectionCode(selected, nodeById),
+    );
     if (!filing) return null;
     return {
       node_id: selected.id,
@@ -751,7 +758,7 @@ export function CockpitPage() {
       project_id: filing.project_id,
       module_id: filing.module_id,
     };
-  }, [selected, displayCodes, nodeLabels, modules]);
+  }, [selected, displayCodes, nodeLabels, modules, nodeById]);
 
   if (isLoading || !board) {
     return (
