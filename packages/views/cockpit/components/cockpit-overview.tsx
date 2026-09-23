@@ -827,7 +827,7 @@ export function CockpitOverview({
                         colour, one segment per root. */}
                     <div className="mt-2 flex h-20 items-end justify-center">
                       {month.amount > 0 ? (
-                        <div className="flex w-6 flex-col-reverse overflow-hidden rounded-t-sm">
+                        <div className="flex h-full w-6 flex-col-reverse overflow-hidden rounded-t-sm">
                           {shares.map((share) => (
                             <div
                               key={share.code}

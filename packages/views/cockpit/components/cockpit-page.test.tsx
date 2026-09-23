@@ -270,6 +270,20 @@ describe("CockpitPage", () => {
     expect(within(finance).getByText("30万")).toBeInTheDocument();
   });
 
+  it("stretches the stacked spend column to the fixed-height track", async () => {
+    const { container } = renderPage();
+    await screen.findByText("Monthly task progress × spend budget");
+
+    // The segments carry percentage heights, which only resolve if the column
+    // itself fills the fixed-height track. Regression: with no height class
+    // the items-end track let the column collapse to 0px, so the chart
+    // rendered as blank space under every month card.
+    const column = container.querySelector(".flex-col-reverse");
+    expect(column).not.toBeNull();
+    expect(column).toHaveClass("h-full");
+    expect(column!.firstElementChild).toHaveStyle({ height: "100%" });
+  });
+
   it("records the completion date when an open milestone is marked done", async () => {
     renderPage();
     const markDone = await screen.findByRole("button", { name: "Mark done" });
