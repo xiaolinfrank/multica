@@ -479,7 +479,7 @@ describe("Cockpit secondary interactions", () => {
           ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
       </I18nProvider>,
     );
-    const markersIn = (nodeId: string, name: string) =>
+    const markersIn = (nodeId: string, name: string | RegExp) =>
       Array.from(document.querySelectorAll<HTMLElement>(`[data-cockpit-node="${nodeId}"]`))
         .flatMap((row) => within(row).queryAllByRole("button", { name }));
     // The merged row carries both member directions' instalments — October
