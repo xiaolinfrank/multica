@@ -1139,6 +1139,7 @@ export function CockpitPage() {
             key={selectedMeeting.id}
             meeting={selectedMeeting}
             nodes={nodes}
+            nodeCodes={displayCodes}
             meetings={meetings}
             members={members ?? EMPTY_MEMBERS}
             issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
@@ -1162,6 +1163,7 @@ export function CockpitPage() {
           <CockpitNodePanel
             key={selected.id}
             node={selected}
+            displayCode={displayCodes.get(selected.id)}
             parent={selected.parent_id ? nodeById.get(selected.parent_id) : undefined}
             payments={paymentsByNode.get(selected.id) ?? []}
             links={linksByNode.get(selected.id) ?? []}

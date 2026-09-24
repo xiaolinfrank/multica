@@ -19,6 +19,7 @@ import type { CockpitNode, CockpitPendingChange } from "@multica/core/types";
 import {
   buildCockpitTree,
   buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
   flattenCockpitTree,
   cockpitMissingFields,
   cockpitChangesOptions,
@@ -445,7 +446,12 @@ export function CockpitChanges({
   const [showHistory, setShowHistory] = useState(false);
   const { data: rawChanges = [] } = useQuery(cockpitChangesOptions(wsId));
   const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  // The review rows name tasks the way the gantt does — a summary merge must
+  // not renumber a proposal's row out from under its reviewer.
+  const displayCodes = useMemo(
+    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(tree)),
+    [tree],
+  );
   const displayNodes = useMemo(() => nodes.map((node) => ({ ...node, code: displayCodes.get(node.id) ?? node.code })), [nodes, displayCodes]);
   const changes = useMemo(() => rawChanges.map((change) => ({ ...change, node_code: displayCodes.get(change.node_id) ?? change.node_code })), [rawChanges, displayCodes]);
   const rootById = useMemo(() => {

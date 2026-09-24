@@ -167,6 +167,8 @@
   },
   "node": {
     "code": "코드",
+    "row_code": "행 번호 {{code}}",
+    "stored_code": "저장 코드",
     "name": "작업명",
     "name_placeholder": "제목 없는 항목",
     "owner": "담당자",

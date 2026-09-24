@@ -7,6 +7,8 @@
 
 import type { CockpitBoard, CockpitIssueLink, CockpitNode } from "../types";
 import {
+  buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
   buildCockpitTree,
   computeCockpitFinanceRows,
   flattenCockpitTree,
@@ -50,7 +52,35 @@ export function cockpitTasksCsv(board: CockpitBoard): string {
   const rows = flattenCockpitTree(tree);
   const paymentsByNode = groupPaymentsByNode(board.payments);
   const linksByNode = groupIssueLinksByNode(board.issue_links);
-  const codeById = new Map(board.nodes.map((n) => [n.id, n.code]));
+  // The numbers a reader copies from the gantt must find the same rows here:
+  // quote the shipped summary codes, not the stored history. A folded member
+  // direction is not a gantt row and keeps its stored code.
+  const summaryTree = buildCockpitSummaryTree(tree);
+  const displayCodes = buildCockpitDisplayCodes(summaryTree);
+  const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
+  const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
+  // Names too: a renamed direction ("院端一体机与部署") reads its shipped name
+  // here, folded members keep their stored one.
+  const shippedName = new Map<string, string>();
+  const walkNames = (entry: CockpitTreeNode) => {
+    shippedName.set(entry.node.id, entry.node.name);
+    entry.children.forEach(walkNames);
+  };
+  summaryTree.forEach(walkNames);
+  const nameOf = (n: CockpitNode): string => shippedName.get(n.id) ?? n.name;
+  // The parent a row ships under: a merged task's shipped parent is the group
+  // row, not the folded direction its stored parent_id names.
+  const shippedParentCode = new Map<string, string>();
+  const walkParents = (entry: CockpitTreeNode) => {
+    for (const child of entry.children) {
+      shippedParentCode.set(child.node.id, displayCodes.get(entry.node.id) ?? entry.node.code);
+      walkParents(child);
+    }
+  };
+  summaryTree.forEach(walkParents);
+  const parentOf = (n: CockpitNode): string =>
+    shippedParentCode.get(n.id) ??
+    (n.parent_id && nodeById.has(n.parent_id) ? codeOf(nodeById.get(n.parent_id)!) : "");
 
   const out = [
     csvRow([
@@ -84,9 +114,9 @@ export function cockpitTasksCsv(board: CockpitBoard): string {
     out.push(
       csvRow([
         layerLabel(entry.depth),
-        n.code,
-        n.parent_id ? (codeById.get(n.parent_id) ?? "") : "",
-        n.name,
+        codeOf(n),
+        parentOf(n),
+        nameOf(n),
         n.owner,
         n.collaborators,
         n.start_date ?? "",
@@ -117,6 +147,11 @@ export function cockpitTasksCsv(board: CockpitBoard): string {
 export function cockpitFinanceCsv(board: CockpitBoard): string {
   const tree: CockpitTreeNode[] = buildCockpitTree(board.nodes);
   const linksByNode = groupIssueLinksByNode(board.issue_links);
+  const displayCodes = buildCockpitDisplayCodes(buildCockpitSummaryTree(tree));
+  const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
+  const rootNumberOf = new Map(
+    tree.map((root) => [root.node.code, displayCodes.get(root.node.id) ?? root.node.code]),
+  );
   const out = [
     csvRow([
       "板块",
@@ -137,8 +172,8 @@ export function cockpitFinanceCsv(board: CockpitBoard): string {
   for (const row of computeCockpitFinanceRows(tree, board.payments)) {
     out.push(
       csvRow([
-        row.rootCode,
-        row.node.code,
+        rootNumberOf.get(row.rootCode) ?? row.rootCode,
+        codeOf(row.node),
         linkedIssues(linksByNode, row.node),
         row.node.name,
         row.node.contract,

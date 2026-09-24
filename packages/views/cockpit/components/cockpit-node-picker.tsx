@@ -33,11 +33,10 @@ export interface CockpitNodePickerProps {
   onToggle: (nodeId: string) => void;
   label: string;
   disabled?: boolean;
-  /** Display codes for the menu labels. Omitted, they derive from the raw
-   *  tree — right inside the cockpit page, where that is what the surrounding
-   *  surface numbers by. Pass the summary-tree codes when the picker lives
-   *  elsewhere (the gantt and the register number by the summary tree), so
-   *  the menu quotes the same code the caller's rows do. */
+  /** Display codes for the menu labels. Every shipped surface numbers by the
+   *  summary tree, so callers pass those codes and the menu quotes the same
+   *  number the caller's rows do. The raw-tree fallback only covers ad-hoc
+   *  reuse outside any numbered surface. */
   codes?: Map<string, string>;
 }
 

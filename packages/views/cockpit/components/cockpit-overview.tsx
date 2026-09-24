@@ -27,6 +27,7 @@ import type {
 import {
   addDays,
   buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitMeetingSpan,
   cockpitMilestoneStatusColor,
@@ -39,6 +40,7 @@ import {
   daysBetween,
   formatDay,
   isCockpitMilestoneDone,
+  isCockpitSummaryGroup,
   parseCockpitCardText,
   parseDay,
   sortCockpitMilestones,
@@ -440,7 +442,11 @@ export function CockpitOverview({
   const locale = useLocale();
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
+  // The overview quotes the same row numbers the gantt ships: the summary
+  // tree's display codes. The base tree's positional codes would number a
+  // merged direction's tasks by a row the reader never sees.
+  const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodes(summaryTree), [summaryTree]);
   const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
   const finance = useMemo(() => computeCockpitFinance(board), [board]);
   const months = useMemo(() => computeCockpitMonths(board), [board]);
@@ -450,7 +456,10 @@ export function CockpitOverview({
   const nodeByCode = useMemo(() => new Map(board.nodes.map((n) => [n.code, n])), [board.nodes]);
   const idByDisplayCode = useMemo(() => {
     const map = new Map<string, string>();
-    displayCodes.forEach((code, id) => map.set(code, id));
+    displayCodes.forEach((code, id) => {
+      // A synthetic summary-group row is not a node a task jump can open.
+      if (!isCockpitSummaryGroup(id)) map.set(code, id);
+    });
     return map;
   }, [displayCodes]);
 

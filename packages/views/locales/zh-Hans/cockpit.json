@@ -167,6 +167,8 @@
   },
   "node": {
     "code": "编号",
+    "row_code": "行号 {{code}}",
+    "stored_code": "存储编号",
     "name": "任务名称",
     "name_placeholder": "未命名任务",
     "owner": "负责人",

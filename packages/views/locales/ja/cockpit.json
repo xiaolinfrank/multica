@@ -167,6 +167,8 @@
   },
   "node": {
     "code": "コード",
+    "row_code": "行番号 {{code}}",
+    "stored_code": "保存コード",
     "name": "タスク名",
     "name_placeholder": "無題の項目",
     "owner": "担当者",

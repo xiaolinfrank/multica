@@ -308,6 +308,79 @@ describe("CockpitPage", () => {
     expect(await screen.findByText(/0\/1 items · 40%/)).toBeInTheDocument();
   });
 
+  // The v1.2 summary merge folds 02.02-09 into one "02.02" row and displays
+  // stored 02.10 as "02.03"; every surface outside the gantt must quote those
+  // shipped numbers rather than the stored history.
+  function mergedAreaNodes() {
+    return [
+      node({ id: "l2", code: "L1-02", name: "Platform", color: "#0891b2" }),
+      node({ id: "dir1", code: "02.01", parent_id: "l2", name: "Infra" }),
+      node({ id: "dir2", code: "02.02", parent_id: "l2", name: "Arch" }),
+      node({ id: "dir3", code: "02.03", parent_id: "l2", name: "Data" }),
+      node({ id: "dir10", code: "02.10", parent_id: "l2", name: "院端节点与部署" }),
+      node({ id: "t2", code: "L3-02-02", parent_id: "dir2", name: "Design" }),
+      node({
+        id: "t3", code: "L3-02-08", parent_id: "dir3", name: "Ship",
+        status: "In progress", progress: 60,
+        start_date: "2026-09-01", end_date: "2026-10-10",
+      }),
+      node({ id: "t16", code: "L3-02-16", parent_id: "dir10", name: "Box" }),
+    ];
+  }
+
+  it("numbers digest tasks with the shipped row codes, not the pre-merge outline", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue(
+      structuredClone({
+        ...board,
+        nodes: [
+          ...board.nodes,
+          // No dir10 here: with the merged area alone, "02.03.01" would only
+          // ever come from the base tree's pre-merge numbering of t3.
+          ...mergedAreaNodes().filter((n) => n.id !== "dir10" && n.id !== "t16"),
+        ],
+      }),
+    );
+    renderPage();
+    // Stored-02.03's active task ships as 02.02.02 in the digest card.
+    expect((await screen.findAllByText("02.02.02")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("02.03.01")).not.toBeInTheDocument();
+  });
+
+  it("shows the shipped row code beside the stored code in the node panel", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue(
+      structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    // The renamed direction ships as "02.03 院端一体机与部署" (stored 02.10).
+    fireEvent.click(await screen.findByRole("button", { name: "Open 02.03" }));
+    const panel = await screen.findByRole("complementary");
+    expect(within(panel).getByText("02.03")).toBeInTheDocument();
+    expect(within(panel).getByText("02.10")).toBeInTheDocument();
+  });
+
+  it("numbers change rows with the shipped row codes", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue(
+      structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
+    );
+    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+      {
+        id: "ch1", cockpit_id: "cp", node_id: "t3",
+        node_code: "02.03", node_name: "Ship",
+        field: "progress", old_value: "50", new_value: "60",
+        source: "manual", reason: "", status: "pending",
+        created_by_type: "member", created_by_label: "Li",
+        decided_by_type: "", decided_by_label: "", decided_at: null,
+        created_at: "", updated_at: "",
+      },
+    ] as unknown as Awaited<ReturnType<typeof api.listCockpitChanges>>);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
+    expect(
+      await screen.findByRole("button", { name: "Locate 02.02.02 in the gantt" }),
+    ).toBeInTheDocument();
+  });
+
   it("stretches the stacked spend column to the fixed-height track", async () => {
     const { container } = renderPage();
     await screen.findByText("Monthly task progress × spend budget");

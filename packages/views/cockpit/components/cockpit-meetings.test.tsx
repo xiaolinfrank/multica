@@ -302,6 +302,29 @@ describe("the meeting register", () => {
     ).toBeInTheDocument();
   });
 
+  it("numbers the work-item picker with the shipped row codes", async () => {
+    // A directionless exec row under L1-02 ships as "02.04" once the merged
+    // group counts as one row; the base tree would number it "02.05".
+    const extra = [
+      { ...board.nodes[0]!, id: "l2", code: "L1-02", name: "Platform", parent_id: null },
+      { ...board.nodes[0]!, id: "dir1", code: "02.01", name: "Infra", parent_id: "l2" },
+      { ...board.nodes[0]!, id: "dir2", code: "02.02", name: "Arch", parent_id: "l2" },
+      { ...board.nodes[0]!, id: "dir3", code: "02.03", name: "Data", parent_id: "l2" },
+      { ...board.nodes[0]!, id: "dir10", code: "02.10", name: "院端节点与部署", parent_id: "l2" },
+      { ...board.nodes[0]!, id: "t2", code: "L3-02-02", name: "Design", parent_id: "dir2" },
+      { ...board.nodes[0]!, id: "t3", code: "L3-02-08", name: "Ship", parent_id: "l2" },
+    ];
+    vi.mocked(api.getCockpit).mockResolvedValue(
+      structuredClone({ ...board, nodes: [...board.nodes, ...extra] }),
+    );
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "02 Platform" }));
+    expect(await screen.findByRole("menuitem", { name: /02\.04 Ship/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /02\.05 Ship/ })).not.toBeInTheDocument();
+  });
+
   it("writes a field edit from the panel as a patch of just that field", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));

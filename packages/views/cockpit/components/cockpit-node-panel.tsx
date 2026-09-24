@@ -24,6 +24,7 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
+import { cn } from "@multica/ui/lib/utils";
 import { LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
@@ -40,6 +41,9 @@ import { ExecStatusChip, StatusChip } from "./cockpit-status";
 
 export interface CockpitNodePanelProps {
   node: CockpitNode;
+  /** The row's shipped (summary-tree) code, shown when it differs from the
+   * stored code the panel edits. */
+  displayCode?: string;
   parent: CockpitNode | undefined;
   payments: CockpitPayment[];
   links: CockpitIssueLink[];
@@ -74,6 +78,7 @@ export interface CockpitNodePanelProps {
 
 export function CockpitNodePanel({
   node,
+  displayCode,
   parent,
   payments,
   links,
@@ -149,13 +154,25 @@ export function CockpitNodePanel({
                 {parent.code}
               </span>
             )}
+            {displayCode && displayCode !== node.code && (
+              <span
+                className="font-mono text-micro font-medium"
+                aria-label={t(($) => $.node.row_code, { code: displayCode })}
+                title={t(($) => $.node.row_code, { code: displayCode })}
+              >
+                {displayCode}
+              </span>
+            )}
             <EditableText
               value={node.code}
               onCommit={(code) => onPatch({ code })}
-              label={t(($) => $.node.code)}
+              label={t(($) => $.node.stored_code)}
               placeholder={t(($) => $.node.code)}
               disabled={readOnly}
-              displayClassName="font-mono text-micro"
+              displayClassName={cn(
+                "font-mono text-micro",
+                displayCode && displayCode !== node.code && "text-muted-foreground",
+              )}
             />
           </div>
           <div className="mt-1">

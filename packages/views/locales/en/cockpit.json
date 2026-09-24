@@ -167,6 +167,8 @@
   },
   "node": {
     "code": "Code",
+    "row_code": "Row code {{code}}",
+    "stored_code": "Stored code",
     "name": "Name",
     "name_placeholder": "Untitled item",
     "owner": "Owner",

@@ -15,6 +15,9 @@ import type {
   MemberWithUser,
 } from "@multica/core/types";
 import {
+  buildCockpitDisplayCodes,
+  buildCockpitSummaryTree,
+  buildCockpitTree,
   cockpitMeetingPeopleOptions,
   cockpitMeetingVocabulary,
   splitCockpitMeetingParties,
@@ -40,6 +43,8 @@ import { CockpitPathField } from "./cockpit-path-field";
 export interface CockpitMeetingPanelProps {
   meeting: CockpitMeeting;
   nodes: CockpitNode[];
+  /** The shipped row codes; derived from `nodes` when omitted. */
+  nodeCodes?: Map<string, string>;
   /** Every meeting on the board — the vocabulary pickers offer what the
    *  programme has already used on top of the words it starts with. */
   meetings: CockpitMeeting[];
@@ -66,6 +71,7 @@ export interface CockpitMeetingPanelProps {
 export function CockpitMeetingPanel({
   meeting,
   nodes,
+  nodeCodes,
   meetings,
   members,
   issueLinks,
@@ -84,6 +90,14 @@ export function CockpitMeetingPanel({
 }: CockpitMeetingPanelProps) {
   const { t } = useT("cockpit");
   const unset = t(($) => $.common.unset);
+  // The picker's menu quotes the same shipped row codes the gantt and this
+  // panel's own linked list use — not the base tree's pre-merge numbering.
+  // The page hands its own down; deriving again only covers standalone use.
+  const derivedCodes = useMemo(
+    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes))),
+    [nodes],
+  );
+  const nodePickerCodes = nodeCodes ?? derivedCodes;
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
   const people = useCockpitPeople(members);
   const personOptions = useMemo(
@@ -363,6 +377,7 @@ export function CockpitMeetingPanel({
               selectedIds={linkedNodeIds}
               onToggle={onToggleNode}
               label={t(($) => $.meeting.link_node)}
+              codes={nodePickerCodes}
             />
           )}
         </CockpitField>
