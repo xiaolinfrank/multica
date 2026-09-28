@@ -202,7 +202,7 @@ export function CockpitMeetingFilterBar({
             <X className="size-3" />
           </button>
         ) : (
-          <kbd className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded border border-border px-1 text-[10px] leading-3 text-faint-foreground">
+          <kbd className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 rounded border border-border px-1 text-micro leading-3 text-faint-foreground">
             /
           </kbd>
         )}

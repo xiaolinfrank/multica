@@ -259,7 +259,7 @@ export function WakeupCreateForm({
         rows={3}
         value={draft.instruction}
         placeholder={t(($) => $.wakeups.create.instruction_placeholder)}
-        className="max-h-[30dvh] resize-y text-base md:text-label"
+        className="max-h-[30dvh] resize-y text-title-sm md:text-label"
         onChange={(event) => update({ instruction: event.target.value })}
       />
       {draft.condition === "recurring" && (
@@ -866,7 +866,7 @@ function FieldParams({
               aria-label={property.name}
               placeholder={t(($) => $.wakeups.create.value_placeholder)}
               type={property.type === "number" ? "number" : "text"}
-              className="h-7 w-32 text-base md:text-label"
+              className="h-7 w-32 text-title-sm md:text-label"
               value={draft.fieldValue}
               onChange={(event) => update({ fieldValue: event.target.value })}
             />

@@ -216,7 +216,7 @@ function InstructionEditor({
         rows={5}
         value={value}
         placeholder={rule.default_instruction || t(($) => $.wakeups.system.instruction_placeholder)}
-        className="resize-y text-base md:text-caption"
+        className="resize-y text-title-sm md:text-caption"
         disabled={pending}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}

@@ -108,7 +108,7 @@ function ChildDoneDefault({ rule, canManage }: { rule: WorkspaceSystemWakeup; ca
             disabled={!canManage || update.isPending}
             aria-describedby={error ? `${id}-hint ${id}-error` : `${id}-hint`}
             aria-invalid={!!error}
-            className="resize-y text-base md:text-body"
+            className="resize-y text-title-sm md:text-body"
             onChange={(event) => {
               setInstruction(event.target.value);
               setError("");
