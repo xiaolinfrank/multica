@@ -64,9 +64,11 @@ vi.mock("@multica/core/issue-statuses/hooks", () => ({
   }),
 }));
 
-// Mock the API so we control search responses + observe calls.
+// Mock the API so we control search responses + observe calls. The attachment
+// search is fork-only (@file mentions), so its mock defaults to empty.
 const searchIssuesMock = vi.fn();
 const searchProjectsMock = vi.fn();
+const searchAttachmentsMock = vi.fn();
 vi.mock("@multica/core/api", () => ({
   api: {
     get searchIssues() {
@@ -74,6 +76,9 @@ vi.mock("@multica/core/api", () => ({
     },
     get searchProjects() {
       return searchProjectsMock;
+    },
+    get searchAttachments() {
+      return searchAttachmentsMock;
     },
   },
 }));
@@ -204,6 +209,7 @@ describe("createMentionSuggestion", () => {
   beforeEach(() => {
     searchIssuesMock.mockReset();
     searchProjectsMock.mockReset();
+    searchAttachmentsMock.mockReset().mockResolvedValue({ attachments: [] });
     Element.prototype.scrollIntoView = vi.fn();
   });
 
@@ -990,6 +996,7 @@ describe("MentionList cancelled demotion", () => {
   beforeEach(() => {
     searchIssuesMock.mockReset();
     searchProjectsMock.mockReset();
+    searchAttachmentsMock.mockReset().mockResolvedValue({ attachments: [] });
     searchIssuesMock.mockResolvedValue({ issues: [], total: 0 });
     searchProjectsMock.mockResolvedValue({ projects: [], total: 0 });
   });

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -520,14 +521,17 @@ type AgentTaskResponse struct {
 	QuickCreatePriority        string               `json:"quick_create_priority,omitempty"`          // explicit priority selected in quick-create
 	QuickCreateDueDate         string               `json:"quick_create_due_date,omitempty"`          // explicit calendar due date selected in quick-create
 	QuickCreateAttachmentIDs   []string             `json:"quick_create_attachment_ids,omitempty"`    // attachment ids uploaded in the quick-create prompt and bound on issue create
-	QuickCreateSourceContext   json.RawMessage      `json:"quick_create_source_context,omitempty"`
-	WakeupID                  string               `json:"wakeup_id,omitempty"`    // immutable historical context for source-context quick-create
+	QuickCreateSourceContext   json.RawMessage      `json:"quick_create_source_context,omitempty"`    // immutable historical context for source-context quick-create
 	QuickCreateSourceContextID string               `json:"quick_create_source_context_id,omitempty"` // set on user-facing quick-create rows whose retry must preserve the captured source context; clients must route retry through RetrySourceContextQuickCreate, never a fresh quick-create
-	HandoffNote                string               `json:"handoff_note,omitempty"`                   // legacy assignment handoff instruction retained for installed clients; rendered by the daemon only in the per-turn prompt
-	SquadID                    string               `json:"squad_id,omitempty"`                       // for quick-create tasks where the picker was a squad; Agent is still the resolved leader
-	SquadName                  string               `json:"squad_name,omitempty"`                     // display name for the picker squad
-	ParentIssueID              string               `json:"parent_issue_id,omitempty"`                // for quick-create tasks opened from "Add sub issue" — UUID of the parent issue the new issue should be filed under
-	ParentIssueIdentifier      string               `json:"parent_issue_identifier,omitempty"`        // human-readable identifier (e.g. MUL-123) of the quick-create parent issue, resolved on claim for prompt context	// RequestingUserName + RequestingUserProfileDescription mirror the user
+	WakeupID                   string               `json:"wakeup_id,omitempty"`
+	WakeupSystemRule           string               `json:"wakeup_system_rule,omitempty"`      // set when a platform rule (e.g. child_done) started the run
+	WakeupJoined               string               `json:"wakeup_joined,omitempty"`           // wakeups that fired while this run waited to start and joined it instead of queuing their own
+	HandoffNote                string               `json:"handoff_note,omitempty"`            // legacy assignment handoff instruction retained for installed clients; rendered by the daemon only in the per-turn prompt
+	SquadID                    string               `json:"squad_id,omitempty"`                // for quick-create tasks where the picker was a squad; Agent is still the resolved leader
+	SquadName                  string               `json:"squad_name,omitempty"`              // display name for the picker squad
+	ParentIssueID              string               `json:"parent_issue_id,omitempty"`         // for quick-create tasks opened from "Add sub issue" — UUID of the parent issue the new issue should be filed under
+	ParentIssueIdentifier      string               `json:"parent_issue_identifier,omitempty"` // human-readable identifier (e.g. MUL-123) of the quick-create parent issue, resolved on claim for prompt context
+	// RequestingUserName + RequestingUserProfileDescription mirror the user
 	// the agent is acting on behalf of (see daemon/types.go). v1 sources them
 	// from the runtime owner so they're populated for daemon runtimes and
 	// empty otherwise. The daemon emits both into the brief under
@@ -535,23 +539,16 @@ type AgentTaskResponse struct {
 	// is empty.
 	RequestingUserName               string `json:"requesting_user_name,omitempty"`
 	RequestingUserProfileDescription string `json:"requesting_user_profile_description,omitempty"`
-	// Initiator* identify the actor who triggered THIS task — the real
-	// requester behind the current comment/mention or chat message — as
-	// distinct from the runtime owner whose credentials the agent runs with.
-	// Resolved at claim time: comment-triggered tasks use the triggering
-	// comment's author; chat tasks use the chat session creator. Empty for
-	// task kinds with no attributable human initiator (on-assign, autopilot,
-	// quick-create). InitiatorEmail is set only for member initiators
-	// ("member"); agent initiators ("agent") carry a name but no email. The
-	// daemon emits these into the brief under `## Task Initiator` so a
-	// workspace-visible, multi-user agent can attribute the request and apply
-	// per-person privacy / access rules instead of seeing every requester as
-	// the owner. The agent's effective Multica credentials stay owner-scoped —
-	// this is an attested identity, not a credential. See MUL-2645.
-	InitiatorType  string `json:"initiator_type,omitempty"`  // "member" or "agent"
-	InitiatorID    string `json:"initiator_id,omitempty"`    // user UUID (member) or agent UUID
-	InitiatorName  string `json:"initiator_name,omitempty"`  // display name of the initiator
-	InitiatorEmail string `json:"initiator_email,omitempty"` // member email; empty for agent initiators
+	// Initiator* are the existing daemon wire fields for the human whose
+	// authority this run uses (originator_user_id). Despite their historical
+	// names, they are not necessarily the direct trigger author; that actor is
+	// represented by trigger_author_* for comment runs. Empty when no
+	// originator exists. The daemon renders this per-turn as ## On Behalf Of;
+	// credentials remain scoped to the runtime owner. See MUL-2645, GH-8674.
+	InitiatorType  string `json:"initiator_type,omitempty"`  // "member" when an originator exists
+	InitiatorID    string `json:"initiator_id,omitempty"`    // originator user UUID
+	InitiatorName  string `json:"initiator_name,omitempty"`  // originator display name
+	InitiatorEmail string `json:"initiator_email,omitempty"` // originator email
 	Kind           string `json:"kind"`                      // source discriminator: "comment" | "autopilot" | "chat" | "quick_create" | "direct" — quick-create remains stable after its result issue is linked
 	// Attribution is the resolved accountable-human provenance for this run
 	// (MUL-4302 §9): the source label + precise flag, the initiator (accountable)
@@ -801,6 +798,7 @@ type TaskAgentData struct {
 // Dispatch only begins preparation, so a fallback cancelled before StartTask
 // is still unused. Keep started fallbacks and ordinary cancellations visible,
 // and retain the underlying scheduling records for audit.
+// Keep this predicate in sync with ListAgentTasks in pkg/db/queries/agent.sql.
 func visibleTaskHistory(tasks []db.AgentTaskQueue) []db.AgentTaskQueue {
 	return slices.DeleteFunc(tasks, func(task db.AgentTaskQueue) bool {
 		return task.EscalationForTaskID.Valid &&
@@ -841,7 +839,8 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 		branchName = t.BranchName.String
 	}
 	var wakeupContext struct {
-		ID string `json:"wakeup_id"`
+		ID         string `json:"wakeup_id"`
+		SystemRule string `json:"wakeup_system"`
 	}
 	_ = json.Unmarshal(t.Context, &wakeupContext)
 	handoffNote := ""
@@ -878,6 +877,8 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 		TriggerSummary:         textToPtr(t.TriggerSummary),
 		HandoffNote:            handoffNote,
 		WakeupID:               wakeupContext.ID,
+		WakeupSystemRule:       wakeupContext.SystemRule,
+		WakeupJoined:           service.JoinedWakeupNotes(t.Context),
 		WorkDir:                workDir,
 		RelativeWorkDir:        relativeWorkDir(workDir, workspaceID, uuidToString(t.ID)),
 		DurableWorkDir:         durableWorkDir,
@@ -2729,6 +2730,13 @@ func (h *Handler) CancelAgentTasks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cancelAgentTasksResponse{Cancelled: len(cancelled)})
 }
 
+// HeaderAgentTasksNextCursor preserves the array response used by installed clients.
+// An absent header means this is the last page.
+const HeaderAgentTasksNextCursor = "X-Agent-Tasks-Next-Cursor"
+
+const defaultAgentTasksLimit = 200
+const maxAgentTasksLimit = 200
+
 func (h *Handler) ListAgentTasks(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	agent, ok := h.loadAgentForUser(w, r, id)
@@ -2754,13 +2762,41 @@ func (h *Handler) ListAgentTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := h.Queries.ListAgentTasks(r.Context(), agent.ID)
+	limit := defaultAgentTasksLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = min(n, maxAgentTasksLimit)
+	}
+	// An infinite upper bound gives both first and subsequent pages an indexed
+	// tuple comparison, without an optional-cursor OR in the query plan.
+	beforeCreatedAt := pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+	beforeID := agent.ID
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		beforeCreatedAt, beforeID = parseTranscriptCursor(raw)
+		if !beforeCreatedAt.Valid || !beforeID.Valid {
+			writeError(w, http.StatusBadRequest, "invalid before cursor")
+			return
+		}
+	}
+	tasks, err := h.Queries.ListAgentTasks(r.Context(), db.ListAgentTasksParams{
+		AgentID: agent.ID, BeforeCreatedAt: beforeCreatedAt, BeforeID: beforeID,
+		PageLimit: int32(limit + 1),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list agent tasks")
 		return
 	}
 
-	tasks = visibleTaskHistory(tasks)
+	nextCursor := ""
+	if len(tasks) > limit {
+		tasks = tasks[:limit]
+		last := tasks[len(tasks)-1]
+		nextCursor = transcriptCursor(last.CreatedAt.Time, last.ID)
+	}
 	resp := make([]AgentTaskResponse, len(tasks))
 	var taskIDs []pgtype.UUID
 	if includeUsage {
@@ -2784,18 +2820,23 @@ func (h *Handler) ListAgentTasks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if nextCursor != "" {
+		w.Header().Set(HeaderAgentTasksNextCursor, nextCursor)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // AgentActivityBucket is one day-bucketed throughput sample for the
 // Agents-list ACTIVITY sparkline. bucket_at is midnight UTC of the day.
 type AgentActivityBucket struct {
-	AgentID        string `json:"agent_id"`
-	BucketAt       string `json:"bucket_at"`
-	TaskCount      int32  `json:"task_count"`
-	FailedCount    int32  `json:"failed_count"`
-	CompletedCount int32  `json:"completed_count"`
-	CancelledCount int32  `json:"cancelled_count"`
+	AgentID        string  `json:"agent_id"`
+	BucketAt       string  `json:"bucket_at"`
+	TaskCount      int32   `json:"task_count"`
+	FailedCount    int32   `json:"failed_count"`
+	CompletedCount int32   `json:"completed_count"`
+	CancelledCount int32   `json:"cancelled_count"`
+	DurationMs     float64 `json:"duration_ms"`
+	DurationCount  int32   `json:"duration_count"`
 }
 
 // AgentRunCount is the trailing-30-day total task run count per agent,
@@ -3017,6 +3058,8 @@ func (h *Handler) GetWorkspaceAgentActivity30d(w http.ResponseWriter, r *http.Re
 			FailedCount:    row.FailedCount,
 			CompletedCount: row.CompletedCount,
 			CancelledCount: row.CancelledCount,
+			DurationMs:     row.DurationMs,
+			DurationCount:  row.DurationCount,
 		})
 	}
 

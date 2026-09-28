@@ -7,6 +7,12 @@ export const metadata: Metadata = {
   },
   description:
     "BayClaw 是复星医药大湾区虚拟员工平台:把 AI 智能体作为数字员工纳入团队,在云端共享算力上分派任务、跟踪进度、沉淀技能。",
+  openGraph: {
+    title: "BayClaw — Project Management for Human + Agent Teams",
+    description:
+      "Manage your human + agent workforce in one place.",
+    url: "/",
+  },
   alternates: {
     canonical: "/",
   },

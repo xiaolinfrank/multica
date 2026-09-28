@@ -35,10 +35,12 @@ import { ApiError } from "@/data/api";
 import { projectDetailOptions } from "@/data/queries/projects";
 import { useUpdateProject } from "@/data/mutations/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 
 export default function EditProject() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { t } = useT("projects");
   const detail = useQuery(projectDetailOptions(wsId, id));
   const update = useUpdateProject(id);
 
@@ -79,18 +81,18 @@ export default function EditProject() {
       return;
     }
     Alert.alert(
-      "Discard changes?",
-      "Your edits to this project will be lost.",
+      t("form.discard_title"),
+      t("form.discard_message"),
       [
-        { text: "Keep editing", style: "cancel" },
+        { text: t("form.keep_editing"), style: "cancel" },
         {
-          text: "Discard",
+          text: t("common:actions.discard"),
           style: "destructive",
           onPress: () => router.back(),
         },
       ],
     );
-  }, [dirty]);
+  }, [dirty, t]);
 
   const onSave = useCallback(() => {
     if (!canSave) return;
@@ -111,10 +113,10 @@ export default function EditProject() {
   const headerLeft = useCallback(() => {
     return (
       <Pressable onPress={onCancel} className="px-1 py-1">
-        <Text className="text-base text-brand">Cancel</Text>
+        <Text className="text-base text-brand">{t("common:actions.cancel")}</Text>
       </Pressable>
     );
-  }, [onCancel]);
+  }, [onCancel, t]);
 
   const headerRight = useCallback(() => {
     return (
@@ -124,11 +126,11 @@ export default function EditProject() {
         className={canSave ? "px-1 py-1" : "px-1 py-1 opacity-40"}
       >
         <Text className="text-base text-brand font-semibold">
-          {update.isPending ? "Saving…" : "Save"}
+          {update.isPending ? t("actions.saving") : t("common:actions.save")}
         </Text>
       </Pressable>
     );
-  }, [canSave, onSave, update.isPending]);
+  }, [canSave, onSave, update.isPending, t]);
 
   return (
     <>
@@ -143,10 +145,12 @@ export default function EditProject() {
           keyboardShouldPersistTaps="handled"
         >
           {!detail.data ? (
-            <Text className="text-sm text-muted-foreground">Loading…</Text>
+            <Text className="text-sm text-muted-foreground">
+              {t("common:states.loading")}
+            </Text>
           ) : (
             <>
-              <Field label="Icon (emoji)">
+              <Field label={t("form.icon_emoji")}>
                 <TextInput
                   value={icon}
                   onChangeText={(v) => {
@@ -162,11 +166,11 @@ export default function EditProject() {
                 />
               </Field>
 
-              <Field label="Title">
+              <Field label={t("form.title")}>
                 <TextInput
                   value={title}
                   onChangeText={setTitle}
-                  placeholder="Project title"
+                  placeholder={t("form.title_placeholder")}
                   placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
                   className="text-base text-foreground bg-secondary/50 rounded-md px-3 py-2"
                   autoFocus={!detail.data?.title}
@@ -174,11 +178,11 @@ export default function EditProject() {
                 />
               </Field>
 
-              <Field label="Description">
+              <Field label={t("form.description")}>
                 <AutosizeTextArea
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="What is this project about?"
+                  placeholder={t("form.description_placeholder")}
                   className="bg-secondary/50 rounded-md px-3 py-2"
                   minHeight={MIN_BODY_INPUT_HEIGHT_PX}
                 />
@@ -249,4 +253,3 @@ function Field({
     </View>
   );
 }
-

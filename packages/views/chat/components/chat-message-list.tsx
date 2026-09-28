@@ -18,10 +18,10 @@ import {
   TooltipContent,
 } from "@multica/ui/components/ui/tooltip";
 import {
-  ChevronRight,
-  ChevronDown,
   AlertTriangle,
   ArrowUpRight,
+  ChevronDown,
+  ChevronRight,
   Copy,
   RotateCw,
 } from "lucide-react";
@@ -31,8 +31,7 @@ import { RichContent } from "../../rich-content";
 import { RichContentScrollRootProvider } from "../../rich-content/scroll-root";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { AttachmentList } from "../../issues/components/comment-card";
-import { ImageSequenceProvider } from "../../editor";
-import { collectImageSequence } from "@multica/core/attachments/image-sequence";
+import { PreviewSequenceProvider, collectPreviewSequence } from "../../editor";
 import type { AgentAvailability } from "@multica/core/agents";
 import { resolveFailureReasonKey } from "@multica/core/agents";
 import type {
@@ -287,17 +286,17 @@ export function ChatMessageList({
     availability,
   };
 
-  // Every image in this session, in message order, so opening one lets the
-  // reader page through the rest (MUL-5752). Built from the message data, not
-  // from what Virtuoso currently has mounted.
+  // Every previewable file in this session, in message order, so opening one
+  // lets the reader page through the rest (MUL-5752). Built from the message
+  // data, not from what Virtuoso currently has mounted.
   //
   // Persisted messages only: a task transcript's own attachments live behind a
-  // separate query and its blocks are collapsed by default, so an image in
-  // there keeps its standalone preview instead of entering a sequence the
-  // reader can't see the rest of.
-  const imageSequence = useMemo(
+  // separate query and its blocks are collapsed by default, so a file in there
+  // keeps its standalone preview instead of entering a sequence the reader
+  // can't see the rest of.
+  const previewSequence = useMemo(
     () =>
-      collectImageSequence(
+      collectPreviewSequence(
         messages.map((message) => ({
           content: message.content,
           attachments: message.attachments,
@@ -307,7 +306,7 @@ export function ChatMessageList({
   );
 
   return (
-    <ImageSequenceProvider items={imageSequence}>
+    <PreviewSequenceProvider items={previewSequence}>
     <div
       ref={setScrollContainerRef}
       data-tab-scroll-root
@@ -393,7 +392,7 @@ export function ChatMessageList({
       </RichContentScrollRootProvider>
       )}
     </div>
-    </ImageSequenceProvider>
+    </PreviewSequenceProvider>
   );
 }
 
