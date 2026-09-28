@@ -118,6 +118,7 @@ function meeting(partial: Partial<CockpitMeeting> & { id: string }): CockpitMeet
     actions: "",
     nas_dir: "",
     detected: false,
+    track: "",
     ...partial,
   };
 }

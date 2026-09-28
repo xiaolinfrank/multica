@@ -194,7 +194,7 @@ const board: CockpitBoard = {
       minutes: "",
       decisions: "",
       actions: "",
-      nas_dir: "", detected: false,
+      nas_dir: "", detected: false, track: "",
     },
   ],
   meeting_issues: [],

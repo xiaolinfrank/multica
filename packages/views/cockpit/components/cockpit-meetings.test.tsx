@@ -108,7 +108,7 @@ function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
     code: "", kind: "", status: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
-    nas_dir: "", detected: false, ...over,
+    nas_dir: "", detected: false, track: "", ...over,
   };
 }
 
@@ -161,6 +161,8 @@ const board: CockpitBoard = {
       end_time: "11:00",
       title: "Working group weekly",
       kind: "Standing",
+      track: "项目管理",
+      decisions: "Adopt the v3 data schema",
       parties: "Fosun Pharma、BGI",
       nas_dir: "/Volumes/share/06.06/20260921-01 Working group weekly",
       // The stored folder is a literal path, not a generated one.
@@ -172,6 +174,8 @@ const board: CockpitBoard = {
       title: "Kickoff",
       status: "Held",
     }),
+    // An unscheduled draft: the timeline cannot place it and must say so.
+    meeting({ id: "meet-3", title: "Compliance review TBD" }),
   ],
   meeting_issues: [
     {
@@ -566,5 +570,107 @@ describe("the people at a meeting", () => {
     await waitFor(() =>
       expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { kind: "对接会" }),
     );
+  });
+});
+
+describe("finding meetings", () => {
+  it("narrows the register as you type, across what a meeting says", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+
+    const box = screen.getByRole("textbox", { name: "Search meetings" });
+    fireEvent.change(box, { target: { value: "kickoff" } });
+    expect(screen.queryByRole("button", { name: "Open Working group weekly" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Kickoff" })).toBeInTheDocument();
+    // The toolbar count and the chip row say the same thing.
+    expect(screen.getAllByText("1 of 3 meetings").length).toBeGreaterThan(0);
+
+    // The search reads decisions too, not just the title.
+    fireEvent.change(box, { target: { value: "v3 data" } });
+    expect(screen.getByRole("button", { name: "Open Working group weekly" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Kickoff" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(await screen.findByRole("button", { name: "Open Kickoff" })).toBeInTheDocument();
+  });
+
+  it("filters from the popover and states every active group as a removable chip", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    // Status vocabulary = the programme's seeded words plus what the board
+    // has used ("Held").
+    fireEvent.click(await screen.findByRole("button", { name: "Held" }));
+
+    expect(screen.queryByRole("button", { name: "Open Working group weekly" })).toBeNull();
+    expect(await screen.findByText("Status: Held")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter Status: Held" }));
+    expect(await screen.findByRole("button", { name: "Open Working group weekly" })).toBeInTheDocument();
+
+    // The track filter, and "no track" as a thing to ask for.
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    fireEvent.click(await screen.findByRole("button", { name: "项目管理" }));
+    expect(screen.getByText("Track: 项目管理")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Kickoff" })).toBeNull();
+
+    // Clear everything from the chip row. The popover offers the same action
+    // under the same name; dismiss it first so the row's is the one left.
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(await screen.findByRole("button", { name: "Open Kickoff" })).toBeInTheDocument();
+  });
+
+  it("reads the only-switches off the meeting, not off its title", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Has decisions" }));
+
+    // meet-1 recorded a decision; the other two did not.
+    expect(screen.getByRole("button", { name: "Open Working group weekly" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Kickoff" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Compliance review TBD" })).toBeNull();
+  });
+});
+
+describe("the timeline", () => {
+  it("lanes the register by line, cards reading date, parties and consensus", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+    fireEvent.click(screen.getByRole("button", { name: "Timeline", pressed: false }));
+
+    // One lane per line in use, the unfiled meetings in their own lane.
+    expect(await screen.findByText("项目管理")).toBeInTheDocument();
+    expect(screen.getByText("No track")).toBeInTheDocument();
+
+    // The card says what a review asks: when, who sat down, what was agreed.
+    const card = await screen.findByRole("button", { name: "Open Working group weekly" });
+    expect(within(card).getByText("Fosun Pharma、BGI")).toBeInTheDocument();
+    expect(within(card).getByText("Adopt the v3 data schema")).toBeInTheDocument();
+
+    // The undated draft is held back, and the view says how many.
+    expect(screen.queryByRole("button", { name: "Open Compliance review TBD" })).toBeNull();
+    expect(screen.getByText(/1 unscheduled/)).toBeInTheDocument();
+
+    // A card opens the same panel the list would.
+    fireEvent.click(card);
+    expect(await screen.findByText("BIO-42")).toBeInTheDocument();
+  });
+
+  it("honours the shared filters: a searched timeline hides the rest", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search meetings" }), {
+      target: { value: "kickoff" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Timeline", pressed: false }));
+
+    expect(await screen.findByRole("button", { name: "Open Kickoff" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Working group weekly" })).toBeNull();
+    // meet-2 has no track, so only the unfiled lane remains.
+    expect(screen.queryByText("项目管理")).toBeNull();
+    expect(screen.getByText("No track")).toBeInTheDocument();
   });
 });

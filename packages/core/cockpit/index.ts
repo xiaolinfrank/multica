@@ -23,6 +23,8 @@ export {
 } from "./queries";
 export * from "./mutations";
 export * from "./model";
+export * from "./meeting-search";
+export * from "./meeting-timeline";
 export {
   cockpitNodeIssueFiling,
   cockpitStoredDirectionCode,

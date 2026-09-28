@@ -28,15 +28,21 @@ function captureBackground(source: HTMLElement): string {
   try {
     const color = getComputedStyle(probe).backgroundColor;
     if (isOpaqueColor(color)) return color;
-    throw new Error("Gantt backing surface is unavailable");
+    throw new Error("Chart backing surface is unavailable");
   } finally {
     probe.remove();
   }
 }
 
 /** Capture the actual chart DOM, not a second renderer. Only the offscreen clone
- * is expanded; scrolling, focus and editing state in the live chart stay intact. */
-export async function captureCockpitGantt(source: HTMLElement, summaryPdf = false): Promise<HTMLCanvasElement> {
+ * is expanded; scrolling, focus and editing state in the live chart stay intact.
+ * Works for any cockpit surface with a [data-cockpit-scroll] viewport (the
+ * gantt, the meetings timeline); `label` names it in error messages. */
+export async function captureCockpitGantt(
+  source: HTMLElement,
+  summaryPdf = false,
+  label = "Gantt",
+): Promise<HTMLCanvasElement> {
   await document.fonts?.ready;
   const backgroundColor = captureBackground(source);
   const clone = source.cloneNode(true) as HTMLElement;
@@ -54,11 +60,20 @@ export async function captureCockpitGantt(source: HTMLElement, summaryPdf = fals
       copy.style.top = "auto";
       copy.style.left = "auto";
     }
+    // Chrome mis-composites sibling stacking contexts when a blurred element is
+    // rasterised through SVG foreignObject (the timeline's blurred axis header
+    // erased its lane labels). Blur means nothing in a static capture: drop it
+    // and back translucent backgrounds with the opaque page surface instead.
+    if (computed.backdropFilter && computed.backdropFilter !== "none") {
+      copy.style.backdropFilter = "none";
+      copy.style.setProperty("-webkit-backdrop-filter", "none");
+      if (!isOpaqueColor(computed.backgroundColor)) copy.style.backgroundColor = backgroundColor;
+    }
     if (element instanceof HTMLInputElement && copy instanceof HTMLInputElement) copy.value = element.value;
   });
   const viewport = source.querySelector<HTMLElement>("[data-cockpit-scroll]");
   const expanded = clone.querySelector<HTMLElement>("[data-cockpit-scroll]");
-  if (!viewport || !expanded) throw new Error("Gantt viewport is unavailable");
+  if (!viewport || !expanded) throw new Error(`${label} viewport is unavailable`);
   const width = summaryPdf && source.dataset.summaryWidth
     ? Math.min(Number(source.dataset.summaryWidth), viewport.scrollWidth) : viewport.scrollWidth;
   expanded.style.cssText += `;overflow:hidden;width:${width}px;height:${viewport.scrollHeight}px;flex:none;max-height:none`;

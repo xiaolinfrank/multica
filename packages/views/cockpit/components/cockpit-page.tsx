@@ -651,6 +651,7 @@ export function CockpitPage() {
           end_time: draft.end_time || null,
           kind: draft.kind,
           status: draft.status,
+          track: draft.track,
           parties: draft.parties,
           organizer: draft.organizer,
           attendees: draft.attendees,

@@ -2,25 +2,34 @@
 
 // The meeting register: the board's diary, in whichever shape the question
 // needs. A list to audit the year, a month to see the rhythm, a week to plan
-// the next one, an agenda to read what is coming. Four views over one sorted
-// set — the derivations live in @multica/core/cockpit so the register, the
-// overview card and the gantt can never disagree about what is upcoming.
+// the next one, an agenda to read what is coming, and a timeline to show what
+// each line of the programme has moved. Five views over one sorted set — the
+// derivations live in @multica/core/cockpit so the register, the overview
+// card and the gantt can never disagree about what is upcoming.
+//
+// Search and filters sit above all five: one reading of the register, so the
+// count in the toolbar, the chips and the rows on screen are the same fact.
 
 import { useMemo, useState } from "react";
 import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
 import {
   cockpitMeetingSpan,
+  cockpitMeetingTrackColor,
   cockpitMeetingsByDay,
   cockpitMonthGrid,
   cockpitWeekDays,
+  emptyCockpitMeetingFilter,
+  filterCockpitMeetings,
   groupMeetingIssues,
   groupMeetingNodes,
+  isCockpitMeetingFilterActive,
   monthKey,
   parseDay,
   shiftMonthKey,
   splitCockpitMeetings,
   addDays,
   formatDay,
+  type CockpitMeetingFilter,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
@@ -35,10 +44,12 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
+import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
+import { CockpitMeetingTimeline } from "./cockpit-meeting-timeline";
 
-export type CockpitMeetingsView = "list" | "month" | "week" | "agenda";
+export type CockpitMeetingsView = "list" | "month" | "week" | "agenda" | "timeline";
 
-const VIEWS: CockpitMeetingsView[] = ["list", "month", "week", "agenda"];
+const VIEWS: CockpitMeetingsView[] = ["list", "month", "week", "agenda", "timeline"];
 
 export interface CockpitMeetingsProps {
   board: CockpitBoard;
@@ -76,6 +87,13 @@ function MeetingChip({
         selected && "bg-accent",
       )}
     >
+      {meeting.track && (
+        <span
+          aria-hidden
+          className="size-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
+        />
+      )}
       {span && <span className="shrink-0 tabular-nums text-muted-foreground">{span.slice(0, 5)}</span>}
       <span className="min-w-0 flex-1 truncate">{meeting.title}</span>
     </button>
@@ -97,12 +115,33 @@ export function CockpitMeetings({
   // The period the calendar views are looking at. Both start on today and are
   // moved by the same two arrows, so switching between them keeps the place.
   const [anchor, setAnchor] = useState(today);
+  const [filter, setFilter] = useState<CockpitMeetingFilter>(emptyCockpitMeetingFilter);
 
   const meetings = board.meetings;
-  const byDay = useMemo(() => cockpitMeetingsByDay(meetings), [meetings]);
-  const split = useMemo(() => splitCockpitMeetings(meetings, today), [meetings, today]);
   const issuesByMeeting = useMemo(() => groupMeetingIssues(board.meeting_issues), [board.meeting_issues]);
   const nodesByMeeting = useMemo(() => groupMeetingNodes(board.meeting_nodes), [board.meeting_nodes]);
+
+  // The "has links" flag reads the same count the list's link column shows.
+  const linkCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const meeting of meetings) {
+      const n =
+        (issuesByMeeting.get(meeting.id)?.length ?? 0) +
+        (nodesByMeeting.get(meeting.id)?.length ?? 0);
+      counts.set(meeting.id, n);
+    }
+    return counts;
+  }, [meetings, issuesByMeeting, nodesByMeeting]);
+
+  // One reading of the register for every view on the tab.
+  const filtered = useMemo(
+    () => filterCockpitMeetings(meetings, filter, { linkCounts }),
+    [meetings, filter, linkCounts],
+  );
+  const filtering = isCockpitMeetingFilterActive(filter);
+
+  const byDay = useMemo(() => cockpitMeetingsByDay(filtered), [filtered]);
+  const split = useMemo(() => splitCockpitMeetings(filtered, today), [filtered, today]);
 
   const month = useMemo(() => {
     const date = parseDay(anchor);
@@ -138,13 +177,20 @@ export function CockpitMeetings({
     return days.length ? `${days[0]} – ${days[days.length - 1]}` : "";
   }, [view, month, anchor, monthName, weekDays]);
 
-  const linkCount = (meeting: CockpitMeeting) =>
-    (issuesByMeeting.get(meeting.id)?.length ?? 0) + (nodesByMeeting.get(meeting.id)?.length ?? 0);
+  const linkCount = (meeting: CockpitMeeting) => linkCounts.get(meeting.id) ?? 0;
 
   const rows = useMemo(
     () => [...split.upcoming].reverse().concat(split.past, split.undated),
     [split],
   );
+
+  const viewLabels: Record<CockpitMeetingsView, string> = {
+    list: t(($) => $.meetings.view_list),
+    month: t(($) => $.meetings.view_month),
+    week: t(($) => $.meetings.view_week),
+    agenda: t(($) => $.meetings.view_agenda),
+    timeline: t(($) => $.meetings.view_timeline),
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -159,13 +205,7 @@ export function CockpitMeetings({
               aria-pressed={view === key}
               onClick={() => setView(key)}
             >
-              {key === "list"
-                ? t(($) => $.meetings.view_list)
-                : key === "month"
-                  ? t(($) => $.meetings.view_month)
-                  : key === "week"
-                    ? t(($) => $.meetings.view_week)
-                    : t(($) => $.meetings.view_agenda)}
+              {viewLabels[key]}
             </Button>
           ))}
         </div>
@@ -195,11 +235,20 @@ export function CockpitMeetings({
           </div>
         )}
 
+        <CockpitMeetingFilterBar
+          filter={filter}
+          onChange={setFilter}
+          meetings={meetings}
+          today={today}
+        />
+
         {/* The page toolbar carries "New meeting" — this bar says what is on
             screen, it does not repeat the primary action beside it. Reading
             the share back IS about what is on screen, so it lives here. */}
-        <span className="ml-auto text-caption text-muted-foreground">
-          {t(($) => $.meetings.count, { n: meetings.length })}
+        <span className="ml-auto text-caption text-muted-foreground tabular-nums">
+          {filtering
+            ? t(($) => $.meetings.results, { shown: filtered.length, total: meetings.length })
+            : t(($) => $.meetings.count, { n: meetings.length })}
         </span>
         {!readOnly && (
           <Button variant="outline" size="sm" className="h-7 gap-1 px-2" onClick={onScan}>
@@ -209,6 +258,21 @@ export function CockpitMeetings({
         )}
       </div>
 
+      <CockpitMeetingFilterChips
+        filter={filter}
+        onChange={setFilter}
+        shown={filtered.length}
+        total={meetings.length}
+      />
+
+      {view === "timeline" ? (
+        <CockpitMeetingTimeline
+          meetings={filtered}
+          today={today}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+      ) : (
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {meetings.length === 0 ? (
           <div className="flex flex-col items-start gap-2">
@@ -228,6 +292,18 @@ export function CockpitMeetings({
               </div>
             )}
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-body text-muted-foreground">{t(($) => $.meetings.no_results)}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setFilter(emptyCockpitMeetingFilter())}
+            >
+              {t(($) => $.meetings.filter_clear)}
+            </Button>
+          </div>
         ) : view === "list" ? (
           <table className="w-full border-collapse text-caption">
             <thead>
@@ -236,6 +312,7 @@ export function CockpitMeetings({
                 <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_when)}</th>
                 <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_title)}</th>
                 <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meeting.kind)}</th>
+                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meeting.track)}</th>
                 <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_parties)}</th>
                 <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_links)}</th>
                 <th scope="col" className="py-1 font-medium">{t(($) => $.meetings.column_folder)}</th>
@@ -279,6 +356,18 @@ export function CockpitMeetings({
                   </td>
                   <td className="py-1 pr-3">
                     {meeting.kind && <Badge variant="secondary">{meeting.kind}</Badge>}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {meeting.track && (
+                      <span className="inline-flex items-center gap-1 text-micro">
+                        <span
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
+                          aria-hidden
+                        />
+                        {meeting.track}
+                      </span>
+                    )}
                   </td>
                   <td className="max-w-56 truncate py-1 pr-3 text-muted-foreground">
                     {meeting.parties}
@@ -387,7 +476,14 @@ export function CockpitMeetings({
                           selectedId === meeting.id && "bg-accent",
                         )}
                       >
-                        <span className="text-micro tabular-nums text-muted-foreground">
+                        <span className="flex items-center gap-1 text-micro tabular-nums text-muted-foreground">
+                          {meeting.track && (
+                            <span
+                              aria-hidden
+                              className="size-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
+                            />
+                          )}
                           {cockpitMeetingSpan(meeting) || t(($) => $.meeting.all_day)}
                         </span>
                         <span className="text-caption leading-tight">{meeting.title}</span>
@@ -429,10 +525,19 @@ export function CockpitMeetings({
                             selectedId === meeting.id && "bg-accent",
                           )}
                         >
-                          <span className="w-40 shrink-0 text-caption tabular-nums text-muted-foreground">
-                            <CalendarDays className="mr-1 inline size-3" aria-hidden />
-                            {meeting.meet_date ?? "—"}
-                            {cockpitMeetingSpan(meeting) && ` ${cockpitMeetingSpan(meeting)}`}
+                          <span className="inline-flex w-40 shrink-0 items-center gap-1 text-caption tabular-nums text-muted-foreground">
+                            {meeting.track && (
+                              <span
+                                aria-hidden
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
+                              />
+                            )}
+                            <CalendarDays className="inline size-3 shrink-0" aria-hidden />
+                            <span className="truncate">
+                              {meeting.meet_date ?? "—"}
+                              {cockpitMeetingSpan(meeting) && ` ${cockpitMeetingSpan(meeting)}`}
+                            </span>
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-body">
@@ -455,6 +560,7 @@ export function CockpitMeetings({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
