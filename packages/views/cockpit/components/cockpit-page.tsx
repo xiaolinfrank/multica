@@ -46,6 +46,7 @@ import {
   groupMeetingsByNode,
   groupIssueLinksByNode,
   groupPaymentsByNode,
+  isCockpitExecNode,
   useCreateCockpitMeeting,
   useCreateCockpitMilestone,
   useCreateCockpitNode,
@@ -532,22 +533,44 @@ export function CockpitPage() {
   }, []);
 
   const addNode = useCallback(() => {
-    // A new node lands under whatever is selected, at the end of that branch.
-    const parent = selectedId ? nodeById.get(selectedId) : undefined;
-    const siblings = nodes.filter((n) => n.parent_id === (parent?.id ?? null));
+    // The button files one thing: an execution task. It lands under a
+    // direction row — the selected direction itself, or the direction above
+    // the selected task. Modules hold structure, tasks hold nothing below
+    // them, so a click anywhere else explains what to select instead of
+    // creating at the wrong level.
+    const selected = selectedId ? nodeById.get(selectedId) : undefined;
+    const entry = selected ? flat.find((e) => e.node.id === selected.id) : undefined;
+    const parent =
+      selected?.parent_id != null ? nodeById.get(selected.parent_id) : undefined;
+    const direction =
+      entry?.depth === 1 && selected && !isCockpitExecNode(selected.code)
+        ? selected
+        : entry?.depth === 2 &&
+            selected &&
+            isCockpitExecNode(selected.code) &&
+            parent &&
+            flat.find((e) => e.node.id === parent.id)?.depth === 1 &&
+            !isCockpitExecNode(parent.code)
+          ? parent
+          : undefined;
+    if (!direction) {
+      toast.info(t(($) => $.toolbar.add_node_hint));
+      return;
+    }
+    // A new task lands at the end of the direction's branch.
+    const siblings = nodes.filter((n) => n.parent_id === direction.id);
     const position = siblings.reduce((max, n) => Math.max(max, n.position), 0) + 1;
     // Codes must be unique per board; suffixing the count is a starting point
     // the author renames, not a scheme the board depends on.
-    const base = parent ? `${parent.code}-` : "L1-";
     let index = siblings.length + 1;
-    let code = `${base}${String(index).padStart(2, "0")}`;
+    let code = `${direction.code}-${String(index).padStart(2, "0")}`;
     const taken = new Set(nodes.map((n) => n.code));
     while (taken.has(code)) {
       index += 1;
-      code = `${base}${String(index).padStart(2, "0")}`;
+      code = `${direction.code}-${String(index).padStart(2, "0")}`;
     }
     createNode.mutate(
-      { code, name: "", parent_id: parent?.id ?? null, position, status: "" },
+      { code, name: "", parent_id: direction.id, position, status: "" },
       {
         onSuccess: (node) => {
           setSelectedId(node.id);
@@ -556,7 +579,7 @@ export function CockpitPage() {
         onError: fail,
       },
     );
-  }, [selectedId, nodeById, nodes, createNode, fail]);
+  }, [selectedId, nodeById, nodes, flat, createNode, fail, t]);
 
   // Linking is additive at this level, same as a work item's issues: the
   // picker sends the full set it wants rather than a diff.

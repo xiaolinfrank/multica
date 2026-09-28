@@ -67,6 +67,14 @@ vi.mock("@multica/core/api", () => ({
   },
 }));
 
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  }),
+}));
+
 vi.mock("@multica/core/auth", () => {
   const useAuthStore = Object.assign(
     (selector?: (state: { user: { id: string } }) => unknown) =>
@@ -77,6 +85,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
+import { toast } from "sonner";
 import { CockpitPage } from "./cockpit-page";
 
 function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code: string }) {
@@ -541,6 +550,147 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
 
     expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
+  });
+
+  // The toolbar button files execution tasks only: modules and directions
+  // are structure, and a task under a task falls below the level the gantt
+  // counts. The matrix below pins where a click may and may not create.
+  it("files a new execution task under the selected direction row", async () => {
+    const withDirection = structuredClone(board);
+    withDirection.nodes.push(
+      // Position keeps the direction behind the existing task, so its
+      // display code is 01.02 and the fixture stays readable.
+      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
+    vi.mocked(api.createCockpitNode).mockResolvedValue(
+      node({ id: "new", code: "01.02-01", parent_id: "dir" }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    await waitFor(() => {
+      expect(api.createCockpitNode).toHaveBeenCalledWith({
+        code: "01.02-01",
+        name: "",
+        parent_id: "dir",
+        position: 1,
+        status: "",
+      });
+    });
+  });
+
+  it("refuses to file a task before a direction row is selected", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    expect(api.createCockpitNode).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.info)).toHaveBeenCalledWith(
+      "Execution tasks sit under a direction row — select a direction, or an execution task beneath it.",
+    );
+  });
+
+  it("refuses to file a task under a module row", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    expect(api.createCockpitNode).not.toHaveBeenCalled();
+  });
+
+  it("files a new task next to the selected execution task", async () => {
+    const withBranch = structuredClone(board);
+    withBranch.nodes.push(
+      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
+      node({ id: "leaf", code: "01.02-01", parent_id: "dir", name: "Existing task", position: 1 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withBranch);
+    vi.mocked(api.createCockpitNode).mockResolvedValue(
+      node({ id: "new", code: "01.02-02", parent_id: "dir" }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand Datasets" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02.01" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    await waitFor(() => {
+      expect(api.createCockpitNode).toHaveBeenCalledWith({
+        code: "01.02-02",
+        name: "",
+        parent_id: "dir",
+        position: 2,
+        status: "",
+      });
+    });
+  });
+
+  // A direction folded into a summary group renders only as the group's
+  // synthetic row, which can never be selected — the task rows beneath it
+  // are the way in. This pins that escape hatch.
+  it("files a task under a merged direction through one of its tasks", async () => {
+    const grouped = structuredClone(board);
+    grouped.nodes.push(
+      node({ id: "mod2", code: "L1-02", name: "Platform", position: 20 }),
+      node({ id: "d0202", code: "02.02", parent_id: "mod2", name: "Platform core" }),
+      node({ id: "t1", code: "02.02-01", parent_id: "d0202", name: "Port the registry" }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(grouped);
+    vi.mocked(api.createCockpitNode).mockResolvedValue(
+      node({ id: "new", code: "02.02-02", parent_id: "d0202" }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand 平台架构与开发" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 02.01.01" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    await waitFor(() => {
+      expect(api.createCockpitNode).toHaveBeenCalledWith({
+        code: "02.02-02",
+        name: "",
+        parent_id: "d0202",
+        position: 1,
+        status: "",
+      });
+    });
+  });
+
+  // AI-prefixed directions carry two dashes; a task beneath one must not
+  // accidentally read as structure again.
+  it("files a task under an AI direction row", async () => {
+    const withAI = structuredClone(board);
+    withAI.nodes.push(
+      node({ id: "aidir", code: "AI-03-02", parent_id: "root", name: "AI direction", position: 30 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withAI);
+    vi.mocked(api.createCockpitNode).mockResolvedValue(
+      node({ id: "new", code: "AI-03-02-01", parent_id: "aidir" }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    await waitFor(() => {
+      expect(api.createCockpitNode).toHaveBeenCalledWith({
+        code: "AI-03-02-01",
+        name: "",
+        parent_id: "aidir",
+        position: 1,
+        status: "",
+      });
+    });
   });
 });
 
