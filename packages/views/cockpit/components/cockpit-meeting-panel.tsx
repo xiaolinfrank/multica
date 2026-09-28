@@ -215,6 +215,19 @@ export function CockpitMeetingPanel({
               disabled={readOnly}
             />
           </CockpitField>
+          <CockpitField label={t(($) => $.meeting.track)}>
+            <EditableSuggest
+              value={meeting.track}
+              onCommit={(track) => onPatch({ track })}
+              suggestions={vocabulary.tracks}
+              label={t(($) => $.meeting.track)}
+              placeholder={unset}
+              // The empty state is a lane of its own ("unfiled"), not just an
+              // unset field, so the editor names it instead of showing "—".
+              clearLabel={t(($) => $.meetings.track_none)}
+              disabled={readOnly}
+            />
+          </CockpitField>
           <CockpitField label={t(($) => $.meeting.location)}>
             <EditableSuggest
               value={meeting.location}

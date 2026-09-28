@@ -609,6 +609,7 @@ type CockpitMeeting struct {
 	Actions     string             `json:"actions"`
 	NasDir      string             `json:"nas_dir"`
 	Detected    bool               `json:"detected"`
+	Track       string             `json:"track"`
 }
 
 type CockpitMeetingIssue struct {

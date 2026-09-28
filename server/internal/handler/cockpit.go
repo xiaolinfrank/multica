@@ -148,9 +148,12 @@ type CockpitMeetingResponse struct {
 	Title     string  `json:"title"`
 	// The platform's own number for the meeting ("20260921-01"): the date and
 	// that day's sequence. MeetNo is the conferencing system's dial-in number.
-	Code      string `json:"code"`
-	Kind      string `json:"kind"`
-	Status    string `json:"status"`
+	Code   string `json:"code"`
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+	// The line of the programme this meeting advances, in the board's own
+	// words ("高质量数据集" …). The timeline lanes are these values.
+	Track     string `json:"track"`
 	Parties   string `json:"parties"`
 	Organizer string `json:"organizer"`
 	Location  string `json:"location"`
@@ -350,6 +353,7 @@ func cockpitMeetingToResponse(m db.CockpitMeeting) CockpitMeetingResponse {
 		Code:      m.Code,
 		Kind:      m.Kind,
 		Status:    m.Status,
+		Track:     m.Track,
 		Parties:   m.Parties,
 		Organizer: m.Organizer,
 		Location:  m.Location,
@@ -1699,6 +1703,7 @@ type CockpitMeetingRequest struct {
 	Code      *string `json:"code"`
 	Kind      *string `json:"kind"`
 	Status    *string `json:"status"`
+	Track     *string `json:"track"`
 	Parties   *string `json:"parties"`
 	Organizer *string `json:"organizer"`
 	Location  *string `json:"location"`
@@ -1770,6 +1775,7 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Code:        code,
 		Kind:        textOrEmpty(req.Kind),
 		Status:      textOrEmpty(req.Status),
+		Track:       textOrEmpty(req.Track),
 		Parties:     textOrEmpty(req.Parties),
 		Organizer:   textOrEmpty(req.Organizer),
 		Location:    textOrEmpty(req.Location),
@@ -1848,6 +1854,7 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Code:           optionalText(req.Code),
 		Kind:           optionalText(req.Kind),
 		Status:         optionalText(req.Status),
+		Track:          optionalText(req.Track),
 		Parties:        optionalText(req.Parties),
 		Organizer:      optionalText(req.Organizer),
 		Location:       optionalText(req.Location),
@@ -1980,6 +1987,7 @@ type CockpitImportMeeting struct {
 	Code      string `json:"code"`
 	Kind      string `json:"kind"`
 	Status    string `json:"status"`
+	Track     string `json:"track"`
 	Parties   string `json:"parties"`
 	Organizer string `json:"organizer"`
 	Location  string `json:"location"`
@@ -2415,6 +2423,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			Code:        m.Code,
 			Kind:        m.Kind,
 			Status:      m.Status,
+			Track:       m.Track,
 			Parties:     m.Parties,
 			Organizer:   m.Organizer,
 			Location:    m.Location,
@@ -2743,6 +2752,7 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 			Code:        m.Code,
 			Kind:        m.Kind,
 			Status:      m.Status,
+			Track:       m.Track,
 			Parties:     m.Parties,
 			Organizer:   m.Organizer,
 			Location:    m.Location,

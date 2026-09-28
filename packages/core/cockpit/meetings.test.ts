@@ -37,7 +37,7 @@ function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting
     meet_date: null, time_range: "", start_time: null, end_time: null, title: "",
     code: "", kind: "", status: "", parties: "", organizer: "", location: "",
     attendees: "", meet_no: "", link: "", note: "", minutes: "", decisions: "", actions: "",
-    nas_dir: "", detected: false, ...over,
+    nas_dir: "", detected: false, track: "", ...over,
   };
 }
 

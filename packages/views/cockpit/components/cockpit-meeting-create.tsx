@@ -66,6 +66,8 @@ export interface CockpitMeetingDraft {
   end_time: string;
   kind: string;
   status: string;
+  /** The line of the programme the meeting advances; "" files it unlaned. */
+  track: string;
   parties: string;
   organizer: string;
   attendees: string;
@@ -125,6 +127,7 @@ export function CockpitMeetingCreate({
   const [endTime, setEndTime] = useState("");
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
+  const [track, setTrack] = useState("");
   const [parties, setParties] = useState("");
   const [organizer, setOrganizer] = useState("");
   const [attendees, setAttendees] = useState("");
@@ -154,6 +157,7 @@ export function CockpitMeetingCreate({
     setEndTime("");
     setKind("");
     setStatus("");
+    setTrack("");
     setParties("");
     // Whoever is filing the meeting is the convenor until they say otherwise;
     // it is the answer in almost every case and it is one fewer box.
@@ -241,6 +245,7 @@ export function CockpitMeetingCreate({
           end_time: endTime.trim(),
           kind: kind.trim(),
           status: status.trim(),
+          track: track.trim(),
           parties: parties.trim(),
           organizer: organizer.trim(),
           attendees: attendees.trim(),
@@ -344,6 +349,21 @@ export function CockpitMeetingCreate({
                 displayClassName={FIELD_TRIGGER}
               />
             </div>
+          </div>
+
+          {/* Which line of the programme the meeting advances — the timeline
+              lanes on it. Optional: a cross-cutting meeting can stay unfiled. */}
+          <div className="flex flex-col gap-1">
+            <Label>{t(($) => $.meeting.track)}</Label>
+            <EditableSuggest
+              value={track}
+              onCommit={setTrack}
+              suggestions={vocabulary.tracks}
+              label={t(($) => $.meeting.track)}
+              placeholder={t(($) => $.meetings.pick_or_type)}
+              clearLabel={t(($) => $.meetings.track_none)}
+              displayClassName={FIELD_TRIGGER}
+            />
           </div>
 
           <div className="flex flex-col gap-1">

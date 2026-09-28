@@ -136,6 +136,10 @@ export interface CockpitMeeting {
    *  stands. */
   kind: string;
   status: string;
+  /** Which line of the programme this meeting advances ("高质量数据集" …),
+   *  in the board's own words. The timeline lanes are these values; empty
+   *  lands the meeting in the unfiled lane. */
+  track: string;
   /** The organisations at the table, separated by "、". `attendees` lists
    *  people, the same way. */
   parties: string;
@@ -291,6 +295,7 @@ export type CockpitMeetingPatch = Partial<
     | "code"
     | "kind"
     | "status"
+    | "track"
     | "parties"
     | "organizer"
     | "location"

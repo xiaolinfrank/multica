@@ -5961,6 +5961,7 @@ function emptyCockpitMeeting(): CockpitMeeting {
     code: "",
     kind: "",
     status: "",
+    track: "",
     parties: "",
     organizer: "",
     location: "",

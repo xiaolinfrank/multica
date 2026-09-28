@@ -450,6 +450,7 @@ func TestCockpitMeetingCreateRoundTripsTheNewFields(t *testing.T) {
 		"code":       "20260921-01",
 		"kind":       "对接会",
 		"status":     "已排期",
+		"track":      "高质量数据集",
 		"parties":    "复星医药 / 明略科技",
 		"organizer":  "李青娇",
 		"location":   "上海复星大厦 18F 会议室",
@@ -468,6 +469,7 @@ func TestCockpitMeetingCreateRoundTripsTheNewFields(t *testing.T) {
 		{"code", meeting.Code, "20260921-01"},
 		{"kind", meeting.Kind, "对接会"},
 		{"status", meeting.Status, "已排期"},
+		{"track", meeting.Track, "高质量数据集"},
 		{"parties", meeting.Parties, "复星医药 / 明略科技"},
 		{"organizer", meeting.Organizer, "李青娇"},
 		{"location", meeting.Location, "上海复星大厦 18F 会议室"},
@@ -598,7 +600,7 @@ func TestCockpitMeetingPatchIsThreeState(t *testing.T) {
 	meeting := createMeeting(t, wsID, map[string]any{
 		"title": "工作组周例会", "meet_date": "2026-09-21",
 		"start_time": "09:30", "end_time": "11:00",
-		"parties": "复星医药 / 明略科技", "status": "已排期",
+		"parties": "复星医药 / 明略科技", "status": "已排期", "track": "项目管理",
 	})
 
 	afterUnrelated := patchMeeting(t, wsID, meeting.ID, map[string]any{"minutes": "已纪要"})
@@ -613,6 +615,13 @@ func TestCockpitMeetingPatchIsThreeState(t *testing.T) {
 	}
 	if afterUnrelated.Parties != "复星医药 / 明略科技" || afterUnrelated.Status != "已排期" {
 		t.Errorf("an unrelated edit dropped parties/status: %+v", afterUnrelated)
+	}
+	if afterUnrelated.Track != "项目管理" {
+		t.Errorf("an unrelated edit dropped track: %+v", afterUnrelated)
+	}
+	retracked := patchMeeting(t, wsID, meeting.ID, map[string]any{"track": "合规和质量体系"})
+	if retracked.Track != "合规和质量体系" {
+		t.Errorf("track = %q, want the value just written", retracked.Track)
 	}
 	if afterUnrelated.Minutes != "已纪要" {
 		t.Errorf("minutes = %q, want the value just written", afterUnrelated.Minutes)

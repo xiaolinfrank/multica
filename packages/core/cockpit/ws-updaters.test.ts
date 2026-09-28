@@ -281,7 +281,7 @@ describe("onCockpitChanged", () => {
           id: "m1", meet_date: "2026-09-21", time_range: "", start_time: null, end_time: null,
           title: "Weekly", code: "20260921-01", kind: "例会", status: "已召开", parties: "复星医药",
           organizer: "杨涛", location: "大湾区", attendees: "杨涛、周洋", meet_no: "", link: "",
-          note: "", minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
+          note: "", minutes: "", decisions: "", actions: "", nas_dir: "", detected: false, track: "",
         },
       ],
     });
@@ -319,7 +319,7 @@ describe("onCockpitChanged", () => {
           id: "m1", meet_date: "2026-09-21", time_range: "", start_time: "10:00", end_time: "11:00",
           title: "Weekly", code: "20260921-01", kind: "", status: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
-          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
+          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false, track: "",
         },
       ],
     });
@@ -384,7 +384,7 @@ describe("onCockpitChanged", () => {
           id: "m1", meet_date: null, time_range: "", start_time: null, end_time: null,
           title: "Weekly", code: "", kind: "", status: "", parties: "",
           organizer: "", location: "", attendees: "", meet_no: "", link: "", note: "",
-          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false,
+          minutes: "", decisions: "", actions: "", nas_dir: "", detected: false, track: "",
         },
       ],
       meeting_issues: [

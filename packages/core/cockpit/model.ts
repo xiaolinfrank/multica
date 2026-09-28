@@ -2472,6 +2472,68 @@ export const COCKPIT_MEETING_STATUSES: readonly string[] = [
 ];
 
 /**
+ * The lines of the programme a meeting can advance — the lanes the timeline
+ * view reads the register as.
+ *
+ * Same contract as the kinds above: the programme's own vocabulary, seeded so
+ * an empty board still opens on its four lines, and never a closed set — a
+ * meeting filed under a fifth word gets its own lane without waiting on a
+ * release. The order is the lane order.
+ */
+export const COCKPIT_MEETING_TRACKS: readonly string[] = [
+  "高质量数据集",
+  "AI平台",
+  "合规和质量体系",
+  "项目管理",
+];
+
+/**
+ * Lane colours, one per seeded track, chosen against the cockpit canvas the
+ * same way the module colours are. A track outside the seeded list is coloured
+ * from the fallback ramp by hash, so a line the programme invents still reads
+ * as itself and never as its neighbour.
+ */
+export const COCKPIT_MEETING_TRACK_COLORS: Readonly<Record<string, string>> = {
+  高质量数据集: "#0d9488",
+  AI平台: "#2563eb",
+  合规和质量体系: "#d97706",
+  项目管理: "#7c3aed",
+};
+
+const TRACK_FALLBACK_COLORS = ["#db2777", "#0891b2", "#65a30d", "#dc2626", "#4f46e5"];
+
+export function cockpitMeetingTrackColor(track: string): string {
+  const known = COCKPIT_MEETING_TRACK_COLORS[track];
+  if (known) return known;
+  // The unfiled lane is not a line of the programme — it stays neutral grey
+  // rather than drawing a colour by lot.
+  if (!track.trim()) return "#64748b";
+  let hash = 0;
+  for (const char of track) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) | 0;
+  return TRACK_FALLBACK_COLORS[Math.abs(hash) % TRACK_FALLBACK_COLORS.length]!;
+}
+
+/**
+ * The lanes the timeline renders, in order: the seeded lines that are in use,
+ * then any the programme invented, then "" for the meetings nobody has filed
+ * under a line yet. Empty only when nothing dated exists at all.
+ */
+export function cockpitMeetingTracksInUse(meetings: CockpitMeeting[]): string[] {
+  const used = new Set<string>();
+  for (const meeting of meetings) {
+    if (meeting.meet_date) used.add(meeting.track.trim());
+  }
+  const seeded = COCKPIT_MEETING_TRACKS.filter((track) => used.has(track));
+  const invented = [...used]
+    .filter((track) => track !== "" && !COCKPIT_MEETING_TRACKS.includes(track))
+    .sort((a, b) => a.localeCompare(b));
+  const lanes = [...seeded, ...invented];
+  if (used.has("")) lanes.push("");
+  return lanes;
+}
+
+
+/**
  * What a meeting's folder is called: its number and its name.
  *
  * The generated name already opens with the number, so prefixing it again
@@ -2546,6 +2608,7 @@ export function groupMeetingsByNode(
 export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
   kinds: string[];
   statuses: string[];
+  tracks: string[];
   parties: string[];
   organizers: string[];
   attendees: string[];
@@ -2570,6 +2633,7 @@ export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
     // The programme's words first, then anything else the board has used.
     kinds: dedupeCockpitValues(COCKPIT_MEETING_KINDS, collect((m) => m.kind)),
     statuses: dedupeCockpitValues(COCKPIT_MEETING_STATUSES, collect((m) => m.status)),
+    tracks: dedupeCockpitValues(COCKPIT_MEETING_TRACKS, collect((m) => m.track)),
     parties: spread((m) => splitCockpitMeetingParties(m.parties)),
     // Organisers and attendees are the same kind of thing — a person — so one
     // name typed into either is offered in both.

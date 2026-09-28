@@ -1804,6 +1804,7 @@ export const CockpitMeetingSchema = z.object({
   code: z.string().default(""),
   kind: z.string().default(""),
   status: z.string().default(""),
+  track: z.string().default(""),
   parties: z.string().default(""),
   organizer: z.string().default(""),
   location: z.string().default(""),

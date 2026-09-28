@@ -54,10 +54,15 @@ work-item routes takes the same two forms as `{id}`.
 
 A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
 `time_range` for the free text older rows were logged with, `title`, `code`,
-`kind`, `status`, `parties`, `organizer`, `location`, `attendees`,
+`kind`, `status`, `track`, `parties`, `organizer`, `location`, `attendees`,
 `meet_no`, `link`) and what it LEFT BEHIND (`note` for the agenda and remarks,
 `minutes`, `decisions`, `actions`, `nas_dir`). `detected` marks a row the
 scan read off the share rather than one somebody typed.
+
+`track` names the line of the programme the meeting advances ("高质量数据集",
+"AI平台", "合规和质量体系", "项目管理" — free text, the board's own words).
+The meetings tab's timeline view lanes on it and the search filters by it;
+an empty track lands the meeting in the unfiled lane.
 
 `code` is the platform's own number — the date plus that day's sequence,
 `20260921-01`. `meet_no` is the conferencing system's dial-in number and is a
