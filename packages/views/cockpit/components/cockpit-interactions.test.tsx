@@ -53,6 +53,8 @@ vi.mock("@multica/core/api", () => ({
     updateCockpitMilestone: vi.fn(),
     deleteCockpitMilestone: vi.fn(),
     createCockpitMeeting: vi.fn(),
+    listCockpitDirectory: vi.fn(),
+    upsertCockpitDirectory: vi.fn(),
     updateCockpitMeeting: vi.fn(),
     deleteCockpitMeeting: vi.fn(),
     searchIssues: vi.fn(),
@@ -224,6 +226,7 @@ describe("Cockpit secondary interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);

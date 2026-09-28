@@ -583,6 +583,16 @@ type Cockpit struct {
 	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
 }
 
+type CockpitDirectory struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	CockpitID   pgtype.UUID        `json:"cockpit_id"`
+	Party       string             `json:"party"`
+	Name        string             `json:"name"`
+	Position    string             `json:"position"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CockpitMeeting struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`

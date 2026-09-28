@@ -7,6 +7,7 @@
 
 import { useMemo } from "react";
 import type {
+  CockpitDirectoryEntry,
   CockpitMeeting,
   CockpitMeetingIssueLink,
   CockpitMeetingNodeLink,
@@ -18,10 +19,12 @@ import {
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
+  cockpitDirectoryNames,
+  cockpitDirectoryParties,
   cockpitMeetingPeopleOptions,
   cockpitMeetingVocabulary,
+  dedupeCockpitValues,
   splitCockpitMeetingParties,
-  splitCockpitMeetingPeople,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
@@ -35,6 +38,7 @@ import {
   EditableTextArea,
   EditableTokens,
 } from "./cockpit-fields";
+import { CockpitAttendeeField } from "./cockpit-attendees";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { CockpitIssueLinks } from "./cockpit-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
@@ -50,6 +54,12 @@ export interface CockpitMeetingPanelProps {
   meetings: CockpitMeeting[];
   /** The workspace's people, offered by name in the person fields. */
   members: MemberWithUser[];
+  /** The meeting contact book — grouping and 职位 in the attendee picker. */
+  directory: CockpitDirectoryEntry[];
+  /** Files one contact into the book; resolves whether it landed. */
+  onSaveDirectoryEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  /** Fires after an attendee commit with the names the book did not know. */
+  onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   issueLinks: CockpitMeetingIssueLink[];
   nodeLinks: CockpitMeetingNodeLink[];
   /** Display codes ("06.06.02") for the linked work items, resolved by the
@@ -74,6 +84,9 @@ export function CockpitMeetingPanel({
   nodeCodes,
   meetings,
   members,
+  directory,
+  onSaveDirectoryEntry,
+  onAutoSaveDirectory,
   issueLinks,
   nodeLinks,
   nodeLabels,
@@ -100,9 +113,23 @@ export function CockpitMeetingPanel({
   const nodePickerCodes = nodeCodes ?? derivedCodes;
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
   const people = useCockpitPeople(members);
+  // Members lead, then names the board has used, then the rest of the book —
+  // a contact is offered before their first meeting.
   const personOptions = useMemo(
-    () => cockpitMeetingPeopleOptions(people.names, [...vocabulary.organizers, ...vocabulary.attendees]),
-    [people.names, vocabulary.organizers, vocabulary.attendees],
+    () =>
+      cockpitMeetingPeopleOptions(people.names, [
+        ...vocabulary.organizers,
+        ...vocabulary.attendees,
+        ...cockpitDirectoryNames(directory),
+      ]),
+    [people.names, vocabulary.organizers, vocabulary.attendees, directory],
+  );
+  const partyOptions = useMemo(
+    () =>
+      dedupeCockpitValues(cockpitDirectoryParties(directory), vocabulary.parties).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [directory, vocabulary.parties],
   );
   const linkedNodeIds = useMemo(() => new Set(nodeLinks.map((l) => l.node_id)), [nodeLinks]);
   const hasTask = issueLinks.some((link) => link.role === "task");
@@ -243,7 +270,7 @@ export function CockpitMeetingPanel({
               value={meeting.parties}
               onCommit={(parties) => onPatch({ parties })}
               split={splitCockpitMeetingParties}
-              suggestions={vocabulary.parties}
+              suggestions={partyOptions}
               label={t(($) => $.meeting.parties)}
               placeholder={unset}
               disabled={readOnly}
@@ -270,14 +297,17 @@ export function CockpitMeetingPanel({
             />
           </CockpitField>
           <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
-            <EditableTokens
+            <CockpitAttendeeField
               value={meeting.attendees}
               onCommit={(attendees) => onPatch({ attendees })}
-              split={splitCockpitMeetingPeople}
+              parties={splitCockpitMeetingParties(meeting.parties)}
+              directory={directory}
               suggestions={personOptions}
               label={t(($) => $.meeting.attendees)}
               placeholder={unset}
               disabled={readOnly}
+              onSaveEntry={onSaveDirectoryEntry}
+              onAutoSave={onAutoSaveDirectory}
               renderToken={(name) => (
                 <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
               )}
@@ -285,6 +315,11 @@ export function CockpitMeetingPanel({
                 <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
               )}
             />
+            {!readOnly && (
+              <p className="text-caption text-muted-foreground">
+                {t(($) => $.meetings.directory_hint)}
+              </p>
+            )}
           </CockpitField>
           <CockpitField label={t(($) => $.meeting.meet_no)}>
             <EditableText

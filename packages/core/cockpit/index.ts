@@ -20,9 +20,11 @@ export {
   replaceCockpitMeetingNodes,
   removeCockpitMeetingNode,
   cockpitSnapshotsOptions,
+  cockpitDirectoryOptions,
 } from "./queries";
 export * from "./mutations";
 export * from "./model";
+export * from "./directory";
 export * from "./meeting-search";
 export * from "./meeting-timeline";
 export {

@@ -5,6 +5,7 @@ import { api } from "../api";
 import { issueKeys } from "../issues/queries";
 import type {
   CockpitBoard,
+  CockpitDirectoryEntry,
   CockpitMeetingImportItem,
   CockpitMeetingPatch,
   CockpitMeetingProvision,
@@ -327,6 +328,23 @@ export function useCreateCockpitMeeting(wsId: string) {
     mutationFn: (body: CockpitMeetingPatch) => api.createCockpitMeeting(body),
     onSuccess: (meeting) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitMeeting(board, meeting));
+    },
+  });
+}
+
+/**
+ * Files typed-in units, people and positions into the meeting directory.
+ * Awaited like every create; the answer is the whole refreshed book, which
+ * replaces the cached list outright. Deliberately not optimistic — the save
+ * fires alongside a meeting write, and guessing a merged list that the
+ * server then re-sorts would flicker the picker.
+ */
+export function useUpsertCockpitDirectory(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entries: CockpitDirectoryEntry[]) => api.upsertCockpitDirectory(entries),
+    onSuccess: (directory) => {
+      queryClient.setQueryData(cockpitKeys.directory(wsId), directory);
     },
   });
 }

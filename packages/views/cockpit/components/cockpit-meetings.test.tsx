@@ -52,6 +52,8 @@ vi.mock("@multica/core/api", () => ({
     updateCockpitMilestone: vi.fn(),
     deleteCockpitMilestone: vi.fn(),
     createCockpitMeeting: vi.fn(),
+    listCockpitDirectory: vi.fn(),
+    upsertCockpitDirectory: vi.fn(),
     updateCockpitMeeting: vi.fn(),
     deleteCockpitMeeting: vi.fn(),
     provisionCockpitMeeting: vi.fn(),
@@ -206,6 +208,7 @@ async function openRegister() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
   vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
   vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
   vi.mocked(api.listMembers).mockResolvedValue([
@@ -454,6 +457,64 @@ describe("the meeting register", () => {
     );
   });
 
+  it("holds new contacts until the meeting actually exists", async () => {
+    const created = meeting({ id: "meet-new", code: `${codeDay()}-02`, title: "New one" });
+    vi.mocked(api.createCockpitMeeting).mockResolvedValue(created);
+    vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
+      meeting: created, issues: [], task: null, task_error: "",
+      dir: "", dir_created: false, dir_error: "",
+    });
+
+    // One fresh unit, one fresh attendee, then abandon the draft.
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "New meeting" }));
+    let dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Parties" }));
+    let box = screen.getByRole("textbox", { name: "Parties" });
+    fireEvent.change(box, { target: { value: "Unicom" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add “Unicom”" }));
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Attendees" }));
+    const attendeeBox = screen.getByRole("textbox", { name: "Attendees" });
+    fireEvent.change(attendeeBox, { target: { value: "New Person" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add “New Person”" }));
+    // Escape inside the editor closes just it, keeping the token and popover.
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Position" }), { key: "Escape" });
+    fireEvent.keyDown(attendeeBox, { key: "Enter" });
+
+    // The field committed — the draft knows the name — but the book must not
+    // learn from a meeting that may never be saved.
+    expect(api.upsertCockpitDirectory).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.upsertCockpitDirectory).not.toHaveBeenCalled();
+
+    // The same draft, saved this time: the book learns on create.
+    fireEvent.click(await screen.findByRole("button", { name: "New meeting" }));
+    dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Parties" }));
+    box = screen.getByRole("textbox", { name: "Parties" });
+    fireEvent.change(box, { target: { value: "Unicom" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add “Unicom”" }));
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Attendees" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Attendees" }), {
+      target: { value: "New Person" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add “New Person”" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Position" }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Attendees" }), { key: "Enter" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
+
+    await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(api.upsertCockpitDirectory).toHaveBeenCalledWith([
+        { party: "Unicom", name: "New Person", position: "" },
+      ]),
+    );
+  });
+
   it("offers the register from the overview card", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Open the meeting register" }));
@@ -555,6 +616,71 @@ describe("the people at a meeting", () => {
       expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", {
         attendees: "Yang Tao、Zhang from BGI",
       }),
+    );
+  });
+
+  it("groups the contact book by unit and files fresh names on its own", async () => {
+    vi.mocked(api.listCockpitDirectory).mockResolvedValue({
+      entries: [
+        { party: "Fosun Pharma", name: "Liu Huanhuan", position: "Project manager" },
+        { party: "BGI", name: "Xiao Wang", position: "" },
+      ],
+    });
+    // The register repaints from the mutation's result, not just the call.
+    vi.mocked(api.updateCockpitMeeting).mockImplementation(async (id, patch) => {
+      const found = board.meetings.find((m) => m.id === id);
+      return { ...found!, ...patch } as Awaited<ReturnType<typeof api.updateCockpitMeeting>>;
+    });
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+
+    // The auto-save notice rides under the attendee field.
+    expect(
+      screen.getByText("New people and positions you type are saved to the contact book automatically and offered next time."),
+    ).toBeInTheDocument();
+
+    // Narrow the meeting to its one unit so a fresh name can be attributed.
+    fireEvent.click(screen.getByRole("button", { name: "Parties" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove BGI" }));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Parties" }), { key: "Enter" });
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", {
+        parties: "Fosun Pharma",
+      }),
+    );
+    // The optimistic patch must reach the panel before the picker opens, or
+    // it would group by the meeting's old pair of units.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Parties" }).textContent).toBe("Fosun Pharma"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Attendees" }));
+    const listbox = screen.getByRole("listbox", { name: "Attendees" });
+    // The meeting's unit leads, its people carry their 职位; BGI's group
+    // follows even though BGI just left the meeting.
+    const text = listbox.textContent ?? "";
+    expect(text.indexOf("Fosun Pharma")).toBeLessThan(text.indexOf("BGI"));
+    expect(within(listbox).getByText("Project manager")).toBeInTheDocument();
+
+    fireEvent.click(within(listbox).getByRole("option", { name: /Liu Huanhuan/ }));
+    const box = screen.getByRole("textbox", { name: "Attendees" });
+    fireEvent.change(box, { target: { value: "New Person" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add “New Person”" }));
+    // Skipping the inline editor still files the bare name on commit.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", {
+        attendees: "Liu Huanhuan、New Person",
+      }),
+    );
+    // Liu Huanhuan was picked out of the book; only the stranger is filed,
+    // under the meeting's one unit.
+    await waitFor(() =>
+      expect(api.upsertCockpitDirectory).toHaveBeenCalledWith([
+        { party: "Fosun Pharma", name: "New Person", position: "" },
+      ]),
     );
   });
 

@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
+  CockpitDirectoryEntry,
   CockpitMeeting,
   CockpitMeetingProvision,
   CockpitNode,
@@ -20,14 +21,16 @@ import type {
 } from "@multica/core/types";
 import {
   cockpitArchiveNodeOptions,
+  cockpitDirectoryNames,
+  cockpitDirectoryParties,
   cockpitMeetingDestinationOptions,
   cockpitMeetingFolderName,
   cockpitMeetingPeopleOptions,
   cockpitNodeLabel,
   cockpitMeetingVocabulary,
+  dedupeCockpitValues,
   nextCockpitMeetingCode,
   splitCockpitMeetingParties,
-  splitCockpitMeetingPeople,
 } from "@multica/core/cockpit";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
@@ -52,6 +55,7 @@ import {
 } from "@multica/ui/components/ui/select";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
+import { CockpitAttendeeField } from "./cockpit-attendees";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
@@ -90,6 +94,12 @@ export interface CockpitMeetingCreateProps {
   nodes: CockpitNode[];
   /** The workspace's people, offered by name in the person fields. */
   members: MemberWithUser[];
+  /** The meeting contact book — grouping and 职位 in the attendee picker. */
+  directory: CockpitDirectoryEntry[];
+  /** Files one contact into the book; resolves whether it landed. */
+  onSaveDirectoryEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  /** Fires after an attendee commit with the names the book did not know. */
+  onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   /** Pre-selected as the convenor: whoever is filing the meeting. */
   currentUserName: string;
   /** The board's remembered destination, pre-selected in the pickers. */
@@ -111,6 +121,9 @@ export function CockpitMeetingCreate({
   meetings,
   nodes,
   members,
+  directory,
+  onSaveDirectoryEntry,
+  onAutoSaveDirectory,
   currentUserName,
   defaultProjectId,
   defaultModuleId,
@@ -131,6 +144,12 @@ export function CockpitMeetingCreate({
   const [parties, setParties] = useState("");
   const [organizer, setOrganizer] = useState("");
   const [attendees, setAttendees] = useState("");
+  // Names the book does not know yet, as of the last attendee-field commit.
+  // The meeting does not exist until submit, so the book must not learn from
+  // a draft that may be cancelled: the batch is filed after a successful
+  // create, and each commit REPLACES it (the field computes from its whole
+  // value, so the latest batch is the answer, never a union).
+  const [pendingAutoSave, setPendingAutoSave] = useState<CockpitDirectoryEntry[]>([]);
   const [location, setLocation] = useState("");
   const [subject, setSubject] = useState("");
   // Empty means "follow the generated name"; once someone types, their name
@@ -163,6 +182,7 @@ export function CockpitMeetingCreate({
     // it is the answer in almost every case and it is one fewer box.
     setOrganizer(currentUserName);
     setAttendees("");
+    setPendingAutoSave([]);
     setLocation("");
     setSubject("");
     setProjectId(defaultProjectId ?? "");
@@ -202,9 +222,23 @@ export function CockpitMeetingCreate({
 
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
   const people = useCockpitPeople(members);
+  // Members lead, then names the board has used, then the rest of the book —
+  // a contact is offered before their first meeting.
   const personOptions = useMemo(
-    () => cockpitMeetingPeopleOptions(people.names, [...vocabulary.organizers, ...vocabulary.attendees]),
-    [people.names, vocabulary.organizers, vocabulary.attendees],
+    () =>
+      cockpitMeetingPeopleOptions(people.names, [
+        ...vocabulary.organizers,
+        ...vocabulary.attendees,
+        ...cockpitDirectoryNames(directory),
+      ]),
+    [people.names, vocabulary.organizers, vocabulary.attendees, directory],
+  );
+  const partyOptions = useMemo(
+    () =>
+      dedupeCockpitValues(cockpitDirectoryParties(directory), vocabulary.parties).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [directory, vocabulary.parties],
   );
   const renderPerson = (name: string) => (
     <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
@@ -268,6 +302,8 @@ export function CockpitMeetingCreate({
           remember: true,
         },
       );
+      // The meeting exists now: the book can learn the names it was shown.
+      if (pendingAutoSave.length > 0) onAutoSaveDirectory?.(pendingAutoSave);
       // Only closes once the write came back — a failed create must leave the
       // form and everything typed into it exactly where they were.
       onOpenChange(false);
@@ -372,7 +408,7 @@ export function CockpitMeetingCreate({
               value={parties}
               onCommit={setParties}
               split={splitCockpitMeetingParties}
-              suggestions={vocabulary.parties}
+              suggestions={partyOptions}
               label={t(($) => $.meeting.parties)}
               placeholder={t(($) => $.meetings.pick_or_type)}
               triggerClassName={FIELD_TRIGGER}
@@ -403,19 +439,25 @@ export function CockpitMeetingCreate({
             </div>
             <div className="flex flex-col gap-1">
               <Label>{t(($) => $.meeting.attendees)}</Label>
-              <EditableTokens
+              <CockpitAttendeeField
                 value={attendees}
                 onCommit={setAttendees}
-                split={splitCockpitMeetingPeople}
+                parties={splitCockpitMeetingParties(parties)}
+                directory={directory}
                 suggestions={personOptions}
                 label={t(($) => $.meeting.attendees)}
                 placeholder={t(($) => $.meetings.pick_or_type)}
                 triggerClassName={FIELD_TRIGGER}
+                onSaveEntry={onSaveDirectoryEntry}
+                onAutoSave={setPendingAutoSave}
                 renderToken={(name) => (
                   <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
                 )}
                 renderOption={renderPerson}
               />
+              <p className="text-caption text-muted-foreground">
+                {t(($) => $.meetings.directory_hint)}
+              </p>
             </div>
           </div>
 

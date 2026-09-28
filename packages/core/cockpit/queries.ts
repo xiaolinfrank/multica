@@ -19,6 +19,7 @@ export const cockpitKeys = {
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
+  directory: (wsId: string) => [...cockpitKeys.all(wsId), "directory"] as const,
   meetingDestination: (wsId: string, projectId: string, moduleId: string, nodeId: string) =>
     [...cockpitKeys.all(wsId), "meeting-destination", projectId, moduleId, nodeId] as const,
   meetingScan: (wsId: string, projectId: string, moduleId: string, nodeId: string) =>
@@ -55,6 +56,19 @@ export function cockpitChangesOptions(wsId: string) {
   return queryOptions({
     queryKey: cockpitKeys.changes(wsId),
     queryFn: () => api.listCockpitChanges(),
+    enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * The meeting directory: who at each party, with their 职位. Its own cache
+ * entry rather than part of the board — it moves on its own (the form's
+ * auto-save upserts it) and only the meeting forms read it.
+ */
+export function cockpitDirectoryOptions(wsId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.directory(wsId),
+    queryFn: () => api.listCockpitDirectory(),
     enabled: Boolean(wsId),
   });
 }

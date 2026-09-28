@@ -2137,7 +2137,12 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Patch("/", h.UpdateCockpitMilestone)
 					r.Delete("/", h.DeleteCockpitMilestone)
 				})
-				r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
+				// The meetings' contact book: who at each party, and their 职位.
+			// Upsert is a batch because the meeting form's auto-save can carry
+			// several fresh names in one save.
+			r.Get("/directory", h.ListCockpitDirectory)
+			r.Put("/directory", h.UpsertCockpitDirectory)
+			r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
 				// Reads the archive folder for meetings nobody recorded, and
 				// turns the chosen ones into rows.
 				r.Get("/meetings/scan", h.ScanCockpitMeetingFolders)

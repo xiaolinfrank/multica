@@ -25,6 +25,7 @@ import {
   CockpitMeetingIssueLinkSchema,
   CockpitMeetingNodeLinkSchema,
   CockpitMeetingProvisionResultSchema,
+  CockpitDirectorySchema,
   CockpitSnapshotListSchema,
   CockpitImportResultSchema,
   CockpitPendingChangeListSchema,
@@ -2523,6 +2524,33 @@ describe("Cockpit pending change schemas", () => {
         { endpoint: "POST /api/cockpit/changes/ingest" },
       ).results,
     ).toHaveLength(1);
+  });
+});
+
+describe("Cockpit directory schema", () => {
+  it("parses the contact book and keeps unknown future fields", () => {
+    const parsed = CockpitDirectorySchema.parse({
+      entries: [
+        { party: "深圳联通", name: "李明玉", position: "", future_field: "keep me" },
+        { party: "", name: "黄晓韵", position: "PI" },
+      ],
+    });
+    expect(parsed.entries).toHaveLength(2);
+    expect(parsed.entries[0]?.name).toBe("李明玉");
+    expect((parsed.entries[0] as unknown as { future_field?: string }).future_field).toBe(
+      "keep me",
+    );
+  });
+
+  it("serves the empty book when the response is malformed", () => {
+    // A desktop build on a newer backend that renames a field renders an
+    // empty picker, not a crash three renders later.
+    expect(CockpitDirectorySchema.safeParse({ entries: null }).success).toBe(false);
+    expect(
+      parseWithFallback("not-an-object", CockpitDirectorySchema, { entries: [] }, {
+        endpoint: "GET /api/cockpit/directory",
+      }),
+    ).toEqual({ entries: [] });
   });
 });
 

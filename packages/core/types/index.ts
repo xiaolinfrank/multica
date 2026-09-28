@@ -236,6 +236,8 @@ export type {
   CockpitMeetingScanEntry,
   CockpitMeetingImportItem,
   CockpitMeetingImportResult,
+  CockpitDirectoryEntry,
+  CockpitDirectory,
   CockpitBoard,
   CockpitEventScope,
   CockpitChangedPayload,

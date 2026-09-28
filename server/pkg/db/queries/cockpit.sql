@@ -478,6 +478,36 @@ WHERE node_id IN (SELECT id FROM cockpit_node WHERE cockpit_id = sqlc.arg('cockp
 DELETE FROM cockpit_node_issue
 WHERE node_id IN (SELECT id FROM cockpit_node WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid);
 
+
+-- ---------------------------------------------------------------------------
+-- The meeting directory: who at each party the programme sits with
+-- ---------------------------------------------------------------------------
+
+-- name: ListCockpitDirectory :many
+-- The form's picker groups by party; order inside a party is alphabetical in
+-- the database's collation, and the UI re-sorts for display anyway.
+SELECT * FROM cockpit_directory
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+ORDER BY party, name;
+
+-- name: UpsertCockpitDirectoryEntry :one
+-- The meeting form's auto-save: a typed-in unit, person or position becomes
+-- reusable. An empty incoming position is "unknown", not "clear" — a save
+-- that only knows the name must not wipe a position the book already holds.
+INSERT INTO cockpit_directory (workspace_id, cockpit_id, party, name, position)
+VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('cockpit_id')::uuid,
+    sqlc.arg('party')::text,
+    sqlc.arg('name')::text,
+    sqlc.arg('position')::text
+)
+ON CONFLICT (cockpit_id, party, name) DO UPDATE SET
+    position = CASE WHEN EXCLUDED.position <> '' THEN EXCLUDED.position
+                    ELSE cockpit_directory.position END,
+    updated_at = now()
+RETURNING *;
+
 -- name: DeleteWorkspaceCockpitData :exec
 -- Workspace teardown. One statement with data-modifying CTEs so the whole board
 -- goes in a single round trip; there are no foreign keys to cascade it
@@ -497,6 +527,8 @@ WITH del_changes AS (
     DELETE FROM cockpit_payment WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_milestones AS (
     DELETE FROM cockpit_milestone WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_directory AS (
+    DELETE FROM cockpit_directory WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_meetings AS (
     DELETE FROM cockpit_meeting WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_nodes AS (

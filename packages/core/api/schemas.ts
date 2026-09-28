@@ -1848,6 +1848,16 @@ export const CockpitMeetingNodesResponseSchema = z.object({
   links: z.array(CockpitMeetingNodeLinkSchema).default([]),
 }).loose();
 
+export const CockpitDirectoryEntrySchema = z.object({
+  party: z.string().default(""),
+  name: z.string().default(""),
+  position: z.string().default(""),
+}).loose();
+
+export const CockpitDirectorySchema = z.object({
+  entries: z.array(CockpitDirectoryEntrySchema).default([]),
+}).loose();
+
 export const CockpitMeetingProvisionResultSchema = z.object({
   meeting: CockpitMeetingSchema,
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),

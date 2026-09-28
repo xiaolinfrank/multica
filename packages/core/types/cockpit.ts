@@ -167,6 +167,27 @@ export interface CockpitMeeting {
 }
 
 /**
+ * One contact in the meeting directory — the programme's contact book. The
+ * book links the people at the table to the organisation they represent, so
+ * the meeting form can offer a unit's people once the unit is chosen.
+ * Identity is the (party, name) pair within a cockpit; rows accumulate as
+ * meetings are filed (the form upserts whatever was typed), and a blank
+ * position is "unknown", never an error.
+ */
+export interface CockpitDirectoryEntry {
+  /** The organisation, as the board writes it ("深圳联通"). "" for a contact
+   *  known without their unit. */
+  party: string;
+  name: string;
+  /** Free text, like every other vocabulary field on this board. */
+  position: string;
+}
+
+export interface CockpitDirectory {
+  entries: CockpitDirectoryEntry[];
+}
+
+/**
  * One issue a meeting is carried out through. The pair (meeting_id, issue_id)
  * is the row's identity — there is no surrogate key — so a list keys on both.
  */
@@ -216,6 +237,7 @@ export type CockpitEventScope =
   | "meeting"
   | "meeting_issues"
   | "meeting_nodes"
+  | "directory"
   | "board"
   | "changes"
   | "snapshots";

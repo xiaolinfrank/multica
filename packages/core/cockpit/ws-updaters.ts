@@ -129,6 +129,14 @@ export function onCockpitChanged(
     return;
   }
 
+  // The contact book moved. It lives outside the board cache, so there is
+  // nothing to patch here — the saver already holds the answer (the upsert
+  // returns the refreshed book), and everyone else re-reads it.
+  if (scope === "directory") {
+    qc.invalidateQueries({ queryKey: cockpitKeys.directory(wsId) });
+    return;
+  }
+
   const apply = (update: (board: CockpitBoard) => CockpitBoard) =>
     patchCockpitBoard(qc, wsId, update);
 

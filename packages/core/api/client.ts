@@ -36,6 +36,8 @@ import type {
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
   CockpitMeetingScan,
+  CockpitDirectory,
+  CockpitDirectoryEntry,
   CockpitSnapshot,
   CockpitImportResult,
   CockpitPatch,
@@ -317,6 +319,7 @@ import {
   CockpitMeetingIssuesResponseSchema,
   CockpitMeetingNodesResponseSchema,
   CockpitMeetingProvisionResultSchema,
+  CockpitDirectorySchema,
   CockpitBoardSchema,
   CockpitIssueLinksResponseSchema,
   CockpitImportResultSchema,
@@ -1861,6 +1864,26 @@ export class ApiClient {
     });
     return parseWithFallback(raw, CockpitMeetingImportResultSchema, { meetings: [], issues: [], skipped: [] }, {
       endpoint: "POST /api/cockpit/meetings/import",
+    });
+  }
+
+  // The meetings' contact book: the whole list comes back on every read and
+  // on every upsert, and the realtime event carries the same payload — one
+  // cached list, never a partial patch.
+  async listCockpitDirectory(): Promise<CockpitDirectory> {
+    const raw = await this.fetch<unknown>("/api/cockpit/directory");
+    return parseWithFallback(raw, CockpitDirectorySchema, { entries: [] }, {
+      endpoint: "GET /api/cockpit/directory",
+    });
+  }
+
+  async upsertCockpitDirectory(entries: CockpitDirectoryEntry[]): Promise<CockpitDirectory> {
+    const raw = await this.fetch<unknown>("/api/cockpit/directory", {
+      method: "PUT",
+      body: JSON.stringify({ entries }),
+    });
+    return parseWithFallback(raw, CockpitDirectorySchema, { entries: [] }, {
+      endpoint: "PUT /api/cockpit/directory",
     });
   }
 

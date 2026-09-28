@@ -32,6 +32,8 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
 | PUT | `/api/cockpit/meetings/{meetingId}/nodes` | replace a meeting's work-item links |
 | DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
+| GET | `/api/cockpit/directory` | the contact book: every `party`/`name`/`position` the workspace knows |
+| PUT | `/api/cockpit/directory` | upsert contacts as a batch (`{entries}`); an empty `position` never erases a known one |
 | GET | `/api/cockpit/changes` | the review queue: open proposals first, then decision history |
 | POST | `/api/cockpit/changes` | file one proposed field edit for review |
 | POST | `/api/cockpit/changes/ingest` | file a batch of proposals (the agent write-back funnel) |
@@ -68,6 +70,19 @@ an empty track lands the meeting in the unfiled lane.
 `20260921-01`. `meet_no` is the conferencing system's dial-in number and is a
 different thing. `parties` lists the organisations at the table; `attendees`
 lists people.
+
+Who those people ARE lives in the contact book (`GET/PUT
+/api/cockpit/directory`), not on the meeting: a person's `position` is
+resolved from the book by (`party`, `name`) when the register renders, so
+correcting a title is one upsert rather than a sweep across every row the
+name appears on. The book grows by being used — a person or position typed
+into the meeting form is upserted when the meeting is saved (the edit panel's
+commit is a save; the create form files its batch once the create lands, so
+an abandoned draft teaches the book nothing), attributed to the meeting's
+unit only when exactly one party is at the table — with two there is no
+telling who sits where. A name the book already knows is never duplicated
+under a second unit by that path; a genuine namesake is filed explicitly
+through `PUT`. Seeded once per board from the programme's roster.
 
 Two link sets hang off a meeting and ride on the board read as
 `meeting_issues` and `meeting_nodes`. Neither has a surrogate key: the pair
@@ -182,7 +197,9 @@ wholesale and has to be re-read; a `snapshots` scope means only the version
 history moved — an edit past the auto-checkpoint interval also lands here
 with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
 `rejected`, `withdrawn`) means only the review queue moved — an apply also
-carries its own `node` scope frame with the row it wrote.
+carries its own `node` scope frame with the row it wrote; a `directory` scope
+(`upserted`) means the contact book moved, and it lives outside the board
+read, so the frame just has clients re-fetch it.
 
 ## Import document
 

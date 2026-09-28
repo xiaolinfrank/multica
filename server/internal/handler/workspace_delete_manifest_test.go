@@ -38,6 +38,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"autopilot_trigger":                  workspaceDelete,
 	"channel_binding_token":              workspaceDelete,
 	"cockpit":                            workspaceDelete,
+	"cockpit_directory":                  workspaceDelete,
 	"cockpit_meeting":                    workspaceDelete,
 	"cockpit_meeting_issue":              workspaceDelete,
 	"cockpit_meeting_node":               workspaceDelete,

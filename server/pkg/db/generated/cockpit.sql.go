@@ -1053,6 +1053,8 @@ WITH del_changes AS (
     DELETE FROM cockpit_payment WHERE workspace_id = $1::uuid
 ), del_milestones AS (
     DELETE FROM cockpit_milestone WHERE workspace_id = $1::uuid
+), del_directory AS (
+    DELETE FROM cockpit_directory WHERE workspace_id = $1::uuid
 ), del_meetings AS (
     DELETE FROM cockpit_meeting WHERE workspace_id = $1::uuid
 ), del_nodes AS (
@@ -1372,6 +1374,46 @@ func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, ar
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listCockpitDirectory = `-- name: ListCockpitDirectory :many
+
+SELECT workspace_id, cockpit_id, party, name, position, created_at, updated_at FROM cockpit_directory
+WHERE cockpit_id = $1::uuid
+ORDER BY party, name
+`
+
+// ---------------------------------------------------------------------------
+// The meeting directory: who at each party the programme sits with
+// ---------------------------------------------------------------------------
+// The form's picker groups by party; order inside a party is alphabetical in
+// the database's collation, and the UI re-sorts for display anyway.
+func (q *Queries) ListCockpitDirectory(ctx context.Context, cockpitID pgtype.UUID) ([]CockpitDirectory, error) {
+	rows, err := q.db.Query(ctx, listCockpitDirectory, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CockpitDirectory{}
+	for rows.Next() {
+		var i CockpitDirectory
+		if err := rows.Scan(
+			&i.WorkspaceID,
+			&i.CockpitID,
+			&i.Party,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listCockpitMeetingIssues = `-- name: ListCockpitMeetingIssues :many
@@ -2425,6 +2467,54 @@ func (q *Queries) UpdateCockpitPendingChangeProposal(ctx context.Context, arg Up
 		&i.DecidedByType,
 		&i.DecidedByLabel,
 		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertCockpitDirectoryEntry = `-- name: UpsertCockpitDirectoryEntry :one
+INSERT INTO cockpit_directory (workspace_id, cockpit_id, party, name, position)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::text,
+    $4::text,
+    $5::text
+)
+ON CONFLICT (cockpit_id, party, name) DO UPDATE SET
+    position = CASE WHEN EXCLUDED.position <> '' THEN EXCLUDED.position
+                    ELSE cockpit_directory.position END,
+    updated_at = now()
+RETURNING workspace_id, cockpit_id, party, name, position, created_at, updated_at
+`
+
+type UpsertCockpitDirectoryEntryParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	CockpitID   pgtype.UUID `json:"cockpit_id"`
+	Party       string      `json:"party"`
+	Name        string      `json:"name"`
+	Position    string      `json:"position"`
+}
+
+// The meeting form's auto-save: a typed-in unit, person or position becomes
+// reusable. An empty incoming position is "unknown", not "clear" — a save
+// that only knows the name must not wipe a position the book already holds.
+func (q *Queries) UpsertCockpitDirectoryEntry(ctx context.Context, arg UpsertCockpitDirectoryEntryParams) (CockpitDirectory, error) {
+	row := q.db.QueryRow(ctx, upsertCockpitDirectoryEntry,
+		arg.WorkspaceID,
+		arg.CockpitID,
+		arg.Party,
+		arg.Name,
+		arg.Position,
+	)
+	var i CockpitDirectory
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.Party,
+		&i.Name,
+		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type {
+  CockpitDirectoryEntry,
   CockpitIssueLink,
   CockpitMeeting,
   CockpitMeetingIssueLink,
@@ -65,6 +66,8 @@ import {
   useSetCockpitNodeIssues,
   useUpdateCockpit,
   useUpdateCockpitMeeting,
+  cockpitDirectoryOptions,
+  useUpsertCockpitDirectory,
   useUpdateCockpitMilestone,
   useUpdateCockpitNode,
   useUpdateCockpitPayment,
@@ -130,6 +133,7 @@ const TABS: CockpitTab[] = ["overview", "gantt", "meetings", "changes", "finance
 // downstream of it.
 const EMPTY_NODES: CockpitNode[] = [];
 const EMPTY_MEMBERS: MemberWithUser[] = [];
+const EMPTY_DIRECTORY: CockpitDirectoryEntry[] = [];
 const EMPTY_MODULES: Module[] = [];
 const EMPTY_PAYMENTS: CockpitPayment[] = [];
 const EMPTY_LINKS: CockpitIssueLink[] = [];
@@ -286,6 +290,10 @@ export function CockpitPage() {
   const unlinkMeetingIssue = useDeleteCockpitMeetingIssue(wsId);
   const setMeetingNodes = useSetCockpitMeetingNodes(wsId);
   const unlinkMeetingNode = useDeleteCockpitMeetingNode(wsId);
+  // The meetings' contact book: which people at each unit, with their 职位.
+  // The meeting forms read it and the auto-save appends to it.
+  const { data: directoryData } = useQuery(cockpitDirectoryOptions(wsId));
+  const upsertDirectory = useUpsertCockpitDirectory(wsId);
 
   // `board?.nodes ?? []` inline would mint a new array on every render where
   // the query is still loading, invalidating every memo below it.
@@ -391,6 +399,33 @@ export function CockpitPage() {
       updateMilestone.mutate({ id, patch }, { onError: fail }),
     [updateMilestone, fail],
   );
+  // The directory save is shared by the picker (one contact, awaited) and
+  // the auto-save (a batch, fired alongside a meeting commit). A failure is
+  // told, not swallowed — the entry would otherwise vanish from the next
+  // form with nobody the wiser.
+  const saveDirectoryEntries = useCallback(
+    async (entries: CockpitDirectoryEntry[]): Promise<boolean> => {
+      try {
+        await upsertDirectory.mutateAsync(entries);
+        return true;
+      } catch {
+        toast.error(t(($) => $.meetings.directory_save_failed));
+        return false;
+      }
+    },
+    [upsertDirectory, t],
+  );
+  const saveDirectoryEntry = useCallback(
+    (entry: CockpitDirectoryEntry) => saveDirectoryEntries([entry]),
+    [saveDirectoryEntries],
+  );
+  const autoSaveDirectory = useCallback(
+    (entries: CockpitDirectoryEntry[]) => {
+      void saveDirectoryEntries(entries);
+    },
+    [saveDirectoryEntries],
+  );
+
   const patchMeeting = useCallback(
     (id: string, patch: CockpitMeetingPatch) => updateMeeting.mutate({ id, patch }, { onError: fail }),
     [updateMeeting, fail],
@@ -1166,6 +1201,9 @@ export function CockpitPage() {
             nodeCodes={displayCodes}
             meetings={meetings}
             members={members ?? EMPTY_MEMBERS}
+            directory={directoryData?.entries ?? EMPTY_DIRECTORY}
+            onSaveDirectoryEntry={saveDirectoryEntry}
+            onAutoSaveDirectory={autoSaveDirectory}
             issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
             nodeLinks={meetingNodesByMeeting.get(selectedMeeting.id) ?? []}
             nodeLabels={nodeLabels}
@@ -1249,6 +1287,9 @@ export function CockpitPage() {
         meetings={meetings}
         nodes={nodes}
         members={members ?? EMPTY_MEMBERS}
+        directory={directoryData?.entries ?? EMPTY_DIRECTORY}
+        onSaveDirectoryEntry={saveDirectoryEntry}
+        onAutoSaveDirectory={autoSaveDirectory}
         currentUserName={currentUserName}
         defaultProjectId={board.cockpit.meeting_project_id}
         defaultModuleId={board.cockpit.meeting_module_id}
