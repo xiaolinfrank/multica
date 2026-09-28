@@ -825,4 +825,28 @@ describe("the timeline", () => {
     fireEvent.click(row);
     expect(await screen.findByText(`${day.replaceAll("-", "")}-02`)).toBeInTheDocument();
   });
+
+  it("zooms the free-scroll scale from the toolbar and resets", async () => {
+    await openRegister();
+    await screen.findByText(`${codeDay()}-01`);
+    fireEvent.click(screen.getByRole("button", { name: "Timeline", pressed: false }));
+    await screen.findByRole("button", { name: "Open Working group weekly" });
+
+    // Fit mode zooms with the window, so the zoom group only exists in free
+    // scroll; switching seeds the density from fit's own (jsdom lays nothing
+    // out, so assert the delta, not an absolute percent).
+    expect(screen.queryByRole("group", { name: "Zoom" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Free scroll" }));
+    const reset = await screen.findByRole("button", { name: "Reset zoom" });
+    const pct = () => Number.parseInt(reset.textContent ?? "0", 10);
+    const seeded = pct();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const zoomed = pct();
+    expect(zoomed).toBeGreaterThan(seeded);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(pct()).toBeLessThan(zoomed);
+    fireEvent.click(reset);
+    expect(pct()).toBe(100);
+  });
 });

@@ -9,7 +9,7 @@
 // card stacks over which) is in @multica/core/cockpit; this file only renders
 // it, so a pixel decision here can never disagree with the tested one.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CockpitMeeting } from "@multica/core/types";
 import type { CockpitTimelineGroup } from "@multica/core/cockpit";
 import {
@@ -32,6 +32,8 @@ import {
   Download,
   ScanSearch,
   Users,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
 import { captureCockpitGantt, downloadCockpitPng } from "./cockpit-export";
@@ -56,6 +58,22 @@ const LANE_PAD_PX = 12;
 const LANE_VPAD_PX = 4;
 /** Free-scroll mode: pixels per day. Fit mode derives its own from the box. */
 const PX_PER_DAY = 18;
+/** Continuous zoom bounds, in px/day. 6 fits ~a year of a dense programme in
+ *  one screenful of scrollable canvas; 80 makes one day read like a diary. */
+const DAY_PX_MIN = 6;
+const DAY_PX_MAX = 80;
+/** The mode switch and toolbar zooms animate at this length; trackpad pinch
+ *  follows the gesture with no transition at all (a map, not a slideshow). */
+const ZOOM_MS = 340;
+const ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** Transition shorthand: 0 means "follow the gesture", anything larger is the
+ *  eased zoom. Lists the box properties a scale change moves, so a card's
+ *  hover transform keeps its own quick timing in TimelineCard. */
+function zoomTransition(ms: number, props: string[]): string | undefined {
+  if (ms <= 0) return undefined;
+  return props.map((p) => `${p} ${ms}ms ${ZOOM_EASE}`).join(", ");
+}
 
 /** The fixed card geometry handed to the core lane-sizing arithmetic. */
 const LANE_GEOM = {
@@ -98,6 +116,7 @@ function TimelineCard({
   today,
   selectedId,
   onSelect,
+  zoomMs,
 }: {
   group: CockpitTimelineGroup;
   x: number;
@@ -107,6 +126,8 @@ function TimelineCard({
   today: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** >0 eases position changes (mode switch); 0 follows a pinch gesture. */
+  zoomMs: number;
 }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
@@ -140,6 +161,14 @@ function TimelineCard({
       : `color-mix(in oklab, ${laneColor} ${past ? "18%" : "38%"}, var(--border))`,
     ...(side === "above" ? { bottom: stemLength } : { top: stemLength }),
     ...(selected ? { boxShadow: `0 0 0 1.5px ${laneColor}` } : {}),
+    // The zoom glides the box properties; hover's transform keeps its own
+    // quick timing so the card still feels responsive mid-zoom.
+    transition: [
+      zoomTransition(zoomMs, ["left", "top", "bottom"]),
+      "transform 150ms ease, box-shadow 150ms ease",
+    ]
+      .filter(Boolean)
+      .join(", "),
   } as const;
 
   const datePill = (
@@ -165,6 +194,7 @@ function TimelineCard({
           left: x,
           height: stemLength,
           backgroundColor: `color-mix(in oklab, ${laneColor} 40%, transparent)`,
+          transition: zoomTransition(zoomMs, ["left", "height"]),
           ...(side === "above" ? { bottom: 0 } : { top: 0 }),
         }}
       />
@@ -183,6 +213,7 @@ function TimelineCard({
           transform: "translate(-50%, -50%)",
           backgroundColor: past && !cancelled ? laneColor : undefined,
           borderColor: laneColor,
+          transition: zoomTransition(zoomMs, ["left"]),
         }}
       />
       {single ? (
@@ -341,6 +372,15 @@ export function CockpitMeetingTimeline({
   // view pans.
   const [fit, setFit] = useState(true);
   const [exporting, setExporting] = useState(false);
+  /** Free-scroll density. Fit mode ignores it, but a pinch that starts in fit
+   *  mode reseeds it from fit's own density, so the zoom never jumps. */
+  const [dayPx, setDayPx] = useState(PX_PER_DAY);
+  /** First paint must not animate (every card would fly in from x=0). */
+  const [mounted, setMounted] = useState(false);
+  /** Pinch zooms track the gesture frame-by-frame; buttons and the mode
+   *  switch glide. Set by whichever interaction ran last. */
+  const [instant, setInstant] = useState(false);
+  const zoomMs = mounted && !instant ? ZOOM_MS : 0;
 
   const timeline = useMemo(() => buildCockpitMeetingTimeline(meetings, today), [meetings, today]);
 
@@ -351,10 +391,64 @@ export function CockpitMeetingTimeline({
   }, [timeline.from, timeline.to]);
 
   // The canvas the lanes paint on: the container's width in fit mode, the
-  // domain's worth of days in scroll mode.
+  // domain's worth of days in scroll mode. No floor beyond the wrapper's
+  // min-width — a floor would make the pinch feel stuck at the far end.
   const canvasPx = fit
     ? Math.max(320, boxWidth - LANE_LABEL_PX - LANE_PAD_PX * 2)
-    : Math.max(640, spanDays * PX_PER_DAY);
+    : Math.max(1, spanDays * dayPx);
+
+  // The wheel listener and the anchor compensation read live values through
+  // refs — a gesture can outpace the render that would rebind their closures.
+  const liveRef = useRef({ fit, dayPx, spanDays, canvasPx });
+  liveRef.current = { fit, dayPx, spanDays, canvasPx };
+  /** Where a pinch is anchored: the domain fraction under the cursor, kept
+   *  still by compensating scrollLeft once the new density has rendered. */
+  const anchorRef = useRef<{ frac: number; mouseX: number } | null>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  // The scrollable box only exists once the board has dated meetings (the
+  // empty state renders no scroller), so effects that attach to it re-run
+  // when the lanes first appear.
+  const hasLanes = timeline.lanes.length > 0;
+
+  // Ctrl/Cmd+wheel (and trackpad pinch, which Chrome reports as ctrl+wheel)
+  // zooms the day scale around the cursor instead of scrolling the page.
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const { fit: isFit, canvasPx: canvas, spanDays: days } = liveRef.current;
+      const rect = box.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      anchorRef.current = {
+        frac: (box.scrollLeft + mouseX - LANE_LABEL_PX - LANE_PAD_PX) / canvas,
+        mouseX,
+      };
+      setInstant(true);
+      setDayPx((prev) => {
+        const base = isFit ? canvas / days : prev;
+        const next = base * Math.exp(-e.deltaY * 0.0016);
+        return Math.min(DAY_PX_MAX, Math.max(DAY_PX_MIN, next));
+      });
+      if (isFit) setFit(false);
+    };
+    box.addEventListener("wheel", onWheel, { passive: false });
+    return () => box.removeEventListener("wheel", onWheel);
+  }, [hasLanes]);
+
+  // Once a pinch's new density has rendered, put the cursor's day back under
+  // the cursor. Only meaningful in free mode (fit has nothing to scroll).
+  useLayoutEffect(() => {
+    const box = scrollRef.current;
+    const anchor = anchorRef.current;
+    if (!box || !anchor || fit) return;
+    anchorRef.current = null;
+    box.scrollLeft =
+      anchor.frac * canvasPx + LANE_LABEL_PX + LANE_PAD_PX - anchor.mouseX;
+  }, [canvasPx, fit]);
 
   useEffect(() => {
     const box = scrollRef.current;
@@ -363,7 +457,7 @@ export function CockpitMeetingTimeline({
     observer.observe(box);
     setBoxWidth(box.clientWidth);
     return () => observer.disconnect();
-  }, []);
+  }, [hasLanes]);
 
   const ticks = useMemo(
     () => cockpitTimelineTicks(timeline.from, timeline.to, canvasPx),
@@ -482,7 +576,20 @@ export function CockpitMeetingTimeline({
               key={mode}
               type="button"
               aria-pressed={fit === (mode === "fit")}
-              onClick={() => setFit(mode === "fit")}
+              onClick={() => {
+                // Seeding the density from fit's own keeps the mode switch a
+                // pure zoom — the cards glide wider, never jump.
+                if (mode === "free" && fit) {
+                  setDayPx(
+                    Math.min(
+                      DAY_PX_MAX,
+                      Math.max(DAY_PX_MIN, canvasPx / Math.max(1, spanDays)),
+                    ),
+                  );
+                }
+                setInstant(false);
+                setFit(mode === "fit");
+              }}
               className={cn(
                 "rounded-sm px-2 py-0.5 text-micro transition-colors",
                 fit === (mode === "fit")
@@ -494,6 +601,48 @@ export function CockpitMeetingTimeline({
             </button>
           ))}
         </div>
+        {!fit && (
+          <div
+            className="flex items-center rounded-md bg-muted p-0.5"
+            role="group"
+            aria-label={t(($) => $.timeline.zoom)}
+          >
+            <button
+              type="button"
+              aria-label={t(($) => $.timeline.zoom_out)}
+              onClick={() => {
+                setInstant(false);
+                setDayPx((v) => Math.max(DAY_PX_MIN, v / 1.3));
+              }}
+              className="rounded-sm px-1.5 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ZoomOut className="size-3.5" aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label={t(($) => $.timeline.zoom_reset)}
+              title={t(($) => $.timeline.zoom_reset)}
+              onClick={() => {
+                setInstant(false);
+                setDayPx(PX_PER_DAY);
+              }}
+              className="min-w-10 rounded-sm px-1 py-0.5 text-center text-micro tabular-nums text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {Math.round((dayPx / PX_PER_DAY) * 100)}%
+            </button>
+            <button
+              type="button"
+              aria-label={t(($) => $.timeline.zoom_in)}
+              onClick={() => {
+                setInstant(false);
+                setDayPx((v) => Math.min(DAY_PX_MAX, v * 1.3));
+              }}
+              className="rounded-sm px-1.5 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ZoomIn className="size-3.5" aria-hidden />
+            </button>
+          </div>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -527,7 +676,10 @@ export function CockpitMeetingTimeline({
                     <div
                       key={`${tick.step}-${tick.day}`}
                       className="absolute top-0 flex h-full flex-col items-start"
-                      style={{ left: LANE_PAD_PX + tick.at * canvasPx }}
+                      style={{
+                        left: LANE_PAD_PX + tick.at * canvasPx,
+                        transition: zoomTransition(zoomMs, ["left"]),
+                      }}
                     >
                       <span
                         className={cn(
@@ -561,7 +713,11 @@ export function CockpitMeetingTimeline({
                   <div key={lane.track || "__unfiled__"} className="flex border-b border-border/60">
                     <div
                       className="sticky left-0 z-30 flex shrink-0 flex-col justify-center gap-0.5 border-r border-border/60 bg-card px-3"
-                      style={{ width: LANE_LABEL_PX, height }}
+                      style={{
+                        width: LANE_LABEL_PX,
+                        height,
+                        transition: zoomTransition(zoomMs, ["height"]),
+                      }}
                     >
                       <span className="flex items-center gap-1.5">
                         <span
@@ -582,7 +738,11 @@ export function CockpitMeetingTimeline({
 
                     <div
                       className="relative shrink-0"
-                      style={{ width: LANE_PAD_PX * 2 + canvasPx, height }}
+                      style={{
+                        width: LANE_PAD_PX * 2 + canvasPx,
+                        height,
+                        transition: zoomTransition(zoomMs, ["width", "height"]),
+                      }}
                     >
                       {/* Month banding behind the cards. */}
                       {bands.map((band, i) => (
@@ -590,7 +750,11 @@ export function CockpitMeetingTimeline({
                           key={i}
                           aria-hidden
                           className="absolute top-0 bottom-0 bg-muted/25"
-                          style={{ left: LANE_PAD_PX + band.left, width: band.width }}
+                          style={{
+                            left: LANE_PAD_PX + band.left,
+                            width: band.width,
+                            transition: zoomTransition(zoomMs, ["left", "width"]),
+                          }}
                         />
                       ))}
                       {/* The rail the meetings hang from. */}
@@ -603,6 +767,7 @@ export function CockpitMeetingTimeline({
                           width: canvasPx,
                           height: 2,
                           marginTop: -1,
+                          transition: zoomTransition(zoomMs, ["top", "width"]),
                           background: `linear-gradient(to right, color-mix(in oklab, ${lane.color} 12%, transparent), color-mix(in oklab, ${lane.color} 55%, transparent), color-mix(in oklab, ${lane.color} 12%, transparent))`,
                         }}
                       />
@@ -610,7 +775,13 @@ export function CockpitMeetingTimeline({
                           paints measures its distance from here. */}
                       <div
                         className="absolute"
-                        style={{ top: railY, left: LANE_PAD_PX, width: canvasPx, height: 0 }}
+                        style={{
+                          top: railY,
+                          left: LANE_PAD_PX,
+                          width: canvasPx,
+                          height: 0,
+                          transition: zoomTransition(zoomMs, ["top"]),
+                        }}
                       >
                         {lane.items.map((item) => {
                           const placement = byId.get(item.day)!;
@@ -625,6 +796,7 @@ export function CockpitMeetingTimeline({
                               today={today}
                               selectedId={selectedId}
                               onSelect={onSelect}
+                              zoomMs={zoomMs}
                             />
                           );
                         })}
@@ -639,7 +811,10 @@ export function CockpitMeetingTimeline({
                 <div
                   aria-hidden
                   className="pointer-events-none absolute top-0 bottom-0 z-10"
-                  style={{ left: LANE_LABEL_PX + LANE_PAD_PX + todayX }}
+                  style={{
+                    left: LANE_LABEL_PX + LANE_PAD_PX + todayX,
+                    transition: zoomTransition(zoomMs, ["left"]),
+                  }}
                 >
                   <div className="h-full w-px border-l border-dashed border-brand/70" />
                   <span className="absolute top-0 -translate-x-1/2 rounded-full bg-brand px-1.5 py-px text-micro font-medium whitespace-nowrap text-brand-foreground">
