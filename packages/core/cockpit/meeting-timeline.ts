@@ -17,9 +17,15 @@ import {
   sortCockpitMeetings,
 } from "./model";
 
-/** One dated meeting on its lane, `at` as a 0..1 fraction of the domain. */
-export interface CockpitTimelineMeeting {
-  meeting: CockpitMeeting;
+/** One day on a lane: every meeting the line held that day, `at` as a 0..1
+ * fraction of the domain. Meetings share a card per day rather than stacking
+ * three deep — the timeline is a programme view, and "three acceptances on
+ * the 21st" reads better as one card than as a pile. */
+export interface CockpitTimelineGroup {
+  /** The shared day (YYYY-MM-DD). */
+  day: string;
+  /** The day's meetings, time-ordered. */
+  meetings: CockpitMeeting[];
   at: number;
 }
 
@@ -27,7 +33,8 @@ export interface CockpitTimelineLane {
   /** The line these meetings advanced; "" is the unfiled lane. */
   track: string;
   color: string;
-  items: CockpitTimelineMeeting[];
+  /** One entry per day the line met, in date order. */
+  items: CockpitTimelineGroup[];
 }
 
 export interface CockpitMeetingTimeline {
@@ -80,23 +87,28 @@ export function buildCockpitMeetingTimeline(
   const span = Math.max(1, dayNumber(to) - dayNumber(from));
 
   const lanes: CockpitTimelineLane[] = [];
-  const byTrack = new Map<string, CockpitTimelineMeeting[]>();
+  // One group per (track, day): the meetings of a day share a card, which is
+  // what keeps a busy acceptance day one tier tall instead of three.
+  const byTrack = new Map<string, Map<string, CockpitMeeting[]>>();
   for (const meeting of dated) {
     const track = meeting.track.trim();
-    const item: CockpitTimelineMeeting = {
-      meeting,
-      // The day's number plus the meeting's slot within it: a timed meeting
-      // sits inside its day rather than on its left edge, which is what keeps
-      // two meetings of one afternoon off the same pixel.
-      at: (dayNumber(meeting.meet_date!) + cockpitTimelineDayFraction(meeting) - dayNumber(from)) / span,
-    };
-    const list = byTrack.get(track);
-    if (list) list.push(item);
-    else byTrack.set(track, [item]);
+    let days = byTrack.get(track);
+    if (!days) byTrack.set(track, (days = new Map()));
+    const day = meeting.meet_date!;
+    const list = days.get(day);
+    if (list) list.push(meeting);
+    else days.set(day, [meeting]);
   }
   for (const track of cockpitMeetingTracksInUse(dated)) {
-    const items = byTrack.get(track) ?? [];
-    if (items.length === 0) continue;
+    const days = byTrack.get(track);
+    if (!days || days.size === 0) continue;
+    const items: CockpitTimelineGroup[] = [...days.entries()].map(([day, meetings]) => ({
+      day,
+      meetings,
+      // The day's number plus its first meeting's slot within it: a timed
+      // morning sits inside its day rather than on its left edge.
+      at: (dayNumber(day) + cockpitTimelineDayFraction(meetings[0]!) - dayNumber(from)) / span,
+    }));
     lanes.push({ track, color: cockpitMeetingTrackColor(track), items });
   }
   return { lanes, from, to, undated };

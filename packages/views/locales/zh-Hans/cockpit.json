@@ -380,7 +380,9 @@
     "free": "自由滚动",
     "export_png": "导出 PNG",
     "today_at": "今天 {{date}}",
-    "lane_count": "{{n}} 场"
+    "lane_count": "{{n}} 场",
+    "group_aria": "{{date}} 的 {{count}} 场会议",
+    "group_more": "等 {{count}} 场"
   },
   "payment": {
     "label": "期次",

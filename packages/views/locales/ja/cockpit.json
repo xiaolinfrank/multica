@@ -381,7 +381,9 @@
     "free": "自由スクロール",
     "export_png": "PNG 書き出し",
     "today_at": "今日 {{date}}",
-    "lane_count": "{{n}} 件"
+    "lane_count": "{{n}} 件",
+    "group_aria": "{{date}}の会議 {{count}} 件",
+    "group_more": "ほか {{count}} 件"
   },
   "payment": {
     "label": "回次",

@@ -799,4 +799,30 @@ describe("the timeline", () => {
     expect(screen.queryByText("项目管理")).toBeNull();
     expect(screen.getByText("No track")).toBeInTheDocument();
   });
+
+  it("folds a busy day into one card that opens the day's meetings", async () => {
+    const day = todayString(-2);
+    vi.mocked(api.getCockpit).mockResolvedValue({
+      ...structuredClone(board),
+      meetings: [
+        meeting({ id: "meet-a", meet_date: day, start_time: "09:00", title: "Alpha review", track: "项目管理", parties: "Fosun Pharma" }),
+        meeting({ id: "meet-b", meet_date: day, start_time: "14:00", title: "Beta acceptance", track: "项目管理", code: `${day.replaceAll("-", "")}-02` }),
+      ],
+    });
+    await openRegister();
+    fireEvent.click(screen.getByRole("button", { name: "Timeline", pressed: false }));
+
+    // One card for the day, not one per meeting — that is what keeps a busy
+    // acceptance day one tier tall.
+    const card = await screen.findByRole("button", { name: `2 meetings on ${day}` });
+    expect(within(card).getByText("Alpha review")).toBeInTheDocument();
+    expect(within(card).getByText("Beta acceptance")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Alpha review" })).toBeNull();
+
+    // The card opens the day's roster; a row opens the meeting itself.
+    fireEvent.click(card);
+    const row = await screen.findByRole("button", { name: /Beta acceptance/ });
+    fireEvent.click(row);
+    expect(await screen.findByText(`${day.replaceAll("-", "")}-02`)).toBeInTheDocument();
+  });
 });

@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CockpitMeeting } from "@multica/core/types";
+import type { CockpitTimelineGroup } from "@multica/core/cockpit";
 import {
   buildCockpitMeetingTimeline,
   cockpitMeetingSpan,
@@ -22,6 +23,7 @@ import {
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import {
   CalendarDays,
   CircleCheck,
@@ -36,22 +38,22 @@ import { captureCockpitGantt, downloadCockpitPng } from "./cockpit-export";
 
 // The card geometry. Fixed heights are what let the core layout promise no
 // two cards overlap without ever measuring the DOM — every clamp below is
-// part of that contract. 88px is what the four content lines (date pill,
-// title, parties, consensus) plus padding actually occupy; anything shorter
-// and the flex column squeezes the title line flat.
+// part of that contract. 78px is what the four content lines (date pill,
+// title, parties, consensus) occupy at tight leading; the whole geometry
+// budget is set so the four programme lanes fit one screen end to end.
 const CARD_PX = 208;
-const CARD_H_PX = 88;
+const CARD_H_PX = 78;
 /** Vertical distance between tiers of cards on one side of the rail. */
-const ROW_PITCH = CARD_H_PX + 10;
+const ROW_PITCH = CARD_H_PX + 8;
 /** The rail's own band at the lane's vertical centre. */
-const RAIL_PX = 26;
+const RAIL_PX = 20;
 /** A card's edge clears the rail by this much; its stem spans the gap. */
-const CARD_CLEARANCE = 8;
+const CARD_CLEARANCE = 4;
 const LANE_LABEL_PX = 132;
 /** Horizontal breathing room around the canvas inside each lane row. */
 const LANE_PAD_PX = 12;
 /** Vertical breathing room between the outermost card and the lane's edge. */
-const LANE_VPAD_PX = 10;
+const LANE_VPAD_PX = 4;
 /** Free-scroll mode: pixels per day. Fit mode derives its own from the box. */
 const PX_PER_DAY = 18;
 
@@ -81,37 +83,77 @@ function consensusOf(meeting: CockpitMeeting): { icon: "decision" | "agenda"; te
   return null;
 }
 
-/** One meeting as a card on its lane, plus its marker and stem on the rail. */
+/**
+ * One day on a lane as a card — the day's meetings folded into one — plus
+ * its marker and stem on the rail. A single meeting renders the full card; a
+ * busier day names its first two meetings and opens the rest in a popover, so
+ * an acceptance day stays one tier tall instead of stacking three deep.
+ */
 function TimelineCard({
-  meeting,
+  group,
   x,
   side,
   row,
   laneColor,
   today,
-  selected,
+  selectedId,
   onSelect,
 }: {
-  meeting: CockpitMeeting;
+  group: CockpitTimelineGroup;
   x: number;
   side: "above" | "below";
   row: number;
   laneColor: string;
   today: string;
-  selected: boolean;
-  onSelect: () => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }) {
   const { t } = useT("cockpit");
-  const past = (meeting.meet_date ?? "") < today;
-  const cancelled = meeting.status.trim() === "已取消";
-  const consensus = consensusOf(meeting);
-  const span = cockpitMeetingSpan(meeting);
+  const [open, setOpen] = useState(false);
+  const single = group.meetings.length === 1 ? group.meetings[0]! : null;
+  const past = group.day < today;
+  const allCancelled = group.meetings.every((m) => m.status.trim() === "已取消");
+  const cancelled = single ? single.status.trim() === "已取消" : allCancelled;
+  const consensus = single ? consensusOf(single) : null;
+  const span = single ? cockpitMeetingSpan(single) : null;
+  const selected = group.meetings.some((m) => m.id === selectedId);
 
   // Marker, stem and card share one horizontal centre — the clamped one — so
   // an edge day's card sliding inboard never disconnects from its marker.
   // Vertically they hang off a zero-height context pinned at the rail, so the
   // card's distance from the rail is exactly the stem's length.
   const stemLength = RAIL_PX / 2 + CARD_CLEARANCE + row * ROW_PITCH;
+
+  const cardClassName = cn(
+    "group/card absolute z-10 flex -translate-x-1/2 flex-col justify-center gap-0.5 overflow-hidden rounded-lg border bg-card px-2 py-1 text-left",
+    "shadow-xs transition-all duration-150 hover:z-20 hover:shadow-md",
+    side === "above" ? "hover:-translate-y-0.5" : "hover:translate-y-0.5",
+    "focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+    cancelled && "opacity-50",
+  );
+  const cardStyle = {
+    left: x,
+    width: CARD_PX,
+    height: CARD_H_PX,
+    borderColor: selected
+      ? laneColor
+      : `color-mix(in oklab, ${laneColor} ${past ? "18%" : "38%"}, var(--border))`,
+    ...(side === "above" ? { bottom: stemLength } : { top: stemLength }),
+    ...(selected ? { boxShadow: `0 0 0 1.5px ${laneColor}` } : {}),
+  } as const;
+
+  const datePill = (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-1 py-px font-medium tabular-nums"
+      style={{
+        color: laneColor,
+        backgroundColor: `color-mix(in oklab, ${laneColor} 10%, transparent)`,
+      }}
+    >
+      <CalendarDays className="size-3" aria-hidden />
+      {group.day.slice(5).replace("-", ".")}
+    </span>
+  );
 
   return (
     <>
@@ -126,7 +168,7 @@ function TimelineCard({
           ...(side === "above" ? { bottom: 0 } : { top: 0 }),
         }}
       />
-      {/* The marker on the rail: solid for a meeting that ran, a ring for one
+      {/* The marker on the rail: solid for a day that ran, a ring for one
           still ahead, dimmed for one that was cancelled. */}
       <span
         aria-hidden
@@ -143,71 +185,142 @@ function TimelineCard({
           borderColor: laneColor,
         }}
       />
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-        aria-current={selected ? "true" : undefined}
-        className={cn(
-          "group/card absolute z-10 flex -translate-x-1/2 flex-col justify-center gap-0.5 overflow-hidden rounded-lg border bg-card px-2 py-1.5 text-left",
-          "shadow-xs transition-all duration-150 hover:z-20 hover:shadow-md",
-          side === "above" ? "hover:-translate-y-0.5" : "hover:translate-y-0.5",
-          "focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-          cancelled && "opacity-50",
-        )}
-        style={{
-          left: x,
-          width: CARD_PX,
-          height: CARD_H_PX,
-          borderColor: selected
-            ? laneColor
-            : `color-mix(in oklab, ${laneColor} ${past ? "18%" : "38%"}, var(--border))`,
-          ...(side === "above" ? { bottom: stemLength } : { top: stemLength }),
-          ...(selected ? { boxShadow: `0 0 0 1.5px ${laneColor}` } : {}),
-        }}
-      >
-        <span className="flex items-center gap-1.5 text-micro text-muted-foreground">
-          <span
-            className="inline-flex items-center gap-1 rounded-sm px-1 py-px font-medium tabular-nums"
-            style={{
-              color: laneColor,
-              backgroundColor: `color-mix(in oklab, ${laneColor} 10%, transparent)`,
-            }}
-          >
-            <CalendarDays className="size-3" aria-hidden />
-            {meeting.meet_date?.slice(5).replace("-", ".")}
-          </span>
-          {span && <span className="tabular-nums">{span}</span>}
-          {meeting.kind && <span className="truncate">{meeting.kind}</span>}
-          {meeting.detected && (
-            <ScanSearch className="size-3 shrink-0" aria-label={t(($) => $.meeting.detected)} />
-          )}
-        </span>
-        <span
-          className={cn(
-            "line-clamp-1 shrink-0 text-caption leading-snug font-medium",
-            cancelled && "line-through",
-          )}
+      {single ? (
+        <button
+          type="button"
+          onClick={() => onSelect(single.id)}
+          aria-label={t(($) => $.meetings.select, { title: single.title })}
+          aria-current={selected ? "true" : undefined}
+          className={cardClassName}
+          style={cardStyle}
         >
-          {meeting.title || t(($) => $.meeting.title_placeholder)}
-        </span>
-        {meeting.parties && (
-          <span className="flex items-center gap-1 text-micro text-muted-foreground">
-            <Users className="size-3 shrink-0" aria-hidden />
-            <span className="truncate">{meeting.parties}</span>
-          </span>
-        )}
-        {consensus && (
-          <span className="flex items-center gap-1 text-micro">
-            {consensus.icon === "decision" ? (
-              <CircleCheck className="size-3 shrink-0 text-success" aria-hidden />
-            ) : (
-              <ClipboardList className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="flex items-center gap-1.5 text-micro text-muted-foreground">
+            {datePill}
+            {span && <span className="tabular-nums">{span}</span>}
+            {single.kind && <span className="truncate">{single.kind}</span>}
+            {single.detected && (
+              <ScanSearch className="size-3 shrink-0" aria-label={t(($) => $.meeting.detected)} />
             )}
-            <span className="truncate text-muted-foreground">{consensus.text}</span>
           </span>
-        )}
-      </button>
+          <span
+            className={cn(
+              "line-clamp-1 shrink-0 text-caption leading-tight font-medium",
+              cancelled && "line-through",
+            )}
+          >
+            {single.title || t(($) => $.meeting.title_placeholder)}
+          </span>
+          {single.parties && (
+            <span className="flex items-center gap-1 text-micro text-muted-foreground">
+              <Users className="size-3 shrink-0" aria-hidden />
+              <span className="truncate">{single.parties}</span>
+            </span>
+          )}
+          {consensus && (
+            <span className="flex items-center gap-1 text-micro">
+              {consensus.icon === "decision" ? (
+                <CircleCheck className="size-3 shrink-0 text-success" aria-hidden />
+              ) : (
+                <ClipboardList className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+              )}
+              <span className="truncate text-muted-foreground">{consensus.text}</span>
+            </span>
+          )}
+        </button>
+      ) : (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t(($) => $.timeline.group_aria, {
+                  date: group.day,
+                  count: group.meetings.length,
+                })}
+                aria-current={selected ? "true" : undefined}
+                className={cardClassName}
+                style={cardStyle}
+              />
+            }
+          >
+            <span className="flex items-center gap-1.5 text-micro text-muted-foreground">
+              {datePill}
+              <span
+                className="rounded-sm px-1 py-px font-medium tabular-nums"
+                style={{
+                  color: laneColor,
+                  backgroundColor: `color-mix(in oklab, ${laneColor} 14%, transparent)`,
+                }}
+              >
+                ×{group.meetings.length}
+              </span>
+              {group.meetings.every((m) => m.detected) && (
+                <ScanSearch className="size-3 shrink-0" aria-label={t(($) => $.meeting.detected)} />
+              )}
+            </span>
+            {group.meetings.slice(0, 2).map((m) => (
+              <span
+                key={m.id}
+                className={cn(
+                  "line-clamp-1 shrink-0 text-caption leading-tight font-medium",
+                  m.status.trim() === "已取消" && "line-through",
+                )}
+              >
+                {m.title || t(($) => $.meeting.title_placeholder)}
+              </span>
+            ))}
+            {group.meetings.length > 2 ? (
+              <span className="text-micro text-muted-foreground">
+                {t(($) => $.timeline.group_more, { count: group.meetings.length - 2 })}
+              </span>
+            ) : (
+              (() => {
+                const parties = group.meetings.map((m) => m.parties.trim()).filter(Boolean);
+                return parties.length > 0 ? (
+                  <span className="flex items-center gap-1 text-micro text-muted-foreground">
+                    <Users className="size-3 shrink-0" aria-hidden />
+                    <span className="truncate">{parties[0]}</span>
+                  </span>
+                ) : null;
+              })()
+            )}
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side={side === "above" ? "bottom" : "top"}
+            className="flex w-72 flex-col gap-0.5 p-1.5"
+          >
+            <div className="px-1.5 pt-0.5 pb-1 text-micro font-medium text-muted-foreground tabular-nums">
+              {group.day}
+            </div>
+            {group.meetings.map((m) => {
+              const rowSpan = cockpitMeetingSpan(m);
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onSelect(m.id);
+                  }}
+                  className="flex flex-col gap-0.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <span className="flex items-center gap-1.5 text-micro text-muted-foreground">
+                    <span className="tabular-nums">{rowSpan || t(($) => $.meeting.all_day)}</span>
+                    {m.kind && <span className="truncate">{m.kind}</span>}
+                  </span>
+                  <span className="line-clamp-1 text-caption leading-tight font-medium">
+                    {m.title || t(($) => $.meeting.title_placeholder)}
+                  </span>
+                  {m.parties && (
+                    <span className="truncate text-micro text-muted-foreground">{m.parties}</span>
+                  )}
+                </button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
+      )}
     </>
   );
 }
@@ -293,7 +406,7 @@ export function CockpitMeetingTimeline({
     () =>
       timeline.lanes.map((lane) => {
         const placements = layoutCockpitTimeline(
-          lane.items.map((item) => ({ id: item.meeting.id, at: item.at })),
+          lane.items.map((item) => ({ id: item.day, at: item.at })),
           canvasPx,
           CARD_PX,
           10,
@@ -404,7 +517,7 @@ export function CockpitMeetingTimeline({
                 style={{ width: LANE_LABEL_PX }}
               />
               <div
-                className="relative h-8 shrink-0 border-b border-border"
+                className="relative h-6 shrink-0 border-b border-border"
                 style={{ width: LANE_PAD_PX * 2 + canvasPx }}
               >
                 {ticks.map((tick) => {
@@ -461,7 +574,9 @@ export function CockpitMeetingTimeline({
                         </span>
                       </span>
                       <span className="text-micro text-muted-foreground tabular-nums">
-                        {t(($) => $.timeline.lane_count, { n: lane.items.length })}
+                        {t(($) => $.timeline.lane_count, {
+                          n: lane.items.reduce((n, g) => n + g.meetings.length, 0),
+                        })}
                       </span>
                     </div>
 
@@ -498,18 +613,18 @@ export function CockpitMeetingTimeline({
                         style={{ top: railY, left: LANE_PAD_PX, width: canvasPx, height: 0 }}
                       >
                         {lane.items.map((item) => {
-                          const placement = byId.get(item.meeting.id)!;
+                          const placement = byId.get(item.day)!;
                           return (
                             <TimelineCard
-                              key={item.meeting.id}
-                              meeting={item.meeting}
+                              key={item.day}
+                              group={item}
                               x={placement.x}
                               side={placement.side}
                               row={placement.row}
                               laneColor={lane.color}
                               today={today}
-                              selected={selectedId === item.meeting.id}
-                              onSelect={() => onSelect(item.meeting.id)}
+                              selectedId={selectedId}
+                              onSelect={onSelect}
                             />
                           );
                         })}
@@ -538,14 +653,14 @@ export function CockpitMeetingTimeline({
 
         {/* What the timeline cannot place still gets said. */}
         {(timeline.undated.length > 0 || !anyTrack) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 px-4 pt-1 pb-0.5">
             {timeline.undated.length > 0 && (
-              <p className="text-caption text-muted-foreground">
+              <p className="text-micro text-muted-foreground">
                 {t(($) => $.timeline.undated, { n: timeline.undated.length })}
               </p>
             )}
             {!anyTrack && (
-              <p className="text-caption text-muted-foreground">
+              <p className="text-micro text-muted-foreground">
                 {t(($) => $.timeline.untracked_hint)}
               </p>
             )}

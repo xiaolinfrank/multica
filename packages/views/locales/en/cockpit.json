@@ -380,7 +380,9 @@
     "free": "Free scroll",
     "export_png": "Export PNG",
     "today_at": "Today {{date}}",
-    "lane_count": "{{n}}"
+    "lane_count": "{{n}}",
+    "group_aria": "{{count}} meetings on {{date}}",
+    "group_more": "+{{count}} more"
   },
   "payment": {
     "label": "Instalment",

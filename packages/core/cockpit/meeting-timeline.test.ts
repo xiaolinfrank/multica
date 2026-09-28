@@ -30,7 +30,7 @@ describe("building the timeline", () => {
       "2026-09-28",
     );
     expect(lanes.map((l) => l.track)).toEqual(["高质量数据集", "项目管理", ""]);
-    expect(lanes[0]!.items[0]!.meeting.id).toBe("data");
+    expect(lanes[0]!.items[0]!.meetings[0]!.id).toBe("data");
   });
 
   it("aligns the domain to whole months and always reaches today's month", () => {
@@ -55,22 +55,44 @@ describe("building the timeline", () => {
       "2026-09-28",
     );
     expect(timeline.undated.map((m) => m.id)).toEqual(["draft"]);
-    expect(timeline.lanes.flatMap((l) => l.items).map((i) => i.meeting.id)).toEqual(["a"]);
+    expect(timeline.lanes.flatMap((l) => l.items).flatMap((i) => i.meetings).map((m) => m.id)).toEqual(["a"]);
   });
 
   it("places a meeting by its day and its slot within it", () => {
     const { lanes } = buildCockpitMeetingTimeline(
       [
         meeting({ id: "morning", meet_date: "2026-09-22", start_time: "09:00" }),
-        meeting({ id: "afternoon", meet_date: "2026-09-22", start_time: "15:00" }),
+        meeting({ id: "afternoon", meet_date: "2026-09-23", start_time: "15:00" }),
       ],
       "2026-09-28",
     );
     const [a, b] = lanes[0]!.items;
-    expect(a!.meeting.id).toBe("morning");
+    expect(a!.meetings[0]!.id).toBe("morning");
     expect(a!.at).toBeLessThan(b!.at);
     // September has 30 days: the 22nd at 09:00 sits at 21 + 9/24 days in.
     expect(a!.at).toBeCloseTo((21 + 9 / 24) / 30, 5);
+  });
+
+  it("shares one card across a day's meetings, keyed by the first one's slot", () => {
+    const { lanes } = buildCockpitMeetingTimeline(
+      [
+        meeting({ id: "second", meet_date: "2026-09-21", start_time: "15:00" }),
+        meeting({ id: "first", meet_date: "2026-09-21", start_time: "09:00" }),
+        meeting({ id: "other-track", meet_date: "2026-09-21", track: "AI平台" }),
+        meeting({ id: "other-day", meet_date: "2026-09-22" }),
+      ],
+      "2026-09-28",
+    );
+    const main = lanes.find((l) => l.track === "")!;
+    // Two meetings of one day fold into a single group; a different day or a
+    // different track is a card of its own.
+    expect(main.items.map((g) => [g.day, g.meetings.map((m) => m.id)])).toEqual([
+      ["2026-09-21", ["first", "second"]],
+      ["2026-09-22", ["other-day"]],
+    ]);
+    // The group sits at its earliest meeting's slot, not at midday.
+    expect(main.items[0]!.at).toBeCloseTo((20 + 9 / 24) / 30, 5);
+    expect(lanes.find((l) => l.track === "AI平台")!.items).toHaveLength(1);
   });
 
   it("reads an empty register as an empty timeline around today", () => {
@@ -131,7 +153,7 @@ describe("stacking cards", () => {
 describe("lane geometry", () => {
   // Mirrors the view's fixed card geometry; the lane must hold exactly these
   // pixels. If the view's card grows, grow this too.
-  const geom = { cardH: 88, rowPitch: 98, railPx: 26, clearance: 8, pad: 10 };
+  const geom = { cardH: 78, rowPitch: 86, railPx: 20, clearance: 4, pad: 4 };
 
   it("sizes the lane so the outermost card never crosses its edge", () => {
     // The regression this guards: a lane sized (above+below)*pitch + rail
@@ -139,27 +161,27 @@ describe("lane geometry", () => {
     const { height, railY } = cockpitTimelineLaneGeometry({ above: 1, below: 0 }, geom);
     // Above row 0: card bottom sits rail/2 + clearance above the rail, top a
     // card-height further — and must land exactly on the pad, not past it.
-    const cardTop = railY - (26 / 2 + 8 + 88);
+    const cardTop = railY - (20 / 2 + 4 + 78);
     expect(cardTop).toBe(geom.pad);
-    expect(height).toBe(railY + 26 / 2 + geom.pad);
+    expect(height).toBe(railY + 20 / 2 + geom.pad);
   });
 
   it("pays only for the side the cards are on", () => {
     const flat = cockpitTimelineLaneGeometry({ above: 0, below: 0 }, geom);
-    expect(flat.height).toBe(26 + 2 * geom.pad);
+    expect(flat.height).toBe(20 + 2 * geom.pad);
     const oneSided = cockpitTimelineLaneGeometry({ above: 2, below: 0 }, geom);
     const symmetric = cockpitTimelineLaneGeometry({ above: 2, below: 2 }, geom);
     // A lopsided lane is two tiers + the rail, not double that.
-    expect(oneSided.height).toBe((26 / 2 + 8 + 98 + 88) + 26 / 2 + 2 * geom.pad);
-    expect(symmetric.height).toBe(2 * (26 / 2 + 8 + 98 + 88) + 2 * geom.pad);
+    expect(oneSided.height).toBe((20 / 2 + 4 + 86 + 78) + 20 / 2 + 2 * geom.pad);
+    expect(symmetric.height).toBe(2 * (20 / 2 + 4 + 86 + 78) + 2 * geom.pad);
     expect(symmetric.railY).toBe(symmetric.height / 2);
   });
 
   it("holds the tallest tier inside the lane on both sides", () => {
     const rows = { above: 2, below: 1 };
     const { height, railY } = cockpitTimelineLaneGeometry(rows, geom);
-    const topmost = railY - (26 / 2 + 8 + 98 + 88);
-    const bottommost = railY + (26 / 2 + 8 + 88);
+    const topmost = railY - (20 / 2 + 4 + 86 + 78);
+    const bottommost = railY + (20 / 2 + 4 + 78);
     expect(topmost).toBe(geom.pad);
     expect(height - bottommost).toBe(geom.pad);
   });

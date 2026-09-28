@@ -380,7 +380,9 @@
     "free": "자유 스크롤",
     "export_png": "PNG보내기",
     "today_at": "오늘 {{date}}",
-    "lane_count": "{{n}}건"
+    "lane_count": "{{n}}건",
+    "group_aria": "{{date}} 회의 {{count}}건",
+    "group_more": "외 {{count}}건"
   },
   "payment": {
     "label": "회차",
