@@ -27,6 +27,7 @@ import {
   CockpitMeetingNodeLinkSchema,
   CockpitMeetingProvisionResultSchema,
   CockpitDirectorySchema,
+  CockpitNextCodeSchema,
   CockpitSnapshotListSchema,
   CockpitImportResultSchema,
   CockpitPendingChangeListSchema,
@@ -2743,6 +2744,16 @@ describe("TaskMessageListSchema", () => {
   });
 });
 
+describe("CockpitNextCodeSchema", () => {
+  it("answers with the code it was given", () => {
+    expect(CockpitNextCodeSchema.parse({ code: "02.02-12" })).toEqual({ code: "02.02-12" });
+  });
+
+  it("degrades a malformed answer to an empty code rather than throwing", () => {
+    expect(CockpitNextCodeSchema.parse({})).toEqual({ code: "" });
+    expect(CockpitNextCodeSchema.parse({ code: 7 })).toEqual({ code: "" });
+  });
+});
 
 describe("AgentActivityBucketListSchema duration", () => {
   const bucket = { agent_id: "a", bucket_at: "2026-09-24T00:00:00Z", task_count: 201,

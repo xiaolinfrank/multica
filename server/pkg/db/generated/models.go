@@ -741,6 +741,13 @@ type CockpitSnapshot struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
+type CockpitUsedCode struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	CockpitID   pgtype.UUID        `json:"cockpit_id"`
+	Code        string             `json:"code"`
+	UsedAt      pgtype.Timestamptz `json:"used_at"`
+}
+
 type Comment struct {
 	ID                 pgtype.UUID        `json:"id"`
 	IssueID            pgtype.UUID        `json:"issue_id"`

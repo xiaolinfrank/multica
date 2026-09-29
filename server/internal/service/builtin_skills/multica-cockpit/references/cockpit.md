@@ -12,6 +12,7 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | GET | `/api/cockpit` | the whole board in one read |
 | PATCH | `/api/cockpit` | board title, goal, goal date, basis, meeting destination |
 | PUT | `/api/cockpit/import` | replace the board (owner/admin only) |
+| GET | `/api/cockpit/nodes/next-code?parent_id={id}` | preview the code the next task under a direction would wear (codes are spent once used) |
 | POST | `/api/cockpit/nodes` | add a work-breakdown node |
 | PATCH | `/api/cockpit/nodes/{id}` | edit a node |
 | DELETE | `/api/cockpit/nodes/{id}` | delete a leaf node |
@@ -126,6 +127,14 @@ already been held.
   leaves it unchanged. `budget_amount` behaves the same way with `null`.
 - `progress` is a number 0-100; fractional values such as `62.5` are accepted.
   Anything outside that range is rejected with 400 rather than clamped.
+- A `code` is spent the moment it is handed out: creating a node records it
+  in the board's ledger, and so does renaming one. The ledger is never
+  cleared — deleting a row does not free its number — and a spent code
+  handed to `POST /nodes` or to a rename comes back as 409. Imports and
+  snapshot restores are the one exception: rebuilding a board replays its
+  own codes, so the gate stays open there (the replayed codes still join
+  the ledger). `GET /nodes/next-code` previews the number a direction would
+  hand out next, ledger included.
 - Amounts keep four decimal places server-side and travel as plain JSON
   numbers, so a value read back may carry more precision than it was sent with.
 

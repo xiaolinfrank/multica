@@ -174,6 +174,7 @@ var concurrentIndexCleanups = map[string]string{
 	"924_module_pkey_index":                                     "module_pkey_uidx",
 	"926_module_project_position_index":                         "idx_module_project_position",
 	"927_issue_module_index":                                    "idx_issue_module",
+	"949_cockpit_used_codes_code_index":                         "cockpit_used_codes_uidx",
 	"495_issue_to_label_label_id_index":                         "issue_to_label_label_idx",
 	"496_chat_session_agent_id_index":                           "idx_chat_session_agent_id",
 	"497_agent_task_queue_delegated_failure_evidence_index":     "idx_agent_task_queue_delegated_failure_evidence",

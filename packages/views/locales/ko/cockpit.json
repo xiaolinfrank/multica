@@ -40,6 +40,13 @@
     "export_pdf": "간트 차트 PDF",
     "export_png": "간트 차트 PNG"
   },
+  "task_create": {
+    "description": "{{parent}} 아래에 생성됩니다. 번호는 한 번 사용되면 소진되며, 삭제된 작업의 번호도 재사용되지 않습니다.",
+    "code": "번호",
+    "code_failed": "다음 번호를 불러오지 못했습니다. 닫고 다시 시도하세요.",
+    "cancel": "취소",
+    "confirm": "생성"
+  },
   "overview": {
     "annual_goal": "연간 목표",
     "annual_goal_placeholder": "올해 증명해야 할 것",

@@ -152,3 +152,6 @@ behind each command.
   the connection; duplicating text guarantees the two drift.
 - Do not invent codes to fill gaps in the numbering. A plan's codes are its own;
   add a node only when the work is real.
+- A code is spent once handed out: a deleted node's number never comes back,
+  and asking for one that was used before is refused (409). Rebuilding from an
+  import document or a snapshot is the exception — it replays its own codes.

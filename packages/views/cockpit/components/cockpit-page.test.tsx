@@ -39,6 +39,7 @@ vi.mock("@multica/core/api", () => ({
     getCockpit: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
+    getCockpitNextNodeCode: vi.fn(),
     updateCockpitNode: vi.fn(),
     deleteCockpitNode: vi.fn(),
     setCockpitNodeIssues: vi.fn(),
@@ -247,6 +248,7 @@ describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -576,6 +578,10 @@ describe("CockpitPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
 
+    // The dialog shows the code it is about to spend before creating.
+    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
+
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
         code: "01.02-01",
@@ -624,7 +630,12 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Expand Datasets" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.02.01" }));
 
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-02" });
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    // The dialog shows the code it is about to spend before creating.
+    expect(await screen.findByText("01.02-02")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
@@ -656,7 +667,12 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Expand 平台架构与开发" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 02.01.01" }));
 
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "02.02-02" });
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    // The dialog shows the code it is about to spend before creating.
+    expect(await screen.findByText("02.02-02")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
@@ -684,7 +700,12 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
 
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "AI-03-02-01" });
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    // The dialog shows the code it is about to spend before creating.
+    expect(await screen.findByText("AI-03-02-01")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
@@ -696,12 +717,74 @@ describe("CockpitPage", () => {
       });
     });
   });
+
+  // A cancelled confirmation spends nothing: no API call leaves the dialog.
+  it("cancels the new-task dialog without creating anything", async () => {
+    const withDirection = structuredClone(board);
+    withDirection.nodes.push(
+      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(api.createCockpitNode).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  // Without a previewed code there is nothing to confirm: the failed fetch
+  // says so and the button stays inert.
+  it("keeps the create button inert when the code preview fails", async () => {
+    const withDirection = structuredClone(board);
+    withDirection.nodes.push(
+      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
+    vi.mocked(api.getCockpitNextNodeCode).mockRejectedValue(new Error("boom"));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+
+    expect(await screen.findByText(/could not load the next code/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(api.createCockpitNode).not.toHaveBeenCalled();
+  });
+
+  // A failed spend keeps the dialog open and refetches the preview: the
+  // number on screen may already be taken, so the same one is never offered
+  // twice.
+  it("keeps the dialog open and refetches the code when the create call fails", async () => {
+    const withDirection = structuredClone(board);
+    withDirection.nodes.push(
+      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
+    );
+    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
+    vi.mocked(api.createCockpitNode).mockRejectedValue(new Error("conflict"));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
+    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(api.createCockpitNode).toHaveBeenCalled());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await waitFor(() => expect(api.getCockpitNextNodeCode).toHaveBeenCalledTimes(2));
+  });
 });
 
 describe("CockpitPage detail tables", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
@@ -766,6 +849,7 @@ describe("CockpitPage versions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
       {

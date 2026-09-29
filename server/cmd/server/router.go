@@ -2166,6 +2166,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/restore", h.RestoreCockpitSnapshot)
 					r.Delete("/", h.DeleteCockpitSnapshot)
 				})
+				// A preview of the code the next execution task would wear.
+				// Chi prefers the static segment over /nodes/{id} at this depth,
+				// regardless of registration order.
+				r.Get("/nodes/next-code", h.GetCockpitNextNodeCode)
 				r.Post("/nodes", h.CreateCockpitNode)
 				r.Route("/nodes/{id}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitNode)

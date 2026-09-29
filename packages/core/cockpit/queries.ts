@@ -24,6 +24,8 @@ export const cockpitKeys = {
     [...cockpitKeys.all(wsId), "meeting-destination", projectId, moduleId, nodeId] as const,
   meetingScan: (wsId: string, projectId: string, moduleId: string, nodeId: string) =>
     [...cockpitKeys.all(wsId), "meeting-scan", projectId, moduleId, nodeId] as const,
+  nextCode: (wsId: string, parentId: string) =>
+    [...cockpitKeys.all(wsId), "next-code", parentId] as const,
 };
 
 export function cockpitBoardOptions(wsId: string) {
@@ -44,6 +46,20 @@ export function cockpitSnapshotsOptions(wsId: string) {
     queryKey: cockpitKeys.snapshots(wsId),
     queryFn: () => api.listCockpitSnapshots(),
     enabled: Boolean(wsId),
+  });
+}
+
+/**
+ * The code the next execution task under a direction would wear. A preview,
+ * not a reservation: the number is spent the moment a create lands, so the
+ * query refetches on every dialog open and after any create failure.
+ */
+export function cockpitNextCodeOptions(wsId: string, parentId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.nextCode(wsId, parentId),
+    queryFn: () => api.getCockpitNextNodeCode(parentId),
+    enabled: Boolean(wsId && parentId),
+    staleTime: 0,
   });
 }
 

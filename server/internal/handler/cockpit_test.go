@@ -40,6 +40,7 @@ func cockpitFixture(t *testing.T, name string) string {
 		dbfx.Exec(t, "DELETE FROM cockpit_directory WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_meeting WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit_node WHERE workspace_id = $1", wsID)
+		dbfx.Exec(t, "DELETE FROM cockpit_used_codes WHERE workspace_id = $1", wsID)
 		dbfx.Exec(t, "DELETE FROM cockpit WHERE workspace_id = $1", wsID)
 	})
 	return wsID
@@ -63,6 +64,137 @@ func createNode(t *testing.T, wsID string, body map[string]any) CockpitNodeRespo
 		Want(http.StatusCreated).
 		JSON(&node)
 	return node
+}
+
+func TestNextCockpitChildCode(t *testing.T) {
+	cases := []struct {
+		name       string
+		parentCode string
+		used       []string
+		want       string
+	}{
+		{"an empty ledger starts at 01", "02.02", nil, "02.02-01"},
+		{"steps past the numbers in use", "02.02", []string{"02.02-01", "02.02-02"}, "02.02-03"},
+		{"a deleted code stays spent", "02.02", []string{"02.02-01", "02.02-05"}, "02.02-06"},
+		{"hand-edited tails do not join the count", "02.02", []string{"02.02-X", "02.02-01-03"}, "02.02-01"},
+		{"an unpadded number is the same number", "02.02", []string{"02.02-1", "02.02-01"}, "02.02-02"},
+		{"counting is numeric, not lexicographic", "AI-03-02", []string{"AI-03-02-9", "AI-03-02-10"}, "AI-03-02-11"},
+		{"other directions do not count", "02.02", []string{"02.03-01", "L1-02-01"}, "02.02-01"},
+		{"the prefix must match to the dash", "02.0", []string{"02.02-01"}, "02.0-01"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := nextCockpitChildCode(tc.parentCode, tc.used); got != tc.want {
+				t.Errorf("nextCockpitChildCode(%q, %v) = %q, want %q", tc.parentCode, tc.used, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit spent codes")
+
+	parent := createNode(t, wsID, map[string]any{"code": "02.02", "name": "Direction"})
+	nextCode := func(parentID string) string {
+		t.Helper()
+		var resp struct {
+			Code string `json:"code"`
+		}
+		testutil.Call(t, cockpitHandler(testHandler.GetCockpitNextNodeCode),
+			cockpitRequest(http.MethodGet, "/api/cockpit/nodes/next-code?parent_id="+parentID, wsID, nil)).
+			Want(http.StatusOK).
+			JSON(&resp)
+		return resp.Code
+	}
+	directionID := func() string {
+		t.Helper()
+		for _, n := range getBoard(t, wsID).Nodes {
+			if n.Code == "02.02" {
+				return n.ID
+			}
+		}
+		t.Fatal("no 02.02 row on the board")
+		return ""
+	}
+
+	if got := nextCode(directionID()); got != "02.02-01" {
+		t.Fatalf("first code = %q, want 02.02-01", got)
+	}
+
+	// Delete the task that wore 01; the number must not come back.
+	first := createNode(t, wsID, map[string]any{"code": "02.02-01", "parent_id": parent.ID, "name": "Task"})
+	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitNode),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodDelete, "/api/cockpit/nodes/"+first.ID, wsID, nil),
+			"id", first.ID,
+		)).
+		Want(http.StatusNoContent)
+	if got := nextCode(directionID()); got != "02.02-02" {
+		t.Fatalf("a deleted code came back: next = %q, want 02.02-02", got)
+	}
+
+	// A rename spends the new code; the old one stays spent with it.
+	second := createNode(t, wsID, map[string]any{"code": "02.02-02", "parent_id": parent.ID, "name": "Second"})
+	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+second.ID, wsID, map[string]any{"code": "02.02-09"}),
+			"id", second.ID,
+		)).
+		Want(http.StatusOK)
+	if got := nextCode(directionID()); got != "02.02-10" {
+		t.Fatalf("a renamed-to code was skipped: next = %q, want 02.02-10", got)
+	}
+
+	// Import swaps the whole board; the codes it reintroduces stay spent.
+	importBoard(t, wsID, map[string]any{
+		"title": "Rebuilt",
+		"nodes": []map[string]any{
+			{"code": "02.02", "name": "Direction"},
+			{"code": "02.02-11", "parent_code": "02.02", "name": "Imported"},
+		},
+	})
+	if got := nextCode(directionID()); got != "02.02-12" {
+		t.Fatalf("an imported code was skipped: next = %q, want 02.02-12", got)
+	}
+
+	// The ledger is a gate, not just a record: hand-picking a spent code is
+	// refused even though no live row wears it.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID,
+			map[string]any{"code": "02.02-01", "parent_id": directionID(), "name": "Revived"})).
+		Want(http.StatusConflict)
+	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+directionID(), wsID, map[string]any{"code": "02.02-02"}),
+			"id", directionID(),
+		)).
+		Want(http.StatusConflict)
+
+	// Re-asserting the code a row already wears is not a spend.
+	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+directionID(), wsID, map[string]any{"code": "02.02"}),
+			"id", directionID(),
+		)).
+		Want(http.StatusOK)
+
+	// Imports alone replay spent codes: a restored snapshot must rebuild its
+	// own rows, so the gate stays open there.
+	importBoard(t, wsID, map[string]any{
+		"title": "Restored",
+		"nodes": []map[string]any{
+			{"code": "02.02", "name": "Direction"},
+			{"code": "02.02-01", "parent_code": "02.02", "name": "Replayed"},
+		},
+	})
+
+	// Bad parent ids are a client error, not a 500.
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitNextNodeCode),
+		cockpitRequest(http.MethodGet, "/api/cockpit/nodes/next-code?parent_id=not-a-uuid", wsID, nil)).
+		Want(http.StatusBadRequest)
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitNextNodeCode),
+		cockpitRequest(http.MethodGet, "/api/cockpit/nodes/next-code?parent_id="+uuid.NewString(), wsID, nil)).
+		Want(http.StatusBadRequest)
 }
 
 func TestGetCockpitCreatesTheBoardOnFirstRead(t *testing.T) {

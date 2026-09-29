@@ -40,6 +40,13 @@
     "export_pdf": "甘特图 PDF",
     "export_png": "甘特图 PNG"
   },
+  "task_create": {
+    "description": "将建在「{{parent}}」下。编号一经使用即消耗，已删除任务的编号也不会复用。",
+    "code": "编号",
+    "code_failed": "编号加载失败，请关闭后重试。",
+    "cancel": "取消",
+    "confirm": "创建"
+  },
   "overview": {
     "annual_goal": "年度目标",
     "annual_goal_placeholder": "今年要验证的事",

@@ -1059,6 +1059,8 @@ WITH del_changes AS (
     DELETE FROM cockpit_meeting WHERE workspace_id = $1::uuid
 ), del_nodes AS (
     DELETE FROM cockpit_node WHERE workspace_id = $1::uuid
+), del_used_codes AS (
+    DELETE FROM cockpit_used_codes WHERE workspace_id = $1::uuid
 )
 DELETE FROM cockpit WHERE workspace_id = $1::uuid
 `
@@ -1916,6 +1918,32 @@ func (q *Queries) ListCockpitSnapshots(ctx context.Context, cockpitID pgtype.UUI
 	return items, nil
 }
 
+const listCockpitUsedCodes = `-- name: ListCockpitUsedCodes :many
+SELECT code
+FROM cockpit_used_codes
+WHERE cockpit_id = $1::uuid
+`
+
+func (q *Queries) ListCockpitUsedCodes(ctx context.Context, cockpitID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listCockpitUsedCodes, cockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pruneCockpitSnapshots = `-- name: PruneCockpitSnapshots :execrows
 DELETE FROM cockpit_snapshot
 WHERE cockpit_id = $1::uuid
@@ -1937,6 +1965,30 @@ type PruneCockpitSnapshotsParams struct {
 // without bound.
 func (q *Queries) PruneCockpitSnapshots(ctx context.Context, arg PruneCockpitSnapshotsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, pruneCockpitSnapshots, arg.CockpitID, arg.Keep)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const recordCockpitUsedCode = `-- name: RecordCockpitUsedCode :execrows
+INSERT INTO cockpit_used_codes (workspace_id, cockpit_id, code)
+VALUES ($1::uuid, $2::uuid, $3::text)
+ON CONFLICT DO NOTHING
+`
+
+type RecordCockpitUsedCodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	CockpitID   pgtype.UUID `json:"cockpit_id"`
+	Code        string      `json:"code"`
+}
+
+// The used-code ledger: written whenever a code is handed out (create,
+// rename, import) and never cleared on delete — see migration 948.
+// :execrows so the caller can tell a fresh spend (1) from an already-spent
+// code (0): creates and renames refuse the latter, imports replay it.
+func (q *Queries) RecordCockpitUsedCode(ctx context.Context, arg RecordCockpitUsedCodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordCockpitUsedCode, arg.WorkspaceID, arg.CockpitID, arg.Code)
 	if err != nil {
 		return 0, err
 	}

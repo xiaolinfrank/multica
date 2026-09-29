@@ -40,6 +40,13 @@
     "export_pdf": "ガントチャート PDF",
     "export_png": "ガントチャート PNG"
   },
+  "task_create": {
+    "description": "「{{parent}}」の下に作成されます。番号は一度使われると消費され、削除済みタスクの番号も再利用されません。",
+    "code": "番号",
+    "code_failed": "次の番号を読み込めませんでした。閉じてやり直してください。",
+    "cancel": "キャンセル",
+    "confirm": "作成"
+  },
   "overview": {
     "annual_goal": "年間目標",
     "annual_goal_placeholder": "今年証明すべきこと",

@@ -2048,6 +2048,10 @@ export const CockpitChangeApplyResponseSchema = z.object({
   node: CockpitNodeSchema,
 }).loose();
 
+export const CockpitNextCodeSchema = z.object({
+  code: z.string().default("").catch(""),
+});
+
 export const CockpitSnapshotSchema = z.object({
   id: z.string(),
   trigger_kind: z.string().default(""),

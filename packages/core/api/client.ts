@@ -328,6 +328,7 @@ import {
   CockpitBoardSchema,
   CockpitIssueLinksResponseSchema,
   CockpitImportResultSchema,
+  CockpitNextCodeSchema,
   CockpitSnapshotSchema,
   CockpitSnapshotListSchema,
   CockpitPendingChangeSchema,
@@ -1768,6 +1769,20 @@ export class ApiClient {
     });
     return parseWithFallback(raw, CockpitSchema, EMPTY_COCKPIT_BOARD.cockpit, {
       endpoint: "PATCH /api/cockpit",
+    });
+  }
+
+  /**
+   * A preview of the code the next execution task under a direction would
+   * wear — never a reservation: a concurrent create still meets the
+   * server's unique conflict as the final arbiter.
+   */
+  async getCockpitNextNodeCode(parentId: string): Promise<{ code: string }> {
+    const raw = await this.fetch<unknown>(
+      `/api/cockpit/nodes/next-code?parent_id=${encodeURIComponent(parentId)}`,
+    );
+    return parseWithFallback(raw, CockpitNextCodeSchema, { code: "" }, {
+      endpoint: "GET /api/cockpit/nodes/next-code",
     });
   }
 

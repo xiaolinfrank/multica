@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -983,14 +984,14 @@ func progressOrError(w http.ResponseWriter, v *float64) (float64, bool) {
 // resolveCockpitParent validates a requested parent: it must belong to this
 // board, and it must not be the node being edited (a node cannot parent
 // itself, and a one-node cycle is the only cycle a single write can create).
-func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, cc cockpitContext, parentID string, self pgtype.UUID) (pgtype.UUID, bool) {
+func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, cc cockpitContext, parentID string, self pgtype.UUID) (db.CockpitNode, bool) {
 	id, ok := parseUUIDOrBadRequest(w, parentID, "parent_id")
 	if !ok {
-		return pgtype.UUID{}, false
+		return db.CockpitNode{}, false
 	}
 	if self.Valid && id == self {
 		writeError(w, http.StatusBadRequest, "a node cannot be its own parent")
-		return pgtype.UUID{}, false
+		return db.CockpitNode{}, false
 	}
 	parent, err := h.Queries.GetCockpitNode(r.Context(), db.GetCockpitNodeParams{
 		ID:          id,
@@ -998,13 +999,74 @@ func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, c
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "parent node not found")
-		return pgtype.UUID{}, false
+		return db.CockpitNode{}, false
 	}
 	if parent.CockpitID != cc.cockpit.ID {
 		writeError(w, http.StatusBadRequest, "parent node belongs to another cockpit")
-		return pgtype.UUID{}, false
+		return db.CockpitNode{}, false
 	}
-	return id, true
+	return parent, true
+}
+
+// nextCockpitChildCode picks the first PARENT-NN number the board has
+// never handed out. Codes with a non-numeric tail (hand-edited rows) keep
+// their ledger entry but do not join the count: 02.02-1 and 02.02-01 are
+// distinct codes, both stay spent, and neither is re-issued.
+func nextCockpitChildCode(parentCode string, used []string) string {
+	prefix := parentCode + "-"
+	max := 0
+	for _, code := range used {
+		if !strings.HasPrefix(code, prefix) {
+			continue
+		}
+		n, err := strconv.Atoi(code[len(prefix):])
+		if err != nil || n <= 0 {
+			continue
+		}
+		if n > max {
+			max = n
+		}
+	}
+	return prefix + fmt.Sprintf("%02d", max+1)
+}
+
+// GetCockpitNextNodeCode answers what code the next execution task under a
+// direction would wear. Codes are handed out once (migration 948), so the
+// answer steps past every number the board has ever used — deleted rows
+// included. The client shows this for confirmation and sends it back on
+// create; a concurrent create still meets the unique conflict as the final
+// arbiter, so the answer is a preview, never a reservation.
+func (h *Handler) GetCockpitNextNodeCode(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+
+	parent, ok := h.resolveCockpitParent(w, r, cc, r.URL.Query().Get("parent_id"), pgtype.UUID{})
+	if !ok {
+		return
+	}
+
+	used, err := h.Queries.ListCockpitUsedCodes(r.Context(), cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitUsedCodes failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load used codes")
+		return
+	}
+	// The ledger is written on create; a row that somehow predates it (or a
+	// delete racing this read) must still not let its number come back, so
+	// the live nodes join the count too.
+	nodes, err := h.Queries.ListCockpitNodes(r.Context(), cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitNodes failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load used codes")
+		return
+	}
+	for _, n := range nodes {
+		used = append(used, n.Code)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"code": nextCockpitChildCode(parent.Code, used)})
 }
 
 func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
@@ -1027,10 +1089,11 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 
 	var parentID pgtype.UUID
 	if req.ParentID != nil && strings.TrimSpace(*req.ParentID) != "" {
-		parentID, ok = h.resolveCockpitParent(w, r, cc, *req.ParentID, pgtype.UUID{})
+		parent, ok := h.resolveCockpitParent(w, r, cc, *req.ParentID, pgtype.UUID{})
 		if !ok {
 			return
 		}
+		parentID = parent.ID
 	}
 
 	startDate, _, ok := cockpitDate(w, raw, "start_date", req.StartDate)
@@ -1046,7 +1109,37 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node, err := h.Queries.CreateCockpitNode(r.Context(), db.CreateCockpitNodeParams{
+	// The node and its used-code ledger row land together (migration 948):
+	// a code is spent the moment it is handed out, and the moment it stops
+	// being revocable is when the node exists. The ledger write doubles as
+	// the spent-code gate — zero rows inserted means the code was handed out
+	// before, and a spent code never comes back, even after its row was
+	// deleted. Imports are the one exception (see runCockpitImport): a
+	// restored snapshot replays its own codes.
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		slog.Warn("CreateCockpitNode tx failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	spent, err := qtx.RecordCockpitUsedCode(r.Context(), db.RecordCockpitUsedCodeParams{
+		WorkspaceID: cc.workspaceID,
+		CockpitID:   cc.cockpit.ID,
+		Code:        code,
+	})
+	if err != nil {
+		slog.Warn("RecordCockpitUsedCode failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
+		return
+	}
+	if spent == 0 {
+		writeError(w, http.StatusConflict, "this code has been used before and stays spent")
+		return
+	}
+	node, err := qtx.CreateCockpitNode(r.Context(), db.CreateCockpitNodeParams{
 		WorkspaceID:     cc.workspaceID,
 		CockpitID:       cc.cockpit.ID,
 		ParentID:        parentID,
@@ -1079,6 +1172,11 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Warn("CreateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Warn("CreateCockpitNode commit failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
 		return
 	}
@@ -1131,11 +1229,11 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		if req.ParentID == nil || strings.TrimSpace(*req.ParentID) == "" {
 			params.ClearParent = true
 		} else {
-			parentID, ok := h.resolveCockpitParent(w, r, cc, *req.ParentID, current.ID)
+			parent, ok := h.resolveCockpitParent(w, r, cc, *req.ParentID, current.ID)
 			if !ok {
 				return
 			}
-			params.ParentID = parentID
+			params.ParentID = parent.ID
 		}
 	}
 
@@ -1176,15 +1274,64 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		params.Code = pgtype.Text{String: code, Valid: true}
 	}
 
-	node, err := h.Queries.UpdateCockpitNode(r.Context(), params)
-	if err != nil {
-		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "a node with this code already exists")
+	// Only a code change touches the ledger (migration 948): a rename
+	// spends the new code, while the old one stays spent — it named a row
+	// once, and that is enough. The ledger write doubles as the spent-code
+	// gate, and rename plus ledger row land in one transaction so a
+	// mid-flight failure cannot leave a code both worn and unrecorded.
+	// Re-asserting the code the row already wears is a plain update.
+	codeChanged := req.Code != nil && strings.TrimSpace(*req.Code) != current.Code
+	var node db.CockpitNode
+	if codeChanged {
+		tx, err := h.TxStarter.Begin(r.Context())
+		if err != nil {
+			slog.Warn("UpdateCockpitNode tx failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
 			return
 		}
-		slog.Warn("UpdateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
-		return
+		defer tx.Rollback(r.Context())
+		qtx := h.Queries.WithTx(tx)
+		spent, err := qtx.RecordCockpitUsedCode(r.Context(), db.RecordCockpitUsedCodeParams{
+			WorkspaceID: cc.workspaceID,
+			CockpitID:   cc.cockpit.ID,
+			Code:        strings.TrimSpace(*req.Code),
+		})
+		if err != nil {
+			slog.Warn("RecordCockpitUsedCode failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+			return
+		}
+		if spent == 0 {
+			writeError(w, http.StatusConflict, "this code has been used before and stays spent")
+			return
+		}
+		node, err = qtx.UpdateCockpitNode(r.Context(), params)
+		if err != nil {
+			if isUniqueViolation(err) {
+				writeError(w, http.StatusConflict, "a node with this code already exists")
+				return
+			}
+			slog.Warn("UpdateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+			return
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			slog.Warn("UpdateCockpitNode commit failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+			return
+		}
+	} else {
+		var err error
+		node, err = h.Queries.UpdateCockpitNode(r.Context(), params)
+		if err != nil {
+			if isUniqueViolation(err) {
+				writeError(w, http.StatusConflict, "a node with this code already exists")
+				return
+			}
+			slog.Warn("UpdateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+			return
+		}
 	}
 
 	resp := cockpitNodeToResponse(node)
@@ -2293,6 +2440,19 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		})
 		if err != nil {
 			slog.Warn("cockpit import node failed", append(logger.RequestAttrs(r), "error", err)...)
+			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
+		}
+		// The rebuilt board's codes join the used-code ledger (migration
+		// 948): a snapshot restore reintroduces codes that must not read as
+		// free once the restored rows are deleted again. Imports alone skip
+		// the spent-code gate — replaying a snapshot must reuse its own
+		// codes, so an already-recorded code is fine here.
+		if _, err := qtx.RecordCockpitUsedCode(ctx, db.RecordCockpitUsedCodeParams{
+			WorkspaceID: cc.workspaceID,
+			CockpitID:   board.ID,
+			Code:        code,
+		}); err != nil {
+			slog.Warn("cockpit import used-code record failed", append(logger.RequestAttrs(r), "error", err)...)
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
 		idByCode[code] = created.ID

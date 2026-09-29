@@ -21,6 +21,7 @@ export {
   removeCockpitMeetingNode,
   cockpitSnapshotsOptions,
   cockpitDirectoryOptions,
+  cockpitNextCodeOptions,
 } from "./queries";
 export * from "./mutations";
 export * from "./model";

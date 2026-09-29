@@ -40,6 +40,13 @@
     "export_pdf": "Gantt PDF",
     "export_png": "Gantt PNG"
   },
+  "task_create": {
+    "description": "Files under {{parent}}. A code, once used, stays spent — a deleted task keeps its number.",
+    "code": "Code",
+    "code_failed": "Could not load the next code. Close and try again.",
+    "cancel": "Cancel",
+    "confirm": "Create"
+  },
   "overview": {
     "annual_goal": "Annual objective",
     "annual_goal_placeholder": "What this year has to prove",

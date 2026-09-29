@@ -50,7 +50,6 @@ import {
   isCockpitExecNode,
   useCreateCockpitMeeting,
   useCreateCockpitMilestone,
-  useCreateCockpitNode,
   useCreateCockpitPayment,
   useDeleteCockpitMeeting,
   useDeleteCockpitMilestone,
@@ -115,6 +114,7 @@ import { CockpitChanges } from "./cockpit-changes";
 import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meeting-create";
+import { CockpitTaskCreateDialog } from "./cockpit-task-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
 import { CockpitMeetings } from "./cockpit-meetings";
@@ -230,6 +230,10 @@ export function CockpitPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
+  // The direction a pending "new execution task" confirmation targets.
+  const [addingTask, setAddingTask] = useState<{ direction: CockpitNode; position: number } | null>(
+    null,
+  );
   const [scanningMeetings, setScanningMeetings] = useState(false);
   const [showFinance, setShowFinance] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(true);
@@ -270,7 +274,6 @@ export function CockpitPage() {
   );
 
   const updateBoard = useUpdateCockpit(wsId);
-  const createNode = useCreateCockpitNode(wsId);
   const updateNode = useUpdateCockpitNode(wsId);
   const deleteNode = useDeleteCockpitNode(wsId);
   const setNodeIssues = useSetCockpitNodeIssues(wsId);
@@ -592,29 +595,13 @@ export function CockpitPage() {
       toast.info(t(($) => $.toolbar.add_node_hint));
       return;
     }
-    // A new task lands at the end of the direction's branch.
+    // The click proposes; the dialog confirms. The code is not minted here
+    // anymore: numbers are spent once used (deleted rows keep theirs), so
+    // the server names the next one and the dialog shows it for a yes.
     const siblings = nodes.filter((n) => n.parent_id === direction.id);
     const position = siblings.reduce((max, n) => Math.max(max, n.position), 0) + 1;
-    // Codes must be unique per board; suffixing the count is a starting point
-    // the author renames, not a scheme the board depends on.
-    let index = siblings.length + 1;
-    let code = `${direction.code}-${String(index).padStart(2, "0")}`;
-    const taken = new Set(nodes.map((n) => n.code));
-    while (taken.has(code)) {
-      index += 1;
-      code = `${direction.code}-${String(index).padStart(2, "0")}`;
-    }
-    createNode.mutate(
-      { code, name: "", parent_id: direction.id, position, status: "" },
-      {
-        onSuccess: (node) => {
-          setSelectedId(node.id);
-          setTab("gantt");
-        },
-        onError: fail,
-      },
-    );
-  }, [selectedId, nodeById, nodes, flat, createNode, fail, t]);
+    setAddingTask({ direction, position });
+  }, [selectedId, nodeById, nodes, flat, t]);
 
   // Linking is additive at this level, same as a work item's issues: the
   // picker sends the full set it wants rather than a diff.
@@ -1297,6 +1284,20 @@ export function CockpitPage() {
         defaultAssigneeType={board.cockpit.meeting_assignee_type || null}
         defaultAssigneeId={board.cockpit.meeting_assignee_id}
         onSubmit={submitMeeting}
+      />
+      <CockpitTaskCreateDialog
+        wsId={wsId}
+        direction={addingTask?.direction ?? null}
+        position={addingTask?.position ?? 0}
+        displayCode={addingTask ? (displayCodes.get(addingTask.direction.id) ?? null) : null}
+        onOpenChange={(open) => {
+          if (!open) setAddingTask(null);
+        }}
+        onCreated={(node) => {
+          setSelectedId(node.id);
+          setTab("gantt");
+        }}
+        onFail={fail}
       />
       <CockpitMeetingImport
         open={scanningMeetings}

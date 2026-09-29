@@ -74,6 +74,20 @@ SELECT * FROM cockpit_node
 WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
   AND code = sqlc.arg('code')::text;
 
+-- The used-code ledger: written whenever a code is handed out (create,
+-- rename, import) and never cleared on delete — see migration 948.
+-- :execrows so the caller can tell a fresh spend (1) from an already-spent
+-- code (0): creates and renames refuse the latter, imports replay it.
+-- name: RecordCockpitUsedCode :execrows
+INSERT INTO cockpit_used_codes (workspace_id, cockpit_id, code)
+VALUES (sqlc.arg('workspace_id')::uuid, sqlc.arg('cockpit_id')::uuid, sqlc.arg('code')::text)
+ON CONFLICT DO NOTHING;
+
+-- name: ListCockpitUsedCodes :many
+SELECT code
+FROM cockpit_used_codes
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
+
 -- name: CreateCockpitNode :one
 INSERT INTO cockpit_node (
     workspace_id, cockpit_id, parent_id, code, name, position, color,
@@ -533,6 +547,8 @@ WITH del_changes AS (
     DELETE FROM cockpit_meeting WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 ), del_nodes AS (
     DELETE FROM cockpit_node WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+), del_used_codes AS (
+    DELETE FROM cockpit_used_codes WHERE workspace_id = sqlc.arg('workspace_id')::uuid
 )
 DELETE FROM cockpit WHERE workspace_id = sqlc.arg('workspace_id')::uuid;
 
