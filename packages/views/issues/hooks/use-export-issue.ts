@@ -232,8 +232,7 @@ export function useExportIssue(issue: Issue | null): {
       // workspace (daemon offline) degrades to a note in the document,
       // never a failed export.
       const workspaceRows =
-        ((await qc.ensureQueryData(agentWorkspacesOptions(wsId)))
-          ?.workspaces ?? []).filter((w) => w.issue_id === issueId);
+        (await qc.ensureQueryData(agentWorkspacesOptions(wsId, issueId)))?.workspaces ?? [];
       let packedBytes = packed.reduce((n, item) => n + item.bytes.byteLength, 0);
       const exportedWorkspaces: ExportedWorkspace[] = [];
       for (const workspace of workspaceRows) {

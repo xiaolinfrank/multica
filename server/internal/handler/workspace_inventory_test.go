@@ -128,3 +128,27 @@ func TestWorkspaceInventoryStore_DedupsSameTaskShortAcrossDaemons(t *testing.T) 
 		t.Fatalf("expected latest scan size/count 140/7, got %d/%d", got[0].SizeBytes, got[0].FileCount)
 	}
 }
+
+func TestFilterAgentWorkspaceTasks(t *testing.T) {
+	t.Parallel()
+	tasks := []daemonTask{
+		{inventoryTask: inventoryTask{WorkspaceID: "ws1", TaskShort: "t1", Kind: "issue", IssueID: "i1"}},
+		{inventoryTask: inventoryTask{WorkspaceID: "ws1", TaskShort: "t2", Kind: "issue", IssueID: "i2"}},
+	}
+
+	// Empty filter returns the snapshot untouched — same slice, no copy.
+	all := filterAgentWorkspaceTasks(tasks, "")
+	if len(all) != 2 {
+		t.Fatalf("empty filter must pass everything through, got %d", len(all))
+	}
+
+	one := filterAgentWorkspaceTasks(tasks, "i2")
+	if len(one) != 1 || one[0].TaskShort != "t2" {
+		t.Fatalf("issue filter kept the wrong rows: %+v", one)
+	}
+
+	// An issue absent from the inventory filters to empty, not to everything.
+	if got := filterAgentWorkspaceTasks(tasks, "missing"); len(got) != 0 {
+		t.Fatalf("unknown issue should filter to empty, got %d", len(got))
+	}
+}

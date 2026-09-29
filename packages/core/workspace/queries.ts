@@ -23,7 +23,10 @@ export const workspaceKeys = {
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
   env: (wsId: string) => ["workspaces", wsId, "env"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,
-  agentWorkspaces: (wsId: string) => ["workspaces", wsId, "agent-workspaces"] as const,
+  agentWorkspaces: (wsId: string, issueId?: string) =>
+    issueId
+      ? (["workspaces", wsId, "agent-workspaces", { issueId }] as const)
+      : (["workspaces", wsId, "agent-workspaces"] as const),
   // On-demand file ops keyed by the workspace's on-disk task dir. Not WS-driven
   // (file ops are user-initiated RPCs), so these rely on staleTime + manual
   // invalidation after a reclaim.
@@ -43,11 +46,15 @@ export function workspaceListOptions() {
   });
 }
 
-/** Persistent agent workspaces (per agent×issue) for the management page. */
-export function agentWorkspacesOptions(wsId: string) {
+/**
+ * Persistent agent workspaces (per agent×issue). Pass issueId to narrow
+ * server-side — issue-detail's sidebar only ever renders one issue's rows —
+ * and to keep the filtered list out of the management page's cache entry.
+ */
+export function agentWorkspacesOptions(wsId: string, issueId?: string) {
   return queryOptions({
-    queryKey: workspaceKeys.agentWorkspaces(wsId),
-    queryFn: () => api.listAgentWorkspaces(wsId),
+    queryKey: workspaceKeys.agentWorkspaces(wsId, issueId),
+    queryFn: () => api.listAgentWorkspaces(wsId, issueId ? { issueId } : undefined),
     // Footprint shifts slowly and is daemon-reported on a ~3m cadence; a short
     // stale window keeps the page fresh without hammering on every focus.
     staleTime: 30_000,

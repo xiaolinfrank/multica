@@ -6,12 +6,21 @@ import type { AgentWorkspacesResponse } from "@multica/core/types";
 const queryRef = vi.hoisted(() => ({
   current: { data: undefined as AgentWorkspacesResponse | undefined, isLoading: false },
 }));
+const lastOptions = vi.hoisted(() => ({
+  current: undefined as { queryKey?: unknown } | undefined,
+}));
 
 vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
     "@tanstack/react-query",
   );
-  return { ...actual, useQuery: () => queryRef.current };
+  return {
+    ...actual,
+    useQuery: (opts: unknown) => {
+      lastOptions.current = opts as { queryKey?: unknown };
+      return queryRef.current;
+    },
+  };
 });
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
@@ -46,17 +55,27 @@ function ws(partial: Partial<AgentWorkspacesResponse["workspaces"][number]>) {
 describe("WorkspaceFilesSection", () => {
   beforeEach(() => cleanup());
 
-  it("renders nothing when the issue has no workspace on disk", () => {
+  it("renders nothing when the server returns no workspaces for the issue", () => {
+    // Issue scoping happens server-side (agent-workspaces?issue_id=...); an
+    // issue with no workspace on any daemon comes back as an empty list.
     queryRef.current = {
       isLoading: false,
-      data: {
-        total_size_bytes: 0,
-        total_repo_checkout_bytes: 0,
-        workspaces: [ws({ issue_id: "other" })],
-      },
+      data: { total_size_bytes: 0, total_repo_checkout_bytes: 0, workspaces: [] },
     };
     const { container } = renderWithI18n(<WorkspaceFilesSection issueId="i1" />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("asks the API for just this issue's workspaces", () => {
+    queryRef.current = { isLoading: false, data: undefined };
+    renderWithI18n(<WorkspaceFilesSection issueId="i1" />);
+    // The mocked useQuery captured the options the component built.
+    expect(lastOptions.current?.queryKey).toEqual([
+      "workspaces",
+      "ws-1",
+      "agent-workspaces",
+      { issueId: "i1" },
+    ]);
   });
 
   it("lists the issue's workspaces and opens the explorer on Browse", () => {

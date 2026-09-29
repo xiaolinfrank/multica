@@ -36,11 +36,10 @@ export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
   const wsId = useWorkspaceId();
   const [open, setOpen] = useState(true);
 
-  const { data } = useQuery(agentWorkspacesOptions(wsId));
-  const workspaces = useMemo(
-    () => (data?.workspaces ?? []).filter((w) => w.issue_id === issueId),
-    [data, issueId],
-  );
+  // Server-side issue filter: the sidebar only ever shows this issue's rows,
+  // so it no longer pulls the whole workspace inventory per detail page.
+  const { data } = useQuery(agentWorkspacesOptions(wsId, issueId));
+  const workspaces = useMemo(() => data?.workspaces ?? [], [data]);
 
   if (workspaces.length === 0) return null;
 

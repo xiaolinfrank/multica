@@ -4010,8 +4010,15 @@ export class ApiClient {
     });
   }
 
-  async listAgentWorkspaces(workspaceId: string): Promise<AgentWorkspacesResponse> {
-    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/agent-workspaces`);
+  async listAgentWorkspaces(
+    workspaceId: string,
+    opts?: { issueId?: string },
+  ): Promise<AgentWorkspacesResponse> {
+    // issueId narrows server-side: issue-detail's sidebar only ever renders one
+    // issue's workspaces, so it no longer pulls the whole workspace inventory
+    // to filter client-side. The management page keeps the unfiltered call.
+    const qs = opts?.issueId ? `?issue_id=${encodeURIComponent(opts.issueId)}` : "";
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/agent-workspaces${qs}`);
     return parseWithFallback(raw, AgentWorkspacesResponseSchema, EMPTY_AGENT_WORKSPACES, {
       endpoint: "GET /api/workspaces/:id/agent-workspaces",
     });

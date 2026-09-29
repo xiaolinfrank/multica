@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/multica-ai/multica/server/internal/util"
+	"strings"
 )
 
 // Workspace inventory is the push-reported, server-cached view of every agent
@@ -194,6 +195,22 @@ type AgentWorkspacesResponse struct {
 	TotalRepoCheckoutBytes int64            `json:"total_repo_checkout_bytes"`
 }
 
+
+// filterAgentWorkspaceTasks narrows an inventory snapshot to one issue when the
+// caller passed issue_id; an empty filter returns the snapshot untouched.
+func filterAgentWorkspaceTasks(tasks []daemonTask, issueID string) []daemonTask {
+	if issueID == "" {
+		return tasks
+	}
+	out := make([]daemonTask, 0, len(tasks))
+	for _, t := range tasks {
+		if t.IssueID == issueID {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // ListAgentWorkspaces returns every persistent agent workspace in a workspace,
 // resolving issue/agent identities for display.
 // GET /api/workspaces/{workspaceId}/agent-workspaces
@@ -203,7 +220,20 @@ func (h *Handler) ListAgentWorkspaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks := h.WorkspaceInventoryStore.TasksForWorkspace(wsID)
+	// Optional issue filter: issue-detail's sidebar only ever renders one
+	// issue's workspaces, so it asks for that issue rather than pulling the
+	// whole workspace inventory and filtering client-side. The management page
+	// keeps the unfiltered call.
+	issueFilter := ""
+	if raw := strings.TrimSpace(r.URL.Query().Get("issue_id")); raw != "" {
+		if u, ok := parseUUIDOrBadRequest(w, raw, "issue_id"); !ok {
+			return
+		} else {
+			issueFilter = u.String()
+		}
+	}
+
+	tasks := filterAgentWorkspaceTasks(h.WorkspaceInventoryStore.TasksForWorkspace(wsID), issueFilter)
 
 	// Resolve the issue prefix once for identifier rendering.
 	issuePrefix := ""
