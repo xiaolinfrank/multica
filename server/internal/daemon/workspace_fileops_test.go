@@ -301,3 +301,99 @@ func TestReclaimWorkspace_FullRemovesEverything(t *testing.T) {
 		t.Fatal("full reclaim should have removed the envRoot")
 	}
 }
+
+// readableEnvRootFixture builds a readable-layout workspace
+// ({root}/{workspace-segment}/{task-segment}, MUL-6686) with the identity
+// markers a real task directory carries, using shapes captured from
+// production: the workspace segment embeds the workspace id's tail, the task
+// segment embeds the issue identifier and the task id's key.
+func readableEnvRootFixture(t *testing.T) (root, wsID, taskShort, envRoot string) {
+	t.Helper()
+	root = t.TempDir()
+	wsID = "fc41c0f8-c42b-4cdc-8381-d7275e410b1b"
+	taskShort = "bio-298-aafcf6072aba"
+	envRoot = filepath.Join(root, "fosun-bio-d7275e410b1b", taskShort)
+	mustMkdir(t, filepath.Join(envRoot, "workdir"))
+	mustWrite(t, filepath.Join(envRoot, "workdir", "report.md"), "# deliverable\nhello")
+	return
+}
+
+func TestResolveEnvRootSandboxed_ReadableLayout(t *testing.T) {
+	root, wsID, taskShort, envRoot := readableEnvRootFixture(t)
+	mustWrite(t, filepath.Join(envRoot, ".managed_env.json"),
+		`{"managed_by":"multica-daemon-managed-env","workspace_id":"`+wsID+
+			`","agent_id":"dba8bfd3-65e4-41c1-a589-895926ce7a6a"}`)
+
+	got, err := resolveEnvRootSandboxed(root, wsID, taskShort)
+	if err != nil {
+		t.Fatalf("readable-layout envRoot rejected: %v", err)
+	}
+	if got != envRoot {
+		t.Fatalf("got %q want %q", got, envRoot)
+	}
+
+	// A workspace id the directory does not claim must never resolve to it:
+	// the scan candidate is only served when its markers name the requester.
+	if _, err := resolveEnvRootSandboxed(root, "99999999-8888-7777-6666-555555555555", taskShort); err == nil {
+		t.Fatal("expected rejection for a workspace the directory does not belong to")
+	}
+}
+
+func TestResolveEnvRootSandboxed_ReadableLayoutOwnership(t *testing.T) {
+	// The gc_meta fallback: prepare-time markers are absent (env claimed by an
+	// older path), but the completion meta still carries the workspace id.
+	root, wsID, taskShort, envRoot := readableEnvRootFixture(t)
+	mustWrite(t, filepath.Join(envRoot, ".gc_meta.json"),
+		`{"kind":"issue","workspace_id":"`+wsID+`","task_id":"01a07b66-e896-73b5-bc73-aafcf6072aba"}`)
+	if got, err := resolveEnvRootSandboxed(root, wsID, taskShort); err != nil || got != envRoot {
+		t.Fatalf("gc-meta ownership rejected: got %q err %v", got, err)
+	}
+
+	// No readable identity marker at all: fail closed — an unattributable
+	// directory must not be served to a workspace that merely asked for its
+	// name.
+	root2, wsID2, taskShort2, _ := readableEnvRootFixture(t)
+	if _, err := resolveEnvRootSandboxed(root2, wsID2, taskShort2); err == nil {
+		t.Fatal("expected rejection for a directory with no identity markers")
+	}
+}
+
+func TestResolveEnvRootSandboxed_ReadableLayoutAmbiguous(t *testing.T) {
+	root, wsID, taskShort, envRoot := readableEnvRootFixture(t)
+	mustWrite(t, filepath.Join(envRoot, ".managed_env.json"),
+		`{"managed_by":"multica-daemon-managed-env","workspace_id":"`+wsID+`"}`)
+
+	twin := filepath.Join(root, "fosun-bio-spare", taskShort)
+	mustMkdir(t, filepath.Join(twin, "workdir"))
+	mustWrite(t, filepath.Join(twin, ".managed_env.json"),
+		`{"managed_by":"multica-daemon-managed-env","workspace_id":"`+wsID+`"}`)
+
+	if _, err := resolveEnvRootSandboxed(root, wsID, taskShort); err == nil {
+		t.Fatal("expected rejection when two directories claim the same workspace and task segment")
+	}
+}
+
+func TestResolveEnvRootSandboxed_ReadableLayoutSkipsNoise(t *testing.T) {
+	root, wsID, taskShort, envRoot := readableEnvRootFixture(t)
+	mustWrite(t, filepath.Join(envRoot, ".managed_env.json"),
+		`{"managed_by":"multica-daemon-managed-env","workspace_id":"`+wsID+`"}`)
+
+	// Daemon-internal dot-dirs and plain files at the first level are skipped,
+	// never scanned for a task segment.
+	mustMkdir(t, filepath.Join(root, ".task_roots", "record-1"))
+	mustMkdir(t, filepath.Join(root, ".repos", "cached-repo"))
+	mustWrite(t, filepath.Join(root, "README.md"), "not a workspace")
+
+	if got, err := resolveEnvRootSandboxed(root, wsID, taskShort); err != nil || got != envRoot {
+		t.Fatalf("scan distracted by first-level noise: got %q err %v", got, err)
+	}
+
+	// A symlinked first-level dir is not a directory entry and is skipped; the
+	// real target still resolves through its own entry.
+	if err := os.Symlink(filepath.Base(filepath.Dir(envRoot)), filepath.Join(root, "alias-dir")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if got, err := resolveEnvRootSandboxed(root, wsID, taskShort); err != nil || got != envRoot {
+		t.Fatalf("symlinked alias dir broke resolution: got %q err %v", got, err)
+	}
+}

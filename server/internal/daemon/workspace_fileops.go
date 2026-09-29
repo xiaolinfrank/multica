@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 )
 
 // Workspace file ops let the management UI browse, read and reclaim a
@@ -21,11 +23,14 @@ import (
 // Disk Access on network volumes), so it relays the request through the
 // heartbeat ack and the daemon executes it locally and reports the result.
 //
-// Every op is sandboxed to the target envRoot
-// ({WorkspacesRoot}/{WorkspaceID}/{TaskShort}). WorkspaceID, TaskShort and the
-// read Path all originate from a workspace member's request and are treated as
-// untrusted: a path that escapes the envRoot — via separators, "..", or a
-// symlink the agent planted inside its own workspace — is refused, never read.
+// Every op is sandboxed to the target envRoot — legacy layout
+// {WorkspacesRoot}/{WorkspaceID}/{TaskShort} or readable layout
+// {WorkspacesRoot}/{workspace-segment}/{task-segment} (MUL-6686); see
+// resolveEnvRootSandboxed for how the two are told apart. WorkspaceID,
+// TaskShort and the read Path all originate from a workspace member's request
+// and are treated as untrusted: a path that escapes the envRoot — via
+// separators, "..", or a symlink the agent planted inside its own workspace —
+// is refused, never read.
 
 const (
 	// workspaceOpMaxReadBytes caps a single file read, aligned with the
@@ -169,9 +174,18 @@ func safePathComponent(s string) error {
 }
 
 // resolveEnvRootSandboxed builds the absolute envRoot for (workspaceID,
-// taskShort) and verifies it is a real directory directly under workspacesRoot.
-// Both ids are validated as single safe path components first, so the join can
-// never climb out of the root.
+// taskShort) and verifies it is a real directory under workspacesRoot. Both ids
+// are validated as single safe path components first, so no join can climb out
+// of the root.
+//
+// Two physical layouts coexist on disk. Legacy roots sit at
+// {WorkspacesRoot}/{WorkspaceID}/{TaskShort}; readable-layout roots (MUL-6686)
+// sit at {WorkspacesRoot}/{workspace-segment}/{task-segment}, where the task
+// segment is what inventory reports as task_short and the workspace segment is
+// derived from display labels, not from the workspace id. The legacy join is
+// tried first; when it misses, the root is scanned one level deep for the task
+// segment, and the candidate must prove workspace ownership through its
+// on-disk identity markers before it is used.
 func resolveEnvRootSandboxed(workspacesRoot, workspaceID, taskShort string) (string, error) {
 	if strings.TrimSpace(workspacesRoot) == "" {
 		return "", errors.New("workspaces root not configured")
@@ -193,16 +207,84 @@ func resolveEnvRootSandboxed(workspacesRoot, workspaceID, taskShort string) (str
 		return "", errors.New("path escapes workspaces root")
 	}
 	info, err := os.Lstat(envRoot)
+	switch {
+	case err == nil:
+		// Legacy layout hit: the parent directory IS the workspace id, so no
+		// marker-based attribution is needed.
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("workspace root is a symlink")
+		}
+		if !info.IsDir() {
+			return "", errors.New("workspace is not a directory")
+		}
+		return envRoot, nil
+	case errors.Is(err, os.ErrNotExist):
+		return resolveReadableEnvRoot(rootAbs, workspaceID, taskShort)
+	default:
+		return "", errors.New("workspace not found")
+	}
+}
+
+// resolveReadableEnvRoot locates a readable-layout env root for taskShort and
+// verifies the candidate belongs to workspaceID. The first level under the
+// workspaces root holds workspace segments plus daemon-internal dot-dirs
+// (skipped); the second level holds task segments. A candidate that cannot
+// prove ownership — no readable identity marker, or one naming another
+// workspace — is skipped, never served: the requester's workspace scoping must
+// not be confirmable from the path shape alone, since segments are built from
+// user-controlled display labels.
+func resolveReadableEnvRoot(rootAbs, workspaceID, taskShort string) (string, error) {
+	entries, err := os.ReadDir(rootAbs)
 	if err != nil {
 		return "", errors.New("workspace not found")
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("workspace root is a symlink")
+	var found string
+	for _, entry := range entries {
+		// DirEntry.IsDir is false for symlinks, so a symlinked first level is
+		// skipped rather than followed; a plain file cannot hold a task either.
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		candidate := filepath.Join(rootAbs, entry.Name(), taskShort)
+		info, err := os.Lstat(candidate)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			continue
+		}
+		owner, ok := taskDirWorkspaceID(candidate)
+		if !ok || owner != workspaceID {
+			continue
+		}
+		if found != "" {
+			return "", errors.New("ambiguous workspace directory: multiple roots claim this workspace and task segment")
+		}
+		found = candidate
 	}
-	if !info.IsDir() {
-		return "", errors.New("workspace is not a directory")
+	if found == "" {
+		return "", errors.New("workspace not found")
 	}
-	return envRoot, nil
+	return found, nil
+}
+
+// taskDirWorkspaceID reads the workspace a task directory claims through its
+// on-disk identity markers, in the precedence buildTaskUsage uses: prepare-time
+// provenance first, then the env root owner, then the completion GC meta.
+func taskDirWorkspaceID(envRoot string) (string, bool) {
+	if provenance, err := execenv.ReadManagedEnvProvenance(envRoot); err == nil && provenance != nil {
+		if ws := strings.TrimSpace(provenance.WorkspaceID); ws != "" {
+			return ws, true
+		}
+	}
+	if owner, err := execenv.ReadEnvRootOwner(envRoot); err == nil && owner != nil {
+		if ws := strings.TrimSpace(owner.WorkspaceID); ws != "" {
+			return ws, true
+		}
+	}
+	if meta, err := execenv.ReadGCMeta(envRoot); err == nil && meta != nil {
+		if ws := strings.TrimSpace(meta.WorkspaceID); ws != "" {
+			return ws, true
+		}
+	}
+	return "", false
 }
 
 // workspaceTree walks envRoot and returns its file tree with git checkouts and

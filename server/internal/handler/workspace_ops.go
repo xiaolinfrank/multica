@@ -60,9 +60,10 @@ const (
 )
 
 // WorkspaceOpTarget identifies the on-disk envRoot the op runs against, plus the
-// op-specific parameters. The daemon resolves envRoot =
-// {WorkspacesRoot}/{WorkspaceID}/{TaskShort} and refuses anything that escapes
-// it.
+// op-specific parameters. The daemon resolves the envRoot under either the
+// legacy {WorkspacesRoot}/{WorkspaceID}/{TaskShort} layout or the readable
+// {WorkspacesRoot}/{workspace-segment}/{task-segment} layout (MUL-6686) and
+// refuses anything that escapes it.
 type WorkspaceOpTarget struct {
 	WorkspaceID string `json:"workspace_id"`
 	TaskShort   string `json:"task_short"`
