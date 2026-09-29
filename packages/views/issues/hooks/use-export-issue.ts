@@ -16,6 +16,7 @@ import {
   issueTimelineOptions,
 } from "@multica/core/issues/queries";
 import { issueKeys } from "@multica/core/issues/queries";
+import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import { agentWorkspacesOptions } from "@multica/core/workspace";
 import { propertyListOptions } from "@multica/core/properties";
@@ -327,6 +328,11 @@ export function useExportIssue(issue: Issue | null): {
         issue: detail,
         timeline: timeline ?? [],
         attachments: exportedAttachments,
+        // Upstream deliverables model (MUL-7649): comment uploads are the
+        // outputs, everything else (description attachments) the inputs. The
+        // zip still packs every attachment's bytes — the split only changes
+        // how the document lists them.
+        deliverables: collectDeliverableFiles(timeline ?? []),
         workspaces: exportedWorkspaces,
         executions: exportedExecutions,
         childTree,

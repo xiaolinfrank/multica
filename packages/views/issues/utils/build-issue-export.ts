@@ -1,3 +1,4 @@
+import type { DeliverableFile } from "@multica/core/attachments/deliverables";
 import type {
   AgentTask,
   Attachment,
@@ -88,6 +89,14 @@ export interface IssueExportInput {
   /** Server-ordered timeline (comments + activities). Rendered as given. */
   timeline: TimelineEntry[];
   attachments: ExportedAttachment[];
+  /**
+   * The issue's deliverables per the upstream model (MUL-7649): files uploaded
+   * in comments, re-uploads merged into version families. When provided, the
+   * attachments listing splits into Deliverables (these, versions grouped) and
+   * Inputs (everything else — chiefly description attachments); without it the
+   * legacy flat Attachments section is emitted.
+   */
+  deliverables?: DeliverableFile[];
   /** Persistent agent workspaces for this issue, with their plain files. */
   workspaces: ExportedWorkspace[];
   /** Per-run execution transcripts for this issue's agent runs. */
@@ -606,7 +615,40 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
     out.push("## Pull requests", "", prLines.join("\n"), "");
   }
 
-  if (input.attachments.length > 0) {
+  if (input.deliverables) {
+    // Deliverables (comment uploads, version-grouped) and inputs (everything
+    // else) list separately: a handoff reader cares which files this issue
+    // PRODUCED versus which it was given. Both sections keep the per-file line
+    // shape; deliverable families list every version, newest first, so an
+    // offline reader can diff iterations.
+    const byId = new Map(input.attachments.map((a) => [a.attachment.id, a]));
+    const deliverableIds = new Set<string>();
+    const deliverableLines: string[] = [];
+    for (const file of input.deliverables) {
+      // Newest first, like the sidebar: the latest upload leads the family,
+      // older versions indent under it. A single-version file renders exactly
+      // like a plain attachment line — no version noise.
+      const versions = [...file.versions].reverse();
+      versions.forEach((version, i) => {
+        deliverableIds.add(version.id);
+        const exported = byId.get(version.id);
+        const base: ExportedAttachment =
+          exported ?? { attachment: version, absoluteUrl: version.markdown_url || version.url };
+        let line = attachmentLine(base);
+        if (versions.length > 1) {
+          line = line.replace(" — ", ` · v${versions.length - i} — `);
+        }
+        deliverableLines.push(i === 0 ? line : line.replace(/^- /, "  - "));
+      });
+    }
+    if (deliverableLines.length > 0) {
+      out.push("## Deliverables", "", deliverableLines.join("\n"), "");
+    }
+    const inputs = input.attachments.filter((a) => !deliverableIds.has(a.attachment.id));
+    if (inputs.length > 0) {
+      out.push("## Inputs", "", inputs.map(attachmentLine).join("\n"), "");
+    }
+  } else if (input.attachments.length > 0) {
     out.push(
       "## Attachments",
       "",

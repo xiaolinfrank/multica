@@ -317,6 +317,58 @@ describe("buildIssueExportMarkdown", () => {
     expect(md).not.toContain("## Attachments");
   });
 
+  it("splits attachments into deliverables and inputs when the model is provided (MUL-7649)", () => {
+    const v1 = makeAttachment({ id: "a-1", filename: "report.md", content_type: "text/markdown", created_at: "2025-01-01T00:00:00Z" });
+    const v2 = makeAttachment({ id: "a-2", filename: "report.md", content_type: "text/markdown", created_at: "2025-01-02T00:00:00Z" });
+    const inputFile = makeAttachment({ id: "a-3", filename: "brief.pdf", comment_id: null });
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        attachments: [
+          makeExportedAttachment({ attachment: v1, packedName: "attachments/report.md" }),
+          makeExportedAttachment({ attachment: v2, packedName: "attachments/report-2.md", absoluteUrl: "http://example.com/a-2" }),
+          makeExportedAttachment({ attachment: inputFile, packedName: "attachments/brief.pdf" }),
+        ],
+        deliverables: [{ key: "k", versions: [v1, v2], latest: v2 }],
+      }),
+    );
+
+    // Outputs and inputs list under their own headings; the legacy flat
+    // section is gone once the model is provided.
+    expect(md).toContain("## Deliverables");
+    expect(md).toContain("## Inputs");
+    expect(md).not.toContain("## Attachments");
+
+    const deliverables = md.slice(md.indexOf("## Deliverables"), md.indexOf("## Inputs"));
+    // Newest version leads, carrying the v2 tag; v1 indents underneath.
+    const latest = deliverables.indexOf("report-2.md");
+    const older = deliverables.indexOf("attachments/report.md)");
+    expect(latest).toBeGreaterThanOrEqual(0);
+    expect(older).toBeGreaterThan(latest);
+    expect(deliverables).toContain("· v2 —");
+    expect(deliverables).toContain("  - [report.md](attachments/report.md) (1.5 KB) · v1 —");
+
+    expect(md.slice(md.indexOf("## Inputs"))).toContain("[brief.pdf](attachments/brief.pdf)");
+  });
+
+  it("falls back to a plain attachment line for a deliverable version whose bytes were not packed", () => {
+    const v1 = makeAttachment({
+      id: "a-9",
+      filename: "chart.png",
+      content_type: "image/png",
+      markdown_url: "/api/attachments/a-9/download",
+    });
+    const md = buildIssueExportMarkdown(
+      makeInput({
+        attachments: [],
+        deliverables: [{ key: "k", versions: [v1], latest: v1 }],
+      }),
+    );
+    expect(md).toContain("## Deliverables");
+    expect(md).toContain("[chart.png](/api/attachments/a-9/download)");
+    expect(md).toContain("not included");
+    expect(md).not.toContain("## Inputs");
+  });
+
   it("renders comments, replies, resolution, reactions and their attachments", () => {
     const timeline: TimelineEntry[] = [
       {
