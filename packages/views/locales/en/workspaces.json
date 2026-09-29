@@ -35,7 +35,12 @@
     "nowrap": "Unwrap lines",
     "image_too_large": "Image too large ({{size}}) — download to view.",
     "download_failed": "Download failed.",
-    "download_too_large": "File too large to download (10 MB limit)."
+    "download_too_large": "File too large to download (10 MB limit).",
+    "publish": "Publish as deliverable",
+    "publish_body": "Published a file from {{agent}}'s workspace as a deliverable",
+    "publish_too_large": "File too large to publish (10 MB limit).",
+    "publish_failed": "Publish failed.",
+    "publish_done": "Published as a deliverable."
   },
   "delete": {
     "title": "Delete this issue?",

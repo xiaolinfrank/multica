@@ -64,7 +64,7 @@ export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
       {open ? (
         <div className="space-y-1.5 pl-2">
           {workspaces.map((ws) => (
-            <WorkspaceFileRow key={ws.task_short} wsId={wsId} ws={ws} />
+            <WorkspaceFileRow key={ws.task_short} wsId={wsId} ws={ws} issueId={issueId} />
           ))}
         </div>
       ) : null}
@@ -72,7 +72,15 @@ export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
   );
 }
 
-function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
+function WorkspaceFileRow({
+  wsId,
+  ws,
+  issueId,
+}: {
+  wsId: string;
+  ws: AgentWorkspace;
+  issueId: string;
+}) {
   const { t } = useT("workspaces");
   const [browsing, setBrowsing] = useState(false);
 
@@ -113,6 +121,7 @@ function WorkspaceFileRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
           (ws.agent_name || ws.agent_id || "—") +
           (ws.issue_identifier ? ` · ${ws.issue_identifier}` : "")
         }
+        publish={{ issueId, agentLabel }}
         open={browsing}
         onOpenChange={setBrowsing}
       />

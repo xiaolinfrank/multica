@@ -27,8 +27,13 @@ import {
   Check,
   WrapText,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  useWorkspaceFilePublish,
+  type WorkspacePublishTarget,
+} from "./workspace-publish";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -139,16 +144,36 @@ function buildNodes(entries: WorkspaceFileEntry[]): TreeNode[] {
 // Explorer — two panes: tree (left) + preview (right)
 // ---------------------------------------------------------------------------
 
+// Mirrors workspaceOpMaxDownloadBytes on the daemon: publishing fetches the
+// file through the download op, so anything above the cap can never reach the
+// upload step.
+export const WORKSPACE_PUBLISH_MAX_BYTES = 10 * 1024 * 1024;
+
 export function WorkspaceFileExplorer({
   wsId,
   taskShort,
+  publish,
 }: {
   wsId: string;
   taskShort: string;
+  /** When set, the preview pane offers "publish as deliverable" (MUL-7649). */
+  publish?: WorkspacePublishTarget | null;
 }) {
   const { t } = useT("workspaces");
   const [selected, setSelected] = useState<TreeNode | null>(null);
   const { download, downloadingPath } = useWorkspaceFileDownload(wsId, taskShort);
+
+  const publishTarget = publish
+    ? {
+        issueId: publish.issueId,
+        commentBody: t(($) => $.browser.publish_body, { agent: publish.agentLabel }),
+      }
+    : null;
+  const { publish: publishFile, publishingPath } = useWorkspaceFilePublish(
+    wsId,
+    taskShort,
+    publishTarget,
+  );
 
   const { data, isLoading, isError } = useQuery(
     workspaceTreeOptions(wsId, taskShort, true),
@@ -160,6 +185,13 @@ export function WorkspaceFileExplorer({
     const outcome: DownloadOutcome = await download(path);
     if (outcome === "too_large") toast.error(t(($) => $.browser.download_too_large));
     else if (outcome === "error") toast.error(t(($) => $.browser.download_failed));
+  };
+
+  const handlePublish = async (path: string) => {
+    const outcome = await publishFile(path);
+    if (outcome === "too_large") toast.error(t(($) => $.browser.publish_too_large));
+    else if (outcome === "error") toast.error(t(($) => $.browser.publish_failed));
+    else if (outcome === "ok") toast.success(t(($) => $.browser.publish_done));
   };
 
   let tree: React.ReactNode;
@@ -219,6 +251,8 @@ export function WorkspaceFileExplorer({
             node={selected}
             onDownload={handleDownload}
             downloading={downloadingPath === selected.path}
+            onPublish={publish ? handlePublish : undefined}
+            publishing={publishingPath === selected.path}
           />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-body text-muted-foreground">
@@ -365,18 +399,23 @@ function PreviewPane({
   node,
   onDownload,
   downloading,
+  onPublish,
+  publishing,
 }: {
   wsId: string;
   taskShort: string;
   node: TreeNode;
   onDownload: (path: string) => void;
   downloading: boolean;
+  onPublish?: (path: string) => void;
+  publishing?: boolean;
 }) {
   const { t } = useT("workspaces");
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const isImage = getPreviewKind("", node.path) === "image";
+  const publishBlocked = node.size > WORKSPACE_PUBLISH_MAX_BYTES;
 
   // Exactly one of these queries is enabled (the other gets an empty path,
   // which disables it) so both hooks run unconditionally per the rules of hooks.
@@ -426,6 +465,23 @@ function PreviewPane({
                 )}
               </PaneAction>
             </>
+          ) : null}
+          {onPublish ? (
+            <PaneAction
+              label={
+                publishBlocked
+                  ? t(($) => $.browser.publish_too_large)
+                  : t(($) => $.browser.publish)
+              }
+              disabled={publishBlocked || publishing || downloading}
+              onClick={() => onPublish(node.path)}
+            >
+              {publishing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Upload className="size-3.5" />
+              )}
+            </PaneAction>
           ) : null}
           <PaneAction
             label={t(($) => $.browser.download)}
@@ -636,12 +692,14 @@ export function WorkspaceExplorerDialog({
   wsId,
   taskShort,
   label,
+  publish,
   open,
   onOpenChange,
 }: {
   wsId: string;
   taskShort: string;
   label: string;
+  publish?: WorkspacePublishTarget | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -652,7 +710,7 @@ export function WorkspaceExplorerDialog({
           <DialogTitle className="truncate text-body">{label}</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1">
-          <WorkspaceFileExplorer wsId={wsId} taskShort={taskShort} />
+          <WorkspaceFileExplorer wsId={wsId} taskShort={taskShort} publish={publish} />
         </div>
       </DialogContent>
     </Dialog>

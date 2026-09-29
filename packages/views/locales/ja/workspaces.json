@@ -35,7 +35,12 @@
     "nowrap": "折り返しを解除",
     "image_too_large": "画像が大きすぎます({{size}})— ダウンロードして表示してください。",
     "download_failed": "ダウンロードに失敗しました。",
-    "download_too_large": "ファイルが大きすぎてダウンロードできません(上限 10 MB)。"
+    "download_too_large": "ファイルが大きすぎてダウンロードできません(上限 10 MB)。",
+    "publish": "成果物として公開",
+    "publish_body": "{{agent}} のワークスペースのファイルを成果物として公開しました",
+    "publish_too_large": "ファイルが大きすぎて公開できません(上限 10 MB)。",
+    "publish_failed": "公開に失敗しました。",
+    "publish_done": "成果物として公開しました。"
   },
   "delete": {
     "title": "この課題を削除しますか?",

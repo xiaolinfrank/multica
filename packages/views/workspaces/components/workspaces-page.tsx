@@ -241,6 +241,7 @@ function AgentRow({ wsId, ws }: { wsId: string; ws: AgentWorkspace }) {
           (ws.agent_name || ws.agent_id || "—") +
           (ws.issue_identifier ? ` · ${ws.issue_identifier}` : "")
         }
+        publish={ws.issue_id ? { issueId: ws.issue_id, agentLabel: ws.agent_name || ws.agent_id || "—" } : null}
         open={browsing}
         onOpenChange={setBrowsing}
       />

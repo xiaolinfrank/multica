@@ -35,7 +35,12 @@
     "nowrap": "取消换行",
     "image_too_large": "图片过大({{size}}),请下载查看。",
     "download_failed": "下载失败。",
-    "download_too_large": "文件过大,无法下载(上限 10 MB)。"
+    "download_too_large": "文件过大,无法下载(上限 10 MB)。",
+    "publish": "发布为产物",
+    "publish_body": "已将 {{agent}} 工作区的文件发布为产物",
+    "publish_too_large": "文件过大,无法发布(上限 10 MB)。",
+    "publish_failed": "发布失败。",
+    "publish_done": "已发布为产物。"
   },
   "delete": {
     "title": "删除这个 issue?",

@@ -35,7 +35,12 @@
     "nowrap": "줄 바꿈 해제",
     "image_too_large": "이미지가 너무 큽니다({{size}}) — 다운로드하여 확인하세요.",
     "download_failed": "다운로드에 실패했습니다.",
-    "download_too_large": "파일이 너무 커서 다운로드할 수 없습니다(최대 10 MB)."
+    "download_too_large": "파일이 너무 커서 다운로드할 수 없습니다(최대 10 MB).",
+    "publish": "산출물로 게시",
+    "publish_body": "{{agent}}의 워크스페이스 파일을 산출물로 게시했습니다",
+    "publish_too_large": "파일이 너무 커서 게시할 수 없습니다(최대 10 MB).",
+    "publish_failed": "게시에 실패했습니다.",
+    "publish_done": "산출물로 게시했습니다."
   },
   "delete": {
     "title": "이 태스크를 삭제할까요?",
