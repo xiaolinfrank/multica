@@ -16,8 +16,9 @@ import {
 import enAgents from "../../locales/en/agents.json";
 import enCommon from "../../locales/en/common.json";
 import enIssues from "../../locales/en/issues.json";
+import enWorkspaces from "../../locales/en/workspaces.json";
 
-const TEST_RESOURCES = { en: { agents: enAgents, common: enCommon, issues: enIssues } };
+const TEST_RESOURCES = { en: { agents: enAgents, common: enCommon, issues: enIssues, workspaces: enWorkspaces } };
 
 const mockViewport = vi.hoisted(() => ({ isMobile: false }));
 
@@ -79,6 +80,10 @@ vi.mock("@multica/core/workspace/hooks", () => ({
 }));
 
 // Mock workspace queries
+const agentWorkspacesRef = vi.hoisted(() => ({
+  current: [] as Array<Record<string, unknown>>,
+}));
+
 vi.mock("@multica/core/workspace/queries", () => ({
   memberListOptions: () => ({
     queryKey: ["workspaces", "ws-1", "members"],
@@ -102,7 +107,7 @@ vi.mock("@multica/core/workspace/queries", () => ({
   }),
   agentWorkspacesOptions: () => ({
     queryKey: ["workspaces", "ws-1", "agent-workspaces"],
-    queryFn: () => Promise.resolve({ workspaces: [] }),
+    queryFn: () => Promise.resolve({ workspaces: agentWorkspacesRef.current }),
   }),
 }));
 
@@ -718,6 +723,7 @@ function hasHighlightedCommentBackground(root: ParentNode | null): boolean {
 describe("IssueDetail (shared)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    agentWorkspacesRef.current = [];
     contentEditorMounts.count = 0;
     readonlyContentRenders.length = 0;
     descriptionSelectionAction.current = undefined;
@@ -1767,6 +1773,49 @@ describe("IssueDetail (shared)", () => {
     // DOCUMENT_POSITION_FOLLOWING: Details comes after the execution log.
     expect(
       executionLog.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  // Fork anchor: workspace files stay glued directly after the execution log
+  // across upstream sidebar reorders (issue-detail.tsx calls this out in a
+  // comment; this test makes a drift a CI failure instead of a merge-time
+  // reconciliation chore).
+  it("orders the workspace files section after the execution log", async () => {
+    mockApiObj.listTasksByIssue.mockResolvedValue([
+      {
+        id: "task-past",
+        agent_id: "agent-1",
+        runtime_id: "runtime-1",
+        issue_id: "issue-1",
+        status: "completed",
+        priority: 0,
+        dispatched_at: null,
+        started_at: "2026-06-08T08:00:00Z",
+        completed_at: "2026-06-08T08:05:00Z",
+        result: null,
+        error: null,
+        created_at: "2026-06-08T08:00:00Z",
+        trigger_summary: "Started from comment",
+      },
+    ]);
+    agentWorkspacesRef.current = [
+      {
+        issue_id: "issue-1",
+        issue_identifier: "TST-1",
+        agent_id: "agent-1",
+        agent_name: "Agent One",
+        device_name: "",
+        task_short: "abcd1234",
+        size_bytes: 128,
+      },
+    ];
+
+    renderIssueDetail();
+
+    const executionLog = await screen.findByText("Execution log");
+    const files = await screen.findByText("Workspace files");
+    expect(
+      executionLog.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
