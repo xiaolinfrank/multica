@@ -40,7 +40,10 @@
     "publish_body": "{{agent}} のワークスペースのファイルを成果物として公開しました",
     "publish_too_large": "ファイルが大きすぎて公開できません(上限 10 MB)。",
     "publish_failed": "公開に失敗しました。",
-    "publish_done": "成果物として公開しました。"
+    "publish_done": "成果物として公開しました。",
+    "open_viewer": "ビューアで開く",
+    "open_too_large": "ファイルが大きすぎてプレビューできません(上限 10 MB)。",
+    "open_failed": "プレビューを開けませんでした。"
   },
   "delete": {
     "title": "この課題を削除しますか?",

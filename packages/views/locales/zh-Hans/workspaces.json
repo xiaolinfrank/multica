@@ -40,7 +40,10 @@
     "publish_body": "已将 {{agent}} 工作区的文件发布为产物",
     "publish_too_large": "文件过大,无法发布(上限 10 MB)。",
     "publish_failed": "发布失败。",
-    "publish_done": "已发布为产物。"
+    "publish_done": "已发布为产物。",
+    "open_viewer": "在查看器中打开",
+    "open_too_large": "文件过大,无法预览(上限 10 MB)。",
+    "open_failed": "无法打开预览。"
   },
   "delete": {
     "title": "删除这个 issue?",

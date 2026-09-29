@@ -43,6 +43,27 @@ export type DownloadOutcome = "ok" | "too_large" | "error";
  * or tree row can show a spinner. The outcome is a discriminated result the
  * caller turns into a translated toast — the hook stays i18n-free.
  */
+/**
+ * Fetch one file's base64 payload through the download op — the shared step of
+ * every consumer of a workspace file's bytes (Save As, publish as deliverable,
+ * open in viewer). Capped by the daemon's 10 MiB download limit; anything
+ * larger reports `too_large` so callers can say why instead of failing.
+ */
+export async function fetchWorkspaceFilePayload(
+  wsId: string,
+  taskShort: string,
+  path: string,
+): Promise<{ content: string; mime: string } | "too_large" | "error"> {
+  try {
+    const outcome = await api.downloadWorkspaceFile(wsId, taskShort, path);
+    if (outcome.status !== "completed") return "error";
+    if (outcome.data.too_large) return "too_large";
+    return { content: outcome.data.content, mime: outcome.data.mime };
+  } catch {
+    return "error";
+  }
+}
+
 export function useWorkspaceFileDownload(wsId: string, taskShort: string) {
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
 
@@ -50,14 +71,12 @@ export function useWorkspaceFileDownload(wsId: string, taskShort: string) {
     async (path: string): Promise<DownloadOutcome> => {
       setDownloadingPath(path);
       try {
-        const outcome = await api.downloadWorkspaceFile(wsId, taskShort, path);
-        if (outcome.status !== "completed") return "error";
-        if (outcome.data.too_large) return "too_large";
+        const payload = await fetchWorkspaceFilePayload(wsId, taskShort, path);
+        if (payload === "too_large") return "too_large";
+        if (payload === "error") return "error";
         const filename = path.split("/").pop() || "download";
-        saveBlob(base64ToBlob(outcome.data.content, outcome.data.mime), filename);
+        saveBlob(base64ToBlob(payload.content, payload.mime), filename);
         return "ok";
-      } catch {
-        return "error";
       } finally {
         setDownloadingPath(null);
       }

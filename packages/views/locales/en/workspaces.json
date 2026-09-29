@@ -40,7 +40,10 @@
     "publish_body": "Published a file from {{agent}}'s workspace as a deliverable",
     "publish_too_large": "File too large to publish (10 MB limit).",
     "publish_failed": "Publish failed.",
-    "publish_done": "Published as a deliverable."
+    "publish_done": "Published as a deliverable.",
+    "open_viewer": "Open in viewer",
+    "open_too_large": "File too large to preview (10 MB limit).",
+    "open_failed": "Could not open the preview."
   },
   "delete": {
     "title": "Delete this issue?",

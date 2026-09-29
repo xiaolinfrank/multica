@@ -20,6 +20,23 @@ vi.mock("@multica/core/issues/mutations", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// The shared attachment viewer pulls the whole editor module; the browser
+// only needs its hook, so intercept it with a spy that records what opens.
+type ViewerSource = {
+  kind: string;
+  url?: string;
+  filename?: string;
+  forceKind?: string;
+};
+const viewerMocks = vi.hoisted(() => ({
+  open: vi.fn(),
+  tryOpen: vi.fn((_source: ViewerSource) => true),
+  modal: null,
+}));
+vi.mock("../../editor", () => ({
+  useAttachmentPreview: () => viewerMocks,
+}));
+
 import { api } from "@multica/core/api";
 import { toast } from "sonner";
 import { WorkspaceFileExplorer, WORKSPACE_PUBLISH_MAX_BYTES } from "./workspace-file-browser";
@@ -50,26 +67,39 @@ beforeEach(() => {
   apiMocks.fetchWorkspaceTree.mockResolvedValue({
     status: "completed",
     data: {
-      entries: [{ path: "workdir/report.md", size: 12, is_dir: false }],
+      entries: [
+        { path: "workdir/report.md", size: 12, is_dir: false },
+        { path: "workdir/deck.pdf", size: 1024, is_dir: false },
+      ],
       truncated: false,
     },
   });
-  apiMocks.readWorkspaceFile.mockResolvedValue({
-    status: "completed",
-    data: { path: "workdir/report.md", size: 12, is_text: true, content: "# hi", truncated: false },
-  });
-  apiMocks.downloadWorkspaceFile.mockResolvedValue({
-    status: "completed",
-    data: {
-      path: "workdir/report.md",
-      size: 12,
-      mime: "text/markdown",
-      encoding: "base64",
-      content: "aGVsbG8gd29ybGQ=", // "hello world"
-      is_image: false,
-      too_large: false,
-    },
-  });
+  apiMocks.readWorkspaceFile.mockImplementation((_wsId: string, _task: string, path: string) =>
+    Promise.resolve({
+      status: "completed",
+      data: {
+        path,
+        size: path.endsWith(".pdf") ? 1024 : 12,
+        is_text: !path.endsWith(".pdf"),
+        content: "# hi",
+        truncated: false,
+      },
+    }),
+  );
+  apiMocks.downloadWorkspaceFile.mockImplementation((_wsId: string, _task: string, path: string) =>
+    Promise.resolve({
+      status: "completed",
+      data: {
+        path,
+        size: path.endsWith(".pdf") ? 1024 : 12,
+        mime: path.endsWith(".pdf") ? "application/pdf" : "text/markdown",
+        encoding: "base64",
+        content: path.endsWith(".pdf") ? "JVBERi0" : "aGVsbG8gd29ybGQ=", // "%PDF-" / "hello world"
+        is_image: false,
+        too_large: false,
+      },
+    }),
+  );
   apiMocks.uploadFile.mockResolvedValue({ id: "att-1" });
   commentMocks.mutateAsync.mockResolvedValue({ id: "c1" });
 });
@@ -121,6 +151,49 @@ describe("publish as deliverable", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(apiMocks.uploadFile).not.toHaveBeenCalled();
     expect(commentMocks.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("opens pdf/video/audio files in the shared viewer from a data URL", async () => {
+    renderExplorer();
+    fireEvent.click(await screen.findByRole("button", { name: /deck\.pdf/ }));
+    await waitFor(() => expect(api.readWorkspaceFile).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: /open in viewer/i }));
+
+    await waitFor(() => expect(viewerMocks.tryOpen).toHaveBeenCalled());
+    const source = viewerMocks.tryOpen.mock.calls[0]?.[0];
+    if (!source || source.kind !== "url") throw new Error("expected a url preview source");
+    expect(source.url).toBe("data:application/pdf;base64,JVBERi0");
+    expect(source.filename).toBe("deck.pdf");
+    expect(source.forceKind).toBe("pdf");
+  });
+
+  it("keeps the viewer action off files the viewer cannot URL-render", async () => {
+    renderExplorer();
+    await selectReport();
+    expect(
+      screen.queryByRole("button", { name: /open in viewer/i }),
+    ).not.toBeInTheDocument();
+    expect(viewerMocks.tryOpen).not.toHaveBeenCalled();
+  });
+
+  it("refuses the viewer for files above the download-op cap", async () => {
+    apiMocks.fetchWorkspaceTree.mockResolvedValue({
+      status: "completed",
+      data: {
+        entries: [
+          { path: "workdir/deck.pdf", size: WORKSPACE_PUBLISH_MAX_BYTES + 1, is_dir: false },
+        ],
+        truncated: false,
+      },
+    });
+    renderExplorer();
+    fireEvent.click(await screen.findByRole("button", { name: /deck\.pdf/ }));
+    await waitFor(() => expect(api.readWorkspaceFile).toHaveBeenCalled());
+
+    const button = screen.getByRole("button", { name: /too large to preview/i });
+    expect(button).toBeDisabled();
+    expect(apiMocks.downloadWorkspaceFile).not.toHaveBeenCalled();
   });
 
   it("disables the action for files above the download-op cap", async () => {

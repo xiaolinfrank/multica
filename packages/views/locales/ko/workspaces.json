@@ -40,7 +40,10 @@
     "publish_body": "{{agent}}의 워크스페이스 파일을 산출물로 게시했습니다",
     "publish_too_large": "파일이 너무 커서 게시할 수 없습니다(최대 10 MB).",
     "publish_failed": "게시에 실패했습니다.",
-    "publish_done": "산출물로 게시했습니다."
+    "publish_done": "산출물로 게시했습니다.",
+    "open_viewer": "뷰어에서 열기",
+    "open_too_large": "파일이 너무 커서 미리 볼 수 없습니다(최대 10 MB).",
+    "open_failed": "미리보기를 열 수 없습니다."
   },
   "delete": {
     "title": "이 태스크를 삭제할까요?",

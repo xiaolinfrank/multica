@@ -17,7 +17,7 @@
 import { useCallback, useState } from "react";
 import { api } from "@multica/core/api";
 import { useCreateComment } from "@multica/core/issues/mutations";
-import { base64ToBlob } from "./workspace-download";
+import { base64ToBlob, fetchWorkspaceFilePayload } from "./workspace-download";
 
 export type PublishOutcome = "ok" | "too_large" | "error";
 
@@ -40,13 +40,13 @@ export function useWorkspaceFilePublish(
       if (!target) return null;
       setPublishingPath(path);
       try {
-        const outcome = await api.downloadWorkspaceFile(wsId, taskShort, path);
-        if (outcome.status !== "completed") return "error";
-        if (outcome.data.too_large) return "too_large";
+        const payload = await fetchWorkspaceFilePayload(wsId, taskShort, path);
+        if (payload === "too_large") return "too_large";
+        if (payload === "error") return "error";
         const filename = path.split("/").pop() || "deliverable";
-        const blob = base64ToBlob(outcome.data.content, outcome.data.mime);
+        const blob = base64ToBlob(payload.content, payload.mime);
         const file = new File([blob], filename, {
-          type: outcome.data.mime || "application/octet-stream",
+          type: payload.mime || "application/octet-stream",
         });
         const attachment = await api.uploadFile(file, { issueId: target.issueId });
         await createComment.mutateAsync({

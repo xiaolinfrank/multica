@@ -28,8 +28,10 @@ import {
   WrapText,
   Loader2,
   Upload,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAttachmentPreview } from "../../editor";
 import {
   useWorkspaceFilePublish,
   type WorkspacePublishTarget,
@@ -47,7 +49,7 @@ import {
 import { getPreviewKind, extensionToLanguage } from "../../editor/utils/preview";
 import { useT } from "../../i18n";
 import { WorkspaceCodeView } from "./workspace-code-view";
-import { useWorkspaceFileDownload, type DownloadOutcome } from "./workspace-download";
+import { useWorkspaceFileDownload, fetchWorkspaceFilePayload, type DownloadOutcome } from "./workspace-download";
 
 /** Human-readable byte size (binary units). */
 function formatBytes(bytes: number): string {
@@ -148,6 +150,12 @@ function buildNodes(entries: WorkspaceFileEntry[]): TreeNode[] {
 // file through the download op, so anything above the cap can never reach the
 // upload step.
 export const WORKSPACE_PUBLISH_MAX_BYTES = 10 * 1024 * 1024;
+
+// Kinds the shared attachment viewer renders straight from a URL — the only
+// ones a workspace file (fetched as a base64 payload, no attachment record)
+// can hand it. Text kinds need the ID-keyed /content proxy and stay in the
+// explorer's inline pane.
+const VIEWER_KINDS = new Set(["pdf", "video", "audio"]);
 
 export function WorkspaceFileExplorer({
   wsId,
@@ -413,9 +421,43 @@ function PreviewPane({
   const { t } = useT("workspaces");
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
+  const viewer = useAttachmentPreview();
+  const [openingViewer, setOpeningViewer] = useState(false);
 
   const isImage = getPreviewKind("", node.path) === "image";
   const publishBlocked = node.size > WORKSPACE_PUBLISH_MAX_BYTES;
+  // pdf/video/audio have no inline pane here; the shared viewer plays them
+  // from a data: URL built off the download op (≤ 10 MiB).
+  const viewerKind = getPreviewKind("", node.path);
+  const canOpenInViewer = viewerKind !== null && VIEWER_KINDS.has(viewerKind);
+
+  const handleOpenInViewer = async () => {
+    if (!viewerKind) return;
+    setOpeningViewer(true);
+    const payload = await fetchWorkspaceFilePayload(wsId, taskShort, node.path);
+    setOpeningViewer(false);
+    if (payload === "too_large") {
+      toast.error(t(($) => $.browser.open_too_large));
+      return;
+    }
+    if (payload === "error") {
+      toast.error(t(($) => $.browser.open_failed));
+      return;
+    }
+    const dataUrl = `data:${payload.mime || "application/octet-stream"};base64,${payload.content}`;
+    if (
+      !viewer.tryOpen({
+        kind: "url",
+        url: dataUrl,
+        filename: node.name,
+        forceKind: viewerKind,
+      })
+    ) {
+      // Not previewable after all (e.g. an exotic extension): fall back to
+      // the pane's own download affordance rather than failing silently.
+      onDownload(node.path);
+    }
+  };
 
   // Exactly one of these queries is enabled (the other gets an empty path,
   // which disables it) so both hooks run unconditionally per the rules of hooks.
@@ -437,6 +479,7 @@ function PreviewPane({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {viewer.modal}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <FileTypeIcon path={node.path} className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-caption" title={node.path}>
@@ -465,6 +508,19 @@ function PreviewPane({
                 )}
               </PaneAction>
             </>
+          ) : null}
+          {canOpenInViewer ? (
+            <PaneAction
+              label={publishBlocked ? t(($) => $.browser.open_too_large) : t(($) => $.browser.open_viewer)}
+              disabled={publishBlocked || openingViewer}
+              onClick={handleOpenInViewer}
+            >
+              {openingViewer ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Eye className="size-3.5" />
+              )}
+            </PaneAction>
           ) : null}
           {onPublish ? (
             <PaneAction
