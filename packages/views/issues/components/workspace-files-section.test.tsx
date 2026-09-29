@@ -70,14 +70,17 @@ describe("WorkspaceFilesSection", () => {
     };
     renderWithI18n(<WorkspaceFilesSection issueId="i1" />);
 
-    // Header is shown; the workspace rows stay collapsed until expanded.
+    // Defaults open (same as the Deliverables section above it): the rows
+    // are visible without discovery, and the explorer stays closed.
     expect(screen.getByText("Workspace files")).toBeTruthy();
-    expect(screen.queryByText("Agent One")).toBeNull();
-
-    // Expand → the workspace row appears, but the explorer stays closed.
-    fireEvent.click(screen.getByText("Workspace files"));
     expect(screen.getByText("Agent One")).toBeTruthy();
     expect(screen.queryByTestId("explorer")).toBeNull();
+
+    // Collapse → the rows hide; expand again → back.
+    fireEvent.click(screen.getByText("Workspace files"));
+    expect(screen.queryByText("Agent One")).toBeNull();
+    fireEvent.click(screen.getByText("Workspace files"));
+    expect(screen.getByText("Agent One")).toBeTruthy();
 
     // Clicking Browse opens the explorer dialog.
     fireEvent.click(screen.getByText("Browse"));

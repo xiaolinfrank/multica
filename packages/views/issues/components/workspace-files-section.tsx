@@ -25,14 +25,16 @@ function formatBytes(bytes: number): string {
 /**
  * Workspace files — the persistent agent workspace(s) for this issue. Mirrors
  * ExecutionLogSection: self-contained collapse state, hides itself when the
- * issue has no agent workspace on disk. Each workspace opens the shared
- * two-pane file explorer in a dialog (same UX as the management page) rather
- * than embedding a tree inline, so multiple workspaces don't bloat the page.
+ * issue has no agent workspace on disk. Defaults open, like the Deliverables
+ * section above it, so the entry point into a task's working directory is
+ * visible without discovery. Each workspace opens the shared two-pane file
+ * explorer in a dialog (same UX as the management page) rather than embedding
+ * a tree inline, so multiple workspaces don't bloat the page.
  */
 export function WorkspaceFilesSection({ issueId }: { issueId: string }) {
   const { t } = useT("workspaces");
   const wsId = useWorkspaceId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   const { data } = useQuery(agentWorkspacesOptions(wsId));
   const workspaces = useMemo(
