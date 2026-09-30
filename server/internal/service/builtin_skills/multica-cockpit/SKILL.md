@@ -103,8 +103,8 @@ multica cockpit meeting add --title "20260908-01 工作组周例会" --code 2026
 ```
 
 Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
-milestone with an `actual_date` reads as done whatever its status label says. A
-meeting's task, folder and links are HTTP-only — see `references/cockpit.md`.
+milestone with an `actual_date` reads as done whatever its status label says;
+a meeting's task, folder and links are HTTP-only — see `references/cockpit.md`.
 
 ## Versions
 
@@ -118,9 +118,6 @@ multica cockpit version save --label "评审前"
 multica cockpit version restore <snapshot-id>   # owner/admin; saves the current board first
 ```
 
-Unresolvable issue references in a restore are reported and skipped; the
-snapshot/keep-window rules live in `references/cockpit.md` §Versions.
-
 ## Board-level fields
 
 ```bash
@@ -130,8 +127,7 @@ multica cockpit update --summary-overall "本周完成 …"
 
 The three summary cards (`--summary-overall`, `--summary-next`,
 `--summary-support`) override the board's automatic roll-up. Leave them empty
-unless asked to write one: an empty card means "derive it from the tasks", which
-stays correct on its own.
+unless asked: an empty card derives from the tasks and stays correct on its own.
 
 ## Import
 
