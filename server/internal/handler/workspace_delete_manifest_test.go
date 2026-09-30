@@ -48,6 +48,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"cockpit_node":                       workspaceDelete,
 	"cockpit_node_issue":                 workspaceDelete,
 	"cockpit_payment":                    workspaceDelete,
+	"cockpit_used_codes":                 workspaceDelete,
 	"channel_chat_context_generation":    workspaceDelete,
 	"channel_chat_session_binding":       workspaceDelete,
 	"channel_inbound_audit":              workspaceDelete,
