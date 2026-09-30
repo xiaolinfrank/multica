@@ -5,19 +5,23 @@
 // A meeting stores its people as one "、"-joined string, but picking them is
 // not a flat search across everyone the board has ever met: the room is read
 // by unit first ("深圳联通 sent …"). Once the parties field says who is at
-// the table, this picker groups the contact book by those units — each row a
-// name with its 职位 — so the unit's people are one glance and any number of
-// ticks away. Everyone else (workspace members, names the board has used,
-// contacts without a unit) follows under one "others" bucket.
+// the table, this picker shows just those units' contacts — each row a name
+// with its 职位, any number a tick away — and a toggle at the foot widens the
+// browse to the whole book. Typing always searches everything. Without
+// parties (or with units the book does not know), the full grouped list
+// shows: workspace members, names the board has used and unit-less contacts
+// follow the units under one "others" bucket.
 //
 // The book grows by using the form: a typed-in name is offered for filing
 // under the meeting's unit when the field commits (the edit panel saves at
 // once; the create form holds it until the meeting exists), and the "new
 // contact" row opens a small editor for the 职位 (and the unit, when several
-// are at the table) that saves on the spot. The hint under the field says so
-// — copy in meetings.directory_hint.
+// are at the table) that saves on the spot. Rows the form filed carry a
+// two-step inline delete; the preset roster (source "seed") does not. The
+// hint under the field says the saving part — copy in
+// meetings.directory_hint.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CockpitDirectoryEntry } from "@multica/core/types";
 import {
   cockpitDirectoryAutoSaveEntries,
@@ -31,7 +35,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
-import { Check, Pencil, Plus, X } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 
 /**
@@ -47,6 +51,8 @@ interface AttendeeRow {
   name: string;
   party: string;
   position: string;
+  /** "seed" is the preset roster: kept forever, no delete affordance. */
+  source: string;
   /** True for the flat names under the others bucket (members, board vocabulary). */
   other: boolean;
 }
@@ -78,6 +84,9 @@ export interface CockpitAttendeeFieldProps {
   disabled?: boolean;
   /** Files one contact into the book; resolves whether it landed. */
   onSaveEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  /** Deletes one form-filed contact after its inline confirm; resolves
+   *  whether it landed. Absent on servers too old to know deletion. */
+  onDeleteEntry?: (entry: { party: string; name: string }) => Promise<boolean>;
   /** Fires after a commit with the attendees the book did not know,
    *  attributed to the meeting's unit (empty when the unit is ambiguous). */
   onAutoSave?: (entries: CockpitDirectoryEntry[]) => void;
@@ -97,6 +106,7 @@ export function CockpitAttendeeField({
   placeholder,
   disabled,
   onSaveEntry,
+  onDeleteEntry,
   onAutoSave,
   renderToken,
   renderOption,
@@ -110,6 +120,14 @@ export function CockpitAttendeeField({
   const [highlighted, setHighlighted] = useState(-1);
   const [contact, setContact] = useState<ContactDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Browsing widened past the meeting's own units; a query always widens. */
+  const [showAll, setShowAll] = useState(false);
+  /** The row mid two-step delete confirm, or null. */
+  const [deleting, setDeleting] = useState<AttendeeRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  /** Names deleted from the book while the picker is open: the commit's
+   * auto-file must not resurrect what this form just removed. */
+  const deletedNames = useRef<Set<string>>(new Set());
 
   const committed = useMemo(() => splitCockpitMeetingPeople(value), [value]);
   useEffect(() => {
@@ -117,18 +135,39 @@ export function CockpitAttendeeField({
       setDraft(committed);
       setQuery("");
       setContact(null);
+      setDeleting(null);
+      setShowAll(false);
+      deletedNames.current.clear();
     }
   }, [committed, editing]);
+
+  // The book can move under an open picker (another client deleted the
+  // row): a confirm bar for a row that is no longer there stops rendering
+  // instead of acting on a ghost.
+  const deletingRow =
+    deleting && directory.some((e) => e.party === deleting.party && e.name === deleting.name)
+      ? deleting
+      : null;
 
   const chosen = useMemo(() => new Set(draft), [draft]);
   const needle = query.trim().toLowerCase();
 
-  // The book, grouped. The meeting's own parties lead; a contact row matches
-  // the query by name, 职位 or unit, so "联通" finds the unit's section.
+  // The book, grouped, the meeting's own parties leading. Browsing scopes to
+  // those parties — pick 联通 and 联通's people are what the list shows — with
+  // everyone else one toggle away. Typing always searches the whole book, so
+  // "联通" still finds the unit's section and a name from any unit.
+  const allGroups = useMemo(() => cockpitDirectoryGroups(directory, parties), [directory, parties]);
+  const partySet = useMemo(() => new Set(parties), [parties]);
+  const hasPartyContacts = useMemo(
+    () => allGroups.some((group) => partySet.has(group.party)),
+    [allGroups, partySet],
+  );
+  const scoped = !needle && !showAll && hasPartyContacts;
   const groups = useMemo(() => {
-    const all = cockpitDirectoryGroups(directory, parties);
-    if (!needle) return all;
-    return all
+    if (!needle) {
+      return scoped ? allGroups.filter((group) => partySet.has(group.party)) : allGroups;
+    }
+    return allGroups
       .map((group) => ({
         ...group,
         entries: group.entries.filter(
@@ -139,7 +178,7 @@ export function CockpitAttendeeField({
         ),
       }))
       .filter((group) => group.entries.length > 0);
-  }, [directory, parties, needle]);
+  }, [allGroups, needle, scoped, partySet]);
 
   const groupedNames = useMemo(() => {
     const names = new Set<string>();
@@ -163,7 +202,8 @@ export function CockpitAttendeeField({
   // One structure feeds both the keyboard walk and the render, so the two
   // can never disagree about order. The others bucket gets its header only
   // when units lead — a lone flat list is what the field always looked like;
-  // its "" header renders as the "others" label.
+  // its "" header renders as the "others" label. Scoped browsing hides the
+  // bucket entirely: it belongs to nobody's unit.
   const sections = useMemo<{ header: string | null; rows: AttendeeRow[] }[]>(() => {
     const out = groups.map((group) => ({
       header: group.party as string | null,
@@ -172,6 +212,7 @@ export function CockpitAttendeeField({
         name: entry.name,
         party: group.party,
         position: entry.position,
+        source: entry.source,
         other: false,
       })),
     }));
@@ -181,15 +222,23 @@ export function CockpitAttendeeField({
         name: entry.name,
         party: "",
         position: entry.position,
+        source: entry.source,
         other: false,
       })),
-      ...others.map((name) => ({ key: `other:${name}`, name, party: "", position: "", other: true })),
+      ...others.map((name) => ({
+        key: `other:${name}`,
+        name,
+        party: "",
+        position: "",
+        source: "",
+        other: true,
+      })),
     ];
-    if (otherRows.length > 0) {
+    if (!scoped && otherRows.length > 0) {
       out.push({ header: groups.length > 0 ? "" : null, rows: otherRows });
     }
     return out;
-  }, [groups, unaffiliated, others]);
+  }, [groups, unaffiliated, others, scoped]);
   const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
 
   // Only offer to add what is not already an option or already picked.
@@ -212,7 +261,9 @@ export function CockpitAttendeeField({
       onCommit(joined);
       // The book learns by being used: names nobody picked from it are filed
       // under the meeting's unit, so the next form offers them directly.
-      const fresh = cockpitDirectoryAutoSaveEntries(directory, parties.join("、"), joined);
+      const fresh = cockpitDirectoryAutoSaveEntries(directory, parties.join("、"), joined).filter(
+        (entry) => !deletedNames.current.has(entry.name),
+      );
       if (fresh.length > 0) onAutoSave?.(fresh);
     }
   };
@@ -248,10 +299,25 @@ export function CockpitAttendeeField({
         party: contact.party.trim(),
         name: contact.name,
         position: contact.position.trim(),
+        source: "user",
       });
       if (ok) setContact(null);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting || deleteBusy || !onDeleteEntry) return;
+    setDeleteBusy(true);
+    try {
+      const ok = await onDeleteEntry({ party: deleting.party, name: deleting.name });
+      if (ok) {
+        deletedNames.current.add(deleting.name);
+        setDeleting(null);
+      }
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -335,10 +401,12 @@ export function CockpitAttendeeField({
       open
       onOpenChange={(open, details) => {
         if (open) return;
-        // Escape while the contact editor is open closes the editor, not the
-        // picker — the tokens chosen so far are not a mistake to revert.
+        // Escape while the contact editor or the delete confirm is open
+        // closes just that — the tokens chosen so far are not a mistake to
+        // revert.
         if (details.reason === "escape-key") {
           if (contact) setContact(null);
+          else if (deletingRow) setDeleting(null);
           else revert();
         } else {
           finish(draft);
@@ -398,6 +466,7 @@ export function CockpitAttendeeField({
             } else if (e.key === "Escape") {
               e.preventDefault();
               if (contact) setContact(null);
+              else if (deletingRow) setDeleting(null);
               else revert();
             }
           }}
@@ -457,22 +526,42 @@ export function CockpitAttendeeField({
                         <li key={row.key} role="presentation" className="group/row flex items-center">
                           {optionRow(row, i)}
                           {!row.other && (
-                            <button
-                              type="button"
-                              aria-label={t(($) => $.meetings.directory_edit, { name: row.name })}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() =>
-                                setContact({
-                                  name: row.name,
-                                  party: row.party,
-                                  position: row.position,
-                                  partyLocked: true,
-                                })
-                              }
-                              className="mr-1 shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-accent focus-visible:opacity-100"
-                            >
-                              <Pencil className="size-3" aria-hidden />
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                aria-label={t(($) => $.meetings.directory_edit, { name: row.name })}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setDeleting(null);
+                                  setContact({
+                                    name: row.name,
+                                    party: row.party,
+                                    position: row.position,
+                                    partyLocked: true,
+                                  });
+                                }}
+                                className={cn(
+                                  "shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-accent focus-visible:opacity-100",
+                                  (row.source === "seed" || !onDeleteEntry) && "mr-1",
+                                )}
+                              >
+                                <Pencil className="size-3" aria-hidden />
+                              </button>
+                              {row.source !== "seed" && onDeleteEntry && (
+                                <button
+                                  type="button"
+                                  aria-label={t(($) => $.meetings.directory_delete, { name: row.name })}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setContact(null);
+                                    setDeleting(row);
+                                  }}
+                                  className="mr-1 shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-accent hover:text-destructive focus-visible:opacity-100"
+                                >
+                                  <Trash2 className="size-3" aria-hidden />
+                                </button>
+                              )}
+                            </>
                           )}
                         </li>
                       );
@@ -482,6 +571,54 @@ export function CockpitAttendeeField({
               ));
             })()}
           </ul>
+        )}
+        {!needle && hasPartyContacts && (
+          // Browsing is scoped to the meeting's units; this row widens it (or
+          // narrows it back). A typed query always searches the whole book, so
+          // the toggle only exists while the box is empty.
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full rounded-sm border-t border-border px-2 py-1 text-left text-micro text-muted-foreground hover:bg-accent/50"
+          >
+            {showAll
+              ? t(($) => $.meetings.directory_only_parties)
+              : t(($) => $.meetings.directory_show_all)}
+          </button>
+        )}
+        {deletingRow && (
+          // The delete's second step, inline: a modal dialog here would close
+          // the popover (its buttons are an outside press) and commit the
+          // half-picked tokens with it.
+          <div className="flex flex-col gap-1.5 rounded-md border border-border p-2">
+            <span className="text-caption">
+              {t(($) => $.meetings.directory_delete_confirm, { name: deletingRow.name })}
+            </span>
+            {deletingRow.party && (
+              <span className="text-caption text-muted-foreground">{deletingRow.party}</span>
+            )}
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={deleteBusy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setDeleting(null)}
+              >
+                {common(($) => $.cancel)}
+              </Button>
+              <Button
+                variant="destructive"
+                size="xs"
+                disabled={deleteBusy}
+                aria-busy={deleteBusy}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void confirmDelete()}
+              >
+                {common(($) => $.delete)}
+              </Button>
+            </div>
+          </div>
         )}
         {contact && (
           <div className="flex flex-col gap-1.5 rounded-md border border-border p-2">
@@ -553,11 +690,17 @@ export function CockpitAttendeeField({
                 variant="ghost"
                 size="xs"
                 disabled={saving}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setContact(null)}
               >
                 {common(($) => $.cancel)}
               </Button>
-              <Button size="xs" disabled={saving} onClick={() => void saveContact()}>
+              <Button
+                size="xs"
+                disabled={saving}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void saveContact()}
+              >
                 {common(($) => $.save)}
               </Button>
             </div>

@@ -750,6 +750,27 @@ func (q *Queries) DeleteCockpitChangesByNode(ctx context.Context, arg DeleteCock
 	return err
 }
 
+const deleteCockpitDirectoryEntry = `-- name: DeleteCockpitDirectoryEntry :exec
+DELETE FROM cockpit_directory
+WHERE cockpit_id = $1::uuid
+    AND party = $2::text
+    AND name = $3::text
+    AND source <> 'seed'
+`
+
+type DeleteCockpitDirectoryEntryParams struct {
+	CockpitID pgtype.UUID `json:"cockpit_id"`
+	Party     string      `json:"party"`
+	Name      string      `json:"name"`
+}
+
+// Belt and braces after the handler's source check: a seeded row can never
+// be deleted through this query, whatever the caller decided.
+func (q *Queries) DeleteCockpitDirectoryEntry(ctx context.Context, arg DeleteCockpitDirectoryEntryParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitDirectoryEntry, arg.CockpitID, arg.Party, arg.Name)
+	return err
+}
+
 const deleteCockpitMeeting = `-- name: DeleteCockpitMeeting :exec
 DELETE FROM cockpit_meeting
 WHERE id = $1::uuid
@@ -1112,6 +1133,29 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 	return i, err
 }
 
+const getCockpitDirectoryEntrySource = `-- name: GetCockpitDirectoryEntrySource :one
+SELECT source FROM cockpit_directory
+WHERE cockpit_id = $1::uuid
+    AND party = $2::text
+    AND name = $3::text
+`
+
+type GetCockpitDirectoryEntrySourceParams struct {
+	CockpitID pgtype.UUID `json:"cockpit_id"`
+	Party     string      `json:"party"`
+	Name      string      `json:"name"`
+}
+
+// Deletion needs to know what it is looking at before it touches the row:
+// roster-seeded contacts are protected, so the handler reads the source
+// first and can tell "not there" apart from "not yours to delete".
+func (q *Queries) GetCockpitDirectoryEntrySource(ctx context.Context, arg GetCockpitDirectoryEntrySourceParams) (string, error) {
+	row := q.db.QueryRow(ctx, getCockpitDirectoryEntrySource, arg.CockpitID, arg.Party, arg.Name)
+	var source string
+	err := row.Scan(&source)
+	return source, err
+}
+
 const getCockpitMeeting = `-- name: GetCockpitMeeting :one
 SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track FROM cockpit_meeting
 WHERE id = $1::uuid
@@ -1380,7 +1424,7 @@ func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, ar
 
 const listCockpitDirectory = `-- name: ListCockpitDirectory :many
 
-SELECT workspace_id, cockpit_id, party, name, position, created_at, updated_at FROM cockpit_directory
+SELECT workspace_id, cockpit_id, party, name, position, created_at, updated_at, source FROM cockpit_directory
 WHERE cockpit_id = $1::uuid
 ORDER BY party, name
 `
@@ -1407,6 +1451,7 @@ func (q *Queries) ListCockpitDirectory(ctx context.Context, cockpitID pgtype.UUI
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}
@@ -2538,7 +2583,7 @@ ON CONFLICT (cockpit_id, party, name) DO UPDATE SET
     position = CASE WHEN EXCLUDED.position <> '' THEN EXCLUDED.position
                     ELSE cockpit_directory.position END,
     updated_at = now()
-RETURNING workspace_id, cockpit_id, party, name, position, created_at, updated_at
+RETURNING workspace_id, cockpit_id, party, name, position, created_at, updated_at, source
 `
 
 type UpsertCockpitDirectoryEntryParams struct {
@@ -2569,6 +2614,7 @@ func (q *Queries) UpsertCockpitDirectoryEntry(ctx context.Context, arg UpsertCoc
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
 	)
 	return i, err
 }

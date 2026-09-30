@@ -54,6 +54,7 @@ vi.mock("@multica/core/api", () => ({
     createCockpitMeeting: vi.fn(),
     listCockpitDirectory: vi.fn(),
     upsertCockpitDirectory: vi.fn(),
+    deleteCockpitDirectoryEntry: vi.fn(),
     updateCockpitMeeting: vi.fn(),
     deleteCockpitMeeting: vi.fn(),
     provisionCockpitMeeting: vi.fn(),
@@ -510,7 +511,7 @@ describe("the meeting register", () => {
     await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
     await waitFor(() =>
       expect(api.upsertCockpitDirectory).toHaveBeenCalledWith([
-        { party: "Unicom", name: "New Person", position: "" },
+        { party: "Unicom", name: "New Person", position: "", source: "user" },
       ]),
     );
   });
@@ -622,8 +623,8 @@ describe("the people at a meeting", () => {
   it("groups the contact book by unit and files fresh names on its own", async () => {
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({
       entries: [
-        { party: "Fosun Pharma", name: "Liu Huanhuan", position: "Project manager" },
-        { party: "BGI", name: "Xiao Wang", position: "" },
+        { party: "Fosun Pharma", name: "Liu Huanhuan", position: "Project manager", source: "user" },
+        { party: "BGI", name: "Xiao Wang", position: "", source: "user" },
       ],
     });
     // The register repaints from the mutation's result, not just the call.
@@ -655,12 +656,15 @@ describe("the people at a meeting", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Attendees" }));
-    const listbox = screen.getByRole("listbox", { name: "Attendees" });
-    // The meeting's unit leads, its people carry their 职位; BGI's group
-    // follows even though BGI just left the meeting.
+    let listbox = screen.getByRole("listbox", { name: "Attendees" });
+    // Scoped to the meeting's one unit: BGI's group is behind the toggle now
+    // that BGI left the meeting.
+    expect(within(listbox).queryByText(/Xiao Wang/)).toBeNull();
+    expect(within(listbox).getByText("Project manager")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show everyone" }));
+    listbox = screen.getByRole("listbox", { name: "Attendees" });
     const text = listbox.textContent ?? "";
     expect(text.indexOf("Fosun Pharma")).toBeLessThan(text.indexOf("BGI"));
-    expect(within(listbox).getByText("Project manager")).toBeInTheDocument();
 
     fireEvent.click(within(listbox).getByRole("option", { name: /Liu Huanhuan/ }));
     const box = screen.getByRole("textbox", { name: "Attendees" });
@@ -679,8 +683,41 @@ describe("the people at a meeting", () => {
     // under the meeting's one unit.
     await waitFor(() =>
       expect(api.upsertCockpitDirectory).toHaveBeenCalledWith([
-        { party: "Fosun Pharma", name: "New Person", position: "" },
+        { party: "Fosun Pharma", name: "New Person", position: "", source: "user" },
       ]),
+    );
+  });
+
+  it("deletes a hand-filed contact behind a confirm, and never the roster", async () => {
+    vi.mocked(api.listCockpitDirectory).mockResolvedValue({
+      entries: [
+        { party: "Fosun Pharma", name: "Liu Huanhuan", position: "", source: "user" },
+        { party: "Fosun Pharma", name: "Preset Person", position: "Lead", source: "seed" },
+      ],
+    });
+    vi.mocked(api.deleteCockpitDirectoryEntry).mockResolvedValue({
+      entries: [{ party: "Fosun Pharma", name: "Preset Person", position: "Lead", source: "seed" }],
+    });
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(screen.getByRole("button", { name: "Attendees" }));
+
+    // Scoped to the meeting's units, both contacts show; only the hand-filed
+    // one carries a trash affordance.
+    expect(screen.getByRole("option", { name: /Preset Person/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Preset Person" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Liu Huanhuan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(api.deleteCockpitDirectoryEntry).toHaveBeenCalledWith({
+        party: "Fosun Pharma",
+        name: "Liu Huanhuan",
+      }),
+    );
+    // The row is gone from the refreshed book the server handed back.
+    await waitFor(() =>
+      expect(screen.queryByRole("option", { name: /Liu Huanhuan/ })).toBeNull(),
     );
   });
 

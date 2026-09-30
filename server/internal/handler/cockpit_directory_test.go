@@ -116,3 +116,67 @@ func TestCockpitDirectoryStaysInItsWorkspace(t *testing.T) {
 		t.Fatalf("the other workspace sees %d entries", got)
 	}
 }
+
+func deleteDirectoryEntry(t *testing.T, wsID string, body map[string]any) *testutil.Response {
+	t.Helper()
+	return testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitDirectoryEntry),
+		cockpitRequest(http.MethodDelete, "/api/cockpit/directory", wsID, body))
+}
+
+func TestCockpitDirectoryDeleteRemovesAFormRow(t *testing.T) {
+	wsID := cockpitFixture(t, "directory-delete")
+
+	upsertDirectory(t, wsID, []map[string]any{
+		{"party": "深圳联通", "name": "李明玉", "position": "平台总架构师"},
+		{"party": "深圳联通", "name": "丘汉清"},
+	}).Want(http.StatusOK)
+
+	var resp CockpitDirectoryResponse
+	deleteDirectoryEntry(t, wsID, map[string]any{"party": "深圳联通", "name": "丘汉清"}).
+		Want(http.StatusOK).JSON(&resp)
+	if len(resp.Entries) != 1 || resp.Entries[0].Name != "李明玉" {
+		t.Fatalf("expected only 李明玉 left, got %+v", resp.Entries)
+	}
+	if got := dbfx.Count(t, "SELECT COUNT(*) FROM cockpit_directory WHERE workspace_id = $1", wsID); got != 1 {
+		t.Fatalf("expected 1 row in the book, got %d", got)
+	}
+}
+
+func TestCockpitDirectoryDeleteRefusesARosterRow(t *testing.T) {
+	wsID := cockpitFixture(t, "directory-delete-seed")
+
+	upsertDirectory(t, wsID, []map[string]any{
+		{"party": "深圳联通", "name": "李明玉"},
+	}).Want(http.StatusOK)
+	// The 952 backfill marks the roster by its exact triple; make this row one
+	// of those, as if the seed had written it.
+	dbfx.Exec(t, "UPDATE cockpit_directory SET source = 'seed' WHERE workspace_id = $1 AND name = '李明玉'", wsID)
+
+	deleteDirectoryEntry(t, wsID, map[string]any{"party": "深圳联通", "name": "李明玉"}).
+		Want(http.StatusBadRequest)
+	if got := dbfx.Count(t, "SELECT COUNT(*) FROM cockpit_directory WHERE workspace_id = $1 AND name = '李明玉'", wsID); got != 1 {
+		t.Fatalf("a roster row must survive the delete, got %d rows", got)
+	}
+}
+
+func TestCockpitDirectoryDeleteUnknownRowIs404(t *testing.T) {
+	wsID := cockpitFixture(t, "directory-delete-404")
+	deleteDirectoryEntry(t, wsID, map[string]any{"party": "深圳联通", "name": "不存在的人"}).
+		Want(http.StatusNotFound)
+	deleteDirectoryEntry(t, wsID, map[string]any{"party": "深圳联通"}).
+		Want(http.StatusBadRequest)
+}
+
+func TestCockpitDirectoryDeleteStaysInItsWorkspace(t *testing.T) {
+	wsID := cockpitFixture(t, "directory-delete-ws-a")
+	otherWsID := cockpitFixture(t, "directory-delete-ws-b")
+
+	upsertDirectory(t, wsID, []map[string]any{{"party": "华为", "name": "黄支学"}}).Want(http.StatusOK)
+
+	// The other workspace cannot reach the row even by exact name.
+	deleteDirectoryEntry(t, otherWsID, map[string]any{"party": "华为", "name": "黄支学"}).
+		Want(http.StatusNotFound)
+	if got := dbfx.Count(t, "SELECT COUNT(*) FROM cockpit_directory WHERE workspace_id = $1", wsID); got != 1 {
+		t.Fatalf("cross-workspace delete must not touch the row, got %d", got)
+	}
+}

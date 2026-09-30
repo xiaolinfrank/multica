@@ -2004,6 +2004,17 @@ export class ApiClient {
     });
   }
 
+  /** Removes one form-filed contact; preset roster rows come back as a 400. */
+  async deleteCockpitDirectoryEntry(entry: { party: string; name: string }): Promise<CockpitDirectory> {
+    const raw = await this.fetch<unknown>("/api/cockpit/directory", {
+      method: "DELETE",
+      body: JSON.stringify(entry),
+    });
+    return parseWithFallback(raw, CockpitDirectorySchema, { entries: [] }, {
+      endpoint: "DELETE /api/cockpit/directory",
+    });
+  }
+
   async setCockpitMeetingIssues(
     meetingId: string,
     issueIds: string[],

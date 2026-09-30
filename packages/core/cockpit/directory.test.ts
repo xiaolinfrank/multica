@@ -12,15 +12,15 @@ import {
 } from "./directory";
 
 const book: CockpitDirectoryEntry[] = [
-  { party: "深圳联通", name: "李明玉", position: "" },
-  { party: "深圳联通", name: "冯延虎", position: "数据要素运营经理" },
-  { party: "深圳联通", name: "罗沂", position: "医疗 BU 总经理" },
-  { party: "华为", name: "黄支学", position: "方案负责人" },
-  { party: "华为", name: "刘云珂", position: "" },
-  { party: "", name: "黄晓韵", position: "PI" },
+  { party: "深圳联通", name: "李明玉", position: "", source: "seed" },
+  { party: "深圳联通", name: "冯延虎", position: "数据要素运营经理", source: "seed" },
+  { party: "深圳联通", name: "罗沂", position: "医疗 BU 总经理", source: "seed" },
+  { party: "华为", name: "黄支学", position: "方案负责人", source: "seed" },
+  { party: "华为", name: "刘云珂", position: "", source: "seed" },
+  { party: "", name: "黄晓韵", position: "PI", source: "seed" },
   // The same name at two units is legal; the meeting's own parties decide.
-  { party: "华大基因", name: "刘欢欢", position: "" },
-  { party: "复星医药", name: "刘欢欢", position: "项目经理" },
+  { party: "华大基因", name: "刘欢欢", position: "", source: "user" },
+  { party: "复星医药", name: "刘欢欢", position: "项目经理", source: "user" },
 ];
 
 describe("cockpitDirectoryParties", () => {
@@ -71,7 +71,7 @@ describe("cockpitDirectoryPosition", () => {
 describe("cockpitDirectoryAutoSaveEntries", () => {
   it("files unknown attendees under the meeting's only party", () => {
     const fresh = cockpitDirectoryAutoSaveEntries(book, "深圳联通", "李明玉、王新");
-    expect(fresh).toEqual([{ party: "深圳联通", name: "王新", position: "" }]);
+    expect(fresh).toEqual([{ party: "深圳联通", name: "王新", position: "", source: "user" }]);
   });
 
   it("attributes nothing when two units sat at the table", () => {

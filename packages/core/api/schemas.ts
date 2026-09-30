@@ -1929,6 +1929,9 @@ export const CockpitDirectoryEntrySchema = z.object({
   party: z.string().default(""),
   name: z.string().default(""),
   position: z.string().default(""),
+  // Absent on servers that predate the column: treat as preset so the
+  // delete affordance never shows against a backend that would refuse it.
+  source: z.string().default("seed"),
 }).loose();
 
 export const CockpitDirectorySchema = z.object({

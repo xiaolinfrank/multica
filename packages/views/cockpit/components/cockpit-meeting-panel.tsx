@@ -58,6 +58,7 @@ export interface CockpitMeetingPanelProps {
   directory: CockpitDirectoryEntry[];
   /** Files one contact into the book; resolves whether it landed. */
   onSaveDirectoryEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  onDeleteDirectoryEntry?: (entry: { party: string; name: string }) => Promise<boolean>;
   /** Fires after an attendee commit with the names the book did not know. */
   onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   issueLinks: CockpitMeetingIssueLink[];
@@ -86,6 +87,7 @@ export function CockpitMeetingPanel({
   members,
   directory,
   onSaveDirectoryEntry,
+  onDeleteDirectoryEntry,
   onAutoSaveDirectory,
   issueLinks,
   nodeLinks,
@@ -307,6 +309,7 @@ export function CockpitMeetingPanel({
               placeholder={unset}
               disabled={readOnly}
               onSaveEntry={onSaveDirectoryEntry}
+              onDeleteEntry={onDeleteDirectoryEntry}
               onAutoSave={onAutoSaveDirectory}
               renderToken={(name) => (
                 <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />

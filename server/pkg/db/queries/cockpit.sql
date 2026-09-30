@@ -522,6 +522,24 @@ ON CONFLICT (cockpit_id, party, name) DO UPDATE SET
     updated_at = now()
 RETURNING *;
 
+-- name: GetCockpitDirectoryEntrySource :one
+-- Deletion needs to know what it is looking at before it touches the row:
+-- roster-seeded contacts are protected, so the handler reads the source
+-- first and can tell "not there" apart from "not yours to delete".
+SELECT source FROM cockpit_directory
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+    AND party = sqlc.arg('party')::text
+    AND name = sqlc.arg('name')::text;
+
+-- name: DeleteCockpitDirectoryEntry :exec
+-- Belt and braces after the handler's source check: a seeded row can never
+-- be deleted through this query, whatever the caller decided.
+DELETE FROM cockpit_directory
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+    AND party = sqlc.arg('party')::text
+    AND name = sqlc.arg('name')::text
+    AND source <> 'seed';
+
 -- name: DeleteWorkspaceCockpitData :exec
 -- Workspace teardown. One statement with data-modifying CTEs so the whole board
 -- goes in a single round trip; there are no foreign keys to cascade it

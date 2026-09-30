@@ -349,6 +349,16 @@ export function useUpsertCockpitDirectory(wsId: string) {
   });
 }
 
+export function useDeleteCockpitDirectoryEntry(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: { party: string; name: string }) => api.deleteCockpitDirectoryEntry(entry),
+    onSuccess: (directory) => {
+      queryClient.setQueryData(cockpitKeys.directory(wsId), directory);
+    },
+  });
+}
+
 export function useUpdateCockpitMeeting(wsId: string) {
   return useCockpitRowMutation(
     wsId,

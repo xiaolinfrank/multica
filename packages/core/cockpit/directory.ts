@@ -115,5 +115,5 @@ export function cockpitDirectoryAutoSaveEntries(
   const known = new Set(entries.map((entry) => entry.name));
   return splitCockpitMeetingPeople(attendeesValue)
     .filter((name) => !known.has(name))
-    .map((name) => ({ party, name, position: "" }));
+    .map((name) => ({ party, name, position: "", source: "user" }));
 }

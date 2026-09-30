@@ -592,6 +592,7 @@ type CockpitDirectory struct {
 	Position    string             `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Source      string             `json:"source"`
 }
 
 type CockpitMeeting struct {

@@ -2539,6 +2539,9 @@ describe("Cockpit directory schema", () => {
     });
     expect(parsed.entries).toHaveLength(2);
     expect(parsed.entries[0]?.name).toBe("李明玉");
+    // A server older than the delete affordance omits source; reading it as
+    // "seed" hides the delete button rather than offering a doomed 404.
+    expect(parsed.entries.map((entry) => entry.source)).toEqual(["seed", "seed"]);
     expect((parsed.entries[0] as unknown as { future_field?: string }).future_field).toBe(
       "keep me",
     );

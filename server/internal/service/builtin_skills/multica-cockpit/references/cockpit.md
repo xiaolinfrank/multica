@@ -35,6 +35,7 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
 | GET | `/api/cockpit/directory` | the contact book: every `party`/`name`/`position` the workspace knows |
 | PUT | `/api/cockpit/directory` | upsert contacts as a batch (`{entries}`); an empty `position` never erases a known one |
+| DELETE | `/api/cockpit/directory` | remove one contact by `{party, name}`; a `seed` (roster) entry answers 400 |
 | GET | `/api/cockpit/changes` | the review queue: open proposals first, then decision history |
 | POST | `/api/cockpit/changes` | file one proposed field edit for review |
 | POST | `/api/cockpit/changes/ingest` | file a batch of proposals (the agent write-back funnel) |
@@ -84,6 +85,13 @@ unit only when exactly one party is at the table — with two there is no
 telling who sits where. A name the book already knows is never duplicated
 under a second unit by that path; a genuine namesake is filed explicitly
 through `PUT`. Seeded once per board from the programme's roster.
+
+Every entry carries a `source` — `seed` for the planted roster, `user` for
+anything the meeting form filed — and only `user` entries can be removed:
+`DELETE /api/cockpit/directory` takes a `{party, name}` pair and answers 400
+for the roster (a wrong title there is corrected with `PUT`, not deleted).
+Deleting a contact rewrites no meeting — `attendees` stays as typed, so a
+name that left the book still reads on every meeting that recorded it.
 
 Two link sets hang off a meeting and ride on the board read as
 `meeting_issues` and `meeting_nodes`. Neither has a surrogate key: the pair
@@ -207,7 +215,7 @@ history moved — an edit past the auto-checkpoint interval also lands here
 with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
 `rejected`, `withdrawn`) means only the review queue moved — an apply also
 carries its own `node` scope frame with the row it wrote; a `directory` scope
-(`upserted`) means the contact book moved, and it lives outside the board
+(`upserted`, `deleted`) means the contact book moved, and it lives outside the board
 read, so the frame just has clients re-fetch it.
 
 ## Import document

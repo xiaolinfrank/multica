@@ -66,6 +66,7 @@ import {
   useUpdateCockpit,
   useUpdateCockpitMeeting,
   cockpitDirectoryOptions,
+  useDeleteCockpitDirectoryEntry,
   useUpsertCockpitDirectory,
   useUpdateCockpitMilestone,
   useUpdateCockpitNode,
@@ -297,6 +298,7 @@ export function CockpitPage() {
   // The meeting forms read it and the auto-save appends to it.
   const { data: directoryData } = useQuery(cockpitDirectoryOptions(wsId));
   const upsertDirectory = useUpsertCockpitDirectory(wsId);
+  const deleteDirectoryEntry = useDeleteCockpitDirectoryEntry(wsId);
 
   // `board?.nodes ?? []` inline would mint a new array on every render where
   // the query is still loading, invalidating every memo below it.
@@ -427,6 +429,22 @@ export function CockpitPage() {
       void saveDirectoryEntries(entries);
     },
     [saveDirectoryEntries],
+  );
+
+  // Deletes land through the same whole-book refresh as saves. The preset
+  // roster never reaches this: the server refuses it and the picker hides
+  // the affordance for seed rows.
+  const removeDirectoryEntry = useCallback(
+    async (entry: { party: string; name: string }): Promise<boolean> => {
+      try {
+        await deleteDirectoryEntry.mutateAsync(entry);
+        return true;
+      } catch {
+        toast.error(t(($) => $.meetings.directory_delete_failed));
+        return false;
+      }
+    },
+    [deleteDirectoryEntry, t],
   );
 
   const patchMeeting = useCallback(
@@ -1190,6 +1208,7 @@ export function CockpitPage() {
             members={members ?? EMPTY_MEMBERS}
             directory={directoryData?.entries ?? EMPTY_DIRECTORY}
             onSaveDirectoryEntry={saveDirectoryEntry}
+            onDeleteDirectoryEntry={removeDirectoryEntry}
             onAutoSaveDirectory={autoSaveDirectory}
             issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
             nodeLinks={meetingNodesByMeeting.get(selectedMeeting.id) ?? []}
@@ -1276,6 +1295,7 @@ export function CockpitPage() {
         members={members ?? EMPTY_MEMBERS}
         directory={directoryData?.entries ?? EMPTY_DIRECTORY}
         onSaveDirectoryEntry={saveDirectoryEntry}
+        onDeleteDirectoryEntry={removeDirectoryEntry}
         onAutoSaveDirectory={autoSaveDirectory}
         currentUserName={currentUserName}
         defaultProjectId={board.cockpit.meeting_project_id}

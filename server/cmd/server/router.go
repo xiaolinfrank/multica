@@ -2192,6 +2192,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// several fresh names in one save.
 				r.Get("/directory", h.ListCockpitDirectory)
 				r.Put("/directory", h.UpsertCockpitDirectory)
+				r.Delete("/directory", h.DeleteCockpitDirectoryEntry)
 				r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
 				// Reads the archive folder for meetings nobody recorded, and
 				// turns the chosen ones into rows.

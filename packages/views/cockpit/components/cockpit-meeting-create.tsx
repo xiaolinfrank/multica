@@ -98,6 +98,7 @@ export interface CockpitMeetingCreateProps {
   directory: CockpitDirectoryEntry[];
   /** Files one contact into the book; resolves whether it landed. */
   onSaveDirectoryEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  onDeleteDirectoryEntry?: (entry: { party: string; name: string }) => Promise<boolean>;
   /** Fires after an attendee commit with the names the book did not know. */
   onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   /** Pre-selected as the convenor: whoever is filing the meeting. */
@@ -123,6 +124,7 @@ export function CockpitMeetingCreate({
   members,
   directory,
   onSaveDirectoryEntry,
+  onDeleteDirectoryEntry,
   onAutoSaveDirectory,
   currentUserName,
   defaultProjectId,
@@ -449,6 +451,7 @@ export function CockpitMeetingCreate({
                 placeholder={t(($) => $.meetings.pick_or_type)}
                 triggerClassName={FIELD_TRIGGER}
                 onSaveEntry={onSaveDirectoryEntry}
+                onDeleteEntry={onDeleteDirectoryEntry}
                 onAutoSave={setPendingAutoSave}
                 renderToken={(name) => (
                   <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />

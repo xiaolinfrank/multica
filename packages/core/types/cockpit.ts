@@ -181,6 +181,11 @@ export interface CockpitDirectoryEntry {
   name: string;
   /** Free text, like every other vocabulary field on this board. */
   position: string;
+  /** Where the row came from: "seed" is the programme's preset roster (never
+   *  deletable), "user" is someone the meeting form filed. A server old
+   *  enough to not know the column parses as "seed" — hiding the affordance
+   *  beats offering a delete the backend would refuse. */
+  source: string;
 }
 
 export interface CockpitDirectory {

@@ -55,6 +55,7 @@ vi.mock("@multica/core/api", () => ({
     createCockpitMeeting: vi.fn(),
     listCockpitDirectory: vi.fn(),
     upsertCockpitDirectory: vi.fn(),
+    deleteCockpitDirectoryEntry: vi.fn(),
     updateCockpitMeeting: vi.fn(),
     deleteCockpitMeeting: vi.fn(),
     searchIssues: vi.fn(),

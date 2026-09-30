@@ -12,10 +12,12 @@ package handler
 // like every cockpit write (see the router block).
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/multica-ai/multica/server/internal/logger"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -28,6 +30,10 @@ type CockpitDirectoryEntryResponse struct {
 	Party    string `json:"party"`
 	Name     string `json:"name"`
 	Position string `json:"position"`
+	// "seed" rows are the programme's roster (migration 947): the delete
+	// affordance must not touch them. Everything the meeting form filed is
+	// "user".
+	Source string `json:"source"`
 }
 
 type CockpitDirectoryResponse struct {
@@ -53,6 +59,7 @@ func cockpitDirectoryToResponse(rows []db.CockpitDirectory) CockpitDirectoryResp
 			Party:    row.Party,
 			Name:     row.Name,
 			Position: row.Position,
+			Source:   row.Source,
 		})
 	}
 	return CockpitDirectoryResponse{Entries: entries}
@@ -140,5 +147,73 @@ func (h *Handler) UpsertCockpitDirectory(w http.ResponseWriter, r *http.Request)
 	}
 	resp := cockpitDirectoryToResponse(rows)
 	h.publishCockpit(r, cc, "directory", "upserted", resp)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// CockpitDirectoryDeleteRequest names a contact by its identity triple's
+// (party, name) — the position is not part of the identity.
+type CockpitDirectoryDeleteRequest struct {
+	Party *string `json:"party"`
+	Name  *string `json:"name"`
+}
+
+// DeleteCockpitDirectoryEntry removes one form-filed contact. Seeded roster
+// rows refuse the delete: the roster is the programme's canonical list, and
+// a wrong name there is corrected by editing, not by deleting.
+func (h *Handler) DeleteCockpitDirectoryEntry(w http.ResponseWriter, r *http.Request) {
+	cc, ok := h.requireCockpit(w, r)
+	if !ok {
+		return
+	}
+
+	var req CockpitDirectoryDeleteRequest
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	name := strings.TrimSpace(textOrEmpty(req.Name))
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "directory entry name is required")
+		return
+	}
+	party := strings.TrimSpace(textOrEmpty(req.Party))
+
+	source, err := h.Queries.GetCockpitDirectoryEntrySource(r.Context(), db.GetCockpitDirectoryEntrySourceParams{
+		CockpitID: cc.cockpit.ID,
+		Party:     party,
+		Name:      name,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "directory entry not found")
+		return
+	}
+	if err != nil {
+		slog.Warn("GetCockpitDirectoryEntrySource failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete directory entry")
+		return
+	}
+	if source == "seed" {
+		writeError(w, http.StatusBadRequest, "preset directory entries cannot be deleted")
+		return
+	}
+
+	if err := h.Queries.DeleteCockpitDirectoryEntry(r.Context(), db.DeleteCockpitDirectoryEntryParams{
+		CockpitID: cc.cockpit.ID,
+		Party:     party,
+		Name:      name,
+	}); err != nil {
+		slog.Warn("DeleteCockpitDirectoryEntry failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete directory entry")
+		return
+	}
+
+	// Same answer as the upsert: the whole refreshed book.
+	rows, err := h.Queries.ListCockpitDirectory(r.Context(), cc.cockpit.ID)
+	if err != nil {
+		slog.Warn("ListCockpitDirectory failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load directory")
+		return
+	}
+	resp := cockpitDirectoryToResponse(rows)
+	h.publishCockpit(r, cc, "directory", "deleted", resp)
 	writeJSON(w, http.StatusOK, resp)
 }
