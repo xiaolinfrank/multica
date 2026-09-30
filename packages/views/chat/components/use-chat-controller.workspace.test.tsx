@@ -21,6 +21,10 @@ vi.mock("@multica/core/auth", () => ({
     selector({ user: { id: "user-1" } }),
 }));
 vi.mock("@multica/core/agents", () => ({
+  // BayClaw fork: use-chat-controller pins the default assignee through
+  // pinAgentByName; the upstream mock list predates it. Identity keeps the
+  // fixture order this suite asserts on.
+  pinAgentByName: (agents: never[]) => agents,
   isAgentRuntimeBound: () => false,
   useAgentPresenceDetail: () => ({ availability: "online" }),
   useCustomizeConversationStartersHref: () => null,
