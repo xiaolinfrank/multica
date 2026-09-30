@@ -24,7 +24,8 @@ Read the invariants below, then open the reference(s) your task actually needs
 | `references/agents.md` | Creating, copying or debugging an agent definition: fields, secrets, MCP config, skill binding |
 | `references/squads.md` | Squads: leader routing, roster, recording leader activity, why a squad did or did not run |
 | `references/autopilots.md` | Autopilots: schedule / webhook / manual triggers, `create_issue` vs `run_only`, why one did not fire |
-| `references/projects.md` | Projects, their modules, their durable resources (`github_repo`, `local_directory`, worktree mode), and the project collaboration space a deliverable is written to |
+| `references/projects.md` | Projects, their durable resources (`github_repo`, `local_directory`, worktree mode), and the project collaboration space a deliverable is written to |
+| `references/modules.md` | Filing issues into a project's modules: `module_id` rules, sub-issue inheritance, `child_module_mismatch`, module filtering and grouping |
 | `references/runtimes.md` | Runtimes, daemons, `repo checkout`, and the task CLI boundary |
 | `references/skill-import.md` | Importing a skill into this workspace from a URL or a local archive |
 

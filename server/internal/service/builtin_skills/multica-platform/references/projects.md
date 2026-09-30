@@ -223,7 +223,7 @@ project and each module's folder is found by name inside it — see
 
 To file an issue into a module, use `multica issue create --module` /
 `multica issue update --module` — see
-[issues.md](issues.md#modules-grouping-issues-inside-a-project).
+[modules.md](modules.md).
 
 ## local_directory execution modes
 
