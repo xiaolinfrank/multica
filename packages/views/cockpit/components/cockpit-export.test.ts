@@ -33,6 +33,23 @@ describe("actual Gantt DOM capture (mocked rasterizer, not browser acceptance)",
     expect(viewport.scrollLeft).toBe(400); expect(viewport.scrollTop).toBe(300);
     expect(viewport.style.overflow).toBe("auto");
   });
+
+  it("pins the clone to settled state — mount animations and transitions must not restart during rasterisation", async () => {
+    const { root } = chart();
+    const fill = document.createElement("div");
+    fill.style.animation = "cockpit-grow 560ms both";
+    fill.style.transition = "opacity 1s";
+    root.querySelector("[data-cockpit-scroll]")!.append(fill);
+    const canvas = document.createElement("canvas");
+    vi.mocked(toCanvas).mockImplementation(async (clone) => {
+      const clonedFill = clone.querySelector("[data-cockpit-scroll]")!.lastElementChild as HTMLElement;
+      expect(clonedFill.style.animation).toBe("none");
+      expect(clonedFill.style.transition).toBe("none");
+      return canvas;
+    });
+    expect(await captureCockpitGantt(root)).toBe(canvas);
+    expect(fill.style.animation).toBe("cockpit-grow 560ms both");
+  });
   it("applies summary PDF cutoff only to the clone and restores on capture failure", async () => {
     const { root } = chart();
     vi.mocked(toCanvas).mockImplementation(async (_clone, options) => { expect(options?.width).toBe(900); throw new Error("raster failed"); });

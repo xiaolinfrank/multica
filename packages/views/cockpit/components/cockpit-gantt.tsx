@@ -597,7 +597,7 @@ function MiniProgress({ value, className }: { value: number; className?: string 
     <span className={cn("inline-flex items-center gap-1 text-micro font-bold tabular-nums", className)}>
       {value}%
       <span className="h-1 w-[22px] overflow-hidden rounded-full bg-current/20">
-        <span className="block h-full rounded-full bg-current" style={{ width: `${value}%` }} />
+        <span className="cockpit-grow block h-full rounded-full bg-current" style={{ width: `${value}%` }} />
       </span>
     </span>
   );
@@ -1432,7 +1432,7 @@ export function CockpitGantt({
                   <TooltipTrigger
                     render={
                       <span
-                        className="absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
+                        className="cockpit-today-line absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
                         style={{ left: todayX }}
                         aria-label={t(($) => $.gantt.today_line, { date: today })}
                       />
@@ -1470,7 +1470,7 @@ export function CockpitGantt({
 
               {todayX !== null && (
                 <div
-                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
+                  className="cockpit-today-line pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
                   style={{ left: todayX }}
                   aria-hidden
                 />
@@ -1578,7 +1578,7 @@ export function CockpitGantt({
                               onClick={() => onSelect(node.id)}
                               aria-label={t(($) => $.gantt.bar_label, { code })}
                               className={cn(
-                                "absolute -translate-y-1/2 overflow-hidden rounded-md ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                "absolute -translate-y-1/2 overflow-hidden rounded-md shadow-[inset_0_1px_0_rgb(255_255_255/0.28),inset_0_-1px_0_rgb(0_0_0/0.08)] ring-offset-background transition-[filter] hover:brightness-[1.07] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                                 // A roll-up is hatched as well as coloured: it
                                 // reports the state of everything under it, not
                                 // a status anyone set on the row itself. The

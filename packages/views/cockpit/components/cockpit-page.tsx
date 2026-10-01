@@ -118,6 +118,7 @@ import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meetin
 import { CockpitTaskCreateDialog } from "./cockpit-task-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
+import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
 import { CockpitMeetings } from "./cockpit-meetings";
 import type { CockpitNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitNodePanel } from "./cockpit-node-panel";
@@ -222,6 +223,7 @@ export function CockpitPage() {
   const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
   const [tab, setTab] = useState<CockpitTab>("overview");
+  const tabPillRef = useSegmentedPill(tab);
   const [zoom, setZoom] = useState<CockpitZoom>("month");
   const [query, setQuery] = useState("");
   // Empty means "every module"; the menu is multi-select, so comparing two
@@ -859,19 +861,25 @@ export function CockpitPage() {
           displayClassName="text-title-sm font-semibold"
         />
 
-        <nav className="ml-2 flex items-center gap-0.5 rounded-md bg-muted p-0.5">
+        {/* One pill glides to the active tab; the buttons themselves stay
+            transparent, so a switch reads as motion, not repaints. */}
+        <nav
+          ref={tabPillRef}
+          className="cockpit-segmented ml-2 flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+        >
+          <SegmentedPill />
           {TABS.map((key) => (
             <button
               key={key}
               type="button"
+              data-active={tab === key}
+              aria-current={tab === key ? "page" : undefined}
               onClick={() => setTab(key)}
-              // The active tab keeps its identity under the cursor: hover only
-              // touches the background of the inactive ones.
               className={cn(
                 "rounded-sm px-2.5 py-1 text-caption transition-colors",
                 tab === key
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {tabLabels[key]}

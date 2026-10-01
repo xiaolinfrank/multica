@@ -69,9 +69,7 @@
   --banner-glass-border: rgb(255 255 255 / 0.34);
 
   position: relative;
-  min-height: 116px;
   border-radius: 16px;
-  padding: 20px 24px;
   color: #ffffff;
   /* A fine blueprint grid under the colour sweep — the masthead of a
      programme board should feel engineered, not just painted. Kept faint
@@ -117,10 +115,11 @@
   background: radial-gradient(circle, var(--banner-bloom), transparent 68%);
   pointer-events: none;
 }
-/* Only the glass needs lifting above the blooms. A blanket `> *` here once
-   un-anchored the corner chip and the clock: Tailwind's `.absolute` is the
-   same specificity and loses the cascade order, so both fell back into the
-   flex column and stretched the masthead into a three-row heap. */
+/* Everything in the banner that is not a bloom needs an explicit lift: the
+   ::before/::after glows are positioned, and positioned paint beats in-flow
+   paint regardless of DOM order, so an unlifted row would sit *under* the
+   corner glow it shares a quadrant with. */
+.cockpit-banner-row,
 .cockpit-banner-glass {
   position: relative;
   z-index: 1;
@@ -141,6 +140,7 @@
   display: inline-flex;
   align-items: center;
   gap: 11px;
+  max-width: 100%;
   background: var(--banner-glass);
   border: 1px solid var(--banner-glass-border);
   border-radius: 12px;
@@ -149,6 +149,36 @@
     inset 0 1px 0 rgb(255 255 255 / 0.32),
     0 8px 20px rgb(2 32 71 / 0.22);
   backdrop-filter: blur(8px) saturate(150%);
+}
+
+/* The goal title must stay readable at any width. EditableText renders its
+   display state with `truncate` (nowrap), and inside the shrink-to-fit glass
+   that made the line wider than a phone screen, clipped on both sides by the
+   banner's overflow. Wrap it instead: two balanced lines beat an amputated
+   one. cockpit.css loads after Tailwind, so this wins the tie with the
+   truncate utility without a specificity war. */
+.cockpit-banner-title {
+  white-space: normal;
+  text-overflow: clip;
+  text-align: center;
+  text-wrap: balance;
+  line-height: 1.25;
+}
+
+/* The masthead arrives once, slightly — it is the one element on the board
+   allowed an entrance with weight. */
+@keyframes cockpit-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cockpit-banner {
+  animation: cockpit-banner-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /*
@@ -282,10 +312,212 @@
   animation: cockpit-panel-enter 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Material & light — the layer that lifts the board off the page.
+ *
+ * The aurora sits on the skin root (it does not scroll with the content),
+ * the card material floats one soft ambient shadow above it, and every
+ * animated entrance shares the zoom's easing so the whole board moves like
+ * one object.
+ */
+
+.cockpit-skin {
+  background:
+    radial-gradient(
+      720px 340px at 12% -6%,
+      color-mix(in oklab, var(--color-brand) 7%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      560px 300px at 88% -4%,
+      color-mix(in oklab, var(--color-info) 6%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      640px 420px at 55% 108%,
+      color-mix(in oklab, var(--color-budget) 4%, transparent),
+      transparent 72%
+    ),
+    var(--color-background);
+}
+.dark .cockpit-skin {
+  background:
+    radial-gradient(
+      720px 340px at 12% -6%,
+      color-mix(in oklab, var(--color-brand) 13%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      560px 300px at 88% -4%,
+      color-mix(in oklab, var(--color-info) 10%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      640px 420px at 55% 108%,
+      color-mix(in oklab, var(--color-budget) 7%, transparent),
+      transparent 72%
+    ),
+    var(--color-background);
+}
+
+/* The board's card: a hairline border plus one soft ambient shadow, so it
+   floats over the aurora instead of being drawn onto it. */
+.cockpit-card {
+  border: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow:
+    0 1px 2px rgb(9 20 38 / 0.04),
+    0 8px 24px -12px rgb(9 20 38 / 0.12);
+}
+.dark .cockpit-card {
+  border-color: color-mix(in oklab, var(--color-foreground) 12%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 10px 28px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Cards that open something lift on hover; the shadow warms towards the
+   card's own ink (module colour when the card sets --module-ink). */
+.cockpit-card-interactive {
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms;
+}
+.cockpit-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--color-foreground) 16%, transparent);
+  box-shadow:
+    0 2px 4px rgb(9 20 38 / 0.05),
+    0 16px 36px -12px color-mix(
+      in oklab,
+      var(--module-ink, var(--color-brand)) 24%,
+      rgb(9 20 38 / 0.16)
+    );
+}
+.dark .cockpit-card-interactive:hover {
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.4),
+    0 18px 40px -12px color-mix(in oklab, var(--module-ink, var(--color-brand)) 34%, rgb(0 0 0 / 0.55));
+}
+
+/* Narrative cards breathe their cap colour at a few percent — four cards,
+   four quiet identities, one rule. */
+.cockpit-card-top.cockpit-card {
+  background: color-mix(in oklab, var(--top-from) 3.5%, var(--color-card));
+}
+
+/* Milestone cards join the same material. */
+.cockpit-ms-card {
+  box-shadow:
+    0 1px 2px rgb(9 20 38 / 0.04),
+    0 8px 24px -12px rgb(9 20 38 / 0.1);
+}
+.dark .cockpit-ms-card {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 10px 28px -12px rgb(0 0 0 / 0.5);
+}
+
+/*
+ * The gliding pill behind segmented controls (page tabs, register views):
+ * one element slides to the active button instead of backgrounds blinking
+ * on and off. The hook measures the active button and sets the two custom
+ * properties; everything here is paint-only.
+ */
+.cockpit-segmented {
+  position: relative;
+}
+.cockpit-segmented-pill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: var(--pill-left, 2px);
+  width: var(--pill-width, 0);
+  border-radius: 6px;
+  background: var(--color-background);
+  box-shadow:
+    0 1px 3px rgb(9 20 38 / 0.14),
+    0 0 0 1px color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  opacity: var(--pill-on, 0);
+  transition:
+    left 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms;
+  pointer-events: none;
+}
+.dark .cockpit-segmented-pill {
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.5),
+    0 0 0 1px color-mix(in oklab, var(--color-foreground) 8%, transparent);
+}
+.cockpit-segmented > button {
+  position: relative;
+  z-index: 1;
+}
+
+/* Overview sections arrive in a short cascade — the page assembles top to
+   bottom once, then stays put. */
+.cockpit-stagger > * {
+  animation: cockpit-enter 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cockpit-stagger > *:nth-child(2) {
+  animation-delay: 45ms;
+}
+.cockpit-stagger > *:nth-child(3) {
+  animation-delay: 90ms;
+}
+.cockpit-stagger > *:nth-child(4) {
+  animation-delay: 135ms;
+}
+.cockpit-stagger > *:nth-child(5) {
+  animation-delay: 180ms;
+}
+.cockpit-stagger > *:nth-child(6) {
+  animation-delay: 225ms;
+}
+
+/* The stagger cascade above is later in source order and would flatten the
+   banner's authored 420ms entrance into the generic 340ms rise. The masthead
+   keeps its own moment — one specificity step up, placed after the cascade. */
+.cockpit-stagger > .cockpit-banner {
+  animation: cockpit-banner-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Progress fills grow from zero on mount; the waterline animating once is
+   what makes a number feel measured rather than printed. */
+@keyframes cockpit-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.cockpit-grow {
+  transform-origin: left;
+  animation: cockpit-grow 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The today line carries a soft brand glow — present, not neon. */
+.cockpit-today-line {
+  box-shadow: 0 0 8px color-mix(in oklab, var(--color-brand) 55%, transparent);
+}
+
+/* Reduced motion is honoured LAST: a media query adds no specificity, so this
+   block only wins if every rule it silences appears earlier in source order.
+   Keep it at the end of the file whenever new motion lands above. */
 @media (prefers-reduced-motion: reduce) {
   .cockpit-tab-enter,
   .cockpit-panel-enter,
-  .cockpit-flash {
+  .cockpit-flash,
+  .cockpit-banner,
+  .cockpit-grow,
+  .cockpit-stagger > *,
+  .cockpit-stagger > .cockpit-banner {
     animation: none;
+  }
+  .cockpit-segmented-pill,
+  .cockpit-card-interactive {
+    transition: none;
   }
 }

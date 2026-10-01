@@ -69,6 +69,12 @@ export async function captureCockpitGantt(
       copy.style.setProperty("-webkit-backdrop-filter", "none");
       if (!isOpaqueColor(computed.backgroundColor)) copy.style.backgroundColor = backgroundColor;
     }
+    // A freshly appended clone restarts every CSS animation from its first
+    // keyframe, and the capture rasterises inside that window — a fill that
+    // "grows" on mount would export collapsed. Animations and transitions
+    // carry no final state worth capturing: pin the clone to its natural one.
+    copy.style.animation = "none";
+    copy.style.transition = "none";
     if (element instanceof HTMLInputElement && copy instanceof HTMLInputElement) copy.value = element.value;
   });
   const viewport = source.querySelector<HTMLElement>("[data-cockpit-scroll]");

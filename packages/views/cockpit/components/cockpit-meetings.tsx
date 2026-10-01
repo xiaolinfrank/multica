@@ -46,6 +46,7 @@ import {
 import { useLocale, useT } from "../../i18n";
 import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
 import { CockpitMeetingTimeline } from "./cockpit-meeting-timeline";
+import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
 
 export type CockpitMeetingsView = "list" | "month" | "week" | "agenda" | "timeline";
 
@@ -112,6 +113,7 @@ export function CockpitMeetings({
   const { t } = useT("cockpit");
   const locale = useLocale();
   const [view, setView] = useState<CockpitMeetingsView>("list");
+  const viewPillRef = useSegmentedPill(view);
   // The period the calendar views are looking at. Both start on today and are
   // moved by the same two arrows, so switching between them keeps the place.
   const [anchor, setAnchor] = useState(today);
@@ -196,21 +198,24 @@ export function CockpitMeetings({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <div
-          className="flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+          ref={viewPillRef}
+          className="cockpit-segmented flex items-center gap-0.5 rounded-md bg-muted p-0.5"
           role="group"
           aria-label={t(($) => $.meetings.view)}
         >
+          <SegmentedPill />
           {VIEWS.map((key) => (
             <button
               key={key}
               type="button"
+              data-active={view === key}
               aria-pressed={view === key}
               onClick={() => setView(key)}
               className={cn(
                 "rounded-sm px-2.5 py-1 text-caption transition-colors",
                 view === key
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {viewLabels[key]}

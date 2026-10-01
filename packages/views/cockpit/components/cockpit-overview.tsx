@@ -97,7 +97,7 @@ function BannerClock({ locale }: { locale: string }) {
     : "—";
   return (
     <span className="flex items-baseline gap-1.5">
-      <span className="text-title-sm font-semibold tracking-wide tabular-nums">{clock}</span>
+      <span className="text-display-sm font-semibold tracking-tight tabular-nums">{clock}</span>
       <span className="text-micro opacity-90">
         {now ? now.toLocaleDateString(locale, { weekday: "long" }) : "—"}
       </span>
@@ -398,7 +398,7 @@ function NarrativeCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="cockpit-card-top rounded-lg border border-border bg-card p-4" data-cap={cap}>
+    <section className="cockpit-card-top cockpit-card p-4" data-cap={cap}>
       <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span aria-hidden className="inline-flex self-center" style={{ color: "var(--top-from)" }}>
           {icon}
@@ -522,30 +522,37 @@ export function CockpitOverview({
   const joinLead = (parts: (string | null)[]): string => parts.filter(Boolean).join(" · ");
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="cockpit-stagger flex flex-col gap-4 p-4">
       {/* Annual objective — the board's masthead banner: corner label, the
           goal itself in a frosted glass strip at the centre, and the live
           clock pinned top-right. Nothing else; the banner is one glance. */}
-      <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-6 pt-10 pb-4 text-white sm:px-12 sm:py-5 lg:px-24">
-        <span className="absolute top-4 left-5 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-micro font-bold tracking-widest">
-          <Goal className="size-3" aria-hidden />
-          {t(($) => $.overview.mvp_label)}
-        </span>
-        <div className="cockpit-banner-glass">
-          <EditableText
-            value={board.cockpit.goal_title}
-            onCommit={(goal_title) => onPatchBoard({ goal_title })}
-            label={t(($) => $.overview.annual_goal)}
-            placeholder={t(($) => $.overview.annual_goal_placeholder)}
-            disabled={readOnly}
-            displayClassName="text-title-lg font-extrabold text-white hover:bg-white/15"
-          />
-        </div>
-        <div className="absolute top-4 right-5 flex flex-col items-end gap-0.5">
-          <span className="text-micro font-bold tracking-widest opacity-85">
-            {t(($) => $.overview.clock)}
+      <section className="cockpit-banner flex min-h-[148px] flex-col px-6 py-5 text-white sm:px-12 sm:py-6 lg:px-24">
+        {/* Chip and clock share one in-flow row; the glass centres itself in
+            whatever height remains. Nothing is absolutely positioned, so a
+            wrapped goal can never collide with the clock at any width. */}
+        <div className="cockpit-banner-row flex w-full items-start justify-between gap-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-micro font-bold tracking-widest whitespace-nowrap">
+            <Goal className="size-3" aria-hidden />
+            {t(($) => $.overview.mvp_label)}
           </span>
-          <BannerClock locale={locale} />
+          <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+            <span className="text-micro font-bold tracking-widest opacity-85">
+              {t(($) => $.overview.clock)}
+            </span>
+            <BannerClock locale={locale} />
+          </div>
+        </div>
+        <div className="flex w-full flex-1 items-center justify-center py-2">
+          <div className="cockpit-banner-glass">
+            <EditableText
+              value={board.cockpit.goal_title}
+              onCommit={(goal_title) => onPatchBoard({ goal_title })}
+              label={t(($) => $.overview.annual_goal)}
+              placeholder={t(($) => $.overview.annual_goal_placeholder)}
+              disabled={readOnly}
+              displayClassName="cockpit-banner-title text-display-sm font-extrabold tracking-tight text-white hover:bg-white/15"
+            />
+          </div>
         </div>
       </section>
 
@@ -774,7 +781,7 @@ export function CockpitOverview({
           ].map((cell) => (
             <div
               key={cell.key}
-              className="rounded-md border border-border p-3"
+              className="cockpit-card p-3"
               title={cell.title ?? undefined}
             >
               <dt className="text-caption text-muted-foreground">{cell.label}</dt>
@@ -908,7 +915,7 @@ export function CockpitOverview({
                       </div>
                       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                         <div
-                          className="h-full rounded-full bg-info transition-[width] duration-300"
+                          className="cockpit-grow h-full rounded-full bg-info transition-[width] duration-300"
                           style={{
                             width:
                               maxMonthSpend > 0
@@ -1040,12 +1047,8 @@ function ModuleBigCard({
     : undefined;
   return (
     <article
-      className={cn(
-        "rounded-lg border border-border bg-card p-4",
-        interaction &&
-          "cursor-pointer transition-[box-shadow,border-color] hover:border-foreground/15 hover:shadow-md",
-      )}
-      style={{ borderTopColor: color, borderTopWidth: 4 }}
+      className={cn("cockpit-card p-4", interaction && "cockpit-card-interactive cursor-pointer")}
+      style={{ borderTopColor: color, borderTopWidth: 4, "--module-ink": color } as React.CSSProperties}
       {...interaction}
     >
       <div className="flex items-baseline gap-2">
@@ -1081,7 +1084,7 @@ function ModuleBigCard({
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full transition-[width] duration-300"
+          className="cockpit-grow h-full rounded-full transition-[width] duration-300"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
@@ -1157,12 +1160,8 @@ function ModuleSmallCard({
     : undefined;
   return (
     <article
-      className={cn(
-        "rounded-lg border border-border bg-card p-3",
-        interaction &&
-          "cursor-pointer transition-[box-shadow,border-color] hover:border-foreground/15 hover:shadow-md",
-      )}
-      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+      className={cn("cockpit-card p-3", interaction && "cockpit-card-interactive cursor-pointer")}
+      style={{ borderLeftColor: color, borderLeftWidth: 3, "--module-ink": color } as React.CSSProperties}
       {...interaction}
     >
       <div className="flex items-baseline gap-2">
@@ -1189,7 +1188,7 @@ function ModuleSmallCard({
       </div>
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full transition-[width] duration-300"
+          className="cockpit-grow h-full rounded-full transition-[width] duration-300"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
