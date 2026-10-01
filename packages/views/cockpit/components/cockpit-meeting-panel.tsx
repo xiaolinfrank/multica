@@ -137,7 +137,7 @@ export function CockpitMeetingPanel({
   const hasTask = issueLinks.some((link) => link.role === "task");
 
   return (
-    <aside className="flex w-96 shrink-0 flex-col border-l border-border bg-card">
+    <aside className="cockpit-panel-enter flex w-96 max-w-full shrink-0 flex-col border-l border-border bg-card max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl">
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <EditableText

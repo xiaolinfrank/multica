@@ -60,7 +60,16 @@ import { cn } from "@multica/ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@multica/ui/components/ui/tooltip";
 import { Button } from "@multica/ui/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Diamond,
+  Target,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { useLocale, useT } from "../../i18n";
 import { EditableSuggest, EditableText, ProgressField } from "./cockpit-fields";
 import { StatusChip } from "./cockpit-status";
@@ -360,7 +369,7 @@ function PaymentMarker({
         </TooltipContent>
       </Tooltip>
       <span
-        className="pointer-events-none absolute -translate-y-1/2 text-micro leading-none font-bold whitespace-nowrap tabular-nums"
+        className="pointer-events-none absolute -translate-y-1/2 rounded-sm bg-card/85 px-1 py-px text-micro leading-none font-bold whitespace-nowrap tabular-nums shadow-sm"
         style={{ left: left + 9, top: "26%", color }}
         aria-hidden
       >
@@ -370,12 +379,34 @@ function PaymentMarker({
   );
 }
 
-const CORE_KIND_META: Record<CockpitCoreNodeKind | "goal", { icon: string; color: string }> = {
-  done: { icon: "✓", color: "var(--success)" },
-  blocked: { icon: "⚠", color: "var(--destructive)" },
-  upcoming: { icon: "◆", color: "var(--brand)" },
-  goal: { icon: "🎯", color: CORE_GOAL_COLOR },
+const CORE_KIND_META: Record<CockpitCoreNodeKind | "goal", { Icon: LucideIcon; color: string }> = {
+  done: { Icon: Check, color: "var(--success)" },
+  blocked: { Icon: TriangleAlert, color: "var(--destructive)" },
+  upcoming: { Icon: Diamond, color: "var(--brand)" },
+  goal: { Icon: Target, color: CORE_GOAL_COLOR },
 };
+
+/**
+ * Where the row code can stay legible. White inside the bar only works while
+ * the label sits wholly on a solid status fill; a light "unstarted" bar takes
+ * the foreground ink, and a bar whose recorded progress does not reach past
+ * the label pushes the code out past the bar end instead — the veil over the
+ * unfinished tail never gets to swallow white text again.
+ */
+function barCodePlacement(
+  barColor: string,
+  progress: number,
+  width: number,
+  codeLen: number,
+  roomAfter: number,
+): "white" | "dark" | "outside" {
+  const light = barColor === "var(--faint-foreground)" || barColor === "var(--muted-foreground)";
+  if (light) return "dark";
+  const labelPx = 10 + codeLen * 5.6;
+  const solidPx = (Math.max(progress, 0) / 100) * width;
+  if (solidPx >= labelPx) return "white";
+  return roomAfter >= labelPx ? "outside" : "dark";
+}
 
 /**
  * One core date on a direction row: what landed, what is stuck, what is about
@@ -409,7 +440,8 @@ function MeetingMarker({
       className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-info bg-card px-1 text-micro leading-none font-bold text-info shadow-sm"
       style={{ left, top: "12%" }}
     >
-      {meetings.length > 1 ? `📅${meetings.length}` : "📅"}
+      <CalendarDays className="size-2.5" strokeWidth={2.5} aria-hidden />
+      {meetings.length > 1 && <span>{meetings.length}</span>}
     </button>
   );
   return (
@@ -485,15 +517,15 @@ function CoreMarker({
         : kind === "blocked"
           ? t(($) => $.gantt.core_blocked, { date, count })
           : t(($) => $.gantt.core_upcoming, { date, count });
-  const label = kind === "goal" ? meta.icon : count > 1 ? `${meta.icon}${count}` : meta.icon;
   const marker = (
     <button
       type="button"
       aria-label={summary}
-      className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] bg-card px-1 text-micro leading-none font-bold shadow-sm"
+      className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-px rounded-full border-[1.5px] bg-card px-1 text-micro leading-none font-bold shadow-sm"
       style={{ left, top: "76%", borderColor: meta.color, color: meta.color }}
     >
-      {label}
+      <meta.Icon className="size-2.5" strokeWidth={2.5} aria-hidden />
+      {kind !== "goal" && count > 1 && <span>{count}</span>}
     </button>
   );
   return (
@@ -606,7 +638,7 @@ function GoalChip({
                 : "border-success/30 bg-success/10 text-success",
             )}
           >
-            <span aria-hidden>🎯</span>
+            <Target className="size-3" aria-hidden />
             <MiniProgress value={goal.actual} />
           </button>
         }
@@ -1400,7 +1432,7 @@ export function CockpitGantt({
                   <TooltipTrigger
                     render={
                       <span
-                        className="absolute top-0 bottom-0 z-10 w-0.5 bg-destructive opacity-70"
+                        className="absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
                         style={{ left: todayX }}
                         aria-label={t(($) => $.gantt.today_line, { date: today })}
                       />
@@ -1408,6 +1440,15 @@ export function CockpitGantt({
                   />
                   <TooltipContent>{t(($) => $.gantt.today_line, { date: today })}</TooltipContent>
                 </Tooltip>
+              )}
+              {todayX !== null && (
+                <span
+                  className="pointer-events-none absolute top-0 z-20 -translate-x-1/2 rounded-b-md bg-brand px-1.5 py-px text-micro leading-4 font-semibold text-brand-foreground"
+                  style={{ left: todayX }}
+                  aria-hidden
+                >
+                  {t(($) => $.meetings.today)}
+                </span>
               )}
             </div>
 
@@ -1429,7 +1470,7 @@ export function CockpitGantt({
 
               {todayX !== null && (
                 <div
-                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-destructive opacity-70"
+                  className="pointer-events-none absolute top-0 bottom-0 z-10 w-0.5 bg-brand/80"
                   style={{ left: todayX }}
                   aria-hidden
                 />
@@ -1448,10 +1489,11 @@ export function CockpitGantt({
                     <TooltipTrigger
                       render={
                         <span
-                          className="absolute top-0.5 z-20 rounded-r-lg bg-budget px-1.5 py-px text-micro font-semibold whitespace-nowrap text-background"
+                          className="absolute top-0.5 z-20 inline-flex items-center gap-1 rounded-r-lg bg-budget px-1.5 py-px text-micro font-semibold whitespace-nowrap text-background"
                           style={{ left: goalOffset + 4 }}
                         >
-                          🎯 {t(($) => $.gantt.goal_flag, { month: goalDate!.slice(0, 7) })}
+                          <Target className="size-3" strokeWidth={2.5} aria-hidden />
+                          {t(($) => $.gantt.goal_flag, { month: goalDate!.slice(0, 7) })}
                         </span>
                       }
                     />
@@ -1559,14 +1601,32 @@ export function CockpitGantt({
                                   aria-hidden
                                 />
                               )}
-                              {!isMainline && (
-                                <span
-                                  className="absolute top-0 left-[7px] text-micro leading-[18px] font-semibold whitespace-nowrap text-white [text-shadow:0_1px_1px_rgba(0,0,0,0.3)]"
-                                  aria-hidden
-                                >
-                                  {code}
-                                </span>
-                              )}
+                              {!isMainline &&
+                                barCodePlacement(
+                                  barColor,
+                                  progress,
+                                  width,
+                                  code.length,
+                                  timelineWidth - left - width - 4,
+                                ) !== "outside" && (
+                                  <span
+                                    className={cn(
+                                      "absolute top-0 left-[7px] text-micro leading-[18px] font-semibold whitespace-nowrap",
+                                      barCodePlacement(
+                                        barColor,
+                                        progress,
+                                        width,
+                                        code.length,
+                                        timelineWidth - left - width - 4,
+                                      ) === "white"
+                                        ? "text-white [text-shadow:0_1px_1px_rgba(0,0,0,0.35)]"
+                                        : "text-foreground",
+                                    )}
+                                    aria-hidden
+                                  >
+                                    {code}
+                                  </span>
+                                )}
                             </button>
                           }
                         />
@@ -1581,6 +1641,27 @@ export function CockpitGantt({
                         </TooltipContent>
                       </Tooltip>
                     )}
+
+                    {/* No room on a solid fill — the code steps out past the
+                        bar end instead of drowning in the veil. */}
+                    {!isMainline &&
+                      startDate &&
+                      endDate &&
+                      barCodePlacement(
+                        barColor,
+                        progress,
+                        width,
+                        code.length,
+                        timelineWidth - left - width - 4,
+                      ) === "outside" && (
+                        <span
+                          className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-micro font-semibold whitespace-nowrap text-muted-foreground"
+                          style={{ left: left + width + 4 }}
+                          aria-hidden
+                        >
+                          {code}
+                        </span>
+                      )}
 
                     {/* A deadline with no start is real information: it says
                         the work is committed but unscheduled. */}

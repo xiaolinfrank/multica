@@ -60,7 +60,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@multica/ui/components/ui/dialog";
-import { ExternalLink, Plus, Trash2 } from "lucide-react";
+import {
+  CalendarDays,
+  CircleDollarSign,
+  Clock,
+  ExternalLink,
+  Flag,
+  Goal,
+  Handshake,
+  Timer,
+  Plus,
+  Target,
+  Trash2,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useT, useLocale } from "../../i18n";
 import { EditableDate, EditableSuggest, EditableText, EditableTextArea } from "./cockpit-fields";
 
@@ -205,7 +219,7 @@ function CardProse({ text }: { text: string }) {
 interface CardItemProps {
   date?: string;
   code?: string;
-  icon?: string;
+  icon?: React.ReactNode;
   title: string;
   tag?: string;
   badge?: string;
@@ -237,13 +251,17 @@ function CardItem({
       {code && (
         <span className="shrink-0 font-mono text-micro text-muted-foreground">{code}</span>
       )}
+      {icon && (
+        <span aria-hidden className="shrink-0 self-center text-muted-foreground">
+          {icon}
+        </span>
+      )}
       <span
         className={cn(
           "min-w-0 flex-1 truncate text-body",
           tone === "destructive" && "text-destructive",
         )}
       >
-        {icon && <span aria-hidden>{icon} </span>}
         {title}
       </span>
       {tag && (
@@ -372,7 +390,7 @@ function NarrativeCard({
   children,
 }: {
   title: string;
-  icon: string;
+  icon: React.ReactNode;
   hint?: string;
   cap?: "next" | "meetings" | "support";
   badge?: React.ReactNode;
@@ -382,7 +400,7 @@ function NarrativeCard({
   return (
     <section className="cockpit-card-top rounded-lg border border-border bg-card p-4" data-cap={cap}>
       <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span aria-hidden className="text-body">
+        <span aria-hidden className="inline-flex self-center" style={{ color: "var(--top-from)" }}>
           {icon}
         </span>
         <h2 className="text-title-sm font-semibold">{title}</h2>
@@ -508,9 +526,9 @@ export function CockpitOverview({
       {/* Annual objective — the board's masthead banner: corner label, the
           goal itself in a frosted glass strip at the centre, and the live
           clock pinned top-right. Nothing else; the banner is one glance. */}
-      <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-24 py-5 text-white">
+      <section className="cockpit-banner flex min-h-[116px] flex-col items-center justify-center gap-2 px-6 pt-10 pb-4 text-white sm:px-12 sm:py-5 lg:px-24">
         <span className="absolute top-4 left-5 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-micro font-bold tracking-widest">
-          <span aria-hidden>🎯</span>
+          <Goal className="size-3" aria-hidden />
           {t(($) => $.overview.mvp_label)}
         </span>
         <div className="cockpit-banner-glass">
@@ -520,7 +538,7 @@ export function CockpitOverview({
             label={t(($) => $.overview.annual_goal)}
             placeholder={t(($) => $.overview.annual_goal_placeholder)}
             disabled={readOnly}
-            displayClassName="text-title-lg font-extrabold text-white"
+            displayClassName="text-title-lg font-extrabold text-white hover:bg-white/15"
           />
         </div>
         <div className="absolute top-4 right-5 flex flex-col items-end gap-0.5">
@@ -618,7 +636,7 @@ export function CockpitOverview({
       <div className="grid gap-4 md:grid-cols-2">
         <DigestCard
           title={t(($) => $.overview.card_overall)}
-          icon="📈"
+          icon={<TrendingUp className="size-4" />}
           hint={t(($) => $.overview.card_overall_hint, {
             from: formatShortDate(digest.overall.from, locale),
             to: formatShortDate(digest.overall.to, locale),
@@ -649,7 +667,7 @@ export function CockpitOverview({
         />
         <DigestCard
           title={t(($) => $.overview.card_next)}
-          icon="🎯"
+          icon={<Target className="size-4" />}
           cap="next"
           hint={t(($) => $.overview.card_next_hint, {
             from: formatShortDate(digest.next.from, locale),
@@ -693,7 +711,7 @@ export function CockpitOverview({
         />
         <DigestCard
           title={t(($) => $.overview.card_support)}
-          icon="🤝"
+          icon={<Handshake className="size-4" />}
           cap="support"
           hint={t(($) => $.overview.card_support_hint)}
           override={board.cockpit.summary_support}
@@ -760,7 +778,7 @@ export function CockpitOverview({
               title={cell.title ?? undefined}
             >
               <dt className="text-caption text-muted-foreground">{cell.label}</dt>
-              <dd className={cn("mt-1 text-title font-semibold tabular-nums", cell.className)}>
+              <dd className={cn("mt-1 text-display-sm font-semibold tracking-tight tabular-nums", cell.className)}>
                 {formatWan(cell.value)}
               </dd>
             </div>
@@ -1022,7 +1040,11 @@ function ModuleBigCard({
     : undefined;
   return (
     <article
-      className={cn("rounded-lg border border-border bg-card p-4", interaction && "cursor-pointer")}
+      className={cn(
+        "rounded-lg border border-border bg-card p-4",
+        interaction &&
+          "cursor-pointer transition-[box-shadow,border-color] hover:border-foreground/15 hover:shadow-md",
+      )}
       style={{ borderTopColor: color, borderTopWidth: 4 }}
       {...interaction}
     >
@@ -1135,7 +1157,11 @@ function ModuleSmallCard({
     : undefined;
   return (
     <article
-      className={cn("rounded-lg border border-border bg-card p-3", interaction && "cursor-pointer")}
+      className={cn(
+        "rounded-lg border border-border bg-card p-3",
+        interaction &&
+          "cursor-pointer transition-[box-shadow,border-color] hover:border-foreground/15 hover:shadow-md",
+      )}
       style={{ borderLeftColor: color, borderLeftWidth: 3 }}
       {...interaction}
     >
@@ -1287,7 +1313,7 @@ function MilestoneCard({
         </div>
         {daysLeft !== null && (
           <div className="mt-1.5 inline-flex items-center gap-1 rounded-sm bg-muted px-1.5 py-px text-micro">
-            <span aria-hidden>⏳</span>
+            <Timer className="size-3" aria-hidden />
             {daysLeft >= 0
               ? t(($) => $.overview.days_left, { days: daysLeft })
               : t(($) => $.overview.days_over, { days: -daysLeft })}
@@ -1338,7 +1364,7 @@ function DigestCard({
   onOpenCode,
 }: {
   title: string;
-  icon: string;
+  icon: React.ReactNode;
   cap?: "next" | "support";
   hint: string;
   override: string;
@@ -1398,7 +1424,7 @@ function DigestCard({
                   key={item.key}
                   date={locale ? formatShortDate(item.date, locale) : undefined}
                   code={item.kind === "task" ? dispCode(item.node) : undefined}
-                  icon={item.kind === "milestone" ? "🎯" : item.kind === "payment" ? "💰" : undefined}
+                  icon={item.kind === "milestone" ? <Flag className="size-3" /> : item.kind === "payment" ? <CircleDollarSign className="size-3" /> : undefined}
                   title={item.title}
                   tag={item.kind === "milestone" ? t(($) => $.overview.tag_milestone) : undefined}
                   badge={
@@ -1487,7 +1513,7 @@ function MeetingsCard({
   return (
     <NarrativeCard
       title={t(($) => $.overview.card_meetings)}
-      icon="📅"
+      icon={<CalendarDays className="size-4" />}
       cap="meetings"
       hint={t(($) => $.overview.card_meetings_hint)}
       action={
@@ -1618,8 +1644,14 @@ function MeetingRow({
               )}
             </div>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-micro text-muted-foreground">
-              <span>⏰ {cockpitMeetingSpan(meeting) || t(($) => $.common.unset)}</span>
-              <span>👥 {meeting.parties || meeting.attendees || t(($) => $.common.unset)}</span>
+              <span className="inline-flex items-center gap-1">
+                <Clock className="size-3" aria-hidden />
+                {cockpitMeetingSpan(meeting) || t(($) => $.common.unset)}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Users className="size-3" aria-hidden />
+                {meeting.parties || meeting.attendees || t(($) => $.common.unset)}
+              </span>
               {meeting.meet_no && <span>#{meeting.meet_no}</span>}
             </div>
           </div>
@@ -1679,8 +1711,9 @@ function MeetingRow({
         <DialogHeader>
           <DialogTitle>{meeting.title || t(($) => $.meeting.title_placeholder)}</DialogTitle>
         </DialogHeader>
-        <p className="text-caption text-muted-foreground">
-          ⏰ {meeting.meet_date || t(($) => $.meeting.date)}
+        <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
+          <CalendarDays className="size-3.5" aria-hidden />
+          {meeting.meet_date || t(($) => $.meeting.date)}
           {meeting.time_range ? ` ${meeting.time_range}` : ""}
         </p>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">

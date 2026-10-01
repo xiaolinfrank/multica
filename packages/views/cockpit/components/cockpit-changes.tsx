@@ -572,9 +572,9 @@ export function CockpitChanges({
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-caption">
-        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.queue_title, { n: pending.length })}</span>
-        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.status_applied)} {changes.filter((change) => change.status === "applied").length}</span>
-        <span className="rounded-full border border-border px-2 py-1">{t(($) => $.changes.status_rejected)} {changes.filter((change) => change.status === "rejected").length}</span>
+        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.queue_title, { n: pending.length })}</span>
+        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.status_applied)} {changes.filter((change) => change.status === "applied").length}</span>
+        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.status_rejected)} {changes.filter((change) => change.status === "rejected").length}</span>
         {(["type_add", "type_modify", "type_clear"] as const).map((type) => (
           <span key={type} className="rounded-full border border-border px-2 py-1">
             {t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}

@@ -195,18 +195,26 @@ export function CockpitMeetings({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <div className="flex items-center gap-1" role="group" aria-label={t(($) => $.meetings.view)}>
+        <div
+          className="flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+          role="group"
+          aria-label={t(($) => $.meetings.view)}
+        >
           {VIEWS.map((key) => (
-            <Button
+            <button
               key={key}
-              variant={view === key ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2"
+              type="button"
               aria-pressed={view === key}
               onClick={() => setView(key)}
+              className={cn(
+                "rounded-sm px-2.5 py-1 text-caption transition-colors",
+                view === key
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+              )}
             >
               {viewLabels[key]}
-            </Button>
+            </button>
           ))}
         </div>
 

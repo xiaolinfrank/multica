@@ -1095,8 +1095,10 @@ export function CockpitPage() {
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 flex-1">
+        {/* Keyed on the tab so each switch replays the short entrance on the
+            fresh body — the chrome stays put, the content arrives. */}
+        <div key={tab} className="cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden">
           {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <CockpitOverview
