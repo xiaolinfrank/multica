@@ -5,7 +5,7 @@
 // own — one pill element slides to whichever button is active, so a switch
 // reads as the same object moving rather than two states blinking over.
 
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 
 /**
  * Measures the `[data-active="true"]` child and publishes its geometry as the
@@ -13,25 +13,29 @@ import { useLayoutEffect, useRef } from "react";
  * and whenever the container resizes (window, font load, locale switch).
  */
 export function useSegmentedPill(active: string) {
-  const ref = useRef<HTMLDivElement>(null);
+  // The control can mount after an initial loading render while `active` stays
+  // unchanged. A plain object ref would leave the effect stranded after its
+  // first null read; a callback ref promotes mounting itself to a dependency.
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const ref = useCallback((node: HTMLDivElement | null) => setElement(node), []);
+
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    if (!element) return;
     const update = () => {
-      const button = el.querySelector<HTMLButtonElement>('[data-active="true"]');
+      const button = element.querySelector<HTMLButtonElement>('[data-active="true"]');
       if (!button) {
-        el.style.setProperty("--pill-on", "0");
+        element.style.setProperty("--pill-on", "0");
         return;
       }
-      el.style.setProperty("--pill-left", `${button.offsetLeft}px`);
-      el.style.setProperty("--pill-width", `${button.offsetWidth}px`);
-      el.style.setProperty("--pill-on", "1");
+      element.style.setProperty("--pill-left", `${button.offsetLeft}px`);
+      element.style.setProperty("--pill-width", `${button.offsetWidth}px`);
+      element.style.setProperty("--pill-on", "1");
     };
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(el);
+    observer.observe(element);
     return () => observer.disconnect();
-  }, [active]);
+  }, [active, element]);
   return ref;
 }
 
