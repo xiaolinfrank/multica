@@ -51,7 +51,10 @@ function edgeKindsFromGroups(groups: EdgeGroupToggles) {
     kinds.delete("related");
   }
   if (!groups.mention) kinds.delete("mention");
-  if (!groups.meeting) kinds.delete("meeting");
+  if (!groups.meeting) {
+    kinds.delete("meeting");
+    kinds.delete("meeting_run");
+  }
   if (!groups.execution) kinds.delete("execution");
   return kinds;
 }

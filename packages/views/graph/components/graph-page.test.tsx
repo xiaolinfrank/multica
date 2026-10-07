@@ -59,7 +59,8 @@ const graphFixture = {
 };
 
 // Three-entity fixture: the Alpha issue was discussed in a meeting and has a
-// finished run; Gamma has one in flight.
+// finished run; Gamma has one in flight. The model derives one extra
+// meeting→run edge (m1→a→r1), so link counts include it.
 const graphEntityFixture = {
   ...graphFixture,
   nodes: graphFixture.nodes,
@@ -287,7 +288,7 @@ describe("GraphPage", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("graph-counts")).toHaveTextContent(
-        "3 issues · 1 meeting · 2 executions · 5 links",
+        "3 issues · 1 meeting · 2 executions · 6 links",
       ),
     );
   });

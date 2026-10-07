@@ -40,6 +40,11 @@ export const GRAPH_EDGE_KINDS = [
   // execution — the issue's latest finished run / in-flight runs. Target is
   // the run's graph address ("run:<uuid>").
   "execution",
+  // meeting_run — DERIVED at model-build time, never emitted by the backend:
+  // meeting → issue edge plus issue → run edge implies meeting → run ("the
+  // work this meeting set in motion"). Drawn as a faint dashed line to read
+  // as an indirect link; governed by the meeting edge-group toggle.
+  "meeting_run",
 ] as const;
 
 export type GraphEdgeKind = (typeof GRAPH_EDGE_KINDS)[number];

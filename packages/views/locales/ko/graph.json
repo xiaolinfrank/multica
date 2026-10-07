@@ -23,6 +23,7 @@
     "edge_group_mention": "참조",
     "edge_group_meeting": "회의",
     "edge_group_execution": "실행",
+    "edge_group_meeting_run": "회의→실행(파생)",
     "statuses": "상태",
     "projects": "프로젝트",
     "no_project": "프로젝트 없음"

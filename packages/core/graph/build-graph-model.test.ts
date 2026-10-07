@@ -83,6 +83,8 @@ describe("buildGraphModel", () => {
       "mtg:m3>n5:meeting",
       "n1>run:r1:execution",
       "n4>run:r2:execution",
+      // Derived: m1 --meeting--> n1 --execution--> r1 => m1 --meeting_run--> r1.
+      "mtg:m1>run:r1:meeting_run",
     ]);
     expect(m.meetings.map((n) => n.id)).toEqual(["m1", "m2", "m3"]);
     expect(m.executions.map((n) => n.id)).toEqual(["r1", "r2"]);
@@ -100,7 +102,7 @@ describe("buildGraphModel", () => {
     expect(onlyP1.nodes.map((n) => n.id)).toEqual(["n1", "n2"]);
     // The n1-n2 child edge survives (both endpoints in p1); everything else
     // left the set with n3/n4.
-    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2", "mtg:m1>n1", "n1>run:r1"]);
+    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2", "mtg:m1>n1", "n1>run:r1", "mtg:m1>run:r1"]);
 
     const p1PlusNoProject = model({ projects: new Set(["p1", ""]) });
     expect(p1PlusNoProject.nodes.map((n) => n.id)).toEqual(["n1", "n2", "n5"]);
@@ -132,9 +134,9 @@ describe("buildGraphModel", () => {
   it("counts meeting and execution edges into degree and neighbors under their addresses", () => {
     const m = model();
     expect(m.degree.get("n1")).toBe(4); // n2 child, n3 mention, m1, r1
-    expect(m.degree.get("mtg:m1")).toBe(2);
-    expect(m.neighbors.get("mtg:m1")).toEqual(new Set(["n1", "n3"]));
-    expect(m.neighbors.get("run:r1")).toEqual(new Set(["n1"]));
+    expect(m.degree.get("mtg:m1")).toBe(3); // n1, n3, and the derived run r1
+    expect(m.neighbors.get("mtg:m1")).toEqual(new Set(["n1", "n3", "run:r1"]));
+    expect(m.neighbors.get("run:r1")).toEqual(new Set(["n1", "mtg:m1"]));
     // The child map only covers issue-to-issue edges.
     expect(m.children.has("mtg:m1")).toBe(false);
   });
@@ -152,7 +154,35 @@ describe("buildGraphModel", () => {
     kinds.delete("mention");
     const m = model({ edgeKinds: kinds });
     expect(m.edges.some((e) => e.kind === "mention")).toBe(false);
-    expect(m.edges).toHaveLength(8);
+    expect(m.edges).toHaveLength(9); // 8 direct + the derived meeting_run
+  });
+
+  it("derives meeting-to-run edges over shared visible issues", () => {
+    const m = model();
+    const derived = m.edges.filter((e) => e.kind === "meeting_run");
+    // m1->n1->r1 is the only complete chain: n3 (also m1's) has no runs, and
+    // r2's issue n4 has no meeting.
+    expect(derived).toEqual([{ source: "mtg:m1", target: "run:r1", kind: "meeting_run" }]);
+  });
+
+  it("never derives through hidden issues, meetings, or runs", () => {
+    // n1 leaves with the p2-only filter, so m1 and r1 never meet.
+    const onlyP2 = model({ projects: new Set(["p2"]) });
+    expect(onlyP2.edges.some((e) => e.kind === "meeting_run")).toBe(false);
+
+    // Entity toggles remove one side of the join entirely.
+    expect(model({ meetings: false }).edges.some((e) => e.kind === "meeting_run")).toBe(false);
+    expect(model({ executions: false }).edges.some((e) => e.kind === "meeting_run")).toBe(false);
+  });
+
+  it("stops deriving when the meeting_run kind is toggled off", () => {
+    const kinds = defaultEdgeKinds();
+    kinds.delete("meeting_run");
+    const m = model({ edgeKinds: kinds });
+    expect(m.edges.some((e) => e.kind === "meeting_run")).toBe(false);
+    // Direct meeting/execution edges are untouched by the derived-kind toggle.
+    expect(m.edges.some((e) => e.kind === "meeting")).toBe(true);
+    expect(m.edges.some((e) => e.kind === "execution")).toBe(true);
   });
 
   it("builds the child map from surviving child edges only", () => {
@@ -203,7 +233,7 @@ describe("focusNodeIds", () => {
 
   it("expands across entity types from a meeting", () => {
     const m = model();
-    expect(focusNodeIds(m, "mtg:m1", 1)).toEqual(new Set(["mtg:m1", "n1", "n3"]));
+    expect(focusNodeIds(m, "mtg:m1", 1)).toEqual(new Set(["mtg:m1", "n1", "n3", "run:r1"]));
   });
 });
 

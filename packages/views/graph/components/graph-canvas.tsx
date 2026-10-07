@@ -120,7 +120,7 @@ const EDGE_COLOR_VARS: Record<EdgeColorGroup, string> = {
 function edgeColorGroup(kind: string): EdgeColorGroup {
   if (kind === "child") return "child";
   if (kind === "blocks" || kind === "blocked_by" || kind === "related") return "dependency";
-  if (kind === "meeting") return "meeting";
+  if (kind === "meeting" || kind === "meeting_run") return "meeting";
   if (kind === "execution") return "execution";
   return "mention";
 }
@@ -574,7 +574,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
       if (!s || !t) continue;
       const inFocus = !focusSet || (focusSet.has(s.id) && focusSet.has(t.id));
       const color = p.edges[edgeColorGroup(link.kind)];
-      ctx.globalAlpha = inFocus ? 0.95 : 0.32;
+      // Derived meeting→run links stay quieter than direct ones so the
+      // indirect relation never visually competes with the direct pair.
+      const derived = link.kind === "meeting_run";
+      ctx.globalAlpha = derived ? (inFocus ? 0.5 : 0.18) : inFocus ? 0.95 : 0.32;
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       const width = inFocus ? 2 : 1.25;
@@ -602,6 +605,8 @@ export function GraphCanvas(props: GraphCanvasProps) {
         ctx.setLineDash([2, 4]);
       } else if (link.kind === "execution") {
         ctx.setLineDash([3, 3]);
+      } else if (link.kind === "meeting_run") {
+        ctx.setLineDash([2, 5]);
       } else {
         ctx.setLineDash([]);
       }

@@ -11,7 +11,7 @@ import { EDGE_GROUP_LABEL_KEYS, type ColorDimension, type EdgeGroupToggles } fro
 // Edge sample lines mirror the canvas: one hue per relation group (tokens from
 // tokens.css), plus the dash pattern the canvas draws for that group.
 const EDGE_STYLES: Array<{
-  kind: keyof EdgeGroupToggles;
+  kind: keyof EdgeGroupToggles | "meeting_run";
   className: string;
   color: string;
 }> = [
@@ -20,6 +20,9 @@ const EDGE_STYLES: Array<{
   { kind: "mention", className: "border-t border-dashed", color: "var(--graph-edge-mention)" },
   { kind: "meeting", className: "", color: "var(--graph-edge-meeting)" },
   { kind: "execution", className: "border-t border-dotted", color: "var(--graph-edge-execution)" },
+  // Derived meeting→run links ride the meeting toggle; they are fainter and
+  // dashed-finer than the direct meeting edge.
+  { kind: "meeting_run", className: "border-t border-dashed opacity-60", color: "var(--graph-edge-meeting)" },
 ];
 
 const PROJECT_COLOR_VARS = [
@@ -37,7 +40,9 @@ export function GraphLegend(props: {
 }) {
   const { t } = useT("graph");
 
-  const visibleEdges = EDGE_STYLES.filter((e) => props.edgeGroups[e.kind]);
+  const visibleEdges = EDGE_STYLES.filter(
+    (e) => props.edgeGroups[e.kind === "meeting_run" ? "meeting" : e.kind],
+  );
 
   const colorRows: Array<{ key: string; label: string; dot: string; dotStyle?: string }> =
     props.colorBy === "project"
@@ -70,7 +75,9 @@ export function GraphLegend(props: {
                 style={{ borderTopColor: edge.color }}
                 aria-hidden
               />
-              {t(($) => $.filter[EDGE_GROUP_LABEL_KEYS[edge.kind]])}
+              {edge.kind === "meeting_run"
+                ? t(($) => $.filter.edge_group_meeting_run)
+                : t(($) => $.filter[EDGE_GROUP_LABEL_KEYS[edge.kind as keyof typeof EDGE_GROUP_LABEL_KEYS]])}
             </li>
           ))}
         </ul>

@@ -272,12 +272,12 @@ func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
 		"role":         "task",
 	}, "meeting_id = '"+meeting+"' AND issue_id = '"+issue+"'")
 
-	// Three runs on the linked issue: two old completed ones (only the newest
-	// is graphed) and one still running (always graphed). The queue's check
-	// constraint wants completed_at on finished rows and a runtime on active
-	// ones.
+	// Three runs on the linked issue: two completed ones (both graphed — the
+	// terminal window keeps the newest five per issue) and one still running
+	// (always graphed). The queue's check constraint wants completed_at on
+	// finished rows and a runtime on active ones.
 	runtimeID := dbfx.Runtime(t, "graph-runtime", testutil.Cols{"workspace_id": wsID})
-	dbfx.Task(t, agentID, testutil.Cols{
+	olderDone := dbfx.Task(t, agentID, testutil.Cols{
 		"issue_id": issue, "status": "completed", "created_at": testutil.Raw("now() - interval '3 days'"),
 		"completed_at": testutil.Raw("now() - interval '3 days'"),
 	})
@@ -310,8 +310,8 @@ func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
 		t.Errorf("unlinked meeting missing from workspace-scope graph")
 	}
 
-	if len(g.Executions) != 2 {
-		t.Fatalf("executions = %d, want latest-done + running: %+v", len(g.Executions), g.Executions)
+	if len(g.Executions) != 3 {
+		t.Fatalf("executions = %d, want both completed (window keeps newest 5) + running: %+v", len(g.Executions), g.Executions)
 	}
 	runIDs := map[string]IssueGraphExecutionResponse{}
 	for _, r := range g.Executions {
@@ -319,6 +319,9 @@ func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
 	}
 	if _, ok := runIDs[latestDone]; !ok {
 		t.Errorf("latest completed run missing")
+	}
+	if _, ok := runIDs[olderDone]; !ok {
+		t.Errorf("older completed run missing from the widened window")
 	}
 	r, ok := runIDs[running]
 	if !ok || r.AgentName != "graph-runner" || r.Status != "running" {
@@ -329,6 +332,7 @@ func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
 	for _, key := range []string{
 		fmt.Sprintf("mtg:%s>%s:meeting", meeting, issue),
 		fmt.Sprintf("%s>run:%s:execution", issue, latestDone),
+		fmt.Sprintf("%s>run:%s:execution", issue, olderDone),
 		fmt.Sprintf("%s>run:%s:execution", issue, running),
 	} {
 		if !edges[key] {
@@ -339,6 +343,50 @@ func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
 	for key := range edges {
 		if strings.Contains(key, other) {
 			t.Errorf("unexpected edge on link-less issue: %s", key)
+		}
+	}
+}
+
+// The terminal-run window caps at the five newest finished runs per issue;
+// active runs never count against it.
+func TestGetIssueGraphRunWindowKeepsNewestFive(t *testing.T) {
+	wsID := graphFixture(t, "Graph run window")
+	issue := dbfx.Issue(t, "Busy issue", testutil.Cols{"workspace_id": wsID})
+	agentID := dbfx.Agent(t, "graph-runner", "", testutil.Cols{"workspace_id": wsID})
+	runtimeID := dbfx.Runtime(t, "graph-runtime", testutil.Cols{"workspace_id": wsID})
+
+	ids := make([]string, 0, 6)
+	for days := 6; days >= 1; days-- {
+		interval := fmt.Sprintf("now() - interval '%d days'", days)
+		ids = append(ids, dbfx.Task(t, agentID, testutil.Cols{
+			"issue_id": issue, "status": "completed",
+			"created_at": testutil.Raw(interval), "completed_at": testutil.Raw(interval),
+		}))
+	}
+	running := dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": issue, "status": "running", "created_at": testutil.Raw("now()"),
+		"runtime_id": runtimeID,
+	})
+
+	var g graphPayload
+	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph),
+		graphRequest(http.MethodGet, "/api/issues/graph", wsID)).
+		Want(http.StatusOK).
+		JSON(&g)
+
+	if len(g.Executions) != 6 {
+		t.Fatalf("executions = %d, want newest 5 terminal + 1 running: %+v", len(g.Executions), g.Executions)
+	}
+	got := map[string]bool{}
+	for _, r := range g.Executions {
+		got[r.ID] = true
+	}
+	if got[ids[0]] {
+		t.Errorf("oldest terminal run %s should fall outside the window", ids[0])
+	}
+	for _, id := range append(ids[1:], running) {
+		if !got[id] {
+			t.Errorf("run %s missing from the graph", id)
 		}
 	}
 }

@@ -266,7 +266,7 @@ active AS (
 SELECT r.id, r.issue_id, r.status, r.started_at, r.completed_at, r.trigger_comment_id,
        a.name AS agent_name
 FROM (SELECT id, issue_id, agent_id, status, started_at, completed_at,
-             trigger_comment_id, created_at FROM terminal WHERE rn = 1
+             trigger_comment_id, created_at FROM terminal WHERE rn <= 5
       UNION ALL
       SELECT id, issue_id, agent_id, status, started_at, completed_at,
              trigger_comment_id, created_at FROM active) r
@@ -284,13 +284,13 @@ type ListIssueGraphRunsRow struct {
 	AgentName        string             `json:"agent_name"`
 }
 
-// Execution nodes for the graph: the latest TERMINAL run per issue (the last
-// completed/failed/cancelled — "what last happened on this task") plus EVERY
-// active run (queued/dispatched/running — "what is happening now"), so a task
-// mid-rerun shows both its last outcome and the in-flight attempt. History
-// beyond that is deliberately not graphed — a workspace's queue table grows
-// without bound, the graph does not. issue_id is nullable on the queue (chat
-// tasks); the JOIN both enforces tenancy and drops issue-less rows.
+// Execution nodes for the graph: the FIVE most recent TERMINAL runs per issue
+// (completed/failed/cancelled — the task's recent run history, so one task can
+// fan out to several execution nodes, e.g. failed → rerun → succeeded) plus
+// EVERY active run (queued/dispatched/running — "what is happening now").
+// History is capped per task because a workspace's queue table grows without
+// bound, the graph does not. issue_id is nullable on the queue (chat tasks);
+// the JOIN both enforces tenancy and drops issue-less rows.
 func (q *Queries) ListIssueGraphRuns(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphRunsRow, error) {
 	rows, err := q.db.Query(ctx, listIssueGraphRuns, workspaceID)
 	if err != nil {

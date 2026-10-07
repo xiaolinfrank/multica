@@ -23,6 +23,7 @@
     "edge_group_mention": "References",
     "edge_group_meeting": "Meetings",
     "edge_group_execution": "Executions",
+    "edge_group_meeting_run": "Meeting → run (derived)",
     "statuses": "Status",
     "projects": "Projects",
     "no_project": "No project"

@@ -130,6 +130,31 @@ export function buildGraphModel(
     edges.push({ source: e.source, target: e.target, kind: e.kind as GraphEdgeKind });
   }
 
+  // Derived meeting→run edges: a meeting linked to an issue shares that
+  // issue's runs ("the work this meeting set in motion"). Joined over the
+  // already-visible direct edges, so hidden issues/runs never derive. The
+  // kind rides the meeting edge-group toggle (mapped to `meeting` colours in
+  // the canvas); the backend never emits it.
+  if (filters.edgeKinds.has("meeting_run")) {
+    const runsByIssue = new Map<string, string[]>();
+    for (const e of edges) {
+      if (e.kind !== "execution") continue;
+      const list = runsByIssue.get(e.source);
+      if (list) list.push(e.target);
+      else runsByIssue.set(e.source, [e.target]);
+    }
+    const seen = new Set<string>();
+    for (const e of edges) {
+      if (e.kind !== "meeting") continue;
+      for (const runAddr of runsByIssue.get(e.target) ?? []) {
+        const key = `${e.source}→${runAddr}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push({ source: e.source, target: runAddr, kind: "meeting_run" });
+      }
+    }
+  }
+
   const neighbors = new Map<string, Set<string>>();
   const degree = new Map<string, number>();
   const children = new Map<string, string[]>();
