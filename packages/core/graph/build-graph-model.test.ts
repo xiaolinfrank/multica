@@ -31,16 +31,41 @@ const graph: IssueGraphResponse = {
     { source: "n2", target: "n4", kind: "blocks" },
     { source: "n3", target: "n9", kind: "child" }, // dangling endpoint dropped
     { source: "n1", target: "n2", kind: "hologram" }, // unknown kind dropped
+    // Three-entity layers: m1 links n1+n3 across projects, m2 is linked to
+    // nothing, m3 links n5 (the orphan). r1 is n1's latest run, r2 belongs to
+    // n4 (leaves with the p2/status filters).
+    { source: "mtg:m1", target: "n1", kind: "meeting" },
+    { source: "mtg:m1", target: "n3", kind: "meeting" },
+    { source: "mtg:m3", target: "n5", kind: "meeting" },
+    { source: "n1", target: "run:r1", kind: "execution" },
+    { source: "n4", target: "run:r2", kind: "execution" },
+  ],
+  meetings: [
+    { id: "m1", code: "20260901-01", title: "Kickoff", meet_date: "2026-09-01", status: "已召开", track: "项目管理", nas_dir: "/nas/m1" },
+    { id: "m2", code: "20260902-01", title: "Hallway sync", meet_date: "2026-09-02", status: "已召开", track: "", nas_dir: "" },
+    { id: "m3", code: "20260903-01", title: "Orphan review", meet_date: "2026-09-03", status: "待召开", track: "项目管理", nas_dir: "" },
+  ],
+  executions: [
+    { id: "r1", issue_id: "n1", agent_name: "runner", status: "completed", started_at: "", completed_at: "", trigger_comment_id: "c1" },
+    { id: "r2", issue_id: "n4", agent_name: "runner", status: "running", started_at: "", completed_at: "", trigger_comment_id: null },
   ],
 };
 
 function model(
-  overrides?: Partial<{ projects: Set<string> | null; statuses: Set<string> | null; edgeKinds: Set<string> }>,
+  overrides?: Partial<{
+    projects: Set<string> | null;
+    statuses: Set<string> | null;
+    edgeKinds: Set<string>;
+    meetings: boolean;
+    executions: boolean;
+  }>,
 ) {
   return buildGraphModel(graph, {
     projects: overrides?.projects ?? null,
     statuses: overrides?.statuses ?? null,
     edgeKinds: (overrides?.edgeKinds ?? defaultEdgeKinds()) as Set<GraphEdgeKind>,
+    meetings: overrides?.meetings ?? true,
+    executions: overrides?.executions ?? true,
   });
 }
 
@@ -53,7 +78,14 @@ describe("buildGraphModel", () => {
       "n2>n3:child",
       "n1>n3:mention",
       "n2>n4:blocks",
+      "mtg:m1>n1:meeting",
+      "mtg:m1>n3:meeting",
+      "mtg:m3>n5:meeting",
+      "n1>run:r1:execution",
+      "n4>run:r2:execution",
     ]);
+    expect(m.meetings.map((n) => n.id)).toEqual(["m1", "m2", "m3"]);
+    expect(m.executions.map((n) => n.id)).toEqual(["r1", "r2"]);
   });
 
   it("drops edges with an endpoint outside the filtered node set and unknown kinds", () => {
@@ -68,17 +100,51 @@ describe("buildGraphModel", () => {
     expect(onlyP1.nodes.map((n) => n.id)).toEqual(["n1", "n2"]);
     // The n1-n2 child edge survives (both endpoints in p1); everything else
     // left the set with n3/n4.
-    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2"]);
+    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2", "mtg:m1>n1", "n1>run:r1"]);
 
     const p1PlusNoProject = model({ projects: new Set(["p1", ""]) });
     expect(p1PlusNoProject.nodes.map((n) => n.id)).toEqual(["n1", "n2", "n5"]);
   });
 
+  it("keeps a meeting only while a linked issue survives; unlinked meetings always stay", () => {
+    const onlyP1 = model({ projects: new Set(["p1"]) });
+    // m1 keeps n1 (n3 left with p2), m2 never had links, m3's only issue is n5.
+    expect(onlyP1.meetings.map((n) => n.id)).toEqual(["m1", "m2"]);
+
+    const todoOnly = model({ statuses: new Set(["todo"]) });
+    // n5 (in_review) is gone, so m3 goes with it; m1 still has n1 and n3.
+    expect(todoOnly.meetings.map((n) => n.id)).toEqual(["m1", "m2"]);
+  });
+
+  it("drops executions with their issue and honors the entity toggles", () => {
+    const onlyP1 = model({ projects: new Set(["p1"]) });
+    expect(onlyP1.executions.map((n) => n.id)).toEqual(["r1"]); // r2's issue n4 is in p2
+
+    const noMeetings = model({ meetings: false });
+    expect(noMeetings.meetings).toEqual([]);
+    expect(noMeetings.edges.some((e) => e.kind === "meeting")).toBe(false);
+
+    const noExecutions = model({ executions: false });
+    expect(noExecutions.executions).toEqual([]);
+    expect(noExecutions.edges.some((e) => e.kind === "execution")).toBe(false);
+  });
+
+  it("counts meeting and execution edges into degree and neighbors under their addresses", () => {
+    const m = model();
+    expect(m.degree.get("n1")).toBe(4); // n2 child, n3 mention, m1, r1
+    expect(m.degree.get("mtg:m1")).toBe(2);
+    expect(m.neighbors.get("mtg:m1")).toEqual(new Set(["n1", "n3"]));
+    expect(m.neighbors.get("run:r1")).toEqual(new Set(["n1"]));
+    // The child map only covers issue-to-issue edges.
+    expect(m.children.has("mtg:m1")).toBe(false);
+  });
+
   it("filters nodes by status category and recomputes degrees", () => {
     const todoOnly = model({ statuses: new Set(["todo"]) });
     expect(todoOnly.nodes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]);
-    expect(todoOnly.degree.get("n1")).toBe(1); // n1-n3 mention survives
-    expect(todoOnly.neighbors.get("n1")).toEqual(new Set(["n3"]));
+    // n1 keeps the n1-n3 mention plus its meeting and its run.
+    expect(todoOnly.degree.get("n1")).toBe(3);
+    expect(todoOnly.neighbors.get("n1")).toEqual(new Set(["n3", "mtg:m1", "run:r1"]));
   });
 
   it("honors edge-kind toggles", () => {
@@ -86,7 +152,7 @@ describe("buildGraphModel", () => {
     kinds.delete("mention");
     const m = model({ edgeKinds: kinds });
     expect(m.edges.some((e) => e.kind === "mention")).toBe(false);
-    expect(m.edges).toHaveLength(3);
+    expect(m.edges).toHaveLength(8);
   });
 
   it("builds the child map from surviving child edges only", () => {
@@ -102,7 +168,7 @@ describe("buildGraphModel", () => {
   it("counts degrees undirected", () => {
     const m = model();
     expect(m.degree.get("n2")).toBe(3); // child to n1, child to n3, blocks n4
-    expect(m.degree.get("n5")).toBe(0);
+    expect(m.degree.get("n5")).toBe(1); // its review meeting m3
   });
 });
 
@@ -130,8 +196,14 @@ describe("focusNodeIds", () => {
 
   it("expands one hop at depth 1 and two at depth 2", () => {
     const m = model();
-    expect(focusNodeIds(m, "n4", 1)).toEqual(new Set(["n4", "n2"]));
-    expect(focusNodeIds(m, "n4", 2)).toEqual(new Set(["n4", "n2", "n1", "n3"]));
+    // n4's own run is one hop out, exactly like its blocking issue.
+    expect(focusNodeIds(m, "n4", 1)).toEqual(new Set(["n4", "n2", "run:r2"]));
+    expect(focusNodeIds(m, "n4", 2)).toEqual(new Set(["n4", "n2", "run:r2", "n1", "n3"]));
+  });
+
+  it("expands across entity types from a meeting", () => {
+    const m = model();
+    expect(focusNodeIds(m, "mtg:m1", 1)).toEqual(new Set(["mtg:m1", "n1", "n3"]));
   });
 });
 

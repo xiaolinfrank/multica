@@ -6,10 +6,26 @@
 //
 // Canonical test file: build-graph-model.test.ts (// @vitest-environment node).
 
-import { GRAPH_EDGE_KINDS } from "../types/graph";
-import type { GraphEdge, GraphNode, GraphEdgeKind, IssueGraphResponse } from "../types/graph";
+import { GRAPH_EDGE_KINDS, graphExecutionAddress, graphMeetingAddress } from "../types/graph";
+import type {
+  GraphEdge,
+  GraphNode,
+  GraphMeetingNode,
+  GraphExecutionNode,
+  GraphEdgeKind,
+  GraphEntity,
+  IssueGraphResponse,
+} from "../types/graph";
 
-export type { GraphEdge, GraphNode, GraphEdgeKind };
+export type {
+  GraphEdge,
+  GraphNode,
+  GraphMeetingNode,
+  GraphExecutionNode,
+  GraphEdgeKind,
+  GraphEntity,
+};
+export { graphExecutionAddress, graphMeetingAddress, graphAddressEntity } from "../types/graph";
 
 export interface GraphFilters {
   /** Project ids to keep; null keeps every project (workspace scope). */
@@ -18,6 +34,10 @@ export interface GraphFilters {
   statuses: Set<string> | null;
   /** Edge kinds to draw. Unknown kinds from newer backends never appear. */
   edgeKinds: Set<GraphEdgeKind>;
+  /** Entity layers. Off means the nodes AND their edges leave the canvas;
+   *  the toolbar's relation toggles drive these. */
+  meetings: boolean;
+  executions: boolean;
 }
 
 export function defaultEdgeKinds(): Set<GraphEdgeKind> {
@@ -31,14 +51,22 @@ export interface GraphModelEdge {
 }
 
 export interface GraphModel {
+  /** Visible issues, keyed by raw UUID. */
   nodes: GraphNode[];
+  /** Visible meetings. Graph address (edge endpoints, neighbors/degree keys)
+   *  is `mtg:<id>` — see types/graph.ts. */
+  meetings: GraphMeetingNode[];
+  /** Visible executions; graph address is `run:<id>`. */
+  executions: GraphExecutionNode[];
   edges: GraphModelEdge[];
   /** Undirected neighbor map over the filtered edges (for hover highlight
-   *  and focus expansion). */
+   *  and focus expansion). Keys are graph addresses across all three entity
+   *  types. */
   neighbors: Map<string, Set<string>>;
-  /** Filtered degree per node id (for node radius and hub emphasis). */
+  /** Filtered degree per graph address (for node radius and hub emphasis). */
   degree: Map<string, number>;
-  /** parent -> direct children over `child` edges (for collapse/expand). */
+  /** parent -> direct children over `child` edges (for collapse/expand).
+   *  Only issues participate: meeting/execution edges are never `child`. */
   children: Map<string, string[]>;
 }
 
@@ -65,11 +93,40 @@ export function buildGraphModel(
   });
 
   const visible = new Set(nodes.map((n) => n.id));
+
+  // Meeting visibility: the entity toggle, plus — for a meeting linked to
+  // issues — at least one linked issue still visible (a project/status filter
+  // that hides every linked issue hides the meeting with them). A meeting
+  // with no links at all is a workspace-level record and stays.
+  const meetingLinkedIssues = new Map<string, string[]>();
+  for (const e of graph.edges) {
+    if (e.kind !== "meeting") continue;
+    const list = meetingLinkedIssues.get(e.source);
+    if (list) list.push(e.target);
+    else meetingLinkedIssues.set(e.source, [e.target]);
+  }
+  const meetings = (graph.meetings ?? []).filter((m) => {
+    if (!filters.meetings) return false;
+    const linked = meetingLinkedIssues.get(graphMeetingAddress(m.id)) ?? [];
+    return linked.length === 0 || linked.some((id) => visible.has(id));
+  });
+  const visibleMeetings = new Set(meetings.map((m) => graphMeetingAddress(m.id)));
+
+  // An execution is meaningful only next to its issue: filter the issue away
+  // and the run goes with it.
+  const executions = (graph.executions ?? []).filter(
+    (r) => filters.executions && visible.has(r.issue_id),
+  );
+  const visibleExecutions = new Set(executions.map((r) => graphExecutionAddress(r.id)));
+
+  const isVisibleEndpoint = (addr: string) =>
+    visible.has(addr) || visibleMeetings.has(addr) || visibleExecutions.has(addr);
+
   const edges: GraphModelEdge[] = [];
   for (const e of graph.edges) {
     if (!KNOWN.has(e.kind)) continue;
     if (!filters.edgeKinds.has(e.kind as GraphEdgeKind)) continue;
-    if (!visible.has(e.source) || !visible.has(e.target)) continue;
+    if (!isVisibleEndpoint(e.source) || !isVisibleEndpoint(e.target)) continue;
     edges.push({ source: e.source, target: e.target, kind: e.kind as GraphEdgeKind });
   }
 
@@ -88,6 +145,14 @@ export function buildGraphModel(
     ensure(n.id);
     degree.set(n.id, 0);
   }
+  for (const m of meetings) {
+    ensure(graphMeetingAddress(m.id));
+    degree.set(graphMeetingAddress(m.id), 0);
+  }
+  for (const r of executions) {
+    ensure(graphExecutionAddress(r.id));
+    degree.set(graphExecutionAddress(r.id), 0);
+  }
   for (const e of edges) {
     ensure(e.source).add(e.target);
     ensure(e.target).add(e.source);
@@ -100,7 +165,7 @@ export function buildGraphModel(
     }
   }
 
-  return { nodes, edges, neighbors, degree, children };
+  return { nodes, meetings, executions, edges, neighbors, degree, children };
 }
 
 /** Every descendant of root over child edges (root excluded). Used to fold a
@@ -142,8 +207,10 @@ export function focusNodeIds(
 }
 
 /** Case-insensitive prefix/substring match over identifier and title. An
- *  empty query matches nothing (callers treat empty as "no search"). */
-export function matchesQuery(node: GraphNode, query: string): boolean {
+ *  empty query matches nothing (callers treat empty as "no search"). The
+ *  structural signature lets meetings (identifier=code) and executions
+ *  (identifier=owning issue, title=agent name) share the one matcher. */
+export function matchesQuery(node: Pick<GraphNode, "identifier" | "title">, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
   return (

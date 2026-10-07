@@ -21,20 +21,51 @@ import {
 import { Toggle } from "@multica/ui/components/ui/toggle";
 import { Filter, RotateCcw, Search } from "lucide-react";
 import { STATUS_CONFIG } from "@multica/core/issues/config/status";
-import type { GraphNode } from "@multica/core/graph/build-graph-model";
+import type { GraphEntity } from "@multica/core/graph/build-graph-model";
 import type { Project } from "@multica/core/types";
+
+/** One row of the search dropdown: a node of any entity type, addressed by
+ *  its graph id (raw issue UUID, or mtg:/run: prefixed). */
+export interface GraphSearchResult {
+  id: string;
+  identifier: string;
+  title: string;
+  entity: GraphEntity;
+}
 
 export type ColorDimension = "project" | "status";
 export type FocusDepth = 0 | 1 | 2;
 
-/** The three user-facing relation groups; each maps to a set of edge kinds. */
+/** The user-facing relation groups; each maps to a set of edge kinds. The
+ *  meeting/execution toggles double as the entity-layer switches: off means
+ *  those nodes leave the canvas together with their edges. */
 export interface EdgeGroupToggles {
   child: boolean;
   dependency: boolean;
   mention: boolean;
+  meeting: boolean;
+  execution: boolean;
 }
 
-export const ALL_EDGE_GROUPS: EdgeGroupToggles = { child: true, dependency: true, mention: true };
+export const ALL_EDGE_GROUPS: EdgeGroupToggles = {
+  child: true,
+  dependency: true,
+  mention: true,
+  meeting: true,
+  execution: true,
+};
+
+/** Stable label lookup for the five groups (the menu iterates the toggles'
+ *  own keys, so this record must cover exactly the same set). The value type
+ *  pins the keys to the graph namespace's `filter` block, so a renamed locale
+ *  key fails typecheck instead of rendering a raw key. */
+export const EDGE_GROUP_LABEL_KEYS = {
+  child: "edge_group_child",
+  dependency: "edge_group_dependency",
+  mention: "edge_group_mention",
+  meeting: "edge_group_meeting",
+  execution: "edge_group_execution",
+} as const;
 
 export interface GraphToolbarProps {
   projects: Project[];
@@ -54,7 +85,7 @@ export interface GraphToolbarProps {
   onFocusDepthChange: (next: FocusDepth) => void;
   searchQuery: string;
   onSearchQueryChange: (next: string) => void;
-  searchResults: GraphNode[];
+  searchResults: GraphSearchResult[];
   onPickResult: (id: string) => void;
   onReset: () => void;
 }
@@ -68,7 +99,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
     let n = 0;
     if (props.projectFilter) n += 1;
     if (props.statusFilter) n += 1;
-    if (!props.edgeGroups.child || !props.edgeGroups.dependency || !props.edgeGroups.mention) {
+    if (Object.values(props.edgeGroups).some((on) => !on)) {
       n += 1;
     }
     return n;
@@ -123,6 +154,13 @@ export function GraphToolbar(props: GraphToolbarProps) {
                 >
                   <span className="font-mono text-micro text-muted-foreground">{n.identifier}</span>
                   <span className="truncate text-body text-foreground">{n.title}</span>
+                  {n.entity !== "issue" ? (
+                    <span className="ml-auto shrink-0 rounded-sm bg-accent px-1 text-micro text-muted-foreground">
+                      {n.entity === "meeting"
+                        ? t(($) => $.entity.meeting)
+                        : t(($) => $.entity.execution)}
+                    </span>
+                  ) : null}
                 </button>
               ))
             )}
@@ -155,13 +193,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
               }
               closeOnClick={false}
             >
-              {t(($) =>
-                group === "child"
-                  ? $.filter.edge_group_child
-                  : group === "dependency"
-                    ? $.filter.edge_group_dependency
-                    : $.filter.edge_group_mention,
-              )}
+              {t(($) => $.filter[EDGE_GROUP_LABEL_KEYS[group] as keyof typeof $.filter])}
             </DropdownMenuCheckboxItem>
           ))}
           <DropdownMenuSeparator />

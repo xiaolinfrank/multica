@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -35,8 +36,10 @@ func graphFixture(t *testing.T, name string) string {
 }
 
 type graphPayload struct {
-	Nodes []IssueGraphNodeResponse `json:"nodes"`
-	Edges []IssueGraphEdgeResponse `json:"edges"`
+	Nodes      []IssueGraphNodeResponse      `json:"nodes"`
+	Edges      []IssueGraphEdgeResponse      `json:"edges"`
+	Meetings   []IssueGraphMeetingResponse   `json:"meetings"`
+	Executions []IssueGraphExecutionResponse `json:"executions"`
 }
 
 func edgeKeys(g graphPayload) map[string]bool {
@@ -233,4 +236,158 @@ func TestGetIssueGraphRejectsMalformedProjectID(t *testing.T) {
 	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph),
 		graphRequest(http.MethodGet, "/api/issues/graph?project_id=not-a-uuid", wsID)).
 		Want(http.StatusBadRequest)
+}
+
+// Meetings and executions ride alongside the issue nodes: meetings come from
+// the workspace's cockpit board, executions are the latest run per issue plus
+// anything still active. Their edges use the mtg:/run: address prefixes.
+func TestGetIssueGraphIncludesMeetingsAndExecutions(t *testing.T) {
+	wsID := graphFixture(t, "Graph meetings and runs")
+	issue := dbfx.Issue(t, "Linked issue", testutil.Cols{"workspace_id": wsID})
+	other := dbfx.Issue(t, "No links", testutil.Cols{"workspace_id": wsID})
+	agentID := dbfx.Agent(t, "graph-runner", "", testutil.Cols{"workspace_id": wsID})
+
+	cockpitID := dbfx.Insert(t, "cockpit", testutil.Cols{"workspace_id": wsID})
+	meeting := dbfx.Insert(t, "cockpit_meeting", testutil.Cols{
+		"workspace_id": wsID,
+		"cockpit_id":   cockpitID,
+		"code":         "20261001-01",
+		"title":        "Kickoff",
+		"status":       "已召开",
+		"track":        "项目管理",
+		"nas_dir":      "/Volumes/share/meetings/20261001-01",
+	})
+	// A second meeting with no issue links still appears as an isolate in the
+	// workspace-scope graph.
+	lonely := dbfx.Insert(t, "cockpit_meeting", testutil.Cols{
+		"workspace_id": wsID,
+		"cockpit_id":   cockpitID,
+		"code":         "20261002-01",
+		"title":        "Unlinked review",
+	})
+	dbfx.InsertNoID(t, "cockpit_meeting_issue", testutil.Cols{
+		"workspace_id": wsID,
+		"meeting_id":   meeting,
+		"issue_id":     issue,
+		"role":         "task",
+	}, "meeting_id = '"+meeting+"' AND issue_id = '"+issue+"'")
+
+	// Three runs on the linked issue: two old completed ones (only the newest
+	// is graphed) and one still running (always graphed). The queue's check
+	// constraint wants completed_at on finished rows and a runtime on active
+	// ones.
+	runtimeID := dbfx.Runtime(t, "graph-runtime", testutil.Cols{"workspace_id": wsID})
+	dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": issue, "status": "completed", "created_at": testutil.Raw("now() - interval '3 days'"),
+		"completed_at": testutil.Raw("now() - interval '3 days'"),
+	})
+	latestDone := dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": issue, "status": "completed", "created_at": testutil.Raw("now() - interval '1 day'"),
+		"completed_at": testutil.Raw("now() - interval '1 day'"),
+	})
+	running := dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": issue, "status": "running", "created_at": testutil.Raw("now()"),
+		"runtime_id": runtimeID,
+	})
+
+	var g graphPayload
+	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph),
+		graphRequest(http.MethodGet, "/api/issues/graph", wsID)).
+		Want(http.StatusOK).
+		JSON(&g)
+
+	if len(g.Meetings) != 2 {
+		t.Fatalf("meetings = %d, want 2: %+v", len(g.Meetings), g.Meetings)
+	}
+	byID := map[string]IssueGraphMeetingResponse{}
+	for _, m := range g.Meetings {
+		byID[m.ID] = m
+	}
+	if m := byID[meeting]; m.Code != "20261001-01" || m.NasDir == "" || m.Track != "项目管理" {
+		t.Errorf("meeting payload = %+v", m)
+	}
+	if _, ok := byID[lonely]; !ok {
+		t.Errorf("unlinked meeting missing from workspace-scope graph")
+	}
+
+	if len(g.Executions) != 2 {
+		t.Fatalf("executions = %d, want latest-done + running: %+v", len(g.Executions), g.Executions)
+	}
+	runIDs := map[string]IssueGraphExecutionResponse{}
+	for _, r := range g.Executions {
+		runIDs[r.ID] = r
+	}
+	if _, ok := runIDs[latestDone]; !ok {
+		t.Errorf("latest completed run missing")
+	}
+	r, ok := runIDs[running]
+	if !ok || r.AgentName != "graph-runner" || r.Status != "running" {
+		t.Errorf("running run = %+v, present=%v", r, ok)
+	}
+
+	edges := edgeKeys(g)
+	for _, key := range []string{
+		fmt.Sprintf("mtg:%s>%s:meeting", meeting, issue),
+		fmt.Sprintf("%s>run:%s:execution", issue, latestDone),
+		fmt.Sprintf("%s>run:%s:execution", issue, running),
+	} {
+		if !edges[key] {
+			t.Errorf("missing edge %s; got %v", key, edges)
+		}
+	}
+	// The unlinked issue carries no execution/meeting edges at all.
+	for key := range edges {
+		if strings.Contains(key, other) {
+			t.Errorf("unexpected edge on link-less issue: %s", key)
+		}
+	}
+}
+
+// Project scope: meetings survive only through a linked issue inside the
+// project; executions follow their issue out of the set.
+func TestGetIssueGraphProjectScopeFiltersMeetingsAndRuns(t *testing.T) {
+	wsID := graphFixture(t, "Graph project scope meetings")
+	p1 := dbfx.Project(t, "One", testutil.Cols{"workspace_id": wsID})
+	p2 := dbfx.Project(t, "Two", testutil.Cols{"workspace_id": wsID})
+	in := dbfx.Issue(t, "In P1", testutil.Cols{"workspace_id": wsID, "project_id": p1})
+	out := dbfx.Issue(t, "In P2", testutil.Cols{"workspace_id": wsID, "project_id": p2})
+	agentID := dbfx.Agent(t, "graph-runner", "", testutil.Cols{"workspace_id": wsID})
+
+	cockpitID := dbfx.Insert(t, "cockpit", testutil.Cols{"workspace_id": wsID})
+	mIn := dbfx.Insert(t, "cockpit_meeting", testutil.Cols{
+		"workspace_id": wsID, "cockpit_id": cockpitID, "code": "20261003-01", "title": "P1 meeting",
+	})
+	mOut := dbfx.Insert(t, "cockpit_meeting", testutil.Cols{
+		"workspace_id": wsID, "cockpit_id": cockpitID, "code": "20261004-01", "title": "P2 meeting",
+	})
+	dbfx.InsertNoID(t, "cockpit_meeting_issue", testutil.Cols{
+		"workspace_id": wsID, "meeting_id": mIn, "issue_id": in,
+	}, "meeting_id = '"+mIn+"' AND issue_id = '"+in+"'")
+	dbfx.InsertNoID(t, "cockpit_meeting_issue", testutil.Cols{
+		"workspace_id": wsID, "meeting_id": mOut, "issue_id": out,
+	}, "meeting_id = '"+mOut+"' AND issue_id = '"+out+"'")
+	dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": in, "status": "completed", "completed_at": testutil.Raw("now()"),
+	})
+	dbfx.Task(t, agentID, testutil.Cols{
+		"issue_id": out, "status": "completed", "completed_at": testutil.Raw("now()"),
+	})
+
+	var g graphPayload
+	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph),
+		graphRequest(http.MethodGet, "/api/issues/graph?project_id="+p1, wsID)).
+		Want(http.StatusOK).
+		JSON(&g)
+
+	if len(g.Meetings) != 1 || g.Meetings[0].ID != mIn {
+		t.Fatalf("scoped meetings = %+v, want only the P1 meeting", g.Meetings)
+	}
+	if len(g.Executions) != 1 || g.Executions[0].IssueID != in {
+		t.Fatalf("scoped executions = %+v, want only the P1 issue's run", g.Executions)
+	}
+	for _, e := range g.Edges {
+		if e.Kind == "meeting" && e.Source != "mtg:"+mIn {
+			t.Errorf("unexpected meeting edge %+v", e)
+		}
+	}
 }

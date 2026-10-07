@@ -246,6 +246,16 @@
     --graph-edge-child: oklch(0.50 0.15 255);
     --graph-edge-dependency: oklch(0.58 0.14 70);
     --graph-edge-mention: oklch(0.52 0.17 305);
+    /* Cross-entity links of the three-entity graph: amber for meeting
+       attachments (warmer than the dependency amber — meeting edges sit
+       further apart through a deeper chroma), teal for execution runs. */
+    --graph-edge-meeting: oklch(0.60 0.17 50);
+    --graph-edge-execution: oklch(0.55 0.13 175);
+    /* Fixed identity hue for meeting nodes (the diamond shape): always amber,
+       independent of the project/status colour dimension so the entity type
+       reads before the colouring rule does. Execution nodes take status
+       semantics (success/destructive/warning/muted), no token of their own. */
+    --graph-node-meeting: oklch(0.66 0.16 65);
     /* Per-project node identity hues. The --chart-* ramp is an intentional
        monochrome brand gradient and cannot encode "which project"; nodes take
        the fleet metric family's hue assignments (blue → violet → teal → amber
@@ -344,6 +354,9 @@
     --graph-edge-child: oklch(0.74 0.15 255);
     --graph-edge-dependency: oklch(0.80 0.14 75);
     --graph-edge-mention: oklch(0.76 0.15 305);
+    --graph-edge-meeting: oklch(0.78 0.15 55);
+    --graph-edge-execution: oklch(0.74 0.12 175);
+    --graph-node-meeting: oklch(0.78 0.15 70);
     --graph-node-1: oklch(0.72 0.16 255);
     --graph-node-2: oklch(0.72 0.17 305);
     --graph-node-3: oklch(0.74 0.13 195);

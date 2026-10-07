@@ -6,7 +6,7 @@
 import { useT } from "../../i18n";
 import type { Project } from "@multica/core/types";
 import { projectColorIndex } from "@multica/core/graph/build-graph-model";
-import type { ColorDimension, EdgeGroupToggles } from "./graph-toolbar";
+import { EDGE_GROUP_LABEL_KEYS, type ColorDimension, type EdgeGroupToggles } from "./graph-toolbar";
 
 // Edge sample lines mirror the canvas: one hue per relation group (tokens from
 // tokens.css), plus the dash pattern the canvas draws for that group.
@@ -18,6 +18,8 @@ const EDGE_STYLES: Array<{
   { kind: "child", className: "", color: "var(--graph-edge-child)" },
   { kind: "dependency", className: "", color: "var(--graph-edge-dependency)" },
   { kind: "mention", className: "border-t border-dashed", color: "var(--graph-edge-mention)" },
+  { kind: "meeting", className: "", color: "var(--graph-edge-meeting)" },
+  { kind: "execution", className: "border-t border-dotted", color: "var(--graph-edge-execution)" },
 ];
 
 const PROJECT_COLOR_VARS = [
@@ -68,15 +70,35 @@ export function GraphLegend(props: {
                 style={{ borderTopColor: edge.color }}
                 aria-hidden
               />
-              {t(($) =>
-                edge.kind === "child"
-                  ? $.filter.edge_group_child
-                  : edge.kind === "dependency"
-                    ? $.filter.edge_group_dependency
-                    : $.filter.edge_group_mention,
-              )}
+              {t(($) => $.filter[EDGE_GROUP_LABEL_KEYS[edge.kind]])}
             </li>
           ))}
+        </ul>
+      ) : null}
+      {/* Entity shapes stay fixed regardless of the colour dimension: the
+          legend repeats them so a diamond never has to be guessed at. */}
+      {props.edgeGroups.meeting || props.edgeGroups.execution ? (
+        <ul className="mb-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/60 pt-2">
+          {props.edgeGroups.meeting ? (
+            <li className="flex items-center gap-1.5">
+              <span
+                className="inline-block size-2.5 rotate-45"
+                style={{ backgroundColor: "var(--graph-node-meeting)" }}
+                aria-hidden
+              />
+              {t(($) => $.entity.meeting)}
+            </li>
+          ) : null}
+          {props.edgeGroups.execution ? (
+            <li className="flex items-center gap-1.5">
+              <span
+                className="inline-block size-2.5 rounded-[3px]"
+                style={{ backgroundColor: "var(--graph-edge-execution)" }}
+                aria-hidden
+              />
+              {t(($) => $.entity.execution)}
+            </li>
+          ) : null}
         </ul>
       ) : null}
       {props.colorBy === "project" && props.projects.length > 5 ? (

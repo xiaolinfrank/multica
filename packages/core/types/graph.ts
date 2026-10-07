@@ -34,6 +34,12 @@ export const GRAPH_EDGE_KINDS = [
   "blocked_by",
   "related",
   "mention",
+  // meeting — a cockpit meeting linked to the issue (its own minutes task or
+  // a hand attachment). Source is the meeting's graph address ("mtg:<uuid>").
+  "meeting",
+  // execution — the issue's latest finished run / in-flight runs. Target is
+  // the run's graph address ("run:<uuid>").
+  "execution",
 ] as const;
 
 export type GraphEdgeKind = (typeof GRAPH_EDGE_KINDS)[number];
@@ -44,7 +50,50 @@ export interface GraphEdge {
   kind: string;
 }
 
+// A cockpit meeting as a graph node. The meeting register lives outside the
+// issue tracker, so these arrive in their own array — an older client reads
+// only `nodes`/`edges` and never mistakes one for an issue.
+export interface GraphMeetingNode {
+  /** Raw meeting UUID. Its graph address (edge endpoints) is `mtg:<id>`. */
+  id: string;
+  code: string;
+  title: string;
+  meet_date: string;
+  status: string;
+  track: string;
+  /** The meeting's folder on the shared storage; empty when never provisioned. */
+  nas_dir: string;
+}
+
+// An agent run as a graph node: the issue's latest finished run, plus every
+// run still in flight (see the server query for the exact window).
+export interface GraphExecutionNode {
+  /** Raw agent_task_queue UUID. Its graph address is `run:<id>`. */
+  id: string;
+  issue_id: string;
+  agent_name: string;
+  status: string;
+  started_at: string;
+  completed_at: string;
+  /** Anchors the run to its trigger comment for the #comment-<id> deep link. */
+  trigger_comment_id: string | null;
+}
+
 export interface IssueGraphResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  meetings: GraphMeetingNode[];
+  executions: GraphExecutionNode[];
+}
+
+// Graph address space: issue nodes keep their raw UUID; meetings and runs are
+// prefixed so an endpoint's entity type reads straight off the id and a UUID
+// shared across tables could never collide silently.
+export const graphMeetingAddress = (id: string) => `mtg:${id}`;
+export const graphExecutionAddress = (id: string) => `run:${id}`;
+export type GraphEntity = "issue" | "meeting" | "execution";
+export function graphAddressEntity(id: string): GraphEntity {
+  if (id.startsWith("mtg:")) return "meeting";
+  if (id.startsWith("run:")) return "execution";
+  return "issue";
 }

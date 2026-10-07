@@ -47,6 +47,46 @@ type IssueGraphEdgeResponse struct {
 	Kind   string `json:"kind"`
 }
 
+// Meeting and execution nodes ride alongside the issue nodes as separate
+// arrays: an older client only reads `nodes`/`edges`, and edge kinds it does
+// not know ("meeting", "execution") are dropped when its graph model is
+// built — additive fields keep that contract intact.
+//
+// Edge endpoints address nodes across the three arrays, so meeting/execution
+// endpoints carry an "mtg:"/"run:" prefix: the address space stays unambiguous
+// even though all three id columns are UUIDs, and a renderer can tell the
+// entity type of an endpoint without a lookup.
+
+const (
+	graphMeetingNodePrefix   = "mtg:"
+	graphExecutionNodePrefix = "run:"
+)
+
+type IssueGraphMeetingResponse struct {
+	ID       string `json:"id"`
+	Code     string `json:"code"`
+	Title    string `json:"title"`
+	MeetDate string `json:"meet_date"`
+	Status   string `json:"status"`
+	Track    string `json:"track"`
+	// NasDir is the meeting's folder on the shared storage; empty when the
+	// meeting was never provisioned. Absolute server-side path — display only.
+	NasDir string `json:"nas_dir"`
+}
+
+type IssueGraphExecutionResponse struct {
+	ID          string `json:"id"`
+	IssueID     string `json:"issue_id"`
+	AgentName   string `json:"agent_name"`
+	Status      string `json:"status"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+	// TriggerCommentID anchors the run to its source comment, so the client
+	// can deep-link to it (issue detail highlights #comment-<id>). Null when
+	// the run was not triggered by a comment.
+	TriggerCommentID *string `json:"trigger_comment_id"`
+}
+
 func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -228,6 +268,82 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 		addEdge(ref.source, target, "mention")
 	}
 
+	// --- meeting nodes + edges -------------------------------------------
+	// The board's meeting register joins the graph as its own node type,
+	// linked to the issues the meeting opened or someone attached. In a
+	// project-scoped read a meeting survives only when at least one of its
+	// linked issues is in the visible set — meetings are workspace-level
+	// records, and showing every one of them inside one project's graph would
+	// be noise.
+	meetings, err := h.Queries.ListIssueGraphMeetings(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	meetingLinks, err := h.Queries.ListIssueGraphMeetingIssues(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	linkedByMeeting := make(map[pgtype.UUID]int) // meeting id -> visible linked issues
+	for _, l := range meetingLinks {
+		if _, ok := nodeByID[l.IssueID]; !ok {
+			continue
+		}
+		linkedByMeeting[l.MeetingID]++
+		edgeSet[IssueGraphEdgeResponse{
+			Source: graphMeetingNodePrefix + uuidToString(l.MeetingID),
+			Target: uuidToString(l.IssueID),
+			Kind:   "meeting",
+		}] = struct{}{}
+	}
+	respMeetings := make([]IssueGraphMeetingResponse, 0, len(meetings))
+	for _, m := range meetings {
+		if projectFilter.Valid && linkedByMeeting[m.ID] == 0 {
+			continue
+		}
+		respMeetings = append(respMeetings, IssueGraphMeetingResponse{
+			ID:       uuidToString(m.ID),
+			Code:     m.Code,
+			Title:    m.Title,
+			MeetDate: derefOr(dateToPtr(m.MeetDate), ""),
+			Status:   m.Status,
+			Track:    m.Track,
+			NasDir:   m.NasDir,
+		})
+	}
+
+	// --- execution nodes + edges ------------------------------------------
+	// The queue's latest run per issue (plus anything still in flight) becomes
+	// a node hanging off its issue: the graph answers "what ran on this task"
+	// without opening every issue. A run whose issue fell out of the visible
+	// set (project scope) is dropped with it.
+	runs, err := h.Queries.ListIssueGraphRuns(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	respExecutions := make([]IssueGraphExecutionResponse, 0, len(runs))
+	for _, run := range runs {
+		if _, ok := nodeByID[run.IssueID]; !ok {
+			continue
+		}
+		respExecutions = append(respExecutions, IssueGraphExecutionResponse{
+			ID:               uuidToString(run.ID),
+			IssueID:          uuidToString(run.IssueID),
+			AgentName:        run.AgentName,
+			Status:           run.Status,
+			StartedAt:        timestampToString(run.StartedAt),
+			CompletedAt:      timestampToString(run.CompletedAt),
+			TriggerCommentID: uuidToPtr(run.TriggerCommentID),
+		})
+		edgeSet[IssueGraphEdgeResponse{
+			Source: uuidToString(run.IssueID),
+			Target: graphExecutionNodePrefix + uuidToString(run.ID),
+			Kind:   "execution",
+		}] = struct{}{}
+	}
+
 	respEdges := make([]IssueGraphEdgeResponse, 0, len(edgeSet))
 	for e := range edgeSet {
 		respEdges = append(respEdges, e)
@@ -245,7 +361,9 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes": respNodes,
-		"edges": respEdges,
+		"nodes":      respNodes,
+		"edges":      respEdges,
+		"meetings":   respMeetings,
+		"executions": respExecutions,
 	})
 }

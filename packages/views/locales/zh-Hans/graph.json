@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "图谱",
-    "subtitle": "任务之间的关联全貌：子任务、依赖、引用"
+    "subtitle": "工作如何相互关联：任务、会议与执行任务的全貌"
   },
   "toolbar": {
     "search_placeholder": "搜索任务…",
@@ -21,6 +21,8 @@
     "edge_group_child": "子任务",
     "edge_group_dependency": "依赖",
     "edge_group_mention": "引用",
+    "edge_group_meeting": "会议关联",
+    "edge_group_execution": "执行任务",
     "statuses": "状态",
     "projects": "项目",
     "no_project": "无项目"
@@ -31,17 +33,28 @@
   },
   "counts": {
     "nodes_other": "{{count}} 个任务",
+    "meetings_other": "{{count}} 场会议",
+    "executions_other": "{{count}} 条执行",
     "edges_other": "{{count}} 条关系",
     "collapsed_other": "{{count}} 个已折叠"
   },
   "card": {
     "dismiss": "关闭",
-    "open": "打开任务"
+    "open": "打开任务",
+    "open_meeting": "打开会议",
+    "open_run": "打开运行记录"
   },
   "menu": {
     "open": "打开任务",
-    "preview": "预览任务",
-    "isolate": "仅保留关联任务"
+    "open_meeting": "打开会议",
+    "open_run": "打开运行记录",
+    "preview": "预览",
+    "isolate": "仅保留关联"
+  },
+  "entity": {
+    "issue": "任务",
+    "meeting": "会议",
+    "execution": "执行任务"
   },
   "fields": {
     "status": "状态",
@@ -52,7 +65,19 @@
     "links": "关联数",
     "sub_issues_other": "{{count}} 个子任务",
     "dependencies_other": "{{count}} 个依赖",
-    "references_other": "{{count}} 个引用"
+    "references_other": "{{count}} 个引用",
+    "meetings_other": "{{count}} 场会议",
+    "executions_other": "{{count}} 条执行",
+    "linked_issues_other": "{{count}} 个关联任务",
+    "entity_type": "类型",
+    "meet_date": "日期",
+    "track": "条线",
+    "belongs_to": "所属任务",
+    "duration": "耗时",
+    "finished_at": "完成于",
+    "nas_dir": "资料目录",
+    "copy": "复制",
+    "copied": "已复制"
   },
   "empty": {
     "title": "还没有可展示的关系",

@@ -50,3 +50,56 @@ SELECT i.id, i.number
 FROM issue i
 WHERE i.workspace_id = $1
   AND i.number = ANY($2::int[]);
+
+-- name: ListIssueGraphMeetings :many
+-- Meetings of the workspace's cockpit board, rendered as meeting nodes in the
+-- graph. Empty for a workspace without a board. nas_dir is the meeting's
+-- folder on the shared storage (empty = never provisioned).
+SELECT cm.id, cm.code, cm.title, cm.meet_date, cm.status, cm.track, cm.nas_dir
+FROM cockpit_meeting cm
+JOIN cockpit c ON c.id = cm.cockpit_id
+WHERE c.workspace_id = $1
+ORDER BY cm.meet_date ASC, cm.code ASC;
+
+-- name: ListIssueGraphMeetingIssues :many
+-- Meeting↔issue links, both the meeting's own provisioned task (role='task')
+-- and hand-attached ones (role=''). Endpoints are re-validated against the
+-- visible issue node set in the handler.
+SELECT cmi.meeting_id, cmi.issue_id, cmi.role
+FROM cockpit_meeting_issue cmi
+WHERE cmi.workspace_id = $1;
+
+-- name: ListIssueGraphRuns :many
+-- Execution nodes for the graph: the latest TERMINAL run per issue (the last
+-- completed/failed/cancelled — "what last happened on this task") plus EVERY
+-- active run (queued/dispatched/running — "what is happening now"), so a task
+-- mid-rerun shows both its last outcome and the in-flight attempt. History
+-- beyond that is deliberately not graphed — a workspace's queue table grows
+-- without bound, the graph does not. issue_id is nullable on the queue (chat
+-- tasks); the JOIN both enforces tenancy and drops issue-less rows.
+WITH terminal AS (
+  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
+         q.trigger_comment_id, q.created_at,
+         ROW_NUMBER() OVER (PARTITION BY q.issue_id ORDER BY q.created_at DESC) AS rn
+  FROM agent_task_queue q
+  JOIN issue i ON i.id = q.issue_id
+  WHERE i.workspace_id = $1
+    AND q.status IN ('completed', 'failed', 'cancelled')
+),
+active AS (
+  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
+         q.trigger_comment_id, q.created_at, 0 AS rn
+  FROM agent_task_queue q
+  JOIN issue i ON i.id = q.issue_id
+  WHERE i.workspace_id = $1
+    AND q.status IN ('queued', 'dispatched', 'running')
+)
+SELECT r.id, r.issue_id, r.status, r.started_at, r.completed_at, r.trigger_comment_id,
+       a.name AS agent_name
+FROM (SELECT id, issue_id, agent_id, status, started_at, completed_at,
+             trigger_comment_id, created_at FROM terminal WHERE rn = 1
+      UNION ALL
+      SELECT id, issue_id, agent_id, status, started_at, completed_at,
+             trigger_comment_id, created_at FROM active) r
+JOIN agent a ON a.id = r.agent_id
+ORDER BY r.created_at DESC;

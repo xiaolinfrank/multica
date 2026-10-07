@@ -1734,9 +1734,10 @@ export class ApiClient {
     });
   }
 
-  /** Whole-workspace (or single-project) issue graph snapshot for the graph
-   *  view: nodes are issues, edges are child / dependency / mention relations.
-   *  One request per scope; filtering and layout happen client-side. */
+  /** Whole-workspace (or single-project) graph snapshot: issues, cockpit
+   *  meetings, and the latest/active agent runs, with edges across all three
+   *  entity types. One request per scope; filtering and layout client-side. */
+
   async getIssueGraph(params?: { project_id?: string }): Promise<IssueGraphResponse> {
     const search = new URLSearchParams();
     if (params?.project_id) search.set("project_id", params.project_id);

@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
+import { graphKeys } from "../graph/queries";
 import type {
   CockpitBoard,
   CockpitChangedPayload,
@@ -106,11 +107,19 @@ export function onCockpitChanged(
 ): void {
   const { scope, action, entity } = payload;
 
+  // The graph reads meetings and their issue links straight off the board's
+  // tables: any meeting-scope movement (row, issue links) re-reads it. Node
+  // and meeting_nodes scopes never touch what the graph draws.
+  if (scope === "meeting" || scope === "meeting_issues") {
+    qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+  }
+
   // An import or restore rewrote the board; nothing here can reconstruct it
   // from a count. Both freeze a version on the way in, so history moves too.
   if (scope === "board") {
     qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     qc.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
+    qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
     return;
   }
 

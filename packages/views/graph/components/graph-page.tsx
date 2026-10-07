@@ -1,7 +1,9 @@
 "use client";
 
-// The issue graph page: workspace-level ("/:slug/graph") or project-scoped
-// ("/:slug/projects/:id/graph", via the projectId prop). Owns the view state
+// The graph page: workspace-level ("/:slug/graph") or project-scoped
+// ("/:slug/projects/:id/graph", via the projectId prop). Three entity types
+// share one canvas — issues, cockpit meetings, and agent runs — with the
+// issue relations plus the two cross-entity link kinds. Owns the view state
 // (filters, search, focus, collapsed branches), derives the GraphModel from
 // the cached snapshot, and renders toolbar + canvas + legend. Layout math and
 // graph semantics live in @multica/core/graph.
@@ -17,9 +19,12 @@ import {
   collectSubtree,
   defaultEdgeKinds,
   focusNodeIds,
+  graphAddressEntity,
+  graphExecutionAddress,
+  graphMeetingAddress,
   matchesQuery,
 } from "@multica/core/graph/build-graph-model";
-import type { GraphModel } from "@multica/core/graph/build-graph-model";
+import type { GraphExecutionNode, GraphModel } from "@multica/core/graph/build-graph-model";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
@@ -31,6 +36,7 @@ import {
   type ColorDimension,
   type EdgeGroupToggles,
   type FocusDepth,
+  type GraphSearchResult,
 } from "./graph-toolbar";
 import { GraphLegend } from "./graph-legend";
 
@@ -45,10 +51,29 @@ function edgeKindsFromGroups(groups: EdgeGroupToggles) {
     kinds.delete("related");
   }
   if (!groups.mention) kinds.delete("mention");
+  if (!groups.meeting) kinds.delete("meeting");
+  if (!groups.execution) kinds.delete("execution");
   return kinds;
 }
 
-/** Applies collapse branches and focus depth on top of the filtered model. */
+/** A scoped-down copy of the model: node arrays filtered by a keep set over
+ *  graph addresses (raw issue UUID, mtg:, run:), edges by endpoint survival. */
+function subsetModel(model: GraphModel, keep: (address: string) => boolean): GraphModel {
+  const nodes = model.nodes.filter((n) => keep(n.id));
+  const meetings = model.meetings.filter((n) => keep(graphMeetingAddress(n.id)));
+  const executions = model.executions.filter((n) => keep(graphExecutionAddress(n.id)));
+  const visible = new Set<string>([
+    ...nodes.map((n) => n.id),
+    ...meetings.map((n) => graphMeetingAddress(n.id)),
+    ...executions.map((n) => graphExecutionAddress(n.id)),
+  ]);
+  const edges = model.edges.filter((e) => visible.has(e.source) && visible.has(e.target));
+  return { nodes, meetings, executions, edges, neighbors: model.neighbors, degree: model.degree, children: model.children };
+}
+
+/** Applies collapse branches and focus depth on top of the filtered model.
+ *  Folding an issue branch also folds the meetings/runs that only hung off
+ *  the hidden issues; focus keeps whatever the BFS reached, across entities. */
 function scopeModel(model: GraphModel, collapsedRoots: Set<string>, selectedId: string | null, focusDepth: FocusDepth): {
   model: GraphModel;
   collapsedCount: number;
@@ -60,22 +85,23 @@ function scopeModel(model: GraphModel, collapsedRoots: Set<string>, selectedId: 
       for (const id of collectSubtree(root, model.children)) hidden.add(id);
     }
     collapsedCount = hidden.size;
-    const nodes = model.nodes.filter((n) => !hidden.has(n.id));
-    const visible = new Set(nodes.map((n) => n.id));
-    const edges = model.edges.filter((e) => visible.has(e.source) && visible.has(e.target));
-    model = {
-      nodes,
-      edges,
-      neighbors: model.neighbors,
-      degree: model.degree,
-      children: model.children,
+    const hiddenMeeting = (addr: string) => {
+      const linked = model.edges.filter((e) => e.kind === "meeting" && e.source === addr);
+      return linked.length > 0 && linked.every((e) => hidden.has(e.target));
     };
+    model = subsetModel(model, (addr) => {
+      if (hidden.has(addr)) return false;
+      if (addr.startsWith("run:")) {
+        const run = model.executions.find((r) => graphExecutionAddress(r.id) === addr);
+        if (run && hidden.has(run.issue_id)) return false;
+      }
+      if (addr.startsWith("mtg:")) return !hiddenMeeting(addr);
+      return true;
+    });
   }
   if (focusDepth > 0 && selectedId) {
     const keep = focusNodeIds(model, selectedId, focusDepth);
-    const nodes = model.nodes.filter((n) => keep.has(n.id));
-    const edges = model.edges.filter((e) => keep.has(e.source) && keep.has(e.target));
-    model = { nodes, edges, neighbors: model.neighbors, degree: model.degree, children: model.children };
+    model = subsetModel(model, (addr) => keep.has(addr));
   }
   return { model, collapsedCount };
 }
@@ -112,7 +138,10 @@ export function GraphPage(props: { projectId?: string | null }) {
   const [centerOn, setCenterOn] = useState<{ id: string; nonce: number } | null>(null);
 
   const data = useMemo(
-    () => (isDemo ? demoGraph() : graphQuery.data ?? { nodes: [], edges: [] }),
+    () =>
+      isDemo
+        ? demoGraph()
+        : graphQuery.data ?? { nodes: [], edges: [], meetings: [], executions: [] },
     [isDemo, graphQuery.data],
   );
 
@@ -122,6 +151,8 @@ export function GraphPage(props: { projectId?: string | null }) {
         projects: projectId ? new Set([projectId]) : projectFilter,
         statuses: statusFilter,
         edgeKinds: edgeKindsFromGroups(edgeGroups),
+        meetings: edgeGroups.meeting,
+        executions: edgeGroups.execution,
       }),
     [data, projectId, projectFilter, statusFilter, edgeGroups],
   );
@@ -131,31 +162,74 @@ export function GraphPage(props: { projectId?: string | null }) {
     [fullModel, collapsedRoots, selectedId, focusDepth],
   );
 
-  const selectedNode = useMemo(
-    () => model.nodes.find((n) => n.id === selectedId) ?? null,
-    [model, selectedId],
-  );
+  // The selection is a graph ADDRESS: issues keep their raw UUID, meetings
+  // and runs carry the mtg:/run: prefixes — one lookup tells the entity.
+  const selectedNode = useMemo(() => {
+    if (!selectedId) return null;
+    const entity = graphAddressEntity(selectedId);
+    if (entity === "meeting") {
+      return model.meetings.find((n) => graphMeetingAddress(n.id) === selectedId) ?? null;
+    }
+    if (entity === "execution") {
+      return model.executions.find((n) => graphExecutionAddress(n.id) === selectedId) ?? null;
+    }
+    return model.nodes.find((n) => n.id === selectedId) ?? null;
+  }, [model, selectedId]);
 
   // Per-group edge counts for the selected node, mirroring the toolbar's
-  // relation groups (child / dependency / mention).
+  // relation groups (child / dependency / mention / meeting / execution).
   const selectedEdgeCounts = useMemo(() => {
-    if (!selectedNode) return null;
+    if (!selectedNode || !selectedId) return null;
     let child = 0;
     let dependency = 0;
     let mention = 0;
+    let meeting = 0;
+    let execution = 0;
     for (const e of fullModel.edges) {
-      if (e.source !== selectedNode.id && e.target !== selectedNode.id) continue;
+      if (e.source !== selectedId && e.target !== selectedId) continue;
       if (e.kind === "child") child += 1;
       else if (e.kind === "mention") mention += 1;
+      else if (e.kind === "meeting") meeting += 1;
+      else if (e.kind === "execution") execution += 1;
       else dependency += 1;
     }
-    return { child, dependency, mention };
-  }, [fullModel, selectedNode]);
+    return { child, dependency, mention, meeting, execution };
+  }, [fullModel, selectedNode, selectedId]);
 
   const searchResults = useMemo(() => {
     const q = searchQuery.trim();
     if (!q) return [];
-    return fullModel.nodes.filter((n) => matchesQuery(n, q)).slice(0, SEARCH_RESULT_LIMIT);
+    const results: GraphSearchResult[] = [];
+    for (const n of fullModel.nodes) {
+      if (matchesQuery(n, q)) {
+        results.push({ id: n.id, identifier: n.identifier, title: n.title, entity: "issue" });
+      }
+    }
+    for (const m of fullModel.meetings) {
+      if (matchesQuery({ identifier: m.code, title: m.title }, q)) {
+        results.push({
+          id: graphMeetingAddress(m.id),
+          identifier: m.code,
+          title: m.title,
+          entity: "meeting",
+        });
+      }
+    }
+    const issueById = new Map(fullModel.nodes.map((n) => [n.id, n]));
+    for (const r of fullModel.executions) {
+      const owner = issueById.get(r.issue_id);
+      if (
+        matchesQuery({ identifier: owner?.identifier ?? "", title: r.agent_name }, q)
+      ) {
+        results.push({
+          id: graphExecutionAddress(r.id),
+          identifier: owner?.identifier ?? "",
+          title: r.agent_name,
+          entity: "execution",
+        });
+      }
+    }
+    return results.slice(0, SEARCH_RESULT_LIMIT);
   }, [fullModel, searchQuery]);
 
   const onPickResult = useCallback(
@@ -206,6 +280,28 @@ export function GraphPage(props: { projectId?: string | null }) {
     [navigation, wsPaths],
   );
 
+  // A meeting opens where it lives: the cockpit's meetings tab with its
+  // panel up (?meeting= deep link, consumed by the cockpit page).
+  const openMeeting = useCallback(
+    (id: string) => {
+      if (wsPaths) navigation.push(`${wsPaths.cockpit()}?meeting=${encodeURIComponent(id)}`);
+    },
+    [navigation, wsPaths],
+  );
+
+  // A run has no page of its own; it lives inline in its issue's timeline.
+  // Anchor the jump on the comment that triggered it when there is one.
+  const openExecution = useCallback(
+    (exec: GraphExecutionNode) => {
+      if (!wsPaths) return;
+      const owner = data.nodes.find((n) => n.id === exec.issue_id);
+      if (!owner) return;
+      const hash = exec.trigger_comment_id ? `#comment-${exec.trigger_comment_id}` : "";
+      navigation.push(wsPaths.issueDetail(owner.identifier) + hash);
+    },
+    [navigation, wsPaths, data],
+  );
+
   // Menu action "keep related only": the toolbar's 1-hop focus already
   // expresses it; re-centering makes the trimmed graph readable at once.
   const onFocusNeighbors = useCallback((id: string) => {
@@ -223,7 +319,7 @@ export function GraphPage(props: { projectId?: string | null }) {
     );
   }
 
-  const total = data.nodes.length;
+  const total = data.nodes.length + (data.meetings?.length ?? 0) + (data.executions?.length ?? 0);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 @container md:p-6" data-testid="graph-page">
@@ -234,6 +330,8 @@ export function GraphPage(props: { projectId?: string | null }) {
         </div>
         <div className="text-micro text-muted-foreground tabular-nums" data-testid="graph-counts">
           {t(($) => $.counts.nodes, { count: model.nodes.length })}
+          {model.meetings.length > 0 ? ` · ${t(($) => $.counts.meetings, { count: model.meetings.length })}` : ""}
+          {model.executions.length > 0 ? ` · ${t(($) => $.counts.executions, { count: model.executions.length })}` : ""}
           {" · "}
           {t(($) => $.counts.edges, { count: model.edges.length })}
           {collapsedCount > 0 ? ` · ${t(($) => $.counts.collapsed, { count: collapsedCount })}` : ""}
@@ -278,6 +376,8 @@ export function GraphPage(props: { projectId?: string | null }) {
               centerOn={centerOn}
               searchQuery={searchQuery}
               onOpenIssue={openIssue}
+              onOpenMeeting={openMeeting}
+              onOpenExecution={openExecution}
               onFocusNeighbors={onFocusNeighbors}
               selectedEdgeCounts={selectedEdgeCounts}
             />

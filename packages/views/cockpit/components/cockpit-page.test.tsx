@@ -21,13 +21,16 @@ vi.mock("@multica/core/paths", () => ({
   }),
 }));
 
+// Mutable so a test can arm a `?meeting=` deep link before rendering.
+const navSearch = vi.hoisted(() => ({ params: new URLSearchParams() }));
+
 vi.mock("../../navigation", () => ({
   useNavigation: () => ({
     push: vi.fn(),
     replace: vi.fn(),
     back: vi.fn(),
     pathname: "/ws/cockpit",
-    searchParams: new URLSearchParams(),
+    searchParams: navSearch.params,
   }),
   AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
@@ -248,6 +251,7 @@ function renderPage() {
 describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
@@ -267,6 +271,16 @@ describe("CockpitPage", () => {
         avatar_url: null,
       },
     ]);
+  });
+
+  it("opens the meeting panel from the ?meeting= deep link", async () => {
+    // The graph's meeting nodes and the issue sidebar's linked-meetings rows
+    // land here: meetings tab + this meeting's panel, once per URL value.
+    navSearch.params = new URLSearchParams("meeting=meet-1");
+    const { findAllByText, findByRole } = renderPage();
+    // The title shows in the register row AND the opened panel.
+    await waitFor(async () => expect((await findAllByText("Working group weekly")).length).toBeGreaterThan(1));
+    expect(await findByRole("button", { name: "Close panel" })).toBeInTheDocument();
   });
 
   it("renders the overview: goal, milestones, modules and finance", async () => {
@@ -784,6 +798,7 @@ describe("CockpitPage", () => {
 describe("CockpitPage detail tables", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -849,6 +864,7 @@ describe("CockpitPage detail tables", () => {
 describe("CockpitPage versions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });

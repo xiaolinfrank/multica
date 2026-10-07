@@ -56,5 +56,34 @@ export function demoGraph(): IssueGraphResponse {
     add(from, to, "mention");
   }
 
-  return { nodes, edges };
+  // Meetings gather the week's issues; executions hang off the busiest hubs.
+  // Same determinism as above — the demo must render identically on every
+  // load for screenshots.
+  const meetings: IssueGraphResponse["meetings"] = [
+    { id: "m-1", code: "20260901-01", title: "Kickoff review", meet_date: "2026-09-01", status: "held", track: "Project", nas_dir: "/nas/demo/kickoff" },
+    { id: "m-2", code: "20260908-01", title: "Weekly sync W37", meet_date: "2026-09-08", status: "held", track: "Project", nas_dir: "" },
+    { id: "m-3", code: "20261013-01", title: "Lock planning", meet_date: "2026-10-13", status: "planned", track: "Data", nas_dir: "" },
+  ];
+  const executions: IssueGraphResponse["executions"] = [];
+  for (const i of [1, 4, 7, 11, 16, 21] as const) {
+    executions.push({
+      id: `r-${i}`,
+      issue_id: `demo-${i}`,
+      agent_name: "Research Agent",
+      status: i % 2 === 0 ? "running" : "completed",
+      started_at: "2026-10-05T09:00:00Z",
+      completed_at: i % 2 === 0 ? "" : "2026-10-05T09:04:12Z",
+      trigger_comment_id: null,
+    });
+  }
+  for (const [meeting, issue] of [
+    ["m-1", 1], ["m-1", 2], ["m-1", 3], ["m-2", 7], ["m-2", 8], ["m-3", 16],
+  ] as const) {
+    edges.push({ source: `mtg:${meeting}`, target: `demo-${issue}`, kind: "meeting" });
+  }
+  for (const r of executions) {
+    edges.push({ source: r.issue_id, target: `run:${r.id}`, kind: "execution" });
+  }
+
+  return { nodes, edges, meetings, executions };
 }

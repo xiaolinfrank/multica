@@ -109,6 +109,7 @@ import { useAuthStore } from "@multica/core/auth";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useModalStore } from "@multica/core/modals";
+import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
@@ -222,6 +223,7 @@ export function CockpitPage() {
   const { t } = useT("cockpit");
   const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
+  const navigation = useNavigation();
   const [tab, setTab] = useState<CockpitTab>("overview");
   const tabPillRef = useSegmentedPill(tab);
   const [zoom, setZoom] = useState<CockpitZoom>("month");
@@ -253,6 +255,22 @@ export function CockpitPage() {
   const [today] = useState(todayString);
 
   const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
+
+  // Deep link `?meeting=<id>` (graph node menu, issue sidebar): land on the
+  // meetings tab with that meeting's panel open. Waits for the board so the
+  // stale-selection cleanup cannot eat the id before the meeting arrives;
+  // applied once per distinct param value — closing the panel by hand does
+  // not bounce it back because the URL does not change on close. An unknown
+  // id is silently ignored.
+  const deepLinkMeeting = navigation.searchParams.get("meeting");
+  const deepLinkAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkMeeting || deepLinkAppliedRef.current === deepLinkMeeting) return;
+    if (!(board?.meetings ?? []).some((m) => m.id === deepLinkMeeting)) return;
+    deepLinkAppliedRef.current = deepLinkMeeting;
+    setTab("meetings");
+    setSelectedMeetingId(deepLinkMeeting);
+  }, [deepLinkMeeting, board]);
   const { data: pendingChanges } = useQuery(cockpitChangesOptions(wsId));
   const pendingCount = useMemo(
     () => (pendingChanges ?? []).filter((c) => c.status === "pending").length,

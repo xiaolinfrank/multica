@@ -82,6 +82,90 @@ func (q *Queries) ListIssueGraphDependencies(ctx context.Context, workspaceID pg
 	return items, nil
 }
 
+const listIssueGraphMeetingIssues = `-- name: ListIssueGraphMeetingIssues :many
+SELECT cmi.meeting_id, cmi.issue_id, cmi.role
+FROM cockpit_meeting_issue cmi
+WHERE cmi.workspace_id = $1
+`
+
+type ListIssueGraphMeetingIssuesRow struct {
+	MeetingID pgtype.UUID `json:"meeting_id"`
+	IssueID   pgtype.UUID `json:"issue_id"`
+	Role      string      `json:"role"`
+}
+
+// Meeting↔issue links, both the meeting's own provisioned task (role='task')
+// and hand-attached ones (role=”). Endpoints are re-validated against the
+// visible issue node set in the handler.
+func (q *Queries) ListIssueGraphMeetingIssues(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphMeetingIssuesRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphMeetingIssues, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphMeetingIssuesRow{}
+	for rows.Next() {
+		var i ListIssueGraphMeetingIssuesRow
+		if err := rows.Scan(&i.MeetingID, &i.IssueID, &i.Role); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssueGraphMeetings = `-- name: ListIssueGraphMeetings :many
+SELECT cm.id, cm.code, cm.title, cm.meet_date, cm.status, cm.track, cm.nas_dir
+FROM cockpit_meeting cm
+JOIN cockpit c ON c.id = cm.cockpit_id
+WHERE c.workspace_id = $1
+ORDER BY cm.meet_date ASC, cm.code ASC
+`
+
+type ListIssueGraphMeetingsRow struct {
+	ID       pgtype.UUID `json:"id"`
+	Code     string      `json:"code"`
+	Title    string      `json:"title"`
+	MeetDate pgtype.Date `json:"meet_date"`
+	Status   string      `json:"status"`
+	Track    string      `json:"track"`
+	NasDir   string      `json:"nas_dir"`
+}
+
+// Meetings of the workspace's cockpit board, rendered as meeting nodes in the
+// graph. Empty for a workspace without a board. nas_dir is the meeting's
+// folder on the shared storage (empty = never provisioned).
+func (q *Queries) ListIssueGraphMeetings(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphMeetingsRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphMeetings, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphMeetingsRow{}
+	for rows.Next() {
+		var i ListIssueGraphMeetingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Title,
+			&i.MeetDate,
+			&i.Status,
+			&i.Track,
+			&i.NasDir,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIssueGraphNodes = `-- name: ListIssueGraphNodes :many
 
 SELECT i.id, i.number, i.title, i.description, i.status, i.priority,
@@ -150,6 +234,80 @@ func (q *Queries) ListIssueGraphNodes(ctx context.Context, arg ListIssueGraphNod
 			&i.UpdatedAt,
 			&i.AssigneeType,
 			&i.AssigneeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssueGraphRuns = `-- name: ListIssueGraphRuns :many
+WITH terminal AS (
+  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
+         q.trigger_comment_id, q.created_at,
+         ROW_NUMBER() OVER (PARTITION BY q.issue_id ORDER BY q.created_at DESC) AS rn
+  FROM agent_task_queue q
+  JOIN issue i ON i.id = q.issue_id
+  WHERE i.workspace_id = $1
+    AND q.status IN ('completed', 'failed', 'cancelled')
+),
+active AS (
+  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
+         q.trigger_comment_id, q.created_at, 0 AS rn
+  FROM agent_task_queue q
+  JOIN issue i ON i.id = q.issue_id
+  WHERE i.workspace_id = $1
+    AND q.status IN ('queued', 'dispatched', 'running')
+)
+SELECT r.id, r.issue_id, r.status, r.started_at, r.completed_at, r.trigger_comment_id,
+       a.name AS agent_name
+FROM (SELECT id, issue_id, agent_id, status, started_at, completed_at,
+             trigger_comment_id, created_at FROM terminal WHERE rn = 1
+      UNION ALL
+      SELECT id, issue_id, agent_id, status, started_at, completed_at,
+             trigger_comment_id, created_at FROM active) r
+JOIN agent a ON a.id = r.agent_id
+ORDER BY r.created_at DESC
+`
+
+type ListIssueGraphRunsRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	IssueID          pgtype.UUID        `json:"issue_id"`
+	Status           string             `json:"status"`
+	StartedAt        pgtype.Timestamptz `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	TriggerCommentID pgtype.UUID        `json:"trigger_comment_id"`
+	AgentName        string             `json:"agent_name"`
+}
+
+// Execution nodes for the graph: the latest TERMINAL run per issue (the last
+// completed/failed/cancelled — "what last happened on this task") plus EVERY
+// active run (queued/dispatched/running — "what is happening now"), so a task
+// mid-rerun shows both its last outcome and the in-flight attempt. History
+// beyond that is deliberately not graphed — a workspace's queue table grows
+// without bound, the graph does not. issue_id is nullable on the queue (chat
+// tasks); the JOIN both enforces tenancy and drops issue-less rows.
+func (q *Queries) ListIssueGraphRuns(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphRunsRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphRuns, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphRunsRow{}
+	for rows.Next() {
+		var i ListIssueGraphRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IssueID,
+			&i.Status,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.TriggerCommentID,
+			&i.AgentName,
 		); err != nil {
 			return nil, err
 		}

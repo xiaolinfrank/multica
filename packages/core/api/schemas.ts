@@ -1773,6 +1773,29 @@ const IssueGraphNodeSchema = z.object({
   assignee_name: z.string().default(""),
 }).loose();
 
+// Meetings and executions are additive arrays: an older backend simply never
+// sends them (defaulting to []), and a newer one sends them to clients that
+// know how to draw them. Same degradation contract as the issue nodes.
+const IssueGraphMeetingSchema = z.object({
+  id: z.string(),
+  code: z.string().default(""),
+  title: z.string().default(""),
+  meet_date: z.string().default(""),
+  status: z.string().default(""),
+  track: z.string().default(""),
+  nas_dir: z.string().default(""),
+}).loose();
+
+const IssueGraphExecutionSchema = z.object({
+  id: z.string(),
+  issue_id: z.string().default(""),
+  agent_name: z.string().default(""),
+  status: z.string().default(""),
+  started_at: z.string().default(""),
+  completed_at: z.string().default(""),
+  trigger_comment_id: z.string().nullable().default(null),
+}).loose();
+
 export const IssueGraphResponseSchema = z.object({
   nodes: z.array(IssueGraphNodeSchema).default([]),
   edges: z.array(z.object({
@@ -1780,9 +1803,11 @@ export const IssueGraphResponseSchema = z.object({
     target: z.string(),
     kind: z.string().default("related"),
   }).loose()).default([]),
+  meetings: z.array(IssueGraphMeetingSchema).default([]),
+  executions: z.array(IssueGraphExecutionSchema).default([]),
 }).loose();
 
-export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [] };
+export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [], meetings: [], executions: [] };
 
 // GET /api/cockpit and every cockpit write. Fields default aggressively for the
 // same reason the graph's do: an installed desktop build talking to a newer

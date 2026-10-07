@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Graph",
-    "subtitle": "How your issues relate: sub-issues, dependencies, references"
+    "subtitle": "How your work relates: issues, meetings, and the runs carrying them out"
   },
   "toolbar": {
     "search_placeholder": "Search issues…",
@@ -21,6 +21,8 @@
     "edge_group_child": "Sub-issues",
     "edge_group_dependency": "Dependencies",
     "edge_group_mention": "References",
+    "edge_group_meeting": "Meetings",
+    "edge_group_execution": "Executions",
     "statuses": "Status",
     "projects": "Projects",
     "no_project": "No project"
@@ -33,6 +35,10 @@
   "counts": {
     "nodes_one": "{{count}} issue",
     "nodes_other": "{{count}} issues",
+    "meetings_one": "{{count}} meeting",
+    "meetings_other": "{{count}} meetings",
+    "executions_one": "{{count}} execution",
+    "executions_other": "{{count}} executions",
     "edges_one": "{{count}} link",
     "edges_other": "{{count}} links",
     "collapsed_one": "{{count}} collapsed",
@@ -40,12 +46,21 @@
   },
   "card": {
     "dismiss": "Close",
-    "open": "Open issue"
+    "open": "Open issue",
+    "open_meeting": "Open meeting",
+    "open_run": "Open run record"
   },
   "menu": {
     "open": "Open issue",
+    "open_meeting": "Open meeting",
+    "open_run": "Open run record",
     "preview": "Preview",
     "isolate": "Keep related only"
+  },
+  "entity": {
+    "issue": "Issue",
+    "meeting": "Meeting",
+    "execution": "Execution"
   },
   "fields": {
     "status": "Status",
@@ -59,7 +74,22 @@
     "dependencies_one": "{{count}} dependency",
     "dependencies_other": "{{count}} dependencies",
     "references_one": "{{count}} reference",
-    "references_other": "{{count}} references"
+    "references_other": "{{count}} references",
+    "meetings_one": "{{count}} meeting",
+    "meetings_other": "{{count}} meetings",
+    "executions_one": "{{count}} execution",
+    "executions_other": "{{count}} executions",
+    "linked_issues_one": "{{count}} linked issue",
+    "linked_issues_other": "{{count}} linked issues",
+    "entity_type": "Type",
+    "meet_date": "Date",
+    "track": "Track",
+    "belongs_to": "Task",
+    "duration": "Duration",
+    "finished_at": "Finished",
+    "nas_dir": "Folder",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "empty": {
     "title": "Nothing to map yet",

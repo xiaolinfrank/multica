@@ -15,6 +15,7 @@ vi.mock("@multica/core/hooks", () => ({
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
     issueDetail: (id: string) => `/ws/issues/${id}`,
+    cockpit: () => "/ws/cockpit",
   }),
 }));
 
@@ -35,7 +36,7 @@ vi.mock("../../navigation", () => ({
 
 vi.mock("@multica/core/api", () => ({
   api: {
-    getIssueGraph: vi.fn().mockResolvedValue({ nodes: [], edges: [] }),
+    getIssueGraph: vi.fn().mockResolvedValue({ nodes: [], edges: [], meetings: [], executions: [] }),
     listProjects: vi.fn().mockResolvedValue({ projects: [], total: 0 }),
   },
 }));
@@ -52,6 +53,28 @@ const graphFixture = {
   edges: [
     { source: "a", target: "b", kind: "child" },
     { source: "a", target: "c", kind: "mention" },
+  ],
+  meetings: [],
+  executions: [],
+};
+
+// Three-entity fixture: the Alpha issue was discussed in a meeting and has a
+// finished run; Gamma has one in flight.
+const graphEntityFixture = {
+  ...graphFixture,
+  nodes: graphFixture.nodes,
+  edges: [
+    ...graphFixture.edges,
+    { source: "mtg:m1", target: "a", kind: "meeting" },
+    { source: "a", target: "run:r1", kind: "execution" },
+    { source: "c", target: "run:r2", kind: "execution" },
+  ],
+  meetings: [
+    { id: "m1", code: "20260901-01", title: "Kickoff meeting", meet_date: "2026-09-01", status: "held", track: "Project", nas_dir: "/nas/kickoff" },
+  ],
+  executions: [
+    { id: "r1", issue_id: "a", agent_name: "Minutes Agent", status: "completed", started_at: "2026-09-01T10:00:00Z", completed_at: "2026-09-01T10:03:30Z", trigger_comment_id: "c-9" },
+    { id: "r2", issue_id: "c", agent_name: "Research Agent", status: "running", started_at: "2026-10-05T09:00:00Z", completed_at: "", trigger_comment_id: null },
   ],
 };
 
@@ -84,7 +107,7 @@ function renderPage(props?: { projectId?: string | null }) {
 describe("GraphPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.getIssueGraph).mockResolvedValue({ nodes: [], edges: [] });
+    vi.mocked(api.getIssueGraph).mockResolvedValue({ nodes: [], edges: [], meetings: [], executions: [] });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
   });
 
@@ -255,6 +278,80 @@ describe("GraphPage", () => {
     expect(menu).toHaveAttribute("data-node-id", "a");
     await waitFor(() =>
       expect(screen.queryByTestId("graph-node-preview")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("renders meeting and execution layers with their own counts", async () => {
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("graph-counts")).toHaveTextContent(
+        "3 issues · 1 meeting · 2 executions · 5 links",
+      ),
+    );
+  });
+
+  it("finds a meeting by title and opens the cockpit deep link from its menu", async () => {
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    const input = screen.getByLabelText("Search issues…");
+    fireEvent.change(input, { target: { value: "Kickoff" } });
+    fireEvent.mouseDown(await screen.findByText("Kickoff meeting"));
+
+    const menu = await screen.findByTestId("graph-node-menu");
+    expect(menu).toHaveAttribute("data-node-id", "mtg:m1");
+    expect(screen.getByTestId("graph-menu-open")).toHaveAccessibleName("Open meeting");
+    fireEvent.click(screen.getByTestId("graph-menu-open"));
+    expect(pushMock).toHaveBeenCalledWith("/ws/cockpit?meeting=m1");
+  });
+
+  it("shows the meeting preview with its folder and linked-issue count", async () => {
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    const input = screen.getByLabelText("Search issues…");
+    fireEvent.change(input, { target: { value: "Kickoff" } });
+    fireEvent.mouseDown(await screen.findByText("Kickoff meeting"));
+    fireEvent.click(screen.getByTestId("graph-menu-preview"));
+
+    const preview = await screen.findByTestId("graph-node-preview");
+    expect(preview).toHaveAttribute("data-node-id", "mtg:m1");
+    expect(preview).toHaveTextContent("Kickoff meeting");
+    expect(preview).toHaveTextContent("2026-09-01");
+    expect(preview).toHaveTextContent("/nas/kickoff");
+    expect(preview).toHaveTextContent("1 linked issue");
+  });
+
+  it("opens a finished run anchored to its trigger comment", async () => {
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    const input = screen.getByLabelText("Search issues…");
+    fireEvent.change(input, { target: { value: "Minutes Agent" } });
+    fireEvent.mouseDown(await screen.findByText("Minutes Agent"));
+
+    const menu = await screen.findByTestId("graph-node-menu");
+    expect(menu).toHaveAttribute("data-node-id", "run:r1");
+    expect(screen.getByTestId("graph-menu-open")).toHaveAccessibleName("Open run record");
+    fireEvent.click(screen.getByTestId("graph-menu-open"));
+    expect(pushMock).toHaveBeenCalledWith("/ws/issues/TES-1#comment-c-9");
+  });
+
+  it("hides the meeting layer with its toggle", async () => {
+    vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
+    renderPage();
+    await screen.findByTestId("graph-counts");
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/ }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Meetings" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("graph-counts")).toHaveTextContent("3 issues · 2 executions · 4 links"),
     );
   });
 });

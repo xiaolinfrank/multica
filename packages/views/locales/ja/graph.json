@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "グラフ",
-    "subtitle": "タスク間のつながり：サブタスク、依存、参照"
+    "subtitle": "タスク、会議、実行のつながりの全体像"
   },
   "toolbar": {
     "search_placeholder": "タスクを検索…",
@@ -21,6 +21,8 @@
     "edge_group_child": "サブタスク",
     "edge_group_dependency": "依存",
     "edge_group_mention": "参照",
+    "edge_group_meeting": "会議",
+    "edge_group_execution": "実行",
     "statuses": "ステータス",
     "projects": "プロジェクト",
     "no_project": "プロジェクトなし"
@@ -30,20 +32,43 @@
     "more_projects_other": "他{{count}}件のプロジェクト"
   },
   "counts": {
+    "meetings_other": "{{count}} 件の会議",
+    "executions_other": "{{count}} 件の実行",
     "nodes_other": "{{count}}件のタスク",
     "edges_other": "{{count}}件のリンク",
     "collapsed_other": "{{count}}件折りたたみ"
   },
   "card": {
+    "open_meeting": "会議を開く",
+    "open_run": "実行記録を開く",
     "dismiss": "閉じる",
     "open": "タスクを開く"
   },
+  "entity": {
+    "issue": "タスク",
+    "meeting": "会議",
+    "execution": "実行"
+  },
   "menu": {
     "open": "タスクを開く",
+    "open_meeting": "会議を開く",
+    "open_run": "実行記録を開く",
     "preview": "プレビュー",
     "isolate": "関連のみ表示"
   },
   "fields": {
+    "meetings_other": "{{count}} 件の会議",
+    "executions_other": "{{count}} 件の実行",
+    "linked_issues_other": "{{count}} 件の関連タスク",
+    "entity_type": "種別",
+    "meet_date": "日付",
+    "track": "トラック",
+    "belongs_to": "所属タスク",
+    "duration": "所要時間",
+    "finished_at": "完了",
+    "nas_dir": "フォルダ",
+    "copy": "コピー",
+    "copied": "コピー済み",
     "status": "ステータス",
     "priority": "優先度",
     "assignee": "担当者",

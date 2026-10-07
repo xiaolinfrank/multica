@@ -982,6 +982,10 @@ export function useRealtimeSync(
         // shape as the tasks invalidation above — any task lifecycle
         // event shifts the aggregated usage numbers.
         qc.invalidateQueries({ queryKey: ["issues", "usage"] });
+        // The graph's execution nodes are a window over the queue (latest
+        // finished + in-flight runs): any lifecycle change can add, remove,
+        // or recolor one.
+        qc.invalidateQueries({ queryKey: [...issueKeys.all(wsId), "graph"] });
         // Squad members-status reads the same task lifecycle to flip
         // working ↔ idle for each agent member.
         invalidateSquadMemberStatusQueries(qc, wsId);

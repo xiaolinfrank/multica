@@ -114,6 +114,7 @@ import { ExecutionLogSection } from "./execution-log-section";
 import { IssueLiveAgentProcess } from "./issue-agent-process";
 import { WorkspaceFilesSection } from "./workspace-files-section";
 import { WakeupsSection } from "./wakeups-section";
+import { IssueLinkedMeetings } from "./issue-linked-meetings";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
@@ -2886,6 +2887,12 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         defaultAgentId={issue.assignee_type === "agent" ? (issue.assignee_id ?? undefined) : undefined}
       />
       <PluginPanelSection issueId={issue.id} />
+
+      {/* Linked meetings — the reverse read of the cockpit's meeting→issue
+          links, so the meeting a task was born in (or was discussed at) is
+          one click away. Self-contained; hides when the workspace board links
+          nothing to this issue. */}
+      <IssueLinkedMeetings issueId={issue.id} />
 
       {/* Parent issue — standalone section, only when the issue has a
           parent. Setting a parent is reachable via the issue actions menu;
