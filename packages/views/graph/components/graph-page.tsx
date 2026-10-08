@@ -51,16 +51,13 @@ function edgeKindsFromGroups(groups: EdgeGroupToggles) {
     kinds.delete("related");
   }
   if (!groups.mention) kinds.delete("mention");
-  if (!groups.meeting) {
-    kinds.delete("meeting");
-    kinds.delete("meeting_run");
-  }
+  if (!groups.meeting) kinds.delete("meeting");
   if (!groups.execution) kinds.delete("execution");
   return kinds;
 }
 
 /** A scoped-down copy of the model: node arrays filtered by a keep set over
- *  graph addresses (raw issue UUID, mtg:, run:), edges by endpoint survival. */
+ *  graph addresses (raw issue UUID, mtg:, exc:), edges by endpoint survival. */
 function subsetModel(model: GraphModel, keep: (address: string) => boolean): GraphModel {
   const nodes = model.nodes.filter((n) => keep(n.id));
   const meetings = model.meetings.filter((n) => keep(graphMeetingAddress(n.id)));
@@ -88,17 +85,18 @@ function scopeModel(model: GraphModel, collapsedRoots: Set<string>, selectedId: 
       for (const id of collectSubtree(root, model.children)) hidden.add(id);
     }
     collapsedCount = hidden.size;
-    const hiddenMeeting = (addr: string) => {
-      const linked = model.edges.filter((e) => e.kind === "meeting" && e.source === addr);
+    // Meetings and L3 rows are satellites of their linked issues: collapse
+    // hides one only when every linked issue is folded away. (A meeting's
+    // mtg:→exc: edge never counts — execution addresses are never in the
+    // collapsed-issue set, and the meeting stays while its row shows.)
+    const hiddenSatellite = (addr: string, kind: "meeting" | "execution") => {
+      const linked = model.edges.filter((e) => e.kind === kind && e.source === addr);
       return linked.length > 0 && linked.every((e) => hidden.has(e.target));
     };
     model = subsetModel(model, (addr) => {
       if (hidden.has(addr)) return false;
-      if (addr.startsWith("run:")) {
-        const run = model.executions.find((r) => graphExecutionAddress(r.id) === addr);
-        if (run && hidden.has(run.issue_id)) return false;
-      }
-      if (addr.startsWith("mtg:")) return !hiddenMeeting(addr);
+      if (addr.startsWith("exc:")) return !hiddenSatellite(addr, "execution");
+      if (addr.startsWith("mtg:")) return !hiddenSatellite(addr, "meeting");
       return true;
     });
   }
@@ -144,7 +142,7 @@ export function GraphPage(props: { projectId?: string | null }) {
     () =>
       isDemo
         ? demoGraph()
-        : graphQuery.data ?? { nodes: [], edges: [], meetings: [], executions: [] },
+        : graphQuery.data ?? { nodes: [], edges: [], meetings: [], executions: [], cockpit_nodes: [] },
     [isDemo, graphQuery.data],
   );
 
@@ -192,7 +190,11 @@ export function GraphPage(props: { projectId?: string | null }) {
       if (e.source !== selectedId && e.target !== selectedId) continue;
       if (e.kind === "child") child += 1;
       else if (e.kind === "mention") mention += 1;
-      else if (e.kind === "meeting") meeting += 1;
+      // A meeting edge onto an L3 row (mtg:→exc:) is not a linked ISSUE — the
+      // meeting card's count reads "linked issues", so only issue targets add.
+      else if (e.kind === "meeting") {
+        if (!e.target.startsWith("exc:")) meeting += 1;
+      }
       else if (e.kind === "execution") execution += 1;
       else dependency += 1;
     }
@@ -218,16 +220,15 @@ export function GraphPage(props: { projectId?: string | null }) {
         });
       }
     }
-    const issueById = new Map(fullModel.nodes.map((n) => [n.id, n]));
+    // L3 rows match on their own identity: the gantt's positional row code
+    // (what the result shows), the stored code, and the row name.
     for (const r of fullModel.executions) {
-      const owner = issueById.get(r.issue_id);
-      if (
-        matchesQuery({ identifier: owner?.identifier ?? "", title: r.agent_name }, q)
-      ) {
+      const code = r.display_code ?? r.code;
+      if (matchesQuery({ identifier: `${code} ${r.code}`, title: r.name }, q)) {
         results.push({
           id: graphExecutionAddress(r.id),
-          identifier: owner?.identifier ?? "",
-          title: r.agent_name,
+          identifier: code,
+          title: r.name,
           entity: "execution",
         });
       }
@@ -292,17 +293,13 @@ export function GraphPage(props: { projectId?: string | null }) {
     [navigation, wsPaths],
   );
 
-  // A run has no page of its own; it lives inline in its issue's timeline.
-  // Anchor the jump on the comment that triggered it when there is one.
+  // An L3 execution row opens where it lives: the cockpit's gantt tab,
+  // focused and flashed on that row (?node= deep link, consumed there).
   const openExecution = useCallback(
     (exec: GraphExecutionNode) => {
-      if (!wsPaths) return;
-      const owner = data.nodes.find((n) => n.id === exec.issue_id);
-      if (!owner) return;
-      const hash = exec.trigger_comment_id ? `#comment-${exec.trigger_comment_id}` : "";
-      navigation.push(wsPaths.issueDetail(owner.identifier) + hash);
+      if (wsPaths) navigation.push(`${wsPaths.cockpit()}?node=${encodeURIComponent(exec.id)}`);
     },
-    [navigation, wsPaths, data],
+    [navigation, wsPaths],
   );
 
   // Menu action "keep related only": the toolbar's 1-hop focus already

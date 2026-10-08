@@ -35,16 +35,12 @@ export const GRAPH_EDGE_KINDS = [
   "related",
   "mention",
   // meeting — a cockpit meeting linked to the issue (its own minutes task or
-  // a hand attachment). Source is the meeting's graph address ("mtg:<uuid>").
+  // a hand attachment) or to an L3 execution row. Source is the meeting's
+  // graph address ("mtg:<uuid>").
   "meeting",
-  // execution — the issue's latest finished run / in-flight runs. Target is
-  // the run's graph address ("run:<uuid>").
+  // execution — a level-3 cockpit node (the execution gantt's leaf row)
+  // linked to its work items. Source is the row's graph address ("exc:<uuid>").
   "execution",
-  // meeting_run — DERIVED at model-build time, never emitted by the backend:
-  // meeting → issue edge plus issue → run edge implies meeting → run ("the
-  // work this meeting set in motion"). Drawn as a faint dashed line to read
-  // as an indirect link; governed by the meeting edge-group toggle.
-  "meeting_run",
 ] as const;
 
 export type GraphEdgeKind = (typeof GRAPH_EDGE_KINDS)[number];
@@ -70,18 +66,35 @@ export interface GraphMeetingNode {
   nas_dir: string;
 }
 
-// An agent run as a graph node: the issue's latest finished run, plus every
-// run still in flight (see the server query for the exact window).
+// A level-3 cockpit node as a graph node — the execution gantt's leaf row,
+// so the graph and the gantt show the same "executions". Links to issues and
+// meetings arrive as edges (execution / meeting kinds), not fields here.
 export interface GraphExecutionNode {
-  /** Raw agent_task_queue UUID. Its graph address is `run:<id>`. */
+  /** Raw cockpit_node UUID. Its graph address is `exc:<id>`. */
   id: string;
-  issue_id: string;
-  agent_name: string;
+  code: string;
+  name: string;
   status: string;
-  started_at: string;
-  completed_at: string;
-  /** Anchors the run to its trigger comment for the #comment-<id> deep link. */
-  trigger_comment_id: string | null;
+  /** 0..100 progress as shown on the gantt bar (same scale as cockpit). */
+  progress: number;
+  /** Gantt window; empty when the row has no dates. */
+  start_date: string;
+  end_date: string;
+  owner: string;
+  /** The row code the gantt DISPLAYS ("06.02.01"), derived client-side from
+   *  the cockpit_nodes index — stored codes are the programme's own addresses
+   *  and drift out of sync with position ("L3-06-03" sits under 06.02). Set
+   *  by buildGraphModel; renderers fall back to `code` when absent. */
+  display_code?: string;
+}
+
+// One slim cockpit_node row of the whole-board index shipped with the graph
+// snapshot; the client rebuilds the tree from it to derive display codes.
+export interface GraphCockpitIndexNode {
+  id: string;
+  code: string;
+  parent_id: string | null;
+  position: number;
 }
 
 export interface IssueGraphResponse {
@@ -89,16 +102,17 @@ export interface IssueGraphResponse {
   edges: GraphEdge[];
   meetings: GraphMeetingNode[];
   executions: GraphExecutionNode[];
+  cockpit_nodes: GraphCockpitIndexNode[];
 }
 
-// Graph address space: issue nodes keep their raw UUID; meetings and runs are
-// prefixed so an endpoint's entity type reads straight off the id and a UUID
-// shared across tables could never collide silently.
+// Graph address space: issue nodes keep their raw UUID; meetings and L3
+// execution rows are prefixed so an endpoint's entity type reads straight off
+// the id and a UUID shared across tables could never collide silently.
 export const graphMeetingAddress = (id: string) => `mtg:${id}`;
-export const graphExecutionAddress = (id: string) => `run:${id}`;
+export const graphExecutionAddress = (id: string) => `exc:${id}`;
 export type GraphEntity = "issue" | "meeting" | "execution";
 export function graphAddressEntity(id: string): GraphEntity {
   if (id.startsWith("mtg:")) return "meeting";
-  if (id.startsWith("run:")) return "execution";
+  if (id.startsWith("exc:")) return "execution";
   return "issue";
 }

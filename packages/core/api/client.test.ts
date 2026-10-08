@@ -4,6 +4,7 @@ import { configStore } from "../config";
 import type { StorageAdapter, User } from "../types";
 import { ApiClient, ApiError, CHAT_DRAFT_RESTORE_CAPABILITY, clientErrorMessage } from "./client";
 import {
+  EMPTY_ISSUE_GRAPH,
   EMPTY_PLUGIN_PACKAGE_LIST,
   EMPTY_PLUGIN_PREVIEW,
   EMPTY_PLUGIN_SURFACE_LAUNCH,
@@ -486,10 +487,10 @@ describe("ApiClient server Table query", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const client = new ApiClient("https://api.example.test");
-    await expect(client.getIssueGraph()).resolves.toEqual({ nodes: [], edges: [] });
+    await expect(client.getIssueGraph()).resolves.toEqual(EMPTY_ISSUE_GRAPH);
     await expect(
       client.getIssueGraph({ project_id: "00000000-0000-0000-0000-000000000001" }),
-    ).resolves.toEqual({ nodes: [], edges: [] });
+    ).resolves.toEqual(EMPTY_ISSUE_GRAPH);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toContain("project_id=");
   });

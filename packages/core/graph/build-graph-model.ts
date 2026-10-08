@@ -7,6 +7,7 @@
 // Canonical test file: build-graph-model.test.ts (// @vitest-environment node).
 
 import { GRAPH_EDGE_KINDS, graphExecutionAddress, graphMeetingAddress } from "../types/graph";
+import { buildCockpitDisplayCodesFromIndex } from "../cockpit/model";
 import type {
   GraphEdge,
   GraphNode,
@@ -56,7 +57,7 @@ export interface GraphModel {
   /** Visible meetings. Graph address (edge endpoints, neighbors/degree keys)
    *  is `mtg:<id>` — see types/graph.ts. */
   meetings: GraphMeetingNode[];
-  /** Visible executions; graph address is `run:<id>`. */
+  /** Visible executions; graph address is `exc:<id>`. */
   executions: GraphExecutionNode[];
   edges: GraphModelEdge[];
   /** Undirected neighbor map over the filtered edges (for hover highlight
@@ -112,12 +113,35 @@ export function buildGraphModel(
   });
   const visibleMeetings = new Set(meetings.map((m) => graphMeetingAddress(m.id)));
 
-  // An execution is meaningful only next to its issue: filter the issue away
-  // and the run goes with it.
-  const executions = (graph.executions ?? []).filter(
-    (r) => filters.executions && visible.has(r.issue_id),
-  );
-  const visibleExecutions = new Set(executions.map((r) => graphExecutionAddress(r.id)));
+  // L3 execution rows follow the same rule as meetings: a row with no linked
+  // issues is a workspace-level record and stays; with links, at least one
+  // linked issue must survive (a project/status filter that hides every
+  // linked issue hides the row with them).
+  const execLinkedIssues = new Map<string, string[]>();
+  for (const e of graph.edges) {
+    if (e.kind !== "execution") continue;
+    const list = execLinkedIssues.get(e.source);
+    if (list) list.push(e.target);
+    else execLinkedIssues.set(e.source, [e.target]);
+  }
+  const executions = (graph.executions ?? []).filter((x) => {
+    if (!filters.executions) return false;
+    const linked = execLinkedIssues.get(graphExecutionAddress(x.id)) ?? [];
+    return linked.length === 0 || linked.some((id) => visible.has(id));
+  });
+
+  // The label a reader recognizes is the gantt's POSITIONAL row code
+  // ("06.02.01"), not the stored code ("L3-06-03" sits under 06.02). Derive it
+  // from the whole-board index the same way the cockpit does; without the
+  // index the stored code stays the label.
+  const execDisplayCodes =
+    graph.cockpit_nodes && graph.cockpit_nodes.length > 0 && executions.length > 0
+      ? buildCockpitDisplayCodesFromIndex(graph.cockpit_nodes)
+      : null;
+  const executionsLabeled = execDisplayCodes
+    ? executions.map((x) => ({ ...x, display_code: execDisplayCodes.get(x.id) ?? x.code }))
+    : executions;
+  const visibleExecutions = new Set(executionsLabeled.map((r) => graphExecutionAddress(r.id)));
 
   const isVisibleEndpoint = (addr: string) =>
     visible.has(addr) || visibleMeetings.has(addr) || visibleExecutions.has(addr);
@@ -128,31 +152,6 @@ export function buildGraphModel(
     if (!filters.edgeKinds.has(e.kind as GraphEdgeKind)) continue;
     if (!isVisibleEndpoint(e.source) || !isVisibleEndpoint(e.target)) continue;
     edges.push({ source: e.source, target: e.target, kind: e.kind as GraphEdgeKind });
-  }
-
-  // Derived meeting→run edges: a meeting linked to an issue shares that
-  // issue's runs ("the work this meeting set in motion"). Joined over the
-  // already-visible direct edges, so hidden issues/runs never derive. The
-  // kind rides the meeting edge-group toggle (mapped to `meeting` colours in
-  // the canvas); the backend never emits it.
-  if (filters.edgeKinds.has("meeting_run")) {
-    const runsByIssue = new Map<string, string[]>();
-    for (const e of edges) {
-      if (e.kind !== "execution") continue;
-      const list = runsByIssue.get(e.source);
-      if (list) list.push(e.target);
-      else runsByIssue.set(e.source, [e.target]);
-    }
-    const seen = new Set<string>();
-    for (const e of edges) {
-      if (e.kind !== "meeting") continue;
-      for (const runAddr of runsByIssue.get(e.target) ?? []) {
-        const key = `${e.source}→${runAddr}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        edges.push({ source: e.source, target: runAddr, kind: "meeting_run" });
-      }
-    }
   }
 
   const neighbors = new Map<string, Set<string>>();
@@ -174,7 +173,7 @@ export function buildGraphModel(
     ensure(graphMeetingAddress(m.id));
     degree.set(graphMeetingAddress(m.id), 0);
   }
-  for (const r of executions) {
+  for (const r of executionsLabeled) {
     ensure(graphExecutionAddress(r.id));
     degree.set(graphExecutionAddress(r.id), 0);
   }
@@ -190,7 +189,7 @@ export function buildGraphModel(
     }
   }
 
-  return { nodes, meetings, executions, edges, neighbors, degree, children };
+  return { nodes, meetings, executions: executionsLabeled, edges, neighbors, degree, children };
 }
 
 /** Every descendant of root over child edges (root excluded). Used to fold a

@@ -53,13 +53,13 @@ type IssueGraphEdgeResponse struct {
 // built — additive fields keep that contract intact.
 //
 // Edge endpoints address nodes across the three arrays, so meeting/execution
-// endpoints carry an "mtg:"/"run:" prefix: the address space stays unambiguous
+// endpoints carry an "mtg:"/"exc:" prefix: the address space stays unambiguous
 // even though all three id columns are UUIDs, and a renderer can tell the
 // entity type of an endpoint without a lookup.
 
 const (
 	graphMeetingNodePrefix   = "mtg:"
-	graphExecutionNodePrefix = "run:"
+	graphExecutionNodePrefix = "exc:"
 )
 
 type IssueGraphMeetingResponse struct {
@@ -74,17 +74,32 @@ type IssueGraphMeetingResponse struct {
 	NasDir string `json:"nas_dir"`
 }
 
+// An execution node mirrors one L3 row of the cockpit's execution gantt — the
+// same entity the board shows, so the graph and the gantt never disagree
+// about what "an execution" is.
 type IssueGraphExecutionResponse struct {
-	ID          string `json:"id"`
-	IssueID     string `json:"issue_id"`
-	AgentName   string `json:"agent_name"`
-	Status      string `json:"status"`
-	StartedAt   string `json:"started_at"`
-	CompletedAt string `json:"completed_at"`
-	// TriggerCommentID anchors the run to its source comment, so the client
-	// can deep-link to it (issue detail highlights #comment-<id>). Null when
-	// the run was not triggered by a comment.
-	TriggerCommentID *string `json:"trigger_comment_id"`
+	ID       string  `json:"id"`
+	Code     string  `json:"code"`
+	Name     string  `json:"name"`
+	Status   string  `json:"status"`
+	Progress float64 `json:"progress"`
+	// Start/End dates render the gantt window; empty when the row has none.
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+	Owner     string `json:"owner"`
+}
+
+// One slim cockpit_node row of the whole-board index. The client rebuilds
+// the tree from these to derive the positional row codes the gantt displays
+// ("06.02.01") — stored codes drift out of sync with position, so the graph
+// labels execution rows the way the gantt does. The index always spans the
+// full tree, project scope included: a row's number counts siblings that the
+// scope may hide.
+type IssueGraphCockpitIndexResponse struct {
+	ID       string  `json:"id"`
+	Code     string  `json:"code"`
+	ParentID *string `json:"parent_id"`
+	Position float64 `json:"position"`
 }
 
 func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
@@ -314,34 +329,82 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- execution nodes + edges ------------------------------------------
-	// The queue's latest run per issue (plus anything still in flight) becomes
-	// a node hanging off its issue: the graph answers "what ran on this task"
-	// without opening every issue. A run whose issue fell out of the visible
-	// set (project scope) is dropped with it.
-	runs, err := h.Queries.ListIssueGraphRuns(ctx, wsUUID)
+	// The cockpit gantt's L3 rows join the graph as execution nodes, linked to
+	// their work items (node↔issue) and to the meetings that scheduled them
+	// (meeting↔node). Like meetings, an L3 row is a workspace-level record: in
+	// a project-scoped read it survives only when at least one linked issue is
+	// in the visible set.
+	execNodes, err := h.Queries.ListIssueGraphExecNodes(ctx, wsUUID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
 		return
 	}
-	respExecutions := make([]IssueGraphExecutionResponse, 0, len(runs))
-	for _, run := range runs {
-		if _, ok := nodeByID[run.IssueID]; !ok {
+	execIssueLinks, err := h.Queries.ListIssueGraphExecNodeIssues(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	execMeetingLinks, err := h.Queries.ListIssueGraphExecNodeMeetings(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	linkedByExecNode := make(map[pgtype.UUID]int) // L3 node id -> visible linked issues
+	for _, l := range execIssueLinks {
+		if _, ok := nodeByID[l.IssueID]; !ok {
+			continue
+		}
+		linkedByExecNode[l.NodeID]++
+		edgeSet[IssueGraphEdgeResponse{
+			Source: graphExecutionNodePrefix + uuidToString(l.NodeID),
+			Target: uuidToString(l.IssueID),
+			Kind:   "execution",
+		}] = struct{}{}
+	}
+	for _, l := range execMeetingLinks {
+		// In a project-scoped read, skip edges whose meeting or L3 node was
+		// filtered out (both survive only through a visible linked issue).
+		if projectFilter.Valid && (linkedByMeeting[l.MeetingID] == 0 || linkedByExecNode[l.NodeID] == 0) {
+			continue
+		}
+		edgeSet[IssueGraphEdgeResponse{
+			Source: graphMeetingNodePrefix + uuidToString(l.MeetingID),
+			Target: graphExecutionNodePrefix + uuidToString(l.NodeID),
+			Kind:   "meeting",
+		}] = struct{}{}
+	}
+	respExecutions := make([]IssueGraphExecutionResponse, 0, len(execNodes))
+	for _, n := range execNodes {
+		if projectFilter.Valid && linkedByExecNode[n.ID] == 0 {
 			continue
 		}
 		respExecutions = append(respExecutions, IssueGraphExecutionResponse{
-			ID:               uuidToString(run.ID),
-			IssueID:          uuidToString(run.IssueID),
-			AgentName:        run.AgentName,
-			Status:           run.Status,
-			StartedAt:        timestampToString(run.StartedAt),
-			CompletedAt:      timestampToString(run.CompletedAt),
-			TriggerCommentID: uuidToPtr(run.TriggerCommentID),
+			ID:        uuidToString(n.ID),
+			Code:      n.Code,
+			Name:      n.Name,
+			Status:    n.Status,
+			Progress:  n.Progress,
+			StartDate: derefOr(dateToPtr(n.StartDate), ""),
+			EndDate:   derefOr(dateToPtr(n.EndDate), ""),
+			Owner:     n.Owner,
 		})
-		edgeSet[IssueGraphEdgeResponse{
-			Source: uuidToString(run.IssueID),
-			Target: graphExecutionNodePrefix + uuidToString(run.ID),
-			Kind:   "execution",
-		}] = struct{}{}
+	}
+
+	// The cockpit tree index rides along unscoped (see the response struct's
+	// comment); a workspace without a board simply sends an empty array.
+	cockpitIndex, err := h.Queries.ListIssueGraphCockpitNodeIndex(ctx, wsUUID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load issue graph")
+		return
+	}
+	respCockpitNodes := make([]IssueGraphCockpitIndexResponse, 0, len(cockpitIndex))
+	for _, n := range cockpitIndex {
+		respCockpitNodes = append(respCockpitNodes, IssueGraphCockpitIndexResponse{
+			ID:       uuidToString(n.ID),
+			Code:     n.Code,
+			ParentID: uuidToStringPtr(n.ParentID),
+			Position: n.Position,
+		})
 	}
 
 	respEdges := make([]IssueGraphEdgeResponse, 0, len(edgeSet))
@@ -361,9 +424,10 @@ func (h *Handler) GetIssueGraph(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"nodes":      respNodes,
-		"edges":      respEdges,
-		"meetings":   respMeetings,
-		"executions": respExecutions,
+		"nodes":         respNodes,
+		"edges":         respEdges,
+		"meetings":      respMeetings,
+		"executions":    respExecutions,
+		"cockpit_nodes": respCockpitNodes,
 	})
 }

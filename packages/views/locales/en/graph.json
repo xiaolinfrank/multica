@@ -23,7 +23,6 @@
     "edge_group_mention": "References",
     "edge_group_meeting": "Meetings",
     "edge_group_execution": "Executions",
-    "edge_group_meeting_run": "Meeting → run (derived)",
     "statuses": "Status",
     "projects": "Projects",
     "no_project": "No project"
@@ -49,12 +48,12 @@
     "dismiss": "Close",
     "open": "Open issue",
     "open_meeting": "Open meeting",
-    "open_run": "Open run record"
+    "open_execution": "Open in cockpit"
   },
   "menu": {
     "open": "Open issue",
     "open_meeting": "Open meeting",
-    "open_run": "Open run record",
+    "open_execution": "Open in cockpit",
     "preview": "Preview",
     "isolate": "Keep related only"
   },
@@ -85,9 +84,10 @@
     "entity_type": "Type",
     "meet_date": "Date",
     "track": "Track",
-    "belongs_to": "Task",
-    "duration": "Duration",
-    "finished_at": "Finished",
+    "progress": "Progress",
+    "owner": "Owner",
+    "date_range": "Window",
+    "stored_code": "Stored code",
     "nas_dir": "Folder",
     "copy": "Copy",
     "copied": "Copied"

@@ -23,7 +23,6 @@
     "edge_group_mention": "引用",
     "edge_group_meeting": "会议关联",
     "edge_group_execution": "执行任务",
-    "edge_group_meeting_run": "会议→执行（派生）",
     "statuses": "状态",
     "projects": "项目",
     "no_project": "无项目"
@@ -43,12 +42,12 @@
     "dismiss": "关闭",
     "open": "打开任务",
     "open_meeting": "打开会议",
-    "open_run": "打开运行记录"
+    "open_execution": "打开甘特图"
   },
   "menu": {
     "open": "打开任务",
     "open_meeting": "打开会议",
-    "open_run": "打开运行记录",
+    "open_execution": "打开甘特图",
     "preview": "预览",
     "isolate": "仅保留关联"
   },
@@ -73,9 +72,10 @@
     "entity_type": "类型",
     "meet_date": "日期",
     "track": "条线",
-    "belongs_to": "所属任务",
-    "duration": "耗时",
-    "finished_at": "完成于",
+    "progress": "进度",
+    "owner": "责任人",
+    "date_range": "时间窗",
+    "stored_code": "存储编号",
     "nas_dir": "资料目录",
     "copy": "复制",
     "copied": "已复制"

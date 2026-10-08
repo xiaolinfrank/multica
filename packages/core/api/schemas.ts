@@ -1786,14 +1786,26 @@ const IssueGraphMeetingSchema = z.object({
   nas_dir: z.string().default(""),
 }).loose();
 
+// An execution node mirrors one L3 row of the cockpit's execution gantt.
+// progress uses the cockpit's 0..100 scale.
 const IssueGraphExecutionSchema = z.object({
   id: z.string(),
-  issue_id: z.string().default(""),
-  agent_name: z.string().default(""),
+  code: z.string().default(""),
+  name: z.string().default(""),
   status: z.string().default(""),
-  started_at: z.string().default(""),
-  completed_at: z.string().default(""),
-  trigger_comment_id: z.string().nullable().default(null),
+  progress: z.number().default(0),
+  start_date: z.string().default(""),
+  end_date: z.string().default(""),
+  owner: z.string().default(""),
+}).loose();
+
+// Slim whole-board cockpit index (id/code/parent/position). The client
+// rebuilds the tree to derive the positional row codes the gantt displays.
+const IssueGraphCockpitIndexSchema = z.object({
+  id: z.string(),
+  code: z.string().default(""),
+  parent_id: z.string().nullable().default(null),
+  position: z.number().default(0),
 }).loose();
 
 export const IssueGraphResponseSchema = z.object({
@@ -1805,9 +1817,10 @@ export const IssueGraphResponseSchema = z.object({
   }).loose()).default([]),
   meetings: z.array(IssueGraphMeetingSchema).default([]),
   executions: z.array(IssueGraphExecutionSchema).default([]),
+  cockpit_nodes: z.array(IssueGraphCockpitIndexSchema).default([]),
 }).loose();
 
-export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [], meetings: [], executions: [] };
+export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [], meetings: [], executions: [], cockpit_nodes: [] };
 
 // GET /api/cockpit and every cockpit write. Fields default aggressively for the
 // same reason the graph's do: an installed desktop build talking to a newer

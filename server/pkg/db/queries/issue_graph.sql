@@ -69,37 +69,45 @@ SELECT cmi.meeting_id, cmi.issue_id, cmi.role
 FROM cockpit_meeting_issue cmi
 WHERE cmi.workspace_id = $1;
 
--- name: ListIssueGraphRuns :many
--- Execution nodes for the graph: the FIVE most recent TERMINAL runs per issue
--- (completed/failed/cancelled — the task's recent run history, so one task can
--- fan out to several execution nodes, e.g. failed → rerun → succeeded) plus
--- EVERY active run (queued/dispatched/running — "what is happening now").
--- History is capped per task because a workspace's queue table grows without
--- bound, the graph does not. issue_id is nullable on the queue (chat tasks);
--- the JOIN both enforces tenancy and drops issue-less rows.
-WITH terminal AS (
-  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
-         q.trigger_comment_id, q.created_at,
-         ROW_NUMBER() OVER (PARTITION BY q.issue_id ORDER BY q.created_at DESC) AS rn
-  FROM agent_task_queue q
-  JOIN issue i ON i.id = q.issue_id
-  WHERE i.workspace_id = $1
-    AND q.status IN ('completed', 'failed', 'cancelled')
-),
-active AS (
-  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
-         q.trigger_comment_id, q.created_at, 0 AS rn
-  FROM agent_task_queue q
-  JOIN issue i ON i.id = q.issue_id
-  WHERE i.workspace_id = $1
-    AND q.status IN ('queued', 'dispatched', 'running')
-)
-SELECT r.id, r.issue_id, r.status, r.started_at, r.completed_at, r.trigger_comment_id,
-       a.name AS agent_name
-FROM (SELECT id, issue_id, agent_id, status, started_at, completed_at,
-             trigger_comment_id, created_at FROM terminal WHERE rn <= 5
-      UNION ALL
-      SELECT id, issue_id, agent_id, status, started_at, completed_at,
-             trigger_comment_id, created_at FROM active) r
-JOIN agent a ON a.id = r.agent_id
-ORDER BY r.created_at DESC;
+-- name: ListIssueGraphExecNodes :many
+-- Level-3 cockpit nodes (the execution gantt's leaf rows) join the graph as
+-- execution nodes. Depth is resolved through the parent chain rather than a
+-- column: an L3 row's grandparent is a root L1 row (parent_id IS NULL), which
+-- excludes L1/L2 rows above and any deeper L4 rows below.
+SELECT n.id, n.code, n.name, n.status, n.progress, n.start_date, n.end_date, n.owner
+FROM cockpit_node n
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE n.workspace_id = $1
+ORDER BY n.position ASC, n.code ASC;
+
+-- name: ListIssueGraphExecNodeIssues :many
+-- L3 node↔issue links (the gantt row's work items). Endpoints are
+-- re-validated against the visible issue node set in the handler.
+SELECT ni.node_id, ni.issue_id
+FROM cockpit_node_issue ni
+JOIN cockpit_node n ON n.id = ni.node_id
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE ni.workspace_id = $1;
+
+-- name: ListIssueGraphExecNodeMeetings :many
+-- Meeting↔L3-node links (the meeting's agenda rows on the gantt), rendered as
+-- meeting-kind edges from the meeting to the execution node.
+SELECT mn.meeting_id, mn.node_id
+FROM cockpit_meeting_node mn
+JOIN cockpit_node n ON n.id = mn.node_id
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE mn.workspace_id = $1;
+
+-- name: ListIssueGraphCockpitNodeIndex :many
+-- Slim (id, code, parent, position) index of the whole cockpit board. The
+-- client rebuilds the tree from it to derive each execution row's POSITIONAL
+-- row code (the "06.02.01" the gantt shows) — stored codes are the
+-- programme's own addresses and drift out of sync with position, so the graph
+-- labels rows the way the gantt does. Always the full tree, project scope
+-- included: a row's number counts siblings that the scope may hide.
+SELECT n.id, n.code, n.parent_id, n.position
+FROM cockpit_node n
+WHERE n.workspace_id = $1;

@@ -23,7 +23,6 @@
     "edge_group_mention": "参照",
     "edge_group_meeting": "会議",
     "edge_group_execution": "実行",
-    "edge_group_meeting_run": "会議→実行（派生）",
     "statuses": "ステータス",
     "projects": "プロジェクト",
     "no_project": "プロジェクトなし"
@@ -41,7 +40,7 @@
   },
   "card": {
     "open_meeting": "会議を開く",
-    "open_run": "実行記録を開く",
+    "open_execution": "ガントで開く",
     "dismiss": "閉じる",
     "open": "タスクを開く"
   },
@@ -53,7 +52,7 @@
   "menu": {
     "open": "タスクを開く",
     "open_meeting": "会議を開く",
-    "open_run": "実行記録を開く",
+    "open_execution": "ガントで開く",
     "preview": "プレビュー",
     "isolate": "関連のみ表示"
   },
@@ -64,9 +63,10 @@
     "entity_type": "種別",
     "meet_date": "日付",
     "track": "トラック",
-    "belongs_to": "所属タスク",
-    "duration": "所要時間",
-    "finished_at": "完了",
+    "progress": "進捗",
+    "owner": "担当",
+    "date_range": "期間",
+    "stored_code": "保存コード",
     "nas_dir": "フォルダ",
     "copy": "コピー",
     "copied": "コピー済み",

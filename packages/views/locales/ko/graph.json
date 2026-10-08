@@ -23,7 +23,6 @@
     "edge_group_mention": "참조",
     "edge_group_meeting": "회의",
     "edge_group_execution": "실행",
-    "edge_group_meeting_run": "회의→실행(파생)",
     "statuses": "상태",
     "projects": "프로젝트",
     "no_project": "프로젝트 없음"
@@ -43,7 +42,7 @@
     "dismiss": "닫기",
     "open": "이슈 열기",
     "open_meeting": "회의 열기",
-    "open_run": "실행 기록 열기"
+    "open_execution": "간트에서 열기"
   },
   "entity": {
     "issue": "작업",
@@ -53,7 +52,7 @@
   "menu": {
     "open": "이슈 열기",
     "open_meeting": "회의 열기",
-    "open_run": "실행 기록 열기",
+    "open_execution": "간트에서 열기",
     "preview": "미리 보기",
     "isolate": "관련 항목만 보기"
   },
@@ -73,9 +72,10 @@
     "entity_type": "유형",
     "meet_date": "날짜",
     "track": "트랙",
-    "belongs_to": "소속 작업",
-    "duration": "소요 시간",
-    "finished_at": "완료",
+    "progress": "진행률",
+    "owner": "담당",
+    "date_range": "기간",
+    "stored_code": "저장 코드",
     "nas_dir": "폴더",
     "copy": "복사",
     "copied": "복사됨"

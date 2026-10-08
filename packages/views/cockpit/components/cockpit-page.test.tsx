@@ -283,6 +283,18 @@ describe("CockpitPage", () => {
     expect(await findByRole("button", { name: "Close panel" })).toBeInTheDocument();
   });
 
+  it("lands on the folded gantt row from the ?node= deep link", async () => {
+    // The graph's execution nodes land here: gantt tab with the row actually
+    // revealed — first paint folds every branch with children, so selecting
+    // without unfolding never shows the row (the pre-fix behavior).
+    navSearch.params = new URLSearchParams("node=task");
+    renderPage();
+    await waitFor(() =>
+      expect(document.querySelector('[data-cockpit-node="task"]')).not.toBeNull(),
+    );
+    expect(await screen.findByRole("button", { name: "Close panel" })).toBeInTheDocument();
+  });
+
   it("renders the overview: goal, milestones, modules and finance", async () => {
     renderPage();
 

@@ -373,6 +373,49 @@ export function buildCockpitDisplayCodes(tree: CockpitTreeNode[]): Map<string, s
   return codes;
 }
 
+/**
+ * Display codes from a slim whole-board index — (id, code, parent_id,
+ * position) rows only, as the issue graph endpoint ships them. The tree
+ * builders above only ever read those four fields, so the rows are padded to
+ * CockpitNode with inert fillers; the summary transform still applies, keeping
+ * the codes identical to what the gantt shows (groups included).
+ */
+export function buildCockpitDisplayCodesFromIndex(
+  rows: ReadonlyArray<{ id: string; code: string; parent_id: string | null; position: number }>,
+): Map<string, string> {
+  if (rows.length === 0) return new Map();
+  const nodes: CockpitNode[] = rows.map((r) => ({
+    id: r.id,
+    cockpit_id: "",
+    parent_id: r.parent_id,
+    code: r.code,
+    name: "",
+    position: r.position,
+    color: "",
+    owner: "",
+    collaborators: "",
+    start_date: null,
+    end_date: null,
+    status: "",
+    progress: 0,
+    deliverable: "",
+    dependencies: "",
+    note: "",
+    current_progress: "",
+    vendor: "",
+    budget_category: "",
+    budget_amount: null,
+    exec_status: "",
+    contract: "",
+    source: "",
+    updated_by_type: "",
+    updated_by_id: null,
+    created_at: "",
+    updated_at: "",
+  }));
+  return buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes)));
+}
+
 /** Every node id in this subtree, the node itself included. */
 export function subtreeIds(entry: CockpitTreeNode): string[] {
   const ids: string[] = [];

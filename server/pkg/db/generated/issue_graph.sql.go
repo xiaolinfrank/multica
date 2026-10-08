@@ -11,6 +11,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listIssueGraphCockpitNodeIndex = `-- name: ListIssueGraphCockpitNodeIndex :many
+SELECT n.id, n.code, n.parent_id, n.position
+FROM cockpit_node n
+WHERE n.workspace_id = $1
+`
+
+type ListIssueGraphCockpitNodeIndexRow struct {
+	ID       pgtype.UUID `json:"id"`
+	Code     string      `json:"code"`
+	ParentID pgtype.UUID `json:"parent_id"`
+	Position float64     `json:"position"`
+}
+
+// Slim (id, code, parent, position) index of the whole cockpit board. The
+// client rebuilds the tree from it to derive each execution row's POSITIONAL
+// row code (the "06.02.01" the gantt shows) — stored codes are the
+// programme's own addresses and drift out of sync with position, so the graph
+// labels rows the way the gantt does. Always the full tree, project scope
+// included: a row's number counts siblings that the scope may hide.
+func (q *Queries) ListIssueGraphCockpitNodeIndex(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphCockpitNodeIndexRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphCockpitNodeIndex, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphCockpitNodeIndexRow{}
+	for rows.Next() {
+		var i ListIssueGraphCockpitNodeIndexRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.ParentID,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIssueGraphCommentBodies = `-- name: ListIssueGraphCommentBodies :many
 SELECT c.issue_id, c.content
 FROM comment c
@@ -72,6 +116,131 @@ func (q *Queries) ListIssueGraphDependencies(ctx context.Context, workspaceID pg
 	for rows.Next() {
 		var i ListIssueGraphDependenciesRow
 		if err := rows.Scan(&i.IssueID, &i.DependsOnIssueID, &i.Type); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssueGraphExecNodeIssues = `-- name: ListIssueGraphExecNodeIssues :many
+SELECT ni.node_id, ni.issue_id
+FROM cockpit_node_issue ni
+JOIN cockpit_node n ON n.id = ni.node_id
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE ni.workspace_id = $1
+`
+
+type ListIssueGraphExecNodeIssuesRow struct {
+	NodeID  pgtype.UUID `json:"node_id"`
+	IssueID pgtype.UUID `json:"issue_id"`
+}
+
+// L3 node↔issue links (the gantt row's work items). Endpoints are
+// re-validated against the visible issue node set in the handler.
+func (q *Queries) ListIssueGraphExecNodeIssues(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodeIssuesRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphExecNodeIssues, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphExecNodeIssuesRow{}
+	for rows.Next() {
+		var i ListIssueGraphExecNodeIssuesRow
+		if err := rows.Scan(&i.NodeID, &i.IssueID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssueGraphExecNodeMeetings = `-- name: ListIssueGraphExecNodeMeetings :many
+SELECT mn.meeting_id, mn.node_id
+FROM cockpit_meeting_node mn
+JOIN cockpit_node n ON n.id = mn.node_id
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE mn.workspace_id = $1
+`
+
+type ListIssueGraphExecNodeMeetingsRow struct {
+	MeetingID pgtype.UUID `json:"meeting_id"`
+	NodeID    pgtype.UUID `json:"node_id"`
+}
+
+// Meeting↔L3-node links (the meeting's agenda rows on the gantt), rendered as
+// meeting-kind edges from the meeting to the execution node.
+func (q *Queries) ListIssueGraphExecNodeMeetings(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodeMeetingsRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphExecNodeMeetings, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphExecNodeMeetingsRow{}
+	for rows.Next() {
+		var i ListIssueGraphExecNodeMeetingsRow
+		if err := rows.Scan(&i.MeetingID, &i.NodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssueGraphExecNodes = `-- name: ListIssueGraphExecNodes :many
+SELECT n.id, n.code, n.name, n.status, n.progress, n.start_date, n.end_date, n.owner
+FROM cockpit_node n
+JOIN cockpit_node p2 ON p2.id = n.parent_id
+JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+WHERE n.workspace_id = $1
+ORDER BY n.position ASC, n.code ASC
+`
+
+type ListIssueGraphExecNodesRow struct {
+	ID        pgtype.UUID `json:"id"`
+	Code      string      `json:"code"`
+	Name      string      `json:"name"`
+	Status    string      `json:"status"`
+	Progress  float64     `json:"progress"`
+	StartDate pgtype.Date `json:"start_date"`
+	EndDate   pgtype.Date `json:"end_date"`
+	Owner     string      `json:"owner"`
+}
+
+// Level-3 cockpit nodes (the execution gantt's leaf rows) join the graph as
+// execution nodes. Depth is resolved through the parent chain rather than a
+// column: an L3 row's grandparent is a root L1 row (parent_id IS NULL), which
+// excludes L1/L2 rows above and any deeper L4 rows below.
+func (q *Queries) ListIssueGraphExecNodes(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodesRow, error) {
+	rows, err := q.db.Query(ctx, listIssueGraphExecNodes, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssueGraphExecNodesRow{}
+	for rows.Next() {
+		var i ListIssueGraphExecNodesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Status,
+			&i.Progress,
+			&i.StartDate,
+			&i.EndDate,
+			&i.Owner,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -234,80 +403,6 @@ func (q *Queries) ListIssueGraphNodes(ctx context.Context, arg ListIssueGraphNod
 			&i.UpdatedAt,
 			&i.AssigneeType,
 			&i.AssigneeID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listIssueGraphRuns = `-- name: ListIssueGraphRuns :many
-WITH terminal AS (
-  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
-         q.trigger_comment_id, q.created_at,
-         ROW_NUMBER() OVER (PARTITION BY q.issue_id ORDER BY q.created_at DESC) AS rn
-  FROM agent_task_queue q
-  JOIN issue i ON i.id = q.issue_id
-  WHERE i.workspace_id = $1
-    AND q.status IN ('completed', 'failed', 'cancelled')
-),
-active AS (
-  SELECT q.id, q.issue_id, q.agent_id, q.status, q.started_at, q.completed_at,
-         q.trigger_comment_id, q.created_at, 0 AS rn
-  FROM agent_task_queue q
-  JOIN issue i ON i.id = q.issue_id
-  WHERE i.workspace_id = $1
-    AND q.status IN ('queued', 'dispatched', 'running')
-)
-SELECT r.id, r.issue_id, r.status, r.started_at, r.completed_at, r.trigger_comment_id,
-       a.name AS agent_name
-FROM (SELECT id, issue_id, agent_id, status, started_at, completed_at,
-             trigger_comment_id, created_at FROM terminal WHERE rn <= 5
-      UNION ALL
-      SELECT id, issue_id, agent_id, status, started_at, completed_at,
-             trigger_comment_id, created_at FROM active) r
-JOIN agent a ON a.id = r.agent_id
-ORDER BY r.created_at DESC
-`
-
-type ListIssueGraphRunsRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	IssueID          pgtype.UUID        `json:"issue_id"`
-	Status           string             `json:"status"`
-	StartedAt        pgtype.Timestamptz `json:"started_at"`
-	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
-	TriggerCommentID pgtype.UUID        `json:"trigger_comment_id"`
-	AgentName        string             `json:"agent_name"`
-}
-
-// Execution nodes for the graph: the FIVE most recent TERMINAL runs per issue
-// (completed/failed/cancelled — the task's recent run history, so one task can
-// fan out to several execution nodes, e.g. failed → rerun → succeeded) plus
-// EVERY active run (queued/dispatched/running — "what is happening now").
-// History is capped per task because a workspace's queue table grows without
-// bound, the graph does not. issue_id is nullable on the queue (chat tasks);
-// the JOIN both enforces tenancy and drops issue-less rows.
-func (q *Queries) ListIssueGraphRuns(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphRunsRow, error) {
-	rows, err := q.db.Query(ctx, listIssueGraphRuns, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListIssueGraphRunsRow{}
-	for rows.Next() {
-		var i ListIssueGraphRunsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.IssueID,
-			&i.Status,
-			&i.StartedAt,
-			&i.CompletedAt,
-			&i.TriggerCommentID,
-			&i.AgentName,
 		); err != nil {
 			return nil, err
 		}

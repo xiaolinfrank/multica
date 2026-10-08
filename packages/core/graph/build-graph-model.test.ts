@@ -32,13 +32,15 @@ const graph: IssueGraphResponse = {
     { source: "n3", target: "n9", kind: "child" }, // dangling endpoint dropped
     { source: "n1", target: "n2", kind: "hologram" }, // unknown kind dropped
     // Three-entity layers: m1 links n1+n3 across projects, m2 is linked to
-    // nothing, m3 links n5 (the orphan). r1 is n1's latest run, r2 belongs to
-    // n4 (leaves with the p2/status filters).
+    // nothing, m3 links n5 (the orphan). r1 is the L3 gantt row owning n1,
+    // r2 owns n4 (leaves with the p2/status filters); m1 also scheduled r1
+    // directly (meeting-kind edge onto the execution node).
     { source: "mtg:m1", target: "n1", kind: "meeting" },
     { source: "mtg:m1", target: "n3", kind: "meeting" },
     { source: "mtg:m3", target: "n5", kind: "meeting" },
-    { source: "n1", target: "run:r1", kind: "execution" },
-    { source: "n4", target: "run:r2", kind: "execution" },
+    { source: "exc:r1", target: "n1", kind: "execution" },
+    { source: "exc:r2", target: "n4", kind: "execution" },
+    { source: "mtg:m1", target: "exc:r1", kind: "meeting" },
   ],
   meetings: [
     { id: "m1", code: "20260901-01", title: "Kickoff", meet_date: "2026-09-01", status: "已召开", track: "项目管理", nas_dir: "/nas/m1" },
@@ -46,8 +48,18 @@ const graph: IssueGraphResponse = {
     { id: "m3", code: "20260903-01", title: "Orphan review", meet_date: "2026-09-03", status: "待召开", track: "项目管理", nas_dir: "" },
   ],
   executions: [
-    { id: "r1", issue_id: "n1", agent_name: "runner", status: "completed", started_at: "", completed_at: "", trigger_comment_id: "c1" },
-    { id: "r2", issue_id: "n4", agent_name: "runner", status: "running", started_at: "", completed_at: "", trigger_comment_id: null },
+    { id: "r1", code: "L3-01-01", name: "中心启动", status: "进行中", progress: 45, start_date: "2026-09-01", end_date: "2026-11-30", owner: "何群" },
+    { id: "r2", code: "L3-04-01", name: "数据清理", status: "未开始", progress: 0, start_date: "", end_date: "", owner: "" },
+  ],
+  // The whole-board index the display codes derive from: r1 is the first row
+  // under 01.01 ("01.01.01"), r2 the first under 01.02 ("01.02.01") — stored
+  // codes deliberately don't line up with position ("L3-04-01" under 01.02).
+  cockpit_nodes: [
+    { id: "l1", code: "L1-01", parent_id: null, position: 0 },
+    { id: "l2a", code: "01.01", parent_id: "l1", position: 0 },
+    { id: "l2b", code: "01.02", parent_id: "l1", position: 1 },
+    { id: "r1", code: "L3-01-01", parent_id: "l2a", position: 0 },
+    { id: "r2", code: "L3-04-01", parent_id: "l2b", position: 0 },
   ],
 };
 
@@ -81,10 +93,9 @@ describe("buildGraphModel", () => {
       "mtg:m1>n1:meeting",
       "mtg:m1>n3:meeting",
       "mtg:m3>n5:meeting",
-      "n1>run:r1:execution",
-      "n4>run:r2:execution",
-      // Derived: m1 --meeting--> n1 --execution--> r1 => m1 --meeting_run--> r1.
-      "mtg:m1>run:r1:meeting_run",
+      "exc:r1>n1:execution",
+      "exc:r2>n4:execution",
+      "mtg:m1>exc:r1:meeting",
     ]);
     expect(m.meetings.map((n) => n.id)).toEqual(["m1", "m2", "m3"]);
     expect(m.executions.map((n) => n.id)).toEqual(["r1", "r2"]);
@@ -102,7 +113,7 @@ describe("buildGraphModel", () => {
     expect(onlyP1.nodes.map((n) => n.id)).toEqual(["n1", "n2"]);
     // The n1-n2 child edge survives (both endpoints in p1); everything else
     // left the set with n3/n4.
-    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2", "mtg:m1>n1", "n1>run:r1", "mtg:m1>run:r1"]);
+    expect(onlyP1.edges.map((e) => `${e.source}>${e.target}`)).toEqual(["n1>n2", "mtg:m1>n1", "exc:r1>n1", "mtg:m1>exc:r1"]);
 
     const p1PlusNoProject = model({ projects: new Set(["p1", ""]) });
     expect(p1PlusNoProject.nodes.map((n) => n.id)).toEqual(["n1", "n2", "n5"]);
@@ -118,9 +129,9 @@ describe("buildGraphModel", () => {
     expect(todoOnly.meetings.map((n) => n.id)).toEqual(["m1", "m2"]);
   });
 
-  it("drops executions with their issue and honors the entity toggles", () => {
+  it("drops executions with their linked issues and honors the entity toggles", () => {
     const onlyP1 = model({ projects: new Set(["p1"]) });
-    expect(onlyP1.executions.map((n) => n.id)).toEqual(["r1"]); // r2's issue n4 is in p2
+    expect(onlyP1.executions.map((n) => n.id)).toEqual(["r1"]); // r2's only linked issue n4 is in p2
 
     const noMeetings = model({ meetings: false });
     expect(noMeetings.meetings).toEqual([]);
@@ -129,14 +140,24 @@ describe("buildGraphModel", () => {
     const noExecutions = model({ executions: false });
     expect(noExecutions.executions).toEqual([]);
     expect(noExecutions.edges.some((e) => e.kind === "execution")).toBe(false);
+    // The meeting→execution edge leaves with the hidden execution node even
+    // though it is meeting-kind.
+    expect(noExecutions.edges.some((e) => e.target === "exc:r1")).toBe(false);
+  });
+
+  it("hides an L3 row whose every linked issue is filtered away", () => {
+    // in_progress keeps n2 and n5: r1 loses n1 and leaves; r2 loses n4 too.
+    const m = model({ statuses: new Set(["in_progress"]) });
+    expect(m.executions).toEqual([]);
+    expect(m.edges.some((e) => e.kind === "execution")).toBe(false);
   });
 
   it("counts meeting and execution edges into degree and neighbors under their addresses", () => {
     const m = model();
     expect(m.degree.get("n1")).toBe(4); // n2 child, n3 mention, m1, r1
-    expect(m.degree.get("mtg:m1")).toBe(3); // n1, n3, and the derived run r1
-    expect(m.neighbors.get("mtg:m1")).toEqual(new Set(["n1", "n3", "run:r1"]));
-    expect(m.neighbors.get("run:r1")).toEqual(new Set(["n1", "mtg:m1"]));
+    expect(m.degree.get("mtg:m1")).toBe(3); // n1, n3, and the L3 row r1 it scheduled
+    expect(m.neighbors.get("mtg:m1")).toEqual(new Set(["n1", "n3", "exc:r1"]));
+    expect(m.neighbors.get("exc:r1")).toEqual(new Set(["n1", "mtg:m1"]));
     // The child map only covers issue-to-issue edges.
     expect(m.children.has("mtg:m1")).toBe(false);
   });
@@ -146,7 +167,7 @@ describe("buildGraphModel", () => {
     expect(todoOnly.nodes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]);
     // n1 keeps the n1-n3 mention plus its meeting and its run.
     expect(todoOnly.degree.get("n1")).toBe(3);
-    expect(todoOnly.neighbors.get("n1")).toEqual(new Set(["n3", "mtg:m1", "run:r1"]));
+    expect(todoOnly.neighbors.get("n1")).toEqual(new Set(["n3", "mtg:m1", "exc:r1"]));
   });
 
   it("honors edge-kind toggles", () => {
@@ -154,35 +175,40 @@ describe("buildGraphModel", () => {
     kinds.delete("mention");
     const m = model({ edgeKinds: kinds });
     expect(m.edges.some((e) => e.kind === "mention")).toBe(false);
-    expect(m.edges).toHaveLength(9); // 8 direct + the derived meeting_run
+    expect(m.edges).toHaveLength(9); // 10 direct minus the mention edge
   });
 
-  it("derives meeting-to-run edges over shared visible issues", () => {
+  it("labels executions with the gantt's positional row code", () => {
     const m = model();
-    const derived = m.edges.filter((e) => e.kind === "meeting_run");
-    // m1->n1->r1 is the only complete chain: n3 (also m1's) has no runs, and
-    // r2's issue n4 has no meeting.
-    expect(derived).toEqual([{ source: "mtg:m1", target: "run:r1", kind: "meeting_run" }]);
+    // Positional codes come from the tree index, not the stored code:
+    // "L3-04-01" sits under 01.02, so the gantt (and the graph) read 01.02.01.
+    expect(m.executions.find((n) => n.id === "r1")?.display_code).toBe("01.01.01");
+    expect(m.executions.find((n) => n.id === "r2")?.display_code).toBe("01.02.01");
+
+    // Without the index the stored code stays the label.
+    const bare = buildGraphModel(
+      { ...graph, cockpit_nodes: [] },
+      {
+        projects: null,
+        statuses: null,
+        edgeKinds: defaultEdgeKinds(),
+        meetings: true,
+        executions: true,
+      },
+    );
+    expect(bare.executions.find((n) => n.id === "r1")?.display_code).toBeUndefined();
   });
 
-  it("never derives through hidden issues, meetings, or runs", () => {
-    // n1 leaves with the p2-only filter, so m1 and r1 never meet.
-    const onlyP2 = model({ projects: new Set(["p2"]) });
-    expect(onlyP2.edges.some((e) => e.kind === "meeting_run")).toBe(false);
+  it("keeps the direct meeting→execution edge under the meeting group", () => {
+    const m = model();
+    expect(m.edges).toContainEqual({ source: "mtg:m1", target: "exc:r1", kind: "meeting" });
 
-    // Entity toggles remove one side of the join entirely.
-    expect(model({ meetings: false }).edges.some((e) => e.kind === "meeting_run")).toBe(false);
-    expect(model({ executions: false }).edges.some((e) => e.kind === "meeting_run")).toBe(false);
-  });
-
-  it("stops deriving when the meeting_run kind is toggled off", () => {
+    // It rides the meeting edge-group toggle, not the execution one.
     const kinds = defaultEdgeKinds();
-    kinds.delete("meeting_run");
-    const m = model({ edgeKinds: kinds });
-    expect(m.edges.some((e) => e.kind === "meeting_run")).toBe(false);
-    // Direct meeting/execution edges are untouched by the derived-kind toggle.
-    expect(m.edges.some((e) => e.kind === "meeting")).toBe(true);
-    expect(m.edges.some((e) => e.kind === "execution")).toBe(true);
+    kinds.delete("meeting");
+    const off = model({ edgeKinds: kinds });
+    expect(off.edges.some((e) => e.target === "exc:r1" && e.kind === "meeting")).toBe(false);
+    expect(off.edges.some((e) => e.kind === "execution")).toBe(true);
   });
 
   it("builds the child map from surviving child edges only", () => {
@@ -227,13 +253,13 @@ describe("focusNodeIds", () => {
   it("expands one hop at depth 1 and two at depth 2", () => {
     const m = model();
     // n4's own run is one hop out, exactly like its blocking issue.
-    expect(focusNodeIds(m, "n4", 1)).toEqual(new Set(["n4", "n2", "run:r2"]));
-    expect(focusNodeIds(m, "n4", 2)).toEqual(new Set(["n4", "n2", "run:r2", "n1", "n3"]));
+    expect(focusNodeIds(m, "n4", 1)).toEqual(new Set(["n4", "n2", "exc:r2"]));
+    expect(focusNodeIds(m, "n4", 2)).toEqual(new Set(["n4", "n2", "exc:r2", "n1", "n3"]));
   });
 
   it("expands across entity types from a meeting", () => {
     const m = model();
-    expect(focusNodeIds(m, "mtg:m1", 1)).toEqual(new Set(["mtg:m1", "n1", "n3", "run:r1"]));
+    expect(focusNodeIds(m, "mtg:m1", 1)).toEqual(new Set(["mtg:m1", "n1", "n3", "exc:r1"]));
   });
 });
 

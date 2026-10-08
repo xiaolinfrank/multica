@@ -17,7 +17,7 @@
 // re-reads the palette when the theme class flips.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Eye, Focus, CalendarDays, Play } from "lucide-react";
+import { ExternalLink, Eye, Focus, CalendarDays, GanttChart } from "lucide-react";
 import {
   forceCollide,
   forceLink,
@@ -44,7 +44,7 @@ import {
 } from "@multica/core/graph/build-graph-model";
 import type { Project } from "@multica/core/types";
 import { useT } from "../../i18n";
-import { formatGraphTimestamp, formatRunDuration, runStatusDotClass, statusDotClass } from "./graph-format";
+import { formatGraphTimestamp, statusDotClass } from "./graph-format";
 
 export interface GraphCanvasProps {
   model: GraphModel;
@@ -79,8 +79,10 @@ interface SimNode extends SimulationNodeDatum {
   label: string;
   title: string;
   statusCategory: string;
-  /** Execution nodes only: the run's own status drives the colour. */
+  /** Execution nodes only: the L3 row's own status drives the colour. */
   runStatus: string;
+  /** Execution nodes only: 0..1 gantt progress for the glyph fill. */
+  progress?: number;
   radius: number;
   /** Filtered degree; isolated nodes (0) get a stronger center pull. */
   degree: number;
@@ -100,7 +102,7 @@ interface Palette {
   projects: string[];
   status: Record<string, string>;
   meeting: string;
-  runs: Record<string, string>;
+  execStatus: Record<string, string>;
   edges: Record<EdgeColorGroup, string>;
 }
 
@@ -143,15 +145,12 @@ const PROJECT_COLOR_VARS = [
   "--graph-node-5",
 ];
 
-// Execution nodes carry status semantics, not a project hue: a run's only
-// interesting question is how it ended (or that it hasn't yet).
-const RUN_STATUS_VARS: Record<string, string> = {
-  queued: "--muted-foreground",
-  dispatched: "--warning",
-  running: "--warning",
-  completed: "--success",
-  failed: "--destructive",
-  cancelled: "--muted-foreground",
+// Execution nodes are the gantt's L3 rows: their board status (进行中 /
+// 已完成 / 未开始) drives the colour, not a project hue.
+const EXEC_STATUS_VARS: Record<string, string> = {
+  进行中: "--warning",
+  已完成: "--success",
+  未开始: "--muted-foreground",
 };
 
 function readPalette(): Palette {
@@ -168,8 +167,8 @@ function readPalette(): Palette {
       Object.entries(STATUS_CATEGORY_VARS).map(([k, name]) => [k, v(name)]),
     ),
     meeting: v("--graph-node-meeting"),
-    runs: Object.fromEntries(
-      Object.entries(RUN_STATUS_VARS).map(([k, name]) => [k, v(name)]),
+    execStatus: Object.fromEntries(
+      Object.entries(EXEC_STATUS_VARS).map(([k, name]) => [k, v(name)]),
     ),
     edges: Object.fromEntries(
       Object.entries(EDGE_COLOR_VARS).map(([k, name]) => [k, v(name)]),
@@ -228,16 +227,25 @@ function drawCalendarGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.stroke();
 }
 
-/** Play mark inside an execution square: the run as an action taken. */
-function drawPlayGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, p: Palette) {
-  const h = radius * 0.52;
+/** Mini gantt bar inside an execution square: a track with the row's
+ *  progress filled in — the same thing the cockpit gantt shows. */
+function drawGanttGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, progress: number, p: Palette) {
+  const w = radius * 1.1;
+  const h = Math.max(radius * 0.32, 1.6);
+  const r = h / 2;
   ctx.fillStyle = p.background;
+  ctx.globalAlpha = 0.55;
   ctx.beginPath();
-  ctx.moveTo(x - h * 0.55, y - h);
-  ctx.lineTo(x + h * 0.85, y);
-  ctx.lineTo(x - h * 0.55, y + h);
-  ctx.closePath();
+  ctx.roundRect(x - w / 2, y - h / 2, w, h, r);
   ctx.fill();
+  const fill = (Math.max(Math.min(progress, 100), 0) / 100) * w;
+  if (fill > 0.5) {
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - w / 2, y - h / 2, Math.max(fill, h), h, r);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** Discriminated lookup across the three node arrays, by graph address. */
@@ -391,10 +399,10 @@ export function GraphCanvas(props: GraphCanvasProps) {
 
   // Meetings ignore the colour dimension on purpose: the amber diamond IS the
   // "this is a meeting" signal, and repainting it per project would read as a
-  // second issue palette. Executions take their run status instead.
+  // second issue palette. Executions (L3 gantt rows) take their board status.
   const meetingColor = useCallback((_id: string, p: Palette): string => p.meeting, []);
   const executionColor = useCallback(
-    (r: GraphExecutionNode, p: Palette): string => p.runs[r.status] ?? p.muted,
+    (r: GraphExecutionNode, p: Palette): string => p.execStatus[r.status] ?? p.muted,
     [],
   );
 
@@ -468,13 +476,14 @@ export function GraphCanvas(props: GraphCanvasProps) {
           id: addr,
           refId: r.id,
           entity: "execution" as const,
-          label: r.agent_name,
-          title: r.agent_name,
+          label: (r.display_code ?? r.code) || r.name,
+          title: r.name,
           statusCategory: "",
           runStatus: r.status,
-          // Runs are leaf annotations of their issue — deliberately smaller
-          // than every other node so they never compete for hub attention.
-          radius: Math.max(nodeRadius(degree) * 0.72, 4),
+          progress: r.progress,
+          // L3 rows are hubs (each owns several issues): same radius formula
+          // as issues, with a floor so a link-less row stays recognizable.
+          radius: Math.max(nodeRadius(degree), 6),
           degree,
           color: palette ? executionColor(r, palette) : "gray",
           ...spawn(addr, model.nodes.length + model.meetings.length + i, degree),
@@ -574,10 +583,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
       if (!s || !t) continue;
       const inFocus = !focusSet || (focusSet.has(s.id) && focusSet.has(t.id));
       const color = p.edges[edgeColorGroup(link.kind)];
-      // Derived meeting→run links stay quieter than direct ones so the
-      // indirect relation never visually competes with the direct pair.
-      const derived = link.kind === "meeting_run";
-      ctx.globalAlpha = derived ? (inFocus ? 0.5 : 0.18) : inFocus ? 0.95 : 0.32;
+      ctx.globalAlpha = inFocus ? 0.95 : 0.32;
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       const width = inFocus ? 2 : 1.25;
@@ -605,8 +611,6 @@ export function GraphCanvas(props: GraphCanvasProps) {
         ctx.setLineDash([2, 4]);
       } else if (link.kind === "execution") {
         ctx.setLineDash([3, 3]);
-      } else if (link.kind === "meeting_run") {
-        ctx.setLineDash([2, 5]);
       } else {
         ctx.setLineDash([]);
       }
@@ -650,7 +654,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
       // Glyphs only past the all-labels zoom: below it they render as smudges.
       if (view.k >= 1.1) {
         if (n.entity === "meeting") drawCalendarGlyph(ctx, x, y, n.radius, p);
-        else if (n.entity === "execution") drawPlayGlyph(ctx, x, y, n.radius, p);
+        else if (n.entity === "execution") drawGanttGlyph(ctx, x, y, n.radius, n.progress ?? 0, p);
       }
 
       const isQueryMatch = searchQuery !== "" && matchesQuery(
@@ -721,14 +725,14 @@ export function GraphCanvas(props: GraphCanvasProps) {
     if (!p) return;
     const issues = new Map(model.nodes.map((n) => [n.id, n]));
     const meetings = new Map(model.meetings.map((n) => [graphMeetingAddress(n.id), n]));
-    const runs = new Map(model.executions.map((n) => [graphExecutionAddress(n.id), n]));
+    const execRows = new Map(model.executions.map((n) => [graphExecutionAddress(n.id), n]));
     for (const sn of nodesRef.current) {
       if (sn.entity === "meeting") {
         if (meetings.has(sn.id)) sn.color = meetingColor(sn.refId, p);
         continue;
       }
       if (sn.entity === "execution") {
-        const r = runs.get(sn.id);
+        const r = execRows.get(sn.id);
         if (r) sn.color = executionColor(r, p);
         continue;
       }
@@ -938,8 +942,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
             accentColor={palette?.meeting} degree={model.degree.get(graphMeetingAddress((tooltip.node as GraphMeetingNode).id)) ?? 0} />
         ) : tooltip.entity === "execution" ? (
           <GraphExecutionTooltip x={tooltip.x} y={tooltip.y} node={tooltip.node as GraphExecutionNode}
-            issues={model.nodes}
-            statusColor={palette ? palette.runs[(tooltip.node as GraphExecutionNode).status] ?? palette.muted : undefined} />
+            statusColor={palette ? palette.execStatus[(tooltip.node as GraphExecutionNode).status] ?? palette.muted : undefined} />
         ) : (
           <GraphTooltip
             x={tooltip.x}
@@ -984,7 +987,7 @@ export function GraphCanvas(props: GraphCanvasProps) {
           <GraphExecutionPreview
             anchorRef={previewRef}
             node={preview.node as GraphExecutionNode}
-            issues={model.nodes}
+            statusColor={palette ? palette.execStatus[(preview.node as GraphExecutionNode).status] ?? palette.muted : undefined}
             onClose={() => setPreviewId(null)}
             onOpen={() => onOpenExecution(preview.node as GraphExecutionNode)}
           />
@@ -1023,7 +1026,7 @@ function GraphNodeMenu(props: {
     props.entity === "meeting"
       ? t(($) => $.menu.open_meeting)
       : props.entity === "execution"
-        ? t(($) => $.menu.open_run)
+        ? t(($) => $.menu.open_execution)
         : t(($) => $.menu.open);
   const actions: Array<{
     key: string;
@@ -1309,17 +1312,21 @@ function GraphExecutionTooltip(props: {
   x: number;
   y: number;
   node: GraphExecutionNode;
-  issues: GraphNode[];
   statusColor: string | undefined;
 }) {
-  const { x, y, node, issues, statusColor } = props;
+  const { x, y, node, statusColor } = props;
   const { t } = useT("graph");
-  const issue = issues.find((n) => n.id === node.issue_id) ?? null;
-  const duration = formatRunDuration(node.started_at, node.completed_at);
   const rows: Array<[string, React.ReactNode]> = [];
-  if (issue) rows.push([t(($) => $.fields.belongs_to), issue.identifier]);
   rows.push([t(($) => $.fields.status), node.status]);
-  if (duration) rows.push([t(($) => $.fields.duration), duration]);
+  if (node.progress > 0) rows.push([t(($) => $.fields.progress), `${Math.round(node.progress)}%`]);
+  const window_ = [node.start_date, node.end_date].filter(Boolean).join(" → ");
+  if (window_) rows.push([t(($) => $.fields.date_range), window_]);
+  if (node.owner) rows.push([t(($) => $.fields.owner), node.owner]);
+  // The header shows the positional row code the gantt displays; the stored
+  // code rides along as a field only when the two differ.
+  if (node.display_code && node.display_code !== node.code) {
+    rows.push([t(($) => $.fields.stored_code), node.code]);
+  }
   return (
     <div
       className="pointer-events-none absolute z-10 w-64 rounded-md border bg-popover px-2.5 py-2 text-caption shadow-[var(--floating-shadow)]"
@@ -1327,15 +1334,13 @@ function GraphExecutionTooltip(props: {
       data-testid="graph-tooltip"
     >
       <div className="flex items-center gap-1.5">
-        <span className="font-mono text-micro text-muted-foreground">{node.agent_name}</span>
+        <span className="font-mono text-micro text-muted-foreground">{node.display_code ?? node.code}</span>
         {statusColor ? (
           <span className="inline-block size-2 rounded-sm" style={{ backgroundColor: statusColor }} aria-hidden />
         ) : null}
         <span className="truncate text-micro text-muted-foreground">{t(($) => $.entity.execution)}</span>
       </div>
-      <div className="mt-0.5 line-clamp-2 text-body font-medium text-foreground">
-        {issue ? issue.title : node.agent_name}
-      </div>
+      <div className="mt-0.5 line-clamp-2 text-body font-medium text-foreground">{node.name}</div>
       <dl className="mt-1.5 space-y-0.5 text-micro text-muted-foreground">
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-2">
@@ -1453,15 +1458,13 @@ function GraphMeetingPreview(props: {
 function GraphExecutionPreview(props: {
   anchorRef: React.RefObject<HTMLDivElement | null>;
   node: GraphExecutionNode;
-  issues: GraphNode[];
+  statusColor: string | undefined;
   onClose: () => void;
   onOpen: () => void;
 }) {
-  const { node, issues } = props;
+  const { node, statusColor } = props;
   const { t } = useT("graph");
-  const issue = issues.find((n) => n.id === node.issue_id) ?? null;
-  const duration = formatRunDuration(node.started_at, node.completed_at);
-  const finished = formatGraphTimestamp(node.completed_at);
+  const window_ = [node.start_date, node.end_date].filter(Boolean).join(" → ");
   return (
     <div
       ref={props.anchorRef}
@@ -1470,7 +1473,7 @@ function GraphExecutionPreview(props: {
       data-node-id={graphExecutionAddress(node.id)}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="font-mono text-micro text-muted-foreground">{node.agent_name}</span>
+        <span className="font-mono text-micro text-muted-foreground">{node.display_code ?? node.code}</span>
         <button
           type="button"
           className="text-muted-foreground hover:text-foreground"
@@ -1480,40 +1483,54 @@ function GraphExecutionPreview(props: {
           ×
         </button>
       </div>
-      <p className="mt-0.5 text-body font-medium text-foreground">
-        {issue ? issue.title : t(($) => $.entity.execution)}
-      </p>
+      <p className="mt-0.5 text-body font-medium text-foreground">{node.name}</p>
       <dl className="mt-2 space-y-1 text-caption text-muted-foreground">
         <div className="flex items-center justify-between gap-2">
           <dt>{t(($) => $.fields.entity_type)}</dt>
           <dd className="flex items-center gap-1.5 text-foreground">
-            <Play className="size-3" aria-hidden />
+            <GanttChart className="size-3" aria-hidden />
             {t(($) => $.entity.execution)}
           </dd>
         </div>
+        {node.display_code && node.display_code !== node.code ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t(($) => $.fields.stored_code)}</dt>
+            <dd className="font-mono text-micro text-foreground">{node.code}</dd>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between gap-2">
           <dt>{t(($) => $.fields.status)}</dt>
           <dd className="flex items-center gap-1.5 text-foreground">
-            <span className={`inline-block size-2 rounded-sm ${runStatusDotClass(node.status)}`} aria-hidden />
+            {statusColor ? (
+              <span className="inline-block size-2 rounded-sm" style={{ backgroundColor: statusColor }} aria-hidden />
+            ) : null}
             {node.status}
           </dd>
         </div>
-        {issue ? (
-          <div className="flex justify-between gap-2">
-            <dt>{t(($) => $.fields.belongs_to)}</dt>
-            <dd className="truncate font-mono text-micro text-foreground">{issue.identifier}</dd>
+        {node.progress > 0 ? (
+          <div className="flex items-center justify-between gap-2">
+            <dt>{t(($) => $.fields.progress)}</dt>
+            <dd className="flex items-center gap-2 text-foreground">
+              <span className="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden>
+                <span
+                  className="block h-full rounded-full"
+                  style={{ width: `${Math.min(node.progress, 100)}%`, backgroundColor: statusColor }}
+                />
+              </span>
+              <span className="tabular-nums">{Math.round(node.progress)}%</span>
+            </dd>
           </div>
         ) : null}
-        {duration ? (
+        {window_ ? (
           <div className="flex justify-between gap-2">
-            <dt>{t(($) => $.fields.duration)}</dt>
-            <dd className="tabular-nums text-foreground">{duration}</dd>
+            <dt>{t(($) => $.fields.date_range)}</dt>
+            <dd className="tabular-nums text-foreground">{window_}</dd>
           </div>
         ) : null}
-        {finished ? (
+        {node.owner ? (
           <div className="flex justify-between gap-2">
-            <dt>{t(($) => $.fields.finished_at)}</dt>
-            <dd className="text-foreground">{finished}</dd>
+            <dt>{t(($) => $.fields.owner)}</dt>
+            <dd className="truncate text-foreground">{node.owner}</dd>
           </div>
         ) : null}
       </dl>
@@ -1522,8 +1539,9 @@ function GraphExecutionPreview(props: {
         className="mt-2 w-full rounded-md bg-primary px-2 py-1.5 text-caption font-medium text-primary-foreground hover:bg-primary/90"
         onClick={props.onOpen}
       >
-        {t(($) => $.card.open_run)}
+        {t(($) => $.card.open_execution)}
       </button>
     </div>
   );
 }
+

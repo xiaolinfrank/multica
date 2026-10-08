@@ -673,6 +673,13 @@ func writeEditConflict(w http.ResponseWriter, resourceType string, resourceID pg
 // parseUUID directly when the call writes to the database.
 func parseUUID(s string) pgtype.UUID                { return util.MustParseUUID(s) }
 func uuidToString(u pgtype.UUID) string             { return util.UUIDToString(u) }
+func uuidToStringPtr(u pgtype.UUID) *string {
+	if !u.Valid {
+		return nil
+	}
+	s := util.UUIDToString(u)
+	return &s
+}
 func textToPtr(t pgtype.Text) *string               { return util.TextToPtr(t) }
 func ptrToText(s *string) pgtype.Text               { return util.PtrToText(s) }
 func strToText(s string) pgtype.Text                { return util.StrToText(s) }

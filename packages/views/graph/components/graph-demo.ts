@@ -65,15 +65,21 @@ export function demoGraph(): IssueGraphResponse {
     { id: "m-3", code: "20261013-01", title: "Lock planning", meet_date: "2026-10-13", status: "planned", track: "Data", nas_dir: "" },
   ];
   const executions: IssueGraphResponse["executions"] = [];
-  for (const i of [1, 4, 7, 11, 16, 21] as const) {
+  // display_code mirrors the gantt's positional row code; progress is 0..100,
+  // the same scale the gantt bar uses.
+  const EXEC_ROWS = [
+    { id: "r-1", code: "L3-01-01", display_code: "01.01.01", name: "Site initiation", status: "进行中", progress: 45, owner: "Lin Wei" },
+    { id: "r-4", code: "L3-01-02", display_code: "01.02.01", name: "Recruitment tracking", status: "进行中", progress: 60, owner: "Lin Wei" },
+    { id: "r-7", code: "L3-04-01", display_code: "04.01.01", name: "Data cleaning", status: "进行中", progress: 30, owner: "" },
+    { id: "r-11", code: "L3-04-02", display_code: "04.01.02", name: "Query resolution", status: "未开始", progress: 0, owner: "" },
+    { id: "r-16", code: "L3-07-01", display_code: "07.01.01", name: "CMC batch records", status: "已完成", progress: 100, owner: "Research Agent" },
+    { id: "r-21", code: "L3-08-01", display_code: "08.01.01", name: "Milestone review", status: "未开始", progress: 0, owner: "" },
+  ];
+  for (const r of EXEC_ROWS) {
     executions.push({
-      id: `r-${i}`,
-      issue_id: `demo-${i}`,
-      agent_name: "Research Agent",
-      status: i % 2 === 0 ? "running" : "completed",
-      started_at: "2026-10-05T09:00:00Z",
-      completed_at: i % 2 === 0 ? "" : "2026-10-05T09:04:12Z",
-      trigger_comment_id: null,
+      ...r,
+      start_date: "2026-09-01",
+      end_date: "2026-11-30",
     });
   }
   for (const [meeting, issue] of [
@@ -81,9 +87,16 @@ export function demoGraph(): IssueGraphResponse {
   ] as const) {
     edges.push({ source: `mtg:${meeting}`, target: `demo-${issue}`, kind: "meeting" });
   }
-  for (const r of executions) {
-    edges.push({ source: r.issue_id, target: `run:${r.id}`, kind: "execution" });
+  for (const [exec, issue] of [
+    ["r-1", 1], ["r-1", 2], ["r-4", 4], ["r-4", 5], ["r-7", 11], ["r-11", 12],
+    ["r-16", 16], ["r-16", 17], ["r-21", 21],
+  ] as const) {
+    edges.push({ source: `exc:${exec}`, target: `demo-${issue}`, kind: "execution" });
+  }
+  // A meeting can also schedule an L3 row directly (meeting-kind edge).
+  for (const [meeting, exec] of [["m-1", "r-1"], ["m-3", "r-7"]] as const) {
+    edges.push({ source: `mtg:${meeting}`, target: `exc:${exec}`, kind: "meeting" });
   }
 
-  return { nodes, edges, meetings, executions };
+  return { nodes, edges, meetings, executions, cockpit_nodes: [] };
 }

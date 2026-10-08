@@ -552,6 +552,7 @@ export function CockpitPage() {
     [summaryParent],
   );
 
+
   const toggleCollapse = useCallback((nodeId: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -593,6 +594,22 @@ export function CockpitPage() {
     didSeedCollapse.current = true;
     setCollapsed(new Set(cockpitSummaryCollapseIds(summaryTree)));
   }, [summaryFlat, summaryTree]);
+
+  // Deep link `?node=<id>` (graph execution-node menu): same landing as a
+  // digest-card jump — ancestors expanded, row selected and flashed. Declared
+  // after the seed-collapse effect on purpose: the expansion must carve the
+  // row's ancestors out of the SEEDED collapse set (a functional update after
+  // seeding), not the empty initial one. `collapsed` in the deps re-fires the
+  // effect right after seeding when the board was still loading on mount.
+  const deepLinkNode = navigation.searchParams.get("node");
+  const deepLinkNodeAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkNode || deepLinkNodeAppliedRef.current === deepLinkNode) return;
+    if (!didSeedCollapse.current) return;
+    if (!(board?.nodes ?? []).some((n) => n.id === deepLinkNode)) return;
+    deepLinkNodeAppliedRef.current = deepLinkNode;
+    openTask(deepLinkNode);
+  }, [deepLinkNode, board, openTask, collapsed]);
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
