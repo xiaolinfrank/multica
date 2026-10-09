@@ -142,7 +142,10 @@ already been held.
   snapshot restores are the one exception: rebuilding a board replays its
   own codes, so the gate stays open there (the replayed codes still join
   the ledger). `GET /nodes/next-code` previews the number a direction would
-  hand out next, ledger included.
+  hand out next, ledger included: the separator mirrors the direction's own
+  code (dotted parents such as `01.03` continue dotted as `01.03.06`, others
+  keep the `PARENT-NN` shape), and the number steps past the rows currently
+  under the direction as well as every spent code.
 - Amounts keep four decimal places server-side and travel as plain JSON
   numbers, so a value read back may carry more precision than it was sent with.
 

@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1008,13 +1009,37 @@ func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, c
 	return parent, true
 }
 
-// nextCockpitChildCode picks the first PARENT-NN number the board has
-// never handed out. Codes with a non-numeric tail (hand-edited rows) keep
-// their ledger entry but do not join the count: 02.02-1 and 02.02-01 are
-// distinct codes, both stay spent, and neither is re-issued.
-func nextCockpitChildCode(parentCode string, used []string) string {
-	prefix := parentCode + "-"
-	max := 0
+// numericDottedCodeRe marks stored codes built of two or more two-digit
+// dot-separated segments ("01.03", "04.03.10"): the board's published
+// address family, and the shape the gantt's positional display codes quote.
+// A bare module code ("01") stays out — minting "01.01" under it would
+// produce a direction-shaped code the frontend files as structure.
+var numericDottedCodeRe = regexp.MustCompile(`^\d{2}\.\d{2}(\.\d{2})*$`)
+
+// storedZeroSegmentCodeRe mirrors the display layer's governance carve-out:
+// a first child whose stored code ends in ".00" keeps that published code
+// and the siblings after it number from 01, so the row occupies no number
+// in the parent's sequence.
+var storedZeroSegmentCodeRe = regexp.MustCompile(`^\d{2}(\.\d{2})*\.00$`)
+
+// nextCockpitChildCode picks the first number past everything the board has
+// ever handed out under this parent. The separator mirrors the parent's own
+// style: dotted parents ("01.03") continue dotted ("01.03.06"), anything else
+// ("AI-03-02", "01") keeps the legacy PARENT-NN shape. The count starts from
+// the live child rows as well as the ledger, because a deleted row's number
+// stays spent while a child wearing an unrelated legacy code ("L3-01-33")
+// still occupies a visible position the answer must step past — otherwise
+// the preview reads as a duplicate of a sibling the reader can see. Codes
+// with a non-numeric tail (hand-edited rows) keep their ledger entry but do
+// not join the count: 02.02.1 and 02.02.01 are distinct codes, both stay
+// spent, and neither is re-issued.
+func nextCockpitChildCode(parentCode string, used []string, childCount int) string {
+	sep := "-"
+	if numericDottedCodeRe.MatchString(parentCode) {
+		sep = "."
+	}
+	prefix := parentCode + sep
+	max := childCount
 	for _, code := range used {
 		if !strings.HasPrefix(code, prefix) {
 			continue
@@ -1028,6 +1053,28 @@ func nextCockpitChildCode(parentCode string, used []string) string {
 		}
 	}
 	return prefix + fmt.Sprintf("%02d", max+1)
+}
+
+// liveChildFloor counts the rows currently under parentID for next-code
+// purposes. A first child wearing a ".00" governance code sits outside the
+// numbered sequence the gantt shows, so it does not push the next number.
+func liveChildFloor(nodes []db.CockpitNode, parentID pgtype.UUID) int {
+	count := 0
+	var first *db.CockpitNode
+	for i := range nodes {
+		n := &nodes[i]
+		if n.ParentID != parentID {
+			continue
+		}
+		count++
+		if first == nil || n.Position < first.Position {
+			first = n
+		}
+	}
+	if first != nil && storedZeroSegmentCodeRe.MatchString(first.Code) {
+		count--
+	}
+	return count
 }
 
 // GetCockpitNextNodeCode answers what code the next execution task under a
@@ -1062,11 +1109,14 @@ func (h *Handler) GetCockpitNextNodeCode(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "failed to load used codes")
 		return
 	}
+	// The live child count keeps the answer ahead of rows whose codes name
+	// no number under this parent (e.g. legacy L3-coded tasks).
+	childCount := liveChildFloor(nodes, parent.ID)
 	for _, n := range nodes {
 		used = append(used, n.Code)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"code": nextCockpitChildCode(parent.Code, used)})
+	writeJSON(w, http.StatusOK, map[string]string{"code": nextCockpitChildCode(parent.Code, used, childCount)})
 }
 
 func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {

@@ -253,7 +253,7 @@ describe("CockpitPage", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -597,7 +597,7 @@ describe("CockpitPage", () => {
     );
     vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
     vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "01.02-01", parent_id: "dir" }),
+      node({ id: "new", code: "01.02.01", parent_id: "dir" }),
     );
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
@@ -606,12 +606,12 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
 
     // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
+    expect(await screen.findByText("01.02.01")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "01.02-01",
+        code: "01.02.01",
         name: "",
         parent_id: "dir",
         position: 1,
@@ -646,27 +646,27 @@ describe("CockpitPage", () => {
     const withBranch = structuredClone(board);
     withBranch.nodes.push(
       node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-      node({ id: "leaf", code: "01.02-01", parent_id: "dir", name: "Existing task", position: 1 }),
+      node({ id: "leaf", code: "01.02.01", parent_id: "dir", name: "Existing task", position: 1 }),
     );
     vi.mocked(api.getCockpit).mockResolvedValue(withBranch);
     vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "01.02-02", parent_id: "dir" }),
+      node({ id: "new", code: "01.02.02", parent_id: "dir" }),
     );
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand Datasets" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.02.01" }));
 
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-02" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.02" });
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
 
     // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("01.02-02")).toBeInTheDocument();
+    expect(await screen.findByText("01.02.02")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "01.02-02",
+        code: "01.02.02",
         name: "",
         parent_id: "dir",
         position: 2,
@@ -683,27 +683,27 @@ describe("CockpitPage", () => {
     grouped.nodes.push(
       node({ id: "mod2", code: "L1-02", name: "Platform", position: 20 }),
       node({ id: "d0202", code: "02.02", parent_id: "mod2", name: "Platform core" }),
-      node({ id: "t1", code: "02.02-01", parent_id: "d0202", name: "Port the registry" }),
+      node({ id: "t1", code: "02.02.01", parent_id: "d0202", name: "Port the registry" }),
     );
     vi.mocked(api.getCockpit).mockResolvedValue(grouped);
     vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "02.02-02", parent_id: "d0202" }),
+      node({ id: "new", code: "02.02.02", parent_id: "d0202" }),
     );
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand 平台架构与开发" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 02.01.01" }));
 
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "02.02-02" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "02.02.02" });
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
 
     // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("02.02-02")).toBeInTheDocument();
+    expect(await screen.findByText("02.02.02")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "02.02-02",
+        code: "02.02.02",
         name: "",
         parent_id: "d0202",
         position: 1,
@@ -798,7 +798,7 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
+    expect(await screen.findByText("01.02.01")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Create" }));
 
     await waitFor(() => expect(api.createCockpitNode).toHaveBeenCalled());
@@ -812,7 +812,7 @@ describe("CockpitPage detail tables", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
@@ -878,7 +878,7 @@ describe("CockpitPage versions", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
       {
