@@ -470,6 +470,13 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
 		return
 	}
+	if owned, err := qtx.HasCockpitPrimaryForModule(r.Context(), db.HasCockpitPrimaryForModuleParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
+		return
+	} else if owned {
+		writeError(w, http.StatusConflict, "clear L3 primary ownership before deleting this module")
+		return
+	}
 	if err := qtx.ClearCockpitNodeModuleBinding(r.Context(), db.ClearCockpitNodeModuleBindingParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
 		return

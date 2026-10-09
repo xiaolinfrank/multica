@@ -595,6 +595,21 @@ type CockpitDirectory struct {
 	Source      string             `json:"source"`
 }
 
+type CockpitIssuePrimary struct {
+	IssueID        pgtype.UUID        `json:"issue_id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	NodeID         pgtype.UUID        `json:"node_id"`
+	Revision       int64              `json:"revision"`
+	CreationKey    pgtype.UUID        `json:"creation_key"`
+	CreationNodeID pgtype.UUID        `json:"creation_node_id"`
+	CreationHash   string             `json:"creation_hash"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	UpdatedBy      pgtype.UUID        `json:"updated_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	IssueDeletedAt pgtype.Timestamptz `json:"issue_deleted_at"`
+}
+
 type CockpitMeeting struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -622,6 +637,36 @@ type CockpitMeeting struct {
 	NasDir      string             `json:"nas_dir"`
 	Detected    bool               `json:"detected"`
 	Track       string             `json:"track"`
+}
+
+type CockpitMeetingAction struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	VersionNumber     int32              `json:"version_number"`
+	SourceContentHash string             `json:"source_content_hash"`
+	ProposalKey       pgtype.UUID        `json:"proposal_key"`
+	ProposalHash      string             `json:"proposal_hash"`
+	Title             string             `json:"title"`
+	Description       string             `json:"description"`
+	SourceQuote       string             `json:"source_quote"`
+	Status            string             `json:"status"`
+	Resolution        string             `json:"resolution"`
+	Revision          int64              `json:"revision"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	NodeCode          string             `json:"node_code"`
+	NodeName          string             `json:"node_name"`
+	IssueID           pgtype.UUID        `json:"issue_id"`
+	Reason            string             `json:"reason"`
+	DecisionKey       pgtype.UUID        `json:"decision_key"`
+	DecisionHash      string             `json:"decision_hash"`
+	DecisionRevision  pgtype.Int8        `json:"decision_revision"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	ResolvedBy        pgtype.UUID        `json:"resolved_by"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 }
 
 type CockpitMeetingIssue struct {

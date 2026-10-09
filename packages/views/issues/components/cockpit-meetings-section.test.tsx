@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
+import type { CockpitBoard, CockpitMeeting, CockpitIssueActionSourcesPage } from "@multica/core/types";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider } from "../../navigation";
@@ -10,6 +10,7 @@ import type { NavigationAdapter } from "../../navigation/types";
 
 const queryRef = vi.hoisted(() => ({
   current: { data: undefined as CockpitBoard | undefined, isLoading: false },
+  sources: null as CockpitIssueActionSourcesPage | null,
 }));
 
 const mutRef = vi.hoisted(() => ({
@@ -21,7 +22,8 @@ vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
     "@tanstack/react-query",
   );
-  return { ...actual, useQuery: () => queryRef.current };
+  return { ...actual, useQuery: (options: { queryKey: readonly unknown[] }) => options.queryKey[2] === "issue-action-sources"
+    ? { data: queryRef.sources ?? { issue_id: options.queryKey[3], items: [], total: 0, next_cursor: null }, isPending: false, isError: false } : queryRef.current };
 });
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
@@ -184,9 +186,18 @@ beforeEach(() => {
   mutRef.link.isPending = false;
   mutRef.unlink.isPending = false;
   queryRef.current = { data: undefined, isLoading: false };
+  queryRef.sources = null;
 });
 
 describe("CockpitMeetingsSection", () => {
+  it("shows an accepted action source independently of editable reference meetings", () => {
+    queryRef.sources = { issue_id: "issue-1", total: 1, next_cursor: null, items: [{ id: "action-1", meeting_id: "meeting-1", meeting_code: "M-01", meeting_title: "Delivery review", version_id: "v1", version_number: 1, title: "Verify interface" }] };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+    const sources = screen.getByRole("region", { name: "Meeting action sources" });
+    expect(within(sources).getByRole("link", { name: "M-01 Delivery review" })).toHaveAttribute("href", "/acme/cockpit?meeting=meeting-1&action=action-1");
+    expect(within(sources).queryByRole("button", { name: /Unlink/ })).toBeNull();
+    expect(sources).toHaveTextContent("Minutes v1 · Verify interface");
+  });
   it("renders nothing while the board loads or the programme keeps no register", () => {
     queryRef.current = { data: undefined, isLoading: true };
     expect(

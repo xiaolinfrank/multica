@@ -88,6 +88,9 @@ type IssueCreateParams struct {
 	// meeting is locked before duplicate detection and linked before commit.
 	MeetingTask     *CockpitMeetingTask
 	CockpitWorkflow *CockpitWorkflowIssue
+	// Internal typed hook: action resolution / L3 create and primary ownership
+	// share the canonical Issue transaction, quota and post-commit effects.
+	CockpitPlanning *cockpitPlanningIssue
 	StartDate       pgtype.Date
 	DueDate         pgtype.Date
 	OriginType      pgtype.Text
@@ -273,6 +276,15 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if p.CockpitPlanning != nil {
+		existing, err := prepareCockpitPlanningIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 	if p.CockpitWorkflow != nil {
 		existing, err := prepareCockpitWorkflowIssue(ctx, qtx, &p)
 		if err != nil {
@@ -593,6 +605,11 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 
 	if p.CockpitWorkflow != nil {
 		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.CockpitPlanning != nil {
+		if err := linkCockpitPlanningIssue(ctx, qtx, p, issue); err != nil {
 			return IssueCreateResult{}, err
 		}
 	}

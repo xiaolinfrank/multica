@@ -13,7 +13,7 @@ import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
-import { cockpitKeys, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
+import { cockpitKeys, invalidateCockpitTaskFlow, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -884,6 +884,8 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: issueStatusKeys.all(wsId) });
+          // The compact work-item summary resolves unknown/custom categories on the server.
+          qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
           // Status-group order is server-owned and depends on catalog positions.
           // Rows/facets and unrelated groupings do not change on catalog edits.
           qc.invalidateQueries({
@@ -1136,7 +1138,7 @@ export function useRealtimeSync(
       const { issue } = p as IssueCreatedPayload;
       if (!issue) return;
       const wsId = getCurrentWsId();
-      if (wsId) onIssueCreated(qc, wsId, issue);
+      if (wsId) { onIssueCreated(qc, wsId, issue); invalidateCockpitTaskFlow(qc, wsId); }
     });
 
     const unsubIssueDeleted = ws.on("issue:deleted", (p) => {
@@ -1145,6 +1147,7 @@ export function useRealtimeSync(
       const wsId = getCurrentWsId();
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
+        invalidateCockpitTaskFlow(qc, wsId);
         void onInboxIssueDeleted(qc, wsId, issue_id);
       }
     });

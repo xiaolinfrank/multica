@@ -40,6 +40,9 @@ import type {
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
   CockpitMeetingWorkflow,
+  CockpitTask, CockpitTaskPage, CockpitTaskQuery, CockpitTaskCreate, CockpitPrimaryNode,
+  CockpitMeetingAction, CockpitActionPage, CockpitActionQuery, CockpitActionDraft, CockpitActionResolution,
+  CockpitIssueActionSourcesPage,
   CockpitNasDestination,
   CockpitNasExport,
   CockpitReviewerHandoffCommand,
@@ -338,6 +341,8 @@ import {
   CockpitMeetingNodesResponseSchema,
   CockpitMeetingProvisionResultSchema,
   CockpitMeetingWorkflowSchema,
+  CockpitTaskSchema, CockpitTaskPageSchema, CockpitPrimaryNodeSchema, CockpitActionPageSchema, CockpitMeetingActionSchema, CockpitMeetingActionWriteSchema,
+  CockpitIssueActionSourcesPageSchema,
   CockpitMeetingWorkflowWriteSchema,
   CockpitMeetingNasWriteSchema,
   EMPTY_COCKPIT_MEETING_WORKFLOW,
@@ -2067,6 +2072,86 @@ export class ApiClient {
     return parseWithFallback(raw, CockpitMeetingWorkflowSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
       endpoint: "GET /api/cockpit/meetings/:id/workflow",
     });
+  }
+
+  async getCockpitNodeTasks(nodeId: string, params: CockpitTaskQuery = {}, signal?: AbortSignal): Promise<CockpitTaskPage | null> {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") search.set(key, String(value));
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/tasks?${search}`, { signal });
+    const result = parseWithFallback<CockpitTaskPage | null>(raw, CockpitTaskPageSchema, null, { endpoint: "GET /api/cockpit/nodes/:id/tasks" });
+    return result?.node_id === nodeId && result.items.length <= (params.page_size ?? 25) ? result : null;
+  }
+
+  async createCockpitNodeTask(nodeId: string, body: CockpitTaskCreate): Promise<CockpitTask> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/tasks`, { method: "POST", body: JSON.stringify(body) });
+    const result = parseWithFallback<CockpitTask | null>(raw, CockpitTaskSchema, null, { endpoint: "POST /api/cockpit/nodes/:id/tasks" });
+    if (!result?.id || result.creation_key !== body.creation_key) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async getCockpitPrimaryNode(issueId: string, signal?: AbortSignal): Promise<CockpitPrimaryNode | null> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { signal });
+    return parseWithFallback<CockpitPrimaryNode | null>(raw, CockpitPrimaryNodeSchema, null, { endpoint: "GET /api/cockpit/issues/:id/primary-node" });
+  }
+
+  async setCockpitPrimaryNode(issueId: string, body: { node_id: string | null; expected_revision: number }): Promise<CockpitPrimaryNode> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { method: "PUT", body: JSON.stringify(body) });
+    const result = parseWithFallback<CockpitPrimaryNode | null>(raw, CockpitPrimaryNodeSchema, null, { endpoint: "PUT /api/cockpit/issues/:id/primary-node" });
+    if (!result || result.issue_id !== issueId || result.node_id !== body.node_id || result.revision < body.expected_revision) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async listCockpitMeetingActions(meetingId: string, params: CockpitActionQuery = {}, signal?: AbortSignal): Promise<CockpitActionPage | null> {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== "") search.set(key, String(value));
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/actions?${search}`, { signal });
+    const result = parseWithFallback<CockpitActionPage | null>(raw, CockpitActionPageSchema, null, { endpoint: "GET /api/cockpit/meetings/:id/workflow/actions" });
+    return result?.meeting_id === meetingId && result.items.length <= (params.page_size ?? 25) ? result : null;
+  }
+
+  async getCockpitMeetingAction(meetingId: string, actionId: string, signal?: AbortSignal): Promise<CockpitMeetingAction | null> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/actions/${encodeURIComponent(actionId)}`, { signal });
+    const result = parseWithFallback<CockpitMeetingAction | null>(raw, CockpitMeetingActionSchema, null, { endpoint: "GET /api/cockpit/meetings/:id/workflow/actions/:actionId" });
+    return result?.id === actionId && result.meeting_id === meetingId ? result : null;
+  }
+
+  async getCockpitIssueActionSources(issueId: string, cursor?: string, signal?: AbortSignal): Promise<CockpitIssueActionSourcesPage | null> {
+    const search = new URLSearchParams({ page_size: "25" });
+    if (cursor) search.set("cursor", cursor);
+    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/actions?${search}`, { signal });
+    const result = parseWithFallback<CockpitIssueActionSourcesPage | null>(raw, CockpitIssueActionSourcesPageSchema, null, { endpoint: "GET /api/cockpit/issues/:id/actions" });
+    return result?.issue_id === issueId && result.items.length <= 25 ? result : null;
+  }
+
+  private async writeCockpitMeetingAction(meetingId: string, path: string, method: "POST" | "PATCH", body: object): Promise<CockpitMeetingAction> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/${path}`, { method, body: JSON.stringify(body) });
+    const result = parseWithFallback<CockpitMeetingAction | null>(raw, CockpitMeetingActionWriteSchema, null, { endpoint: `${method} /api/cockpit/meetings/:id/workflow/${path}` });
+    if (!result || result.meeting_id !== meetingId) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async createCockpitMeetingAction(meetingId: string, versionId: string, body: CockpitActionDraft & { proposal_key: string }): Promise<CockpitMeetingAction> {
+    const result = await this.writeCockpitMeetingAction(meetingId, `versions/${encodeURIComponent(versionId)}/actions`, "POST", body);
+    if (result.version_id !== versionId || result.proposal_key !== body.proposal_key) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async updateCockpitMeetingAction(meetingId: string, actionId: string, body: CockpitActionDraft & { expected_revision: number }): Promise<CockpitMeetingAction> {
+    const result = await this.writeCockpitMeetingAction(meetingId, `actions/${encodeURIComponent(actionId)}`, "PATCH", body);
+    if (result.id !== actionId || result.revision < body.expected_revision || result.title !== body.title
+      || result.description !== body.description || result.source_quote !== body.source_quote) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async resolveCockpitMeetingAction(action: Pick<CockpitMeetingAction, "id" | "meeting_id" | "version_id" | "source_content_hash">, body: CockpitActionResolution): Promise<CockpitMeetingAction> {
+    const result = await this.writeCockpitMeetingAction(action.meeting_id, `actions/${encodeURIComponent(action.id)}/resolve`, "POST", body);
+    if (result.id !== action.id || result.version_id !== action.version_id || result.source_content_hash !== action.source_content_hash
+      || result.decision_key !== body.decision_key || result.resolution !== body.outcome || result.revision <= body.expected_revision
+      || !result.resolved_at || !result.resolved_by || (body.outcome === "dismiss"
+        ? result.status !== "dismissed" || result.reason !== body.reason
+        : result.status !== "accepted" || !result.issue?.id || result.node_id !== body.node_id
+          || (body.outcome === "reuse" && result.issue.id !== body.issue_id && result.issue.identifier !== body.issue_id))) throw new CockpitUnconfirmedWriteError();
+    return result;
   }
 
   private async writeCockpitMeetingWorkflow(

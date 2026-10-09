@@ -25,6 +25,7 @@ import {
 } from "../api/schemas";
 import {
   cockpitKeys,
+  invalidateCockpitTaskFlow,
   patchCockpitBoard,
   removeCockpitMeeting,
   removeCockpitMeetingIssue,
@@ -108,7 +109,23 @@ export function onCockpitChanged(
 ): void {
   const { scope, action, entity } = payload;
 
+  if (scope === "meeting_actions") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void qc.invalidateQueries({ queryKey: typeof meetingId === "string" ? cockpitKeys.meetingActions(wsId, meetingId) : cockpitKeys.actions(wsId) });
+    void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    return;
+  }
+  if (scope === "primary_node") {
+    invalidateCockpitTaskFlow(qc, wsId);
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    return;
+  }
+
   if (scope === "meeting_workflow") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
     const meetingId = asRecord(entity)?.["meeting_id"];
     if (typeof meetingId === "string" && meetingId) {
       void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId) });
@@ -203,6 +220,7 @@ export function onCockpitChanged(
       return;
     }
     case "node": {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
       const row = entityWithId(entity);
       if (!row) return;
       if (isDeletion(action)) {
@@ -316,6 +334,7 @@ export function onCockpitChanged(
       return;
     }
     case "issue_links": {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
       const record = asRecord(entity);
       const nodeId = record?.["node_id"];
       if (typeof nodeId !== "string" || nodeId === "") return;

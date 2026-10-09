@@ -46,7 +46,7 @@ export interface CockpitNodeIssueOption {
 }
 
 /** The rows on the board that an issue can be filed against, by display code. */
-export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
+export function useCockpitNodeIssueOptions(leafOnly = false): CockpitNodeIssueOption[] {
   const wsId = useWorkspaceId();
   const { data: board } = useQuery(cockpitBoardOptions(wsId));
   const { data: modules } = useQuery(moduleListOptions(wsId));
@@ -57,12 +57,14 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
     // Display codes label options only; ancestry and explicit UUIDs determine filing.
     const codes = buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes)));
     const byId = new Map(nodes.map((n) => [n.id, n]));
+    const parents = new Set(nodes.map((node) => node.parent_id).filter(Boolean));
     const options: CockpitNodeIssueOption[] = [];
     for (const [id, code] of codes) {
       const node = byId.get(id);
       // A merged group row is synthetic — it stands in for its members and has
       // no row of its own to link against.
       if (!node) continue;
+      if (leafOnly && parents.has(node.id)) continue;
       const filing = cockpitNodeIssueFiling(
         node,
         byId,
@@ -80,7 +82,7 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
     }
     options.sort((a, b) => a.code.localeCompare(b.code));
     return options;
-  }, [board?.nodes, modules]);
+  }, [board?.nodes, modules, leafOnly]);
 }
 
 export function CockpitNodeIssuePicker({
@@ -91,6 +93,8 @@ export function CockpitNodeIssuePicker({
   open: controlledOpen,
   onOpenChange,
   disabled = false,
+  leafOnly = false,
+  maxResults,
 }: {
   value: CockpitNodeIssueOption | null;
   /** Null clears the link; the dialog decides what that leaves behind. */
@@ -100,9 +104,11 @@ export function CockpitNodeIssuePicker({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
+  leafOnly?: boolean;
+  maxResults?: number;
 }) {
   const { t } = useT("cockpit");
-  const options = useCockpitNodeIssueOptions();
+  const options = useCockpitNodeIssueOptions(leafOnly);
   const [filter, setFilter] = useState("");
   const [internalOpen, setInternalOpen] = useState(false);
   const open = disabled ? false : controlledOpen ?? internalOpen;
@@ -151,7 +157,7 @@ export function CockpitNodeIssuePicker({
           <span className="text-muted-foreground">{t(($) => $.node_picker.none)}</span>
         </PickerItem>
 
-        {filtered.map((option) => (
+        {filtered.slice(0, maxResults).map((option) => (
           <PickerItem
             key={option.node_id}
             selected={option.node_id === value?.node_id}
@@ -164,6 +170,7 @@ export function CockpitNodeIssuePicker({
             <span className="truncate">{option.label}</span>
           </PickerItem>
         ))}
+        {maxResults && filtered.length > maxResults && <p className="p-2 text-caption text-muted-foreground">{t(($) => $.task_flow.narrow_nodes, { count: filtered.length, shown: maxResults })}</p>}
 
         {options.length === 0 && (
           <div className="px-2 py-1.5 text-caption text-muted-foreground">

@@ -1211,6 +1211,9 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "a node with this code or project/module binding already exists")
 			return
 		}
+		if writeCockpitPrimaryIntegrityError(w, err) {
+			return
+		}
 		slog.Warn("CreateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
 		return
@@ -1365,6 +1368,9 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	}
 	node, err := qtx.UpdateCockpitNode(r.Context(), params)
 	if err != nil {
+		if writeCockpitPrimaryIntegrityError(w, err) {
+			return
+		}
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "a node with this code or project/module binding already exists")
 			return
@@ -1468,6 +1474,9 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		if writeCockpitPrimaryIntegrityError(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
@@ -2454,6 +2463,11 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 
 	if err := lockCockpitBindings(ctx, qtx, cc.workspaceID); err != nil {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to lock cockpit bindings"}
+	}
+	if protected, err := qtx.HasCockpitPlanningForBoard(ctx, db.HasCockpitPlanningForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect primary ownership and meeting actions"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "L3 primary ownership or meeting action history protects this board from full replacement"}
 	}
 	bound, err := qtx.CockpitHasBoundNodes(ctx, db.CockpitHasBoundNodesParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
 	if err != nil {

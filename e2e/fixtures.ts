@@ -41,6 +41,7 @@ export interface TestCockpitMeeting {
 export interface TestCockpitBoard {
   nodes: TestCockpitNode[];
   meetings: TestCockpitMeeting[];
+  issue_links: Array<{ node_id: string; issue_id: string }>;
   meeting_issues: Array<{ meeting_id: string; issue_id: string; role: string; roles: string[] }>;
 }
 
@@ -51,6 +52,48 @@ export interface TestMeetingWorkflowIssue {
   status: string;
   assignee_type: string | null;
   assignee_id: string | null;
+}
+
+export interface TestCockpitTask extends TestMeetingWorkflowIssue {
+  status_category: string;
+  project_id: string | null;
+  module_id: string | null;
+  primary_node_id: string | null;
+  primary_revision: number;
+  due_date: string | null;
+}
+
+export interface TestCockpitTaskPage {
+  node_id: string;
+  items: TestCockpitTask[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  summary: { total: number; done: number; closed: number; unknown: number; by_category: Record<string, number> };
+  eligibility: { eligible: boolean; reason: string; project_id: string | null; module_id: string | null };
+}
+
+export interface TestMeetingAction {
+  id: string;
+  meeting_id: string;
+  version_id: string;
+  title: string;
+  status: string;
+  resolution: string | null;
+  revision: number;
+  decision_key: string | null;
+  node_id: string | null;
+  issue: TestCockpitTask | null;
+  reason: string;
+}
+
+export interface TestMeetingActionPage {
+  meeting_id: string;
+  items: TestMeetingAction[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  can_add: boolean;
 }
 
 export interface TestMeetingMinutesVersion {
@@ -119,10 +162,15 @@ export type TestIssuePriority = "urgent" | "high" | "medium" | "low" | "none";
 
 export interface TestTableIssueSeed {
   title: string;
-  status?: TestIssueStatus;
+  /** Stored custom or unknown keys are valid compatibility fixtures too. */
+  status?: string;
   priority?: TestIssuePriority;
   parentIssueId?: string | null;
   position?: number;
+  projectId?: string;
+  moduleId?: string;
+  assigneeId?: string;
+  dueDate?: string;
 }
 
 export interface TestTableIssue {
@@ -415,6 +463,64 @@ export class TestApiClient {
     if (!res.ok) throw new Error(`link cockpit meeting failed: ${res.status} ${await res.text()}`);
   }
 
+  async getCockpitTasks(nodeId: string, query: Record<string, string | number> = {}): Promise<TestCockpitTaskPage> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const res = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/tasks?${params}`);
+    if (!res.ok) throw new Error(`get cockpit tasks failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async setCockpitPrimaryNode(issueId: string, nodeId: string | null, revision = 0): Promise<{ issue_id: string; node_id: string | null; revision: number }> {
+    const res = await this.authedFetch(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, {
+      method: "PUT", body: JSON.stringify({ node_id: nodeId, expected_revision: revision }),
+    });
+    if (!res.ok) throw new Error(`set primary node failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async getMeetingActions(meetingId: string, query: Record<string, string | number> = {}): Promise<TestMeetingActionPage> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/actions?${params}`);
+    if (!res.ok) throw new Error(`get meeting actions failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async createMeetingAction(meetingId: string, versionId: string, body: { title: string; description?: string; source_quote?: string; proposal_key?: string }): Promise<TestMeetingAction> {
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions/${encodeURIComponent(versionId)}/actions`, {
+      method: "POST", body: JSON.stringify({ proposal_key: crypto.randomUUID(), ...body }),
+    });
+    if (!res.ok) throw new Error(`create meeting action failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async resolveMeetingAction(meetingId: string, actionId: string, body: Record<string, unknown>): Promise<TestMeetingAction> {
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/actions/${encodeURIComponent(actionId)}/resolve`, {
+      method: "POST", body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`resolve meeting action failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async getWorkspaceAgentRunCount(): Promise<number> {
+    if (!this.workspaceId) throw new Error("Cannot count runs without a workspace");
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      const result = await client.query<{ count: string }>("SELECT count(*) FROM agent_task_queue q JOIN issue i ON i.id=q.issue_id WHERE i.workspace_id=$1", [this.workspaceId]);
+      return Number(result.rows[0]!.count);
+    } finally { await client.end(); }
+  }
+
+  async getWorkspaceIssueIdsByTitle(title: string): Promise<string[]> {
+    if (!this.workspaceId) throw new Error("Cannot inspect issues without a workspace");
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      const result = await client.query<{ id: string }>("SELECT id FROM issue WHERE workspace_id=$1 AND title=$2 ORDER BY id", [this.workspaceId, title]);
+      return result.rows.map((issue) => issue.id);
+    } finally { await client.end(); }
+  }
+
   async getCockpitBoard(): Promise<TestCockpitBoard> {
     const res = await this.authedFetch("/api/cockpit");
     if (!res.ok) throw new Error(`get cockpit failed: ${res.status} ${await res.text()}`);
@@ -453,6 +559,16 @@ export class TestApiClient {
       body: JSON.stringify({ expected_revision: workflow.revision, decision: "approved", feedback: "Checked the fixed acceptance evidence." }),
     });
     if (!response.ok) throw new Error(`approve minutes failed: ${response.status} ${await response.text()}`);
+    return this.getMeetingWorkflow(meetingId);
+  }
+
+  async publishMeetingMinutes(meetingId: string): Promise<TestMeetingWorkflow> {
+    const workflow = await this.getMeetingWorkflow(meetingId);
+    if (!workflow.current_version_id) throw new Error("Meeting has no submitted minutes version");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions/${encodeURIComponent(workflow.current_version_id)}/publish`, {
+      method: "POST", body: JSON.stringify({ expected_revision: workflow.revision }),
+    });
+    if (!response.ok) throw new Error(`publish minutes failed: ${response.status} ${await response.text()}`);
     return this.getMeetingWorkflow(meetingId);
   }
 
@@ -523,7 +639,12 @@ export class TestApiClient {
             creator_id,
             parent_issue_id,
             position,
-            number
+            number,
+            project_id,
+            module_id,
+            assignee_type,
+            assignee_id,
+            due_date
           )
           SELECT
             $1::uuid,
@@ -534,14 +655,23 @@ export class TestApiClient {
             $2::uuid,
             fixture.parent_issue_id,
             fixture.position,
-            fixture.number
+            fixture.number,
+            fixture.project_id,
+            fixture.module_id,
+            CASE WHEN fixture.assignee_id IS NOT NULL THEN 'member' ELSE NULL END,
+            fixture.assignee_id,
+            fixture.due_date
           FROM unnest(
             $3::text[],
             $4::text[],
             $5::text[],
             $6::uuid[],
             $7::double precision[],
-            $8::integer[]
+            $8::integer[],
+            $9::uuid[],
+            $10::uuid[],
+            $11::uuid[],
+            $12::timestamptz[]
           ) WITH ORDINALITY AS fixture(
             title,
             status,
@@ -549,6 +679,10 @@ export class TestApiClient {
             parent_issue_id,
             position,
             number,
+            project_id,
+            module_id,
+            assignee_id,
+            due_date,
             ordinal
           )
           ORDER BY fixture.ordinal
@@ -563,6 +697,10 @@ export class TestApiClient {
           rows.map((row) => row.parentIssueId ?? null),
           rows.map((row, index) => row.position ?? index + 1),
           rows.map((_row, index) => firstNumber + index),
+          rows.map((row) => row.projectId ?? null),
+          rows.map((row) => row.moduleId ?? null),
+          rows.map((row) => row.assigneeId ?? null),
+          rows.map((row) => row.dueDate ?? null),
         ],
       );
       await client.query("COMMIT");
@@ -650,9 +788,10 @@ export class TestApiClient {
   }
 
   /** Server-side issue search, for comparing against what the UI shows. */
-  async searchIssues(q: string, opts: { includeClosed?: boolean; limit?: number } = {}) {
+  async searchIssues(q: string, opts: { includeClosed?: boolean; limit?: number; offset?: number } = {}) {
     const params = new URLSearchParams({ q, limit: String(opts.limit ?? 20) });
     if (opts.includeClosed) params.set("include_closed", "true");
+    if (opts.offset !== undefined) params.set("offset", String(opts.offset));
     const res = await this.authedFetch(`/api/issues/search?${params}`);
     if (!res.ok) {
       throw new Error(`search issues failed: ${res.status} ${await res.text()}`);
@@ -668,6 +807,12 @@ export class TestApiClient {
     if (!res.ok) {
       throw new Error(`update issue failed: ${res.status} ${await res.text()}`);
     }
+    return res.json();
+  }
+
+  async getIssue(id: string) {
+    const res = await this.authedFetch(`/api/issues/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(`get issue failed: ${res.status} ${await res.text()}`);
     return res.json();
   }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
@@ -49,6 +50,36 @@ func edgeKeys(g graphPayload) map[string]bool {
 		keys[fmt.Sprintf("%s>%s:%s", e.Source, e.Target, e.Kind)] = true
 	}
 	return keys
+}
+
+func TestGetIssueGraphIncludesPrimaryTasksWithoutBoardLinkDuplication(t *testing.T) {
+	ws, _, _, existing := cockpitActionHTTPFixture(t)
+	group := createNode(t, ws, map[string]any{"code": "display-group", "parent_id": *existing.ParentID})
+	leaf := createNode(t, ws, map[string]any{"code": "deep-execution", "parent_id": group.ID})
+	var issue service.CockpitIssueSummary
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(cockpitRequest("POST", "/tasks", ws,
+		map[string]any{"creation_key": uuid.NewString(), "title": "Owned task through a display group"}), "id", leaf.ID)).Want(200).JSON(&issue)
+	if dbfx.Count(t, "SELECT count(*) FROM cockpit_node_issue WHERE workspace_id=$1 AND issue_id=$2", ws, issue.ID) != 0 {
+		t.Fatal("new primary task was mirrored into the full board's reference array")
+	}
+	var graph graphPayload
+	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph), graphRequest("GET", "/api/issues/graph?project_id="+*issue.ProjectID, ws)).Want(200).JSON(&graph)
+	edge := fmt.Sprintf("exc:%s>%s:execution", leaf.ID, issue.ID)
+	if len(graph.Executions) != 1 || graph.Executions[0].ID != leaf.ID || !edgeKeys(graph)[edge] {
+		t.Fatalf("graph omitted primary ownership outside display depth three: %+v", graph)
+	}
+	dbfx.InsertNoID(t, "cockpit_node_issue", testutil.Cols{"workspace_id": ws, "node_id": leaf.ID, "issue_id": issue.ID},
+		"workspace_id=$1 AND node_id=$2 AND issue_id=$3", ws, leaf.ID, issue.ID)
+	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph), graphRequest("GET", "/api/issues/graph?project_id="+*issue.ProjectID, ws)).Want(200).JSON(&graph)
+	count := 0
+	for _, e := range graph.Edges {
+		if fmt.Sprintf("%s>%s:%s", e.Source, e.Target, e.Kind) == edge {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("primary and reference duplicated an execution edge: %d", count)
+	}
 }
 
 func nodeIDs(g graphPayload) map[string]IssueGraphNodeResponse {

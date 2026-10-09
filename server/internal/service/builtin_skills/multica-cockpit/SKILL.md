@@ -21,28 +21,24 @@ Agents may submit minutes for their own issue, but cannot approve or publish the
 
 ## Core model
 
-- **Node** — an arbitrary-depth work breakdown, commonly project → module → execution task.
-  Explicit project/module UUID bindings establish scope, never names or numbering.
+- **Node** — a work breakdown, commonly project → module → execution task; UUID bindings establish scope, never names or numbering.
   Nodes carry dates, owners, progress (0–100), budget and delivery fields; see the reference.
 - **Payment** — one instalment of a node's budget: label, date, amount.
-- **Issue link** — the issues that carry the work out. Many per node.
+- **Issue relation** — one primary L3 per issue, plus reference links; only primary ownership counts execution once.
 - **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
 - **Meeting** — the register entry: when, which parties, what was decided, plus the task it opened and the folder holding its material.
 
-**Node addresses** accept the plan's code (`L3-01-08`) or UUID. Use the existing
-address; a code never determines a project/module binding.
+**Node addresses** use the existing code (`L3-01-08`) or UUID; focused task commands require UUIDs.
 
-**Node status/category are free text**: match existing values such as `进行中`.
-Meeting-workflow decisions use the reference's fixed vocabulary. Planning labels
-and ordinary issue statuses never grant approval.
+**Node status/category are free text**: match existing values such as `进行中`; workflow decisions use fixed vocabulary.
+Planning labels and ordinary issue statuses never grant approval.
 
 **Budget amounts retain the board's unit** (for example 万元); never convert silently.
 
 ## Reading before writing
 
-Read `multica cockpit show --output json` before writing; it returns the board,
-nodes, payments, issue links, milestones and meetings. Never guess IDs or values.
-`multica cockpit node get <code>` narrows the read to a node, its payments and issues.
+Read `multica cockpit show --output json` before changing the plan; never guess IDs or values.
+Use focused task/action pages below for growing collections rather than repeatedly downloading the board.
 
 ## Editing nodes
 
@@ -79,6 +75,9 @@ multica cockpit node unlink L3-01-08 BIO-320
 Issue references accept workspace identifiers (`BIO-314`) or UUIDs; unknown IDs
 fail the whole request. Links show real issue status, but do not update node
 progress: check the plan after execution instead of assuming an automatic roll-up.
+
+For bounded L3 task pages, explicit primary ownership and published-minute actions,
+read [actions and ownership](references/actions.md). Those writes require a human credential.
 
 ## Payments, milestones and meetings
 

@@ -16,9 +16,9 @@ import (
 
 // `multica cockpit` — the agent-facing surface of the project cockpit.
 //
-// Everything the board's UI can do, an agent can do here: read the whole board,
-// edit any node field, link issues, manage instalments, milestones and
-// meetings, and replace the board wholesale from a document.
+// The CLI exposes the board and its focused workspaces: nodes, issue links,
+// instalments, milestones, meetings and reviewed actions. The server preserves
+// human-only approval and ownership commands regardless of the CLI caller.
 //
 // Nodes are addressed by their human code ("L1-02", "L3-01-08") as well as by
 // UUID, because that is how a plan names its own work — an agent told to "push
@@ -222,16 +222,17 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
-		cockpitVersionCmd)
+		cockpitVersionCmd, newCockpitIssueCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
 		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd)
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
-		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd)
+		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd,
+		newCockpitNodeTasksCommand(), newCockpitNodeCreateTaskCommand())
 	cockpitPaymentCmd.AddCommand(cockpitPaymentAddCmd, cockpitPaymentUpdateCmd, cockpitPaymentRemoveCmd)
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand())
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand())
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 

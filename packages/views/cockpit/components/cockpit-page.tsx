@@ -129,6 +129,7 @@ import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
 import { CockpitMeetings } from "./cockpit-meetings";
 import type { CockpitNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitNodePanel } from "./cockpit-node-panel";
+import { CockpitNodeTasks } from "./cockpit-node-tasks";
 import { CockpitNodeBindingField } from "./cockpit-node-binding";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
@@ -1202,7 +1203,8 @@ export function CockpitPage() {
       <div className="relative flex min-h-0 flex-1">
         {/* Keyed on the tab so each switch replays the short entrance on the
             fresh body — the chrome stays put, the content arrives. */}
-        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeeting && "max-xl:hidden")}>
+        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeeting && "max-xl:hidden",
+          tab !== "meetings" && selected && selectedFiling && !nodes.some((node) => node.parent_id === selected.id) && "max-xl:hidden")}>
           {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <CockpitOverview
@@ -1345,6 +1347,8 @@ export function CockpitPage() {
           <CockpitNodePanel
             key={selected.id}
             node={selected}
+            taskWorkspace={selectedFiling && !nodes.some((node) => node.parent_id === selected.id)
+              ? <CockpitNodeTasks wsId={wsId} node={selected} userId={currentUserId} /> : undefined}
             binding={<CockpitNodeBindingField node={selected} nodes={nodeById} modules={modules ?? []}
               modulesLoading={modulesLoading} modulesError={modulesError} onRetryModules={() => void reloadModules()}
               onSave={(binding) => setNodeBinding.mutateAsync({ id: selected.id, ...binding })}
@@ -1377,7 +1381,7 @@ export function CockpitPage() {
               unlinkIssue.mutate({ nodeId: selected.id, issueId }, { onError: fail })
             }
             onCreateIssue={
-              selectedFiling ? () => createIssueForNode(selectedFiling) : undefined
+              selectedFiling && nodes.some((node) => node.parent_id === selected.id) ? () => createIssueForNode(selectedFiling) : undefined
             }
             onOpenMeeting={(meetingId) => {
               setSelectedMeetingId(meetingId);

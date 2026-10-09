@@ -1894,6 +1894,60 @@ export const CockpitPaymentSchema = z.object({
   position: z.number().default(0),
 }).loose();
 
+export const CockpitTaskSchema = z.object({
+  id: z.string().min(1), identifier: z.string().default(""), title: z.string().default(""),
+  status: z.string().default(""), status_category: z.string().default("unknown"), priority: z.string().default("none"),
+  assignee_type: z.string().nullable().default(null), assignee_id: z.string().nullable().default(null), assignee_name: z.string().default(""),
+  due_date: z.string().nullable().default(null), project_id: z.string().nullable().default(null), module_id: z.string().nullable().default(null),
+  primary_node_id: z.string().nullable().default(null), primary_node_code: z.string().default(""), primary_node_name: z.string().default(""),
+  primary_revision: z.number().int().nonnegative().default(0), creation_key: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitPrimaryNodeSchema = z.object({
+  issue_id: z.string().min(1), node_id: z.string().nullable(), revision: z.number().int().nonnegative(),
+  project_id: z.string().nullable().default(null), module_id: z.string().nullable().default(null),
+  node_code: z.string().default(""), node_name: z.string().default(""),
+}).loose();
+
+export const CockpitTaskPageSchema = z.object({
+  node_id: z.string().min(1), items: z.array(CockpitTaskSchema), total: z.number().int().nonnegative(), filtered_total: z.number().int().nonnegative(),
+  next_cursor: z.string().nullable(),
+  summary: z.object({ total: z.number().int().nonnegative(),
+    by_status: z.array(z.object({ status: z.string(), category: z.string(), count: z.number().int().nonnegative() })),
+    by_category: z.record(z.string(), z.number().int().nonnegative()), done: z.number().int().nonnegative(),
+    closed: z.number().int().nonnegative(), unknown: z.number().int().nonnegative(),
+  }),
+  eligibility: z.object({ eligible: z.boolean(), reason: z.string().default(""), project_id: z.string().nullable(), module_id: z.string().nullable() }),
+}).loose();
+
+export const CockpitMeetingActionSchema = z.object({
+  id: z.string().min(1), meeting_id: z.string().min(1), version_id: z.string().min(1), version_number: z.number().int().positive(),
+  source_content_hash: z.string().min(1), source_quote: z.string().default(""), title: z.string().default(""), description: z.string().default(""),
+  status: z.string(), resolution: z.string().nullable().default(null), revision: z.number().int().positive(), proposal_key: z.string(),
+  decision_key: z.string().nullable().default(null), node_id: z.string().nullable().default(null), node_code: z.string().default(""), node_name: z.string().default(""),
+  issue: CockpitTaskSchema.nullable().default(null), reason: z.string().default(""), created_by: z.string().default(""), created_at: z.string().default(""),
+  updated_at: z.string().default(""), resolved_by: z.string().nullable().default(null), resolved_at: z.string().nullable().default(null),
+  can_edit: z.boolean().default(false), can_resolve: z.boolean().default(false), source_superseded: z.boolean().default(false),
+}).loose();
+
+export const CockpitActionPageSchema = z.object({
+  meeting_id: z.string().min(1), items: z.array(CockpitMeetingActionSchema), total: z.number().int().nonnegative(),
+  filtered_total: z.number().int().nonnegative(), next_cursor: z.string().nullable(), can_add: z.boolean().default(false),
+}).loose();
+
+export const CockpitIssueActionSourcesPageSchema = z.object({
+  issue_id: z.string().min(1), items: z.array(z.object({ id: z.string().min(1), meeting_id: z.string().min(1),
+    meeting_code: z.string().default(""), meeting_title: z.string().default(""), version_id: z.string().min(1), version_number: z.number().int().positive(), title: z.string().default("") })),
+  total: z.number().int().nonnegative(), next_cursor: z.string().nullable(),
+}).loose();
+
+export const CockpitMeetingActionWriteSchema = CockpitMeetingActionSchema.extend({
+  title: z.string().min(1), description: z.string(), source_quote: z.string(), proposal_key: z.string().uuid(),
+  resolution: z.string().nullable(), decision_key: z.string().uuid().nullable(), node_id: z.string().nullable(), issue: CockpitTaskSchema.nullable(),
+  reason: z.string(), created_by: z.string().min(1), created_at: z.string().min(1), updated_at: z.string().min(1),
+  resolved_by: z.string().nullable(), resolved_at: z.string().nullable(), can_edit: z.boolean(), can_resolve: z.boolean(), source_superseded: z.boolean(),
+});
+
 export const CockpitIssueLinkSchema = z.object({
   id: z.string(),
   node_id: z.string().default(""),

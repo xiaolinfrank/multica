@@ -24,6 +24,7 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { cn } from "@multica/ui/lib/utils";
 import { LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
@@ -57,6 +58,7 @@ export interface CockpitNodePanelProps {
   vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
   binding?: React.ReactNode;
+  taskWorkspace?: React.ReactNode;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
   /** Localized destructive consequences, including descendants for a branch. */
@@ -92,6 +94,7 @@ export function CockpitNodePanel({
   vendorSuggestions,
   onPatch,
   binding,
+  taskWorkspace,
   onDelete,
   deleteConfirmationDescription,
   depth,
@@ -111,7 +114,11 @@ export function CockpitNodePanel({
   const [deleting, setDeleting] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const deletingRef = useRef(false);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const [section, setSection] = useState("tasks");
   const taskDetails = depth >= 2;
+
+  useEffect(() => { closeButton.current?.focus(); }, [node.id]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -147,7 +154,8 @@ export function CockpitNodePanel({
   const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
-    <aside className="cockpit-panel-enter flex w-96 max-w-full shrink-0 flex-col border-l border-border bg-card max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl">
+    <aside className={cn("cockpit-panel-enter flex max-w-full shrink-0 flex-col border-l border-border bg-card",
+      taskWorkspace ? "w-[min(54rem,70vw)] max-xl:w-full max-xl:border-l-0" : "w-96 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl")}>
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -189,6 +197,7 @@ export function CockpitNodePanel({
           </div>
         </div>
         <button
+          ref={closeButton}
           type="button"
           onClick={onClose}
           disabled={deleting}
@@ -199,7 +208,12 @@ export function CockpitNodePanel({
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <Tabs value={taskWorkspace ? section : "details"} onValueChange={(value) => { if (typeof value === "string") setSection(value); }} className="min-h-0 flex-1 gap-0">
+        {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1">
+          <TabsTrigger value="tasks">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger><TabsTrigger value="details">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
+        </TabsList>}
+        {taskWorkspace && <TabsContent value="tasks" keepMounted className="min-h-0 overflow-y-auto p-4">{taskWorkspace}</TabsContent>}
+        <TabsContent value="details" className="min-h-0 overflow-y-auto p-3">
         {binding && <div className="mb-4">{binding}</div>}
         <div className="grid grid-cols-2 gap-3">
           <CockpitField label={t(($) => $.node.owner)}>
@@ -267,13 +281,13 @@ export function CockpitNodePanel({
 
         <Separator className="my-4" />
         <CockpitField label={t(($) => $.node.linked_issues)}>
-          <CockpitIssueLinks
+          {taskWorkspace ? <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.reference_location)}</p> : <CockpitIssueLinks
             links={links}
             onLink={onLinkIssue}
             onUnlink={onUnlinkIssue}
             onCreate={onCreateIssue}
             disabled={readOnly}
-          />
+          />}
         </CockpitField>
 
         {/* The other direction of the meeting register: what was discussed
@@ -487,7 +501,8 @@ export function CockpitNodePanel({
             {t(($) => $.node.source, { source: node.source })}
           </p>
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
 
       {!readOnly && (
         <footer className="border-t border-border p-3">

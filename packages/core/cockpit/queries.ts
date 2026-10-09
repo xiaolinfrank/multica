@@ -29,6 +29,17 @@ export const cockpitKeys = {
     [...cockpitKeys.all(wsId), "next-code", parentId] as const,
   workflows: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-workflow"] as const,
   workflow: (wsId: string, meetingId: string) => [...cockpitKeys.workflows(wsId), meetingId] as const,
+  tasks: (wsId: string) => [...cockpitKeys.all(wsId), "node-tasks"] as const,
+  nodeTasks: (wsId: string, nodeId: string) => [...cockpitKeys.tasks(wsId), nodeId] as const,
+  actions: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-actions"] as const,
+  meetingActions: (wsId: string, meetingId: string) => [...cockpitKeys.actions(wsId), meetingId] as const,
+  meetingActionPages: (wsId: string, meetingId: string) => [...cockpitKeys.meetingActions(wsId, meetingId), "pages"] as const,
+  meetingAction: (wsId: string, meetingId: string, actionId: string) => [...cockpitKeys.meetingActions(wsId, meetingId), "detail", actionId] as const,
+  primaryNodes: (wsId: string) => [...cockpitKeys.all(wsId), "primary-nodes"] as const,
+  primaryNode: (wsId: string, issueId: string) => [...cockpitKeys.primaryNodes(wsId), issueId] as const,
+  issueActions: (wsId: string) => [...cockpitKeys.all(wsId), "issue-action-sources"] as const,
+  issueActionSources: (wsId: string, issueId: string) => [...cockpitKeys.issueActions(wsId), issueId] as const,
+  actionIssueSearch: (wsId: string, q: string, offset: number) => [...cockpitKeys.all(wsId), "action-issue-search", q, offset] as const,
 };
 
 export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
@@ -41,12 +52,21 @@ export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
 
 /** Issue status/assignee changes affect the read model, but never its formal review decision. */
 export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
+  invalidateCockpitTaskFlow(client, wsId);
   for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflow>({ queryKey: cockpitKeys.workflows(wsId) })) {
     if (workflow?.minutes_issue?.id === issueId || workflow?.versions.some((version) => version.review_issue.id === issueId)
       || workflow?.reviewer_handoffs.some((handoff) => handoff.from_review_issue?.id === issueId || handoff.to_review_issue?.id === issueId)) {
       void client.invalidateQueries({ queryKey, exact: true });
     }
   }
+}
+
+/** Invalidating inactive pages marks them stale; only currently observed scopes refetch. */
+export function invalidateCockpitTaskFlow(client: QueryClient, wsId: string) {
+  void client.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.primaryNodes(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });
 }
 
 export function cockpitBoardOptions(wsId: string) {

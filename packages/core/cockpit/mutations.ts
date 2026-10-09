@@ -261,6 +261,7 @@ export function useSetCockpitNodeIssues(wsId: string) {
       patchCockpitBoard(queryClient, wsId, (board) =>
         replaceCockpitNodeLinks(board, result.node_id, result.links),
       );
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, result.node_id) });
     },
   });
 }
@@ -272,6 +273,7 @@ export function useDeleteCockpitNodeIssue(wsId: string) {
       api.deleteCockpitNodeIssue(nodeId, issueId),
     onSuccess: (_result, { nodeId, issueId }) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitNodeLink(board, nodeId, issueId));
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, nodeId) });
     },
   });
 }

@@ -14,9 +14,11 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
   const api = new TestApiClient();
   const run = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
   const auth = await api.login(`e2e-cockpit-${run}@multica.ai`, "Cockpit E2E Owner");
+  let ownsWorkspace = false;
 
   try {
     const workspace = await api.createWorkspace(`Cockpit E2E ${run}`, `e2e-cockpit-${run}`);
+    ownsWorkspace = true;
     await api.markUserOnboarded();
     const project = await api.createProject("Cockpit foundation project");
     const module = await api.createModule(project.id, "Verification module");
@@ -46,7 +48,6 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
     await page.addInitScript((value) => {
       localStorage.setItem("multica_token", value);
       localStorage.setItem("multica:chat:isOpen", "false");
-      localStorage.setItem("multica_create_mode", JSON.stringify({ state: { lastMode: "manual" }, version: 0 }));
       document.cookie = "multica-locale=en; path=/";
     }, token);
 
@@ -76,19 +77,26 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
       });
     });
 
-    await test.step("inherit the UUID binding when opening issue creation from L3", async () => {
+    await test.step("inherit the UUID binding when creating a backlog issue from L3", async () => {
       await page.goto(`${cockpit}?node=${executionRow.id}`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("tab", { name: "Plan details", exact: true }).click();
       await expect(binding).toContainText(`${project.title} / ${module.title}`);
       await expect(page.locator(`[data-cockpit-node="${executionRow.id}"]`).first()).toBeVisible();
-      await page.getByRole("button", { name: "New issue", exact: true }).click();
-      const dialog = page.getByRole("dialog");
+      await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+      await page.getByRole("button", { name: "Create issue", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Create issue", exact: true });
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole("button", { name: project.title, exact: true })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: module.title, exact: true })).toBeVisible();
+      await dialog.getByLabel("Issue title", { exact: true }).fill("Follow up on foundation evidence");
       await page.screenshot({ path: testInfo.outputPath("issue-prefilled-binding.png") });
-      // Inspect the form only: do not submit or start a real Agent.
-      await page.keyboard.press("Escape");
+      const created = page.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `/api/cockpit/nodes/${executionRow.id}/tasks`);
+      await dialog.getByRole("button", { name: "Create issue", exact: true }).click();
+      const result = await created;
+      expect(result.ok()).toBe(true);
+      expect(await result.json()).toMatchObject({ project_id: project.id, module_id: module.id,
+        primary_node_id: executionRow.id, status: "backlog", assignee_type: "member", assignee_id: auth.user.id });
       await expect(dialog).toBeHidden();
+      expect(await api.getWorkspaceAgentRunCount()).toBe(0);
     });
 
     await test.step("save multiple meeting purposes and read them back after a reload", async () => {
@@ -136,10 +144,11 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
       await executionLink.click();
       await expect(page).toHaveURL(`${cockpit}?node=${executionRow.id}`);
       await expect(page.locator(`[data-cockpit-node="${executionRow.id}"]`).first()).toBeVisible();
+      await page.getByRole("tab", { name: "Plan details", exact: true }).click();
       await expect(binding).toContainText(`${project.title} / ${module.title}`);
       await page.screenshot({ path: testInfo.outputPath("execution-deep-link.png") });
     });
   } finally {
-    await api.cleanup();
+    if (ownsWorkspace) await api.cleanupCreatedWorkspace();
   }
 });

@@ -2171,12 +2171,17 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// regardless of registration order.
 				r.Get("/nodes/next-code", h.GetCockpitNextNodeCode)
 				r.Post("/nodes", h.CreateCockpitNode)
+				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
+				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
+				r.With(handler.RequireHumanActor).Put("/issues/{issueId}/primary-node", h.SetCockpitIssuePrimaryNode)
 				r.Route("/nodes/{id}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitNode)
 					r.Delete("/", h.DeleteCockpitNode)
 					r.Put("/issues", h.SetCockpitNodeIssues)
 					r.Delete("/issues/{issueId}", h.DeleteCockpitNodeIssue)
 					r.Post("/payments", h.CreateCockpitPayment)
+					r.Get("/tasks", h.ListCockpitNodeTasks)
+					r.With(handler.RequireHumanActor).Post("/tasks", h.CreateCockpitNodeTask)
 				})
 				r.Route("/payments/{paymentId}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitPayment)
@@ -2220,6 +2225,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/publish", h.PublishCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/nas-export", h.ExportCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/exports/{exportId}/retry", h.RetryCockpitMinutesExport)
+					r.Get("/workflow/actions", h.ListCockpitMeetingActions)
+					r.Get("/workflow/actions/{actionId}", h.GetCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/actions", h.CreateCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Patch("/workflow/actions/{actionId}", h.UpdateCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/actions/{actionId}/resolve", h.ResolveCockpitMeetingAction)
 				})
 			})
 

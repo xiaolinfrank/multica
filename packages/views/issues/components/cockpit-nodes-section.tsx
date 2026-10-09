@@ -21,11 +21,13 @@ import {
   buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitBoardOptions,
+  cockpitPrimaryNodeOptions,
   useDeleteCockpitNodeIssue,
   useSetCockpitNodeIssues,
 } from "@multica/core/cockpit";
 import type { CockpitNode } from "@multica/core/types";
 import { ChevronRight, X } from "lucide-react";
+import { Button } from "@multica/ui/components/ui/button";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
@@ -40,6 +42,8 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
   const [open, setOpen] = useState(true);
 
   const { data: board } = useQuery(cockpitBoardOptions(wsId));
+  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, issueId));
+  const primaryNode = primary.data?.issue_id === issueId ? primary.data : null;
   const linkNode = useSetCockpitNodeIssues(wsId);
   const unlinkNode = useDeleteCockpitNodeIssue(wsId);
 
@@ -66,17 +70,17 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
     const availableIds = new Set<string>();
     for (const node of board?.nodes ?? []) {
       availableIds.add(node.id);
-      if (ids.has(node.id)) entries.push({ id: node.id, node, code: codes.get(node.id) ?? node.code });
+      if (ids.has(node.id) && node.id !== primaryNode?.node_id) entries.push({ id: node.id, node, code: codes.get(node.id) ?? node.code });
     }
     for (const id of ids) {
-      if (!availableIds.has(id)) entries.push({ id, code: "" });
+      if (!availableIds.has(id) && id !== primaryNode?.node_id) entries.push({ id, code: "" });
     }
     return { rows: entries, linkedIds: ids };
-  }, [board, codes, issueId]);
+  }, [board, codes, issueId, primaryNode?.node_id]);
 
   // An empty board has nothing to offer the picker, but unresolved links
   // still need a visible status and an unlink action.
-  if (!board || (board.nodes.length === 0 && rows.length === 0)) return null;
+  if ((!board || (board.nodes.length === 0 && rows.length === 0)) && !primaryNode?.node_id && !primary.isError) return null;
 
   const busy = linkNode.isPending || unlinkNode.isPending;
   const toggleNode = (nodeId: string) => {
@@ -112,12 +116,17 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
           }`}
         />
         <span className="ml-auto shrink-0 font-mono tabular-nums text-muted-foreground">
-          {rows.length}
+          {rows.length + (primaryNode?.node_id ? 1 : 0)}
         </span>
       </button>
       {open ? (
         <div className="pl-2">
-          {rows.length === 0 ? (
+          {primaryNode?.node_id && <div className="mb-2 space-y-1"><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
+            <AppLink href={`${paths.cockpit()}?node=${encodeURIComponent(primaryNode.node_id)}`} newTabTitle={primaryNode.node_name || primaryNode.node_code}
+              className="block min-w-0 break-words py-1 text-caption hover:underline">{primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink></div>}
+          {primary.isError && <div className="mb-2 space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.task_flow.primary_unavailable)}</p>
+            <Button type="button" variant="ghost" size="xs" onClick={() => void primary.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
+          {rows.length === 0 && !primaryNode?.node_id ? (
             <p className="text-caption text-muted-foreground">
               {t(($) => $.issue_detail.none)}
             </p>
@@ -157,9 +166,9 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
               })}
             </ul>
           )}
-          {board.nodes.length > 0 && (
+          {(board?.nodes.length ?? 0) > 0 && (
             <CockpitNodePicker
-              nodes={board.nodes}
+              nodes={board?.nodes ?? []}
               selectedIds={linkedIds}
               onToggle={toggleNode}
               label={t(($) => $.issue_detail.link)}

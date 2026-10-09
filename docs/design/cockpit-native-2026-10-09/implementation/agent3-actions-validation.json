@@ -1,0 +1,215 @@
+{
+  "recorded_at_utc": "2026-10-09T16:28:32.976262+00:00",
+  "host": "fosun_agent_3 / 10.35.182.2",
+  "runtime_execution": "All runtime, Go test binary, Vitest and browser executions were on agent 3.",
+  "source_head_before_uncommitted_feature": "7293af7a8bac926923d697e17af35a8321c4720e",
+  "local_checks": "Source edits, Go/race test compilation only, E2E TypeScript checks and temporary migration-runner syntax check. No local runtime test stack.",
+  "frontend": {
+    "scope": "Targeted suites, not the full monorepo test suite",
+    "files": {
+      "packages/core/api/cockpit-workflow.test.ts": 7,
+      "packages/core/api/cockpit-nas-export.test.ts": 6,
+      "packages/core/api/cockpit-actions.test.ts": 6,
+      "packages/core/cockpit/mutations.test.tsx": 5,
+      "packages/core/cockpit/workflow-mutations.test.tsx": 3,
+      "packages/core/cockpit/ws-updaters.test.ts": 22,
+      "packages/core/cockpit/action-command-store.test.ts": 7,
+      "packages/core/cockpit/action-mutations.test.tsx": 2,
+      "packages/views/cockpit/components/cockpit-node-panel.test.tsx": 17,
+      "packages/views/cockpit/components/cockpit-node-binding.test.tsx": 5,
+      "packages/views/cockpit/components/cockpit-node-issue-picker.test.tsx": 6,
+      "packages/views/cockpit/components/cockpit-meeting-workflow.test.tsx": 18,
+      "packages/views/issues/components/cockpit-nodes-section.test.tsx": 12,
+      "packages/views/issues/components/cockpit-meetings-section.test.tsx": 11,
+      "packages/views/locales/parity.test.ts": 203,
+      "packages/views/cockpit/components/cockpit-node-tasks.test.tsx": 4,
+      "packages/views/cockpit/components/cockpit-task-flow.test.tsx": 2,
+      "packages/views/cockpit/components/cockpit-meeting-actions.test.tsx": 6
+    },
+    "unique_files": 18,
+    "tests_passed": 342,
+    "skips": 0,
+    "final_failures": 0
+  },
+  "backend": {
+    "service": {
+      "unique_parent_tests": 510,
+      "unique_named_subtests": 366,
+      "final_failed": [],
+      "final_skipped": [],
+      "logs": [
+        "actions-full-service-race.log",
+        "actions-builtin-retry.log",
+        "actions-service-pagination-final.log"
+      ]
+    },
+    "handler": {
+      "unique_parent_tests": 103,
+      "unique_named_subtests": 52,
+      "final_failed": [],
+      "final_skipped": [],
+      "logs": [
+        "actions-handler-race.log",
+        "actions-handler-retry.log",
+        "actions-handler-guards-final.log"
+      ]
+    },
+    "cli": {
+      "unique_parent_tests": 9,
+      "unique_named_subtests": 104,
+      "final_failed": [],
+      "final_skipped": [],
+      "logs": [
+        "actions-cli-race.log"
+      ]
+    }
+  },
+  "browser": {
+    "unique_scenarios_passed": 5,
+    "scenarios": [
+      "cockpit-foundation",
+      "cockpit-meeting-workflow",
+      "cockpit-reviewer-handoff",
+      "cockpit-task-workbench",
+      "cockpit-meeting-actions"
+    ],
+    "existing_three": "Passed in the initial five-scenario run. The two new scenarios failed there, were corrected, and passed after the behavior fixes. L3 alone was repeated after the final visual-only status truncation adjustment.",
+    "final_two_seconds": 10.6,
+    "clear_reuse_screenshot_repeat_seconds": 7.2,
+    "final_visual_l3_repeat_seconds": 4.7,
+    "scale": {
+      "l3_issues": 125,
+      "l3_page_size": 25,
+      "l3_pages": 5,
+      "unknown_issue_statuses": 1,
+      "initial_meeting_suggestions": 56,
+      "meeting_pages": 3,
+      "reuse_picker_candidates": 125,
+      "reuse_picker_page_size": 25,
+      "same_issue_action_sources": 27,
+      "source_pages": [
+        25,
+        2
+      ]
+    },
+    "verified": [
+      "Global relation totals versus filtered totals",
+      "No duplicate or omitted L3 identities across five pages",
+      "Primary ownership move retains a reference without double counting",
+      "Search clears cursor; unknown states remain in Open",
+      "Suggestion confirmation replays one decision key without creating another issue",
+      "Reused issue content/state/assignee/due date remain unchanged",
+      "Dismissal and closing a dialog create no execution issue",
+      "Issue source pagination and exact meeting/action return preserve search context",
+      "No Agent runs",
+      "1100px overflow and long-title checks"
+    ]
+  },
+  "build": {
+    "agent3_next_production_build": "passed",
+    "final_log": "actions-web-build-visual-final.log"
+  },
+  "resolved_findings": [
+    {
+      "kind": "product",
+      "finding": "Clearing a search resurrected the old fifth-page cursor",
+      "resolution": "Reset cursor on actual filter changes; preserve unchanged navigation context; same fix for reuse-picker offsets"
+    },
+    {
+      "kind": "product",
+      "finding": "Selected status could disappear while a new query temporarily lacked option data",
+      "resolution": "Retain selected status choice and ignore automatic null clearing; keep explicit All statuses behavior"
+    },
+    {
+      "kind": "compatibility",
+      "finding": "Unknown future action status could expose editing through true capability flags",
+      "resolution": "Require draft status, authority and current source together"
+    },
+    {
+      "kind": "visual",
+      "finding": "Long unknown status was clipped without an ellipsis",
+      "resolution": "Constrained truncation with full title/DOM text; rechecked final L3 screenshot"
+    },
+    {
+      "kind": "test",
+      "finding": "Old primary-picker selector expected option rather than actual button",
+      "resolution": "Use the actual accessible button; unchanged business assertions"
+    },
+    {
+      "kind": "test",
+      "finding": "Queue count fixture queried a nonexistent workspace_id",
+      "resolution": "Join issue to constrain workspace; affected HTTP case rerun"
+    },
+    {
+      "kind": "documentation",
+      "finding": "Embedded skill body exceeded the template line limit",
+      "resolution": "Condensed body; builtin template parent rerun successfully"
+    }
+  ],
+  "migration_recovery": {
+    "passed": true,
+    "host": "fosun-agent-3deMac-mini.local",
+    "database": "multica_test",
+    "file_count": 20,
+    "migration_count": 10,
+    "restored_version": "988_cockpit_action_issue_index",
+    "original_application_pid": 30604,
+    "workspaces": 0,
+    "guard_count": 3,
+    "valid_index_count": 7,
+    "directory": "/Users/fosun_agent_3/var/multica-dev-test/actions-schema-cycle-nhGRlw",
+    "local_evidence": "/tmp/multica-agent3-actions-evidence/schema-cycle",
+    "baseline_ledger_and_applied_at_unchanged": true,
+    "independent_migrations_directory_only": true,
+    "transition": "988 -> 978 -> 988",
+    "preflight_other_client_connections": 0
+  },
+  "cleanup": {
+    "counts": {
+      "workspaces": 0,
+      "agent_runs": 0,
+      "actions": 0,
+      "primary_links": 0
+    },
+    "temporary_api_web_stopped": true,
+    "last_stopped_api_pid": 5170,
+    "last_stopped_web_pid": 5171,
+    "temporary_ports": [
+      18880,
+      13800
+    ],
+    "original_api_pid": 30604,
+    "original_web_pid": 30607,
+    "original_application_health": "ok",
+    "runtime_env_mode": "0600",
+    "test_lock_removed": true,
+    "temporary_pid_records_removed": true,
+    "real_agent_cli_executed": false,
+    "real_nas_touched": false
+  },
+  "screenshots": [
+    "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/agent3-l3-task-summary.png",
+    "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/agent3-l3-reference-narrow.png",
+    "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/agent3-meeting-action-reuse.png",
+    "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/agent3-issue-action-sources.png",
+    "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/agent3-meeting-actions-narrow.png"
+  ],
+  "evidence_root": "/tmp/multica-agent3-actions-evidence",
+  "remote_logs": "/Users/fosun_agent_3/var/multica-dev-test/logs/actions-*.log",
+  "deployment": "No production deployment; existing application processes/configuration preserved.",
+  "coordinator_static_checks": {
+    "typecheck_packages": 10,
+    "lint_tasks": 7,
+    "lint_errors": 0,
+    "existing_lint_warnings_retained": true,
+    "go_vet": [
+      "internal/service",
+      "internal/handler",
+      "cmd/multica",
+      "cmd/server"
+    ],
+    "late_views_typecheck": "passed",
+    "late_changed_component_lint": "passed",
+    "diff_check": "passed"
+  }
+}

@@ -28,8 +28,13 @@ import {
   cockpitMeetingLabel,
 } from "../../cockpit/components/cockpit-meeting-picker";
 import { CockpitMeetingRoleLabels } from "../../cockpit/components/cockpit-meeting-issue-links";
+import { CockpitActionSources } from "./cockpit-action-sources";
 
 export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
+  return <><CockpitActionSources issueId={issueId} /><CockpitReferenceMeetings issueId={issueId} /></>;
+}
+
+function CockpitReferenceMeetings({ issueId }: { issueId: string }) {
   // Cockpit vocabulary lives in the fork-only cockpit namespace, so this copy
   // travels with the board's rather than with upstream's issue copy.
   const { t } = useT("cockpit");

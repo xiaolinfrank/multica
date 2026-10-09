@@ -33,6 +33,7 @@ import { StatusIcon } from "../../issues/components/status-icon";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { CockpitReviewerHandoffControl } from "./cockpit-reviewer-handoff";
 import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit-minutes-nas";
+import { CockpitMeetingActions } from "./cockpit-meeting-actions";
 
 const NEW_ISSUE = "__new_minutes_issue__";
 
@@ -317,6 +318,7 @@ export function CockpitMeetingWorkflowPanel({
     </section>}
     <CockpitMinutesNasCopies wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly}
       disabled={commandBusy || loadError} onReload={onReload} />
+    {workflow.published_version_id && <CockpitMeetingActions wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly} />}
     {workflow.released_at && !readOnly && (actions.canSubmit || draft.pending) && <section className="space-y-3 rounded-lg border border-border p-4">
       <label htmlFor={`${id}-draft`} className="block text-title-sm font-medium">{t(($) => $.workflow.draft)}</label>
       <Textarea id={`${id}-draft`} value={draft.content} rows={8} disabled={commandBusy || Boolean(draft.pending)}

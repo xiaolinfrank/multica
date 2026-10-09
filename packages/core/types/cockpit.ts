@@ -104,6 +104,154 @@ export interface CockpitIssueLink {
   position: number;
 }
 
+/** A bounded task projection; never includes descriptions or run history. */
+export interface CockpitTask {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  status_category: string;
+  priority: string;
+  assignee_type: string | null;
+  assignee_id: string | null;
+  assignee_name: string;
+  due_date: string | null;
+  project_id: string | null;
+  module_id: string | null;
+  primary_node_id: string | null;
+  primary_node_code: string;
+  primary_node_name: string;
+  primary_revision: number;
+  creation_key?: string | null;
+}
+
+export interface CockpitPrimaryNode {
+  issue_id: string;
+  node_id: string | null;
+  revision: number;
+  project_id: string | null;
+  module_id: string | null;
+  node_code: string;
+  node_name: string;
+}
+
+export interface CockpitTaskPage {
+  node_id: string;
+  items: CockpitTask[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  summary: {
+    total: number;
+    by_status: Array<{ status: string; category: string; count: number }>;
+    by_category: Record<string, number>;
+    done: number;
+    closed: number;
+    unknown: number;
+  };
+  eligibility: { eligible: boolean; reason: string; project_id: string | null; module_id: string | null };
+}
+
+export interface CockpitTaskQuery {
+  q?: string;
+  status?: string;
+  category?: string;
+  relation?: "primary" | "reference";
+  cursor?: string;
+  page_size?: number;
+}
+
+export interface CockpitTaskCreate {
+  creation_key: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  due_date?: string;
+}
+
+export interface CockpitMeetingAction {
+  id: string;
+  meeting_id: string;
+  version_id: string;
+  version_number: number;
+  source_content_hash: string;
+  source_quote: string;
+  title: string;
+  description: string;
+  status: string;
+  resolution: string | null;
+  revision: number;
+  proposal_key: string;
+  decision_key: string | null;
+  node_id: string | null;
+  node_code: string;
+  node_name: string;
+  issue: CockpitTask | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  can_edit: boolean;
+  can_resolve: boolean;
+  source_superseded: boolean;
+}
+
+export interface CockpitActionPage {
+  meeting_id: string;
+  items: CockpitMeetingAction[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  can_add: boolean;
+}
+
+export interface CockpitActionQuery {
+  version_id?: string;
+  status?: string;
+  q?: string;
+  cursor?: string;
+  page_size?: number;
+}
+
+export interface CockpitActionDraft {
+  title: string;
+  description: string;
+  source_quote: string;
+}
+
+export interface CockpitActionResolution {
+  expected_revision: number;
+  decision_key: string;
+  outcome: "create" | "reuse" | "dismiss";
+  node_id?: string;
+  issue_id?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  priority?: string;
+  due_date?: string;
+  reason?: string;
+}
+
+export interface CockpitIssueActionSource {
+  id: string;
+  meeting_id: string;
+  meeting_code: string;
+  meeting_title: string;
+  version_id: string;
+  version_number: number;
+  title: string;
+}
+export interface CockpitIssueActionSourcesPage {
+  issue_id: string;
+  items: CockpitIssueActionSource[];
+  total: number;
+  next_cursor: string | null;
+}
+
 export interface CockpitMilestone {
   id: string;
   name: string;
@@ -250,6 +398,8 @@ export type CockpitEventScope =
   | "meeting_issues"
   | "meeting_nodes"
   | "meeting_workflow"
+  | "meeting_actions"
+  | "primary_node"
   | "directory"
   | "board"
   | "changes"

@@ -40,6 +40,8 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"cockpit":                            workspaceDelete,
 	"cockpit_directory":                  workspaceDelete,
 	"cockpit_meeting":                    workspaceDelete,
+	"cockpit_meeting_action":             workspaceDelete,
+	"cockpit_issue_primary":              workspaceDelete,
 	"cockpit_meeting_issue":              workspaceDelete,
 	"cockpit_meeting_node":               workspaceDelete,
 	"cockpit_meeting_work_package":       workspaceDelete,

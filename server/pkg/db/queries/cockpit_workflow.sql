@@ -77,6 +77,7 @@ SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN cockpit_meeting 
 
 -- name: CockpitWorkflowReferencesIssue :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg('workspace_id')::uuid AND w.minutes_issue_id=sqlc.arg('issue_id')::uuid
+ UNION ALL SELECT 1 FROM cockpit_meeting_action a WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND a.issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=sqlc.arg('workspace_id')::uuid AND (v.review_issue_id=sqlc.arg('issue_id')::uuid OR v.source_issue_id=sqlc.arg('issue_id')::uuid)
  UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg('workspace_id')::uuid AND (h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid))::bool AS linked;
 

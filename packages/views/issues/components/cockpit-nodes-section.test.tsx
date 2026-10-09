@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CockpitBoard, CockpitNode } from "@multica/core/types";
+import type { CockpitBoard, CockpitNode, CockpitPrimaryNode } from "@multica/core/types";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider } from "../../navigation";
@@ -10,6 +10,7 @@ import type { NavigationAdapter } from "../../navigation/types";
 
 const queryRef = vi.hoisted(() => ({
   current: { data: undefined as CockpitBoard | undefined, isLoading: false },
+  primary: null as CockpitPrimaryNode | null,
 }));
 
 const mutRef = vi.hoisted(() => ({
@@ -21,7 +22,8 @@ vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
     "@tanstack/react-query",
   );
-  return { ...actual, useQuery: () => queryRef.current };
+  return { ...actual, useQuery: (options: { queryKey: readonly unknown[] }) => options.queryKey[2] === "primary-nodes"
+    ? { data: queryRef.primary, isPending: false, isError: false } : queryRef.current };
 });
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
@@ -207,9 +209,16 @@ beforeEach(() => {
   mutRef.link.isPending = false;
   mutRef.unlink.isPending = false;
   queryRef.current = { data: undefined, isLoading: false };
+  queryRef.primary = null;
 });
 
 describe("CockpitNodesSection", () => {
+  it("links the primary work item without loading it through the legacy board links", () => {
+    queryRef.primary = { issue_id: "issue-1", node_id: "primary-node", revision: 1, project_id: "p1", module_id: "m1", node_code: "01.01.03", node_name: "Primary execution scope" };
+    renderSection(<CockpitNodesSection issueId="issue-1" />);
+    expect(screen.getByRole("link", { name: "01.01.03 Primary execution scope" })).toHaveAttribute("href", "/acme/cockpit?node=primary-node");
+    expect(screen.queryByRole("button", { name: /Unlink/ })).toBeNull();
+  });
   it("renders nothing while the board loads or the board has no breakdown", () => {
     queryRef.current = { data: undefined, isLoading: true };
     const loading = renderSection(<CockpitNodesSection issueId="issue-1" />);
