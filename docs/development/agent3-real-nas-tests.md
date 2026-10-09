@@ -4,7 +4,7 @@
 
 2026-10-09 在 `fosun_agent_3`（`10.35.182.2`）的真实 `/Volumes/人机协作空间` SMB 挂载上验证。NAS 可访问，具备创建、读写和清理本轮测试目录的权限；**当前固定纪要导出尚未通过真实 NAS 验收**。
 
-阻塞发生在文件最终提交：Darwin `renameatx_np(..., RENAME_EXCL)` 返回 `ENOTSUP`，操作进入 `unsupported_commit`，不是连接或权限错误。独立系统调用探测中，硬链接也返回 `ENOTSUP`（errno 45）；文件与目录 `fsync` 返回成功。
+阻塞发生在文件最终提交：Darwin `renameatx_np(..., RENAME_EXCL)` 返回 `ENOTSUP`，操作进入 `unsupported_commit`；此次直接观测到的是接口不支持，并非权限拒绝。测试账号可以清理自己创建的夹具，但这不证明其他 NAS 账号或既有业务文件具有删除权限。独立系统调用探测中，硬链接也返回 `ENOTSUP`（errno 45）；文件与目录 `fsync` 返回成功。
 
 此结果与 [Apple 的独占重命名能力定义](https://developer.apple.com/documentation/foundation/urlresourcevalues/volumesupportsexclusiverenaming)及 [Apple SMB 客户端实现](https://github.com/apple-oss-distributions/SMBClient/blob/main/kernel/smbfs/smbfs_vnops.c)一致：该实现注册普通 rename，没有注册 renamex，默认未实现操作返回 `ENOTSUP`。不能从普通读写成功推断原子不覆盖提交可用，也不能将另一个 Linux/NFS 环境的结果套用于此挂载。
 
@@ -86,4 +86,25 @@ MULTICA_REAL_NAS_PARENT='/Volumes/人机协作空间' \
 
 优先验证原生 SMB2/3 的 `FileRenameInformation`、`ReplaceIfExists=FALSE`：[Microsoft 协议定义](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/52aa0b70-8094-4971-862d-79793f41e6a8)要求目标已存在时失败。这是后续实现候选，不是本轮已验证能力；不能通过当前挂载的普通 rename 代替该服务端操作。
 
+该方式仍受 NAS 权限约束。[SMB2 服务端权限规则](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/43cf22fe-84cb-49cf-b3e7-e3d7d766a7b7)要求执行 `FileRenameInformation` 的句柄具备 `DELETE` 权限，否则返回 `STATUS_ACCESS_DENIED`。因此原生 SMB 只能作为解决挂载接口限制的候选，不能被描述成“不需要删除权限”的方案。
+
 选定方式之后，需要重跑本页成功用例，并补跨客户端竞争和连接中断验证，才能将该实际 NAS 标为可用。当前没有实现或启用替代连接器，没有降低现有写入保证。
+
+## 禁止删除时的可行备选
+
+用户补充可能没有向智能体开放删除权限。当前导出由平台后台执行器执行，不调用智能体文件工具；智能体工具审批与 NAS 对后台连接身份的 ACL 是两层控制。评估暂按更严格的“NAS 禁止删除与重命名”边界进行，不改账户权限。
+
+2026-10-09 在 agent 3 同一真实 SMB 下执行了一个**创建式写入原型**，全部内容位于新建的 `.multica-validation-c8ae30aa-04ec-4165-bbfb-8120b915bca0` 目录。它不调用正式导出器，也不代表正式功能已修复；[原型记录](../design/cockpit-native-2026-10-09/implementation/agent3-create-only-nas-prototype.json)保留调用范围和限制。
+
+原型过程：
+
+1. 每次尝试创建一个独立目录，通过“仅在不存在时创建”打开纪要文件。
+2. 写入、同步、读回并比较固定正文；成功后新建包含文件名、字节数和 SHA-256 的完成记录。
+3. 同名文件存在时拒绝覆盖，原字节保持。
+4. 模拟部分写入时不生成完成记录；重试另开尝试目录，旧残留保持原样。
+
+以上步骤在真实 SMB 上通过，写入原型没有删除或重命名调用。夹具结束后由测试清理逻辑删除本轮拥有的目录；**没有在显式拒绝删除的 ACL 下验证**，也没有使用实际受限智能体身份。
+
+这是一种需明确选择的存储模式，不能遇到 `unsupported_commit` 后静默切换。若接入产品，须保留固定版本、操作去重及租约，增加每次尝试的实际文件位置和完成证据；完整解析完成记录、核对内容后才显示“已导出”，成功副本路径随确认结果保存。没有完成记录、记录不完整、hash 不符的文件都不能成为正式副本。
+
+此模式不保证 NAS 目录中的文件瞬间完整出现：人直接浏览 NAS 时可能看见未完成文件；失败尝试也会累积，清理必须交给另有权限的存储维护流程。现有产品要求的“不覆盖”可以保持，但“文件系统级原子可见”需要换成“平台核验后才发布副本”。原型仅验证这一取舍的技术可行性，尚未改变正式导出合同或实现。

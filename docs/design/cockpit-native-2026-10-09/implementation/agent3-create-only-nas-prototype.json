@@ -1,0 +1,24 @@
+{
+  "kind": "create-only-prototype-not-production-exporter",
+  "sandbox": "/Volumes/人机协作空间/.multica-validation-c8ae30aa-04ec-4165-bbfb-8120b915bca0",
+  "checks": [
+    "exclusive create, flush, readback, completion receipt: passed",
+    "existing file refuses overwrite: passed",
+    "partial attempt retained without receipt; new attempt verified: passed"
+  ],
+  "export_operations": [
+    "mkdir",
+    "create_exclusive",
+    "write",
+    "fsync",
+    "read",
+    "create_exclusive_receipt"
+  ],
+  "limitations": [
+    "not tested with a deny-delete ACL",
+    "incomplete file visible when browsing NAS",
+    "partial attempts retained until authorized cleanup",
+    "complete.json must be parsed and matched to actual content"
+  ],
+  "test_harness_cleanup_only": true
+}
