@@ -9,7 +9,7 @@
 // position.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type {
   CockpitDirectoryEntry,
@@ -20,6 +20,8 @@ import type {
   CockpitMeetingPatch,
   CockpitMeetingImportItem,
   CockpitMeetingProvision,
+  CockpitMeetingWorkflowSetup,
+  CockpitMeetingWorkflow,
   MemberWithUser,
   CockpitMilestonePatch,
   CockpitNode,
@@ -35,6 +37,8 @@ import {
   buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitBoardOptions,
+  cockpitKeys,
+  cockpitMeetingWorkflowOptions,
   cockpitChangesOptions,
   cockpitNodeIssueFiling,
   cockpitOverallProgress,
@@ -59,6 +63,7 @@ import {
   useDeleteCockpitPayment,
   useImportCockpitMeetingFolders,
   useProvisionCockpitMeeting,
+  useEnableCockpitMeetingWorkflow,
   useSetCockpitMeetingIssues,
   useSetCockpitMeetingIssueRoles,
   useSetCockpitMeetingNodes,
@@ -225,6 +230,7 @@ export function CockpitPage() {
   const { t } = useT("cockpit");
   const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
+  const queryClient = useQueryClient();
   const navigation = useNavigation();
   const [tab, setTab] = useState<CockpitTab>("overview");
   const tabPillRef = useSegmentedPill(tab);
@@ -237,6 +243,17 @@ export function CockpitPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [creatingMeeting, setCreatingMeeting] = useState(false);
+  const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
+  const [meetingWorkflowCreated, setMeetingWorkflowCreated] = useState(false);
+  const meetingCreationRef = useRef<{ meeting: CockpitMeeting; workflowCreated: boolean; directoryReady: boolean } | null>(null);
+  const onMeetingCreateOpenChange = (open: boolean) => {
+    if (!open) {
+      meetingCreationRef.current = null;
+      setSavedMeetingId(null);
+      setMeetingWorkflowCreated(false);
+    }
+    setCreatingMeeting(open);
+  };
   // The direction a pending "new execution task" confirmation targets.
   const [addingTask, setAddingTask] = useState<{ direction: CockpitNode; position: number } | null>(
     null,
@@ -282,7 +299,7 @@ export function CockpitPage() {
   // Restore replaces the whole board, which the server gates to owner/admin.
   // The role check here only decides whether the affordance is offered.
   const currentUserId = useAuthStore((s) => s.user?.id ?? "");
-  const { data: members } = useQuery(memberListOptions(wsId));
+  const { data: members, isPending: membersLoading, isError: membersError } = useQuery(memberListOptions(wsId));
   // The workspace's modules, read for one reason: a work item files its
   // issues into the module its row code names.
   const { data: modules, isPending: modulesLoading, isError: modulesError, refetch: reloadModules } = useQuery(moduleListOptions(wsId));
@@ -312,6 +329,7 @@ export function CockpitPage() {
   const updateMeeting = useUpdateCockpitMeeting(wsId);
   const deleteMeeting = useDeleteCockpitMeeting(wsId);
   const provisionMeeting = useProvisionCockpitMeeting(wsId);
+  const enableMeetingWorkflow = useEnableCockpitMeetingWorkflow(wsId);
   const importMeetings = useImportCockpitMeetingFolders(wsId);
   const setMeetingIssues = useSetCockpitMeetingIssues(wsId);
   const setMeetingIssueRoles = useSetCockpitMeetingIssueRoles(wsId);
@@ -712,7 +730,7 @@ export function CockpitPage() {
       provisionMeeting.mutate(
         {
           id: meetingId,
-          body: { create_task: parts.task === true, create_dir: parts.dir === true, remember: true },
+          body: { create_task: false, create_dir: parts.dir === true, remember: true },
         },
         { onSuccess: reportProvision, onError: fail },
       );
@@ -723,9 +741,11 @@ export function CockpitPage() {
   /** Files a meeting: the row first, then whatever the form asked for on top
    *  of it. The row is what must not be lost, so it is written on its own. */
   const submitMeeting = useCallback(
-    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => {
+    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null) => {
       try {
-        const meeting = await createMeeting.mutateAsync({
+        let progress = meetingCreationRef.current;
+        if (!progress) {
+          const meeting = await createMeeting.mutateAsync({
           meet_date: draft.meet_date || null,
           start_time: draft.start_time || null,
           end_time: draft.end_time || null,
@@ -738,19 +758,33 @@ export function CockpitPage() {
           location: draft.location,
           title: draft.title,
           code: draft.code,
-        });
+          });
+          if (!meeting.id) throw new Error(t(($) => $.workflow.unconfirmed));
+          progress = { meeting, workflowCreated: false, directoryReady: false };
+          meetingCreationRef.current = progress;
+          setSavedMeetingId(meeting.id);
+        }
+        const meeting = progress.meeting;
         setSelectedMeetingId(meeting.id);
         setTab("meetings");
-        if (provision.create_task || provision.create_dir) {
-          const result = await provisionMeeting.mutateAsync({ id: meeting.id, body: provision });
+        if (workflow && !progress.workflowCreated) {
+          await enableMeetingWorkflow.mutateAsync({ meetingId: meeting.id, body: workflow });
+          progress.workflowCreated = true;
+          setMeetingWorkflowCreated(true);
+        }
+        if (provision.create_dir && !progress.directoryReady) {
+          const result = await provisionMeeting.mutateAsync({ id: meeting.id, body: { ...provision, create_task: false } });
           reportProvision(result);
+          if (result.dir_error) throw new Error(result.dir_error);
+          if (!result.meeting.id) throw new Error(t(($) => $.workflow.unconfirmed));
+          progress.directoryReady = true;
         }
       } catch (error) {
         fail(error);
         throw error;
       }
     },
-    [createMeeting, provisionMeeting, reportProvision, fail],
+    [createMeeting, enableMeetingWorkflow, provisionMeeting, reportProvision, fail, t],
   );
 
   /** Turns the archive folders someone picked into meeting rows. */
@@ -782,10 +816,27 @@ export function CockpitPage() {
     [importMeetings, board, t, fail],
   );
 
-  const requestDeletion = (kind: "meeting" | "milestone" | "payment", id: string) => {
+  const requestDeletion = async (kind: "meeting" | "milestone" | "payment", id: string) => {
     // Deleting the selected meeting closes its panel once the server agrees;
     // the panel itself only asks.
     deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (kind === "meeting") {
+      try {
+        const cached = queryClient.getQueryData<CockpitMeetingWorkflow>(cockpitKeys.workflow(wsId, id));
+        const workflow = cached?.enabled ? cached
+          : await queryClient.fetchQuery({ ...cockpitMeetingWorkflowOptions(wsId, id), staleTime: 0 });
+        if (workflow.meeting_id !== id) throw new Error(t(($) => $.workflow.load_failed));
+        if (workflow.enabled) {
+          toast.info(t(($) => $.workflow.delete_protected));
+          setSelectedMeetingId(id);
+          setTab("meetings");
+          return;
+        }
+      } catch (error) {
+        fail(error);
+        return;
+      }
+    }
     // What the confirmation names is the record, not the button that asked:
     // "meeting.delete" is the delete control's accessible name and reading it
     // back in makes the prompt say it will delete "delete meeting X".
@@ -1107,6 +1158,7 @@ export function CockpitPage() {
         )}
 
         <CockpitVersions wsId={wsId} canRestore={canRestore}
+          hasMeetingWorkflows={board.has_meeting_workflows === true}
           hasStableBindings={nodes.some((node) => Boolean(node.project_id || node.module_id))} />
 
         <DropdownMenu>
@@ -1150,7 +1202,7 @@ export function CockpitPage() {
       <div className="relative flex min-h-0 flex-1">
         {/* Keyed on the tab so each switch replays the short entrance on the
             fresh body — the chrome stays put, the content arrives. */}
-        <div key={tab} className="cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeeting && "max-xl:hidden")}>
           {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <CockpitOverview
@@ -1255,11 +1307,16 @@ export function CockpitPage() {
         {tab === "meetings" && selectedMeeting && (
           <CockpitMeetingPanel
             key={selectedMeeting.id}
+            wsId={wsId} currentUserId={currentUserId}
+            defaultPlacement={{ project_id: board.cockpit.meeting_project_id, module_id: board.cockpit.meeting_module_id, node_id: board.cockpit.meeting_node_id }}
+            defaultAssigneeType={board.cockpit.meeting_assignee_type || null}
+            defaultAssigneeId={board.cockpit.meeting_assignee_id}
             meeting={selectedMeeting}
             nodes={nodes}
             nodeCodes={displayCodes}
             meetings={meetings}
             members={members ?? EMPTY_MEMBERS}
+            membersLoaded={members !== undefined && !membersLoading && !membersError}
             directory={directoryData?.entries ?? EMPTY_DIRECTORY}
             onSaveDirectoryEntry={saveDirectoryEntry}
             onDeleteDirectoryEntry={removeDirectoryEntry}
@@ -1348,7 +1405,7 @@ export function CockpitPage() {
       </div>
       <CockpitMeetingCreate
         open={creatingMeeting}
-        onOpenChange={setCreatingMeeting}
+        onOpenChange={onMeetingCreateOpenChange}
         wsId={wsId}
         today={today}
         meetings={meetings}
@@ -1359,6 +1416,9 @@ export function CockpitPage() {
         onDeleteDirectoryEntry={removeDirectoryEntry}
         onAutoSaveDirectory={autoSaveDirectory}
         currentUserName={currentUserName}
+        currentUserId={currentUserId}
+        savedMeetingId={savedMeetingId}
+        workflowCreated={meetingWorkflowCreated}
         defaultProjectId={board.cockpit.meeting_project_id}
         defaultModuleId={board.cockpit.meeting_module_id}
         defaultNodeId={board.cockpit.meeting_node_id}

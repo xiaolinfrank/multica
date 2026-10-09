@@ -1,3 +1,4 @@
+import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -9,13 +10,15 @@ import type { CockpitBoard } from "@multica/core/types";
 
 // Dedicated regressions for confirmations, weekly timeline inspection and export.
 
+vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
+
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
 }));
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    issueDetail: (id: string) => `/ws/issues/${id}`,
+    issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
   }),
 }));
 
@@ -34,7 +37,10 @@ vi.mock("../../navigation", () => ({
 
 vi.mock("@multica/core/api", () => ({
   api: {
+    getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
+    getCockpitMeetingWorkflow: vi.fn(),
+    enableCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -220,6 +226,7 @@ describe("Cockpit controls regressions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);

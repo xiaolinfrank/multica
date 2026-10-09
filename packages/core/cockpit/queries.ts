@@ -5,6 +5,7 @@ import type {
   CockpitIssueLink,
   CockpitMeeting,
   CockpitMeetingIssueLink,
+  CockpitMeetingWorkflow,
   CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
@@ -26,7 +27,26 @@ export const cockpitKeys = {
     [...cockpitKeys.all(wsId), "meeting-scan", projectId, moduleId, nodeId] as const,
   nextCode: (wsId: string, parentId: string) =>
     [...cockpitKeys.all(wsId), "next-code", parentId] as const,
+  workflows: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-workflow"] as const,
+  workflow: (wsId: string, meetingId: string) => [...cockpitKeys.workflows(wsId), meetingId] as const,
 };
+
+export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.workflow(wsId, meetingId),
+    queryFn: () => api.getCockpitMeetingWorkflow(meetingId),
+    enabled: Boolean(wsId && meetingId),
+  });
+}
+
+/** Issue status/assignee changes affect the read model, but never its formal review decision. */
+export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
+  for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflow>({ queryKey: cockpitKeys.workflows(wsId) })) {
+    if (workflow?.minutes_issue?.id === issueId || workflow?.versions.some((version) => version.review_issue.id === issueId)) {
+      void client.invalidateQueries({ queryKey, exact: true });
+    }
+  }
+}
 
 export function cockpitBoardOptions(wsId: string) {
   return queryOptions({

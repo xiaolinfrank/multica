@@ -1,6 +1,7 @@
 export {
   cockpitKeys,
   cockpitBoardOptions,
+  cockpitMeetingWorkflowOptions,
   cockpitChangesOptions,
   cockpitMeetingDestinationOptions,
   cockpitMeetingScanOptions,
@@ -29,6 +30,9 @@ export * from "./directory";
 export * from "./meeting-search";
 export * from "./meeting-roles";
 export * from "./errors";
+export * from "./meeting-workflow";
+export * from "./workflow-mutations";
+export * from "./minutes-draft-store";
 export * from "./meeting-timeline";
 export {
   cockpitNodeIssueFiling,

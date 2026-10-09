@@ -1999,6 +1999,79 @@ export const CockpitMeetingProvisionResultSchema = z.object({
   dir_error: z.string().default(""),
 }).loose();
 
+export const CockpitWorkflowIssueSchema = z.object({
+  id: z.string(),
+  identifier: z.string().default(""),
+  title: z.string().default(""),
+  status: z.string().default(""),
+  assignee_type: z.string().default(""),
+  assignee_id: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitMinutesVersionSchema = z.object({
+  id: z.string(),
+  version_number: z.number().int().default(0),
+  submission_key: z.string().default(""),
+  content: z.string().default(""),
+  content_hash: z.string().default(""),
+  source_issue_id: z.string().default(""),
+  review_issue: CockpitWorkflowIssueSchema,
+  reviewer_id: z.string().default(""),
+  decision: z.string().default(""),
+  feedback: z.string().default(""),
+  submitted_by_type: z.string().default(""),
+  submitted_by_id: z.string().default(""),
+  created_at: z.string().default(""),
+  reviewed_by: z.string().nullable().default(null),
+  reviewed_at: z.string().nullable().default(null),
+  published_by: z.string().nullable().default(null),
+  published_at: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitMeetingWorkflowSchema = z.object({
+  enabled: z.boolean().default(false),
+  meeting_id: z.string(),
+  revision: z.number().int().nonnegative().default(0),
+  ended_at: z.string().nullable().default(null),
+  materials_ready: z.boolean().default(false),
+  released_at: z.string().nullable().default(null),
+  release_task_id: z.string().nullable().default(null),
+  reviewer_id: z.string().nullable().default(null),
+  minutes_issue: CockpitWorkflowIssueSchema.nullable().default(null),
+  current_version_id: z.string().nullable().default(null),
+  published_version_id: z.string().nullable().default(null),
+  versions: z.array(CockpitMinutesVersionSchema).default([]),
+  can_manage: z.boolean().default(false),
+  can_submit: z.boolean().default(false),
+  can_review: z.boolean().default(false),
+  can_publish: z.boolean().default(false),
+}).loose();
+
+const WorkflowIssueAcknowledgmentSchema = CockpitWorkflowIssueSchema.extend({
+  id: z.string().min(1), identifier: z.string().min(1), title: z.string(),
+  status: z.string().min(1), assignee_type: z.string(), assignee_id: z.string().nullable(),
+});
+const MinutesVersionAcknowledgmentSchema = CockpitMinutesVersionSchema.extend({
+  id: z.string().min(1), version_number: z.number().int().positive(), submission_key: z.string().uuid(),
+  content: z.string().min(1), content_hash: z.string().min(1), source_issue_id: z.string().min(1),
+  review_issue: WorkflowIssueAcknowledgmentSchema, reviewer_id: z.string().min(1), decision: z.string().min(1),
+  feedback: z.string(), submitted_by_type: z.string().min(1), submitted_by_id: z.string().min(1),
+  created_at: z.string().min(1), reviewed_by: z.string().nullable(), reviewed_at: z.string().nullable(),
+  published_by: z.string().nullable(), published_at: z.string().nullable(),
+});
+
+/** No read defaults may acknowledge an enabled workflow write. */
+export const CockpitMeetingWorkflowWriteSchema = CockpitMeetingWorkflowSchema.extend({
+  enabled: z.literal(true), meeting_id: z.string().min(1), revision: z.number().int().positive(),
+  ended_at: z.string().nullable(), materials_ready: z.boolean(), released_at: z.string().nullable(),
+  release_task_id: z.string().nullable(), reviewer_id: z.string().min(1),
+  minutes_issue: WorkflowIssueAcknowledgmentSchema, current_version_id: z.string().nullable(),
+  published_version_id: z.string().nullable(), versions: z.array(MinutesVersionAcknowledgmentSchema),
+  can_manage: z.boolean(), can_submit: z.boolean(), can_review: z.boolean(), can_publish: z.boolean(),
+});
+
+export const EMPTY_COCKPIT_MEETING_WORKFLOW = CockpitMeetingWorkflowSchema.parse({ meeting_id: "" });
+
 export const CockpitMeetingDestinationSchema = z.object({
   project_id: z.string().default(""),
   project_title: z.string().default(""),
@@ -2048,6 +2121,7 @@ export const CockpitMeetingImportResultSchema = z.object({
 }).loose();
 
 export const CockpitBoardSchema = z.object({
+  has_meeting_workflows: z.boolean().default(false),
   cockpit: CockpitSchema,
   nodes: z.array(CockpitNodeSchema).default([]),
   payments: z.array(CockpitPaymentSchema).default([]),

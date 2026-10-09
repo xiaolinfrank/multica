@@ -44,6 +44,51 @@ export interface TestCockpitBoard {
   meeting_issues: Array<{ meeting_id: string; issue_id: string; role: string; roles: string[] }>;
 }
 
+export interface TestMeetingWorkflowIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  assignee_type: string | null;
+  assignee_id: string | null;
+}
+
+export interface TestMeetingMinutesVersion {
+  id: string;
+  version_number: number;
+  submission_key: string;
+  content: string;
+  content_hash: string;
+  source_issue_id: string;
+  review_issue: TestMeetingWorkflowIssue;
+  reviewer_id: string;
+  decision: "pending" | "approved" | "changes_requested" | "rejected";
+  feedback: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  published_by: string | null;
+  published_at: string | null;
+}
+
+export interface TestMeetingWorkflow {
+  enabled: boolean;
+  meeting_id: string;
+  revision: number;
+  ended_at: string | null;
+  materials_ready: boolean;
+  released_at: string | null;
+  release_task_id: string | null;
+  reviewer_id: string | null;
+  minutes_issue: TestMeetingWorkflowIssue | null;
+  current_version_id: string | null;
+  published_version_id: string | null;
+  versions: TestMeetingMinutesVersion[];
+  can_manage: boolean;
+  can_submit: boolean;
+  can_review: boolean;
+  can_publish: boolean;
+}
+
 export type TestIssueStatus =
   | "backlog"
   | "todo"
@@ -323,6 +368,16 @@ export class TestApiClient {
     return res.json();
   }
 
+  async getMeetingWorkflow(meetingId: string): Promise<TestMeetingWorkflow> {
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`);
+    if (!res.ok) throw new Error(`get meeting workflow failed: ${res.status} ${await res.text()}`);
+    const workflow = (await res.json()) as TestMeetingWorkflow;
+    if (workflow.meeting_id !== meetingId || typeof workflow.enabled !== "boolean") {
+      throw new Error("meeting workflow response did not identify the requested meeting");
+    }
+    return workflow;
+  }
+
   async createIssue(title: string, opts?: Record<string, unknown>) {
     const res = await this.authedFetch("/api/issues", {
       method: "POST",
@@ -490,6 +545,30 @@ export class TestApiClient {
   async deleteWorkspace() {
     if (!this.workspaceId) return;
     await this.authedFetch(`/api/workspaces/${this.workspaceId}`, { method: "DELETE" });
+  }
+
+  /**
+   * Workflows protect their meeting and issues from individual deletion.
+   * Delete their entire isolated fixture workspace through its atomic API.
+   * Never accept ensureWorkspace's existing-workspace fallback here.
+   */
+  async cleanupCreatedWorkspace() {
+    if (!this.workspaceId || this.createdWorkspaceIds.length !== 1 || this.createdWorkspaceIds[0] !== this.workspaceId) {
+      throw new Error("Refusing cleanup: current workspace was not this client's only explicitly created workspace");
+    }
+    const res = await this.authedFetch(`/api/workspaces/${encodeURIComponent(this.workspaceId)}`, { method: "DELETE" });
+    if (res.status !== 204) {
+      throw new Error(`cleanup owned workspace failed: ${res.status} ${await res.text()}`);
+    }
+    this.createdCockpitMeetingIds = [];
+    this.createdCockpitNodeIds = [];
+    this.createdIssueIds = [];
+    this.createdModuleIds = [];
+    this.createdProjectIds = [];
+    this.seededIssueIds = [];
+    this.createdWorkspaceIds = [];
+    this.workspaceId = null;
+    this.workspaceSlug = null;
   }
 
   /** Server-side issue search, for comparing against what the UI shows. */

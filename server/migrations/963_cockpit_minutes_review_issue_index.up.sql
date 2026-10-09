@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_minutes_review_issue_idx ON cockpit_minutes_version (review_issue_id);

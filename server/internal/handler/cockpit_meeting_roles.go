@@ -96,13 +96,28 @@ func (h *Handler) SetCockpitMeetingIssueRoles(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	required, err := q.CockpitMeetingWorkflowRequiredRole(ctx, db.CockpitMeetingWorkflowRequiredRoleParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issue.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check workflow purpose")
+		return
+	}
+	if required != "" {
+		present := false
+		for _, role := range roles {
+			present = present || role == required
+		}
+		if !present {
+			writeError(w, http.StatusConflict, "the work package purpose cannot be removed")
+			return
+		}
+	}
 	if _, err := q.UpdateCockpitMeetingIssueRoles(ctx, db.UpdateCockpitMeetingIssueRolesParams{
 		WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issue.ID, Roles: roles,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update meeting issue roles")
 		return
 	}
-	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID, h.getIssuePrefix(ctx, cc.workspaceID))
+	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read meeting issue roles")
 		return

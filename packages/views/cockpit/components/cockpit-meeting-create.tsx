@@ -9,12 +9,13 @@
 // will produce — the destination project, the module, the absolute path — so
 // nothing about this form is a surprise afterwards.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   CockpitDirectoryEntry,
   CockpitMeeting,
   CockpitMeetingProvision,
+  CockpitMeetingWorkflowSetup,
   CockpitNode,
   IssueAssigneeType,
   MemberWithUser,
@@ -59,6 +60,7 @@ import { CockpitAttendeeField } from "./cockpit-attendees";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
+import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 
 /** A picker inside this form reads as a form control, not as a table cell. */
 const FIELD_TRIGGER =
@@ -103,6 +105,9 @@ export interface CockpitMeetingCreateProps {
   onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   /** Pre-selected as the convenor: whoever is filing the meeting. */
   currentUserName: string;
+  currentUserId: string;
+  savedMeetingId: string | null;
+  workflowCreated: boolean;
   /** The board's remembered destination, pre-selected in the pickers. */
   defaultProjectId: string | null;
   defaultModuleId: string | null;
@@ -111,7 +116,7 @@ export interface CockpitMeetingCreateProps {
   defaultAssigneeType: string | null;
   defaultAssigneeId: string | null;
   /** Resolves once the meeting row exists and provisioning has answered. */
-  onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision) => Promise<unknown>;
+  onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null) => Promise<unknown>;
 }
 
 export function CockpitMeetingCreate({
@@ -127,6 +132,9 @@ export function CockpitMeetingCreate({
   onDeleteDirectoryEntry,
   onAutoSaveDirectory,
   currentUserName,
+  currentUserId,
+  savedMeetingId,
+  workflowCreated,
   defaultProjectId,
   defaultModuleId,
   defaultNodeId,
@@ -169,10 +177,15 @@ export function CockpitMeetingCreate({
   );
   const [assigneeId, setAssigneeId] = useState<string | null>(defaultAssigneeId);
   const [submitting, setSubmitting] = useState(false);
+  const [reviewerId, setReviewerId] = useState(currentUserId);
+  const [error, setError] = useState("");
+  const wasOpen = useRef(false);
 
   // Re-opening the form starts a new meeting, not the last one again.
   useEffect(() => {
-    if (!open) return;
+    if (!open) { wasOpen.current = false; return; }
+    if (wasOpen.current) return;
+    wasOpen.current = true;
     setDate(today);
     setStartTime("");
     setEndTime("");
@@ -195,10 +208,13 @@ export function CockpitMeetingCreate({
     setAssigneeType((defaultAssigneeType || null) as IssueAssigneeType | null);
     setAssigneeId(defaultAssigneeId);
     setSubmitting(false);
+    setReviewerId(currentUserId);
+    setError("");
   }, [
     open,
     today,
     currentUserName,
+    currentUserId,
     defaultProjectId,
     defaultModuleId,
     defaultNodeId,
@@ -273,6 +289,7 @@ export function CockpitMeetingCreate({
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
+    setError("");
     try {
       await onSubmit(
         {
@@ -290,7 +307,7 @@ export function CockpitMeetingCreate({
           code,
         },
         {
-          create_task: withTask && canFile,
+          create_task: false,
           create_dir: withDir && canCreateDir,
           project_id: projectId || undefined,
           module_id: moduleId || undefined,
@@ -303,12 +320,22 @@ export function CockpitMeetingCreate({
           assignee_id: assigneeId ?? "",
           remember: true,
         },
+        withTask && canFile ? {
+          reviewer_id: reviewerId,
+          project_id: projectId,
+          module_id: moduleId,
+          node_id: nodeId || undefined,
+          assignee_type: assigneeType || undefined,
+          assignee_id: assigneeId || undefined,
+        } : null,
       );
       // The meeting exists now: the book can learn the names it was shown.
       if (pendingAutoSave.length > 0) onAutoSaveDirectory?.(pendingAutoSave);
       // Only closes once the write came back — a failed create must leave the
       // form and everything typed into it exactly where they were.
       onOpenChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t(($) => $.workflow.command_failed));
     } finally {
       setSubmitting(false);
     }
@@ -316,13 +343,15 @@ export function CockpitMeetingCreate({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (submitting ? undefined : onOpenChange(next))}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t(($) => $.meetings.create_title)}</DialogTitle>
           <DialogDescription>{t(($) => $.meetings.create_description)}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          {savedMeetingId && <p role="status" className="text-caption text-muted-foreground">{t(($) => $.workflow.meeting_saved)}</p>}
+          <fieldset disabled={submitting || Boolean(savedMeetingId)} className="contents">
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="cockpit-meeting-date">{t(($) => $.meeting.date)}</Label>
@@ -488,6 +517,7 @@ export function CockpitMeetingCreate({
             </p>
           </div>
 
+          </fieldset>
           <div className="grid grid-cols-2 gap-3 rounded-md border border-border p-3">
             <div className="col-span-2 text-micro font-medium tracking-wide text-muted-foreground uppercase">
               {t(($) => $.meetings.destination)}
@@ -497,6 +527,7 @@ export function CockpitMeetingCreate({
                 {t(($) => $.meetings.destination_project)}
               </Label>
               <Select
+                disabled={submitting || workflowCreated}
                 items={(projects.data ?? []).map((p) => ({ value: p.id, label: p.title }))}
                 value={projectId}
                 onValueChange={(value) => {
@@ -522,6 +553,7 @@ export function CockpitMeetingCreate({
                 {t(($) => $.meetings.destination_module)}
               </Label>
               <Select
+                disabled={submitting || workflowCreated}
                 items={(modules.data ?? []).map((m) => ({ value: m.id, label: m.title }))}
                 value={moduleId}
                 onValueChange={(value) => {
@@ -545,6 +577,7 @@ export function CockpitMeetingCreate({
             <div className="col-span-2 flex flex-col gap-1">
               <Label htmlFor="cockpit-meeting-node">{t(($) => $.meetings.destination_node)}</Label>
               <Select
+                disabled={submitting || workflowCreated}
                 items={[
                   { value: MODULE_LEVEL, label: t(($) => $.meetings.destination_node_none) },
                   ...archiveNodes.map((node) => ({ value: node.id, label: cockpitNodeLabel(node) })),
@@ -576,11 +609,11 @@ export function CockpitMeetingCreate({
             <label className="col-span-2 flex items-start gap-2">
               <Checkbox
                 checked={withTask && canFile}
-                disabled={!canFile}
+                disabled={!canFile || submitting || Boolean(savedMeetingId)}
                 onCheckedChange={(checked) => setWithTask(checked === true)}
               />
               <span className="flex min-w-0 flex-col">
-                <span className="text-body">{t(($) => $.meetings.with_task)}</span>
+                <span className="text-body">{t(($) => $.workflow.create_package)}</span>
                 <span className="text-caption text-muted-foreground">
                   {!canFile
                     ? t(($) => $.meetings.with_task_unset)
@@ -598,32 +631,34 @@ export function CockpitMeetingCreate({
               </span>
             </label>
 
-            {/* Who writes the minutes is a standing answer, not a per-meeting
-                one, so the choice made here becomes the board's default.
-                Assigning an agent starts a run the moment the task is filed —
-                that is the point when the minutes are an agent's job, and the
-                reason the fallback is a person rather than the workspace's
-                cluster agent. */}
+            {/* A workflow creates backlog work first. Readiness and release are separate commands. */}
             {withTask && canFile && (
-              <div className="col-span-2 flex items-center gap-2 pl-6">
+              <div className="col-span-2 space-y-3 pl-6">
+                <p className="text-caption text-muted-foreground">{t(($) => $.workflow.setup_hint)}</p>
+                <div className="flex flex-wrap items-center gap-2">
                 <span className="shrink-0 text-caption text-muted-foreground">
-                  {t(($) => $.meetings.task_assignee)}
+                  {t(($) => $.workflow.writer)}
                 </span>
                 <AssigneePicker
+                  open={submitting || workflowCreated ? false : undefined}
+                  triggerRender={<Button type="button" variant="outline" size="sm" disabled={submitting || workflowCreated} />}
                   assigneeType={assigneeType}
                   assigneeId={assigneeId}
                   onUpdate={(update) => {
+                    if (submitting || workflowCreated) return;
                     setAssigneeType(update.assignee_type ?? null);
                     setAssigneeId(update.assignee_id ?? null);
                   }}
                 />
+                </div>
+                <CockpitReviewerSelect members={members} value={reviewerId} onChange={setReviewerId} disabled={submitting || workflowCreated} />
               </div>
             )}
 
             <label className="col-span-2 flex items-start gap-2">
               <Checkbox
                 checked={withDir && canCreateDir}
-                disabled={!canCreateDir}
+                disabled={!canCreateDir || submitting}
                 onCheckedChange={(checked) => setWithDir(checked === true)}
               />
               <span className="flex min-w-0 flex-col">
@@ -656,13 +691,15 @@ export function CockpitMeetingCreate({
           </div>
         </div>
 
+        {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
             {common(($) => $.cancel)}
           </Button>
-          <Button disabled={submitting} aria-busy={submitting} onClick={() => void submit()}>
+          <Button disabled={submitting || (withTask && canFile && !members.some((member) => member.user_id === reviewerId))} aria-busy={submitting} onClick={() => void submit()}>
             {submitting && <Spinner />}
-            {t(($) => $.meetings.create_submit)}
+            {savedMeetingId ? t(($) => $.workflow.retry_setup) : t(($) => $.meetings.create_submit)}
           </Button>
         </DialogFooter>
       </DialogContent>

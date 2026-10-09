@@ -1179,6 +1179,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		failWorkspaceDelete(w, r, workspaceID, "lock workspace", err)
 		return
 	}
+	if err := lockCockpitBindings(r.Context(), qtx, requester.WorkspaceID); err != nil {
+		failWorkspaceDelete(w, r, workspaceID, "lock cockpit workflows", err)
+		return
+	}
 	// Take a best-effort snapshot for post-commit daemon invalidation. Runtime
 	// registration does not participate in the workspace delete lock protocol,
 	// so PR1 retains the heartbeat lookup as the correctness fallback for a
@@ -1316,6 +1320,14 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 				_, err := qtx.DeleteIssueSourceContextsForWorkspace(ctx, requester.WorkspaceID)
 				return err
 			},
+		},
+		{
+			name: "delete meeting minutes versions",
+			run:  func() error { return qtx.DeleteCockpitMinutesVersionsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting work packages",
+			run:  func() error { return qtx.DeleteCockpitWorkPackagesByWorkspace(ctx, requester.WorkspaceID) },
 		},
 		{
 			name: "delete issue roots",

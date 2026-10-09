@@ -200,12 +200,13 @@ type CockpitMeetingNodeResponse struct {
 
 // CockpitBoardResponse is the single read every view starts from.
 type CockpitBoardResponse struct {
-	Cockpit    CockpitResponse            `json:"cockpit"`
-	Nodes      []CockpitNodeResponse      `json:"nodes"`
-	Payments   []CockpitPaymentResponse   `json:"payments"`
-	IssueLinks []CockpitNodeIssueResponse `json:"issue_links"`
-	Milestones []CockpitMilestoneResponse `json:"milestones"`
-	Meetings   []CockpitMeetingResponse   `json:"meetings"`
+	HasMeetingWorkflows bool                       `json:"has_meeting_workflows"`
+	Cockpit             CockpitResponse            `json:"cockpit"`
+	Nodes               []CockpitNodeResponse      `json:"nodes"`
+	Payments            []CockpitPaymentResponse   `json:"payments"`
+	IssueLinks          []CockpitNodeIssueResponse `json:"issue_links"`
+	Milestones          []CockpitMilestoneResponse `json:"milestones"`
+	Meetings            []CockpitMeetingResponse   `json:"meetings"`
 	// What each meeting is attached to. Flat lists rather than nested inside
 	// the meeting, matching issue_links: the client groups them once and the
 	// realtime frame can replace one meeting's set without resending a
@@ -804,17 +805,26 @@ func (h *Handler) GetCockpit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
 		return
 	}
+	hasWorkflows, err := h.Queries.HasCockpitWorkPackagesForBoard(ctx, db.HasCockpitWorkPackagesForBoardParams{
+		WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID,
+	})
+	if err != nil {
+		slog.Warn("HasCockpitWorkPackagesForBoard failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
 
 	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
 	resp := CockpitBoardResponse{
-		Cockpit:       cockpitToResponse(cc.cockpit),
-		Nodes:         make([]CockpitNodeResponse, len(nodes)),
-		Payments:      make([]CockpitPaymentResponse, len(payments)),
-		IssueLinks:    make([]CockpitNodeIssueResponse, len(links)),
-		Milestones:    make([]CockpitMilestoneResponse, len(milestones)),
-		Meetings:      make([]CockpitMeetingResponse, len(meetings)),
-		MeetingIssues: make([]CockpitMeetingIssueResponse, len(meetingIssues)),
-		MeetingNodes:  make([]CockpitMeetingNodeResponse, len(meetingNodes)),
+		HasMeetingWorkflows: hasWorkflows,
+		Cockpit:             cockpitToResponse(cc.cockpit),
+		Nodes:               make([]CockpitNodeResponse, len(nodes)),
+		Payments:            make([]CockpitPaymentResponse, len(payments)),
+		IssueLinks:          make([]CockpitNodeIssueResponse, len(links)),
+		Milestones:          make([]CockpitMilestoneResponse, len(milestones)),
+		Meetings:            make([]CockpitMeetingResponse, len(meetings)),
+		MeetingIssues:       make([]CockpitMeetingIssueResponse, len(meetingIssues)),
+		MeetingNodes:        make([]CockpitMeetingNodeResponse, len(meetingNodes)),
 	}
 	for i, n := range nodes {
 		resp.Nodes[i] = cockpitNodeToResponse(n)
@@ -2041,7 +2051,21 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		nasDir = pgtype.Text{String: normalized, Valid: true}
 	}
 
-	meeting, err := h.Queries.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, id)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if _, minutes := raw["minutes"]; minutes || req.Decisions != nil || req.Actions != nil {
+		if _, err := q.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err == nil {
+			writeError(w, http.StatusConflict, "this meeting uses versioned minutes; submit a workflow version instead")
+			return
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
+			return
+		}
+	}
+	meeting, err := q.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
 		ID:             id,
 		WorkspaceID:    cc.workspaceID,
 		MeetDate:       meetDate,
@@ -2079,6 +2103,10 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update meeting")
+		return
+	}
 	resp := cockpitMeetingToResponse(meeting)
 	h.publishCockpit(r, cc, "meeting", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
@@ -2114,6 +2142,13 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeError(w, http.StatusInternalServerError, "failed to lock meeting")
 		}
+		return
+	}
+	if _, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err == nil {
+		writeError(w, http.StatusConflict, "meetings with a work package cannot be deleted individually")
+		return
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
 		return
 	}
 	if err := q.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
@@ -2452,6 +2487,14 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	}); err != nil {
 		slog.Warn("UpdateCockpit failed during import", append(logger.RequestAttrs(r), "error", err)...)
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
+	}
+
+	protectedWorkflow, workflowErr := qtx.HasCockpitWorkPackagesForBoard(ctx, db.HasCockpitWorkPackagesForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+	if workflowErr != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to check meeting workflows"}
+	}
+	if protectedWorkflow {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting work packages protect this board from full replacement; edit the existing plan instead"}
 	}
 
 	// Replace order matters: children of the old tree carry payment and issue

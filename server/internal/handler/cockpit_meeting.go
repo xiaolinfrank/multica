@@ -745,6 +745,15 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	if boolOrDefault(req.CreateTask, true) {
+		if _, err := h.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID}); err == nil {
+			writeError(w, http.StatusConflict, "this meeting has a work package; use its minutes task and workflow")
+			return
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
+			return
+		}
+	}
 	resp := CockpitMeetingProvisionResponse{}
 
 	// --- the folder -----------------------------------------------------
@@ -1184,10 +1193,15 @@ func (h *Handler) openMeetingTask(
 // query. The board carries a few dozen meetings, so one read that the response
 // filters beats a second query shape to maintain.
 func (h *Handler) meetingIssueLinks(ctx context.Context, cc cockpitContext, meetingID pgtype.UUID) ([]CockpitMeetingIssueResponse, error) {
-	return meetingIssueLinksWithQueries(ctx, h.Queries, cc, meetingID, h.getIssuePrefix(ctx, cc.workspaceID))
+	return meetingIssueLinksWithQueries(ctx, h.Queries, cc, meetingID)
 }
 
-func meetingIssueLinksWithQueries(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID pgtype.UUID, prefix string) ([]CockpitMeetingIssueResponse, error) {
+func meetingIssueLinksWithQueries(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID pgtype.UUID) ([]CockpitMeetingIssueResponse, error) {
+	workspace, err := q.GetWorkspace(ctx, cc.workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	prefix := issuePrefixForWorkspace(workspace)
 	rows, err := q.ListCockpitMeetingIssues(ctx, cc.cockpit.ID)
 	if err != nil {
 		return nil, err
@@ -1288,6 +1302,23 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if req.Replace {
+		owned, err := q.ListCockpitMeetingWorkflowIssueIDs(ctx, db.ListCockpitMeetingWorkflowIssueIDsParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check workflow links")
+			return
+		}
+		selected := make(map[pgtype.UUID]bool, len(resolved))
+		for _, id := range resolved {
+			selected[id] = true
+		}
+		for _, id := range owned {
+			if !selected[id] {
+				writeError(w, http.StatusConflict, "work package issue links must be preserved")
+				return
+			}
+		}
+	}
+	if req.Replace {
 		if err := q.DeleteCockpitMeetingIssuesExcept(ctx, db.DeleteCockpitMeetingIssuesExceptParams{
 			MeetingID: meeting.ID, WorkspaceID: cc.workspaceID, IssueIds: resolved,
 		}); err != nil {
@@ -1304,7 +1335,7 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID, h.getIssuePrefix(ctx, cc.workspaceID))
+	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read meeting issue links")
 		return
@@ -1342,6 +1373,15 @@ func (h *Handler) DeleteCockpitMeetingIssue(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer tx.Rollback(ctx)
+	role, err := q.CockpitMeetingWorkflowRequiredRole(ctx, db.CockpitMeetingWorkflowRequiredRoleParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issue.ID})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check workflow link")
+		return
+	}
+	if role != "" {
+		writeError(w, http.StatusConflict, "work package issue links must be preserved")
+		return
+	}
 	if err := q.DeleteCockpitMeetingIssue(ctx, db.DeleteCockpitMeetingIssueParams{
 		MeetingID:   meeting.ID,
 		IssueID:     issue.ID,

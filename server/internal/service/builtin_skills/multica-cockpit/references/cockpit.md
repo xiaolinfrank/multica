@@ -29,6 +29,13 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | GET | `/api/cockpit/meetings/scan` | archive folders no meeting records, with what their names give up |
 | POST | `/api/cockpit/meetings/import` | turn chosen archive folders into meeting rows |
 | POST | `/api/cockpit/meetings/{meetingId}/provision` | open the meeting's task and create its folder |
+| GET | `/api/cockpit/meetings/{meetingId}/workflow` | read the meeting work package and fixed minutes versions |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow` | enable a work package or explicitly adopt an unstarted issue (human) |
+| PATCH | `/api/cockpit/meetings/{meetingId}/workflow` | record ended/materials-ready facts (human manager) |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow/release` | explicitly release ready minutes work (human manager) |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow/versions` | submit a fixed text version and create its human review issue |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/review` | approve, request changes or reject (designated human reviewer) |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/publish` | publish the approved current version (human manager/reviewer) |
 | PUT | `/api/cockpit/meetings/{meetingId}/issues` | add issue links, or replace them with `replace: true` |
 | PUT | `/api/cockpit/meetings/{meetingId}/issues/{issueId}/roles` | set the workflow purposes of an existing issue link |
 | DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
@@ -113,7 +120,9 @@ purposes, while omitted/null roles are invalid. The response is
 `{ "meeting_id": "...", "links": [...] }` containing the whole meeting's link
 set. Values are deduplicated and sorted. Unknown newly added values are refused;
 unknown values already on the link can be preserved by an older client.
-Ordinary link replacement retains purposes and the provisioning marker for
+Work-package-owned minutes/review links cannot be removed or lose their required
+purpose. Additional purposes remain editable, and an ordinary reference from
+another meeting does not acquire this protection. Ordinary link replacement retains purposes and the provisioning marker for
 surviving pairs. Snapshots and import documents preserve purposes in
 `issue_roles`, keyed by the corresponding `issue_ids` reference.
 
@@ -132,6 +141,111 @@ issue or reassign/reclassify the existing one. Directory work is still a
 separate outcome: this is not yet a durable NAS synchronization workflow or a
 meeting-readiness scheduler. A user-assigned `minutes` purpose on an ordinary
 link does not automatically promote it to the provisioned task.
+
+For meetings with a work package, `create_task: true` is rejected. Use
+`create_task: false` for the existing independent directory operation. New UI
+meeting creation uses the work-package workflow for minutes tasks; a folder
+failure remains separately retryable without creating another meeting or issue.
+
+## Meeting work packages and fixed minutes
+
+Enable a package with `{reviewer_id}` to create one ordinary backlog issue,
+assigned to the current human member by default. Optional `project_id`,
+`module_id`, `node_id`, `assignee_type` and `assignee_id` choose the destination
+and executor. Project/module use workspace UUIDs; node accepts a UUID or code.
+Its explicit inherited project/module binding must agree with the issue.
+The executor type and UUID must be supplied together. Alternatively supply
+`existing_issue_id` (UUID or issue identifier) to explicitly adopt a backlog
+issue with no active/deferred task and no existing workflow ownership. Adoption
+preserves assignment and scope; do not supply assignee fields. Initialization
+retries must describe the same executor, scope, reviewer and explicit node
+relationship; conflicting intent returns 409 instead of silently changing work.
+
+The normal lifecycle is:
+
+1. A human manager records `ended: true` and `materials_ready: true`. Ending is
+   irreversible here; material readiness can change until release.
+2. A human manager explicitly releases the backlog issue. Both facts are
+   required. The issue becomes todo; agent/squad execution uses the native run
+   queue, member execution creates no run. Queue and release commit together.
+   Unreleased minutes work cannot execute through ordinary status edits,
+   mentions, wakeups, reruns or queue claims. Review issues are always blocked
+   from agent execution even if their ordinary assignee is edited.
+   The native run handoff names the exact meeting and tells its executor to
+   fetch current board/source-directory and workflow data before writing and
+   submitting minutes. It does not replace the adopted issue's description or
+   treat a stale directory snapshot as current evidence.
+3. The writer submits `{expected_revision, submission_key, content}`. Content
+   is non-empty text, trimmed, at most 128 KiB. A UUID submission key identifies
+   one immutable version; retries with the same key and text reuse it. Each new
+   version creates one ordinary human-assigned Review Issue. Finish a pending
+   review before submitting another version.
+4. The designated reviewer submits `approved`, `changes_requested` or
+   `rejected`; the latter two require feedback. This ends that review issue.
+   Changes requested returns the original minutes issue to todo; another agent
+   run is not silently dispatched. New submission starts a new version/review.
+5. Explicitly publish the approved **current** version. An older approval
+   cannot publish a superseded version. Completing/reassigning a Review Issue
+   in the ordinary issue interface never approves or publishes anything.
+
+All successful commands return the complete workflow JSON directly. GET before
+enable returns 200 with `enabled: false`. Read `revision`, then send a positive
+`expected_revision` for readiness, release, submission, review and publication.
+Do not blindly retry 409 with a fresh revision: reread and reconcile intent.
+Exact idempotent retries may return the already completed result.
+
+The package creator or a workspace owner/admin manages readiness and release.
+A human manager or the current member writer may submit. An agent authenticated
+with an issue-scoped `mat_` task token may submit only when that authenticated
+task belongs to the minutes issue and matches its agent; authorship records the
+agent, not the credential owner's member ID. Cloud-node `mcn_` credentials cannot
+submit. All enable/readiness/release/review/publish commands reject machine
+credentials. Do not change credentials to bypass 403; ask the authorized human
+to act through their own interface. Review authority is pinned to the version's
+`reviewer_id`, independently of the Review Issue's mutable assignee. Only that
+reviewer may decide; that reviewer or a manager may publish.
+
+The response includes `minutes_issue`, `versions[].review_issue`, fixed content
+and hash, submission key, author, review feedback, review/publication times and
+actors, `current_version_id`, `published_version_id`, readiness and release
+facts, and `can_manage/can_submit/can_review/can_publish` hints. Every command
+rechecks authorization. Realtime changes use `cockpit:changed` with scope
+`meeting_workflow` and the meeting ID; clients refetch the workflow and affected
+issue/board projections.
+
+Formal workflow history prevents individual meeting/issue deletion, unlinking
+owned work and whole-board import/restore. The board read exposes
+`has_meeting_workflows` for restore UI. Deleting the entire owned workspace
+explicitly removes this history. Enabling a package makes legacy meeting
+`minutes/decisions/actions` text read-only historical material; it does not turn
+those strings into published versions. There is currently no package cancellation
+or reviewer reassignment command. Text versions are stored in the database;
+NAS file watching, transcription, artifact-file synchronization, automatic
+action extraction and automatic release are not implemented by this workflow.
+
+### Workflow CLI
+
+All commands return JSON and use the configured workspace. Meeting and version
+arguments are UUIDs. Start with `multica cockpit meeting workflow show <meeting-id>`.
+
+```sh
+multica cockpit meeting workflow enable <meeting-id> --reviewer-id <user-uuid>
+multica cockpit meeting workflow ready <meeting-id> --revision <n> --ended --materials-ready
+multica cockpit meeting workflow release <meeting-id> --revision <n>
+multica cockpit meeting workflow submit <meeting-id> --revision <n> --submission-key <uuid> --content-file ./minutes.md
+multica cockpit meeting workflow review <meeting-id> <version-id> --revision <n> --decision changes_requested --feedback 'Add the acceptance boundary.'
+multica cockpit meeting workflow publish <meeting-id> <version-id> --revision <n>
+```
+
+Fetch the new revision between commands. `ready` requires at least one fact;
+`--materials-ready=false` withdraws readiness before release, while
+`--ended=false` is refused. `enable` accepts optional `--project-id`,
+`--module-id`, `--node-id`, and the paired `--assignee-type/--assignee-id`.
+Explicitly empty project/module flags clear the board defaults. To adopt, use
+`--existing-issue-id` instead of project/module/assignee flags; an explicit
+`--node-id` remains allowed. Enable has no revision flag. For submission, keep
+the UUID and exact UTF-8 file for a network retry. Review accepts
+`approved|changes_requested|rejected`; feedback is required for the last two.
 
 Where the task and the folder go is board configuration, not code:
 `meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`

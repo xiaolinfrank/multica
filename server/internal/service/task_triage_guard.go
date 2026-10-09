@@ -82,6 +82,9 @@ var ErrRerunSourceIsTriage = errors.New("the source task is a triage run, which 
 // its own terms. A read error refuses, because a run that cannot be shown to be
 // allowed must not start.
 func guardIssueNotInTriage(ctx context.Context, q *db.Queries, issueID pgtype.UUID, origin RunOrigin) error {
+	if err := GuardCockpitIssueExecution(ctx, q, issueID); err != nil {
+		return err
+	}
 	if origin == OriginNamed || !issueID.Valid {
 		return nil
 	}

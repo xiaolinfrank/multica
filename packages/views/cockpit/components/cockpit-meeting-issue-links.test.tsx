@@ -18,15 +18,29 @@ const link: CockpitMeetingIssueLink = {
   issue_identifier: "BIO-1", issue_title: "Check material", issue_status: "todo", position: 0,
 };
 
-function setup(roles: string[] = [], save = vi.fn().mockResolvedValue(undefined), disabled = false) {
+function setup(roles: string[] = [], save = vi.fn().mockResolvedValue(undefined), disabled = false, requiredRolesByIssue?: ReadonlyMap<string, readonly string[]>) {
   render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
     <CockpitMeetingIssueLinks links={[{ ...link, roles }]} onLink={vi.fn()} onUnlink={vi.fn()}
-      onSaveRoles={save} disabled={disabled} />
+      onSaveRoles={save} disabled={disabled} requiredRolesByIssue={requiredRolesByIssue} />
   </I18nProvider>);
   return save;
 }
 
 describe("meeting issue purposes", () => {
+  it("retains the workflow-owned relation and required purpose while allowing additional purposes", async () => {
+    const save = setup(["minutes"], undefined, false, new Map([["i1", ["minutes"]]]));
+    expect(screen.queryByRole("button", { name: "Unlink BIO-1" })).toBeNull();
+    expect(screen.getByText("Managed by the meeting workflow; its required purpose and link are retained.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit purposes for BIO-1" }));
+    expect(screen.getByRole("checkbox", { name: "Minutes" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Minutes" })).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Minutes" }));
+    expect(screen.getByRole("checkbox", { name: "Minutes" })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save purposes" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith("i1", ["minutes", "reference"]));
+  });
+
   it("keeps the old provisioning link unclassified instead of inferring minutes", () => {
     setup();
     expect(screen.getByText("Created with meeting (unclassified)")).toBeTruthy();

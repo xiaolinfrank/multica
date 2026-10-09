@@ -1,3 +1,5 @@
+import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
+import { workflowFixture } from "./workflow-test-fixtures";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,13 +16,15 @@ import type { CockpitBoard } from "@multica/core/types";
 // the page reads the board, both views render it, an inline edit reaches the
 // API with the right patch, and issue linking searches and links.
 
+vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
+
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
 }));
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    issueDetail: (id: string) => `/ws/issues/${id}`,
+    issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
   }),
 }));
 
@@ -39,7 +43,10 @@ vi.mock("../../navigation", () => ({
 
 vi.mock("@multica/core/api", () => ({
   api: {
+    getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
+    getCockpitMeetingWorkflow: vi.fn(),
+    enableCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -228,6 +235,7 @@ describe("Cockpit secondary interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -261,6 +269,17 @@ describe("Cockpit secondary interactions", () => {
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("checks workflow protection before offering deletion from an overview meeting card", async () => {
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => workflowFixture({ meeting_id: meetingId }));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Meeting details: Working group weekly" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
+    expect(await screen.findByText("This meeting has a work package and cannot be deleted. Its tasks and versions are retained.")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(api.deleteCockpitMeeting).not.toHaveBeenCalled();
   });
 
   it("waits for a meeting deletion before closing and prevents repeat submissions", async () => {

@@ -642,6 +642,23 @@ type CockpitMeetingNode struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type CockpitMeetingWorkPackage struct {
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	MeetingID          pgtype.UUID        `json:"meeting_id"`
+	Revision           int64              `json:"revision"`
+	MinutesIssueID     pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID         pgtype.UUID        `json:"reviewer_id"`
+	EndedAt            pgtype.Timestamptz `json:"ended_at"`
+	MaterialsReady     bool               `json:"materials_ready"`
+	ReleasedAt         pgtype.Timestamptz `json:"released_at"`
+	ReleaseTaskID      pgtype.UUID        `json:"release_task_id"`
+	CurrentVersionID   pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID pgtype.UUID        `json:"published_version_id"`
+	CreatedBy          pgtype.UUID        `json:"created_by"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CockpitMilestone struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
@@ -656,6 +673,28 @@ type CockpitMilestone struct {
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMinutesVersion struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	VersionNumber   int32              `json:"version_number"`
+	SubmissionKey   pgtype.UUID        `json:"submission_key"`
+	Content         string             `json:"content"`
+	ContentHash     string             `json:"content_hash"`
+	SourceIssueID   pgtype.UUID        `json:"source_issue_id"`
+	ReviewIssueID   pgtype.UUID        `json:"review_issue_id"`
+	ReviewerID      pgtype.UUID        `json:"reviewer_id"`
+	Decision        string             `json:"decision"`
+	Feedback        string             `json:"feedback"`
+	SubmittedByType string             `json:"submitted_by_type"`
+	SubmittedByID   pgtype.UUID        `json:"submitted_by_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	ReviewedBy      pgtype.UUID        `json:"reviewed_by"`
+	ReviewedAt      pgtype.Timestamptz `json:"reviewed_at"`
+	PublishedBy     pgtype.UUID        `json:"published_by"`
+	PublishedAt     pgtype.Timestamptz `json:"published_at"`
 }
 
 type CockpitNode struct {

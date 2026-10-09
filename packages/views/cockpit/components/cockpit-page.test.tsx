@@ -1,3 +1,4 @@
+import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -11,13 +12,15 @@ import type { CockpitBoard } from "@multica/core/types";
 // the page reads the board, both views render it, an inline edit reaches the
 // API with the right patch, and issue linking searches and links.
 
+vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
+
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
 }));
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    issueDetail: (id: string) => `/ws/issues/${id}`,
+    issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
   }),
 }));
 
@@ -39,7 +42,10 @@ vi.mock("../../navigation", () => ({
 
 vi.mock("@multica/core/api", () => ({
   api: {
+    getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
+    getCockpitMeetingWorkflow: vi.fn(),
+    enableCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     getCockpitNextNodeCode: vi.fn(),
@@ -254,6 +260,7 @@ describe("CockpitPage", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -823,6 +830,7 @@ describe("CockpitPage detail tables", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -890,6 +898,7 @@ describe("CockpitPage versions", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
@@ -932,6 +941,17 @@ describe("CockpitPage versions", () => {
     expect(screen.getByRole("button", { name: "Save current" })).toBeEnabled();
     expect(within(row.closest("li")!).getByRole("button", { name: "Delete version" })).toBeEnabled();
     expect(screen.queryByText("Only workspace owners and admins can restore or delete versions.")).toBeNull();
+  });
+
+  it("protects a board with meeting workflows without querying every meeting", async () => {
+    vi.mocked(api.getCockpit).mockResolvedValue({ ...structuredClone(board), has_meeting_workflows: true });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+    const row = await screen.findByText("217 nodes · Owner");
+    expect(screen.getByText("Meeting work packages protect this board from full restore. Edit the plan directly.")).toBeTruthy();
+    expect(within(row.closest("li")!).getByRole("button", { name: "Restore" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save current" })).toBeEnabled();
+    expect(api.getCockpitMeetingWorkflow).not.toHaveBeenCalled();
   });
 
   it("lists the version history and restores on a confirmed second click", async () => {

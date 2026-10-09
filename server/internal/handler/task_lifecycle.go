@@ -213,6 +213,10 @@ func (h *Handler) RerunIssue(w http.ResponseWriter, r *http.Request) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
 		return
 	}
+	if errors.Is(err, service.ErrCockpitWorkflowExecutionBlocked) {
+		writeError(w, http.StatusConflict, "meeting workflow conditions do not allow this agent run")
+		return
+	}
 	if errors.Is(err, service.ErrIssueInTriage) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonIssueInTriage)
 		return

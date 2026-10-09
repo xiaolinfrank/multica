@@ -3123,19 +3123,19 @@ func readRuntimeCLIVersion(metadata []byte) string {
 }
 
 type CreateIssueRequest struct {
-	Title         string   `json:"title"`
-	Description   *string  `json:"description"`
-	Status        string   `json:"status"`
-	Priority      string   `json:"priority"`
-	AssigneeType  *string  `json:"assignee_type"`
-	AssigneeID    *string  `json:"assignee_id"`
-	ParentIssueID *string  `json:"parent_issue_id"`
-	ProjectID     *string  `json:"project_id"`
+	Title         string  `json:"title"`
+	Description   *string `json:"description"`
+	Status        string  `json:"status"`
+	Priority      string  `json:"priority"`
+	AssigneeType  *string `json:"assignee_type"`
+	AssigneeID    *string `json:"assignee_id"`
+	ParentIssueID *string `json:"parent_issue_id"`
+	ProjectID     *string `json:"project_id"`
 	// ModuleID files the issue into one of the project's modules. When
 	// ProjectID is absent the module's project is adopted; a mismatching pair
 	// is rejected by IssueService.Create (ErrModuleNotInProject).
-	ModuleID      *string `json:"module_id"`
-	Stage         *int32  `json:"stage,omitempty"`
+	ModuleID      *string  `json:"module_id"`
+	Stage         *int32   `json:"stage,omitempty"`
 	StartDate     *string  `json:"start_date"`
 	DueDate       *string  `json:"due_date"`
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
@@ -4518,12 +4518,12 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.TaskService.CancelTasksForIssue(r.Context(), issue.ID)
-	// Fail any linked autopilot runs before delete (ON DELETE SET NULL clears issue_id).
-	_ = h.AutopilotService.FailAutopilotRunsByIssue(r.Context(), issue.ID)
-
 	deleteResult, err := h.deleteIssueAndCollectAttachmentURLs(r.Context(), issue, nil)
 	if err != nil {
+		if errors.Is(err, service.ErrCockpitWorkflowConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to delete issue")
 		return
 	}
@@ -4578,12 +4578,31 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 	qtx := h.Queries.WithTx(tx)
 
 	result := issueDeleteResult{}
+	cancelledByWorkspace := make(map[pgtype.UUID][]db.AgentTaskQueue)
+	// Lock and validate the complete batch before cancelling or deleting any member.
 	for _, issue := range issues {
 		if _, err := qtx.LockIssueForDelete(ctx, db.LockIssueForDeleteParams{
 			ID: issue.ID, WorkspaceID: issue.WorkspaceID,
 		}); err != nil {
 			return issueDeleteResult{}, fmt.Errorf("lock issue for delete: %w", err)
 		}
+		if err := cockpitWorkflowProtectsIssue(ctx, qtx, issue); err != nil {
+			return issueDeleteResult{}, err
+		}
+	}
+	for _, issue := range issues {
+		cancelled, err := h.TaskService.CancelIssueTasksInTx(ctx, qtx, issue.ID)
+		if err != nil {
+			return issueDeleteResult{}, fmt.Errorf("cancel issue tasks: %w", err)
+		}
+		cancelledByWorkspace[issue.WorkspaceID] = append(cancelledByWorkspace[issue.WorkspaceID], cancelled...)
+		// Keep quota accounting and autopilot failure in the same ownership
+		// transaction, before issue deletion clears the run's issue pointer.
+		if _, err := qtx.FailAutopilotRunsByIssue(ctx, issue.ID); err != nil {
+			return issueDeleteResult{}, fmt.Errorf("fail issue autopilot runs: %w", err)
+		}
+	}
+	for _, issue := range issues {
 		detached, err := qtx.DetachDirectChildIssues(ctx, db.DetachDirectChildIssuesParams{
 			WorkspaceID: issue.WorkspaceID, ParentIssueID: issue.ID, ExcludedIssueIds: excludedIssueIDs,
 		})
@@ -4648,6 +4667,9 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return issueDeleteResult{}, fmt.Errorf("commit issue delete: %w", err)
+	}
+	for workspaceID, tasks := range cancelledByWorkspace {
+		h.TaskService.FinalizeIssueTaskCancellations(ctx, uuidToString(workspaceID), tasks)
 	}
 	return result, nil
 }
@@ -5122,6 +5144,7 @@ type BatchDeleteIssuesRequest struct {
 }
 
 func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
+	r = h.withWakeupActor(r)
 	var req BatchDeleteIssuesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -5165,11 +5188,14 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 		seenIssueIDs[issueUUID] = struct{}{}
 		issues = append(issues, issue)
 		excludedIDs = append(excludedIDs, issue.ID)
-		h.TaskService.CancelTasksForIssue(r.Context(), issue.ID)
-		_ = h.AutopilotService.FailAutopilotRunsByIssue(r.Context(), issue.ID)
+
 	}
 	deleteResult, err := h.deleteIssuesAndCollectAttachmentURLs(r.Context(), issues, excludedIDs)
 	if err != nil {
+		if errors.Is(err, service.ErrCockpitWorkflowConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		slog.Warn("batch delete issues failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to delete issues")
 		return

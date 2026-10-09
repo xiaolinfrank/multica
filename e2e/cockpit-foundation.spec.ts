@@ -93,12 +93,14 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
 
     await test.step("save multiple meeting purposes and read them back after a reload", async () => {
       await page.goto(`${cockpit}?meeting=${meeting.id}`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("tab", { name: "Links & materials", exact: true }).click();
       await page.getByRole("button", { name: `Edit purposes for ${issue.identifier}` }).click();
       await page.getByRole("checkbox", { name: "Preparation", exact: true }).check();
       await page.getByRole("checkbox", { name: "Review", exact: true }).check();
       await page.getByRole("button", { name: "Save purposes", exact: true }).click();
       await expect(page.getByRole("button", { name: "Save purposes", exact: true })).toBeHidden();
       await page.reload({ waitUntil: "domcontentloaded" });
+      await page.getByRole("tab", { name: "Links & materials", exact: true }).click();
 
       const meetingPanel = page.getByRole("complementary").filter({
         has: page.getByRole("button", { name: `Edit purposes for ${issue.identifier}` }),
@@ -124,6 +126,7 @@ test("keeps cockpit bindings, meeting purposes and issue destinations connected"
       await page.screenshot({ path: testInfo.outputPath("issue-cockpit-context.png") });
       await meetingLink.click();
       await expect(page).toHaveURL(`${cockpit}?meeting=${meeting.id}`);
+      await page.getByRole("tab", { name: "Links & materials", exact: true }).click();
       await expect(page.getByRole("button", { name: `Edit purposes for ${issue.identifier}` })).toBeVisible();
 
       await page.goBack({ waitUntil: "domcontentloaded" });

@@ -2210,6 +2210,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/issues/{issueId}", h.DeleteCockpitMeetingIssue)
 					r.Put("/nodes", h.SetCockpitMeetingNodes)
 					r.Delete("/nodes/{nodeId}", h.DeleteCockpitMeetingNode)
+					r.Get("/workflow", h.GetCockpitMeetingWorkflow)
+					r.With(handler.RequireHumanActor).Post("/workflow", h.EnableCockpitMeetingWorkflow)
+					r.With(handler.RequireHumanActor).Patch("/workflow", h.UpdateCockpitMeetingReadiness)
+					r.With(handler.RequireHumanActor).Post("/workflow/release", h.ReleaseCockpitMeetingMinutes)
+					r.Post("/workflow/versions", h.SubmitCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/review", h.ReviewCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/publish", h.PublishCockpitMeetingMinutes)
 				})
 			})
 

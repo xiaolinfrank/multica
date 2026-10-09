@@ -5,7 +5,8 @@
 // the same reason — the register and the gantt are two views of one board, and
 // a reader should not have to learn a second layout to read a meeting.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type {
   CockpitDirectoryEntry,
   CockpitMeeting,
@@ -16,6 +17,7 @@ import type {
   MemberWithUser,
 } from "@multica/core/types";
 import {
+  cockpitMeetingWorkflowOptions,
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
@@ -28,7 +30,7 @@ import {
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
-import { Check, ExternalLink, FolderPlus, ListChecks, ScanSearch, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, FolderPlus, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
   CockpitField,
@@ -43,8 +45,15 @@ import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
 import { CockpitPathField } from "./cockpit-path-field";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
+import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
 
 export interface CockpitMeetingPanelProps {
+  wsId: string;
+  currentUserId: string;
+  defaultPlacement: { project_id: string | null; module_id: string | null; node_id: string | null };
+  defaultAssigneeType: string | null;
+  defaultAssigneeId: string | null;
   meeting: CockpitMeeting;
   nodes: CockpitNode[];
   /** The shipped row codes; derived from `nodes` when omitted. */
@@ -54,6 +63,7 @@ export interface CockpitMeetingPanelProps {
   meetings: CockpitMeeting[];
   /** The workspace's people, offered by name in the person fields. */
   members: MemberWithUser[];
+  membersLoaded: boolean;
   /** The meeting contact book — grouping and 职位 in the attendee picker. */
   directory: CockpitDirectoryEntry[];
   /** Files one contact into the book; resolves whether it landed. */
@@ -81,11 +91,13 @@ export interface CockpitMeetingPanelProps {
 }
 
 export function CockpitMeetingPanel({
+  wsId, currentUserId, defaultPlacement, defaultAssigneeType, defaultAssigneeId,
   meeting,
   nodes,
   nodeCodes,
   meetings,
   members,
+  membersLoaded,
   directory,
   onSaveDirectoryEntry,
   onDeleteDirectoryEntry,
@@ -106,6 +118,8 @@ export function CockpitMeetingPanel({
   readOnly,
 }: CockpitMeetingPanelProps) {
   const { t } = useT("cockpit");
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
   const unset = t(($) => $.common.unset);
   // The picker's menu quotes the same shipped row codes the gantt and this
   // panel's own linked list use — not the base tree's pre-merge numbering.
@@ -136,10 +150,25 @@ export function CockpitMeetingPanel({
     [directory, vocabulary.parties],
   );
   const linkedNodeIds = useMemo(() => new Set(nodeLinks.map((l) => l.node_id)), [nodeLinks]);
-  const hasTask = issueLinks.some((link) => link.role === "task");
+  const workflowQuery = useQuery(cockpitMeetingWorkflowOptions(wsId, meeting.id));
+  const workflowEnabled = workflowQuery.data?.enabled === true;
+  const workflowUnknown = workflowQuery.isPending || workflowQuery.isError || workflowQuery.data?.meeting_id !== meeting.id;
+  const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
+  const requiredRolesByIssue = useMemo(() => {
+    const required = new Map<string, string[]>();
+    const workflow = workflowQuery.data;
+    if (workflow?.enabled && workflow.meeting_id === meeting.id) {
+      if (workflow.minutes_issue?.id) required.set(workflow.minutes_issue.id, ["minutes"]);
+      for (const version of workflow.versions) {
+        const roles = required.get(version.review_issue.id) ?? [];
+        required.set(version.review_issue.id, [...new Set([...roles, "review"])]);
+      }
+    }
+    return required;
+  }, [workflowQuery.data, meeting.id]);
 
   return (
-    <aside className="cockpit-panel-enter flex w-96 max-w-full shrink-0 flex-col border-l border-border bg-card max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl">
+    <aside className="cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0">
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <EditableText
@@ -162,6 +191,7 @@ export function CockpitMeetingPanel({
           </div>
         </div>
         <button
+          ref={closeButton}
           type="button"
           onClick={onClose}
           aria-label={t(($) => $.panel.close)}
@@ -195,7 +225,115 @@ export function CockpitMeetingPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <Tabs defaultValue="workflow" className="min-h-0 flex-1 gap-0">
+        <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
+          <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
+          <TabsTrigger value="resources">{t(($) => $.workflow.tab_resources)}</TabsTrigger>
+          <TabsTrigger value="details">{t(($) => $.workflow.tab_details)}</TabsTrigger>
+        </TabsList>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <TabsContent value="workflow" keepMounted>
+            <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
+              members={members} membersLoaded={membersLoaded} issueLinks={issueLinks} workflow={workflowQuery.data}
+              loading={workflowQuery.isPending} loadError={workflowQuery.isError}
+              onReload={() => void workflowQuery.refetch()} defaultPlacement={defaultPlacement}
+              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
+          </TabsContent>
+          <TabsContent value="resources" keepMounted>
+        <Separator className="my-3" />
+
+        {/* The tasks the meeting is carried out through. The one the platform
+            opened with the meeting leads the list and reads no differently —
+            it is an ordinary issue, and unlinking it does not delete it. */}
+        <CockpitField label={t(($) => $.meeting.issues)}>
+          {issueLinks.length === 0 ? (
+            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
+          ) : null}
+          <CockpitMeetingIssueLinks
+            links={issueLinks}
+            onLink={onLinkIssue}
+            onUnlink={onUnlinkIssue}
+            onSaveRoles={onSaveIssueRoles}
+            disabled={readOnly || workflowUnknown}
+            requiredRolesByIssue={requiredRolesByIssue}
+          />
+
+        </CockpitField>
+
+        <CockpitField label={t(($) => $.meeting.nodes)} className="mt-3">
+          {nodeLinks.length === 0 ? (
+            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_nodes)}</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {nodeLinks.map((link) => {
+                const label = nodeLabels.get(link.node_id) ?? link.node_id;
+                return (
+                  <li key={link.node_id} className="group/node flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onOpenNode(link.node_id)}
+                      aria-label={t(($) => $.meeting.open_node, { label })}
+                      className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-caption hover:bg-accent"
+                    >
+                      {label}
+                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleNode(link.node_id)}
+                        aria-label={t(($) => $.meeting.unlink_node, { label })}
+                        className="rounded-full p-0.5 text-muted-foreground opacity-0 group-hover/node:opacity-100 hover:text-foreground focus-visible:opacity-100"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {!readOnly && (
+            <CockpitNodePicker
+              nodes={nodes}
+              selectedIds={linkedNodeIds}
+              onToggle={onToggleNode}
+              label={t(($) => $.meeting.link_node)}
+              codes={nodePickerCodes}
+            />
+          )}
+        </CockpitField>
+
+        <CockpitField label={t(($) => $.meeting.folder)} className="mt-3">
+          {/* Provisioning names the folder this board would have used; typing
+              binds one that already exists. Both sit on the empty row, because
+              which of the two applies depends on where the meeting's material
+              was put, and only the reader knows that. */}
+          <CockpitPathField
+            value={meeting.nas_dir}
+            label={t(($) => $.meeting.folder)}
+            empty={t(($) => $.meeting.no_folder)}
+            readOnly={readOnly}
+            onCommit={(nas_dir) => onPatch({ nas_dir })}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
+              disabled={provisioning}
+              aria-busy={provisioning}
+              onClick={() => onProvision({ dir: true })}
+            >
+              <FolderPlus className="size-3" />
+              {t(($) => $.meeting.provision_dir)}
+            </Button>
+          </CockpitPathField>
+        </CockpitField>
+
+        <Separator className="my-3" />
+
+
+          </TabsContent>
+          <TabsContent value="details" keepMounted>
         <div className="grid grid-cols-2 gap-3">
           <CockpitField label={t(($) => $.meeting.date)}>
             <EditableDate
@@ -362,108 +500,10 @@ export function CockpitMeetingPanel({
           </CockpitField>
         </div>
 
-        <Separator className="my-3" />
 
-        {/* The tasks the meeting is carried out through. The one the platform
-            opened with the meeting leads the list and reads no differently —
-            it is an ordinary issue, and unlinking it does not delete it. */}
-        <CockpitField label={t(($) => $.meeting.issues)}>
-          {issueLinks.length === 0 ? (
-            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
-          ) : null}
-          <CockpitMeetingIssueLinks
-            links={issueLinks}
-            onLink={onLinkIssue}
-            onUnlink={onUnlinkIssue}
-            onSaveRoles={onSaveIssueRoles}
-            disabled={readOnly}
-          />
-          {!readOnly && !hasTask && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-1 h-6 w-fit gap-1 px-1.5 text-caption"
-              disabled={provisioning}
-              aria-busy={provisioning}
-              onClick={() => onProvision({ task: true })}
-            >
-              <ListChecks className="size-3" />
-              {t(($) => $.meeting.provision_task)}
-            </Button>
-          )}
-        </CockpitField>
-
-        <CockpitField label={t(($) => $.meeting.nodes)} className="mt-3">
-          {nodeLinks.length === 0 ? (
-            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_nodes)}</p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {nodeLinks.map((link) => {
-                const label = nodeLabels.get(link.node_id) ?? link.node_id;
-                return (
-                  <li key={link.node_id} className="group/node flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onOpenNode(link.node_id)}
-                      aria-label={t(($) => $.meeting.open_node, { label })}
-                      className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-caption hover:bg-accent"
-                    >
-                      {label}
-                    </button>
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        onClick={() => onToggleNode(link.node_id)}
-                        aria-label={t(($) => $.meeting.unlink_node, { label })}
-                        className="rounded-full p-0.5 text-muted-foreground opacity-0 group-hover/node:opacity-100 hover:text-foreground focus-visible:opacity-100"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!readOnly && (
-            <CockpitNodePicker
-              nodes={nodes}
-              selectedIds={linkedNodeIds}
-              onToggle={onToggleNode}
-              label={t(($) => $.meeting.link_node)}
-              codes={nodePickerCodes}
-            />
-          )}
-        </CockpitField>
-
-        <CockpitField label={t(($) => $.meeting.folder)} className="mt-3">
-          {/* Provisioning names the folder this board would have used; typing
-              binds one that already exists. Both sit on the empty row, because
-              which of the two applies depends on where the meeting's material
-              was put, and only the reader knows that. */}
-          <CockpitPathField
-            value={meeting.nas_dir}
-            label={t(($) => $.meeting.folder)}
-            empty={t(($) => $.meeting.no_folder)}
-            readOnly={readOnly}
-            onCommit={(nas_dir) => onPatch({ nas_dir })}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
-              disabled={provisioning}
-              aria-busy={provisioning}
-              onClick={() => onProvision({ dir: true })}
-            >
-              <FolderPlus className="size-3" />
-              {t(($) => $.meeting.provision_dir)}
-            </Button>
-          </CockpitPathField>
-        </CockpitField>
-
-        <Separator className="my-3" />
-
+            <section className="mt-4 space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
+              <h3 className="text-title-sm font-medium">{t(($) => $.workflow.legacy_records)}</h3>
+              <p className="text-caption text-muted-foreground">{t(($) => $.workflow.legacy_records_hint)}</p>
         <CockpitField label={t(($) => $.meeting.agenda)}>
           <EditableTextArea
             value={meeting.note}
@@ -480,7 +520,7 @@ export function CockpitMeetingPanel({
             onCommit={(minutes) => onPatch({ minutes })}
             label={t(($) => $.meeting.minutes)}
             placeholder={unset}
-            disabled={readOnly}
+            disabled={legacyReadOnly}
             rows={4}
           />
         </CockpitField>
@@ -490,7 +530,7 @@ export function CockpitMeetingPanel({
             onCommit={(decisions) => onPatch({ decisions })}
             label={t(($) => $.meeting.decisions)}
             placeholder={unset}
-            disabled={readOnly}
+            disabled={legacyReadOnly}
             rows={3}
           />
         </CockpitField>
@@ -500,18 +540,24 @@ export function CockpitMeetingPanel({
             onCommit={(actions) => onPatch({ actions })}
             label={t(($) => $.meeting.actions)}
             placeholder={unset}
-            disabled={readOnly}
+            disabled={legacyReadOnly}
             rows={3}
           />
         </CockpitField>
-      </div>
+            </section>
+          </TabsContent>
+        </div>
+      </Tabs>
 
       {!readOnly && (
-        <footer className="border-t border-border p-3">
+        <footer className="space-y-2 border-t border-border p-3">
+          {workflowEnabled && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.delete_protected)}</p>}
+          {workflowUnknown && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.delete_unavailable)}</p>}
           <Button
             variant="ghost"
             size="sm"
             className="h-7 gap-1 px-2 text-destructive hover:text-destructive"
+            disabled={workflowEnabled || workflowUnknown}
             onClick={onDelete}
           >
             <Trash2 className="size-3.5" />

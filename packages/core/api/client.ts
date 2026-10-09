@@ -5,6 +5,7 @@ import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSche
 import type { InboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { configStore } from "../config";
+import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import type {
   FleetStatus,
   AgentWorkspacesResponse,
@@ -36,6 +37,11 @@ import type {
   CockpitMeetingNodeLink,
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
+  CockpitMeetingWorkflow,
+  CockpitMeetingWorkflowSetup,
+  CockpitMeetingReadinessPatch,
+  CockpitMinutesSubmission,
+  CockpitMinutesReview,
   CockpitMeetingScan,
   CockpitDirectory,
   CockpitDirectoryEntry,
@@ -326,6 +332,9 @@ import {
   CockpitMeetingIssueRolesResponseSchema,
   CockpitMeetingNodesResponseSchema,
   CockpitMeetingProvisionResultSchema,
+  CockpitMeetingWorkflowSchema,
+  CockpitMeetingWorkflowWriteSchema,
+  EMPTY_COCKPIT_MEETING_WORKFLOW,
   CockpitDirectorySchema,
   CockpitBoardSchema,
   CockpitIssueLinksResponseSchema,
@@ -2045,6 +2054,89 @@ export class ApiClient {
     return parseWithFallback(raw, CockpitMeetingIssueRolesResponseSchema, { meeting_id: meetingId, links: [] }, {
       endpoint: "PUT /api/cockpit/meetings/:id/issues/:issueId/roles",
     });
+  }
+
+  async getCockpitMeetingWorkflow(meetingId: string): Promise<CockpitMeetingWorkflow> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`);
+    return parseWithFallback(raw, CockpitMeetingWorkflowSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
+      endpoint: "GET /api/cockpit/meetings/:id/workflow",
+    });
+  }
+
+  private async writeCockpitMeetingWorkflow(
+    meetingId: string,
+    suffix: string,
+    method: "POST" | "PATCH",
+    body: object,
+  ): Promise<CockpitMeetingWorkflow> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}`, {
+      method, body: JSON.stringify(body),
+    });
+    const result = parseWithFallback<CockpitMeetingWorkflow>(raw, CockpitMeetingWorkflowWriteSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
+      endpoint: `${method} /api/cockpit/meetings/:id/workflow${suffix}`,
+    });
+    if (!result.enabled || result.meeting_id !== meetingId
+      || (result.current_version_id && !result.versions.some((version) => version.id === result.current_version_id))
+      || (result.published_version_id && !result.versions.some((version) => version.id === result.published_version_id && version.published_at))) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async enableCockpitMeetingWorkflow(meetingId: string, body: CockpitMeetingWorkflowSetup): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, "", "POST", body);
+    if (result.reviewer_id !== body.reviewer_id || (body.existing_issue_id
+      && result.minutes_issue?.id !== body.existing_issue_id && result.minutes_issue?.identifier !== body.existing_issue_id)) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async updateCockpitMeetingReadiness(meetingId: string, body: CockpitMeetingReadinessPatch): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, "", "PATCH", body);
+    if (result.revision < body.expected_revision || (body.ended === true && !result.ended_at)
+      || (body.materials_ready !== undefined && result.materials_ready !== body.materials_ready)) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async releaseCockpitMeetingWorkflow(meetingId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, "/release", "POST", { expected_revision: expectedRevision });
+    if (result.revision < expectedRevision || !result.ended_at || !result.materials_ready || !result.released_at) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async submitCockpitMinutesVersion(meetingId: string, body: CockpitMinutesSubmission): Promise<CockpitMeetingWorkflow> {
+    const content = body.content.trim();
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, "/versions", "POST", { ...body, content });
+    const version = result.versions.find((entry) => entry.submission_key === body.submission_key);
+    if (!version || version.content !== content || version.source_issue_id !== result.minutes_issue?.id) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async reviewCockpitMinutesVersion(meetingId: string, versionId: string, body: CockpitMinutesReview): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/versions/${encodeURIComponent(versionId)}/review`, "POST", body);
+    const version = result.versions.find((entry) => entry.id === versionId);
+    if (result.revision < body.expected_revision || !version || version.decision !== body.decision || !version.reviewed_at) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async publishCockpitMinutesVersion(meetingId: string, versionId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/versions/${encodeURIComponent(versionId)}/publish`, "POST", { expected_revision: expectedRevision });
+    const version = result.versions.find((entry) => entry.id === versionId);
+    // A retry may acknowledge an already published version after a new review round began.
+    if (result.revision < expectedRevision || result.published_version_id !== versionId
+      || version?.decision !== "approved" || !version.published_at) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
   }
 
   async deleteCockpitMeetingIssue(meetingId: string, issueId: string): Promise<void> {

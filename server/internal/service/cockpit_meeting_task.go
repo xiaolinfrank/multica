@@ -18,6 +18,10 @@ type CockpitMeetingTask struct {
 }
 
 func beginCockpitMeetingTask(ctx context.Context, q *db.Queries, workspaceID pgtype.UUID, task CockpitMeetingTask) (*db.Issue, error) {
+	// Match workspace teardown and workflow activation before taking board locks.
+	if _, err := q.LockWorkspaceForChatSessionCreate(ctx, workspaceID); err != nil {
+		return nil, fmt.Errorf("lock workspace for provisioning: %w", err)
+	}
 	// Board replacement and relation edits acquire locks in this same order.
 	if _, err := q.LockCockpitForWorkspaceChanges(ctx, workspaceID); err != nil {
 		return nil, fmt.Errorf("lock cockpit for provisioning: %w", err)
@@ -27,6 +31,11 @@ func beginCockpitMeetingTask(ctx context.Context, q *db.Queries, workspaceID pgt
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lock meeting for provisioning: %w", err)
+	}
+	if _, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: workspaceID, MeetingID: meeting.ID}); err == nil {
+		return nil, fmt.Errorf("%w: this meeting uses a work package; prepare its directory without creating a legacy task", ErrCockpitWorkflowConflict)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
 	}
 	if task.NodeID.Valid {
 		node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: task.NodeID, WorkspaceID: workspaceID})

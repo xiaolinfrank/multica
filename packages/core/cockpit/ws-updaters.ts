@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
+import { issueKeys } from "../issues/queries";
 import type {
   CockpitBoard,
   CockpitChangedPayload,
@@ -106,6 +107,18 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+
+  if (scope === "meeting_workflow") {
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    if (typeof meetingId === "string" && meetingId) {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId) });
+    } else {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflows(wsId) });
+    }
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    return;
+  }
 
   // The graph reads meetings and their issue links straight off the board's
   // tables: any meeting-scope movement (row, issue links) re-reads it. Node

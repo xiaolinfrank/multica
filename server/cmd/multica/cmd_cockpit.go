@@ -231,7 +231,7 @@ func init() {
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd)
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand())
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 

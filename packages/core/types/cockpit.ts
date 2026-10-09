@@ -224,6 +224,8 @@ export interface CockpitMeetingNodeLink {
 
 export interface CockpitBoard {
   cockpit: Cockpit;
+  /** Aggregate protection signal; older backends omit it. */
+  has_meeting_workflows?: boolean;
   nodes: CockpitNode[];
   payments: CockpitPayment[];
   issue_links: CockpitIssueLink[];
@@ -247,6 +249,7 @@ export type CockpitEventScope =
   | "meeting"
   | "meeting_issues"
   | "meeting_nodes"
+  | "meeting_workflow"
   | "directory"
   | "board"
   | "changes"
@@ -381,6 +384,85 @@ export interface CockpitMeetingProvisionResult {
   dir: string;
   dir_created: boolean;
   dir_error: string;
+}
+
+export interface CockpitWorkflowIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  assignee_type: string;
+  assignee_id: string | null;
+}
+
+export interface CockpitMinutesVersion {
+  id: string;
+  version_number: number;
+  submission_key: string;
+  content: string;
+  content_hash: string;
+  source_issue_id: string;
+  review_issue: CockpitWorkflowIssue;
+  reviewer_id: string;
+  /** Preserve unknown decisions; only explicit pending/approved states grant actions. */
+  decision: string;
+  feedback: string;
+  submitted_by_type: string;
+  submitted_by_id: string;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  published_by: string | null;
+  published_at: string | null;
+}
+
+export interface CockpitMeetingWorkflow {
+  enabled: boolean;
+  meeting_id: string;
+  revision: number;
+  ended_at: string | null;
+  materials_ready: boolean;
+  released_at: string | null;
+  release_task_id: string | null;
+  reviewer_id: string | null;
+  minutes_issue: CockpitWorkflowIssue | null;
+  current_version_id: string | null;
+  published_version_id: string | null;
+  versions: CockpitMinutesVersion[];
+  can_manage: boolean;
+  can_submit: boolean;
+  can_review: boolean;
+  can_publish: boolean;
+}
+
+export interface CockpitMeetingWorkflowSetup {
+  reviewer_id: string;
+  existing_issue_id?: string;
+  project_id?: string;
+  module_id?: string;
+  node_id?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+}
+
+export interface CockpitMeetingReadinessPatch {
+  expected_revision: number;
+  ended?: true;
+  materials_ready?: boolean;
+}
+
+export interface CockpitMinutesSubmission {
+  expected_revision: number;
+  submission_key: string;
+  content: string;
+}
+
+export type CockpitMinutesDecision = "approved" | "changes_requested" | "rejected";
+
+export interface CockpitMinutesReview {
+  expected_revision: number;
+  decision: CockpitMinutesDecision;
+  feedback: string;
 }
 
 /** Where a new meeting would be filed, for the form to show before it is. */

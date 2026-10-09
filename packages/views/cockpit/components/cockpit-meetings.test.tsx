@@ -1,3 +1,5 @@
+import { workflowFixture } from "./workflow-test-fixtures";
+import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,10 +19,12 @@ import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
 // packages/core/cockpit/meetings.test.ts (node suite); this file does not
 // re-test them.
 
+vi.mock("../../common/actor-avatar", () => ({ ActorAvatar: () => <span /> }));
+
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 
 vi.mock("@multica/core/paths", () => ({
-  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }),
+  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}` }),
 }));
 
 vi.mock("../../navigation", () => ({
@@ -38,7 +42,10 @@ vi.mock("../../navigation", () => ({
 
 vi.mock("@multica/core/api", () => ({
   api: {
+    getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
+    getCockpitMeetingWorkflow: vi.fn(),
+    enableCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -209,6 +216,7 @@ async function openRegister() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+  vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
   vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
   vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
@@ -216,12 +224,17 @@ beforeEach(() => {
     { user_id: "user-1", role: "owner", name: "Yang Tao", email: "yangtao@example.com", avatar_url: null },
     { user_id: "user-2", role: "member", name: "Wang Gong", email: "wanggong@example.com", avatar_url: null },
   ] as unknown as Awaited<ReturnType<typeof api.listMembers>>);
-  vi.mocked(api.listProjects).mockResolvedValue([
+  vi.mocked(api.listProjects).mockResolvedValue({ projects: [
     { id: "project-06", title: "06 Programme management" },
-  ] as unknown as Awaited<ReturnType<typeof api.listProjects>>);
-  vi.mocked(api.listModules).mockResolvedValue([
+  ], total: 1 } as unknown as Awaited<ReturnType<typeof api.listProjects>>);
+  vi.mocked(api.listModules).mockResolvedValue({ modules: [
     { id: "module-0606", project_id: "project-06", title: "06.06 Joint working and meetings" },
-  ] as unknown as Awaited<ReturnType<typeof api.listModules>>);
+  ], total: 1 } as unknown as Awaited<ReturnType<typeof api.listModules>>);
+  vi.mocked(api.enableCockpitMeetingWorkflow).mockImplementation(async (meetingId, body) => {
+    const result = workflowFixture({ meeting_id: meetingId, reviewer_id: body.reviewer_id });
+    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (id) => id === meetingId ? result : { ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: id });
+    return result;
+  });
   vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({
     project_id: "project-06",
     project_title: "06 Programme management",
@@ -289,7 +302,9 @@ describe("the meeting register", () => {
   it("names the meeting, not the button, when it asks before deleting", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete meeting Working group weekly" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Delete meeting Working group weekly" }));
 
     const dialog = await screen.findByRole("alertdialog");
     expect(
@@ -300,6 +315,7 @@ describe("the meeting register", () => {
   it("opens one meeting in a panel, with its task, its work item and its folder", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
 
     // The meeting's own task reads as an ordinary issue.
     expect(await screen.findByText("BIO-42")).toBeInTheDocument();
@@ -327,6 +343,7 @@ describe("the meeting register", () => {
     );
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "02 Platform" }));
     expect(await screen.findByRole("menuitem", { name: /02\.04 Ship/ })).toBeInTheDocument();
@@ -336,6 +353,7 @@ describe("the meeting register", () => {
   it("writes a field edit from the panel as a patch of just that field", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     vi.mocked(api.updateCockpitMeeting).mockResolvedValue(
       meeting({ id: "meet-1", location: "Room 2" }),
@@ -353,6 +371,7 @@ describe("the meeting register", () => {
   it("rebinds the folder to one that already exists, and refuses a relative path", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit path" }));
     const input = screen.getByRole("textbox", { name: "Material folder" });
@@ -415,7 +434,7 @@ describe("the meeting register", () => {
     // The destination is named, not implied: the project, the module, the
     // archive sub-item and the absolute path the folder will be created at —
     // one level below the module, where the programme keeps its material.
-    expect(within(dialog).getByText(/06 Programme management/)).toBeInTheDocument();
+    expect(within(dialog).getByText("06 Programme management", { exact: true })).toBeInTheDocument();
     await waitFor(() =>
       expect(
         within(dialog).getByText(new RegExp(`/Volumes/share/06\\.06/06\\.06\\.03/${code}`)),
@@ -425,7 +444,7 @@ describe("the meeting register", () => {
     expect(within(dialog).getByText(/› 06\.06\.03\./)).toBeInTheDocument();
   });
 
-  it("files the meeting first and provisions it second, reporting what each did", async () => {
+  it("creates the meeting, enables its work package, and provisions only the directory", async () => {
     const created = meeting({ id: "meet-new", code: "20260921-02", title: "New one" });
     vi.mocked(api.createCockpitMeeting).mockResolvedValue(created);
     vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
@@ -442,9 +461,11 @@ describe("the meeting register", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New meeting" }));
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(api.getCockpitMeetingDestination).toHaveBeenCalled());
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeEnabled());
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
 
     await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
+    await waitFor(() => expect(api.enableCockpitMeetingWorkflow).toHaveBeenCalledWith("meet-new", expect.objectContaining({ reviewer_id: "user-1" })));
     // The row is written on its own, then the side effects are asked for —
     // an unmounted share must never cost the record of a meeting.
     expect(vi.mocked(api.createCockpitMeeting).mock.calls[0]![0]).toMatchObject({
@@ -453,9 +474,33 @@ describe("the meeting register", () => {
     await waitFor(() =>
       expect(api.provisionCockpitMeeting).toHaveBeenCalledWith(
         "meet-new",
-        expect.objectContaining({ project_id: "project-06", module_id: "module-0606" }),
+        expect.objectContaining({ project_id: "project-06", module_id: "module-0606", create_task: false }),
       ),
     );
+    expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.enableCockpitMeetingWorkflow).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(api.enableCockpitMeetingWorkflow).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
+  });
+
+  it("retries failed workflow setup on the same saved meeting without falling back to immediate tasks", async () => {
+    const created = meeting({ id: "meet-retry", code: `${codeDay()}-02`, title: "Retry setup" });
+    vi.mocked(api.createCockpitMeeting).mockResolvedValue(created);
+    vi.mocked(api.enableCockpitMeetingWorkflow).mockRejectedValueOnce(new Error("Reviewer temporarily unavailable"));
+    vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
+      meeting: { ...created, nas_dir: "/Volumes/share/retry" }, issues: [], task: null, task_error: "",
+      dir: "/Volumes/share/retry", dir_created: true, dir_error: "",
+    });
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "New meeting" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Reviewer temporarily unavailable");
+    expect(api.provisionCockpitMeeting).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry remaining setup" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.createCockpitMeeting).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.enableCockpitMeetingWorkflow).mock.calls.map(([meetingId]) => meetingId)).toEqual(["meet-retry", "meet-retry"]);
+    expect(api.provisionCockpitMeeting).toHaveBeenCalledWith("meet-retry", expect.objectContaining({ create_task: false }));
   });
 
   it("holds new contacts until the meeting actually exists", async () => {
@@ -506,6 +551,7 @@ describe("the meeting register", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add “New Person”" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Position" }), { key: "Escape" });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Attendees" }), { key: "Enter" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeEnabled());
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
 
     await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
@@ -596,6 +642,7 @@ describe("the people at a meeting", () => {
   it("offers workspace members and accepts anyone else", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Attendees" }));
     const box = screen.getByRole("textbox", { name: "Attendees" });
@@ -634,6 +681,7 @@ describe("the people at a meeting", () => {
     });
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     // The auto-save notice rides under the attendee field.
     expect(
@@ -700,6 +748,7 @@ describe("the people at a meeting", () => {
     });
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
     fireEvent.click(screen.getByRole("button", { name: "Attendees" }));
 
     // Scoped to the meeting's units, both contacts show; only the hand-filed
@@ -724,6 +773,7 @@ describe("the people at a meeting", () => {
   it("starts the meeting type from the programme's own words", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Type" }));
     // An empty board still opens on a vocabulary rather than on a blank box.

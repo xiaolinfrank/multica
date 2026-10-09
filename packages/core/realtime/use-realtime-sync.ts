@@ -13,7 +13,7 @@ import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
-import { cockpitKeys } from "../cockpit/queries";
+import { cockpitKeys, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -1104,6 +1104,7 @@ export function useRealtimeSync(
       if (!issue?.id) return;
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateCockpitWorkflowsForIssue(qc, wsId, issue.id);
         onIssueUpdated(qc, wsId, issue, {
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,

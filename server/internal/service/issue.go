@@ -82,12 +82,13 @@ type IssueCreateParams struct {
 	ModuleID pgtype.UUID
 	// MeetingTask identifies an atomic cockpit provisioning request. Its
 	// meeting is locked before duplicate detection and linked before commit.
-	MeetingTask   *CockpitMeetingTask
-	StartDate     pgtype.Date
-	DueDate       pgtype.Date
-	OriginType    pgtype.Text
-	OriginID      pgtype.UUID
-	AttachmentIDs []pgtype.UUID
+	MeetingTask     *CockpitMeetingTask
+	CockpitWorkflow *CockpitWorkflowIssue
+	StartDate       pgtype.Date
+	DueDate         pgtype.Date
+	OriginType      pgtype.Text
+	OriginID        pgtype.UUID
+	AttachmentIDs   []pgtype.UUID
 	// LabelIDs are the issue-scoped labels to attach to the new issue. They
 	// are validated and written inside the create transaction (see Create),
 	// so the issue is never committed with a partial or wrong label set. An
@@ -268,6 +269,15 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if p.CockpitWorkflow != nil {
+		existing, err := prepareCockpitWorkflowIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 	if p.MeetingTask != nil {
 		existing, err := beginCockpitMeetingTask(ctx, qtx, p.WorkspaceID, *p.MeetingTask)
 		if err != nil {
@@ -577,6 +587,11 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
+	if p.CockpitWorkflow != nil {
+		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
 	if p.MeetingTask != nil {
 		if err := linkCockpitMeetingTask(ctx, qtx, issue, *p.MeetingTask); err != nil {
 			return IssueCreateResult{}, err

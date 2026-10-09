@@ -16,9 +16,10 @@ multica cockpit node get L3-01-08 --output json
 multica cockpit node update L3-01-08 --progress 60 --status 进行中
 ```
 
-The cockpit is one shared board per workspace. Everything the browser UI can
-change, these commands change — and every write is broadcast, so a person with
-the board open sees your edit land without reloading.
+The cockpit is one shared board per workspace. Writes are broadcast, so a person
+with the board open sees updates without reloading. Meeting work packages have
+separate human-only control and review commands; an agent's task credential may
+submit minutes for its own issue but cannot approve or publish them.
 
 ## Core model
 
@@ -38,10 +39,10 @@ A board is a tree of **nodes** plus four things hanging off it.
 uses (`L1-02`, `L3-01-08`) as well as a UUID. Prefer the code — it is what the
 issue text, the meeting note and the person asking will all say.
 
-**Status and category values are free text.** The board is a planning surface,
-not a workflow engine: `进行中`, `未开始`, `受阻`, `已完成` are whatever the
-programme already uses. Read the board first and match what is there rather
-than introducing a new vocabulary.
+**Node status and category values are free text.** `进行中`, `未开始`, `受阻`,
+`已完成` are whatever the programme already uses. Read the board first and match
+what is there. Meeting-workflow decisions use the fixed API vocabulary in the
+reference; a planning label or ordinary Issue status never grants approval.
 
 **Budget amounts are in the board's own unit** (万元 for a board authored that
 way). Never convert; write the number the plan writes.
@@ -104,7 +105,23 @@ multica cockpit meeting add --title "20260908-01 工作组周例会" --code 2026
 
 Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
 milestone with an `actual_date` reads as done whatever its status label says;
-a meeting's task, folder and links are HTTP-only — see `references/cockpit.md`.
+a meeting's folder and links use the HTTP API — see `references/cockpit.md`.
+
+## Meeting minutes workflow
+
+```bash
+multica cockpit meeting workflow show <meeting-id>
+multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md
+```
+
+Read the meeting's current source directory from the board and its work package
+before drafting. Submit evidence-grounded text through the minutes issue's task
+credential; keep the submission UUID and file for a retry. The server creates a
+fixed version and a human Review Issue. Missing source material is a blocker to
+report, not a reason to invent meeting outcomes. Completing or reassigning the
+Review Issue does not approve anything. Enable, readiness, release, formal review
+and publication require the authorized human. The full CLI/API contract,
+permissions, retry rules and current limitations live in `references/cockpit.md`.
 
 ## Versions
 

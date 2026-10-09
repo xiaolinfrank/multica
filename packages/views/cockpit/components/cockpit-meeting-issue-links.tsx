@@ -52,10 +52,11 @@ export function CockpitMeetingRoleLabels({ link }: {
   );
 }
 
-function MeetingIssueRolePicker({ link, onSave, disabled }: {
+function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: {
   link: CockpitMeetingIssueLink;
   onSave: (issueId: string, roles: string[]) => Promise<unknown>;
   disabled?: boolean;
+  requiredRoles?: readonly string[];
 }) {
   const { t } = useT("cockpit");
   const labels = useRoleLabels();
@@ -85,7 +86,7 @@ function MeetingIssueRolePicker({ link, onSave, disabled }: {
     <Popover open={open} onOpenChange={(next) => {
       if (saving) return;
       if (next) {
-        setDraft([...new Set(link.roles ?? [])]);
+        setDraft([...new Set([...(link.roles ?? []), ...requiredRoles])]);
         setError("");
       }
       setOpen(next);
@@ -101,7 +102,8 @@ function MeetingIssueRolePicker({ link, onSave, disabled }: {
           <legend className="mb-2 text-label font-medium">{t(($) => $.meeting_roles.title)}</legend>
           {COCKPIT_MEETING_ISSUE_ROLES.map((role) => (
             <label key={role} className="flex items-center gap-2 text-body">
-              <Checkbox checked={draft.includes(role)} onCheckedChange={(checked) => {
+              <Checkbox checked={draft.includes(role)} disabled={requiredRoles.includes(role)} onCheckedChange={(checked) => {
+                if (requiredRoles.includes(role)) return;
                 setDraft((current) => checked === true
                   ? [...current.filter((value) => value !== role), role]
                   : current.filter((value) => value !== role));
@@ -123,12 +125,13 @@ function MeetingIssueRolePicker({ link, onSave, disabled }: {
   );
 }
 
-export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles, disabled }: {
+export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles, disabled, requiredRolesByIssue }: {
   links: CockpitMeetingIssueLink[];
   onLink: (issueId: string) => void;
   onUnlink: (issueId: string) => void;
   onSaveRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
   disabled?: boolean;
+  requiredRolesByIssue?: ReadonlyMap<string, readonly string[]>;
 }) {
   const paths = useWorkspacePaths();
   const { t } = useT("cockpit");
@@ -143,7 +146,7 @@ export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles,
                 <StatusIcon status={link.issue_status} className="mt-0.5 size-3.5 shrink-0" />
                 <span className="min-w-0 break-words"><span className="mr-1.5 font-mono text-muted-foreground">{link.issue_identifier || link.issue_id}</span>{" "}{link.issue_title}</span>
               </AppLink>
-              {!disabled && (
+              {!disabled && !requiredRolesByIssue?.has(link.issue_id) && (
                 <Button variant="ghost" size="icon-xs" onClick={() => onUnlink(link.issue_id)}
                   aria-label={t(($) => $.issues.unlink_issue, { identifier: link.issue_identifier || link.issue_id })}>
                   <X className="size-3" />
@@ -151,9 +154,10 @@ export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles,
               )}
             </div>
             <div className="flex items-start justify-between gap-1">
-              <CockpitMeetingRoleLabels link={link} />
-              {!disabled && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} />}
+              <CockpitMeetingRoleLabels link={{ ...link, roles: [...new Set([...(link.roles ?? []), ...(requiredRolesByIssue?.get(link.issue_id) ?? [])])] }} />
+              {!disabled && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} />}
             </div>
+            {requiredRolesByIssue?.has(link.issue_id) && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
           </li>
         ))}
       </ul>

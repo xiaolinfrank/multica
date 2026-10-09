@@ -240,16 +240,18 @@ function SnapshotRunRow({
  * re-checks regardless. Stable bindings separately protect board identity,
  * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore, hasStableBindings = false }: {
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false }: {
   wsId: string;
   canRestore: boolean;
   hasStableBindings?: boolean;
+  hasMeetingWorkflows?: boolean;
 }) {
   const { t } = useT("cockpit");
   const { data: snapshots, isLoading } = useQuery(cockpitSnapshotsOptions(wsId));
   const create = useCreateCockpitSnapshot(wsId);
   const [open, setOpen] = useState(false);
   const restoreBlockedReasonId = useId();
+  const restoreBlocked = hasStableBindings || hasMeetingWorkflows;
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -286,9 +288,9 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false }:
             {t(($) => $.versions.save_current)}
           </Button>
         </div>
-        {hasStableBindings && (
+        {restoreBlocked && (
           <p id={restoreBlockedReasonId} className="border-b px-3 py-2 text-caption text-muted-foreground">
-            {t(($) => $.versions.restore_protected)}
+            {hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}
           </p>
         )}
         {!canRestore && (
@@ -314,7 +316,7 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false }:
                     wsId={wsId}
                     snapshot={entry.snapshot}
                     canRestore={canRestore}
-                    restoreBlocked={hasStableBindings}
+                    restoreBlocked={restoreBlocked}
                     restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
@@ -325,7 +327,7 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false }:
                     wsId={wsId}
                     snapshots={entry.run.snapshots}
                     canRestore={canRestore}
-                    restoreBlocked={hasStableBindings}
+                    restoreBlocked={restoreBlocked}
                     restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
