@@ -7,6 +7,7 @@ import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { configStore } from "../config";
 import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import { acknowledgedCockpitReviewerHandoff } from "../cockpit/reviewer-handoff";
+import { acknowledgedCockpitNasExport } from "../cockpit/nas-export";
 import type {
   FleetStatus,
   AgentWorkspacesResponse,
@@ -39,6 +40,8 @@ import type {
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
   CockpitMeetingWorkflow,
+  CockpitNasDestination,
+  CockpitNasExport,
   CockpitReviewerHandoffCommand,
   CockpitMeetingWorkflowSetup,
   CockpitMeetingReadinessPatch,
@@ -336,6 +339,7 @@ import {
   CockpitMeetingProvisionResultSchema,
   CockpitMeetingWorkflowSchema,
   CockpitMeetingWorkflowWriteSchema,
+  CockpitMeetingNasWriteSchema,
   EMPTY_COCKPIT_MEETING_WORKFLOW,
   CockpitDirectorySchema,
   CockpitBoardSchema,
@@ -2070,11 +2074,12 @@ export class ApiClient {
     suffix: string,
     method: "POST" | "PATCH",
     body: object,
+    nasWrite = false,
   ): Promise<CockpitMeetingWorkflow> {
     const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}`, {
       method, body: JSON.stringify(body),
     });
-    const result = parseWithFallback<CockpitMeetingWorkflow>(raw, CockpitMeetingWorkflowWriteSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
+    const result = parseWithFallback<CockpitMeetingWorkflow>(raw, nasWrite ? CockpitMeetingNasWriteSchema : CockpitMeetingWorkflowWriteSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
       endpoint: `${method} /api/cockpit/meetings/:id/workflow${suffix}`,
     });
     if (!result.enabled || result.meeting_id !== meetingId
@@ -2139,14 +2144,32 @@ export class ApiClient {
     return result;
   }
 
-  async publishCockpitMinutesVersion(meetingId: string, versionId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
-    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/versions/${encodeURIComponent(versionId)}/publish`, "POST", { expected_revision: expectedRevision });
+  async publishCockpitMinutesVersion(meetingId: string, versionId: string, expectedRevision: number, nasExport?: CockpitNasDestination): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/versions/${encodeURIComponent(versionId)}/publish`, "POST",
+      { expected_revision: expectedRevision, ...(nasExport ? { nas_export: nasExport } : {}) }, Boolean(nasExport));
     const version = result.versions.find((entry) => entry.id === versionId);
     // A retry may acknowledge an already published version after a new review round began.
     if (result.revision < expectedRevision || result.published_version_id !== versionId
-      || version?.decision !== "approved" || !version.published_at) {
+      || version?.decision !== "approved" || !version.published_at
+      || (nasExport && !acknowledgedCockpitNasExport(result, versionId, nasExport))) {
       throw new CockpitUnconfirmedWriteError();
     }
+    return result;
+  }
+
+  async exportCockpitMinutesToNas(meetingId: string, versionId: string, destination: CockpitNasDestination): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/versions/${encodeURIComponent(versionId)}/nas-export`, "POST", destination, true);
+    if (!acknowledgedCockpitNasExport(result, versionId, destination)) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async retryCockpitNasExport(meetingId: string, operation: CockpitNasExport): Promise<CockpitMeetingWorkflow> {
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, `/exports/${encodeURIComponent(operation.id)}/retry`, "POST",
+      { expected_revision: operation.revision }, true);
+    const confirmed = acknowledgedCockpitNasExport(result, operation.version_id, operation);
+    if (!confirmed || confirmed.id !== operation.id || confirmed.content_hash !== operation.content_hash
+      || confirmed.source_issue_id !== operation.source_issue_id || confirmed.target_path !== operation.target_path
+      || confirmed.revision <= operation.revision) throw new CockpitUnconfirmedWriteError();
     return result;
   }
 

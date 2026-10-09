@@ -435,6 +435,38 @@ export interface CockpitMeetingWorkflow {
   can_publish: boolean;
   can_reassign_reviewer: boolean;
   reviewer_handoffs: CockpitReviewerHandoff[];
+  nas_destination: CockpitNasDestination | null;
+  nas_unavailable_reason: string;
+  can_export_nas: boolean;
+  nas_exports: CockpitNasExport[];
+}
+
+export interface CockpitNasDestination {
+  root_id: string;
+  directory: string;
+}
+
+export interface CockpitNasExport {
+  id: string;
+  version_id: string;
+  version_number: number;
+  source_issue_id: string;
+  content_hash: string;
+  root_id: string;
+  directory: string;
+  target_path: string;
+  size_bytes: number | null;
+  /** Unknown states remain readable but never grant file operations. */
+  status: string;
+  attempts: number;
+  revision: number;
+  next_retry_at: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  last_error_code: string;
+  last_error: string;
+  can_retry: boolean;
 }
 
 export interface CockpitReviewerHandoff {

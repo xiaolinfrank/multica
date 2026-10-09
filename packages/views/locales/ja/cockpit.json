@@ -709,5 +709,30 @@
     "handoff_previous_issue": "以前のレビュータスク",
     "handoff_replacement_issue": "新しいレビュータスク",
     "handoff_stale": "このダイアログを開いている間にワークフローが変更されました。一度閉じて開き直し、最新の責任範囲を確認してください。"
+  },
+  "nas": {
+    "title": "NAS のコピー",
+    "sync_on_publish": "公開済み議事録を NAS に同期",
+    "publish_queue_hint": "公開時に、この固定バージョンの NAS 書き出しも予約します。共有先がオフラインでも公開は取り消されません。",
+    "no_destination": "許可された NAS の保存先が未設定です。先に公開し、「関連と資料」で資料フォルダーを設定してから書き出せます。",
+    "destination_changed": "NAS の保存先が変更されました。新しい保存先を確認するか、同期を解除してから公開してください。",
+    "use_updated_destination": "更新された保存先を使用",
+    "official_version": "正式な議事録 · バージョン {{number}}",
+    "configured_destination": "書き出し先",
+    "export": "正式な議事録を NAS に書き出す",
+    "refresh": "NAS の状態を更新",
+    "immutable_hint": "書き出しは固定バージョンと保存先に紐づき、既存のファイルを上書きしません。資料フォルダーを変更しても以前のコピーは移動しません。",
+    "not_requested": "NAS のコピーはまだ要求されていません。",
+    "unconfirmed": "サーバーから NAS 操作の確認を取得できません。状態を更新してから再度要求してください。",
+    "queued": "NAS 書き出し待ち",
+    "running": "NAS に書き込み中",
+    "retry_wait": "再試行待ち",
+    "succeeded": "NAS に書き出し済み",
+    "needs_attention": "対応が必要",
+    "unknown_status": "不明な NAS 状態：{{status}}",
+    "incomplete": "書き出し情報が不完全です。状態を更新してください",
+    "retry": "NAS 書き出しを再試行",
+    "retry_at": "次の自動再試行：{{time}}",
+    "attention_hint": "表示された接続、権限、ファイル競合の問題を確認してから再試行してください。同じ保存先を使用し、既存のファイルは保持します。"
   }
 }

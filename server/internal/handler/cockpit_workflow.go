@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -49,24 +50,50 @@ type CockpitMinutesVersionResponse struct {
 }
 
 type CockpitMeetingWorkflowResponse struct {
-	Enabled             bool                             `json:"enabled"`
-	MeetingID           string                           `json:"meeting_id"`
-	Revision            int64                            `json:"revision"`
-	EndedAt             *string                          `json:"ended_at"`
-	MaterialsReady      bool                             `json:"materials_ready"`
-	ReleasedAt          *string                          `json:"released_at"`
-	ReleaseTaskID       *string                          `json:"release_task_id"`
-	ReviewerID          *string                          `json:"reviewer_id"`
-	MinutesIssue        *CockpitWorkflowIssueResponse    `json:"minutes_issue"`
-	CurrentVersionID    *string                          `json:"current_version_id"`
-	PublishedVersionID  *string                          `json:"published_version_id"`
-	Versions            []CockpitMinutesVersionResponse  `json:"versions"`
-	CanManage           bool                             `json:"can_manage"`
-	CanSubmit           bool                             `json:"can_submit"`
-	CanReview           bool                             `json:"can_review"`
-	CanPublish          bool                             `json:"can_publish"`
-	CanReassignReviewer bool                             `json:"can_reassign_reviewer"`
-	ReviewerHandoffs    []CockpitReviewerHandoffResponse `json:"reviewer_handoffs"`
+	Enabled              bool                             `json:"enabled"`
+	MeetingID            string                           `json:"meeting_id"`
+	Revision             int64                            `json:"revision"`
+	EndedAt              *string                          `json:"ended_at"`
+	MaterialsReady       bool                             `json:"materials_ready"`
+	ReleasedAt           *string                          `json:"released_at"`
+	ReleaseTaskID        *string                          `json:"release_task_id"`
+	ReviewerID           *string                          `json:"reviewer_id"`
+	MinutesIssue         *CockpitWorkflowIssueResponse    `json:"minutes_issue"`
+	CurrentVersionID     *string                          `json:"current_version_id"`
+	PublishedVersionID   *string                          `json:"published_version_id"`
+	Versions             []CockpitMinutesVersionResponse  `json:"versions"`
+	CanManage            bool                             `json:"can_manage"`
+	CanSubmit            bool                             `json:"can_submit"`
+	CanReview            bool                             `json:"can_review"`
+	CanPublish           bool                             `json:"can_publish"`
+	CanReassignReviewer  bool                             `json:"can_reassign_reviewer"`
+	ReviewerHandoffs     []CockpitReviewerHandoffResponse `json:"reviewer_handoffs"`
+	NASDestination       *cockpitnas.Directory            `json:"nas_destination"`
+	NASUnavailableReason string                           `json:"nas_unavailable_reason"`
+	CanExportNAS         bool                             `json:"can_export_nas"`
+	NASExports           []CockpitMinutesExportResponse   `json:"nas_exports"`
+}
+
+type CockpitMinutesExportResponse struct {
+	ID            string  `json:"id"`
+	VersionID     string  `json:"version_id"`
+	VersionNumber int32   `json:"version_number"`
+	SourceIssueID string  `json:"source_issue_id"`
+	ContentHash   string  `json:"content_hash"`
+	RootID        string  `json:"root_id"`
+	Directory     string  `json:"directory"`
+	TargetPath    string  `json:"target_path"`
+	Status        string  `json:"status"`
+	Attempts      int32   `json:"attempts"`
+	Revision      int64   `json:"revision"`
+	NextRetryAt   *string `json:"next_retry_at"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+	CompletedAt   *string `json:"completed_at"`
+	LastErrorCode string  `json:"last_error_code"`
+	LastError     string  `json:"last_error"`
+	SizeBytes     *int64  `json:"size_bytes"`
+	CanRetry      bool    `json:"can_retry"`
 }
 
 type CockpitReviewerHandoffResponse struct {
@@ -136,7 +163,7 @@ func (h *Handler) canSubmitCockpitMinutes(r *http.Request, q *db.Queries, cc coc
 // Read the package under a shared lock, then batch-load issue cards. Concurrent
 // review/submit commands cannot produce a mixed version/revision response.
 func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, meetingID pgtype.UUID) (CockpitMeetingWorkflowResponse, error) {
-	out := CockpitMeetingWorkflowResponse{MeetingID: uuidToString(meetingID), Versions: []CockpitMinutesVersionResponse{}, ReviewerHandoffs: []CockpitReviewerHandoffResponse{}}
+	out := CockpitMeetingWorkflowResponse{MeetingID: uuidToString(meetingID), Versions: []CockpitMinutesVersionResponse{}, ReviewerHandoffs: []CockpitReviewerHandoffResponse{}, NASExports: []CockpitMinutesExportResponse{}}
 	tx, err := h.TxStarter.Begin(r.Context())
 	if err != nil {
 		return out, err
@@ -150,6 +177,23 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	}
 	if err != nil {
 		return out, err
+	}
+	meeting, err := q.GetCockpitMeeting(r.Context(), db.GetCockpitMeetingParams{ID: meetingID, WorkspaceID: cc.workspaceID})
+	if err != nil {
+		return out, err
+	}
+	out.NASUnavailableReason = "not_configured"
+	if exporter := h.IssueService.CockpitNASExporter; exporter != nil {
+		preview, previewErr := exporter.Preview(uuidToString(cc.workspaceID), meeting.NasDir)
+		if previewErr == nil {
+			out.NASDestination = &preview
+			out.NASUnavailableReason = ""
+		} else {
+			var detail *cockpitnas.Error
+			if errors.As(previewErr, &detail) {
+				out.NASUnavailableReason = detail.Code
+			}
+		}
 	}
 	versions, err := q.ListCockpitMinutesVersions(r.Context(), db.ListCockpitMinutesVersionsParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
 	if err != nil {
@@ -237,6 +281,39 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 			out.CanReview = version.ReviewerID == cc.member.UserID && version.Decision == "pending"
 			out.CanPublish = (version.ReviewerID == cc.member.UserID || out.CanManage) && version.Decision == "approved"
 		}
+		if version.ID == work.PublishedVersionID && version.PublishedAt.Valid && version.Decision == "approved" && !isMachineCredentialActor(r) {
+			out.CanExportNAS = version.ReviewerID == cc.member.UserID || out.CanManage
+		}
+	}
+	exports, err := q.ListCockpitMinutesExports(r.Context(), db.ListCockpitMinutesExportsParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
+	if err != nil {
+		return out, err
+	}
+	for _, export := range exports {
+		mayExport := false
+		for _, version := range versions {
+			if version.ID == export.VersionID && version.PublishedAt.Valid && version.Decision == "approved" {
+				mayExport = !isMachineCredentialActor(r) && (out.CanManage || version.ReviewerID == cc.member.UserID)
+				break
+			}
+		}
+		var size *int64
+		if export.SizeBytes.Valid {
+			value := export.SizeBytes.Int64
+			size = &value
+		}
+		var next *string
+		if export.Status == "retry_wait" || export.Status == "queued" {
+			next = cockpitWorkflowTime(export.NextRetryAt)
+		}
+		out.NASExports = append(out.NASExports, CockpitMinutesExportResponse{
+			ID: uuidToString(export.ID), VersionID: uuidToString(export.VersionID), VersionNumber: export.VersionNumber,
+			SourceIssueID: uuidToString(export.SourceIssueID), ContentHash: export.ContentHash, RootID: export.RootID,
+			Directory: export.Directory, TargetPath: export.TargetPath, Status: export.Status, Attempts: export.Attempts, Revision: export.Revision,
+			NextRetryAt: next, CreatedAt: export.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: export.UpdatedAt.Time.UTC().Format(time.RFC3339Nano),
+			CompletedAt: cockpitWorkflowTime(export.CompletedAt), LastErrorCode: export.LastErrorCode, LastError: export.LastError, SizeBytes: size,
+			CanRetry: mayExport && (export.Status == "retry_wait" || export.Status == "needs_attention"),
+		})
 	}
 	return out, nil
 }
@@ -525,7 +602,10 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	var req cockpitWorkflowRevisionRequest
+	var req struct {
+		cockpitWorkflowRevisionRequest
+		NASExport *cockpitNASExportRequest `json:"nas_export"`
+	}
 	if _, ok := decodeCockpitBody(w, r, &req); !ok {
 		return
 	}
@@ -537,8 +617,80 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	err := h.IssueService.PublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID})
+	var target *service.CockpitMinutesExportTarget
+	if req.NASExport != nil {
+		parsed, ok := req.NASExport.parse(w)
+		if !ok {
+			return
+		}
+		target = &parsed
+	}
+	err := h.IssueService.PublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID, NASExport: target})
 	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "published", err)
+}
+
+type cockpitNASExportRequest struct {
+	RootID    string `json:"root_id"`
+	Directory string `json:"directory"`
+}
+
+func (req cockpitNASExportRequest) parse(w http.ResponseWriter) (service.CockpitMinutesExportTarget, bool) {
+	id, ok := parseUUIDOrBadRequest(w, req.RootID, "root_id")
+	if !ok {
+		return service.CockpitMinutesExportTarget{}, false
+	}
+	if strings.TrimSpace(req.Directory) == "" {
+		writeError(w, http.StatusBadRequest, "directory is required")
+		return service.CockpitMinutesExportTarget{}, false
+	}
+	return service.CockpitMinutesExportTarget{RootID: uuidToString(id), Directory: strings.TrimSpace(req.Directory)}, true
+}
+
+func (h *Handler) ExportCockpitMeetingMinutes(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
+		return
+	}
+	var req cockpitNASExportRequest
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	target, ok := req.parse(w)
+	if !ok {
+		return
+	}
+	version, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "versionId"), "version_id")
+	if !ok {
+		return
+	}
+	_, err := h.IssueService.ExportCockpitMeetingMinutes(r.Context(), service.CockpitMinutesExportCommand{
+		CockpitMinutesVersionCommand: service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: service.CockpitWorkPackageCommand{
+			WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, ActorID: cc.member.UserID}, VersionID: version}, Target: target,
+	})
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_queued", err)
+}
+
+func (h *Handler) RetryCockpitMinutesExport(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
+		return
+	}
+	var req cockpitWorkflowRevisionRequest
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	if req.ExpectedRevision == nil || *req.ExpectedRevision < 1 {
+		writeError(w, http.StatusBadRequest, "expected_revision must be positive")
+		return
+	}
+	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "exportId"), "export_id")
+	if !ok {
+		return
+	}
+	_, err := h.IssueService.RetryCockpitMinutesExport(r.Context(), service.CockpitMinutesExportRetry{
+		WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, ActorID: cc.member.UserID, ExportID: id, ExpectedRevision: *req.ExpectedRevision,
+	})
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_retried", err)
 }
 
 func (h *Handler) ChangeCockpitMeetingReviewer(w http.ResponseWriter, r *http.Request) {

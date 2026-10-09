@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/database"
 	"github.com/multica-ai/multica/server/internal/dbreader"
@@ -730,6 +731,16 @@ func main() {
 
 	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	nasFiles, nasConfigErr := cockpitnas.New(os.Getenv("COCKPIT_NAS_EXPORT_ROOTS"))
+	if nasConfigErr != nil {
+		slog.Error("cockpit NAS export disabled: invalid root configuration", "error", nasConfigErr)
+	} else {
+		h.IssueService.CockpitNASExporter = nasFiles
+		if len(nasFiles.RootIDs()) > 0 {
+			go service.NewCockpitMinutesExportWorker(queries, nasFiles, bus).Run(sweepCtx)
+			slog.Info("cockpit NAS export worker enabled", "roots", len(nasFiles.RootIDs()))
+		}
+	}
 	autopilotCtx, autopilotCancel := context.WithCancel(context.Background())
 	telemetryWorker := selfhosttelemetry.New(pool, version, telemetryConfig, slog.Default())
 	// Reuse the router's services here. In particular, the router wires the

@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_minutes_export ADD CONSTRAINT cockpit_minutes_export_pkey PRIMARY KEY USING INDEX cockpit_minutes_export_id_idx;

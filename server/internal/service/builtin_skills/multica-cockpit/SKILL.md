@@ -107,6 +107,8 @@ Enable, readiness, release, review and publication require authorized humans.
 A human manager may `workflow reassign-reviewer` with a reason and idempotency key:
 it preserves fixed evidence and records responsibility. Machine credentials cannot transfer it.
 See `references/cockpit.md` for exact flags, permissions, retries and limitations.
+Authorized humans can `workflow export-nas` or `retry-nas`; export needs a configured root.
+See `references/nas-export.md` for fixed copies, receipts and operation retries; failures never undo approval.
 
 ## Versions
 

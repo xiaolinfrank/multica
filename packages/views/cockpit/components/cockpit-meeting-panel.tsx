@@ -19,6 +19,7 @@ import type {
 import {
   cockpitMeetingWorkflowOptions,
   cockpitWorkflowRequiredIssueRoles,
+  cockpitNasPollInterval,
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
@@ -151,7 +152,22 @@ export function CockpitMeetingPanel({
     [directory, vocabulary.parties],
   );
   const linkedNodeIds = useMemo(() => new Set(nodeLinks.map((l) => l.node_id)), [nodeLinks]);
-  const workflowQuery = useQuery(cockpitMeetingWorkflowOptions(wsId, meeting.id));
+  const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
+  const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
+    refetchInterval: (query) => {
+      const now = Date.now();
+      if (nasPoll.current.meetingId !== meeting.id) nasPoll.current = { meetingId: meeting.id, active: false, deadline: 0 };
+      const active = cockpitNasPollInterval(query.state.data, Infinity, now) !== false;
+      if (active && !nasPoll.current.active) nasPoll.current.deadline = now + 5 * 60_000;
+      nasPoll.current.active = active;
+      return cockpitNasPollInterval(query.state.data, nasPoll.current.deadline, now);
+    },
+    refetchIntervalInBackground: false,
+  });
+  const reloadWorkflow = () => {
+    nasPoll.current.deadline = Date.now() + 5 * 60_000;
+    void workflowQuery.refetch();
+  };
   const workflowEnabled = workflowQuery.data?.enabled === true;
   const workflowUnknown = workflowQuery.isPending || workflowQuery.isError || workflowQuery.data?.meeting_id !== meeting.id;
   const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
@@ -229,7 +245,7 @@ export function CockpitMeetingPanel({
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} membersLoaded={membersLoaded} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
-              onReload={() => void workflowQuery.refetch()} defaultPlacement={defaultPlacement}
+              onReload={reloadWorkflow} defaultPlacement={defaultPlacement}
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>

@@ -1,0 +1,30 @@
+-- A deterministic external-effect ledger, separate from publication approval.
+CREATE TABLE cockpit_minutes_export (
+ id UUID NOT NULL,
+ workspace_id UUID NOT NULL,
+ meeting_id UUID NOT NULL,
+ version_id UUID NOT NULL,
+ version_number INTEGER NOT NULL,
+ source_issue_id UUID NOT NULL,
+ root_id TEXT NOT NULL,
+ root_path TEXT NOT NULL,
+ directory TEXT NOT NULL,
+ relative_path TEXT NOT NULL,
+ target_path TEXT NOT NULL,
+ content_hash TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'queued'
+   CHECK (status IN ('queued','running','retry_wait','succeeded','needs_attention')),
+ attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+ cycle_attempts INTEGER NOT NULL DEFAULT 0 CHECK (cycle_attempts >= 0),
+ revision BIGINT NOT NULL DEFAULT 1,
+ next_retry_at TIMESTAMPTZ DEFAULT now(),
+ lease_token UUID,
+ lease_expires_at TIMESTAMPTZ,
+ last_error_code TEXT NOT NULL DEFAULT '',
+ last_error TEXT NOT NULL DEFAULT '',
+ created_by UUID NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ completed_at TIMESTAMPTZ,
+ size_bytes BIGINT
+);

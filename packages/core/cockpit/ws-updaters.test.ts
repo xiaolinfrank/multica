@@ -7,6 +7,19 @@ import { onCockpitChanged } from "./ws-updaters";
 
 const WS = "ws-1";
 
+describe("meeting destination refresh", () => {
+  it("invalidates only the changed meeting's workflow for remote folder edits and provisioning", () => {
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onCockpitChanged(qc, WS, { scope: "meeting", action: "updated", entity: { id: "m1", nas_dir: "/Volumes/team/New" } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1"), exact: true });
+    invalidate.mockClear();
+    onCockpitChanged(qc, WS, { scope: "meeting_issues", action: "provisioned", entity: { meeting_id: "m2", meeting: { id: "m2" }, links: [] } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m2"), exact: true });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1"), exact: true });
+  });
+});
+
 function seedBoard(over?: Partial<CockpitBoard>): { qc: QueryClient; board: CockpitBoard } {
   const board: CockpitBoard = {
     cockpit: {

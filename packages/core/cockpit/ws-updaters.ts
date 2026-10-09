@@ -250,6 +250,7 @@ export function onCockpitChanged(
     case "meeting": {
       const row = entityWithId(entity);
       if (!row) return;
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, row.id), exact: true });
       if (isDeletion(action)) {
         apply((board) => removeCockpitMeeting(board, row.id));
         return;
@@ -266,6 +267,7 @@ export function onCockpitChanged(
       const record = asRecord(entity);
       const meetingId = record?.["meeting_id"];
       if (typeof meetingId !== "string" || meetingId === "") return;
+      if (record?.["meeting"]) void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId), exact: true });
       if (isDeletion(action)) {
         const issueId = record?.["issue_id"];
         if (typeof issueId !== "string") return;

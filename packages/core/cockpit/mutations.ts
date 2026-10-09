@@ -381,10 +381,15 @@ export function useDeleteCockpitDirectoryEntry(wsId: string) {
 }
 
 export function useUpdateCockpitMeeting(wsId: string) {
+  const queryClient = useQueryClient();
   return useCockpitRowMutation(
     wsId,
-    ({ id, patch }: { id: string; patch: CockpitMeetingPatch }) =>
-      api.updateCockpitMeeting(id, patch),
+    async ({ id, patch }: { id: string; patch: CockpitMeetingPatch }) => {
+      try { return await api.updateCockpitMeeting(id, patch); }
+      finally {
+        if (patch.nas_dir !== undefined) void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+      }
+    },
     ({ id, patch }, board) => ({
       ...board,
       meetings: board.meetings.map((m) => (m.id === id ? { ...m, ...patch } : m)),
@@ -421,6 +426,7 @@ export function useProvisionCockpitMeeting(wsId: string) {
       patchCockpitBoard(queryClient, wsId, (board) =>
         replaceCockpitMeetingIssues(upsertCockpitMeeting(board, result.meeting), result.meeting.id, result.issues),
       );
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, result.meeting.id), exact: true });
       // The board is not the only cache that moved: an issue was filed into a
       // project whose lists are cached elsewhere.
       if (result.task) {

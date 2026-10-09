@@ -32,6 +32,7 @@ import { AssigneePicker } from "../../issues/components/pickers/assignee-picker"
 import { StatusIcon } from "../../issues/components/status-icon";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { CockpitReviewerHandoffControl } from "./cockpit-reviewer-handoff";
+import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit-minutes-nas";
 
 const NEW_ISSUE = "__new_minutes_issue__";
 
@@ -310,13 +311,12 @@ export function CockpitMeetingWorkflowPanel({
       </div>}
       {current.decision === "pending" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.formal_review_hint)}</p>}
       {current.decision === "changes_requested" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.revision_hint)}</p>}
-      {current.decision === "approved" && !current.published_at && <div className="space-y-2">
-        <p className="text-caption text-muted-foreground">{t(($) => $.workflow.publish_hint)}</p>
-        <Button type="button" size="sm" disabled={readOnly || !actions.canPublish || commandBusy} aria-busy={publish.isPending}
-          onClick={() => void runCommand(() => publish.mutateAsync({ meetingId, versionId: current.id, revision: workflow.revision }))}>
-          {publish.isPending && <Spinner />}{t(($) => $.workflow.publish)}</Button>
-      </div>}
+      {current.decision === "approved" && !current.published_at && <CockpitMinutesPublishControl key={current.id} workflow={workflow}
+        disabled={Boolean(readOnly || !actions.canPublish || commandBusy)} pending={publish.isPending}
+        onPublish={(nasExport) => void runCommand(() => publish.mutateAsync({ meetingId, versionId: current.id, revision: workflow.revision, nasExport }))} />}
     </section>}
+    <CockpitMinutesNasCopies wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly}
+      disabled={commandBusy || loadError} onReload={onReload} />
     {workflow.released_at && !readOnly && (actions.canSubmit || draft.pending) && <section className="space-y-3 rounded-lg border border-border p-4">
       <label htmlFor={`${id}-draft`} className="block text-title-sm font-medium">{t(($) => $.workflow.draft)}</label>
       <Textarea id={`${id}-draft`} value={draft.content} rows={8} disabled={commandBusy || Boolean(draft.pending)}

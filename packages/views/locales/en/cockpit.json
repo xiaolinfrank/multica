@@ -709,5 +709,30 @@
     "handoff_previous_issue": "Previous review issue",
     "handoff_replacement_issue": "Replacement review issue",
     "handoff_stale": "The workflow changed while this dialog was open. Close and reopen it to review the latest responsibility before confirming."
+  },
+  "nas": {
+    "title": "NAS copies",
+    "sync_on_publish": "Sync published minutes to NAS",
+    "publish_queue_hint": "Publishing also queues this fixed version for NAS export. An offline share does not undo publication.",
+    "no_destination": "No permitted NAS destination is configured. You can publish now, then set the material folder in Links & materials and export later.",
+    "destination_changed": "The NAS destination changed. Review the updated destination or uncheck sync before publishing.",
+    "use_updated_destination": "Use updated destination",
+    "official_version": "Official minutes · version {{number}}",
+    "configured_destination": "Export destination",
+    "export": "Export published minutes to NAS",
+    "refresh": "Refresh NAS status",
+    "immutable_hint": "Exports keep a fixed version and destination; existing files are never overwritten. Changing the material folder does not move earlier copies.",
+    "not_requested": "No NAS copy has been requested.",
+    "unconfirmed": "The server did not confirm the NAS operation. Refresh its status before requesting it again.",
+    "queued": "Queued for NAS",
+    "running": "Writing to NAS",
+    "retry_wait": "Waiting to retry",
+    "succeeded": "Exported to NAS",
+    "needs_attention": "Needs attention",
+    "unknown_status": "Unrecognized NAS status: {{status}}",
+    "incomplete": "Export details incomplete — refresh status",
+    "retry": "Retry NAS export",
+    "retry_at": "Next automatic retry: {{time}}",
+    "attention_hint": "Check the reported connection, access or file conflict before retrying. The retry keeps this destination and preserves existing files."
   }
 }

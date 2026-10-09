@@ -46,6 +46,7 @@ type CockpitMinutesSubmission struct {
 type CockpitMinutesVersionCommand struct {
 	CockpitWorkPackageCommand
 	VersionID pgtype.UUID
+	NASExport *CockpitMinutesExportTarget
 }
 type CockpitMinutesReview struct {
 	CockpitMinutesVersionCommand
@@ -557,7 +558,13 @@ func (s *IssueService) PublishCockpitMeetingMinutes(ctx context.Context, p Cockp
 		return ErrCockpitWorkflowForbidden
 	}
 	if work.PublishedVersionID == p.VersionID && version.PublishedAt.Valid {
-		return nil
+		if p.NASExport == nil {
+			return nil
+		}
+		if _, err = s.enqueueCockpitMinutesExport(ctx, q, version, p.ActorID, *p.NASExport); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	if err := cockpitWorkflowRevision(work, p.ExpectedRevision); err != nil {
 		return err
@@ -570,6 +577,13 @@ func (s *IssueService) PublishCockpitMeetingMinutes(ctx context.Context, p Cockp
 	}
 	if _, err = q.SetCockpitPublishedMinutesVersion(ctx, db.SetCockpitPublishedMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, PublishedVersionID: p.VersionID, Revision: p.ExpectedRevision}); err != nil {
 		return err
+	}
+	if p.NASExport != nil {
+		// Resolve is pure configuration/path validation. Filesystem work only
+		// starts after this publication and its intent commit together.
+		if _, err = s.enqueueCockpitMinutesExport(ctx, q, version, p.ActorID, *p.NASExport); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

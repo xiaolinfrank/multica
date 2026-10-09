@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_minutes_export DROP CONSTRAINT IF EXISTS cockpit_minutes_export_pkey;

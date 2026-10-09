@@ -1,9 +1,19 @@
 import { CockpitMeetingWorkflowSchema, CockpitMinutesVersionSchema } from "../api/schemas";
-import type { CockpitMeetingWorkflow, CockpitMinutesVersion, CockpitReviewerHandoff } from "../types";
+import type { CockpitMeetingWorkflow, CockpitMinutesVersion, CockpitReviewerHandoff, CockpitNasExport } from "../types";
 
 export const WORKFLOW_MEETING_ID = "10000000-0000-4000-8000-000000000001";
 export const WORKFLOW_SUBMISSION_KEY = "20000000-0000-4000-8000-000000000001";
 export const WORKFLOW_HANDOFF_KEY = "30000000-0000-4000-8000-000000000001";
+
+export function nasExportFixture(overrides: Partial<CockpitNasExport> = {}): CockpitNasExport {
+  return {
+    id: "nas-operation-1", version_id: "version-1", version_number: 1, source_issue_id: "minutes-1", content_hash: "hash-of-fixed-text",
+    root_id: "nas-root-1", directory: "/Volumes/team/Meeting", target_path: "/Volumes/team/Meeting/已发布纪要/fixed-version.md",
+    size_bytes: null, status: "queued", attempts: 0, revision: 1, next_retry_at: null,
+    created_at: "2026-10-09T12:00:00Z", updated_at: "2026-10-09T12:00:00Z", completed_at: null,
+    last_error_code: "", last_error: "", can_retry: false, ...overrides,
+  };
+}
 
 export function handoffFixture(overrides: Partial<CockpitReviewerHandoff> = {}): CockpitReviewerHandoff {
   return { id: "handoff-1", handoff_key: WORKFLOW_HANDOFF_KEY, from_reviewer_id: "reviewer-1", to_reviewer_id: "reviewer-2",

@@ -7,8 +7,10 @@ import type {
   CockpitMeetingWorkflow, CockpitMeetingWorkflowSetup, CockpitMeetingReadinessPatch,
   CockpitMinutesSubmission, CockpitMinutesReview,
   CockpitReviewerHandoffCommand,
+  CockpitNasDestination, CockpitNasExport,
 } from "../types";
 import { cockpitKeys, patchCockpitBoard } from "./queries";
+import { mergeCockpitWorkflowResponse } from "./nas-export";
 
 function useWorkflowMutation<T extends { meetingId: string }>(wsId: string, mutationFn: (variables: T) => Promise<CockpitMeetingWorkflow>) {
   const client = useQueryClient();
@@ -18,7 +20,7 @@ function useWorkflowMutation<T extends { meetingId: string }>(wsId: string, muta
       // An initialization read may still be returning enabled=false after the write committed.
       await client.cancelQueries({ queryKey: cockpitKeys.workflow(wsId, workflow.meeting_id), exact: true });
       client.setQueryData<CockpitMeetingWorkflow>(cockpitKeys.workflow(wsId, workflow.meeting_id), (current) =>
-        current && current.revision > workflow.revision ? current : workflow);
+        mergeCockpitWorkflowResponse(current, workflow));
       patchCockpitBoard(client, wsId, (board) => ({ ...board, has_meeting_workflows: true }));
       void client.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, workflow.meeting_id), exact: true });
       void client.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
@@ -62,6 +64,16 @@ export function useReviewCockpitMinutesVersion(wsId: string) {
 }
 
 export function usePublishCockpitMinutesVersion(wsId: string) {
-  return useWorkflowMutation(wsId, ({ meetingId, versionId, revision }: { meetingId: string; versionId: string; revision: number }) =>
-    api.publishCockpitMinutesVersion(meetingId, versionId, revision));
+  return useWorkflowMutation(wsId, ({ meetingId, versionId, revision, nasExport }: { meetingId: string; versionId: string; revision: number; nasExport?: CockpitNasDestination }) =>
+    api.publishCockpitMinutesVersion(meetingId, versionId, revision, nasExport));
+}
+
+export function useExportCockpitMinutesToNas(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, versionId, destination }: { meetingId: string; versionId: string; destination: CockpitNasDestination }) =>
+    api.exportCockpitMinutesToNas(meetingId, versionId, destination));
+}
+
+export function useRetryCockpitNasExport(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, operation }: { meetingId: string; operation: CockpitNasExport }) =>
+    api.retryCockpitNasExport(meetingId, operation));
 }

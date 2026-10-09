@@ -675,6 +675,35 @@ type CockpitMilestone struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CockpitMinutesExport struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	MeetingID      pgtype.UUID        `json:"meeting_id"`
+	VersionID      pgtype.UUID        `json:"version_id"`
+	VersionNumber  int32              `json:"version_number"`
+	SourceIssueID  pgtype.UUID        `json:"source_issue_id"`
+	RootID         string             `json:"root_id"`
+	RootPath       string             `json:"root_path"`
+	Directory      string             `json:"directory"`
+	RelativePath   string             `json:"relative_path"`
+	TargetPath     string             `json:"target_path"`
+	ContentHash    string             `json:"content_hash"`
+	Status         string             `json:"status"`
+	Attempts       int32              `json:"attempts"`
+	CycleAttempts  int32              `json:"cycle_attempts"`
+	Revision       int64              `json:"revision"`
+	NextRetryAt    pgtype.Timestamptz `json:"next_retry_at"`
+	LeaseToken     pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt pgtype.Timestamptz `json:"lease_expires_at"`
+	LastErrorCode  string             `json:"last_error_code"`
+	LastError      string             `json:"last_error"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
+	SizeBytes      pgtype.Int8        `json:"size_bytes"`
+}
+
 type CockpitMinutesVersion struct {
 	ID              pgtype.UUID        `json:"id"`
 	WorkspaceID     pgtype.UUID        `json:"workspace_id"`

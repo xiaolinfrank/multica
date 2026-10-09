@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
+	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/issueguard"
@@ -46,6 +47,9 @@ type IssueService struct {
 	// Entitlements supplies Cloud's effective issue-count instruction. Nil is
 	// the self-hosted unlimited path.
 	Entitlements entitlement.Provider
+	// CockpitNASExporter resolves deployment-approved destinations without I/O.
+	// The export worker uses the same adapter for external filesystem effects.
+	CockpitNASExporter cockpitnas.Exporter
 }
 
 func NewIssueService(q *db.Queries, tx TxStarter, bus *events.Bus, ac analytics.Client, ts *TaskService) *IssueService {

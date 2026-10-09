@@ -1,0 +1,128 @@
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, relative, sep } from "node:path";
+import { expect, test } from "@playwright/test";
+import { TestApiClient } from "./fixtures";
+
+test.use({
+  viewport: { width: 1600, height: 1050 }, locale: "en-US", timezoneId: "Asia/Shanghai",
+  contextOptions: { reducedMotion: "reduce" }, screenshot: "only-on-failure", trace: "retain-on-failure",
+});
+
+test("retains publication while a NAS copy fails, retries safely, and preserves a conflicting file", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const configuredRoot = process.env.MULTICA_E2E_NAS_ROOT_PATH;
+  const rootId = process.env.MULTICA_E2E_NAS_ROOT_ID;
+  test.skip(!configuredRoot || !rootId || !process.env.MULTICA_E2E_NAS_WORKSPACE_ID,
+    "Requires the explicitly configured, isolated agent 3 NAS fixture server");
+  const root = await realpath(configuredRoot!);
+  const fixtureBase = await realpath(join(homedir(), "var/multica-dev-test"));
+  const rootRelative = relative(fixtureBase, root);
+  if (!rootRelative || rootRelative.startsWith(`..${sep}`) || rootRelative === ".." || rootRelative.startsWith(sep)) {
+    throw new Error("Refusing filesystem writes outside the dedicated agent 3 test fixture directory");
+  }
+  expect((await readFile(join(root, ".multica-root-id"), "utf8")).trim()).toBe(rootId);
+  const fixture = await mkdtemp(join(root, "minutes-e2e-"));
+  const api = new TestApiClient();
+  const run = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
+  let ownsWorkspace = false;
+  try {
+    const auth = await api.login(`e2e-nas-${run}@multica.ai`, "NAS Publication Reviewer");
+    const workspace = await api.createNASFixtureWorkspace(`NAS Minutes ${run}`, `e2e-nas-${run}`);
+    ownsWorkspace = true;
+    await api.markUserOnboarded();
+    const token = api.getToken();
+    if (!token) throw new Error("NAS fixture login did not return a token");
+    await page.addInitScript((value) => {
+      localStorage.setItem("multica_token", value);
+      localStorage.setItem("multica:chat:isOpen", "false");
+      document.cookie = "multica-locale=en; path=/";
+    }, token);
+    const showMeeting = async (meetingId: string) => {
+      await page.goto(`/${workspace.slug}/cockpit?meeting=${meetingId}`, { waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("button", { name: "Publish version", exact: true })).toBeVisible();
+    };
+    const content = "# Published meeting minutes\n\nHuman approval remains valid while the NAS is offline.\n\n- Evidence: fixed UTF-8 content.\n- 中文内容也必须原样保存。";
+    const meetingDir = join(fixture, "offline-meeting");
+    const offlineDir = join(fixture, "offline-meeting-unavailable");
+    await mkdir(meetingDir);
+    const meeting = await api.createCockpitMeeting({ title: "NAS recovery review", meet_date: new Date().toISOString().slice(0, 10), nas_dir: meetingDir });
+    await api.seedPendingMeetingReview(meeting.id, auth.user.id, content);
+    const approved = await api.approveMeetingMinutes(meeting.id);
+    const version = approved.versions[0]!;
+    expect(approved.nas_destination).toEqual({ root_id: rootId, directory: meetingDir });
+    await showMeeting(meeting.id);
+
+    await test.step("publish once while the meeting directory is unavailable", async () => {
+      await expect(page.getByRole("checkbox", { name: "Sync published minutes to NAS", exact: true })).toBeChecked();
+      await rename(meetingDir, offlineDir);
+      await page.getByRole("button", { name: "Publish version", exact: true }).click();
+      await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+      await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("retry_wait");
+      await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Waiting to retry" })).toBeVisible();
+      const pending = await api.getMeetingWorkflow(meeting.id);
+      expect(pending.published_version_id).toBe(version.id);
+      expect(pending.versions[0]).toMatchObject({ id: version.id, content, decision: "approved" });
+      expect(pending.nas_exports).toHaveLength(1);
+      expect(pending.nas_exports[0]).toMatchObject({ version_id: version.id, directory: meetingDir, content_hash: version.content_hash });
+      await page.screenshot({ path: testInfo.outputPath("published-nas-unavailable.png"), animations: "disabled" });
+    });
+
+    await test.step("retry the same copy after restoring the fixture directory", async () => {
+      const failed = (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]!;
+      await rename(offlineDir, meetingDir);
+      await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+      await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("succeeded");
+      await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Exported to NAS" })).toBeVisible();
+      const copied = await api.getMeetingWorkflow(meeting.id);
+      expect(copied.published_version_id).toBe(version.id);
+      expect(copied.nas_exports).toHaveLength(1);
+      const operation = copied.nas_exports[0]!;
+      expect(operation.id).toBe(failed.id);
+      expect(operation.attempts).toBeGreaterThan(failed.attempts);
+      expect(operation.target_path).toBe(join(meetingDir, "已发布纪要", `minutes-v0001-${version.id}.md`));
+      const bytes = await readFile(operation.target_path);
+      expect(bytes.toString("utf8")).toBe(content);
+      expect(bytes.length).toBe(operation.size_bytes);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(version.content_hash);
+      await page.screenshot({ path: testInfo.outputPath("published-nas-recovered.png"), animations: "disabled" });
+    });
+
+    await test.step("request a copy after publication and refuse to overwrite a different existing file", async () => {
+      const conflictDir = join(fixture, "conflict-meeting");
+      await mkdir(conflictDir);
+      const conflict = await api.createCockpitMeeting({ title: "NAS conflicting file review", meet_date: new Date().toISOString().slice(0, 10), nas_dir: conflictDir });
+      await api.seedPendingMeetingReview(conflict.id, auth.user.id, content);
+      const approvedConflict = await api.approveMeetingMinutes(conflict.id);
+      const fixedVersion = approvedConflict.versions[0]!;
+      await showMeeting(conflict.id);
+      await page.getByRole("checkbox", { name: "Sync published minutes to NAS", exact: true }).click();
+      await page.getByRole("button", { name: "Publish version", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Export published minutes to NAS", exact: true })).toBeVisible();
+      expect((await api.getMeetingWorkflow(conflict.id)).nas_exports).toHaveLength(0);
+      const target = join(conflictDir, "已发布纪要", `minutes-v0001-${fixedVersion.id}.md`);
+      await mkdir(join(conflictDir, "已发布纪要"));
+      const existing = "This independently created file must survive.\n";
+      await writeFile(target, existing, { flag: "wx" });
+      await page.getByRole("button", { name: "Export published minutes to NAS", exact: true }).click();
+      await expect.poll(async () => (await api.getMeetingWorkflow(conflict.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("needs_attention");
+      await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Needs attention" })).toBeVisible();
+      await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+      expect(await readFile(target, "utf8")).toBe(existing);
+      expect((await api.getMeetingWorkflow(conflict.id)).published_version_id).toBe(fixedVersion.id);
+      await page.screenshot({ path: testInfo.outputPath("published-nas-file-conflict.png"), animations: "disabled" });
+      await page.setViewportSize({ width: 1100, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    });
+  } finally {
+    try {
+      if (ownsWorkspace) await api.cleanupCreatedWorkspace();
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }
+});

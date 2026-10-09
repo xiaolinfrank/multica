@@ -2045,6 +2045,33 @@ export const CockpitReviewerHandoffSchema = z.object({
   revision: z.number().int().positive(),
 }).loose();
 
+export const CockpitNasDestinationSchema = z.object({
+  root_id: z.string().min(1),
+  directory: z.string().min(1),
+}).loose();
+
+export const CockpitNasExportSchema = z.object({
+  id: z.string(),
+  version_id: z.string().default(""),
+  version_number: z.number().int().nonnegative().default(0),
+  source_issue_id: z.string().default(""),
+  content_hash: z.string().default(""),
+  root_id: z.string().default(""),
+  directory: z.string().default(""),
+  target_path: z.string().default(""),
+  size_bytes: z.number().int().nonnegative().nullable().default(null),
+  status: z.string().default(""),
+  attempts: z.number().int().nonnegative().default(0),
+  revision: z.number().int().nonnegative().default(0),
+  next_retry_at: z.string().nullable().default(null),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+  completed_at: z.string().nullable().default(null),
+  last_error_code: z.string().default(""),
+  last_error: z.string().default(""),
+  can_retry: z.boolean().catch(false).default(false),
+}).loose();
+
 export const CockpitMeetingWorkflowSchema = z.object({
   enabled: z.boolean().default(false),
   meeting_id: z.string(),
@@ -2064,6 +2091,10 @@ export const CockpitMeetingWorkflowSchema = z.object({
   can_publish: z.boolean().default(false),
   can_reassign_reviewer: z.boolean().catch(false).default(false),
   reviewer_handoffs: z.array(CockpitReviewerHandoffSchema).default([]),
+  nas_destination: CockpitNasDestinationSchema.nullable().catch(null).default(null),
+  nas_unavailable_reason: z.string().catch("").default(""),
+  can_export_nas: z.boolean().catch(false).default(false),
+  nas_exports: z.array(CockpitNasExportSchema).default([]),
 }).loose();
 
 const WorkflowIssueAcknowledgmentSchema = CockpitWorkflowIssueSchema.extend({
@@ -2087,6 +2118,18 @@ export const CockpitMeetingWorkflowWriteSchema = CockpitMeetingWorkflowSchema.ex
   minutes_issue: WorkflowIssueAcknowledgmentSchema, current_version_id: z.string().nullable(),
   published_version_id: z.string().nullable(), versions: z.array(MinutesVersionAcknowledgmentSchema),
   can_manage: z.boolean(), can_submit: z.boolean(), can_review: z.boolean(), can_publish: z.boolean(),
+});
+
+/** Export acknowledgments must contain real operation records, never read-time defaults. */
+export const CockpitMeetingNasWriteSchema = CockpitMeetingWorkflowWriteSchema.extend({
+  nas_exports: z.array(CockpitNasExportSchema.extend({
+    id: z.string().min(1), version_id: z.string().min(1), version_number: z.number().int().positive(),
+    source_issue_id: z.string().min(1), content_hash: z.string().min(1), root_id: z.string().min(1),
+    directory: z.string().min(1), target_path: z.string().min(1), size_bytes: z.number().int().nonnegative().nullable(),
+    status: z.string().min(1), attempts: z.number().int().nonnegative(), revision: z.number().int().positive(),
+    next_retry_at: z.string().nullable(), created_at: z.string().min(1), updated_at: z.string().min(1),
+    completed_at: z.string().nullable(), last_error_code: z.string(), last_error: z.string(), can_retry: z.boolean(),
+  })),
 });
 
 export const EMPTY_COCKPIT_MEETING_WORKFLOW = CockpitMeetingWorkflowSchema.parse({ meeting_id: "" });

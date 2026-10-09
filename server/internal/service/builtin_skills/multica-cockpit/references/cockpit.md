@@ -200,7 +200,7 @@ A human manager or the current member writer may submit. An agent authenticated
 with an issue-scoped `mat_` task token may submit only when that authenticated
 task belongs to the minutes issue and matches its agent; authorship records the
 agent, not the credential owner's member ID. Cloud-node `mcn_` credentials cannot
-submit. All enable/readiness/release/review/publish commands reject machine
+submit. All enable/readiness/release/review/publish/NAS-export/retry commands reject machine
 credentials. Do not change credentials to bypass 403; ask the authorized human
 to act through their own interface. Review authority follows the version's
 `reviewer_id`, independently of the Review Issue's mutable assignee. Only that
@@ -221,9 +221,12 @@ owned work and whole-board import/restore. The board read exposes
 explicitly removes this history. Enabling a package makes legacy meeting
 `minutes/decisions/actions` text read-only historical material; it does not turn
 those strings into published versions. There is currently no package cancellation
-command. Text versions are stored in the database;
-NAS file watching, transcription, artifact-file synchronization, automatic
-action extraction and automatic release are not implemented by this workflow.
+command. Text versions are stored in the database. A configured server can
+export a fixed published version to NAS as described below; general file
+synchronization, NAS watching, transcription, automatic action extraction and
+automatic release are not implemented by this workflow.
+
+For fixed NAS exports and retry semantics, read [nas-export.md](nas-export.md).
 
 ### Reviewer handover
 
@@ -288,6 +291,7 @@ Explicitly empty project/module flags clear the board defaults. To adopt, use
 `--node-id` remains allowed. Enable has no revision flag. For submission, keep
 the UUID and exact UTF-8 file for a network retry. Review accepts
 `approved|changes_requested|rejected`; feedback is required for the last two.
+NAS command flags and receipts are documented in [nas-export.md](nas-export.md).
 
 Where the task and the folder go is board configuration, not code:
 `meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`

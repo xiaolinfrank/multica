@@ -2218,6 +2218,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/workflow/versions", h.SubmitCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/review", h.ReviewCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/publish", h.PublishCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/nas-export", h.ExportCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/exports/{exportId}/retry", h.RetryCockpitMinutesExport)
 				})
 			})
 

@@ -709,5 +709,30 @@
     "handoff_previous_issue": "原评审任务",
     "handoff_replacement_issue": "新评审任务",
     "handoff_stale": "此对话框打开期间，工作包已发生变更。请关闭后重新打开，核对最新责任范围再确认。"
+  },
+  "nas": {
+    "title": "NAS 副本",
+    "sync_on_publish": "将已发布纪要同步到 NAS",
+    "publish_queue_hint": "发布时将此固定版本加入 NAS 导出队列。共享盘离线不会撤销发布。",
+    "no_destination": "尚未配置允许使用的 NAS 位置。可以先发布，再到“关联与资料”配置资料目录并补导出。",
+    "destination_changed": "NAS 目标位置已变更。请核对新位置，或取消同步后再发布。",
+    "use_updated_destination": "使用更新后的位置",
+    "official_version": "正式纪要 · 第 {{number}} 版",
+    "configured_destination": "导出位置",
+    "export": "将正式纪要导出到 NAS",
+    "refresh": "刷新 NAS 状态",
+    "immutable_hint": "导出绑定固定版本和目标位置，不覆盖已有文件。修改资料目录不会移动先前的副本。",
+    "not_requested": "尚未请求 NAS 副本。",
+    "unconfirmed": "服务端尚未确认 NAS 操作。请刷新状态后再请求。",
+    "queued": "等待导出到 NAS",
+    "running": "正在写入 NAS",
+    "retry_wait": "等待重试",
+    "succeeded": "已导出到 NAS",
+    "needs_attention": "需要处理",
+    "unknown_status": "未识别的 NAS 状态：{{status}}",
+    "incomplete": "导出信息不完整，请刷新状态",
+    "retry": "重试 NAS 导出",
+    "retry_at": "下次自动重试：{{time}}",
+    "attention_hint": "请先处理显示的连接、权限或文件冲突问题。重试仍使用此位置，保留已有文件。"
   }
 }

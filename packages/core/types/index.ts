@@ -235,6 +235,8 @@ export type {
   CockpitWorkflowIssue,
   CockpitMinutesVersion,
   CockpitMeetingWorkflow,
+  CockpitNasDestination,
+  CockpitNasExport,
   CockpitReviewerHandoff,
   CockpitReviewerHandoffCommand,
   CockpitMeetingWorkflowSetup,

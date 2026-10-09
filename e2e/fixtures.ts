@@ -88,6 +88,16 @@ export interface TestMeetingWorkflow {
   can_review: boolean;
   can_publish: boolean;
   can_reassign_reviewer: boolean;
+  nas_destination: { root_id: string; directory: string } | null;
+  nas_unavailable_reason: string;
+  can_export_nas: boolean;
+  nas_exports: Array<{
+    id: string; version_id: string; version_number: number; source_issue_id: string;
+    content_hash: string; root_id: string; directory: string; target_path: string;
+    size_bytes: number | null; status: string; attempts: number; revision: number;
+    next_retry_at: string | null; completed_at: string | null; last_error_code: string;
+    last_error: string; can_retry: boolean;
+  }>;
   reviewer_handoffs: Array<{
     id: string; handoff_key: string; from_reviewer_id: string; to_reviewer_id: string;
     from_reviewer_name?: string; to_reviewer_name?: string; created_by_name?: string;
@@ -224,6 +234,42 @@ export class TestApiClient {
     return workspace;
   }
 
+  /** Seed the fresh UUID explicitly allowed by the isolated NAS test server. */
+  async createNASFixtureWorkspace(name: string, slug: string): Promise<TestWorkspace> {
+    const id = process.env.MULTICA_E2E_NAS_WORKSPACE_ID;
+    const database = decodeURIComponent(new URL(DATABASE_URL).pathname.slice(1));
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      || !database.endsWith("_test") || !this.email || this.workspaceId) {
+      throw new Error("NAS fixture requires a fresh configured UUID, a test database, and an authenticated owner without a workspace");
+    }
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    let workspace: TestWorkspace;
+    try {
+      await client.query("BEGIN");
+      const owner = await client.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [this.email]);
+      if (owner.rows.length !== 1) throw new Error("NAS fixture owner does not exist");
+      // INSERT must fail if the configured UUID already exists. Never adopt or
+      // replace an existing workspace, even after an interrupted test run.
+      const inserted = await client.query<TestWorkspace>(
+        "INSERT INTO workspace (id, name, slug, issue_prefix) VALUES ($1, $2, $3, 'NAS') RETURNING id, name, slug",
+        [id, name, slug],
+      );
+      await client.query("INSERT INTO member (workspace_id, user_id, role) VALUES ($1, $2, 'owner')", [id, owner.rows[0]!.id]);
+      workspace = inserted.rows[0]!;
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      await client.end();
+    }
+    this.workspaceId = workspace.id;
+    this.workspaceSlug = workspace.slug;
+    this.createdWorkspaceIds.push(workspace.id);
+    return workspace;
+  }
+
   async ensureWorkspace(name = "E2E Workspace", slug = "e2e-workspace") {
     const workspaces = await this.getWorkspaces();
     const workspace = workspaces.find((item) => item.slug === slug) ?? workspaces[0];
@@ -342,7 +388,7 @@ export class TestApiClient {
     return node;
   }
 
-  async createCockpitMeeting(body: { title: string; meet_date: string }): Promise<TestCockpitMeeting> {
+  async createCockpitMeeting(body: { title: string; meet_date: string; nas_dir?: string }): Promise<TestCockpitMeeting> {
     const res = await this.authedFetch("/api/cockpit/meetings", {
       method: "POST",
       body: JSON.stringify(body),
@@ -397,6 +443,17 @@ export class TestApiClient {
     workflow = await write("", "PATCH", { expected_revision: workflow.revision, ended: true, materials_ready: true });
     workflow = await write("/release", "POST", { expected_revision: workflow.revision });
     return write("/versions", "POST", { expected_revision: workflow.revision, submission_key: crypto.randomUUID(), content });
+  }
+
+  async approveMeetingMinutes(meetingId: string): Promise<TestMeetingWorkflow> {
+    const workflow = await this.getMeetingWorkflow(meetingId);
+    if (!workflow.current_version_id) throw new Error("Meeting has no submitted minutes version");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions/${encodeURIComponent(workflow.current_version_id)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: workflow.revision, decision: "approved", feedback: "Checked the fixed acceptance evidence." }),
+    });
+    if (!response.ok) throw new Error(`approve minutes failed: ${response.status} ${await response.text()}`);
+    return this.getMeetingWorkflow(meetingId);
   }
 
   async createIssue(title: string, opts?: Record<string, unknown>) {

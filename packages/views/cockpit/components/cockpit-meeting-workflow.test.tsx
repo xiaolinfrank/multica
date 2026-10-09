@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
 import { cockpitKeys, cockpitMeetingWorkflowOptions, useCockpitMinutesDraftStore, useCockpitReviewerHandoffDraftStore } from "@multica/core/cockpit";
-import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
+import { CockpitNasExportSchema, EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import type { CockpitMeetingIssueLink, CockpitMeetingWorkflow, MemberWithUser } from "@multica/core/types";
 import { workflowFixture, versionFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -109,6 +109,29 @@ beforeEach(() => {
 });
 
 describe("meeting work package workflow", () => {
+  it("publishes with the selected NAS destination while an offline export remains a separate pending result", async () => {
+    const version = versionFixture({ decision: "approved" });
+    const destination = { root_id: "root-1", directory: "/Volumes/team/Meeting" };
+    server = workflowFixture({ current_version_id: version.id, versions: [version], nas_destination: destination });
+    vi.mocked(api.publishCockpitMinutesVersion).mockImplementationOnce(async () => {
+      server = { ...server, revision: 2, published_version_id: version.id,
+        versions: [{ ...version, published_at: "2026-10-09T12:00:00Z" }],
+        nas_exports: [CockpitNasExportSchema.parse({ id: "nas-1", version_id: version.id, version_number: 1,
+          source_issue_id: version.source_issue_id, content_hash: version.content_hash, ...destination,
+          target_path: "/Volumes/team/Meeting/已发布纪要/fixed.md", revision: 2, status: "retry_wait", last_error: "NAS share offline" })],
+      };
+      return structuredClone(server);
+    });
+    setup();
+    expect(await screen.findByRole("checkbox", { name: "Sync published minutes to NAS" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
+    await screen.findByText("Published");
+    expect(screen.getByText("Waiting to retry")).toBeTruthy();
+    expect(screen.getByText("NAS share offline")).toBeTruthy();
+    expect(api.publishCockpitMinutesVersion).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, version.id, 1, destination);
+    expect(screen.queryByText("Unpublished")).toBeNull();
+  });
+
   it("uses authorized ledger display names for departed reviewers, before the current member-name fallback", async () => {
     server = workflowFixture({ revision: 2, reviewer_handoffs: [{
       id: "handoff-name", handoff_key: "30000000-0000-4000-8000-000000000001",

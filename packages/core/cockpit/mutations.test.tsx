@@ -4,13 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
-import { CockpitBoardSchema } from "../api/schemas";
+import { CockpitBoardSchema, CockpitMeetingSchema } from "../api/schemas";
 import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
-import { useSetCockpitMeetingIssueRoles, useSetCockpitNodeBinding } from "./mutations";
+import { useSetCockpitMeetingIssueRoles, useSetCockpitNodeBinding, useUpdateCockpitMeeting, useProvisionCockpitMeeting } from "./mutations";
 import { CockpitUnconfirmedWriteError } from "./errors";
 
-vi.mock("../api", () => ({ api: { updateCockpitNode: vi.fn(), setCockpitMeetingIssueRoles: vi.fn() } }));
+vi.mock("../api", () => ({ api: { updateCockpitNode: vi.fn(), setCockpitMeetingIssueRoles: vi.fn(), updateCockpitMeeting: vi.fn(), provisionCockpitMeeting: vi.fn() } }));
 afterEach(cleanup);
 
 function setup() {
@@ -29,6 +29,19 @@ function setup() {
 }
 
 describe("cockpit structural writes", () => {
+  it("refreshes the permitted export destination after editing or provisioning the meeting folder", async () => {
+    const { wrapper, client } = setup();
+    const meeting = CockpitMeetingSchema.parse({ id: "m1", nas_dir: "/Volumes/team/New" });
+    vi.mocked(api.updateCockpitMeeting).mockResolvedValue(meeting);
+    vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({ meeting, issues: [], task: null, task_error: "", dir: meeting.nas_dir, dir_created: true, dir_error: "" });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => ({ update: useUpdateCockpitMeeting("ws-1"), provision: useProvisionCockpitMeeting("ws-1") }), { wrapper });
+    await act(async () => { await result.current.update.mutateAsync({ id: "m1", patch: { nas_dir: meeting.nas_dir } }); });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow("ws-1", "m1"), exact: true });
+    invalidate.mockClear();
+    await act(async () => { await result.current.provision.mutateAsync({ id: "m1", body: { create_task: false, create_dir: true } }); });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow("ws-1", "m1"), exact: true });
+  });
   it("rejects an old server's unchanged binding response rather than reporting a confirmed write", async () => {
     const { board, wrapper, cached } = setup();
     vi.mocked(api.updateCockpitNode).mockResolvedValue(board.nodes[0]!);
