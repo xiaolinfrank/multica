@@ -87,6 +87,13 @@ export interface TestMeetingWorkflow {
   can_submit: boolean;
   can_review: boolean;
   can_publish: boolean;
+  can_reassign_reviewer: boolean;
+  reviewer_handoffs: Array<{
+    id: string; handoff_key: string; from_reviewer_id: string; to_reviewer_id: string;
+    from_reviewer_name?: string; to_reviewer_name?: string; created_by_name?: string;
+    version_id: string | null; from_review_issue: TestMeetingWorkflowIssue | null;
+    to_review_issue: TestMeetingWorkflowIssue | null; reason: string; created_by: string; revision: number;
+  }>;
 }
 
 export type TestIssueStatus =
@@ -376,6 +383,20 @@ export class TestApiClient {
       throw new Error("meeting workflow response did not identify the requested meeting");
     }
     return workflow;
+  }
+
+  /** Establish a real pending review through the API for handover scenarios. */
+  async seedPendingMeetingReview(meetingId: string, reviewerId: string, content: string): Promise<TestMeetingWorkflow> {
+    const base = `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`;
+    const write = async (suffix: string, method: "POST" | "PATCH", body: object) => {
+      const response = await this.authedFetch(base + suffix, { method, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error(`seed meeting review failed: ${response.status} ${await response.text()}`);
+      return this.getMeetingWorkflow(meetingId);
+    };
+    let workflow = await write("", "POST", { reviewer_id: reviewerId });
+    workflow = await write("", "PATCH", { expected_revision: workflow.revision, ended: true, materials_ready: true });
+    workflow = await write("/release", "POST", { expected_revision: workflow.revision });
+    return write("/versions", "POST", { expected_revision: workflow.revision, submission_key: crypto.randomUUID(), content });
   }
 
   async createIssue(title: string, opts?: Record<string, unknown>) {

@@ -771,6 +771,22 @@ type CockpitPendingChange struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type CockpitReviewerHandoff struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	HandoffKey        pgtype.UUID        `json:"handoff_key"`
+	FromReviewerID    pgtype.UUID        `json:"from_reviewer_id"`
+	ToReviewerID      pgtype.UUID        `json:"to_reviewer_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	FromReviewIssueID pgtype.UUID        `json:"from_review_issue_id"`
+	ToReviewIssueID   pgtype.UUID        `json:"to_review_issue_id"`
+	Reason            string             `json:"reason"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	Revision          int64              `json:"revision"`
+}
+
 type CockpitSnapshot struct {
 	ID             pgtype.UUID        `json:"id"`
 	WorkspaceID    pgtype.UUID        `json:"workspace_id"`

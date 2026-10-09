@@ -49,22 +49,41 @@ type CockpitMinutesVersionResponse struct {
 }
 
 type CockpitMeetingWorkflowResponse struct {
-	Enabled            bool                            `json:"enabled"`
-	MeetingID          string                          `json:"meeting_id"`
-	Revision           int64                           `json:"revision"`
-	EndedAt            *string                         `json:"ended_at"`
-	MaterialsReady     bool                            `json:"materials_ready"`
-	ReleasedAt         *string                         `json:"released_at"`
-	ReleaseTaskID      *string                         `json:"release_task_id"`
-	ReviewerID         *string                         `json:"reviewer_id"`
-	MinutesIssue       *CockpitWorkflowIssueResponse   `json:"minutes_issue"`
-	CurrentVersionID   *string                         `json:"current_version_id"`
-	PublishedVersionID *string                         `json:"published_version_id"`
-	Versions           []CockpitMinutesVersionResponse `json:"versions"`
-	CanManage          bool                            `json:"can_manage"`
-	CanSubmit          bool                            `json:"can_submit"`
-	CanReview          bool                            `json:"can_review"`
-	CanPublish         bool                            `json:"can_publish"`
+	Enabled             bool                             `json:"enabled"`
+	MeetingID           string                           `json:"meeting_id"`
+	Revision            int64                            `json:"revision"`
+	EndedAt             *string                          `json:"ended_at"`
+	MaterialsReady      bool                             `json:"materials_ready"`
+	ReleasedAt          *string                          `json:"released_at"`
+	ReleaseTaskID       *string                          `json:"release_task_id"`
+	ReviewerID          *string                          `json:"reviewer_id"`
+	MinutesIssue        *CockpitWorkflowIssueResponse    `json:"minutes_issue"`
+	CurrentVersionID    *string                          `json:"current_version_id"`
+	PublishedVersionID  *string                          `json:"published_version_id"`
+	Versions            []CockpitMinutesVersionResponse  `json:"versions"`
+	CanManage           bool                             `json:"can_manage"`
+	CanSubmit           bool                             `json:"can_submit"`
+	CanReview           bool                             `json:"can_review"`
+	CanPublish          bool                             `json:"can_publish"`
+	CanReassignReviewer bool                             `json:"can_reassign_reviewer"`
+	ReviewerHandoffs    []CockpitReviewerHandoffResponse `json:"reviewer_handoffs"`
+}
+
+type CockpitReviewerHandoffResponse struct {
+	ID               string                        `json:"id"`
+	HandoffKey       string                        `json:"handoff_key"`
+	FromReviewerID   string                        `json:"from_reviewer_id"`
+	ToReviewerID     string                        `json:"to_reviewer_id"`
+	FromReviewerName string                        `json:"from_reviewer_name"`
+	ToReviewerName   string                        `json:"to_reviewer_name"`
+	CreatedByName    string                        `json:"created_by_name"`
+	VersionID        *string                       `json:"version_id"`
+	FromReviewIssue  *CockpitWorkflowIssueResponse `json:"from_review_issue"`
+	ToReviewIssue    *CockpitWorkflowIssueResponse `json:"to_review_issue"`
+	Reason           string                        `json:"reason"`
+	CreatedBy        string                        `json:"created_by"`
+	CreatedAt        string                        `json:"created_at"`
+	Revision         int64                         `json:"revision"`
 }
 
 func cockpitWorkflowTime(value pgtype.Timestamptz) *string {
@@ -117,7 +136,7 @@ func (h *Handler) canSubmitCockpitMinutes(r *http.Request, q *db.Queries, cc coc
 // Read the package under a shared lock, then batch-load issue cards. Concurrent
 // review/submit commands cannot produce a mixed version/revision response.
 func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, meetingID pgtype.UUID) (CockpitMeetingWorkflowResponse, error) {
-	out := CockpitMeetingWorkflowResponse{MeetingID: uuidToString(meetingID), Versions: []CockpitMinutesVersionResponse{}}
+	out := CockpitMeetingWorkflowResponse{MeetingID: uuidToString(meetingID), Versions: []CockpitMinutesVersionResponse{}, ReviewerHandoffs: []CockpitReviewerHandoffResponse{}}
 	tx, err := h.TxStarter.Begin(r.Context())
 	if err != nil {
 		return out, err
@@ -136,9 +155,38 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	if err != nil {
 		return out, err
 	}
+	handoffs, err := q.ListCockpitReviewerHandoffs(r.Context(), db.ListCockpitReviewerHandoffsParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
+	if err != nil {
+		return out, err
+	}
 	ids := []pgtype.UUID{work.MinutesIssueID}
 	for _, version := range versions {
 		ids = append(ids, version.ReviewIssueID)
+	}
+	for _, handoff := range handoffs {
+		if handoff.FromReviewIssueID.Valid {
+			ids = append(ids, handoff.FromReviewIssueID)
+		}
+		if handoff.ToReviewIssueID.Valid {
+			ids = append(ids, handoff.ToReviewIssueID)
+		}
+	}
+	// Only identities from this authorized meeting's ledger are enriched. A
+	// departed member's account can still supply its display name; emails and
+	// other profile fields never enter this response. IDs remain authoritative.
+	names := make(map[pgtype.UUID]string)
+	if len(handoffs) > 0 {
+		userIDs := make([]pgtype.UUID, 0, len(handoffs)*3)
+		for _, handoff := range handoffs {
+			userIDs = append(userIDs, handoff.FromReviewerID, handoff.ToReviewerID, handoff.CreatedBy)
+		}
+		users, err := q.GetUsersByIDs(r.Context(), userIDs)
+		if err != nil {
+			return out, err
+		}
+		for _, user := range users {
+			names[user.ID] = user.Name
+		}
 	}
 	issues, err := q.ListCockpitWorkflowIssues(r.Context(), db.ListCockpitWorkflowIssuesParams{WorkspaceID: cc.workspaceID, IssueIds: ids})
 	if err != nil {
@@ -165,7 +213,17 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	out.CurrentVersionID = uuidToPtr(work.CurrentVersionID)
 	out.PublishedVersionID = uuidToPtr(work.PublishedVersionID)
 	out.CanManage = !isMachineCredentialActor(r) && cockpitWorkflowManagedBy(work, cc.member)
+	out.CanReassignReviewer = out.CanManage
 	out.CanSubmit = h.canSubmitCockpitMinutes(r, q, cc, work, out.MinutesIssue)
+	for _, handoff := range handoffs {
+		out.ReviewerHandoffs = append(out.ReviewerHandoffs, CockpitReviewerHandoffResponse{
+			ID: uuidToString(handoff.ID), HandoffKey: uuidToString(handoff.HandoffKey),
+			FromReviewerID: uuidToString(handoff.FromReviewerID), ToReviewerID: uuidToString(handoff.ToReviewerID),
+			FromReviewerName: names[handoff.FromReviewerID], ToReviewerName: names[handoff.ToReviewerID], CreatedByName: names[handoff.CreatedBy],
+			VersionID: uuidToPtr(handoff.VersionID), FromReviewIssue: cards[handoff.FromReviewIssueID], ToReviewIssue: cards[handoff.ToReviewIssueID],
+			Reason: handoff.Reason, CreatedBy: uuidToString(handoff.CreatedBy), CreatedAt: handoff.CreatedAt.Time.UTC().Format(time.RFC3339Nano), Revision: handoff.Revision,
+		})
+	}
 	for _, version := range versions {
 		out.Versions = append(out.Versions, CockpitMinutesVersionResponse{
 			ID: uuidToString(version.ID), VersionNumber: version.VersionNumber, SubmissionKey: uuidToString(version.SubmissionKey),
@@ -481,6 +539,38 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 	}
 	err := h.IssueService.PublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID})
 	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "published", err)
+}
+
+func (h *Handler) ChangeCockpitMeetingReviewer(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
+		return
+	}
+	var req struct {
+		cockpitWorkflowRevisionRequest
+		HandoffKey string `json:"handoff_key"`
+		ReviewerID string `json:"reviewer_id"`
+		Reason     string `json:"reason"`
+	}
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	command, ok := cockpitWorkflowCommand(w, cc, meeting.ID, req.ExpectedRevision)
+	if !ok {
+		return
+	}
+	key, ok := parseUUIDOrBadRequest(w, req.HandoffKey, "handoff_key")
+	if !ok {
+		return
+	}
+	reviewer, ok := parseUUIDOrBadRequest(w, req.ReviewerID, "reviewer_id")
+	if !ok {
+		return
+	}
+	err := h.IssueService.ChangeCockpitMeetingReviewer(r.Context(), service.CockpitReviewerHandoff{
+		CockpitWorkPackageCommand: command, HandoffKey: key, ReviewerID: reviewer, Reason: strings.TrimSpace(req.Reason),
+	}, service.IssueCreateOpts{ActorID: uuidToString(cc.member.UserID)})
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "reviewer_reassigned", err)
 }
 
 // Kept here so destructive operations can recheck in their own transaction.

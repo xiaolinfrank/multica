@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
-import { cockpitMeetingWorkflowOptions, useCockpitMinutesDraftStore } from "@multica/core/cockpit";
+import { cockpitKeys, cockpitMeetingWorkflowOptions, useCockpitMinutesDraftStore, useCockpitReviewerHandoffDraftStore } from "@multica/core/cockpit";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import type { CockpitMeetingIssueLink, CockpitMeetingWorkflow, MemberWithUser } from "@multica/core/types";
 import { workflowFixture, versionFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
@@ -17,7 +17,7 @@ vi.mock("@multica/core/api", async (importOriginal) => ({
   api: {
     getCockpitMeetingWorkflow: vi.fn(), enableCockpitMeetingWorkflow: vi.fn(), updateCockpitMeetingReadiness: vi.fn(),
     releaseCockpitMeetingWorkflow: vi.fn(), submitCockpitMinutesVersion: vi.fn(), reviewCockpitMinutesVersion: vi.fn(),
-    publishCockpitMinutesVersion: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(),
+    publishCockpitMinutesVersion: vi.fn(), reassignCockpitMeetingReviewer: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(),
   },
 }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
@@ -30,24 +30,30 @@ const members = [{ id: "member-row-1", user_id: "reviewer-1", name: "Human Revie
 let knownMembers: MemberWithUser[];
 let membersLoaded: boolean;
 let server: CockpitMeetingWorkflow;
+let currentUserId: string;
+let readOnly: boolean;
 let links: CockpitMeetingIssueLink[];
 let placement: { project_id: string | null; module_id: string | null; node_id: string | null };
 
 function Harness() {
   const query = useQuery(cockpitMeetingWorkflowOptions("ws-1", WORKFLOW_MEETING_ID));
-  return <CockpitMeetingWorkflowPanel wsId="ws-1" meetingId={WORKFLOW_MEETING_ID} currentUserId="reviewer-1"
+  return <CockpitMeetingWorkflowPanel wsId="ws-1" meetingId={WORKFLOW_MEETING_ID} currentUserId={currentUserId} readOnly={readOnly}
     members={knownMembers} membersLoaded={membersLoaded} issueLinks={links} workflow={query.data} loading={query.isPending} loadError={query.isError}
     onReload={() => void query.refetch()} defaultPlacement={placement}
     defaultAssigneeType="member" defaultAssigneeId="reviewer-1" />;
 }
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}><Harness /></I18nProvider></QueryClientProvider>);
+  const rendered = render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}><Harness /></I18nProvider></QueryClientProvider>);
+  return { ...rendered, client };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   useCockpitMinutesDraftStore.getState().clearDraft();
+  useCockpitReviewerHandoffDraftStore.getState().clearDraft();
+  currentUserId = "reviewer-1";
+  readOnly = false;
   server = { ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: WORKFLOW_MEETING_ID };
   links = [];
   knownMembers = members;
@@ -81,6 +87,20 @@ beforeEach(() => {
       ? { ...version, decision: body.decision, feedback: body.feedback, reviewed_at: "2026-10-09T10:02:00Z", reviewed_by: "reviewer-1" } : version) };
     return structuredClone(server);
   });
+  vi.mocked(api.reassignCockpitMeetingReviewer).mockImplementation(async (_meetingId, body) => {
+    const current = server.versions.find((version) => version.id === server.current_version_id);
+    const pending = current?.decision === "pending";
+    const nextIssue = pending ? { ...current.review_issue, id: "review-2", identifier: "BIO-3", assignee_id: body.reviewer_id } : null;
+    server = { ...server, reviewer_id: body.reviewer_id, revision: server.revision + 1,
+      versions: server.versions.map((version) => version.id === current?.id && pending ? { ...version, reviewer_id: body.reviewer_id, review_issue: nextIssue! } : version),
+      reviewer_handoffs: [...server.reviewer_handoffs, {
+        id: "handoff-1", handoff_key: body.handoff_key, from_reviewer_id: server.reviewer_id!, to_reviewer_id: body.reviewer_id,
+        version_id: pending ? current.id : null, from_review_issue: pending ? { ...current.review_issue, status: "cancelled" } : null,
+        to_review_issue: nextIssue, reason: body.reason, created_by: currentUserId, created_at: "2026-10-10T10:00:00Z", revision: server.revision + 1,
+      }],
+    };
+    return structuredClone(server);
+  });
   vi.mocked(api.publishCockpitMinutesVersion).mockImplementation(async (_meetingId, versionId) => {
     server = { ...server, revision: server.revision + 1, published_version_id: versionId, versions: server.versions.map((version) => version.id === versionId
       ? { ...version, published_at: "2026-10-09T10:03:00Z", published_by: "reviewer-1" } : version) };
@@ -89,6 +109,157 @@ beforeEach(() => {
 });
 
 describe("meeting work package workflow", () => {
+  it("uses authorized ledger display names for departed reviewers, before the current member-name fallback", async () => {
+    server = workflowFixture({ revision: 2, reviewer_handoffs: [{
+      id: "handoff-name", handoff_key: "30000000-0000-4000-8000-000000000001",
+      from_reviewer_id: "departed-user", to_reviewer_id: "reviewer-1", created_by: "former-manager",
+      from_reviewer_name: "Former Reviewer", to_reviewer_name: "Updated Reviewer Name", created_by_name: "Original Manager",
+      reason: "Team responsibility changed", created_at: "2026-10-10T10:00:00Z", revision: 2,
+      version_id: null, from_review_issue: null, to_review_issue: null,
+    }] });
+    setup();
+    const history = await screen.findByRole("region", { name: "Review responsibility history" });
+    expect(history).toHaveTextContent("Former Reviewer → Updated Reviewer Name");
+    expect(history).toHaveTextContent("Transferred by Original Manager");
+    expect(history).not.toHaveTextContent("departed-user");
+    expect(history).not.toHaveTextContent("former-manager");
+    expect(history).not.toHaveTextContent("Human Reviewer");
+  });
+
+  it("recovers a departed reviewer with a required reason, a new review task and visible responsibility history", async () => {
+    currentUserId = "manager-1";
+    knownMembers = [
+      { ...members[0]!, user_id: "manager-1", name: "Package Manager" },
+      { ...members[0]!, id: "member-row-2", user_id: "reviewer-2", name: "New Reviewer" },
+    ];
+    const version = versionFixture();
+    server = workflowFixture({ can_reassign_reviewer: true, current_version_id: version.id, versions: [version] });
+    const user = userEvent.setup();
+    setup();
+    expect(await screen.findByText(/The fixed version’s reviewer is no longer/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Transfer review responsibility" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Version 1 keeps its fixed content");
+    expect(within(dialog).getByRole("button", { name: "Confirm transfer" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("combobox", { name: "New reviewer" }));
+    await user.click(await screen.findByRole("option", { name: "New Reviewer" }));
+    expect(within(dialog).getByRole("button", { name: "Confirm transfer" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Reason for transfer" }), { target: { value: " Reviewer left the team " } });
+    expect(api.reassignCockpitMeetingReviewer).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Confirm transfer" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(api.reassignCockpitMeetingReviewer).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, {
+      expected_revision: 1, handoff_key: expect.stringMatching(/^[0-9a-f-]{36}$/), reviewer_id: "reviewer-2", reason: "Reviewer left the team",
+    });
+    expect(server.versions[0]).toMatchObject({ id: version.id, content: version.content, content_hash: version.content_hash, decision: "pending", review_issue: { id: "review-2" } });
+    const history = screen.getByRole("region", { name: "Review responsibility history" });
+    expect(history).toHaveTextContent("reviewer-1 → New Reviewer");
+    expect(history).toHaveTextContent("Transferred by Package Manager");
+    expect(history).toHaveTextContent("Reviewer left the team");
+    expect(within(history).getByRole("link", { name: /BIO-2/ })).toHaveAttribute("href", "/ws/issues/BIO-2");
+    expect(within(history).getByRole("link", { name: /BIO-3/ })).toHaveAttribute("href", "/ws/issues/BIO-3");
+    expect(screen.queryByText(/The fixed version’s reviewer is no longer/)).toBeNull();
+  });
+
+  it("keeps a network-unknown transfer fixed across remount and retries the same command", async () => {
+    knownMembers = [...members, { ...members[0]!, id: "member-row-2", user_id: "reviewer-2", name: "New Reviewer" }];
+    server = workflowFixture({ can_reassign_reviewer: true });
+    vi.mocked(api.reassignCockpitMeetingReviewer).mockRejectedValueOnce(new Error("Network unavailable"));
+    const first = setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Transfer review responsibility" }));
+    await user.click(screen.getByRole("combobox", { name: "New reviewer" }));
+    await user.click(await screen.findByRole("option", { name: "New Reviewer" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason for transfer" }), { target: { value: "New responsibility" } });
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network unavailable");
+    expect(screen.getByRole("textbox", { name: "Reason for transfer" })).toBeDisabled();
+    first.unmount();
+    setup();
+    await user.click(await screen.findByRole("button", { name: "Retry transfer" }));
+    expect(screen.queryByRole("combobox", { name: "New reviewer" })).toBeNull();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Retry transfer" }));
+    await screen.findByRole("region", { name: "Review responsibility history" });
+    const calls = vi.mocked(api.reassignCockpitMeetingReviewer).mock.calls;
+    expect(calls[1]?.[1]).toEqual(calls[0]?.[1]);
+    expect(useCockpitReviewerHandoffDraftStore.getState().draft.byMeeting[WORKFLOW_MEETING_ID]).toBeUndefined();
+  });
+
+  it("requires reopening to reconfirm when another manager changes responsibility while the dialog is open", async () => {
+    knownMembers = [...members, { ...members[0]!, id: "member-row-2", user_id: "reviewer-2", name: "New Reviewer" }];
+    server = workflowFixture({ can_reassign_reviewer: true });
+    const { client } = setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Transfer review responsibility" }));
+    await user.click(screen.getByRole("combobox", { name: "New reviewer" }));
+    await user.click(await screen.findByRole("option", { name: "New Reviewer" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason for transfer" }), { target: { value: "Requested coverage" } });
+    expect(screen.getByRole("button", { name: "Confirm transfer" })).toBeEnabled();
+    server = { ...server, revision: 2, reviewer_id: "reviewer-3" };
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), server); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("The workflow changed while this dialog was open");
+    expect(screen.getByRole("button", { name: "Confirm transfer" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    expect(api.reassignCockpitMeetingReviewer).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Transfer review responsibility" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Reviewer: reviewer-3");
+    expect(screen.getByRole("textbox", { name: "Reason for transfer" })).toHaveValue("Requested coverage");
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    await waitFor(() => expect(api.reassignCockpitMeetingReviewer).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, expect.objectContaining({ expected_revision: 2, reviewer_id: "reviewer-2" })));
+  });
+
+  it("changes only the future reviewer after approval and preserves the fixed version and publication authority", async () => {
+    knownMembers = [...members, { ...members[0]!, id: "member-row-2", user_id: "reviewer-2", name: "New Reviewer" }];
+    const version = versionFixture({ decision: "approved", reviewed_by: "reviewer-1", reviewed_at: "2026-10-09T11:00:00Z" });
+    server = workflowFixture({ can_reassign_reviewer: true, current_version_id: version.id, versions: [version] });
+    setup();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Transfer review responsibility" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Only the reviewer for future submissions will change");
+    await user.click(screen.getByRole("combobox", { name: "New reviewer" }));
+    expect(screen.queryByRole("option", { name: "Human Reviewer" })).toBeNull();
+    await user.click(await screen.findByRole("option", { name: "New Reviewer" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason for transfer" }), { target: { value: "Next round coverage" } });
+    await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    await screen.findByRole("region", { name: "Review responsibility history" });
+    expect(server.versions[0]).toEqual(version);
+    expect(server.reviewer_handoffs[0]).toMatchObject({ version_id: null, from_review_issue: null, to_review_issue: null });
+    expect(screen.getByRole("button", { name: "Publish version" })).toBeEnabled();
+    expect(screen.getByText("Reviewer for future submissions: New Reviewer")).toBeTruthy();
+  });
+
+  it.each([
+    { can_manage: false, can_reassign_reviewer: true, actor: "reviewer-1", readonly: false },
+    { can_manage: true, can_reassign_reviewer: false, actor: "reviewer-1", readonly: false },
+    { can_manage: true, can_reassign_reviewer: true, actor: "", readonly: false },
+    { can_manage: true, can_reassign_reviewer: true, actor: "reviewer-1", readonly: true },
+  ])("does not offer a handoff without verified authority: %j", async ({ actor, readonly, ...caps }) => {
+    currentUserId = actor;
+    readOnly = readonly;
+    server = workflowFixture(caps);
+    setup();
+    await screen.findByText("Minutes issue");
+    expect(screen.queryByRole("button", { name: "Transfer review responsibility" })).toBeNull();
+  });
+
+  it("resets local review feedback when the same fixed version gains a replacement review issue", async () => {
+    const version = versionFixture();
+    server = workflowFixture({ current_version_id: version.id, versions: [version] });
+    const { client } = setup();
+    fireEvent.change(await screen.findByRole("textbox", { name: "Review feedback" }), { target: { value: "Draft for old responsibility" } });
+    server = { ...server, revision: 3, versions: [{ ...version, review_issue: { ...version.review_issue, id: "replacement-review" } }] };
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), server); });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Review feedback" })).toHaveValue(""));
+  });
+
+  it("does not block an approved current version when only the future reviewer has left", async () => {
+    const version = versionFixture({ decision: "approved" });
+    server = workflowFixture({ reviewer_id: "departed-future-reviewer", current_version_id: version.id, versions: [version] });
+    setup();
+    expect(await screen.findByText(/The reviewer for future submissions is no longer/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Publish version" })).toBeEnabled();
+  });
   it("renders immutable current and historical minutes as formatted Markdown", async () => {
     const current = versionFixture({ id: "v2", version_number: 2, content: "# Current meeting minutes\n\nA **clear** boundary.", decision: "approved" });
     const previous = versionFixture({ id: "v1", version_number: 1, content: "## Earlier minutes\n\nOriginal text.", decision: "changes_requested" });
@@ -110,8 +281,8 @@ describe("meeting work package workflow", () => {
     first.unmount();
     membersLoaded = true;
     setup();
-    expect(await screen.findByText(/The designated reviewer is no longer a workspace member/)).toHaveTextContent("Reassigning the issue does not transfer formal review authority");
-    expect(screen.queryByRole("button", { name: /transfer reviewer/i })).toBeNull();
+    expect(await screen.findByText(/The reviewer for future submissions is no longer a workspace member/)).toHaveTextContent("Reassigning an issue does not transfer formal review authority");
+    expect(screen.queryByRole("button", { name: "Transfer review responsibility" })).toBeNull();
   });
 
   it("adopts an explicitly selected unscoped backlog issue without sending placement or reassignment", async () => {

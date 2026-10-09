@@ -35,6 +35,7 @@ func newCockpitWorkflowFixture(t *testing.T) cockpitWorkflowFixture {
 	f.Cleanup(t, "DELETE FROM cockpit_node_issue WHERE workspace_id=$1", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_meeting_work_package WHERE workspace_id=$1", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_minutes_version WHERE workspace_id=$1", ws)
+	f.Cleanup(t, "DELETE FROM cockpit_reviewer_handoff WHERE workspace_id=$1", ws)
 	svc := NewIssueService(f.q, f.Pool, f.svc.Bus, nil, f.svc.TaskSvc)
 	return cockpitWorkflowFixture{principalFixture: f, issues: svc, ws: ws, meeting: parseTestUUID(t, meeting), owner: parseTestUUID(t, owner)}
 }

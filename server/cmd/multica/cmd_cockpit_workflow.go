@@ -21,10 +21,10 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 		Use:   "workflow",
 		Short: "Manage a meeting's minutes work package and fixed review versions",
 		Long: "Read or advance a meeting's minutes workflow. Commands return the JSON workflow read model. " +
-			"Enable, readiness, release, review and publication require a human credential; the server enforces permissions. " +
+			"Enable, readiness, release, reviewer handover, review and publication require a human credential; the server enforces permissions. " +
 			"An authorized minutes-issue agent may submit a text version. Completing its review issue does not approve or publish it.",
 	}
-	for _, action := range []string{"show", "enable", "ready", "release", "submit", "review", "publish"} {
+	for _, action := range []string{"show", "enable", "ready", "release", "submit", "review", "publish", "reassign-reviewer"} {
 		count := 1
 		use := action + " <meeting-id>"
 		if action == "review" || action == "publish" {
@@ -56,6 +56,10 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 		case "review":
 			cmd.Flags().String("decision", "", "Required decision: approved, changes_requested or rejected")
 			cmd.Flags().String("feedback", "", "Review feedback; required for changes_requested and rejected")
+		case "reassign-reviewer":
+			cmd.Flags().String("handoff-key", "", "Required UUID for this handover; reuse it with the same inputs on retry")
+			cmd.Flags().String("reviewer-id", "", "Required new human reviewer user UUID in this workspace")
+			cmd.Flags().String("reason", "", "Required reason for transferring review responsibility")
 		}
 		workflow.AddCommand(cmd)
 	}
@@ -175,6 +179,21 @@ func cockpitWorkflowBody(cmd *cobra.Command, action string) (map[string]any, err
 			return nil, fmt.Errorf("--content-file must contain nonempty UTF-8 text of at most 128 KiB")
 		}
 		body["submission_key"], body["content"] = key, string(content)
+	case "reassign-reviewer":
+		for _, field := range []struct{ flag, key string }{{"handoff-key", "handoff_key"}, {"reviewer-id", "reviewer_id"}} {
+			value, _ := cmd.Flags().GetString(field.flag)
+			id, err := cockpitWorkflowUUID(value, "--"+field.flag)
+			if err != nil {
+				return nil, err
+			}
+			body[field.key] = id
+		}
+		reason, _ := cmd.Flags().GetString("reason")
+		reason = strings.TrimSpace(reason)
+		if reason == "" || len(reason) > 16000 {
+			return nil, fmt.Errorf("--reason must contain 1–16000 bytes of text")
+		}
+		body["reason"] = reason
 	case "review":
 		decision, _ := cmd.Flags().GetString("decision")
 		feedback, _ := cmd.Flags().GetString("feedback")
@@ -208,6 +227,8 @@ func runCockpitMeetingWorkflow(cmd *cobra.Command, args []string, action string)
 		path += "/release"
 	case "submit":
 		path += "/versions"
+	case "reassign-reviewer":
+		path += "/reviewer"
 	case "review", "publish":
 		versionID, err := cockpitWorkflowUUID(args[1], "version-id")
 		if err != nil {

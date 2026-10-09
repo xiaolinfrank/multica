@@ -638,6 +638,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		assignedTaskID = s.maybeEnqueueOnAssign(ctx, issue, p.CreatorType, actorID, opts.AssignedAgentRunFireAt)
 	}
 
+	if p.CockpitWorkflow != nil && p.CockpitWorkflow.Handoff != nil {
+		s.finalizeCockpitReviewerHandoff(ctx, p.CockpitWorkflow)
+	}
 	return IssueCreateResult{Issue: issue, Attachments: attachments, Labels: labels, AssignedTaskID: assignedTaskID}, nil
 }
 

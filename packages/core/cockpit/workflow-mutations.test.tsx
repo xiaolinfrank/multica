@@ -8,7 +8,7 @@ import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "../api/schemas";
 import type { CockpitMeetingWorkflow } from "../types";
 import { cockpitKeys, cockpitMeetingWorkflowOptions, invalidateCockpitWorkflowsForIssue } from "./queries";
 import { useEnableCockpitMeetingWorkflow } from "./workflow-mutations";
-import { workflowFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
+import { handoffFixture, workflowFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 
 vi.mock("../api", () => ({ api: { getCockpitMeetingWorkflow: vi.fn(), enableCockpitMeetingWorkflow: vi.fn() } }));
 afterEach(cleanup);
@@ -39,6 +39,17 @@ describe("workflow cache ownership", () => {
     client.setQueryData(cockpitKeys.workflow("ws-2", "meeting-c"), workflowFixture());
     const invalidate = vi.spyOn(client, "invalidateQueries");
     invalidateCockpitWorkflowsForIssue(client, "ws-1", "minutes-1");
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: cockpitKeys.workflow("ws-1", "meeting-a"), exact: true });
+  });
+
+  it("refreshes historical review task data after a transfer, scoped to its own workspace", () => {
+    const client = new QueryClient();
+    const workflow = workflowFixture({ reviewer_handoffs: [handoffFixture()] });
+    client.setQueryData(cockpitKeys.workflow("ws-1", "meeting-a"), workflow);
+    client.setQueryData(cockpitKeys.workflow("ws-1", "meeting-b"), workflowFixture());
+    client.setQueryData(cockpitKeys.workflow("ws-2", "meeting-a"), workflow);
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    invalidateCockpitWorkflowsForIssue(client, "ws-1", "review-1");
     expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: cockpitKeys.workflow("ws-1", "meeting-a"), exact: true });
   });
 });

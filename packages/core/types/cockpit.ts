@@ -433,6 +433,33 @@ export interface CockpitMeetingWorkflow {
   can_submit: boolean;
   can_review: boolean;
   can_publish: boolean;
+  can_reassign_reviewer: boolean;
+  reviewer_handoffs: CockpitReviewerHandoff[];
+}
+
+export interface CockpitReviewerHandoff {
+  id: string;
+  handoff_key: string;
+  from_reviewer_id: string;
+  to_reviewer_id: string;
+  /** Current profile display names only; identity and authority remain ID-based. */
+  from_reviewer_name?: string;
+  to_reviewer_name?: string;
+  created_by_name?: string;
+  version_id: string | null;
+  from_review_issue: CockpitWorkflowIssue | null;
+  to_review_issue: CockpitWorkflowIssue | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  revision: number;
+}
+
+export interface CockpitReviewerHandoffCommand {
+  expected_revision: number;
+  handoff_key: string;
+  reviewer_id: string;
+  reason: string;
 }
 
 export interface CockpitMeetingWorkflowSetup {

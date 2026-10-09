@@ -1,9 +1,27 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitWorkflowActions } from "./meeting-workflow";
-import { versionFixture, workflowFixture } from "./workflow-test-fixtures";
+import { cockpitWorkflowActions, cockpitWorkflowRequiredIssueRoles } from "./meeting-workflow";
+import { handoffFixture, versionFixture, workflowFixture } from "./workflow-test-fixtures";
 
 describe("meeting workflow affordances", () => {
+  it("retains old and replacement review relations after multiple handoffs, without protecting another meeting", () => {
+    const old = handoffFixture();
+    const next = handoffFixture({ id: "handoff-2", from_review_issue: old.to_review_issue,
+      to_review_issue: { ...old.to_review_issue!, id: "review-3" } });
+    const workflow = workflowFixture({ versions: [versionFixture({ review_issue: next.to_review_issue! })], reviewer_handoffs: [old, next] });
+    expect([...cockpitWorkflowRequiredIssueRoles(workflow)]).toEqual([
+      ["minutes-1", ["minutes"]], ["review-3", ["review"]], ["review-1", ["review"]], ["review-2", ["review"]],
+    ]);
+    expect(cockpitWorkflowRequiredIssueRoles(workflowFixture()).has("review-1")).toBe(false);
+  });
+  it("requires both manager authority and the handoff capability without treating unknown states as transferable", () => {
+    const workflow = workflowFixture({ can_reassign_reviewer: true });
+    expect(cockpitWorkflowActions(workflow, "manager-1").canReassignReviewer).toBe(true);
+    expect(cockpitWorkflowActions({ ...workflow, can_manage: false }, "member-1").canReassignReviewer).toBe(false);
+    expect(cockpitWorkflowActions({ ...workflow, can_reassign_reviewer: false }, "manager-1").canReassignReviewer).toBe(false);
+    expect(cockpitWorkflowActions(workflow, "").canReassignReviewer).toBe(false);
+    expect(cockpitWorkflowActions({ ...workflow, current_version_id: "version-1", versions: [versionFixture({ decision: "future-decision" })] }, "manager-1").canReassignReviewer).toBe(false);
+  });
   it("requires both facts and backlog before explicit release", () => {
     const workflow = workflowFixture({ ended_at: "2026-10-09T10:00:00Z", materials_ready: true });
     expect(cockpitWorkflowActions(workflow, "manager-1").canRelease).toBe(true);

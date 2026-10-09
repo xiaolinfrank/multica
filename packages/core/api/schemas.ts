@@ -2028,6 +2028,23 @@ export const CockpitMinutesVersionSchema = z.object({
   published_at: z.string().nullable().default(null),
 }).loose();
 
+export const CockpitReviewerHandoffSchema = z.object({
+  id: z.string().min(1),
+  handoff_key: z.string().uuid(),
+  from_reviewer_id: z.string().min(1),
+  to_reviewer_id: z.string().min(1),
+  from_reviewer_name: z.string().catch("").default(""),
+  to_reviewer_name: z.string().catch("").default(""),
+  created_by_name: z.string().catch("").default(""),
+  version_id: z.string().nullable(),
+  from_review_issue: CockpitWorkflowIssueSchema.nullable(),
+  to_review_issue: CockpitWorkflowIssueSchema.nullable(),
+  reason: z.string().min(1),
+  created_by: z.string().min(1),
+  created_at: z.string().min(1),
+  revision: z.number().int().positive(),
+}).loose();
+
 export const CockpitMeetingWorkflowSchema = z.object({
   enabled: z.boolean().default(false),
   meeting_id: z.string(),
@@ -2045,6 +2062,8 @@ export const CockpitMeetingWorkflowSchema = z.object({
   can_submit: z.boolean().default(false),
   can_review: z.boolean().default(false),
   can_publish: z.boolean().default(false),
+  can_reassign_reviewer: z.boolean().catch(false).default(false),
+  reviewer_handoffs: z.array(CockpitReviewerHandoffSchema).default([]),
 }).loose();
 
 const WorkflowIssueAcknowledgmentSchema = CockpitWorkflowIssueSchema.extend({

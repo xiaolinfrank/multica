@@ -15,6 +15,7 @@ const cockpitMeetingWorkflowRequiredRole = `-- name: CockpitMeetingWorkflowRequi
 SELECT CASE
  WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1::uuid AND w.meeting_id=$2::uuid AND w.minutes_issue_id=$3::uuid) THEN 'minutes'
  WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=$1::uuid AND v.meeting_id=$2::uuid AND v.review_issue_id=$3::uuid) THEN 'review'
+ WHEN EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$1::uuid AND h.meeting_id=$2::uuid AND (h.from_review_issue_id=$3::uuid OR h.to_review_issue_id=$3::uuid)) THEN 'review'
  ELSE '' END::text AS role
 `
 
@@ -70,6 +71,12 @@ WHERE w.workspace_id=$1::uuid AND w.meeting_id=$2::uuid
 UNION
 SELECT v.review_issue_id AS issue_id FROM cockpit_minutes_version v
 WHERE v.workspace_id=$1::uuid AND v.meeting_id=$2::uuid
+UNION
+SELECT h.from_review_issue_id AS issue_id FROM cockpit_reviewer_handoff h
+WHERE h.workspace_id=$1::uuid AND h.meeting_id=$2::uuid AND h.from_review_issue_id IS NOT NULL
+UNION
+SELECT h.to_review_issue_id AS issue_id FROM cockpit_reviewer_handoff h
+WHERE h.workspace_id=$1::uuid AND h.meeting_id=$2::uuid AND h.to_review_issue_id IS NOT NULL
 `
 
 type ListCockpitMeetingWorkflowIssueIDsParams struct {

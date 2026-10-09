@@ -33,6 +33,7 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | POST | `/api/cockpit/meetings/{meetingId}/workflow` | enable a work package or explicitly adopt an unstarted issue (human) |
 | PATCH | `/api/cockpit/meetings/{meetingId}/workflow` | record ended/materials-ready facts (human manager) |
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/release` | explicitly release ready minutes work (human manager) |
+| POST | `/api/cockpit/meetings/{meetingId}/workflow/reviewer` | explicitly transfer review responsibility with an immutable handover record (human manager) |
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/versions` | submit a fixed text version and create its human review issue |
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/review` | approve, request changes or reject (designated human reviewer) |
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/publish` | publish the approved current version (human manager/reviewer) |
@@ -201,9 +202,10 @@ task belongs to the minutes issue and matches its agent; authorship records the
 agent, not the credential owner's member ID. Cloud-node `mcn_` credentials cannot
 submit. All enable/readiness/release/review/publish commands reject machine
 credentials. Do not change credentials to bypass 403; ask the authorized human
-to act through their own interface. Review authority is pinned to the version's
+to act through their own interface. Review authority follows the version's
 `reviewer_id`, independently of the Review Issue's mutable assignee. Only that
-reviewer may decide; that reviewer or a manager may publish.
+reviewer may decide; that reviewer or a manager may publish. Only an explicit
+human-manager handover may replace a pending version's review assignment.
 
 The response includes `minutes_issue`, `versions[].review_issue`, fixed content
 and hash, submission key, author, review feedback, review/publication times and
@@ -219,9 +221,48 @@ owned work and whole-board import/restore. The board read exposes
 explicitly removes this history. Enabling a package makes legacy meeting
 `minutes/decisions/actions` text read-only historical material; it does not turn
 those strings into published versions. There is currently no package cancellation
-or reviewer reassignment command. Text versions are stored in the database;
+command. Text versions are stored in the database;
 NAS file watching, transcription, artifact-file synchronization, automatic
 action extraction and automatic release are not implemented by this workflow.
+
+### Reviewer handover
+
+If the designated reviewer leaves, a human package creator or workspace
+owner/admin can POST `.../workflow/reviewer` with `expected_revision`, a UUID
+`handoff_key`, the replacement's `reviewer_id`, and a nonempty `reason` (trimmed,
+at most 16000 bytes). The replacement must be a different current member.
+Machine credentials and ordinary members cannot transfer formal authority.
+
+For a pending current version, the command creates a new human Review Issue,
+cancels the previous Review Issue and changes the version's current reviewer
+and review-issue pointers in one transaction. The version ID, number, text,
+hash, submission key, author and pending decision stay intact. The old issue
+continues to be protected against deletion, unlinking, purpose removal,
+adoption and agent execution, even if someone edits its ordinary status.
+The previous reviewer loses formal authority; ordinary reassignment cannot
+restore it. Handover never fabricates approval, rejection or publication.
+
+Before the first submission, or after the current review has a conclusion,
+handover only changes the default reviewer for future submissions. It creates
+no review issue and leaves the historical reviewer, decision and publication
+unchanged. Distinguish the package default from the current version's reviewer.
+
+The read model adds `can_reassign_reviewer` and `reviewer_handoffs`. Each history
+entry preserves `handoff_key`, `from_reviewer_id`, `to_reviewer_id`, `reason`,
+`created_by`, `created_at`, resulting `revision`, and nullable `version_id`,
+`from_review_issue`, `to_review_issue` cards. The latter three are all null for
+a future-default change. Actor IDs remain stable when people leave. Optional
+`from_reviewer_name`, `to_reviewer_name`, `created_by_name` come from a batched
+lookup of these recorded identities, including departed members. They reflect
+current profile display names, not historical name snapshots or authority.
+
+Reuse the exact key, observed revision, target and reason after an uncertain
+network result. A matching historical record confirms the command even if a
+later handover has already changed the reviewer again; it does not move the
+reviewer back. Conflicting reuse returns 409. Never rotate the key and blindly
+retry an uncertain command. Approval racing with handover must reconcile the
+new revision/authority before another write. This command does not change
+workspace removal/leave permissions or invite former members back.
 
 ### Workflow CLI
 
@@ -235,6 +276,7 @@ multica cockpit meeting workflow release <meeting-id> --revision <n>
 multica cockpit meeting workflow submit <meeting-id> --revision <n> --submission-key <uuid> --content-file ./minutes.md
 multica cockpit meeting workflow review <meeting-id> <version-id> --revision <n> --decision changes_requested --feedback 'Add the acceptance boundary.'
 multica cockpit meeting workflow publish <meeting-id> <version-id> --revision <n>
+multica cockpit meeting workflow reassign-reviewer <meeting-id> --revision <n> --handoff-key <uuid> --reviewer-id <user-uuid> --reason 'Review responsibility changed.'
 ```
 
 Fetch the new revision between commands. `ready` requires at least one fact;

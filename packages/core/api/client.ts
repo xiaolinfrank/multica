@@ -6,6 +6,7 @@ import type { InboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { configStore } from "../config";
 import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
+import { acknowledgedCockpitReviewerHandoff } from "../cockpit/reviewer-handoff";
 import type {
   FleetStatus,
   AgentWorkspacesResponse,
@@ -38,6 +39,7 @@ import type {
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
   CockpitMeetingWorkflow,
+  CockpitReviewerHandoffCommand,
   CockpitMeetingWorkflowSetup,
   CockpitMeetingReadinessPatch,
   CockpitMinutesSubmission,
@@ -2087,6 +2089,15 @@ export class ApiClient {
     const result = await this.writeCockpitMeetingWorkflow(meetingId, "", "POST", body);
     if (result.reviewer_id !== body.reviewer_id || (body.existing_issue_id
       && result.minutes_issue?.id !== body.existing_issue_id && result.minutes_issue?.identifier !== body.existing_issue_id)) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async reassignCockpitMeetingReviewer(meetingId: string, body: CockpitReviewerHandoffCommand): Promise<CockpitMeetingWorkflow> {
+    const command = { ...body, reason: body.reason.trim() };
+    const result = await this.writeCockpitMeetingWorkflow(meetingId, "/reviewer", "POST", command);
+    if (!acknowledgedCockpitReviewerHandoff(result, command)) {
       throw new CockpitUnconfirmedWriteError();
     }
     return result;

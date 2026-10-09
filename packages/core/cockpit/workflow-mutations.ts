@@ -6,6 +6,7 @@ import { issueKeys } from "../issues/queries";
 import type {
   CockpitMeetingWorkflow, CockpitMeetingWorkflowSetup, CockpitMeetingReadinessPatch,
   CockpitMinutesSubmission, CockpitMinutesReview,
+  CockpitReviewerHandoffCommand,
 } from "../types";
 import { cockpitKeys, patchCockpitBoard } from "./queries";
 
@@ -33,6 +34,11 @@ function useWorkflowMutation<T extends { meetingId: string }>(wsId: string, muta
 export function useEnableCockpitMeetingWorkflow(wsId: string) {
   return useWorkflowMutation(wsId, ({ meetingId, body }: { meetingId: string; body: CockpitMeetingWorkflowSetup }) =>
     api.enableCockpitMeetingWorkflow(meetingId, body));
+}
+
+export function useReassignCockpitMeetingReviewer(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, body }: { meetingId: string; body: CockpitReviewerHandoffCommand }) =>
+    api.reassignCockpitMeetingReviewer(meetingId, body));
 }
 
 export function useUpdateCockpitMeetingReadiness(wsId: string) {

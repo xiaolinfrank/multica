@@ -16,45 +16,33 @@ multica cockpit node get L3-01-08 --output json
 multica cockpit node update L3-01-08 --progress 60 --status 进行中
 ```
 
-The cockpit is one shared board per workspace. Writes are broadcast, so a person
-with the board open sees updates without reloading. Meeting work packages have
-separate human-only control and review commands; an agent's task credential may
-submit minutes for its own issue but cannot approve or publish them.
+The cockpit is one shared board per workspace; writes broadcast to open clients.
+Agents may submit minutes for their own issue, but cannot approve or publish them.
 
 ## Core model
 
-A board is a tree of **nodes** plus four things hanging off it.
-
-- **Node** — one element of the work breakdown. The tree is arbitrary-depth;
-  the usual shape is module (`L1-02`) > group (`02.03`) > task (`L3-01-08`).
-  Every node carries code/name/owner, dates, status + `progress` (0-100),
-  budget fields, `deliverable`, `dependencies` and free-text notes — the full
-  field list lives in `references/cockpit.md`.
+- **Node** — an arbitrary-depth work breakdown, commonly project → module → execution task.
+  Explicit project/module UUID bindings establish scope, never names or numbering.
+  Nodes carry dates, owners, progress (0–100), budget and delivery fields; see the reference.
 - **Payment** — one instalment of a node's budget: label, date, amount.
 - **Issue link** — the issues that carry the work out. Many per node.
 - **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
 - **Meeting** — the register entry: when, which parties, what was decided, plus the task it opened and the folder holding its material.
 
-**`code` is the address.** Every node command accepts the human code the plan
-uses (`L1-02`, `L3-01-08`) as well as a UUID. Prefer the code — it is what the
-issue text, the meeting note and the person asking will all say.
+**Node addresses** accept the plan's code (`L3-01-08`) or UUID. Use the existing
+address; a code never determines a project/module binding.
 
-**Node status and category values are free text.** `进行中`, `未开始`, `受阻`,
-`已完成` are whatever the programme already uses. Read the board first and match
-what is there. Meeting-workflow decisions use the fixed API vocabulary in the
-reference; a planning label or ordinary Issue status never grants approval.
+**Node status/category are free text**: match existing values such as `进行中`.
+Meeting-workflow decisions use the reference's fixed vocabulary. Planning labels
+and ordinary issue statuses never grant approval.
 
-**Budget amounts are in the board's own unit** (万元 for a board authored that
-way). Never convert; write the number the plan writes.
+**Budget amounts retain the board's unit** (for example 万元); never convert silently.
 
 ## Reading before writing
 
-Always `multica cockpit show --output json` first. It returns `cockpit`,
-`nodes`, `payments`, `issue_links`, `milestones` and `meetings` in one call, so
-there is no reason to guess a code, a status value or an id.
-
-`multica cockpit node get <code>` narrows that to one node plus its payments and
-linked issues — the right call when a task says "update L3-01-08".
+Read `multica cockpit show --output json` before writing; it returns the board,
+nodes, payments, issue links, milestones and meetings. Never guess IDs or values.
+`multica cockpit node get <code>` narrows the read to a node, its payments and issues.
 
 ## Editing nodes
 
@@ -69,8 +57,7 @@ multica cockpit node update L3-01-08 --end-date ""            # withdraw it
 multica cockpit node update L3-01-08 --clear-budget           # remove the budget line
 ```
 
-An empty string clears a date; `--clear-budget` clears the budget. This matters:
-passing nothing leaves the old value, which is not the same as withdrawing it.
+An empty string clears a date; `--clear-budget` clears the budget. Omitted fields stay unchanged.
 
 ```bash
 multica cockpit node create --code L3-02-11 --parent 02.03 \
@@ -89,11 +76,9 @@ multica cockpit node link L3-01-08 BIO-314 --replace   # make these the only lin
 multica cockpit node unlink L3-01-08 BIO-320
 ```
 
-Issue references accept the workspace identifier (`BIO-314`) or a UUID; an
-unknown reference fails the whole call, so a typo never wires a node halfway.
-Linking is how the board stays honest: a linked work item shows the issue's
-real title and status. When you finish work on a linked issue, check whether
-the node's `progress` and `status` still match — the board does not infer them.
+Issue references accept workspace identifiers (`BIO-314`) or UUIDs; unknown IDs
+fail the whole request. Links show real issue status, but do not update node
+progress: check the plan after execution instead of assuming an automatic roll-up.
 
 ## Payments, milestones and meetings
 
@@ -114,20 +99,20 @@ multica cockpit meeting workflow show <meeting-id>
 multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md
 ```
 
-Read the meeting's current source directory from the board and its work package
-before drafting. Submit evidence-grounded text through the minutes issue's task
-credential; keep the submission UUID and file for a retry. The server creates a
-fixed version and a human Review Issue. Missing source material is a blocker to
-report, not a reason to invent meeting outcomes. Completing or reassigning the
-Review Issue does not approve anything. Enable, readiness, release, formal review
-and publication require the authorized human. The full CLI/API contract,
-permissions, retry rules and current limitations live in `references/cockpit.md`.
+Read current meeting materials and workflow state before drafting evidence-grounded minutes.
+Submit using the minutes issue's task credential; retain the submission UUID/file for retries.
+Missing evidence is a blocker to report, not permission to invent outcomes.
+Submitting creates a fixed version and human Review Issue; completing/reassigning it is not approval.
+Enable, readiness, release, review and publication require authorized humans.
+A human manager may `workflow reassign-reviewer` with a reason and idempotency key:
+it preserves fixed evidence and records responsibility. Machine credentials cannot transfer it.
+See `references/cockpit.md` for exact flags, permissions, retries and limitations.
 
 ## Versions
 
-Nothing here is irreversible: imports and restores freeze the displaced board
-into a version first, and ordinary edits leave an `auto` checkpoint at most
-once every 5 minutes.
+Allowed imports/restores save the displaced board first. Once history exists,
+ordinary edits can leave an `auto` checkpoint after five minutes. Bound nodes or
+meeting work packages block whole-board replacement to preserve stable history.
 
 ```bash
 multica cockpit version list                 # newest first, with ids
@@ -148,14 +133,10 @@ unless asked: an empty card derives from the tasks and stays correct on its own.
 
 ## Import
 
-`multica cockpit import <file.json>` **replaces the entire board** and needs
-workspace owner or admin. Use it to load a plan authored elsewhere, never to
-edit a few fields. Nodes name their parent by `parent_code`, so the document
-does not need to be sorted; issue references that do not resolve are reported on
-stderr and skipped rather than failing the import.
-
-See `references/cockpit.md` for the document shape and the API endpoints
-behind each command.
+`multica cockpit import <file.json>` **replaces the board** and requires owner/admin.
+Use it for an authored plan, not a few field edits. It is refused on protected boards.
+Parents use `parent_code`; document order is irrelevant. Unresolvable issue references
+are reported on stderr and skipped. See the reference for the import shape.
 
 ## Boundaries
 

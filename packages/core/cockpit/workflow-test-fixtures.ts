@@ -1,8 +1,16 @@
 import { CockpitMeetingWorkflowSchema, CockpitMinutesVersionSchema } from "../api/schemas";
-import type { CockpitMeetingWorkflow, CockpitMinutesVersion } from "../types";
+import type { CockpitMeetingWorkflow, CockpitMinutesVersion, CockpitReviewerHandoff } from "../types";
 
 export const WORKFLOW_MEETING_ID = "10000000-0000-4000-8000-000000000001";
 export const WORKFLOW_SUBMISSION_KEY = "20000000-0000-4000-8000-000000000001";
+export const WORKFLOW_HANDOFF_KEY = "30000000-0000-4000-8000-000000000001";
+
+export function handoffFixture(overrides: Partial<CockpitReviewerHandoff> = {}): CockpitReviewerHandoff {
+  return { id: "handoff-1", handoff_key: WORKFLOW_HANDOFF_KEY, from_reviewer_id: "reviewer-1", to_reviewer_id: "reviewer-2",
+    version_id: "version-1", from_review_issue: { ...versionFixture().review_issue, status: "cancelled" },
+    to_review_issue: { ...versionFixture().review_issue, id: "review-2", identifier: "BIO-3", assignee_id: "reviewer-2" },
+    reason: "Reviewer left the team", created_by: "manager-1", created_at: "2026-10-10T10:00:00Z", revision: 2, ...overrides };
+}
 
 export function workflowFixture(overrides: Partial<CockpitMeetingWorkflow> = {}): CockpitMeetingWorkflow {
   return { ...CockpitMeetingWorkflowSchema.parse({

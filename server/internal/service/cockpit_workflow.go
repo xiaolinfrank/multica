@@ -55,10 +55,15 @@ type CockpitMinutesReview struct {
 // CockpitWorkflowIssue is an internal typed create hook, never an Issue API field.
 // Prepare and link run inside IssueService.Create's transaction.
 type CockpitWorkflowIssue struct {
-	Init       *CockpitWorkPackageInit
-	Submission *CockpitMinutesSubmission
-	work       db.CockpitMeetingWorkPackage
-	versionID  pgtype.UUID
+	Handoff                 *CockpitReviewerHandoff
+	handoffVersion          db.CockpitMinutesVersion
+	handoffRetiredIssue     db.Issue
+	handoffPreviousStatus   string
+	handoffCancelledWakeups []db.AgentTaskQueue
+	Init                    *CockpitWorkPackageInit
+	Submission              *CockpitMinutesSubmission
+	work                    db.CockpitMeetingWorkPackage
+	versionID               pgtype.UUID
 }
 
 func cockpitWorkflowError(err error) error {
@@ -223,6 +228,9 @@ func (s *IssueService) EnableCockpitMeetingWorkPackage(ctx context.Context, p Co
 
 func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCreateParams) (*db.Issue, error) {
 	hook := p.CockpitWorkflow
+	if hook.Handoff != nil {
+		return prepareCockpitReviewerHandoffIssue(ctx, q, p)
+	}
 	if hook.Init != nil {
 		in := *hook.Init
 		if err := cockpitWorkflowMember(ctx, q, in.WorkspaceID, in.ActorID); err != nil {
@@ -307,7 +315,7 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 	hook.work = work
 	hook.versionID = dbid.NewV7()
 	p.Title = "Review meeting minutes: " + meeting.Title
-	p.Description = pgtype.Text{String: "Review the fixed version " + util.UUIDToString(hook.versionID) + " in the meeting workflow. Completing this issue does not approve or publish it.\n\n" + in.Content, Valid: true}
+	p.Description = cockpitMinutesReviewDescription(hook.versionID, in.Content)
 	p.Status = "todo"
 	p.Priority = "none"
 	p.ProjectID = source.ProjectID
@@ -365,6 +373,9 @@ func createCockpitWorkPackageForIssue(ctx context.Context, q *db.Queries, in Coc
 }
 func linkCockpitWorkflowCreatedIssue(ctx context.Context, q *db.Queries, p IssueCreateParams, issue db.Issue) error {
 	hook := p.CockpitWorkflow
+	if hook.Handoff != nil {
+		return linkCockpitReviewerHandoffIssue(ctx, q, p, issue)
+	}
 	if hook.Init != nil {
 		return createCockpitWorkPackageForIssue(ctx, q, *hook.Init, issue)
 	}
@@ -707,4 +718,8 @@ func validateCockpitWorkflowInitRetry(ctx context.Context, q *db.Queries, in Coc
 		}
 	}
 	return conflict("does not have the requested archive link")
+}
+
+func cockpitMinutesReviewDescription(versionID pgtype.UUID, content string) pgtype.Text {
+	return pgtype.Text{String: "Review the fixed version " + util.UUIDToString(versionID) + " in the meeting workflow. Completing this issue does not approve or publish it.\n\n" + content, Valid: true}
 }

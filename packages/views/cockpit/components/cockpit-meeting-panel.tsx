@@ -18,6 +18,7 @@ import type {
 } from "@multica/core/types";
 import {
   cockpitMeetingWorkflowOptions,
+  cockpitWorkflowRequiredIssueRoles,
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
@@ -155,16 +156,8 @@ export function CockpitMeetingPanel({
   const workflowUnknown = workflowQuery.isPending || workflowQuery.isError || workflowQuery.data?.meeting_id !== meeting.id;
   const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
   const requiredRolesByIssue = useMemo(() => {
-    const required = new Map<string, string[]>();
     const workflow = workflowQuery.data;
-    if (workflow?.enabled && workflow.meeting_id === meeting.id) {
-      if (workflow.minutes_issue?.id) required.set(workflow.minutes_issue.id, ["minutes"]);
-      for (const version of workflow.versions) {
-        const roles = required.get(version.review_issue.id) ?? [];
-        required.set(version.review_issue.id, [...new Set([...roles, "review"])]);
-      }
-    }
-    return required;
+    return workflow?.meeting_id === meeting.id ? cockpitWorkflowRequiredIssueRoles(workflow) : new Map<string, string[]>();
   }, [workflowQuery.data, meeting.id]);
 
   return (

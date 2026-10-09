@@ -1,6 +1,6 @@
 # 会议工作包首批实现合同
 
-2026-10-09。承接 implementation-status.md 后续会议闭环；本文件记录首批实际实现范围与接口。
+2026-10-09。承接 implementation-status.md 后续会议闭环；本文件记录首批实际实现范围与接口；评审人交接已由[交接与恢复合同](./reviewer-handoff-contract.md)扩展。
 
 ## 本批闭环
 
@@ -15,8 +15,8 @@
 - 一个 meeting 一个 `cockpit_meeting_work_package`，无外键；稳定字段包括 workspace_id、meeting_id、revision、minutes_issue_id、reviewer_id、ended_at、materials_ready、released_at、release_task_id、current_version_id、published_version_id、created_by、created_at、updated_at。
 - `minutes_issue_id` 在包之间唯一。已有任务只有用户明确选择、属于工作区且为 backlog、无活跃运行、未被其他工作包/评审占用时可以接管；不猜测 legacy `role=task` 的用途。
 - 普通 IssueService 创建 backlog 纪要任务并在同事务建立工作包、用途与门禁。禁止先创建可执行任务再补门禁。
-- 文本版本保存 id、workspace_id、meeting_id、version_number、submission_key(UUID)、content、content_hash、source_issue_id、review_issue_id、reviewer_id、decision、feedback、submitted_by_type/id、created_at、reviewed_by/at、published_by/at。文本提交后不可改；一轮一条评审 Issue，同一submission_key重试复用原结果。
-- 评审授权取版本里的 reviewer_id，不取可被普通编辑修改的 Issue.assignee_id。只有可信人类身份可以启用、修改就绪、启动、评审和发布。
+- 文本版本保存 id、workspace_id、meeting_id、version_number、submission_key(UUID)、content、content_hash、source_issue_id、review_issue_id、reviewer_id、decision、feedback、submitted_by_type/id、created_at、reviewed_by/at、published_by/at。文本提交后不可改；每次提交创建一个初始评审任务，明确交接可更换当前评审任务并保留旧责任历史；同一submission_key重试复用原结果。
+- 评审授权取版本里的当前 reviewer_id，不取可被普通编辑修改的 Issue.assignee_id；当前待评审责任只能通过留存交接记录的显式命令更新。只有可信人类身份可以启用、修改就绪、启动、评审和发布。
 - 工作包和版本的正式变更使用 expected_revision；互相竞争的命令返回409。完全相同的幂等重试可以返回已经存在的结果，不能创建重复Issue或新版本。
 - 存在pending当前版本时不允许另开一轮；先完成本轮结论。正式重新提交才产生新版本与新评审；旧结论保持原版本。
 - `approved / changes_requested / rejected` 都表示本轮评审有结论；只有approved且仍为current_version才允许发布。Review Issue.done不触发任何通过/发布。
@@ -56,13 +56,13 @@ version = { id, version_number, submission_key, content, content_hash, source_is
 
 工作包创建者、工作区owner/admin管理就绪与启动；该管理者或当前成员执行者可提交版本。固定评审人独享评审权，管理者不能因角色代为通过；评审人或管理者可发布。`mat_`提交必须由该纪要Issue所属Run的任务凭据发起，记录真实Agent作者；`mcn_`不能提交。上述机器凭据不能启用、就绪、启动、评审或发布。人类身份按现有认证边界判断，不把凭据映射出的owner ID误认成人类操作。
 
-新增整板字段`has_meeting_workflows`供恢复入口展示保护状态，不为每个会议逐个拉取工作包。正式历史目前不支持单独取消工作包/改评审人/删除会议；整个工作区删除由既有授权入口统一清理。版本列表目前按单会议读取全部文本（每版最多128KiB），后续大规模历史分页属于下一阶段；当前不加载全驾驶舱的版本正文。版本来源保存Issue与作者，尚未扩展为通用文件/Run/上下文快照证据链。
+新增整板字段`has_meeting_workflows`供恢复入口展示保护状态，不为每个会议逐个拉取工作包。正式历史目前不支持单独取消工作包/删除会议；管理人可显式交接评审责任，保留原任务和历史结论；整个工作区删除由既有授权入口统一清理。版本列表目前按单会议读取全部文本（每版最多128KiB），后续大规模历史分页属于下一阶段；当前不加载全驾驶舱的版本正文。版本来源保存Issue与作者，尚未扩展为通用文件/Run/上下文快照证据链。
 
-具体限制：指定评审人退出工作区或被移除后，尚待评审的当前版本无法由其他人完成正式评审；该工作包后续版本也会因原评审人不再是成员而被拒绝。修改 Review Issue 的执行者或状态、用管理员身份代签、重新启用并传入另一评审人都不能恢复这条流程。本批尚无评审人交接入口，不应把普通任务改派描述为恢复方法。已有通过结论和发布历史仍保留；已通过的当前版本仍可由现有管理者显式发布。
+指定评审人退出工作区或被移除后，当前待评审及后续提交仍需有效的人类评审人。管理人现在可以通过“移交评审责任”恢复：pending版本创建新评审任务并保留固定文本，已结束评审只修改未来默认人。普通任务改派和管理员代签仍不能替代该命令。
 
-当前权限匹配的是原有 `user_id`，不是成员记录的 `member.id`。若同一现有用户经正常授权重新加入同一工作区，其原评审人身份会重新满足成员与身份校验，可以继续符合当前版本/修订条件的评审及后续流程；换成不同 `user_id` 的新账户不会恢复该权限。这是当前实现的行为说明，不自动邀请已离开的用户，也不修改退出/移除权限。后续交接需显式授权并保存旧评审责任与结论。
+权限匹配稳定user_id。若尚未交接，同一用户正常重新加入可恢复仍有效的原责任；若已交接，再加入不能恢复被移交的正式评审权。平台不会自动邀请离职人员，也不改变工作区退出/移除权限。
 
-CLI已提供`multica cockpit meeting workflow show|enable|ready|release|submit|review|publish`，具体参数和边界随内置技能同步维护于`server/internal/service/builtin_skills/multica-cockpit/references/cockpit.md`。接管不接受改派参数，初始化遇到不同执行者/归属/显式节点的重复请求返回409。
+CLI已提供`multica cockpit meeting workflow show|enable|ready|release|submit|review|publish|reassign-reviewer`，具体参数和边界随内置技能同步维护于`server/internal/service/builtin_skills/multica-cockpit/references/cockpit.md`。接管不接受改派参数，初始化遇到不同执行者/归属/显式节点的重复请求返回409。
 
 复用 `cockpit:changed`，新增scope `meeting_workflow`，payload至少meeting_id，客户端invalidate该会议工作包及board/相关Issue投影，不将整个工作包写进Zustand。
 

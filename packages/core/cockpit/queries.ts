@@ -42,7 +42,8 @@ export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
 /** Issue status/assignee changes affect the read model, but never its formal review decision. */
 export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
   for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflow>({ queryKey: cockpitKeys.workflows(wsId) })) {
-    if (workflow?.minutes_issue?.id === issueId || workflow?.versions.some((version) => version.review_issue.id === issueId)) {
+    if (workflow?.minutes_issue?.id === issueId || workflow?.versions.some((version) => version.review_issue.id === issueId)
+      || workflow?.reviewer_handoffs.some((handoff) => handoff.from_review_issue?.id === issueId || handoff.to_review_issue?.id === issueId)) {
       void client.invalidateQueries({ queryKey, exact: true });
     }
   }
