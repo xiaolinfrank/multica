@@ -2206,6 +2206,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					// from the create above so either can be retried alone.
 					r.Post("/provision", h.ProvisionCockpitMeeting)
 					r.Put("/issues", h.SetCockpitMeetingIssues)
+					r.Put("/issues/{issueId}/roles", h.SetCockpitMeetingIssueRoles)
 					r.Delete("/issues/{issueId}", h.DeleteCockpitMeetingIssue)
 					r.Put("/nodes", h.SetCockpitMeetingNodes)
 					r.Delete("/nodes/{nodeId}", h.DeleteCockpitMeetingNode)

@@ -82,6 +82,19 @@ describe("useRealtimeSync — ws instance change", () => {
     invalidateSpy = vi.spyOn(qc, "invalidateQueries");
   });
 
+  it("invalidates current-workspace cockpit bindings when a remote project or module is deleted", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+    onAny({ type: "project:deleted", payload: { project_id: "p1" } } as never);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+    invalidateSpy.mockClear();
+    const onModuleDeleted = vi.mocked(ws.on).mock.calls.find(([type]) => type === "module:deleted")?.[1];
+    expect(onModuleDeleted).toBeDefined();
+    (onModuleDeleted as (payload: unknown) => void)({ module_id: "m1" });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+  });
+
   it("skips invalidation on first non-null ws instance", () => {
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {

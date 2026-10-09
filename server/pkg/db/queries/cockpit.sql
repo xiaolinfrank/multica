@@ -90,7 +90,7 @@ WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 
 -- name: CreateCockpitNode :one
 INSERT INTO cockpit_node (
-    workspace_id, cockpit_id, parent_id, code, name, position, color,
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position, color,
     owner, collaborators, start_date, end_date, status, progress,
     deliverable, dependencies, note, current_progress, vendor,
     budget_category, budget_amount, exec_status, contract, source,
@@ -99,6 +99,8 @@ INSERT INTO cockpit_node (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
     sqlc.narg('parent_id')::uuid,
+    sqlc.narg('project_id')::uuid,
+    sqlc.narg('module_id')::uuid,
     sqlc.arg('code')::text,
     sqlc.arg('name')::text,
     sqlc.arg('position')::double precision,
@@ -130,6 +132,10 @@ RETURNING *;
 -- edit — a task whose planned end is withdrawn is not a task whose end is
 -- unchanged — so it gets its own flag rather than an in-band sentinel.
 UPDATE cockpit_node SET
+    project_id       = CASE WHEN sqlc.arg('clear_project')::bool THEN NULL
+                            ELSE COALESCE(sqlc.narg('project_id')::uuid, project_id) END,
+    module_id        = CASE WHEN sqlc.arg('clear_module')::bool THEN NULL
+                            ELSE COALESCE(sqlc.narg('module_id')::uuid, module_id) END,
     parent_id        = CASE WHEN sqlc.arg('clear_parent')::bool THEN NULL
                             ELSE COALESCE(sqlc.narg('parent_id')::uuid, parent_id) END,
     code             = COALESCE(sqlc.narg('code')::text, code),
@@ -398,7 +404,7 @@ DELETE FROM cockpit_meeting WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 -- there is no foreign key to have cascaded it away (repository rule). Joined
 -- to cockpit_meeting so one read serves the whole board.
 SELECT
-    l.meeting_id, l.issue_id, l.role, l.position,
+    l.meeting_id, l.issue_id, l.role, l.roles, l.position,
     i.number AS issue_number,
     i.title  AS issue_title,
     i.status AS issue_status
@@ -707,3 +713,28 @@ WHERE node_id = sqlc.arg('node_id')::uuid
 -- history refers to nodes that are about to stop existing.
 DELETE FROM cockpit_pending_change
 WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
+
+-- name: LockCockpitForWorkspaceChanges :one
+-- Serializes tree bindings, tree replacement and referenced resource deletion.
+SELECT id FROM cockpit WHERE workspace_id = $1 FOR UPDATE;
+
+-- name: CockpitHasBoundNodes :one
+SELECT EXISTS (
+    SELECT 1 FROM cockpit_node
+    WHERE workspace_id = $1 AND cockpit_id = $2
+      AND (project_id IS NOT NULL OR module_id IS NOT NULL)
+)::bool;
+
+-- name: ClearCockpitNodeModuleBinding :exec
+UPDATE cockpit_node SET project_id = NULL, module_id = NULL, updated_at = now()
+WHERE workspace_id = $1 AND module_id = $2;
+
+-- name: ClearCockpitNodeProjectBindings :exec
+UPDATE cockpit_node SET project_id = NULL, module_id = NULL, updated_at = now()
+WHERE workspace_id = $1 AND project_id = $2;
+
+-- name: GetProjectForCockpitBinding :one
+SELECT * FROM project WHERE id = $1 AND workspace_id = $2 FOR SHARE;
+
+-- name: GetModuleForCockpitBinding :one
+SELECT * FROM module WHERE id = $1 AND workspace_id = $2 FOR SHARE;

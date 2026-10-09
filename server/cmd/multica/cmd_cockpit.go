@@ -256,6 +256,8 @@ func init() {
 	for _, c := range []*cobra.Command{cockpitNodeCreateCmd, cockpitNodeUpdateCmd} {
 		c.Flags().String("code", "", "Node code, e.g. L3-01-08")
 		c.Flags().String("parent", "", "Parent node code or UUID (empty string detaches)")
+		c.Flags().String("project-id", "", "Explicit project binding UUID (empty clears; clear module-id too to unbind)")
+		c.Flags().String("module-id", "", "Explicit module binding UUID (resolves its project; empty clears)")
 		c.Flags().String("name", "", "Node name")
 		c.Flags().String("owner", "", "Owner")
 		c.Flags().String("collaborators", "", "Collaborators")
@@ -367,6 +369,8 @@ func cockpitNodeBody(cmd *cobra.Command) map[string]any {
 	body := map[string]any{}
 	cockpitStringFlag(cmd, body, "code", "code")
 	cockpitStringFlag(cmd, body, "parent", "parent_id")
+	cockpitStringFlag(cmd, body, "project-id", "project_id")
+	cockpitStringFlag(cmd, body, "module-id", "module_id")
 	cockpitStringFlag(cmd, body, "name", "name")
 	cockpitStringFlag(cmd, body, "owner", "owner")
 	cockpitStringFlag(cmd, body, "collaborators", "collaborators")

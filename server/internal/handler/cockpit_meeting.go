@@ -865,7 +865,12 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 	}
 
 	resp.Meeting = cockpitMeetingToResponse(meeting)
-	resp.Issues = h.meetingIssueLinks(ctx, cc, meeting.ID)
+	links, linksErr := h.meetingIssueLinks(ctx, cc, meeting.ID)
+	if linksErr != nil {
+		writeError(w, http.StatusInternalServerError, "meeting work was updated; reload to read its links")
+		return
+	}
+	resp.Issues = links
 	// Announced on the link scope, not the meeting scope: provisioning moved
 	// the meeting's issues, and the meeting row rides along because its folder
 	// may have changed in the same breath.
@@ -1107,6 +1112,7 @@ func (h *Handler) openMeetingTask(
 	fillCreated := h.newStatusCategoryFiller(ctx, cc.workspaceID)
 	result, err := h.IssueService.Create(ctx, service.IssueCreateParams{
 		WorkspaceID:  cc.workspaceID,
+		MeetingTask:  &service.CockpitMeetingTask{MeetingID: meeting.ID, NodeID: placement.nodeID},
 		Title:        title,
 		Description:  pgtype.Text{String: meetingTaskDescription(meeting, placement.dir), Valid: true},
 		Status:       "todo",
@@ -1147,38 +1153,21 @@ func (h *Handler) openMeetingTask(
 		return nil, "failed to open the meeting task"
 	}
 
-	if _, err := h.Queries.CreateCockpitMeetingIssue(ctx, db.CreateCockpitMeetingIssueParams{
-		WorkspaceID: cc.workspaceID,
-		MeetingID:   meeting.ID,
-		IssueID:     result.Issue.ID,
-		Role:        "task",
-		Position:    -1, // the meeting's own task leads its list of issues
-	}); err != nil {
-		slog.Warn("CreateCockpitMeetingIssue failed", append(logger.RequestAttrs(r), "error", err)...)
-		return nil, "the task was opened but could not be linked to the meeting"
-	}
-
-	// File the task under the archive sub-item as well. Its number was already
-	// in the title, which is how it reads in an inbox; the link is what puts
-	// it under that item on the board and in the issue's own sidebar. Not
-	// fatal: a task that exists but is not filed is recoverable by hand, and
-	// refusing the meeting over it is not.
-	if placement.nodeID.Valid {
-		if _, err := h.Queries.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{
-			WorkspaceID: cc.workspaceID,
-			NodeID:      placement.nodeID,
-			IssueID:     result.Issue.ID,
-			Position:    0,
-		}); err != nil {
-			slog.Warn("CreateCockpitNodeIssue for meeting task failed",
-				append(logger.RequestAttrs(r), "error", err)...)
-		}
+	// The service commits the issue and both links together and reuses an
+	// existing task under a meeting row lock. Read its metadata rather than
+	// resetting user-assigned purposes when provisioning is retried.
+	link, err := h.Queries.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{
+		WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: result.Issue.ID,
+	})
+	if err != nil {
+		return nil, "the task was opened; reload to read its meeting link"
 	}
 
 	return &CockpitMeetingIssueResponse{
 		MeetingID:       uuidToString(meeting.ID),
 		IssueID:         uuidToString(result.Issue.ID),
 		Role:            "task",
+		Roles:           append([]string{}, link.Roles...),
 		IssueNumber:     result.Issue.Number,
 		IssueIdentifier: fmt.Sprintf("%s-%d", prefix, result.Issue.Number),
 		IssueTitle:      result.Issue.Title,
@@ -1194,12 +1183,15 @@ func (h *Handler) openMeetingTask(
 // meetingIssueLinks reads one meeting's issue links out of the board-wide
 // query. The board carries a few dozen meetings, so one read that the response
 // filters beats a second query shape to maintain.
-func (h *Handler) meetingIssueLinks(ctx context.Context, cc cockpitContext, meetingID pgtype.UUID) []CockpitMeetingIssueResponse {
-	rows, err := h.Queries.ListCockpitMeetingIssues(ctx, cc.cockpit.ID)
+func (h *Handler) meetingIssueLinks(ctx context.Context, cc cockpitContext, meetingID pgtype.UUID) ([]CockpitMeetingIssueResponse, error) {
+	return meetingIssueLinksWithQueries(ctx, h.Queries, cc, meetingID, h.getIssuePrefix(ctx, cc.workspaceID))
+}
+
+func meetingIssueLinksWithQueries(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID pgtype.UUID, prefix string) ([]CockpitMeetingIssueResponse, error) {
+	rows, err := q.ListCockpitMeetingIssues(ctx, cc.cockpit.ID)
 	if err != nil {
-		return []CockpitMeetingIssueResponse{}
+		return nil, err
 	}
-	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
 	out := make([]CockpitMeetingIssueResponse, 0, len(rows))
 	for _, row := range rows {
 		if row.MeetingID != meetingID {
@@ -1207,7 +1199,7 @@ func (h *Handler) meetingIssueLinks(ctx context.Context, cc cockpitContext, meet
 		}
 		out = append(out, cockpitMeetingIssueToResponse(row, prefix))
 	}
-	return out
+	return out, nil
 }
 
 // requireCockpitMeeting resolves the meeting a link endpoint addresses.
@@ -1276,46 +1268,55 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 		resolved = append(resolved, issue.ID)
 	}
 
-	// A link's role ("task" — the meeting's own issue) is a property of the
-	// pair, not of this request: a picker re-sending the set has no way to
-	// know about it. Dropping it would leave the meeting looking task-less and
-	// offer to provision a second one.
-	roles := map[string]string{}
-	if existing, err := h.Queries.ListCockpitMeetingIssues(ctx, cc.cockpit.ID); err == nil {
-		for _, row := range existing {
-			if row.MeetingID == meeting.ID && row.Role != "" {
-				roles[uuidToString(row.IssueID)] = row.Role
-			}
+	// Serialize relation replacement with purpose edits and provisioning. Keep
+	// surviving rows in place so old clients cannot erase their new metadata.
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, meeting.ID)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	existing, err := q.ListCockpitMeetingIssues(ctx, cc.cockpit.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read meeting issue links")
+		return
+	}
+	markers := make(map[pgtype.UUID]string)
+	for _, link := range existing {
+		if link.MeetingID == meeting.ID {
+			markers[link.IssueID] = link.Role
 		}
 	}
-
 	if req.Replace {
-		if err := h.Queries.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
-			MeetingID:   meeting.ID,
-			WorkspaceID: cc.workspaceID,
+		if err := q.DeleteCockpitMeetingIssuesExcept(ctx, db.DeleteCockpitMeetingIssuesExceptParams{
+			MeetingID: meeting.ID, WorkspaceID: cc.workspaceID, IssueIds: resolved,
 		}); err != nil {
-			slog.Warn("DeleteCockpitMeetingIssuesByMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
 			writeError(w, http.StatusInternalServerError, "failed to link issues")
 			return
 		}
 	}
 	for i, issueID := range resolved {
-		if _, err := h.Queries.CreateCockpitMeetingIssue(ctx, db.CreateCockpitMeetingIssueParams{
-			WorkspaceID: cc.workspaceID,
-			MeetingID:   meeting.ID,
-			IssueID:     issueID,
-			Role:        roles[uuidToString(issueID)],
-			Position:    float64(i),
+		if _, err := q.CreateCockpitMeetingIssue(ctx, db.CreateCockpitMeetingIssueParams{
+			WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issueID,
+			Role: markers[issueID], Position: float64(i),
 		}); err != nil {
-			slog.Warn("CreateCockpitMeetingIssue failed", append(logger.RequestAttrs(r), "error", err)...)
 			writeError(w, http.StatusInternalServerError, "failed to link issues")
 			return
 		}
 	}
+	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID, h.getIssuePrefix(ctx, cc.workspaceID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read meeting issue links")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to link issues")
+		return
+	}
 
 	payload := map[string]any{
 		"meeting_id": uuidToString(meeting.ID),
-		"links":      h.meetingIssueLinks(ctx, cc, meeting.ID),
+		"links":      links,
 	}
 	h.publishCockpit(r, cc, "meeting_issues", "replaced", payload)
 	writeJSON(w, http.StatusOK, payload)
@@ -1335,13 +1336,23 @@ func (h *Handler) DeleteCockpitMeetingIssue(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusNotFound, "issue not found")
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeetingIssue(r.Context(), db.DeleteCockpitMeetingIssueParams{
+	ctx := r.Context()
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, meeting.ID)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(ctx)
+	if err := q.DeleteCockpitMeetingIssue(ctx, db.DeleteCockpitMeetingIssueParams{
 		MeetingID:   meeting.ID,
 		IssueID:     issue.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitMeetingIssue failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to unlink issue")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to unlink meeting relation")
 		return
 	}
 	h.publishCockpit(r, cc, "meeting_issues", "removed", map[string]any{
@@ -1394,8 +1405,20 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		resolved = append(resolved, node.ID)
 	}
 
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, meeting.ID)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(ctx)
+	for _, nodeID := range resolved {
+		if node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: nodeID, WorkspaceID: cc.workspaceID}); err != nil || node.CockpitID != cc.cockpit.ID {
+			writeError(w, http.StatusBadRequest, "a selected work item no longer exists")
+			return
+		}
+	}
+
 	if req.Replace {
-		if err := h.Queries.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
+		if err := q.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
 			MeetingID:   meeting.ID,
 			WorkspaceID: cc.workspaceID,
 		}); err != nil {
@@ -1405,7 +1428,7 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	for i, nodeID := range resolved {
-		if _, err := h.Queries.CreateCockpitMeetingNode(ctx, db.CreateCockpitMeetingNodeParams{
+		if _, err := q.CreateCockpitMeetingNode(ctx, db.CreateCockpitMeetingNodeParams{
 			WorkspaceID: cc.workspaceID,
 			MeetingID:   meeting.ID,
 			NodeID:      nodeID,
@@ -1417,7 +1440,7 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	links, err := h.Queries.ListCockpitMeetingNodes(ctx, cc.cockpit.ID)
+	links, err := q.ListCockpitMeetingNodes(ctx, cc.cockpit.ID)
 	if err != nil {
 		slog.Warn("ListCockpitMeetingNodes failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to link work items")
@@ -1431,6 +1454,10 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		out = append(out, cockpitMeetingNodeToResponse(l))
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to link work items")
+		return
+	}
 	payload := map[string]any{"meeting_id": uuidToString(meeting.ID), "links": out}
 	h.publishCockpit(r, cc, "meeting_nodes", "replaced", payload)
 	writeJSON(w, http.StatusOK, payload)
@@ -1450,13 +1477,23 @@ func (h *Handler) DeleteCockpitMeetingNode(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusNotFound, "cockpit node not found")
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeetingNode(r.Context(), db.DeleteCockpitMeetingNodeParams{
+	ctx := r.Context()
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, meeting.ID)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(ctx)
+	if err := q.DeleteCockpitMeetingNode(ctx, db.DeleteCockpitMeetingNodeParams{
 		MeetingID:   meeting.ID,
 		NodeID:      node.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitMeetingNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to unlink work item")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to unlink meeting relation")
 		return
 	}
 	h.publishCockpit(r, cc, "meeting_nodes", "removed", map[string]any{

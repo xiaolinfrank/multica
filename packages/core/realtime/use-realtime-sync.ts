@@ -13,6 +13,7 @@ import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
+import { cockpitKeys } from "../cockpit/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -1079,6 +1080,10 @@ export function useRealtimeSync(
 
     const unsubAny = ws.onAny((msg) => {
       if (specificEvents.has(msg.type)) return;
+      if (msg.type === "project:deleted") {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+      }
       const prefix = msg.type.split(":")[0] ?? "";
       if (prefix === "agent" || (prefix === "task" && msg.type !== "task:progress")) {
         const wsId = getCurrentWsId();
@@ -1154,6 +1159,7 @@ export function useRealtimeSync(
       if (wsId) {
         qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
       }
     });
 

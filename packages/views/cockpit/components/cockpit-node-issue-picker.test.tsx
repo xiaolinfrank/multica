@@ -62,9 +62,9 @@ function node(over: Partial<CockpitNode> & { id: string; code: string }): Cockpi
 // board's own history), so a test that passes cannot be reading them.
 const board = {
   nodes: [
-    node({ id: "root", code: "L1-01", name: "Datasets" }),
-    node({ id: "dir-1", code: "L2-01-01", name: "Retrospective", parent_id: "root", position: 0 }),
-    node({ id: "dir-2", code: "L2-01-02", name: "Prospective", parent_id: "root", position: 1 }),
+    node({ id: "root", code: "L1-01", name: "Datasets", project_id: "proj-01" }),
+    node({ id: "dir-1", code: "L2-01-01", name: "Retrospective", parent_id: "root", position: 0, project_id: "proj-01", module_id: "mod-0101" }),
+    node({ id: "dir-2", code: "L2-01-02", name: "Prospective", parent_id: "root", position: 1, project_id: "proj-01", module_id: "mod-0102" }),
     node({ id: "task-1", code: "L3-01-08", name: "Ethics filing", parent_id: "dir-1", position: 0 }),
     node({ id: "task-2", code: "L3-01-09", name: "Sample intake", parent_id: "dir-1", position: 1 }),
     node({ id: "task-3", code: "L3-02-01", name: "Consent forms", parent_id: "dir-2", position: 0 }),

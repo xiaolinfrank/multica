@@ -579,6 +579,39 @@ describe("ApiClient server Table query", () => {
     });
   });
 
+  it("updates one meeting link's purposes and validates the returned complete set", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ meeting_id: "m/1", links: [
+        { meeting_id: "m/1", issue_id: "i/1", role: "task", roles: ["preparation", "review", "future-role"] },
+        { meeting_id: "m/1", issue_id: "i2", role: "", roles: [] },
+      ] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ links: "invalid" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ meeting_id: "m1", links: [
+        { meeting_id: "m1", issue_id: "i1", roles: "not-an-array" },
+      ] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    const result = await client.setCockpitMeetingIssueRoles("m/1", "i/1", ["preparation", "review", "future-role"]);
+    expect(result.links.map((link) => link.roles)).toEqual([["preparation", "review", "future-role"], []]);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/cockpit/meetings/m%2F1/issues/i%2F1/roles");
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual({ roles: ["preparation", "review", "future-role"] });
+    await expect(client.setCockpitMeetingIssueRoles("m1", "i1", [])).resolves.toEqual({ meeting_id: "m1", links: [] });
+    await expect(client.setCockpitMeetingIssueRoles("m1", "i1", [])).resolves.toEqual({ meeting_id: "m1", links: [] });
+  });
+
+  it("does not default missing fields into an acknowledged binding clear", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "n1" }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    const client = new ApiClient("https://api.example.test");
+    const result = await client.updateCockpitNode("n1", { project_id: null, module_id: null });
+    expect(result.id).toBe("");
+  });
+
   it("keeps a cockpit node an older backend under-populates", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(

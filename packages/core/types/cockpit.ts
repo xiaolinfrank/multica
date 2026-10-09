@@ -49,6 +49,9 @@ export interface CockpitNode {
   cockpit_id: string;
   /** null for a root node. Depth is derived by walking this, not stored. */
   parent_id: string | null;
+  /** Explicit mapping; unbound descendants inherit through stable parent IDs. */
+  project_id?: string | null;
+  module_id?: string | null;
   /** The human address of the node — "L1-02", "L3-01-08". Unique per board. */
   code: string;
   name: string;
@@ -202,6 +205,8 @@ export interface CockpitMeetingIssueLink {
   /** "task" for the issue the platform opened with the meeting, "" for one
    *  someone attached by hand. */
   role: string;
+  /** Explicit purposes. Legacy `role` is provenance, never inferred into these. */
+  roles: string[];
   issue_number: number;
   /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
   issue_identifier: string;
@@ -278,6 +283,8 @@ export type CockpitNodePatch = Partial<
     CockpitNode,
     | "code"
     | "parent_id"
+    | "project_id"
+    | "module_id"
     | "name"
     | "position"
     | "color"

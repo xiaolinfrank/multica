@@ -18,6 +18,7 @@ import {
   useDeleteCockpitMeetingIssue,
   useSetCockpitMeetingIssues,
 } from "@multica/core/cockpit";
+import type { CockpitMeeting, CockpitMeetingIssueLink } from "@multica/core/types";
 import { ChevronRight, X } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
@@ -26,6 +27,7 @@ import {
   CockpitMeetingPicker,
   cockpitMeetingLabel,
 } from "../../cockpit/components/cockpit-meeting-picker";
+import { CockpitMeetingRoleLabels } from "../../cockpit/components/cockpit-meeting-issue-links";
 
 export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
   // Cockpit vocabulary lives in the fork-only cockpit namespace, so this copy
@@ -47,18 +49,31 @@ export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
   );
 
   const { rows, linkedIds } = useMemo(() => {
-    const ids = new Set(
-      (board?.meeting_issues ?? []).filter((l) => l.issue_id === issueId).map((l) => l.meeting_id),
+    const links = new Map(
+      (board?.meeting_issues ?? [])
+        .filter((link) => link.issue_id === issueId)
+        .map((link) => [link.meeting_id, link]),
     );
     // Walk the register's own order so the rows read the way the board lists
     // them, rather than in link-creation order.
-    const entries = (board?.meetings ?? []).filter((m) => ids.has(m.id));
-    return { rows: entries, linkedIds: ids };
+    const entries: { id: string; meeting?: CockpitMeeting; link: CockpitMeetingIssueLink }[] = [];
+    const availableIds = new Set<string>();
+    for (const meeting of board?.meetings ?? []) {
+      availableIds.add(meeting.id);
+      const link = links.get(meeting.id);
+      if (link) entries.push({ id: meeting.id, meeting, link });
+    }
+    // Keep unresolved relations visible without guessing a destination or
+    // exposing a title that the current board response did not provide.
+    for (const [id, link] of links) {
+      if (!availableIds.has(id)) entries.push({ id, link });
+    }
+    return { rows: entries, linkedIds: new Set(links.keys()) };
   }, [board, issueId]);
 
-  // Nothing to offer until the programme keeps a register; the section would
-  // be all chrome.
-  if (!board || board.meetings.length === 0) return null;
+  // Hide empty registers, but retain any unresolved relationship so it can
+  // be understood and removed without navigating to an unrelated page.
+  if (!board || (board.meetings.length === 0 && rows.length === 0)) return null;
 
   const busy = linkMeeting.isPending || unlinkMeeting.isPending;
   const toggleMeeting = (meetingId: string) => {
@@ -80,6 +95,7 @@ export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
           open ? "" : "text-muted-foreground hover:text-foreground"
         }`}
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
       >
         <span className="truncate">{t(($) => $.issue_meetings.title)}</span>
         <ChevronRight
@@ -99,29 +115,37 @@ export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {rows.map((meeting) => {
-                const label = cockpitMeetingLabel(meeting);
+              {rows.map(({ id, meeting, link }) => {
+                const title = meeting?.title.trim() || t(($) => $.issue_meetings.untitled);
+                const label = meeting
+                  ? cockpitMeetingLabel({ ...meeting, title })
+                  : t(($) => $.issue_meetings.unavailable);
                 return (
                   <li
-                    key={meeting.id}
+                    key={id}
                     className="group/meeting -mx-1 flex items-center gap-1 rounded-sm px-1 transition-colors hover:bg-accent/50"
                   >
-                    {/* The row opens the register the meeting is filed in.
-                        There is no per-meeting deep link yet. */}
-                    <AppLink
-                      href={paths.cockpit()}
-                      newTabTitle={label}
-                      className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground hover:underline"
-                    >
-                      <span className="font-mono text-muted-foreground">
-                        {meeting.code || meeting.meet_date}
-                      </span>{" "}
-                      {meeting.title}
-                    </AppLink>
+                    <div className="min-w-0 flex-1 py-1">
+                      {meeting ? (
+                        <AppLink
+                          href={`${paths.cockpit()}?meeting=${encodeURIComponent(id)}`}
+                          newTabTitle={label}
+                          className="block truncate text-caption hover:text-foreground hover:underline"
+                        >
+                          <span className="font-mono text-muted-foreground">
+                            {meeting.code || meeting.meet_date}
+                          </span>{" "}
+                          {title}
+                        </AppLink>
+                      ) : (
+                        <span className="block text-caption text-muted-foreground">{label}</span>
+                      )}
+                      <CockpitMeetingRoleLabels link={link} />
+                    </div>
                     <button
                       type="button"
                       onClick={() =>
-                        unlinkMeeting.mutate({ meetingId: meeting.id, issueId }, { onError: fail })
+                        unlinkMeeting.mutate({ meetingId: id, issueId }, { onError: fail })
                       }
                       disabled={busy}
                       aria-label={t(($) => $.issue_meetings.unlink, { label })}
@@ -135,13 +159,15 @@ export function CockpitMeetingsSection({ issueId }: { issueId: string }) {
               })}
             </ul>
           )}
-          <CockpitMeetingPicker
-            meetings={board.meetings}
-            selectedIds={linkedIds}
-            onToggle={toggleMeeting}
-            label={t(($) => $.issue_meetings.link)}
-            disabled={busy}
-          />
+          {board.meetings.length > 0 && (
+            <CockpitMeetingPicker
+              meetings={board.meetings}
+              selectedIds={linkedIds}
+              onToggle={toggleMeeting}
+              label={t(($) => $.issue_meetings.link)}
+              disabled={busy}
+            />
+          )}
         </div>
       ) : null}
     </div>

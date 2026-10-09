@@ -9,7 +9,7 @@
 // confirms) and then awaits the server — the list and the board underneath
 // refresh only when the replacement actually landed.
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CockpitSnapshot } from "@multica/core/types";
 import { cockpitSnapshotsOptions } from "@multica/core/cockpit/queries";
@@ -51,12 +51,16 @@ function SnapshotRow({
   wsId,
   snapshot,
   canRestore,
+  restoreBlocked,
+  restoreBlockedReasonId,
   onRestored,
   onError,
 }: {
   wsId: string;
   snapshot: CockpitSnapshot;
   canRestore: boolean;
+  restoreBlocked: boolean;
+  restoreBlockedReasonId: string;
   onRestored: () => void;
   onError: (error: unknown) => void;
 }) {
@@ -94,7 +98,8 @@ function SnapshotRow({
                   variant="destructive"
                   size="sm"
                   className="h-6 px-2 text-micro"
-                  disabled={restore.isPending}
+                  disabled={restore.isPending || restoreBlocked}
+                  aria-describedby={restoreBlocked ? restoreBlockedReasonId : undefined}
                   onClick={() =>
                     restore.mutate(snapshot.id, {
                       onSuccess: (result) => {
@@ -135,6 +140,8 @@ function SnapshotRow({
                 variant="ghost"
                 size="sm"
                 className="h-6 gap-1 px-2 text-micro"
+                disabled={restoreBlocked}
+                aria-describedby={restoreBlocked ? restoreBlockedReasonId : undefined}
                 onClick={() => setConfirming(true)}
               >
                 <RotateCcw className="size-3" />
@@ -169,12 +176,16 @@ function SnapshotRunRow({
   wsId,
   snapshots,
   canRestore,
+  restoreBlocked,
+  restoreBlockedReasonId,
   onRestored,
   onError,
 }: {
   wsId: string;
   snapshots: CockpitSnapshot[];
   canRestore: boolean;
+  restoreBlocked: boolean;
+  restoreBlockedReasonId: string;
   onRestored: () => void;
   onError: (error: unknown) => void;
 }) {
@@ -211,6 +222,8 @@ function SnapshotRunRow({
               wsId={wsId}
               snapshot={snapshot}
               canRestore={canRestore}
+              restoreBlocked={restoreBlocked}
+              restoreBlockedReasonId={restoreBlockedReasonId}
               onRestored={onRestored}
               onError={onError}
             />
@@ -224,13 +237,19 @@ function SnapshotRunRow({
 /**
  * The toolbar entry for version history. `canRestore` is the caller's word for
  * whether this member may replace the board (owner/admin); the server
- * re-checks regardless.
+ * re-checks regardless. Stable bindings separately protect board identity,
+ * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore: boolean }) {
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false }: {
+  wsId: string;
+  canRestore: boolean;
+  hasStableBindings?: boolean;
+}) {
   const { t } = useT("cockpit");
   const { data: snapshots, isLoading } = useQuery(cockpitSnapshotsOptions(wsId));
   const create = useCreateCockpitSnapshot(wsId);
   const [open, setOpen] = useState(false);
+  const restoreBlockedReasonId = useId();
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -267,6 +286,16 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
             {t(($) => $.versions.save_current)}
           </Button>
         </div>
+        {hasStableBindings && (
+          <p id={restoreBlockedReasonId} className="border-b px-3 py-2 text-caption text-muted-foreground">
+            {t(($) => $.versions.restore_protected)}
+          </p>
+        )}
+        {!canRestore && (
+          <p className="border-b px-3 py-2 text-caption text-muted-foreground">
+            {t(($) => $.versions.restore_permission)}
+          </p>
+        )}
         <div className="max-h-80 overflow-y-auto p-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-6">
@@ -285,6 +314,8 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
                     wsId={wsId}
                     snapshot={entry.snapshot}
                     canRestore={canRestore}
+                    restoreBlocked={hasStableBindings}
+                    restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
                   />
@@ -294,6 +325,8 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
                     wsId={wsId}
                     snapshots={entry.run.snapshots}
                     canRestore={canRestore}
+                    restoreBlocked={hasStableBindings}
+                    restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
                   />

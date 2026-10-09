@@ -23,6 +23,27 @@ interface TestWorkspace {
   slug: string;
 }
 
+export interface TestCockpitNode {
+  id: string;
+  parent_id: string | null;
+  project_id: string | null;
+  module_id: string | null;
+  code: string;
+  name: string;
+}
+
+export interface TestCockpitMeeting {
+  id: string;
+  code: string;
+  title: string;
+}
+
+export interface TestCockpitBoard {
+  nodes: TestCockpitNode[];
+  meetings: TestCockpitMeeting[];
+  meeting_issues: Array<{ meeting_id: string; issue_id: string; role: string; roles: string[] }>;
+}
+
 export type TestIssueStatus =
   | "backlog"
   | "todo"
@@ -56,6 +77,10 @@ export class TestApiClient {
   private email: string | null = null;
   private createdIssueIds: string[] = [];
   private createdProjectIds: string[] = [];
+  private createdModuleIds: string[] = [];
+  private createdCockpitNodeIds: string[] = [];
+  private createdCockpitMeetingIds: string[] = [];
+  private createdWorkspaceIds: string[] = [];
   private seededIssueIds: string[] = [];
 
   async login(email: string, name: string) {
@@ -129,6 +154,22 @@ export class TestApiClient {
 
   setWorkspaceSlug(slug: string) {
     this.workspaceSlug = slug;
+  }
+
+  /** Create an isolated workspace, never fall back to a user's existing one. */
+  async createWorkspace(name: string, slug: string): Promise<TestWorkspace> {
+    const res = await this.authedFetch("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ name, slug }),
+    });
+    if (!res.ok) {
+      throw new Error(`create workspace failed: ${res.status} ${await res.text()}`);
+    }
+    const workspace = (await res.json()) as TestWorkspace;
+    this.workspaceId = workspace.id;
+    this.workspaceSlug = workspace.slug;
+    this.createdWorkspaceIds.push(workspace.id);
+    return workspace;
   }
 
   async ensureWorkspace(name = "E2E Workspace", slug = "e2e-workspace") {
@@ -218,11 +259,78 @@ export class TestApiClient {
     await this.authedFetch(`/api/projects/${id}`, { method: "DELETE" });
   }
 
+  async createModule(projectId: string, title: string) {
+    const res = await this.authedFetch("/api/modules", {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId, title }),
+    });
+    if (!res.ok) throw new Error(`create module failed: ${res.status} ${await res.text()}`);
+    const { module } = (await res.json()) as { module: { id: string; project_id: string; title: string } };
+    if (!module?.id) throw new Error("create module returned no module identity");
+    this.createdModuleIds.push(module.id);
+    return module;
+  }
+
+  async createCockpitNode(body: {
+    code: string;
+    name: string;
+    parent_id?: string;
+    project_id?: string;
+    module_id?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<TestCockpitNode> {
+    const res = await this.authedFetch("/api/cockpit/nodes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`create cockpit node failed: ${res.status} ${await res.text()}`);
+    const node = (await res.json()) as TestCockpitNode;
+    this.createdCockpitNodeIds.push(node.id);
+    return node;
+  }
+
+  async createCockpitMeeting(body: { title: string; meet_date: string }): Promise<TestCockpitMeeting> {
+    const res = await this.authedFetch("/api/cockpit/meetings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`create cockpit meeting failed: ${res.status} ${await res.text()}`);
+    const meeting = (await res.json()) as TestCockpitMeeting;
+    this.createdCockpitMeetingIds.push(meeting.id);
+    return meeting;
+  }
+
+  async linkCockpitNodeIssue(nodeId: string, issueId: string) {
+    const res = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/issues`, {
+      method: "PUT",
+      body: JSON.stringify({ issue_ids: [issueId] }),
+    });
+    if (!res.ok) throw new Error(`link cockpit node failed: ${res.status} ${await res.text()}`);
+  }
+
+  async linkCockpitMeetingIssue(meetingId: string, issueId: string) {
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/issues`, {
+      method: "PUT",
+      body: JSON.stringify({ issue_ids: [issueId] }),
+    });
+    if (!res.ok) throw new Error(`link cockpit meeting failed: ${res.status} ${await res.text()}`);
+  }
+
+  async getCockpitBoard(): Promise<TestCockpitBoard> {
+    const res = await this.authedFetch("/api/cockpit");
+    if (!res.ok) throw new Error(`get cockpit failed: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
   async createIssue(title: string, opts?: Record<string, unknown>) {
     const res = await this.authedFetch("/api/issues", {
       method: "POST",
       body: JSON.stringify({ title, ...opts }),
     });
+    if (!res.ok) {
+      throw new Error(`create issue failed: ${res.status} ${await res.text()}`);
+    }
     const issue = await res.json();
     this.createdIssueIds.push(issue.id);
     return issue;
@@ -406,8 +514,29 @@ export class TestApiClient {
     return res.json();
   }
 
-  /** Clean up all issues created during this test. */
+  /** Remove only tracked fixtures, from cockpit relations down to their workspace. */
   async cleanup() {
+    const cleanupErrors: Error[] = [];
+    const removeTrackedFixture = async (path: string, kind: string) => {
+      try {
+        const res = await this.authedFetch(path, { method: "DELETE" });
+        if (!res.ok && res.status !== 404) {
+          throw new Error(`cleanup ${kind} failed: ${res.status} ${await res.text()}`);
+        }
+      } catch (error) {
+        cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    // Bound nodes must disappear before their mapped projects/modules. The
+    // fixture creates parents first, so reverse order removes leaves first.
+    for (const id of this.createdCockpitMeetingIds) {
+      await removeTrackedFixture(`/api/cockpit/meetings/${encodeURIComponent(id)}`, "meeting");
+    }
+    this.createdCockpitMeetingIds = [];
+    for (const id of [...this.createdCockpitNodeIds].reverse()) {
+      await removeTrackedFixture(`/api/cockpit/nodes/${encodeURIComponent(id)}`, "cockpit node");
+    }
+    this.createdCockpitNodeIds = [];
     if (this.seededIssueIds.length > 0 && this.workspaceId) {
       const client = new pg.Client(DATABASE_URL);
       await client.connect();
@@ -429,6 +558,10 @@ export class TestApiClient {
       }
     }
     this.createdIssueIds = [];
+    for (const id of this.createdModuleIds) {
+      await removeTrackedFixture(`/api/modules/${encodeURIComponent(id)}`, "module");
+    }
+    this.createdModuleIds = [];
     // Projects last: an issue delete leaves no project reference behind, and
     // dropping the project first would strand the issues in the list.
     for (const id of this.createdProjectIds) {
@@ -439,6 +572,13 @@ export class TestApiClient {
       }
     }
     this.createdProjectIds = [];
+    for (const id of this.createdWorkspaceIds) {
+      await removeTrackedFixture(`/api/workspaces/${encodeURIComponent(id)}`, "workspace");
+    }
+    this.createdWorkspaceIds = [];
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, `E2E fixture cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`);
+    }
   }
 
   getToken() {

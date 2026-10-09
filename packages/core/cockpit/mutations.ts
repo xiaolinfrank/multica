@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { issueKeys } from "../issues/queries";
+import { CockpitUnconfirmedWriteError } from "./errors";
 import type {
   CockpitBoard,
   CockpitDirectoryEntry,
@@ -212,6 +213,26 @@ export function useUpdateCockpitNode(wsId: string) {
     }),
     (node) => (board) => upsertCockpitNode(board, node),
   );
+}
+
+/** Binding can fail on ancestry or uniqueness constraints; show only the server's accepted mapping. */
+export function useSetCockpitNodeBinding(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, project_id, module_id }: { id: string; project_id: string | null; module_id: string | null }) => {
+      const node = await api.updateCockpitNode(id, { project_id, module_id });
+      if (node.id !== id || (node.project_id ?? null) !== project_id || (node.module_id ?? null) !== module_id) {
+        throw new CockpitUnconfirmedWriteError();
+      }
+      return node;
+    },
+    onSuccess: (node) => {
+      if (node.id) patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    },
+  });
 }
 
 export function useDeleteCockpitNode(wsId: string) {
@@ -464,6 +485,31 @@ export function useSetCockpitMeetingIssues(wsId: string) {
       patchCockpitBoard(queryClient, wsId, (board) =>
         replaceCockpitMeetingIssues(board, result.meeting_id, result.links),
       );
+    },
+  });
+}
+
+export function useSetCockpitMeetingIssueRoles(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ meetingId, issueId, roles }: { meetingId: string; issueId: string; roles: string[] }) => {
+      const result = await api.setCockpitMeetingIssueRoles(meetingId, issueId, roles);
+      const link = result.links.find((entry) => entry.meeting_id === meetingId && entry.issue_id === issueId);
+      const expected = new Set(roles);
+      if (!link || link.roles.length !== expected.size || link.roles.some((role) => !expected.has(role))) {
+        throw new CockpitUnconfirmedWriteError();
+      }
+      return result;
+    },
+    onSuccess: (result, { meetingId }) => {
+      if (result.links.length > 0) {
+        patchCockpitBoard(queryClient, wsId, (board) =>
+          replaceCockpitMeetingIssues(board, meetingId, result.links),
+        );
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     },
   });
 }

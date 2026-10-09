@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { moduleKeys } from "./queries";
 import { issueKeys } from "../issues/queries";
+import { cockpitKeys } from "../cockpit/queries";
 import { useWorkspaceId } from "../hooks";
 import type { Module, CreateModuleRequest, UpdateModuleRequest, ListModulesResponse } from "../types";
 
@@ -75,6 +76,7 @@ export function useDeleteModule() {
           : old,
       );
       qc.removeQueries({ queryKey: moduleKeys.detail(wsId, id) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
       // The server detached this module's issues (module_id → NULL) in the
       // same transaction; those rows live in the issue caches this client
       // never hears about otherwise (self-initiated deletes get no

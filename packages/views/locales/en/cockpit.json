@@ -435,7 +435,7 @@
     "label": "Work item",
     "none": "No work item",
     "search_placeholder": "Search by code or name…",
-    "empty": "This workspace has no work item an issue can be filed against."
+    "empty": "No execution items have a module binding yet. Configure parent bindings in the cockpit."
   },
   "issues": {
     "link": "Link issue",
@@ -451,7 +451,9 @@
     "title": "Work items",
     "none": "No work items linked.",
     "link": "Add work item",
-    "unlink": "Unlink {{label}}"
+    "unlink": "Unlink {{label}}",
+    "unavailable": "Work item unavailable",
+    "untitled": "Untitled work item"
   },
   "issue_meetings": {
     "title": "Meetings",
@@ -459,7 +461,9 @@
     "link": "Add meeting",
     "unlink": "Unlink {{label}}",
     "search_placeholder": "Search by number, name or parties",
-    "no_results": "No meeting matches."
+    "no_results": "No meeting matches.",
+    "unavailable": "Meeting unavailable",
+    "untitled": "Untitled meeting"
   },
   "panel": {
     "close": "Close panel",
@@ -481,7 +485,8 @@
     "unset": "—"
   },
   "errors": {
-    "save_failed": "Could not save that change"
+    "save_failed": "Could not save that change",
+    "load_failed": "Could not load the cockpit"
   },
   "table": {
     "tasks_hint": "{{rows}} rows · edit any cell in place; changes sync to everyone live",
@@ -556,11 +561,54 @@
     "trigger_auto": "Auto",
     "auto_group": "Auto saves ×{{n}}",
     "row_meta": "{{nodes}} nodes · {{by}}",
-    "by_unknown": "unknown"
+    "by_unknown": "unknown",
+    "restore_protected": "Stable bindings protect this board from full restore. Edit the plan directly.",
+    "restore_permission": "Only workspace owners and admins can restore or delete versions."
   },
   "confirmation": {
     "delete_title": "Delete this record?",
     "delete_description": "{{label}} will be permanently removed. This cannot be undone.",
     "delete_branch_description": "{{label}} and all descendant records will be permanently removed. This cannot be undone."
+  },
+  "meeting_roles": {
+    "title": "Purposes",
+    "edit": "Edit purposes for {{identifier}}",
+    "unclassified": "Unclassified",
+    "legacy_task": "Created with meeting (unclassified)",
+    "unknown": "Other: {{role}}",
+    "preparation": "Preparation",
+    "support": "Meeting support",
+    "minutes": "Minutes",
+    "review": "Review",
+    "action": "Follow-up action",
+    "delivery": "Delivery",
+    "reference": "Reference",
+    "save": "Save purposes",
+    "save_failed": "Could not save purposes",
+    "unconfirmed_save": "The server did not confirm this change. Refresh and check the server version before retrying."
+  },
+  "binding": {
+    "title": "Project and module binding",
+    "inherited": "Inherited from {{label}}",
+    "module_bound": "Mapped module row",
+    "project_bound": "Mapped project row",
+    "invalid": "The binding cannot be resolved. Check its parent and mapped module.",
+    "unbound": "No project/module binding yet. Configure the structural rows before creating issues for their execution items.",
+    "configure_parent": "Configure parent binding",
+    "configure": "Configure binding",
+    "load_failed": "Could not load projects",
+    "retry": "Retry",
+    "project": "Project",
+    "module": "Module",
+    "none": "Not bound",
+    "save": "Save binding",
+    "cancel": "Cancel",
+    "save_failed": "Could not save binding",
+    "hint": "Choose the existing project or module represented by this row. Descendants inherit the binding; existing issue links are not moved.",
+    "unconfirmed_save": "The server did not confirm this change. Refresh and check the server version before retrying.",
+    "modules_failed": "Could not load modules. Your saved bindings have not changed.",
+    "loading": "Loading bindings…",
+    "project_unavailable": "Bound project unavailable",
+    "module_required": "Bind a module on a parent row before creating issues here."
   }
 }

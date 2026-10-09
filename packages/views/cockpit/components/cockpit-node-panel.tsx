@@ -56,6 +56,7 @@ export interface CockpitNodePanelProps {
   ownerSuggestions: string[];
   vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
+  binding?: React.ReactNode;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
   /** Localized destructive consequences, including descendants for a branch. */
@@ -65,8 +66,8 @@ export interface CockpitNodePanelProps {
   onClose: () => void;
   onLinkIssue: (issueId: string) => void;
   onUnlinkIssue: (issueId: string) => void;
-  /** Opens a create dialog filed under this work item's module, with the title
-   *  opened on its row code. Absent when that module cannot be resolved. */
+  /** Opens a create dialog using the item's inherited UUID binding.
+   *  The display code seeds the title without determining its destination. */
   onCreateIssue?: () => void;
   /** Opens one of this item's meetings in the register. */
   onOpenMeeting: (meetingId: string) => void;
@@ -90,6 +91,7 @@ export function CockpitNodePanel({
   ownerSuggestions,
   vendorSuggestions,
   onPatch,
+  binding,
   onDelete,
   deleteConfirmationDescription,
   depth,
@@ -198,6 +200,7 @@ export function CockpitNodePanel({
       </header>
 
       <div className="flex-1 overflow-y-auto p-3">
+        {binding && <div className="mb-4">{binding}</div>}
         <div className="grid grid-cols-2 gap-3">
           <CockpitField label={t(($) => $.node.owner)}>
             <EditableSuggest

@@ -27,10 +27,13 @@ export * from "./mutations";
 export * from "./model";
 export * from "./directory";
 export * from "./meeting-search";
+export * from "./meeting-roles";
+export * from "./errors";
 export * from "./meeting-timeline";
 export {
   cockpitNodeIssueFiling,
-  cockpitStoredDirectionCode,
+  resolveCockpitNodeBinding,
+  type CockpitNodeBinding,
   type CockpitFilingModule,
   type CockpitNodeIssueFiling,
 } from "./node-filing";

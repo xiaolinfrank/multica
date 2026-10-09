@@ -21,6 +21,7 @@ import {
   FALLBACK_AUTOPILOT_RUN,
   CommentTriggerPreviewSchema,
   CockpitBoardSchema,
+  CockpitNodeSchema,
   CockpitMeetingSchema,
   CockpitMeetingDestinationSchema,
   CockpitMeetingIssueLinkSchema,
@@ -2604,6 +2605,21 @@ describe("Cockpit snapshot schemas", () => {
 });
 
 describe("Cockpit meeting schemas", () => {
+  it("normalizes absent and malformed node bindings without deriving them from a code", () => {
+    expect(CockpitNodeSchema.parse({ id: "n", code: "01.01.01" })).toMatchObject({ project_id: null, module_id: null });
+    expect(CockpitNodeSchema.parse({ id: "n", project_id: 42, module_id: [] })).toMatchObject({ project_id: null, module_id: null });
+    expect(CockpitNodeSchema.parse({ id: "n", project_id: "p1", module_id: "m1" })).toMatchObject({ project_id: "p1", module_id: "m1" });
+  });
+
+  it("defaults legacy or malformed purposes without reclassifying provenance and preserves future purposes", () => {
+    const base = { meeting_id: "m1", issue_id: "i1", role: "task" };
+    expect(CockpitMeetingIssueLinkSchema.parse(base)).toMatchObject({ role: "task", roles: [] });
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: null }).roles).toEqual([]);
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: [false] }).roles).toEqual([]);
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: ["preparation", "review", "future-role"] }).roles)
+      .toEqual(["preparation", "review", "future-role"]);
+  });
+
   it("keeps a meeting an older backend under-populates, and its unknown future fields", () => {
     const parsed = CockpitMeetingSchema.parse({
       id: "m1",

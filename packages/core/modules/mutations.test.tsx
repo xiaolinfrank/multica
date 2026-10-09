@@ -10,6 +10,7 @@ import { setApiInstance } from "../api";
 import type { ApiClient } from "../api/client";
 import type { ListModulesResponse, Module } from "../types";
 import { issueKeys } from "../issues/queries";
+import { cockpitKeys } from "../cockpit/queries";
 import {
   useCreateModule,
   useDeleteModule,
@@ -115,7 +116,7 @@ describe("module mutations", () => {
   // The server nulls module_id on the module's issues in the same
   // transaction; those rows live in the issue caches, and a self-initiated
   // delete gets no module:deleted echo back to this client.
-  it("invalidates issue caches once the server confirms the delete", async () => {
+  it("invalidates issue and cockpit bindings once the server confirms the delete", async () => {
     const qc = createClient();
     qc.setQueryData(moduleKeys.list("ws-1"), list([module({ id: "m-1" })]));
     setApiInstance({ deleteModule: vi.fn(async () => {}) } as unknown as ApiClient);
@@ -127,6 +128,7 @@ describe("module mutations", () => {
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: issueKeys.all("ws-1") }),
     );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
   });
 
   it("optimistically reorders by the given ids and keeps the settled order", async () => {

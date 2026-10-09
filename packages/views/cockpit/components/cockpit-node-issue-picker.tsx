@@ -5,9 +5,8 @@
 // The cockpit's "New issue" arrives at the create dialog with a row already
 // chosen — that row is what decided the project, the module and the number the
 // title opens on — and this is where the choice is shown and, when it was the
-// wrong row, changed. Only rows the board can file into are offered: a mainline
-// or a direction names a project rather than a module, so picking one could not
-// answer the question the field is asking.
+// wrong row, changed. Only execution rows inheriting an explicit module UUID
+// are offered; mapped project/module rows themselves remain structural.
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +18,6 @@ import {
   buildCockpitTree,
   cockpitBoardOptions,
   cockpitNodeIssueFiling,
-  cockpitStoredDirectionCode,
 } from "@multica/core/cockpit";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
@@ -56,9 +54,7 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
   return useMemo(() => {
     const nodes = board?.nodes ?? [];
     if (nodes.length === 0 || !modules) return [];
-    // The summary tree, because that is the shape the gantt ships and the
-    // codes the module numbering follows; each row's stored direction code
-    // rides along as the drift cross-check.
+    // Display codes label options only; ancestry and explicit UUIDs determine filing.
     const codes = buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes)));
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const options: CockpitNodeIssueOption[] = [];
@@ -68,9 +64,10 @@ export function useCockpitNodeIssueOptions(): CockpitNodeIssueOption[] {
       // no row of its own to link against.
       if (!node) continue;
       const filing = cockpitNodeIssueFiling(
-        code,
+        node,
+        byId,
         modules,
-        cockpitStoredDirectionCode(node, byId),
+        code,
       );
       if (!filing) continue;
       options.push({

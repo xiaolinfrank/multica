@@ -19,6 +19,8 @@ func newCockpitNodeTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "update"}
 	cmd.Flags().String("code", "", "")
 	cmd.Flags().String("parent", "", "")
+	cmd.Flags().String("project-id", "", "")
+	cmd.Flags().String("module-id", "", "")
 	cmd.Flags().String("name", "", "")
 	cmd.Flags().String("owner", "", "")
 	cmd.Flags().String("collaborators", "", "")
@@ -204,5 +206,20 @@ func TestRunCockpitImportPostsTheDocumentAndReportsUnresolved(t *testing.T) {
 	unresolved, _ := result["unresolved_issues"].([]any)
 	if len(unresolved) != 1 || unresolved[0] != "BIO-404" {
 		t.Fatalf("unresolved_issues = %#v", result["unresolved_issues"])
+	}
+}
+
+func TestCockpitNodeBodyBindingFlags(t *testing.T) {
+	cmd := newCockpitNodeTestCmd()
+	_ = cmd.Flags().Set("module-id", "d0229568-f26a-4be4-a4bf-3249c086f8f2")
+	body := cockpitNodeBody(cmd)
+	if len(body) != 1 || body["module_id"] != "d0229568-f26a-4be4-a4bf-3249c086f8f2" {
+		t.Fatalf("module binding body = %#v", body)
+	}
+	_ = cmd.Flags().Set("project-id", "")
+	_ = cmd.Flags().Set("module-id", "")
+	body = cockpitNodeBody(cmd)
+	if len(body) != 2 || body["project_id"] != "" || body["module_id"] != "" {
+		t.Fatalf("clear binding body = %#v", body)
 	}
 }

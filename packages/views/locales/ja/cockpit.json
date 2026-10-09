@@ -274,7 +274,6 @@
     "chip_query": "検索：{{query}}",
     "chip_remove": "絞り込み「{{label}}」を解除",
     "column_code": "番号",
-
     "column_folder": "資料フォルダ",
     "column_links": "関連",
     "column_parties": "参加組織",
@@ -436,7 +435,7 @@
     "label": "作業項目",
     "none": "作業項目に紐付けない",
     "search_placeholder": "コードまたは名称で検索…",
-    "empty": "このワークスペースにはイシューを紐付けられる作業項目がありません。"
+    "empty": "モジュールに紐付く実行項目がありません。コックピットで親項目の紐付けを設定してください。"
   },
   "issues": {
     "link": "イシューを関連付け",
@@ -452,7 +451,9 @@
     "title": "関連作業項目",
     "none": "関連作業項目はありません。",
     "link": "作業項目を追加",
-    "unlink": "「{{label}}」の関連を解除"
+    "unlink": "「{{label}}」の関連を解除",
+    "unavailable": "実行項目を利用できません",
+    "untitled": "無題の実行項目"
   },
   "issue_meetings": {
     "title": "関連会議",
@@ -460,7 +461,9 @@
     "link": "会議を追加",
     "unlink": "「{{label}}」の関連を解除",
     "search_placeholder": "番号・名称・参加者で検索",
-    "no_results": "該当する会議はありません。"
+    "no_results": "該当する会議はありません。",
+    "unavailable": "会議を利用できません",
+    "untitled": "無題の会議"
   },
   "panel": {
     "close": "パネルを閉じる",
@@ -482,7 +485,8 @@
     "unset": "—"
   },
   "errors": {
-    "save_failed": "この変更を保存できませんでした"
+    "save_failed": "この変更を保存できませんでした",
+    "load_failed": "コックピットを読み込めません"
   },
   "table": {
     "tasks_hint": "全 {{rows}} 行 · セルをクリックしてその場で編集でき、変更は全員にリアルタイムで同期されます",
@@ -557,11 +561,54 @@
     "trigger_auto": "自動",
     "auto_group": "自動保存 ×{{n}}",
     "row_meta": "{{nodes}} ノード · {{by}}",
-    "by_unknown": "不明"
+    "by_unknown": "不明",
+    "restore_protected": "安定した紐付けがあるため、ボード全体を復元できません。計画を直接編集してください。",
+    "restore_permission": "バージョンの復元・削除はワークスペース所有者と管理者のみ行えます。"
   },
   "confirmation": {
     "delete_title": "この記録を削除しますか？",
     "delete_description": "「{{label}}」は完全に削除されます。この操作は取り消せません。",
     "delete_branch_description": "「{{label}}」とそのすべての下位記録は完全に削除されます。この操作は取り消せません。"
+  },
+  "meeting_roles": {
+    "title": "用途",
+    "edit": "{{identifier}} の用途を編集",
+    "unclassified": "未分類",
+    "legacy_task": "会議作成時に作成（未分類）",
+    "unknown": "その他: {{role}}",
+    "preparation": "事前準備",
+    "support": "会議支援",
+    "minutes": "議事録作成",
+    "review": "レビュー",
+    "action": "アクション実行",
+    "delivery": "成果物の提出",
+    "reference": "参照",
+    "save": "用途を保存",
+    "save_failed": "用途を保存できませんでした",
+    "unconfirmed_save": "サーバーが変更を確認しませんでした。再読み込みし、サーバーのバージョンを確認して再試行してください。"
+  },
+  "binding": {
+    "title": "プロジェクト・モジュールの紐付け",
+    "inherited": "{{label}} から継承",
+    "module_bound": "モジュールに紐付け済み",
+    "project_bound": "プロジェクトに紐付け済み",
+    "invalid": "紐付けを解決できません。親項目とモジュールを確認してください。",
+    "unbound": "プロジェクトまたはモジュールが未設定です。タスクを作成する前に構造項目を紐付けてください。",
+    "configure_parent": "親の紐付けを設定",
+    "configure": "紐付けを設定",
+    "load_failed": "プロジェクトを読み込めません",
+    "retry": "再試行",
+    "project": "プロジェクト",
+    "module": "モジュール",
+    "none": "未設定",
+    "save": "紐付けを保存",
+    "cancel": "キャンセル",
+    "save_failed": "紐付けを保存できません",
+    "hint": "この行に対応する既存のプロジェクトまたはモジュールを選択します。子項目は継承し、既存タスクの関連付けは移動しません。",
+    "unconfirmed_save": "サーバーが変更を確認しませんでした。再読み込みし、サーバーのバージョンを確認して再試行してください。",
+    "modules_failed": "モジュールを読み込めません。保存済みの紐付けは変更されていません。",
+    "loading": "紐付けを読み込み中…",
+    "project_unavailable": "紐付け先のプロジェクトを利用できません",
+    "module_required": "ここでタスクを作成する前に、親項目にモジュールを紐付けてください。"
   }
 }

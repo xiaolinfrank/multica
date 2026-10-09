@@ -70,6 +70,7 @@ vi.mock("@multica/core/api", () => ({
     withdrawCockpitChange: vi.fn(),
     listMembers: vi.fn(),
     listModules: vi.fn(),
+    listProjects: vi.fn(),
   },
 }));
 
@@ -232,6 +233,7 @@ describe("Cockpit secondary interactions", () => {
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
+    vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -315,9 +317,9 @@ describe("Cockpit secondary interactions", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
-  it("opens a new issue in the module the work item's row code names, and links it", async () => {
+  it("opens a new issue using its inherited UUID binding, and links it", async () => {
     const threeLevel = structuredClone(board);
-    threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root" }));
+    threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", project_id: "p-01", module_id: "m-0101" }));
     threeLevel.nodes[1]!.parent_id = "module";
     vi.mocked(api.getCockpit).mockResolvedValue(threeLevel);
     vi.mocked(api.listModules).mockResolvedValue({

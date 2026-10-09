@@ -338,7 +338,7 @@ describe("onCockpitChanged", () => {
         },
         links: [
           {
-            meeting_id: "m1", issue_id: "i9", role: "task", issue_number: 9,
+            meeting_id: "m1", issue_id: "i9", role: "task", roles: [], issue_number: 9,
             issue_identifier: "BIO-9", issue_title: "Weekly", issue_status: "todo", position: -1,
           },
         ],
@@ -354,9 +354,9 @@ describe("onCockpitChanged", () => {
   it("removes one meeting link without touching the others", () => {
     const { qc } = seedBoard({
       meeting_issues: [
-        { meeting_id: "m1", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m1", issue_id: "i1", role: "", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
-        { meeting_id: "m2", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m2", issue_id: "i1", role: "", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
       ],
       meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],
@@ -388,7 +388,7 @@ describe("onCockpitChanged", () => {
         },
       ],
       meeting_issues: [
-        { meeting_id: "m1", issue_id: "i1", role: "task", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m1", issue_id: "i1", role: "task", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
       ],
       meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],

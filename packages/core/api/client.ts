@@ -315,6 +315,7 @@ import {
   EMPTY_ISSUE_GRAPH,
   CockpitSchema,
   CockpitNodeSchema,
+  CockpitNodeBindingResponseSchema,
   CockpitPaymentSchema,
   CockpitMilestoneSchema,
   CockpitMeetingSchema,
@@ -322,6 +323,7 @@ import {
   CockpitMeetingImportResultSchema,
   CockpitMeetingScanSchema,
   CockpitMeetingIssuesResponseSchema,
+  CockpitMeetingIssueRolesResponseSchema,
   CockpitMeetingNodesResponseSchema,
   CockpitMeetingProvisionResultSchema,
   CockpitDirectorySchema,
@@ -1802,7 +1804,8 @@ export class ApiClient {
       method: "PATCH",
       body: JSON.stringify(patch),
     });
-    return parseWithFallback(raw, CockpitNodeSchema, emptyCockpitNode(""), {
+    const schema = "project_id" in patch || "module_id" in patch ? CockpitNodeBindingResponseSchema : CockpitNodeSchema;
+    return parseWithFallback(raw, schema, emptyCockpitNode(""), {
       endpoint: "PATCH /api/cockpit/nodes/:id",
     });
   }
@@ -2027,6 +2030,20 @@ export class ApiClient {
     });
     return parseWithFallback(raw, CockpitMeetingIssuesResponseSchema, { meeting_id: meetingId, links: [] }, {
       endpoint: "PUT /api/cockpit/meetings/:id/issues",
+    });
+  }
+
+  async setCockpitMeetingIssueRoles(
+    meetingId: string,
+    issueId: string,
+    roles: string[],
+  ): Promise<{ meeting_id: string; links: CockpitMeetingIssueLink[] }> {
+    const raw = await this.fetch<unknown>(
+      `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/issues/${encodeURIComponent(issueId)}/roles`,
+      { method: "PUT", body: JSON.stringify({ roles }) },
+    );
+    return parseWithFallback(raw, CockpitMeetingIssueRolesResponseSchema, { meeting_id: meetingId, links: [] }, {
+      endpoint: "PUT /api/cockpit/meetings/:id/issues/:issueId/roles",
     });
   }
 
@@ -6110,6 +6127,8 @@ function emptyCockpitNode(code: string): CockpitNode {
     id: "",
     cockpit_id: "",
     parent_id: null,
+    project_id: null,
+    module_id: null,
     code,
     name: "",
     position: 0,

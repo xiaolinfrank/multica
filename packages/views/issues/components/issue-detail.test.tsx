@@ -17,8 +17,9 @@ import enAgents from "../../locales/en/agents.json";
 import enCommon from "../../locales/en/common.json";
 import enIssues from "../../locales/en/issues.json";
 import enWorkspaces from "../../locales/en/workspaces.json";
+import enCockpit from "../../locales/en/cockpit.json";
 
-const TEST_RESOURCES = { en: { agents: enAgents, common: enCommon, issues: enIssues, workspaces: enWorkspaces } };
+const TEST_RESOURCES = { en: { agents: enAgents, common: enCommon, issues: enIssues, workspaces: enWorkspaces, cockpit: enCockpit } };
 
 const mockViewport = vi.hoisted(() => ({ isMobile: false }));
 
@@ -316,6 +317,7 @@ vi.mock("../../projects/components/project-picker", () => ({
 // Mock api
 const mockApiObj = vi.hoisted(() => ({
   getIssue: vi.fn(),
+  getCockpit: vi.fn().mockResolvedValue(null),
   listTimeline: vi.fn().mockResolvedValue([]),
   listComments: vi.fn().mockResolvedValue([]),
   createComment: vi.fn(),
@@ -730,6 +732,7 @@ describe("IssueDetail (shared)", () => {
     mockViewport.isMobile = false;
     // Default: issue loads successfully
     mockApiObj.getIssue.mockResolvedValue(mockIssue);
+    mockApiObj.getCockpit.mockResolvedValue(null);
     // /timeline returns the entries flat in chronological order (oldest first).
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline);
     mockApiObj.listIssueReactions.mockResolvedValue([]);
@@ -751,6 +754,22 @@ describe("IssueDetail (shared)", () => {
     // Reset project mock — individual tests override per case. Default fixture
     // has project_id: null so getProject is not invoked.
     mockApiObj.getProject.mockReset();
+  });
+
+  it.each(["issue-1", "TES-1"])("shows one editable meeting context when opened as %s", async (issueId) => {
+    mockApiObj.getCockpit.mockResolvedValue({
+      nodes: [],
+      issue_links: [],
+      meetings: [{ id: "meeting-1", code: "20261009-01", title: "Design review", meet_date: "2026-10-09" }],
+      meeting_issues: [{ meeting_id: "meeting-1", issue_id: "issue-1", role: "task", roles: [] }],
+    });
+    renderIssueDetail(issueId);
+
+    const links = await screen.findAllByRole("link", { name: /Design review/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", "/test/cockpit?meeting=meeting-1");
+    expect(screen.getByRole("button", { name: "Add meeting" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unlink 20261009-01 Design review" })).toBeInTheDocument();
   });
 
   it("counts comment files as deliverables, a re-upload once as v2, never the description's (MUL-7649)", async () => {

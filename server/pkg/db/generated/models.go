@@ -631,6 +631,7 @@ type CockpitMeetingIssue struct {
 	Role        string             `json:"role"`
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Roles       []string           `json:"roles"`
 }
 
 type CockpitMeetingNode struct {
@@ -686,6 +687,8 @@ type CockpitNode struct {
 	UpdatedByID     pgtype.UUID        `json:"updated_by_id"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ProjectID       pgtype.UUID        `json:"project_id"`
+	ModuleID        pgtype.UUID        `json:"module_id"`
 }
 
 type CockpitNodeIssue struct {

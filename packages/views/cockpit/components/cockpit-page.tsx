@@ -38,7 +38,6 @@ import {
   cockpitChangesOptions,
   cockpitNodeIssueFiling,
   cockpitOverallProgress,
-  cockpitStoredDirectionCode,
   cockpitSummaryCollapseIds,
   cockpitTasksCsv,
   flattenCockpitTree,
@@ -61,8 +60,10 @@ import {
   useImportCockpitMeetingFolders,
   useProvisionCockpitMeeting,
   useSetCockpitMeetingIssues,
+  useSetCockpitMeetingIssueRoles,
   useSetCockpitMeetingNodes,
   useSetCockpitNodeIssues,
+  useSetCockpitNodeBinding,
   useUpdateCockpit,
   useUpdateCockpitMeeting,
   cockpitDirectoryOptions,
@@ -123,6 +124,7 @@ import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
 import { CockpitMeetings } from "./cockpit-meetings";
 import type { CockpitNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitNodePanel } from "./cockpit-node-panel";
+import { CockpitNodeBindingField } from "./cockpit-node-binding";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
 import { CockpitVersions } from "./cockpit-versions";
@@ -254,7 +256,7 @@ export function CockpitPage() {
   );
   const [today] = useState(todayString);
 
-  const { data: board, isLoading } = useQuery(cockpitBoardOptions(wsId));
+  const { data: board, isLoading, isError: boardError, refetch: reloadBoard, isFetching: reloadingBoard } = useQuery(cockpitBoardOptions(wsId));
 
   // Deep link `?meeting=<id>` (graph node menu, issue sidebar): land on the
   // meetings tab with that meeting's panel open. Waits for the board so the
@@ -283,7 +285,7 @@ export function CockpitPage() {
   const { data: members } = useQuery(memberListOptions(wsId));
   // The workspace's modules, read for one reason: a work item files its
   // issues into the module its row code names.
-  const { data: modules } = useQuery(moduleListOptions(wsId));
+  const { data: modules, isPending: modulesLoading, isError: modulesError, refetch: reloadModules } = useQuery(moduleListOptions(wsId));
   const openModal = useModalStore((state) => state.open);
   const canRestore = useMemo(() => {
     const mine = (members ?? []).find((m) => m.user_id === currentUserId);
@@ -296,6 +298,7 @@ export function CockpitPage() {
 
   const updateBoard = useUpdateCockpit(wsId);
   const updateNode = useUpdateCockpitNode(wsId);
+  const setNodeBinding = useSetCockpitNodeBinding(wsId);
   const deleteNode = useDeleteCockpitNode(wsId);
   const setNodeIssues = useSetCockpitNodeIssues(wsId);
   const unlinkIssue = useDeleteCockpitNodeIssue(wsId);
@@ -311,6 +314,7 @@ export function CockpitPage() {
   const provisionMeeting = useProvisionCockpitMeeting(wsId);
   const importMeetings = useImportCockpitMeetingFolders(wsId);
   const setMeetingIssues = useSetCockpitMeetingIssues(wsId);
+  const setMeetingIssueRoles = useSetCockpitMeetingIssueRoles(wsId);
   const unlinkMeetingIssue = useDeleteCockpitMeetingIssue(wsId);
   const setMeetingNodes = useSetCockpitMeetingNodes(wsId);
   const unlinkMeetingNode = useDeleteCockpitMeetingNode(wsId);
@@ -498,10 +502,9 @@ export function CockpitPage() {
   );
 
   /**
-   * Open a new issue on a work item. The board and the tracker are numbered by
-   * the same outline, so the row code says where the issue belongs: its leading
-   * segments name the module, the module carries its project, and the code
-   * itself opens the title the way the module's own "+" does.
+   * Open work using the item's inherited project/module UUID binding.
+   * The display code seeds the title only; renaming or renumbering cannot
+   * change where the issue is filed.
    *
    * The issue is linked to the row as soon as it exists. Creating work from a
    * work item and then having to search for it to attach it would leave the
@@ -838,18 +841,15 @@ export function CockpitPage() {
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
-  // The display code is the join key (the module numbering follows the shipped
-  // tree), cross-checked against the row's stored direction code: when a
-  // summary merge has renumbered the tree and the modules have not been re-cut
-  // to match, the two keys disagree and filing withdraws rather than file into
-  // the wrong module.
+  // WBS codes are labels; only an explicit ancestor binding chooses the issue destination.
   const selectedFiling = useMemo((): CockpitNodeIssueOption | null => {
     if (!selected) return null;
     const code = displayCodes.get(selected.id) ?? selected.code;
     const filing = cockpitNodeIssueFiling(
-      code,
+      selected,
+      nodeById,
       modules ?? EMPTY_MODULES,
-      cockpitStoredDirectionCode(selected, nodeById),
+      code,
     );
     if (!filing) return null;
     return {
@@ -860,6 +860,14 @@ export function CockpitPage() {
       module_id: filing.module_id,
     };
   }, [selected, displayCodes, nodeLabels, modules, nodeById]);
+
+  if (boardError && !board) {
+    return <div className="cockpit-skin flex flex-col items-start gap-3 p-4" role="alert">
+      <p className="text-body text-destructive">{t(($) => $.errors.load_failed)}</p>
+      <Button type="button" variant="outline" disabled={reloadingBoard} aria-busy={reloadingBoard}
+        onClick={() => void reloadBoard()}>{t(($) => $.binding.retry)}</Button>
+    </div>;
+  }
 
   if (isLoading || !board) {
     return (
@@ -1098,7 +1106,8 @@ export function CockpitPage() {
           </div>
         )}
 
-        <CockpitVersions wsId={wsId} canRestore={canRestore} />
+        <CockpitVersions wsId={wsId} canRestore={canRestore}
+          hasStableBindings={nodes.some((node) => Boolean(node.project_id || node.module_id))} />
 
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -1262,6 +1271,9 @@ export function CockpitPage() {
             onClose={() => setSelectedMeetingId(null)}
             onDelete={() => requestDeletion("meeting", selectedMeeting.id)}
             onLinkIssue={(issueId) => linkMeetingIssue(selectedMeeting.id, issueId)}
+            onSaveIssueRoles={(issueId, roles) => setMeetingIssueRoles.mutateAsync({
+              meetingId: selectedMeeting.id, issueId, roles,
+            })}
             onUnlinkIssue={(issueId) =>
               unlinkMeetingIssue.mutate({ meetingId: selectedMeeting.id, issueId }, { onError: fail })
             }
@@ -1276,6 +1288,10 @@ export function CockpitPage() {
           <CockpitNodePanel
             key={selected.id}
             node={selected}
+            binding={<CockpitNodeBindingField node={selected} nodes={nodeById} modules={modules ?? []}
+              modulesLoading={modulesLoading} modulesError={modulesError} onRetryModules={() => void reloadModules()}
+              onSave={(binding) => setNodeBinding.mutateAsync({ id: selected.id, ...binding })}
+              onOpenNode={openTask} />}
             displayCode={displayCodes.get(selected.id)}
             parent={selected.parent_id ? nodeById.get(selected.parent_id) : undefined}
             payments={paymentsByNode.get(selected.id) ?? []}

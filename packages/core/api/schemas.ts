@@ -1851,6 +1851,8 @@ export const CockpitNodeSchema = z.object({
   id: z.string(),
   cockpit_id: z.string().default(""),
   parent_id: z.string().nullable().default(null),
+  project_id: z.string().nullable().catch(null).default(null),
+  module_id: z.string().nullable().catch(null).default(null),
   code: z.string().default(""),
   name: z.string().default(""),
   position: z.number().default(0),
@@ -1876,6 +1878,12 @@ export const CockpitNodeSchema = z.object({
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
 }).loose();
+
+// Writes must acknowledge the new fields; read defaults must not simulate success.
+export const CockpitNodeBindingResponseSchema = CockpitNodeSchema.extend({
+  project_id: z.string().nullable(),
+  module_id: z.string().nullable(),
+});
 
 export const CockpitPaymentSchema = z.object({
   id: z.string(),
@@ -1940,6 +1948,7 @@ export const CockpitMeetingIssueLinkSchema = z.object({
   meeting_id: z.string(),
   issue_id: z.string(),
   role: z.string().default(""),
+  roles: z.array(z.string()).catch([]).default([]),
   issue_number: z.number().default(0),
   issue_identifier: z.string().default(""),
   issue_title: z.string().default(""),
@@ -1957,6 +1966,10 @@ export const CockpitMeetingIssuesResponseSchema = z.object({
   meeting_id: z.string().default(""),
   links: z.array(CockpitMeetingIssueLinkSchema).default([]),
 }).loose();
+
+export const CockpitMeetingIssueRolesResponseSchema = CockpitMeetingIssuesResponseSchema.extend({
+  links: z.array(CockpitMeetingIssueLinkSchema.extend({ roles: z.array(z.string()) })),
+});
 
 export const CockpitMeetingNodesResponseSchema = z.object({
   meeting_id: z.string().default(""),

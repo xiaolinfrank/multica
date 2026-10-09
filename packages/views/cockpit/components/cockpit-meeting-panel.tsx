@@ -40,7 +40,7 @@ import {
 } from "./cockpit-fields";
 import { CockpitAttendeeField } from "./cockpit-attendees";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
-import { CockpitIssueLinks } from "./cockpit-issue-links";
+import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
 import { CockpitPathField } from "./cockpit-path-field";
 
@@ -71,6 +71,7 @@ export interface CockpitMeetingPanelProps {
   onDelete: () => void;
   onLinkIssue: (issueId: string) => void;
   onUnlinkIssue: (issueId: string) => void;
+  onSaveIssueRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
   onToggleNode: (nodeId: string) => void;
   onOpenNode: (nodeId: string) => void;
   /** Re-runs the parts of provisioning that have not happened yet. */
@@ -97,6 +98,7 @@ export function CockpitMeetingPanel({
   onDelete,
   onLinkIssue,
   onUnlinkIssue,
+  onSaveIssueRoles,
   onToggleNode,
   onOpenNode,
   onProvision,
@@ -369,10 +371,11 @@ export function CockpitMeetingPanel({
           {issueLinks.length === 0 ? (
             <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
           ) : null}
-          <CockpitIssueLinks
+          <CockpitMeetingIssueLinks
             links={issueLinks}
             onLink={onLinkIssue}
             onUnlink={onUnlinkIssue}
+            onSaveRoles={onSaveIssueRoles}
             disabled={readOnly}
           />
           {!readOnly && !hasTask && (

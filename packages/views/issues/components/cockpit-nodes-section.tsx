@@ -62,16 +62,21 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
       (board?.issue_links ?? []).filter((l) => l.issue_id === issueId).map((l) => l.node_id),
     );
     // Walk the board's own node order so the rows read top-down like the tree.
-    const entries: { node: CockpitNode; code: string }[] = [];
+    const entries: { id: string; node?: CockpitNode; code: string }[] = [];
+    const availableIds = new Set<string>();
     for (const node of board?.nodes ?? []) {
-      if (ids.has(node.id)) entries.push({ node, code: codes.get(node.id) ?? node.code });
+      availableIds.add(node.id);
+      if (ids.has(node.id)) entries.push({ id: node.id, node, code: codes.get(node.id) ?? node.code });
+    }
+    for (const id of ids) {
+      if (!availableIds.has(id)) entries.push({ id, code: "" });
     }
     return { rows: entries, linkedIds: ids };
   }, [board, codes, issueId]);
 
-  // An empty board has nothing to offer the picker; the breakdown is built
-  // in the cockpit, and this section would be all chrome.
-  if (!board || board.nodes.length === 0) return null;
+  // An empty board has nothing to offer the picker, but unresolved links
+  // still need a visible status and an unlink action.
+  if (!board || (board.nodes.length === 0 && rows.length === 0)) return null;
 
   const busy = linkNode.isPending || unlinkNode.isPending;
   const toggleNode = (nodeId: string) => {
@@ -96,6 +101,7 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
           open ? "" : "text-muted-foreground hover:text-foreground"
         }`}
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
       >
         {/* The label is the one item that may shrink; without nowrap +
             truncate a long translation reflows the heading (MUL-5804). */}
@@ -117,26 +123,28 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
-              {rows.map(({ node, code }) => {
-                const label = `${code} ${node.name}`.trim();
+              {rows.map(({ id, node, code }) => {
+                const name = node?.name.trim() || t(($) => $.issue_detail.untitled);
+                const label = node ? `${code} ${name}`.trim() : t(($) => $.issue_detail.unavailable);
                 return (
                   <li
-                    key={node.id}
+                    key={id}
                     className="group/node -mx-1 flex items-center gap-1 rounded-sm px-1 transition-colors hover:bg-accent/50"
                   >
-                    {/* The row opens the board the work item lives on. There
-                        is no per-node deep link yet, so the gantt's own
-                        leftmost column is where the code is looked up. */}
-                    <AppLink
-                      href={paths.cockpit()}
-                      newTabTitle={label}
-                      className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground hover:underline"
-                    >
-                      <span className="font-mono text-muted-foreground">{code}</span> {node.name}
-                    </AppLink>
+                    {node ? (
+                      <AppLink
+                        href={`${paths.cockpit()}?node=${encodeURIComponent(id)}`}
+                        newTabTitle={label}
+                        className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground hover:underline"
+                      >
+                        <span className="font-mono text-muted-foreground">{code}</span> {name}
+                      </AppLink>
+                    ) : (
+                      <span className="min-w-0 flex-1 py-1 text-caption text-muted-foreground">{label}</span>
+                    )}
                     <button
                       type="button"
-                      onClick={() => unlinkNode.mutate({ nodeId: node.id, issueId }, { onError: fail })}
+                      onClick={() => unlinkNode.mutate({ nodeId: id, issueId }, { onError: fail })}
                       disabled={busy}
                       aria-label={t(($) => $.issue_detail.unlink, { label })}
                       title={t(($) => $.issue_detail.unlink, { label })}
@@ -149,14 +157,16 @@ export function CockpitNodesSection({ issueId }: { issueId: string }) {
               })}
             </ul>
           )}
-          <CockpitNodePicker
-            nodes={board.nodes}
-            selectedIds={linkedIds}
-            onToggle={toggleNode}
-            label={t(($) => $.issue_detail.link)}
-            disabled={busy}
-            codes={codes}
-          />
+          {board.nodes.length > 0 && (
+            <CockpitNodePicker
+              nodes={board.nodes}
+              selectedIds={linkedIds}
+              onToggle={toggleNode}
+              label={t(($) => $.issue_detail.link)}
+              disabled={busy}
+              codes={codes}
+            />
+          )}
         </div>
       ) : null}
     </div>

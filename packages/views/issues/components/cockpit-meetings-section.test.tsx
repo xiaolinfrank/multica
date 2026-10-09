@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
@@ -128,6 +128,7 @@ function link(meetingId: string, issueId: string, role = "") {
     meeting_id: meetingId,
     issue_id: issueId,
     role,
+    roles: [],
     issue_number: 1,
     issue_identifier: "BIO-1",
     issue_title: "One",
@@ -205,12 +206,76 @@ describe("CockpitMeetingsSection", () => {
     // The meeting that opened this task is a link like any other, so a task
     // filed by provisioning shows where it came from without being wired up.
     const first = screen.getByRole("link", { name: "20260921-01 工作组周会" });
-    expect(first).toHaveAttribute("href", "/acme/cockpit");
+    expect(first).toHaveAttribute("href", "/acme/cockpit?meeting=m1");
     expect(screen.getByRole("link", { name: "20260918-01 数据治理对接" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /启动会/ })).toBeNull();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByTestId("picker-count").textContent).toBe("3");
     expect(screen.getByTestId("picker-selected").textContent).toBe("m1,m2");
+  });
+
+  it("opens the exact meeting through the workspace adapter with an encoded identity", () => {
+    const meetingId = "会议/1?scope=a&b";
+    queryRef.current = {
+      data: makeBoard({
+        meetings: [meeting({ id: meetingId, title: "Review" })],
+        meeting_issues: [link(meetingId, "issue-1")],
+      }),
+      isLoading: false,
+    };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+
+    const target = `/acme/cockpit?meeting=${encodeURIComponent(meetingId)}`;
+    const row = screen.getByRole("link", { name: "Review" });
+    expect(row).toHaveAttribute("href", target);
+    fireEvent.click(row);
+    expect(adapter.push).toHaveBeenCalledWith(target);
+  });
+
+  it("keeps unavailable meeting relations visible without sending users to the cockpit root", () => {
+    queryRef.current = {
+      data: makeBoard({ meetings: [], meeting_issues: [link("missing", "issue-1")] }),
+      isLoading: false,
+    };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+
+    expect(screen.getByText("Meeting unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByText("No meetings linked.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Unlink Meeting unavailable" }));
+    expect(mutRef.unlink.mutate).toHaveBeenCalledWith(
+      { meetingId: "missing", issueId: "issue-1" },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
+  it("gives an unnamed meeting an accessible label and preserves its destination", () => {
+    queryRef.current = {
+      data: makeBoard({ meetings: [meeting({ id: "m1" })], meeting_issues: [link("m1", "issue-1")] }),
+      isLoading: false,
+    };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+
+    expect(screen.getByRole("link", { name: "Untitled meeting" })).toHaveAttribute(
+      "href", "/acme/cockpit?meeting=m1",
+    );
+  });
+
+  it("shows the purposes for the linked meeting, including a newer server role", () => {
+    queryRef.current = {
+      data: makeBoard({
+        meeting_issues: [{ ...link("m1", "issue-1"), roles: ["preparation", "future_role"] }],
+      }),
+      isLoading: false,
+    };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+
+    const row = screen.getByRole("listitem");
+    expect(within(row).getByText("Preparation")).toBeInTheDocument();
+    expect(within(row).getByText("Other: future_role")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "20260921-01 工作组周会" })).toHaveAttribute(
+      "href", "/acme/cockpit?meeting=m1",
+    );
   });
 
   it("shows the empty state and the picker when nothing is linked yet", () => {

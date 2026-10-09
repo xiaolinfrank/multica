@@ -79,8 +79,11 @@ type IssueCreateParams struct {
 	// ErrModuleNotInProject. Sub-issues inherit the parent's project AND its
 	// module; a module that disagrees with the parent's fails with
 	// ErrChildModuleMismatch.
-	ModuleID   pgtype.UUID
-	StartDate  pgtype.Date
+	ModuleID pgtype.UUID
+	// MeetingTask identifies an atomic cockpit provisioning request. Its
+	// meeting is locked before duplicate detection and linked before commit.
+	MeetingTask   *CockpitMeetingTask
+	StartDate     pgtype.Date
 	DueDate       pgtype.Date
 	OriginType    pgtype.Text
 	OriginID      pgtype.UUID
@@ -265,6 +268,15 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if p.MeetingTask != nil {
+		existing, err := beginCockpitMeetingTask(ctx, qtx, p.WorkspaceID, *p.MeetingTask)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 
 	properties, err := validateIssueCreateProperties(ctx, tx, qtx, p.WorkspaceID, p.Properties)
 	if err != nil {
@@ -565,6 +577,11 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
+	if p.MeetingTask != nil {
+		if err := linkCockpitMeetingTask(ctx, qtx, issue, *p.MeetingTask); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return IssueCreateResult{}, fmt.Errorf("commit: %w", err)
 	}

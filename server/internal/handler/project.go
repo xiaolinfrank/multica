@@ -648,6 +648,14 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err := lockCockpitBindings(r.Context(), qtx, project.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	if err := qtx.ClearCockpitNodeProjectBindings(r.Context(), db.ClearCockpitNodeProjectBindingsParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
+		return
+	}
 
 	if _, err := qtx.LockProjectForDelete(r.Context(), db.LockProjectForDeleteParams{
 		ID:          project.ID,

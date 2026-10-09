@@ -466,6 +466,14 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err := lockCockpitBindings(r.Context(), qtx, module.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	if err := qtx.ClearCockpitNodeModuleBinding(r.Context(), db.ClearCockpitNodeModuleBindingParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
+		return
+	}
 
 	// The issues survive: they fall back to sitting directly under the
 	// project. Detach first, in the same transaction as the delete, so no

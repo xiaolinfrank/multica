@@ -182,7 +182,7 @@ const board: CockpitBoard = {
   ],
   meeting_issues: [
     {
-      meeting_id: "meet-1", issue_id: "issue-1", role: "task", issue_number: 42,
+      meeting_id: "meet-1", issue_id: "issue-1", role: "task", roles: [], issue_number: 42,
       issue_identifier: "BIO-42", issue_title: "Working group weekly", issue_status: "todo",
       position: -1,
     },

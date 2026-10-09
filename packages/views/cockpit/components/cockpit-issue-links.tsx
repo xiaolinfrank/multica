@@ -32,7 +32,7 @@ const SEARCH_DEBOUNCE_MS = 200;
  * The picker. Stays open across selections — linking a plan item to its five
  * issues should cost one trip, not five.
  */
-function IssueSearchPopover({
+export function IssueSearchPopover({
   linkedIssueIds,
   onToggle,
   disabled,
@@ -178,8 +178,7 @@ export function CockpitIssueLinks({
   onLink: (issueId: string) => void;
   onUnlink: (issueId: string) => void;
   /** Opens a create dialog already filed where this work item files its work.
-   *  Absent when the caller cannot say where that is, which is what keeps the
-   *  action off rows whose number names no module. */
+   *  Absent until the caller can resolve an explicit module binding. */
   onCreate?: () => void;
   disabled?: boolean;
   /** Chips only, no picker — the gantt row has no space for one. */

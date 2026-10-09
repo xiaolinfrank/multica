@@ -71,6 +71,7 @@ vi.mock("@multica/core/api", () => ({
     withdrawCockpitChange: vi.fn(),
     listMembers: vi.fn(),
     listModules: vi.fn(),
+    listProjects: vi.fn(),
   },
 }));
 
@@ -259,6 +260,7 @@ describe("CockpitPage", () => {
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
+    vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -271,6 +273,15 @@ describe("CockpitPage", () => {
         avatar_url: null,
       },
     ]);
+  });
+
+  it("offers a retry when the board request fails instead of keeping the loading skeleton forever", async () => {
+    vi.mocked(api.getCockpit).mockRejectedValueOnce(new Error("Offline"));
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the cockpit");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(await screen.findByRole("button", { name: "Gantt" })).toBeInTheDocument();
   });
 
   it("opens the meeting panel from the ?meeting= deep link", async () => {
@@ -817,6 +828,7 @@ describe("CockpitPage detail tables", () => {
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
+    vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
     vi.mocked(api.listMembers).mockResolvedValue([
       {
         id: "m1",
@@ -903,6 +915,23 @@ describe("CockpitPage versions", () => {
         avatar_url: null,
       },
     ]);
+  });
+
+  it("explains protected restore on a UUID-bound board while preserving snapshot save and delete permissions", async () => {
+    const bound = structuredClone(board);
+    bound.nodes[0]!.project_id = "project-1";
+    vi.mocked(api.getCockpit).mockResolvedValue(bound);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+    const row = await screen.findByText("217 nodes · Owner");
+    expect(screen.getByText("Stable bindings protect this board from full restore. Edit the plan directly.")).toBeInTheDocument();
+    const restore = within(row.closest("li")!).getByRole("button", { name: "Restore" });
+    expect(restore).toBeDisabled();
+    fireEvent.click(restore);
+    expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save current" })).toBeEnabled();
+    expect(within(row.closest("li")!).getByRole("button", { name: "Delete version" })).toBeEnabled();
+    expect(screen.queryByText("Only workspace owners and admins can restore or delete versions.")).toBeNull();
   });
 
   it("lists the version history and restores on a confirmed second click", async () => {
@@ -1083,5 +1112,6 @@ describe("CockpitPage versions", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
     await screen.findByText("217 nodes · Owner");
     expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+    expect(screen.getByText("Only workspace owners and admins can restore or delete versions.")).toBeInTheDocument();
   });
 });

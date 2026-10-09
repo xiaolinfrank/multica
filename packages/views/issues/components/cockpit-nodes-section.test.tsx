@@ -97,6 +97,8 @@ function node(partial: Partial<CockpitNode> & { id: string }): CockpitNode {
   return {
     cockpit_id: "board-1",
     parent_id: null,
+    project_id: null,
+    module_id: null,
     code: "",
     name: "",
     position: 0,
@@ -225,13 +227,62 @@ describe("CockpitNodesSection", () => {
     // Display codes are positional, not the stored ones: the two children of
     // root 06 number 06.01/06.02, the grandchild under the first is 06.01.01.
     const first = screen.getByRole("link", { name: "06.01 模块一" });
-    expect(first).toHaveAttribute("href", "/acme/cockpit");
-    expect(screen.getByRole("link", { name: "06.01.01 任务甲" })).toBeInTheDocument();
+    expect(first).toHaveAttribute("href", "/acme/cockpit?node=n2");
+    expect(screen.getByRole("link", { name: "06.01.01 任务甲" })).toHaveAttribute(
+      "href", "/acme/cockpit?node=n4",
+    );
     expect(screen.queryByRole("link", { name: "06.02 模块二" })).toBeNull();
     // Count badge on the header, picker offered the whole board.
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByTestId("picker-node-count").textContent).toBe("4");
     expect(screen.getByTestId("picker-selected").textContent).toBe("n2,n4");
+  });
+
+  it("opens the exact work item through the workspace adapter with an encoded identity", () => {
+    const nodeId = "执行/1?scope=a&b";
+    queryRef.current = {
+      data: makeBoard({
+        nodes: [node({ id: nodeId, code: "L3-01", name: "Deliver report" })],
+        issue_links: [link("l1", nodeId, "issue-1")],
+      }),
+      isLoading: false,
+    };
+    renderSection(<CockpitNodesSection issueId="issue-1" />);
+
+    const target = `/acme/cockpit?node=${encodeURIComponent(nodeId)}`;
+    const row = screen.getByRole("link", { name: /Deliver report/ });
+    expect(row).toHaveAttribute("href", target);
+    fireEvent.click(row);
+    expect(adapter.push).toHaveBeenCalledWith(target);
+  });
+
+  it("keeps unavailable work-item relations visible without inventing a destination", () => {
+    queryRef.current = {
+      data: makeBoard({ nodes: [], issue_links: [link("l1", "missing", "issue-1")] }),
+      isLoading: false,
+    };
+    renderSection(<CockpitNodesSection issueId="issue-1" />);
+
+    expect(screen.getByText("Work item unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByText("No work items linked.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Unlink Work item unavailable" }));
+    expect(mutRef.unlink.mutate).toHaveBeenCalledWith(
+      { nodeId: "missing", issueId: "issue-1" },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
+  it("keeps an unnamed work item navigable with an accessible fallback label", () => {
+    queryRef.current = {
+      data: makeBoard({ nodes: [node({ id: "n1" })], issue_links: [link("l1", "n1", "issue-1")] }),
+      isLoading: false,
+    };
+    renderSection(<CockpitNodesSection issueId="issue-1" />);
+
+    expect(screen.getByRole("link", { name: /Untitled work item/ })).toHaveAttribute(
+      "href", "/acme/cockpit?node=n1",
+    );
   });
 
   it("numbers rows by the summary tree, the same code the gantt quotes", () => {

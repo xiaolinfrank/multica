@@ -29,7 +29,8 @@ Every route is workspace-scoped through the `X-Workspace-ID` header.
 | GET | `/api/cockpit/meetings/scan` | archive folders no meeting records, with what their names give up |
 | POST | `/api/cockpit/meetings/import` | turn chosen archive folders into meeting rows |
 | POST | `/api/cockpit/meetings/{meetingId}/provision` | open the meeting's task and create its folder |
-| PUT | `/api/cockpit/meetings/{meetingId}/issues` | replace a meeting's issue links |
+| PUT | `/api/cockpit/meetings/{meetingId}/issues` | add issue links, or replace them with `replace: true` |
+| PUT | `/api/cockpit/meetings/{meetingId}/issues/{issueId}/roles` | set the workflow purposes of an existing issue link |
 | DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
 | PUT | `/api/cockpit/meetings/{meetingId}/nodes` | replace a meeting's work-item links |
 | DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
@@ -99,6 +100,23 @@ Two link sets hang off a meeting and ride on the board read as
 link carries a `role`: `task` marks the issue the platform opened WITH the
 meeting, `""` is one someone attached by hand.
 
+Issue links also carry `roles: []`, a set of explicit workflow purposes:
+`preparation`, `support`, `minutes`, `review`, `action`, `delivery`, `reference`.
+One issue can serve several purposes in the same meeting. Existing links start
+unclassified; `role: "task"` does not imply `roles: ["minutes"]`. Purposes do
+not assign, start, complete or approve work, and never move an issue between
+projects/modules. The old `role` remains the provisioning marker.
+
+Use `PUT .../issues/{issueId}/roles` with `{ "roles": ["preparation", "review"] }`.
+The link must already exist (404 otherwise); an explicit empty array clears
+purposes, while omitted/null roles are invalid. The response is
+`{ "meeting_id": "...", "links": [...] }` containing the whole meeting's link
+set. Values are deduplicated and sorted. Unknown newly added values are refused;
+unknown values already on the link can be preserved by an older client.
+Ordinary link replacement retains purposes and the provisioning marker for
+surviving pairs. Snapshots and import documents preserve purposes in
+`issue_roles`, keyed by the corresponding `issue_ids` reference.
+
 `POST .../provision` is the compound step and reports each part on its own
 (`task`, `task_error`, `dir`, `dir_created`, `dir_error`). It never fails the
 meeting: a share that is not mounted on the server must not cost the record of
@@ -106,6 +124,14 @@ a meeting that happened, so re-running it is safe and an existing folder is
 accepted as-is. The task is assigned to the member filing the meeting unless
 `assignee_type`/`assignee_id` say otherwise — leaving it unassigned would hand
 a diary entry to the workspace's fallback agent and start a run.
+
+Task provisioning serializes on the board and meeting and reuses an existing
+live `role: "task"` issue. A new issue, its meeting relation and optional archive
+node relation commit atomically. Repeating a request does not create a second
+issue or reassign/reclassify the existing one. Directory work is still a
+separate outcome: this is not yet a durable NAS synchronization workflow or a
+meeting-readiness scheduler. A user-assigned `minutes` purpose on an ordinary
+link does not automatically promote it to the provisioned task.
 
 Where the task and the folder go is board configuration, not code:
 `meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`
@@ -126,6 +152,40 @@ folder is always the board's own; the endpoint takes no path. `POST
 resolves outside the archive folder is reported in `skipped` rather than
 failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
+
+## Stable project/module bindings
+
+A node may explicitly bind an existing workspace project (`project_id`) or
+module (`module_id`). These nullable UUID fields travel on nodes, authored
+imports and saved snapshots. A module binding also stores and returns the
+module's real `project_id`; unrelated titles, folder names, numbering and tree
+depth never establish a binding. Unbound descendants keep both fields null and
+resolve their scope through the parent UUID chain.
+
+For node create/update, an omitted field keeps its value on update; null or an
+empty string clears it. Setting `module_id` without `project_id` resolves the
+module's project. An explicitly supplied project must match. To remove a
+module binding, clear BOTH fields. Clearing only the module leaves an explicit
+project binding and may conflict with the project's existing bound row.
+
+Within a board, one project-only row may bind each project, and one module row
+may bind each module. Duplicate bindings return 409. A module must belong to
+the inherited project, and an explicit project/module binding cannot sit below
+another module binding. Reparenting checks all bound descendants through any
+unbound grouping rows; conflicting ancestry returns 400 and rolls back the
+whole edit. Existing issue links remain references: binding a node does not
+move an issue or change its project/module.
+
+CLI node create/update accept `--project-id <uuid>` and `--module-id <uuid>`;
+`--project-id "" --module-id ""` removes the explicit binding. Project/module
+deletion clears affected bindings in that workspace, retaining the plan nodes
+and their UUIDs. Names and ordering can change without changing the binding.
+
+Once a board has bound nodes, whole-board import and snapshot restore return
+409: those operations rebuild node UUIDs and would break stable references.
+Edit existing nodes instead; snapshots can still be saved and inspected.
+Importing a binding document into a currently unbound board validates the
+resources and final tree before committing. There is no name-based migration.
 
 ## Field semantics
 
@@ -248,6 +308,7 @@ read, so the frame just has clients re-fetch it.
       "meet_date": "2026-09-01", "start_time": "10:00", "end_time": "11:00",
       "kind": "例会", "parties": "复星医药、华大基因", "organizer": "杨涛",
       "issue_ids": ["BIO-314"], "task_issue_id": "BIO-314", "detected": false,
+      "issue_roles": {"BIO-314": ["minutes", "review"]},
       "node_codes": ["L3-01-08"]
     }
   ]

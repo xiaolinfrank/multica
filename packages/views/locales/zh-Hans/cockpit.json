@@ -435,7 +435,7 @@
     "label": "执行任务",
     "none": "不关联执行任务",
     "search_placeholder": "按编号或名称检索…",
-    "empty": "本工作区还没有可归档任务的执行任务。"
+    "empty": "暂无已绑定模块的执行任务。请在驾驶舱配置上级节点的归属。"
   },
   "issues": {
     "link": "关联任务",
@@ -451,7 +451,9 @@
     "title": "关联执行任务",
     "none": "暂无关联执行任务。",
     "link": "添加执行任务",
-    "unlink": "取消关联「{{label}}」"
+    "unlink": "取消关联「{{label}}」",
+    "unavailable": "执行任务暂不可用",
+    "untitled": "未命名执行任务"
   },
   "issue_meetings": {
     "title": "关联会议",
@@ -459,7 +461,9 @@
     "link": "添加会议",
     "unlink": "取消关联「{{label}}」",
     "search_placeholder": "按编号、名称或参会方搜索",
-    "no_results": "没有匹配的会议。"
+    "no_results": "没有匹配的会议。",
+    "unavailable": "会议暂不可用",
+    "untitled": "未命名会议"
   },
   "panel": {
     "close": "关闭详情",
@@ -481,7 +485,8 @@
     "unset": "—"
   },
   "errors": {
-    "save_failed": "这次修改没有保存成功"
+    "save_failed": "这次修改没有保存成功",
+    "load_failed": "无法加载项目驾驶舱"
   },
   "table": {
     "tasks_hint": "共 {{rows}} 行 · 点单元格即可就地修改，改动实时同步给所有人",
@@ -556,11 +561,54 @@
     "trigger_auto": "自动",
     "auto_group": "自动存档 ×{{n}}",
     "row_meta": "{{nodes}} 节点 · {{by}}",
-    "by_unknown": "未知"
+    "by_unknown": "未知",
+    "restore_protected": "已有稳定关联，整板恢复不可用。请直接修改计划。",
+    "restore_permission": "仅工作区所有者和管理员可恢复或删除版本。"
   },
   "confirmation": {
     "delete_title": "删除此记录？",
     "delete_description": "将永久删除「{{label}}」，此操作无法撤销。",
     "delete_branch_description": "将永久删除「{{label}}」及其全部下级记录，此操作无法撤销。"
+  },
+  "meeting_roles": {
+    "title": "用途",
+    "edit": "编辑 {{identifier}} 的用途",
+    "unclassified": "未分类",
+    "legacy_task": "建会时创建（未分类）",
+    "unknown": "其他：{{role}}",
+    "preparation": "会前准备",
+    "support": "会中支持",
+    "minutes": "纪要整理",
+    "review": "评审",
+    "action": "行动执行",
+    "delivery": "产出交付",
+    "reference": "跟进/参考",
+    "save": "保存用途",
+    "save_failed": "无法保存用途",
+    "unconfirmed_save": "服务器未确认这次修改。请刷新并检查服务端版本后重试。"
+  },
+  "binding": {
+    "title": "项目与模块绑定",
+    "inherited": "继承自 {{label}}",
+    "module_bound": "已绑定模块行",
+    "project_bound": "已绑定项目行",
+    "invalid": "无法解析绑定，请检查上级节点及所选模块。",
+    "unbound": "尚未绑定项目或模块。配置上级结构行后，下级执行任务才能直接创建任务。",
+    "configure_parent": "配置上级绑定",
+    "configure": "配置绑定",
+    "load_failed": "无法加载项目",
+    "retry": "重试",
+    "project": "项目",
+    "module": "模块",
+    "none": "未绑定",
+    "save": "保存绑定",
+    "cancel": "取消",
+    "save_failed": "无法保存绑定",
+    "hint": "选择此行对应的已有项目或模块。下级继承归属，已有任务关联不会被移动。",
+    "unconfirmed_save": "服务器未确认这次修改。请刷新并检查服务端版本后重试。",
+    "modules_failed": "无法加载模块，已保存的绑定未改变。",
+    "loading": "正在加载归属...",
+    "project_unavailable": "绑定的项目暂不可用",
+    "module_required": "先在上级节点绑定模块，才能在此创建任务。"
   }
 }
