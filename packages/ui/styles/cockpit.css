@@ -453,7 +453,8 @@
     0 1px 3px rgb(0 0 0 / 0.5),
     0 0 0 1px color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
-.cockpit-segmented > button {
+.cockpit-segmented > button,
+.cockpit-segmented > a {
   position: relative;
   z-index: 1;
 }

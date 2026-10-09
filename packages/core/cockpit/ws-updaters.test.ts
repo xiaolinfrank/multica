@@ -124,7 +124,10 @@ describe("onCockpitChanged", () => {
 
     expect(read(qc).nodes[0]!.name).toBe("Renamed");
     expect(read(qc).nodes[0]!.progress).toBe(60);
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitKeys.tasks(WS) }],
+    ]);
   });
 
   it("appends a node created by someone else", () => {
@@ -204,24 +207,28 @@ describe("onCockpitChanged", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
   });
 
-  it("refreshes only the version list when a snapshot was saved or deleted", () => {
+  it("refreshes the version list and overview when a snapshot was saved or deleted", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
 
     onCockpitChanged(qc, WS, { scope: "snapshots", action: "created", entity: null });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitKeys.snapshots(WS) }],
+    ]);
   });
 
-  it("refreshes only the review queue when a change is filed or decided", () => {
+  it("refreshes the review queue and overview when a change is filed or decided", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
 
     onCockpitChanged(qc, WS, { scope: "changes", action: "queued", entity: null });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.changes(WS) });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitKeys.changes(WS) }],
+    ]);
   });
 
   it("re-reads on a scope this build does not know rather than guessing", () => {

@@ -2,6 +2,11 @@ export type { Issue, IssueStatus, BuiltInIssueStatus, IssuePriority, IssueAssign
   IssueDuplicateOf,
 } from "./issue";
 export type {
+  CockpitOverviewScope, CockpitOverviewIssueCounts, CockpitAttentionTarget, CockpitAttentionItem, CockpitAttentionPage,
+  CockpitExecutionOverviewItem, CockpitExecutionOverviewPage, CockpitRecentMeeting, CockpitRecentMeetingPage,
+  CockpitOverviewData, CockpitOverviewQuery, CockpitOverviewPageQuery, CockpitAttentionQuery,
+} from "./cockpit-overview";
+export type {
   IssueStatusCategory,
   IssueStatusEntry,
   IssueStatusIcon,

@@ -40,6 +40,7 @@ describe("workflow cache ownership", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     invalidateCockpitWorkflowsForIssue(client, "ws-1", "minutes-1");
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.dashboard("ws-1") }],
       [{ queryKey: cockpitKeys.tasks("ws-1") }], [{ queryKey: cockpitKeys.actions("ws-1") }], [{ queryKey: cockpitKeys.primaryNodes("ws-1") }],
       [{ queryKey: cockpitKeys.issueActions("ws-1") }],
       [{ queryKey: cockpitKeys.workflow("ws-1", "meeting-a"), exact: true }],
@@ -55,6 +56,7 @@ describe("workflow cache ownership", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     invalidateCockpitWorkflowsForIssue(client, "ws-1", "review-1");
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.dashboard("ws-1") }],
       [{ queryKey: cockpitKeys.tasks("ws-1") }], [{ queryKey: cockpitKeys.actions("ws-1") }], [{ queryKey: cockpitKeys.primaryNodes("ws-1") }],
       [{ queryKey: cockpitKeys.issueActions("ws-1") }],
       [{ queryKey: cockpitKeys.workflow("ws-1", "meeting-a"), exact: true }],

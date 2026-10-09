@@ -2148,6 +2148,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// correct is a board that goes stale. Import replaces the whole
 			// board and is gated to owner/admin inside the handler.
 			r.Route("/api/cockpit", func(r chi.Router) {
+				r.Get("/overview", h.GetCockpitOverview)
+				r.Get("/overview/attention", h.ListCockpitOverviewAttention)
+				r.Get("/overview/execution", h.ListCockpitOverviewExecution)
+				r.Get("/overview/meetings", h.ListCockpitOverviewMeetings)
 				r.Get("/", h.GetCockpit)
 				r.Get("/changes", h.ListCockpitChanges)
 				r.Post("/changes", h.CreateCockpitChange)

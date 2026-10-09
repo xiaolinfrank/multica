@@ -9,6 +9,11 @@ import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import { acknowledgedCockpitReviewerHandoff } from "../cockpit/reviewer-handoff";
 import { acknowledgedCockpitNasExport } from "../cockpit/nas-export";
 import type {
+  CockpitOverviewScope, CockpitOverviewData, CockpitOverviewQuery, CockpitOverviewPageQuery, CockpitAttentionQuery,
+  CockpitAttentionPage, CockpitExecutionOverviewPage, CockpitRecentMeetingPage,
+} from "../types/cockpit-overview";
+import { CockpitOverviewDataSchema, CockpitAttentionPageSchema, CockpitExecutionOverviewPageSchema, CockpitRecentMeetingPageSchema } from "./cockpit-overview-schemas";
+import type {
   FleetStatus,
   AgentWorkspacesResponse,
   WorkspaceOpRequest,
@@ -2121,6 +2126,47 @@ export class ApiClient {
     const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/actions?${search}`, { signal });
     const result = parseWithFallback<CockpitIssueActionSourcesPage | null>(raw, CockpitIssueActionSourcesPageSchema, null, { endpoint: "GET /api/cockpit/issues/:id/actions" });
     return result?.issue_id === issueId && result.items.length <= 25 ? result : null;
+  }
+
+  private async readCockpitOverview<T extends CockpitOverviewScope>(
+    wsId: string, path: string, query: CockpitOverviewPageQuery & { attention_view?: string; view?: string; kind?: string; days?: number }, schema: ZodType<T>, signal?: AbortSignal,
+  ): Promise<T | null> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    const raw = await this.fetch<unknown>(`/api/cockpit/overview${path}?${params}`, { signal });
+    const result = parseWithFallback<T | null>(raw, schema, null, { endpoint: `GET /api/cockpit/overview${path}` });
+    return result?.workspace_id === wsId && result.project_id === (query.project_id || null) && result.as_of === query.as_of ? result : null;
+  }
+
+  private cockpitOverviewMeetingWindowMatches(page: CockpitRecentMeetingPage, days = 30): boolean {
+    const start = new Date(`${page.as_of}T12:00:00Z`);
+    const end = new Date(start);
+    start.setUTCDate(start.getUTCDate() - days + 1);
+    end.setUTCDate(end.getUTCDate() + 7);
+    return page.range_start === start.toISOString().slice(0, 10) && page.range_end === end.toISOString().slice(0, 10);
+  }
+
+  async getCockpitWorkOverview(wsId: string, query: CockpitOverviewQuery, signal?: AbortSignal): Promise<CockpitOverviewData | null> {
+    const result = await this.readCockpitOverview(wsId, "", query, CockpitOverviewDataSchema, signal);
+    if (!result || result.attention.view !== (query.attention_view ?? "mine") || result.attention.kind !== ""
+      || result.attention.items.length > 8 || result.execution_nodes.items.length > 6 || result.recent_meetings.items.length > 6 || !this.cockpitOverviewMeetingWindowMatches(result.recent_meetings)
+      || [result.attention, result.execution_nodes, result.recent_meetings].some((page) => page.workspace_id !== wsId || page.project_id !== result.project_id || page.as_of !== result.as_of)) return null;
+    return result;
+  }
+
+  async getCockpitOverviewAttention(wsId: string, query: CockpitAttentionQuery, signal?: AbortSignal): Promise<CockpitAttentionPage | null> {
+    const result = await this.readCockpitOverview(wsId, "/attention", query, CockpitAttentionPageSchema, signal);
+    return result && result.view === query.view && result.kind === (query.kind ?? "") && result.items.length <= (query.page_size ?? 25) ? result : null;
+  }
+
+  async getCockpitOverviewExecution(wsId: string, query: CockpitOverviewPageQuery, signal?: AbortSignal): Promise<CockpitExecutionOverviewPage | null> {
+    const result = await this.readCockpitOverview(wsId, "/execution", query, CockpitExecutionOverviewPageSchema, signal);
+    return result && result.items.length <= (query.page_size ?? 25) ? result : null;
+  }
+
+  async getCockpitOverviewMeetings(wsId: string, query: CockpitOverviewPageQuery & { days?: number }, signal?: AbortSignal): Promise<CockpitRecentMeetingPage | null> {
+    const result = await this.readCockpitOverview(wsId, "/meetings", query, CockpitRecentMeetingPageSchema, signal);
+    return result && result.items.length <= (query.page_size ?? 25) && this.cockpitOverviewMeetingWindowMatches(result, query.days ?? 30) ? result : null;
   }
 
   private async writeCockpitMeetingAction(meetingId: string, path: string, method: "POST" | "PATCH", body: object): Promise<CockpitMeetingAction> {

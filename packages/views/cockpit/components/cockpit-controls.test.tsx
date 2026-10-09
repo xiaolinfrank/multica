@@ -85,7 +85,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
-import { CockpitPage } from "./cockpit-page";
+import { CockpitBoardWorkspace } from "./cockpit-page";
 
 function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code: string }) {
   return {
@@ -216,7 +216,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
-        <CockpitPage />
+        <CockpitBoardWorkspace />
       </I18nProvider>
     </QueryClientProvider>,
   );

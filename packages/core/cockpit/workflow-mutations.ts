@@ -17,6 +17,7 @@ function useWorkflowMutation<T extends { meetingId: string }>(wsId: string, muta
   return useMutation({
     mutationFn,
     onSuccess: async (workflow) => {
+      void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
       // An initialization read may still be returning enabled=false after the write committed.
       await client.cancelQueries({ queryKey: cockpitKeys.workflow(wsId, workflow.meeting_id), exact: true });
       client.setQueryData<CockpitMeetingWorkflow>(cockpitKeys.workflow(wsId, workflow.meeting_id), (current) =>
@@ -27,6 +28,7 @@ function useWorkflowMutation<T extends { meetingId: string }>(wsId: string, muta
       void client.invalidateQueries({ queryKey: issueKeys.all(wsId) });
     },
     onError: (_error, variables) => {
+      void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
       // A lost response is not proof that a business command was rolled back.
       void client.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, variables.meetingId) });
     },

@@ -108,6 +108,7 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
 
   if (scope === "meeting_actions") {
     void qc.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });

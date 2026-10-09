@@ -96,6 +96,47 @@ export interface TestMeetingActionPage {
   can_add: boolean;
 }
 
+export interface TestCockpitAttentionItem {
+  id: string;
+  kind: string;
+  reason: string;
+  title: string;
+  flags: string[];
+  created_at: string;
+  responsibility: string;
+  assignee_type: string | null;
+  assignee_id: string | null;
+  can_act: boolean;
+  target: { kind: string; id: string; meeting_id: string | null; version_id: string | null; node_id: string | null; issue_id: string | null; action_id: string | null };
+}
+
+export interface TestCockpitAttentionPage {
+  workspace_id: string;
+  project_id: string | null;
+  as_of: string;
+  view: string;
+  kind: string;
+  items: TestCockpitAttentionItem[];
+  total: number;
+  next_cursor: string | null;
+}
+
+export interface TestCockpitWorkOverview {
+  workspace_id: string;
+  project_id: string | null;
+  project_title: string;
+  as_of: string;
+  summary: {
+    primary_issues: { total: number; active: number; done: number; closed: number; unknown: number; overdue: number; blocked: number };
+    my_primary_issues: { total: number; active: number; done: number; closed: number; unknown: number };
+    execution_nodes: { total: number; with_active_issues: number };
+    attention: { team_total: number; mine_total: number; team_by_kind: Record<string, number>; mine_by_kind: Record<string, number> };
+  };
+  attention: TestCockpitAttentionPage;
+  execution_nodes: { items: Array<{ id: string; project_id: string; name: string }>; total: number; next_cursor: string | null };
+  recent_meetings: { items: Array<{ id: string; title: string }>; total: number; next_cursor: string | null; range_start: string; range_end: string };
+}
+
 export interface TestMeetingMinutesVersion {
   id: string;
   version_number: number;
@@ -470,6 +511,52 @@ export class TestApiClient {
     return res.json();
   }
 
+  async getCockpitWorkOverview(query: Record<string, string | number> = {}): Promise<TestCockpitWorkOverview> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const response = await this.authedFetch(`/api/cockpit/overview?${params}`);
+    if (!response.ok) throw new Error(`get work overview failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  async getCockpitAttention(query: Record<string, string | number> = {}): Promise<TestCockpitAttentionPage> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const response = await this.authedFetch(`/api/cockpit/overview/attention?${params}`);
+    if (!response.ok) throw new Error(`get attention page failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  /** Profile the checked-in SELECT for this fixture only; no query result bodies are returned. */
+  async explainCockpitAttention(source: string, asOf: string): Promise<Record<string, unknown>> {
+    if (!this.workspaceId || !this.email || this.createdWorkspaceIds.length !== 1 || this.createdWorkspaceIds[0] !== this.workspaceId) {
+      throw new Error("Read-model profiling requires one explicitly owned test workspace");
+    }
+    const marker = "-- name: GetCockpitOverviewReadModel :one";
+    const parts = source.split(marker);
+    if (parts.length !== 2 || parts[1]!.includes("-- name:")) throw new Error("Unexpected overview query inventory");
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      await client.query("SET LOCAL statement_timeout = '15s'");
+      const actor = await client.query<{ user_id: string; role: string }>(`SELECT m.user_id,m.role FROM member m JOIN "user" u ON u.id=m.user_id WHERE m.workspace_id=$1 AND u.email=$2`, [this.workspaceId, this.email]);
+      if (actor.rows.length !== 1) throw new Error("Profiling actor is not the fixture workspace's member");
+      const input: Record<string, unknown> = { workspace_id: this.workspaceId, project_id: null, actor_id: actor.rows[0]!.user_id,
+        actor_role: actor.rows[0]!.role, human: true, as_of: asOf, view: "team", kind: "", section: "attention", cursor_key: "", page_size: 25, days: 30 };
+      const keys: string[] = [];
+      const sql = parts[1]!.replace(/sqlc\.(?:arg|narg)\('([a-z_]+)'\)/g, (_match, key: string) => {
+        if (!(key in input)) throw new Error(`Unknown overview query parameter: ${key}`);
+        if (!keys.includes(key)) keys.push(key);
+        return `$${keys.indexOf(key) + 1}`;
+      });
+      const result = await client.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`, keys.map((key) => input[key]));
+      await client.query("ROLLBACK");
+      return result.rows[0]["QUERY PLAN"][0] as Record<string, unknown>;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { await client.end(); }
+  }
+
   async setCockpitPrimaryNode(issueId: string, nodeId: string | null, revision = 0): Promise<{ issue_id: string; node_id: string | null; revision: number }> {
     const res = await this.authedFetch(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, {
       method: "PUT", body: JSON.stringify({ node_id: nodeId, expected_revision: revision }),
@@ -527,6 +614,11 @@ export class TestApiClient {
     return res.json();
   }
 
+  async updateCockpitBoard(body: { title?: string; goal_title?: string; goal_date?: string }): Promise<void> {
+    const response = await this.authedFetch("/api/cockpit", { method: "PATCH", body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`update cockpit failed: ${response.status} ${await response.text()}`);
+  }
+
   async getMeetingWorkflow(meetingId: string): Promise<TestMeetingWorkflow> {
     const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`);
     if (!res.ok) throw new Error(`get meeting workflow failed: ${res.status} ${await res.text()}`);
@@ -537,15 +629,26 @@ export class TestApiClient {
     return workflow;
   }
 
+  async enableMeetingWorkflow(meetingId: string, body: Record<string, unknown>): Promise<TestMeetingWorkflow> {
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`, {
+      method: "POST", body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`enable workflow failed: ${response.status} ${await response.text()}`);
+    return this.getMeetingWorkflow(meetingId);
+  }
+
   /** Establish a real pending review through the API for handover scenarios. */
-  async seedPendingMeetingReview(meetingId: string, reviewerId: string, content: string): Promise<TestMeetingWorkflow> {
+  async seedPendingMeetingReview(meetingId: string, reviewerId: string, content: string, scope: {
+    project_id?: string; module_id?: string; node_id?: string;
+    assignee_type?: "member" | "agent"; assignee_id?: string;
+  } = {}): Promise<TestMeetingWorkflow> {
     const base = `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow`;
     const write = async (suffix: string, method: "POST" | "PATCH", body: object) => {
       const response = await this.authedFetch(base + suffix, { method, body: JSON.stringify(body) });
       if (!response.ok) throw new Error(`seed meeting review failed: ${response.status} ${await response.text()}`);
       return this.getMeetingWorkflow(meetingId);
     };
-    let workflow = await write("", "POST", { reviewer_id: reviewerId });
+    let workflow = await write("", "POST", { reviewer_id: reviewerId, ...scope });
     workflow = await write("", "PATCH", { expected_revision: workflow.revision, ended: true, materials_ready: true });
     workflow = await write("/release", "POST", { expected_revision: workflow.revision });
     return write("/versions", "POST", { expected_revision: workflow.revision, submission_key: crypto.randomUUID(), content });
@@ -569,6 +672,15 @@ export class TestApiClient {
       method: "POST", body: JSON.stringify({ expected_revision: workflow.revision }),
     });
     if (!response.ok) throw new Error(`publish minutes failed: ${response.status} ${await response.text()}`);
+    return this.getMeetingWorkflow(meetingId);
+  }
+
+  async submitMeetingMinutesVersion(meetingId: string, content: string): Promise<TestMeetingWorkflow> {
+    const workflow = await this.getMeetingWorkflow(meetingId);
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions`, {
+      method: "POST", body: JSON.stringify({ expected_revision: workflow.revision, submission_key: crypto.randomUUID(), content }),
+    });
+    if (!response.ok) throw new Error(`submit minutes failed: ${response.status} ${await response.text()}`);
     return this.getMeetingWorkflow(meetingId);
   }
 
@@ -712,6 +824,60 @@ export class TestApiClient {
     } finally {
       await client.end();
     }
+  }
+
+  /** Backdate only issues in this client's explicitly created test workspace. */
+  async backdateFixtureIssues(issueIds: string[], timestamp: string): Promise<void> {
+    if (!this.workspaceId || this.createdWorkspaceIds.length !== 1 || this.createdWorkspaceIds[0] !== this.workspaceId
+      || !Number.isFinite(Date.parse(timestamp))) {
+      throw new Error("Historical fixtures require an explicitly owned workspace and a valid timestamp");
+    }
+    const ids = [...new Set(issueIds)];
+    if (ids.length === 0) return;
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query("UPDATE issue SET created_at=$3::timestamptz,updated_at=$3::timestamptz WHERE workspace_id=$1 AND id=ANY($2::uuid[]) RETURNING id", [this.workspaceId, ids, timestamp]);
+      if (result.rowCount !== ids.length) throw new Error("Historical fixture includes an issue outside the owned workspace");
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { await client.end(); }
+  }
+
+  /** Give one owned workflow realistic old timestamps without changing its state or fixed content. */
+  async backdateFixtureMeetingWorkflow(meetingId: string, timestamp: string): Promise<void> {
+    if (!this.workspaceId || this.createdWorkspaceIds.length !== 1 || this.createdWorkspaceIds[0] !== this.workspaceId
+      || !this.createdCockpitMeetingIds.includes(meetingId) || !Number.isFinite(Date.parse(timestamp))) {
+      throw new Error("Historical workflow fixtures require an explicitly owned meeting and a valid timestamp");
+    }
+    const client = new pg.Client(DATABASE_URL);
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      const saved = await client.query(`UPDATE cockpit_meeting_work_package SET created_at=$3::timestamptz,updated_at=$3::timestamptz,
+        ended_at=CASE WHEN ended_at IS NOT NULL THEN $3::timestamptz END,
+        released_at=CASE WHEN released_at IS NOT NULL THEN $3::timestamptz END
+        WHERE workspace_id=$1 AND meeting_id=$2 RETURNING minutes_issue_id`, [this.workspaceId, meetingId, timestamp]);
+      if (saved.rowCount !== 1) throw new Error("Historical workflow fixture was not found in the owned workspace");
+      await client.query("UPDATE cockpit_meeting SET created_at=$3::timestamptz,updated_at=$3::timestamptz WHERE workspace_id=$1 AND id=$2", [this.workspaceId, meetingId, timestamp]);
+      await client.query(`UPDATE cockpit_minutes_version SET created_at=$3::timestamptz,
+        reviewed_at=CASE WHEN reviewed_at IS NOT NULL THEN $3::timestamptz END,
+        published_at=CASE WHEN published_at IS NOT NULL THEN $3::timestamptz END
+        WHERE workspace_id=$1 AND meeting_id=$2`, [this.workspaceId, meetingId, timestamp]);
+      await client.query(`UPDATE cockpit_meeting_action SET created_at=$3::timestamptz,updated_at=$3::timestamptz,
+        resolved_at=CASE WHEN resolved_at IS NOT NULL THEN $3::timestamptz END
+        WHERE workspace_id=$1 AND meeting_id=$2`, [this.workspaceId, meetingId, timestamp]);
+      await client.query(`UPDATE issue SET created_at=$3::timestamptz,updated_at=$3::timestamptz WHERE workspace_id=$1
+        AND (id=$4::uuid OR id IN (SELECT review_issue_id FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2))`,
+      [this.workspaceId, meetingId, timestamp, saved.rows[0].minutes_issue_id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { await client.end(); }
   }
 
   async deleteIssue(id: string) {

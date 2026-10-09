@@ -93,6 +93,26 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(onModuleDeleted).toBeDefined();
     (onModuleDeleted as (payload: unknown) => void)({ module_id: "m1" });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-1") });
+  });
+
+  it("refreshes overview responsibility, scope and category facts without invalidating another workspace", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      for (const type of ["member:removed", "member:updated", "project:updated", "module:updated", "issue_status:updated", "agent:updated", "squad:deleted"]) {
+        invalidateSpy.mockClear();
+        onAny({ type, payload: {} } as never);
+        vi.advanceTimersByTime(150);
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-2") });
+      }
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it("skips invalidation on first non-null ws instance", () => {

@@ -39,6 +39,10 @@ export * from "./action-queries";
 export * from "./action-mutations";
 export * from "./action-command-store";
 export * from "./task-view-store";
+export * from "./navigation";
+export * from "./dashboard-view-store";
+export * from "./dashboard-queries";
+export * from "./dashboard-model";
 export * from "./meeting-timeline";
 export {
   cockpitNodeIssueFiling,

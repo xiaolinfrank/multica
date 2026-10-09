@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { registerDraftCleanup } from "../drafts/cleanup-registry";
 
 export interface CockpitTaskView {
   text: string;
@@ -30,3 +31,6 @@ export const useCockpitTaskViewStore = create<{
 }));
 
 export function cockpitTaskViewKey(wsId: string, kind: "node" | "meeting" | "issue", id: string) { return JSON.stringify([wsId, kind, id]); }
+
+registerDraftCleanup({ storageKey: "multica_cockpit_task_context", workspaceScoped: false,
+  resetInMemory: () => useCockpitTaskViewStore.getState().reset() });

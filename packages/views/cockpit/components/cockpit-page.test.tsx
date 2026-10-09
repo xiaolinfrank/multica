@@ -25,11 +25,11 @@ vi.mock("@multica/core/paths", () => ({
 }));
 
 // Mutable so a test can arm a `?meeting=` deep link before rendering.
-const navSearch = vi.hoisted(() => ({ params: new URLSearchParams() }));
+const navSearch = vi.hoisted(() => ({ params: new URLSearchParams(), push: vi.fn() }));
 
 vi.mock("../../navigation", () => ({
   useNavigation: () => ({
-    push: vi.fn(),
+    push: navSearch.push,
     replace: vi.fn(),
     back: vi.fn(),
     pathname: "/ws/cockpit",
@@ -100,7 +100,7 @@ vi.mock("@multica/core/auth", () => {
 
 import { api } from "@multica/core/api";
 import { toast } from "sonner";
-import { CockpitPage } from "./cockpit-page";
+import { CockpitBoardWorkspace } from "./cockpit-page";
 
 function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code: string }) {
   return {
@@ -244,12 +244,12 @@ function useDetailedBoard() {
   vi.mocked(api.getCockpit).mockResolvedValue(detailed);
 }
 
-function renderPage() {
+function renderPage(props: Parameters<typeof CockpitBoardWorkspace>[0] = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-        <CockpitPage />
+        <CockpitBoardWorkspace {...props} />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -299,6 +299,18 @@ describe("CockpitPage", () => {
     // The title shows in the register row AND the opened panel.
     await waitFor(async () => expect((await findAllByText("Working group weekly")).length).toBeGreaterThan(1));
     expect(await findByRole("button", { name: "Close panel" })).toBeInTheDocument();
+  });
+
+  it("keeps a meeting destination in the URL when leaving the routed business view", async () => {
+    navSearch.params = new URLSearchParams("view=operations");
+    renderPage({ onSelectTab: vi.fn(), onWorkOverview: vi.fn() });
+    fireEvent.click(await screen.findByRole("button", { name: "Open the meeting register" }));
+    expect(navSearch.push).toHaveBeenLastCalledWith("/ws/cockpit?tab=meetings");
+
+    fireEvent.click(screen.getByRole("button", { name: "Meeting details: Working group weekly" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open the meeting register" }));
+    expect(navSearch.push).toHaveBeenLastCalledWith("/ws/cockpit?meeting=meet-1");
   });
 
   it("lands on the folded gantt row from the ?node= deep link", async () => {

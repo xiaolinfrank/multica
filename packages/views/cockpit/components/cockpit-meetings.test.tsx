@@ -98,7 +98,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
-import { CockpitPage } from "./cockpit-page";
+import { CockpitBoardWorkspace } from "./cockpit-page";
 
 /** Today in the viewer's own calendar — what the page computes for itself. */
 function todayString(offsetDays = 0): string {
@@ -202,7 +202,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon, projects: enProjects } }}>
-        <CockpitPage />
+        <CockpitBoardWorkspace />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -286,6 +286,11 @@ describe("the meeting register", () => {
   });
 
   it("switches between the four views without losing the board", async () => {
+    // Keep this shared fixture inside the current week and month. The normal
+    // +2-day meeting can fall outside either window at a weekend/month end.
+    const visibleInEveryView = structuredClone(board);
+    visibleInEveryView.meetings[0]!.meet_date = todayString();
+    vi.mocked(api.getCockpit).mockResolvedValue(visibleInEveryView);
     await openRegister();
     await screen.findByText(`${codeDay()}-01`);
 

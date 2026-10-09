@@ -92,7 +92,7 @@ vi.mock("@multica/core/auth", () => {
 
 import { api } from "@multica/core/api";
 import { useModalStore } from "@multica/core/modals";
-import { CockpitPage } from "./cockpit-page";
+import { CockpitBoardWorkspace } from "./cockpit-page";
 import { captureCockpitGantt, printCockpitGantt } from "./cockpit-export";
 vi.mock("./cockpit-export", () => ({ captureCockpitGantt: vi.fn(), printCockpitGantt: vi.fn(), downloadCockpitPng: vi.fn() }));
 
@@ -225,7 +225,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
-        <CockpitPage />
+        <CockpitBoardWorkspace />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -336,10 +336,13 @@ describe("Cockpit secondary interactions", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
-  it("opens a new issue using its inherited UUID binding, and links it", async () => {
+  it("preserves legacy reference creation on a grouping with an inherited UUID binding", async () => {
     const threeLevel = structuredClone(board);
     threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", project_id: "p-01", module_id: "m-0101" }));
     threeLevel.nodes[1]!.parent_id = "module";
+    // Eligible leaves use the primary-task workspace (covered in node-tasks).
+    // A grouping retains the legacy reference creation flow and callback.
+    threeLevel.nodes.push(node({ id: "execution-leaf", code: "detail", parent_id: "task" }));
     vi.mocked(api.getCockpit).mockResolvedValue(threeLevel);
     vi.mocked(api.listModules).mockResolvedValue({
       modules: [
@@ -368,8 +371,8 @@ describe("Cockpit secondary interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
 
-    // A direction row's number names a project, not a module, so it has
-    // nothing to offer.
+    // The explicitly bound module row is structural, so it does not offer
+    // issue creation from an inherited execution scope.
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.01" }));
     expect(screen.queryByRole("button", { name: "New issue" })).not.toBeInTheDocument();
 

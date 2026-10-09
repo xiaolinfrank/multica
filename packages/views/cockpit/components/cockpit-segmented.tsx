@@ -1,8 +1,8 @@
 "use client";
 
 // The gliding pill behind the cockpit's segmented controls (page tabs, the
-// register's view switch). The buttons carry no active background of their
-// own — one pill element slides to whichever button is active, so a switch
+// register's view switch). Controls carry no active background of their
+// own — one pill element slides to whichever control is active, so a switch
 // reads as the same object moving rather than two states blinking over.
 
 import { useCallback, useLayoutEffect, useState } from "react";
@@ -22,13 +22,13 @@ export function useSegmentedPill(active: string) {
   useLayoutEffect(() => {
     if (!element) return;
     const update = () => {
-      const button = element.querySelector<HTMLButtonElement>('[data-active="true"]');
-      if (!button) {
+      const control = element.querySelector<HTMLElement>('[data-active="true"]');
+      if (!control) {
         element.style.setProperty("--pill-on", "0");
         return;
       }
-      element.style.setProperty("--pill-left", `${button.offsetLeft}px`);
-      element.style.setProperty("--pill-width", `${button.offsetWidth}px`);
+      element.style.setProperty("--pill-left", `${control.offsetLeft}px`);
+      element.style.setProperty("--pill-width", `${control.offsetWidth}px`);
       element.style.setProperty("--pill-on", "1");
     };
     update();

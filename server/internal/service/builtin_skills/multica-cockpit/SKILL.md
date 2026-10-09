@@ -10,7 +10,7 @@ allowed-tools: Bash(multica *)
 ## Quick start
 
 ```bash
-multica cockpit show --output json          # the whole board in one read
+multica cockpit overview --as-of 2026-10-10 # bounded work overview, viewer's date
 multica cockpit node list --owner 李青娇
 multica cockpit node get L3-01-08 --output json
 multica cockpit node update L3-01-08 --progress 60 --status 进行中
@@ -38,7 +38,7 @@ Planning labels and ordinary issue statuses never grant approval.
 ## Reading before writing
 
 Read `multica cockpit show --output json` before changing the plan; never guess IDs or values.
-Use focused task/action pages below for growing collections rather than repeatedly downloading the board.
+Use [overview queues](references/overview.md) and focused task/action pages for growing collections; avoid repeatedly downloading the board.
 
 ## Editing nodes
 

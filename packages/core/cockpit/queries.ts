@@ -17,6 +17,7 @@ import type {
 // moved — splitting it would mean six keys that always invalidate together.
 export const cockpitKeys = {
   all: (wsId: string) => ["cockpit", wsId] as const,
+  dashboard: (wsId: string) => [...cockpitKeys.all(wsId), "work-overview"] as const,
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
@@ -63,6 +64,7 @@ export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: st
 
 /** Invalidating inactive pages marks them stale; only currently observed scopes refetch. */
 export function invalidateCockpitTaskFlow(client: QueryClient, wsId: string) {
+  void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.primaryNodes(wsId) });

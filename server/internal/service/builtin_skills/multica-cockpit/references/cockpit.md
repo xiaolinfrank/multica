@@ -6,6 +6,7 @@ broadcasts, and the shape of an import document.
 ## API
 
 Every route is workspace-scoped through the `X-Workspace-ID` header.
+For bounded work overview, personal/team attention and recent meetings, see [overview.md](overview.md).
 For paginated L3 tasks, primary ownership and meeting-action commands, see
 [actions.md](actions.md); new primary tasks are not added to the full board's link array.
 

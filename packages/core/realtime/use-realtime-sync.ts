@@ -805,6 +805,7 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Squad members status is derived per agent, so any agent
           // change (status flip, archive, runtime swap) needs to refresh the
           // per-squad members-status cache without refetching the static squad
@@ -814,7 +815,11 @@ export function useRealtimeSync(
       },
       member: () => {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
+        if (wsId) {
+          qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
+          // Formal reviewer membership and current capabilities are overview facts.
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+        }
       },
       // workspace:updated is handled by the specific handler below
       // (compares prefixes to decide whether to also invalidate issues).
@@ -832,6 +837,7 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Project deletion sweeps the project's module rows too, so a
           // project:* event must also drop module caches or ghost modules
           // linger under a project that no longer exists.
@@ -846,12 +852,16 @@ export function useRealtimeSync(
       },
       module: () => {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+        if (wsId) {
+          qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+        }
       },
       squad: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: workspaceKeys.squads(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // squad:deleted triggers assignee transfer — refresh issues too.
           qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         }
@@ -886,6 +896,7 @@ export function useRealtimeSync(
           qc.invalidateQueries({ queryKey: issueStatusKeys.all(wsId) });
           // The compact work-item summary resolves unknown/custom categories on the server.
           qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Status-group order is server-owned and depends on catalog positions.
           // Rows/facets and unrelated groupings do not change on catalog edits.
           qc.invalidateQueries({
@@ -1164,6 +1175,7 @@ export function useRealtimeSync(
         qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
       }
     });
 
@@ -1389,6 +1401,8 @@ export function useRealtimeSync(
 
     const unsubWsUpdated = ws.on("workspace:updated", (p) => {
       applyWorkspaceUpdatedToCache(qc, p as WorkspaceUpdatedPayload);
+      const wsId = (p as WorkspaceUpdatedPayload).workspace?.id;
+      if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
     });
 
     const unsubWsDeleted = ws.on("workspace:deleted", (p) => {

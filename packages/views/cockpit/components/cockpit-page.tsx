@@ -1,12 +1,12 @@
 "use client";
 
-// The project cockpit page: "/:slug/cockpit" on web, the same view on desktop.
+// Board tools for plan, meeting and business views. cockpit-entry mounts this
+// workspace only when requested; the work overview has its own bounded reads.
 //
 // One board per workspace, edited by everyone at once. Server state lives in the
 // board query; the view state below (which tab, which branch, what is collapsed,
-// what is selected) is local to this screen and deliberately not persisted —
-// re-opening the cockpit should show the board, not the last person's scroll
-// position.
+// what is selected) belongs to this screen. Entry routes select the initial
+// surface; task/action workspaces preserve their own session navigation context.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,9 @@ import {
   buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitBoardOptions,
+  cockpitAreaPath,
+  cockpitObjectPath,
+  cockpitDestination,
   cockpitKeys,
   cockpitMeetingWorkflowOptions,
   cockpitChangesOptions,
@@ -115,7 +118,7 @@ import { useAuthStore } from "@multica/core/auth";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useModalStore } from "@multica/core/modals";
-import { useNavigation } from "../../navigation";
+import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
@@ -227,13 +230,18 @@ function downloadCsv(content: string, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-export function CockpitPage() {
+export function CockpitBoardWorkspace({ initialTab = "overview", today: suppliedToday, onWorkOverview, onSelectTab }: {
+  initialTab?: CockpitTab;
+  today?: string;
+  onWorkOverview?: () => void;
+  onSelectTab?: (tab: CockpitTab) => void;
+}) {
   const { t } = useT("cockpit");
   const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
   const queryClient = useQueryClient();
   const navigation = useNavigation();
-  const [tab, setTab] = useState<CockpitTab>("overview");
+  const [tab, setTab] = useState<CockpitTab>(initialTab);
   const tabPillRef = useSegmentedPill(tab);
   const [zoom, setZoom] = useState<CockpitZoom>("month");
   const [query, setQuery] = useState("");
@@ -272,7 +280,8 @@ export function CockpitPage() {
   const [focusTarget, setFocusTarget] = useState<{ nodeId: string; nonce: number } | null>(
     null,
   );
-  const [today] = useState(todayString);
+  const [dayAtMount] = useState(todayString);
+  const today = suppliedToday ?? dayAtMount;
 
   const { data: board, isLoading, isError: boardError, refetch: reloadBoard, isFetching: reloadingBoard } = useQuery(cockpitBoardOptions(wsId));
 
@@ -282,7 +291,8 @@ export function CockpitPage() {
   // applied once per distinct param value — closing the panel by hand does
   // not bounce it back because the URL does not change on close. An unknown
   // id is silently ignored.
-  const deepLinkMeeting = navigation.searchParams.get("meeting");
+  const destination = cockpitDestination(navigation.searchParams);
+  const deepLinkMeeting = destination.meetingId;
   const deepLinkAppliedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!deepLinkMeeting || deepLinkAppliedRef.current === deepLinkMeeting) return;
@@ -551,7 +561,7 @@ export function CockpitPage() {
    * Jump from a digest-card task row into the gantt: expand its ancestors so
    * the row is rendered, select it (opens the node panel) and flash it.
    */
-  const openTask = useCallback(
+  const focusTask = useCallback(
     (nodeId: string) => {
       setCollapsed((prev) => {
         const ancestors = new Set<string>();
@@ -574,6 +584,23 @@ export function CockpitPage() {
     [summaryParent],
   );
 
+  const openTask = useCallback((nodeId: string) => {
+    if (onSelectTab && destination.nodeId !== nodeId) {
+      navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId }));
+      return;
+    }
+    focusTask(nodeId);
+  }, [onSelectTab, destination.nodeId, navigation, focusTask]);
+
+  const openMeeting = (meetingId?: string | null) => {
+    if (onSelectTab && (destination.area !== "meetings" || destination.meetingId !== (meetingId ?? null))) {
+      navigation.push(meetingId ? cockpitObjectPath(navigation.pathname, { kind: "meeting", id: meetingId })
+        : cockpitAreaPath(navigation.pathname, "meetings"));
+      return;
+    }
+    setSelectedMeetingId(meetingId ?? null);
+    setTab("meetings");
+  };
 
   const toggleCollapse = useCallback((nodeId: string) => {
     setCollapsed((prev) => {
@@ -623,15 +650,15 @@ export function CockpitPage() {
   // row's ancestors out of the SEEDED collapse set (a functional update after
   // seeding), not the empty initial one. `collapsed` in the deps re-fires the
   // effect right after seeding when the board was still loading on mount.
-  const deepLinkNode = navigation.searchParams.get("node");
+  const deepLinkNode = destination.nodeId;
   const deepLinkNodeAppliedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!deepLinkNode || deepLinkNodeAppliedRef.current === deepLinkNode) return;
     if (!didSeedCollapse.current) return;
     if (!(board?.nodes ?? []).some((n) => n.id === deepLinkNode)) return;
     deepLinkNodeAppliedRef.current = deepLinkNode;
-    openTask(deepLinkNode);
-  }, [deepLinkNode, board, openTask, collapsed]);
+    focusTask(deepLinkNode);
+  }, [deepLinkNode, board, focusTask, collapsed]);
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
@@ -829,8 +856,7 @@ export function CockpitPage() {
         if (workflow.meeting_id !== id) throw new Error(t(($) => $.workflow.load_failed));
         if (workflow.enabled) {
           toast.info(t(($) => $.workflow.delete_protected));
-          setSelectedMeetingId(id);
-          setTab("meetings");
+          openMeeting(id);
           return;
         }
       } catch (error) {
@@ -963,21 +989,12 @@ export function CockpitPage() {
           className="cockpit-segmented ml-2 flex items-center gap-0.5 rounded-md bg-muted p-0.5"
         >
           <SegmentedPill />
-          {TABS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              data-active={tab === key}
-              aria-current={tab === key ? "page" : undefined}
-              onClick={() => setTab(key)}
-              className={cn(
-                "rounded-sm px-2.5 py-1 text-caption transition-colors",
-                tab === key
-                  ? "font-medium text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {tabLabels[key]}
+          {TABS.map((key) => {
+            const className = cn(
+              "rounded-sm px-2.5 py-1 text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tab === key ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+            );
+            const label = <>{tabLabels[key]}
               {key === "changes" && pendingCount > 0 && (
                 <span
                   className="ml-1 rounded-full bg-brand px-1.5 py-px text-micro leading-4 font-medium text-brand-foreground"
@@ -986,8 +1003,12 @@ export function CockpitPage() {
                   {pendingCount > 99 ? "99+" : pendingCount}
                 </span>
               )}
-            </button>
-          ))}
+            </>;
+            return onSelectTab ? <AppLink key={key} href={cockpitAreaPath(navigation.pathname, key === "overview" ? "work" : key)}
+              data-active={tab === key} aria-current={tab === key ? "page" : undefined} className={className}>{label}</AppLink>
+              : <button key={key} type="button" data-active={tab === key} aria-current={tab === key ? "page" : undefined}
+                onClick={() => setTab(key)} className={className}>{label}</button>;
+          })}
         </nav>
 
         <span className="flex-1" />
@@ -1207,6 +1228,10 @@ export function CockpitPage() {
           tab !== "meetings" && selected && selectedFiling && !nodes.some((node) => node.parent_id === selected.id) && "max-xl:hidden")}>
           {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
+              {onWorkOverview && <div className="flex flex-wrap gap-1 border-b border-border px-4 py-2">
+                <AppLink href={cockpitAreaPath(navigation.pathname, "work")} className="rounded-md px-3 py-1.5 text-caption text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t(($) => $.work_overview.work)}</AppLink>
+                <span aria-current="page" className="rounded-md bg-secondary px-3 py-1.5 text-caption font-medium text-secondary-foreground">{t(($) => $.work_overview.operations)}</span>
+              </div>}
               <CockpitOverview
                 board={board}
                 today={today}
@@ -1225,10 +1250,7 @@ export function CockpitPage() {
                 // rest of the register could not be read against.
                 onCreateMeeting={() => setCreatingMeeting(true)}
                 onDeleteMeeting={(id) => requestDeletion("meeting", id)}
-                onOpenMeetings={(meetingId) => {
-                  setSelectedMeetingId(meetingId ?? null);
-                  setTab("meetings");
-                }}
+                onOpenMeetings={openMeeting}
                 onOpenBranch={(nodeId) => {
                   setRootIds(new Set([nodeId]));
                   setTab("gantt");
@@ -1265,10 +1287,7 @@ export function CockpitPage() {
               toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
-              onOpenMeeting={(meetingId) => {
-                setSelectedMeetingId(meetingId);
-                setTab("meetings");
-              }}
+              onOpenMeeting={openMeeting}
             />
             </div>
           )}
@@ -1383,10 +1402,7 @@ export function CockpitPage() {
             onCreateIssue={
               selectedFiling && nodes.some((node) => node.parent_id === selected.id) ? () => createIssueForNode(selectedFiling) : undefined
             }
-            onOpenMeeting={(meetingId) => {
-              setSelectedMeetingId(meetingId);
-              setTab("meetings");
-            }}
+            onOpenMeeting={openMeeting}
             onCreatePayment={() =>
               createPayment.mutate(
                 {
