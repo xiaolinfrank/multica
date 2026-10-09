@@ -1,0 +1,27 @@
+=== RUN   TestRealNASExport
+    real_nas_test.go:49: real NAS sandbox: /Volumes/人机协作空间/.multica-validation-39da1e77-783d-4ee3-a7c8-29462d758458
+=== RUN   TestRealNASExport/exact_bytes_and_idempotent_recovery
+    real_nas_test.go:113: real NAS commit and sync: This filesystem does not support atomic export without replacement.
+=== RUN   TestRealNASExport/concurrent_exclusive_commits
+    real_nas_test.go:162: This filesystem does not support atomic export without replacement.
+    real_nas_test.go:162: This filesystem does not support atomic export without replacement.
+    real_nas_test.go:162: This filesystem does not support atomic export without replacement.
+    real_nas_test.go:162: This filesystem does not support atomic export without replacement.
+    real_nas_test.go:165: published bytes differ: open /Volumes/人机协作空间/.multica-validation-39da1e77-783d-4ee3-a7c8-29462d758458/会议材料 1d57697a-3b52-4963-9204-47d6c1676b4f/已发布纪要/minutes-v0001-6a57f78a-fe24-4f0c-8f79-dceea07a4263.md: no such file or directory
+=== RUN   TestRealNASExport/recover_existing_matching_file
+=== RUN   TestRealNASExport/foreign_file_created_during_commit
+=== RUN   TestRealNASExport/missing_meeting_and_recovery
+    real_nas_test.go:229: This filesystem does not support atomic export without replacement.
+=== RUN   TestRealNASExport/root_identity_mismatch
+=== RUN   TestRealNASExport/directory_displacement_before_commit
+=== NAME  TestRealNASExport
+    real_nas_test.go:68: removed owned NAS sandbox: /Volumes/人机协作空间/.multica-validation-39da1e77-783d-4ee3-a7c8-29462d758458
+--- FAIL: TestRealNASExport (1.28s)
+    --- FAIL: TestRealNASExport/exact_bytes_and_idempotent_recovery (0.20s)
+    --- FAIL: TestRealNASExport/concurrent_exclusive_commits (0.34s)
+    --- PASS: TestRealNASExport/recover_existing_matching_file (0.02s)
+    --- PASS: TestRealNASExport/foreign_file_created_during_commit (0.12s)
+    --- FAIL: TestRealNASExport/missing_meeting_and_recovery (0.14s)
+    --- PASS: TestRealNASExport/root_identity_mismatch (0.01s)
+    --- PASS: TestRealNASExport/directory_displacement_before_commit (0.35s)
+FAIL

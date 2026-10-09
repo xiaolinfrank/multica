@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { lstat, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { TestApiClient } from "./fixtures";
+import { createNASFilesystemFixture } from "./nas-fixture";
 
 test.use({
   viewport: { width: 1600, height: 1050 }, locale: "en-US", timezoneId: "Asia/Shanghai",
@@ -14,16 +14,12 @@ test("retains publication while a NAS copy fails, retries safely, and preserves 
   test.setTimeout(180_000);
   const configuredRoot = process.env.MULTICA_E2E_NAS_ROOT_PATH;
   const rootId = process.env.MULTICA_E2E_NAS_ROOT_ID;
-  test.skip(!configuredRoot || !rootId || !process.env.MULTICA_E2E_NAS_WORKSPACE_ID,
+  const configured = configuredRoot && rootId && process.env.MULTICA_E2E_NAS_WORKSPACE_ID;
+  test.skip(process.env.MULTICA_E2E_REAL_NAS !== "1" && !configured,
     "Requires the explicitly configured, isolated agent 3 NAS fixture server");
-  const root = await realpath(configuredRoot!);
-  const fixtureBase = await realpath(join(homedir(), "var/multica-dev-test"));
-  const rootRelative = relative(fixtureBase, root);
-  if (!rootRelative || rootRelative.startsWith(`..${sep}`) || rootRelative === ".." || rootRelative.startsWith(sep)) {
-    throw new Error("Refusing filesystem writes outside the dedicated agent 3 test fixture directory");
-  }
-  expect((await readFile(join(root, ".multica-root-id"), "utf8")).trim()).toBe(rootId);
-  const fixture = await mkdtemp(join(root, "minutes-e2e-"));
+  if (!configured) throw new Error("Real NAS verification requires all explicit fixture identities");
+  const filesystem = await createNASFilesystemFixture();
+  const fixture = filesystem.directory;
   const api = new TestApiClient();
   const run = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
   let ownsWorkspace = false;
@@ -122,7 +118,86 @@ test("retains publication while a NAS copy fails, retries safely, and preserves 
     try {
       if (ownsWorkspace) await api.cleanupCreatedWorkspace();
     } finally {
-      await rm(fixture, { recursive: true, force: true });
+      await filesystem.cleanup();
     }
+  }
+});
+
+test("preserves publication and files when real SMB cannot commit without replacement", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  test.skip(process.env.MULTICA_E2E_REAL_NAS !== "1", "Requires explicitly authorized real SMB verification");
+  await page.setViewportSize({ width: 1600, height: 1400 });
+  const filesystem = await createNASFilesystemFixture();
+  const api = new TestApiClient();
+  const run = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
+  let ownsWorkspace = false;
+  try {
+    const auth = await api.login(`e2e-smb-capability-${run}@multica.ai`, "SMB Validation Reviewer");
+    const workspace = await api.createNASFixtureWorkspace(`SMB capability ${run}`, `e2e-smb-${run}`);
+    ownsWorkspace = true;
+    await api.markUserOnboarded();
+    const token = api.getToken();
+    if (!token) throw new Error("SMB fixture login did not return a token");
+    await page.addInitScript((value) => {
+      localStorage.setItem("multica_token", value);
+      localStorage.setItem("multica:chat:isOpen", "false");
+      document.cookie = "multica-locale=en; path=/";
+    }, token);
+    const content = "# Real SMB validation\n\nApproval must survive an unsupported exclusive filesystem commit.\n\n中文内容须保持不变。";
+    const meetingDir = join(filesystem.directory, "unsupported-commit");
+    await mkdir(meetingDir);
+    const meeting = await api.createCockpitMeeting({ title: "SMB commit capability", meet_date: new Date().toISOString().slice(0, 10), nas_dir: meetingDir });
+    await api.seedPendingMeetingReview(meeting.id, auth.user.id, content);
+    const approved = await api.approveMeetingMinutes(meeting.id);
+    const version = approved.versions[0]!;
+    await page.goto(`/${workspace.slug}/cockpit?meeting=${meeting.id}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("checkbox", { name: "Sync published minutes to NAS", exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Publish version", exact: true }).click();
+    await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("needs_attention");
+    let workflow = await api.getMeetingWorkflow(meeting.id);
+    const operation = workflow.nas_exports[0]!;
+    expect(workflow.published_version_id).toBe(version.id);
+    expect(operation).toMatchObject({ last_error_code: "unsupported_commit", completed_at: null, size_bytes: null, content_hash: version.content_hash });
+    await expect(lstat(operation.target_path)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readdir(join(meetingDir, "已发布纪要"))).toEqual([]);
+    await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+    await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Needs attention" })).toBeVisible();
+    await page.getByRole("region", { name: "NAS copies", exact: true }).scrollIntoViewIfNeeded();
+    await writeFile(testInfo.outputPath("real-smb-unsupported-commit.json"), JSON.stringify({ root: filesystem.root, operation, published_version_id: workflow.published_version_id }, null, 2));
+    await page.screenshot({ path: testInfo.outputPath("real-smb-published-needs-attention.png"), animations: "disabled" });
+
+    await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+    await expect.poll(async () => {
+      const next = (await api.getMeetingWorkflow(meeting.id)).nas_exports[0];
+      return next?.status === "needs_attention" && next.attempts > operation.attempts;
+    }, { timeout: 30_000 }).toBe(true);
+    workflow = await api.getMeetingWorkflow(meeting.id);
+    expect(workflow.published_version_id).toBe(version.id);
+    expect(workflow.nas_exports).toHaveLength(1);
+    expect(workflow.nas_exports[0]).toMatchObject({ id: operation.id, last_error_code: "unsupported_commit", completed_at: null, size_bytes: null });
+    await expect(lstat(operation.target_path)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readdir(join(meetingDir, "已发布纪要"))).toEqual([]);
+
+    const foreign = "This validation-owned foreign file must not be replaced.\n";
+    await writeFile(operation.target_path, foreign, { flag: "wx" });
+    await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+    await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+    await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.last_error_code, { timeout: 30_000 }).toBe("file_conflict");
+    expect(await readFile(operation.target_path, "utf8")).toBe(foreign);
+    workflow = await api.getMeetingWorkflow(meeting.id);
+    expect(workflow.published_version_id).toBe(version.id);
+    expect(workflow.versions[0]).toMatchObject({ id: version.id, content, decision: "approved" });
+    expect(workflow.nas_exports[0]).toMatchObject({ id: operation.id, status: "needs_attention", completed_at: null });
+    expect((await readdir(join(meetingDir, "已发布纪要"))).filter((name) => name.startsWith(".multica-"))).toEqual([]);
+    await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+    await page.getByRole("region", { name: "NAS copies", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("real-smb-foreign-file-preserved.png"), animations: "disabled" });
+    const resultPath = testInfo.outputPath("real-smb-result.json");
+    await writeFile(resultPath, JSON.stringify({ root: filesystem.root, operation: workflow.nas_exports[0], published_version_id: workflow.published_version_id }, null, 2));
+    await testInfo.attach("real-smb-result", { path: resultPath, contentType: "application/json" });
+  } finally {
+    try { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }
+    finally { await filesystem.cleanup(); }
   }
 });
