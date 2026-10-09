@@ -6,6 +6,8 @@
 
 **验证环境说明（2026-10-09更正）**：下文阶段A–C的类型检查、单元/集成回归、迁移和浏览器E2E，均在协调机的`multica-cockpit-native`本地工作树与隔离数据库执行。正式测试环境是`fosun_agent_3`上的`~/var/multica-dev`；本会话尚未在那里完成这些改动的集成验收。本文的“隔离测试工作区”指本机测试创建的平台workspace，不能等同于agent 3测试环境。前述Redis测试跳过也只描述本机工作树，不能据此判断agent 3的配置。
 
+**Redis专项补验**：随后已在agent 3配置独立测试Redis与测试库，并在该机器补跑106个父测试，全部通过、零跳过，包括此前的service/handler Redis用例。构建在协调机，执行在agent 3；配置、隔离范围、源版本与远端日志位置见[Redis测试记录](../../development/agent3-redis-tests.md)。这次专项不等于驾驶舱完整浏览器流程已在agent 3验收。
+
 ## 阶段 C：评审责任交接与人员变动恢复
 
 实际合同见 [reviewer-handoff-contract.md](./reviewer-handoff-contract.md)。会议工作台的管理人可明确选择接手成员、填写原因并确认移交，解决指定评审人退出后流程无法继续的问题。
