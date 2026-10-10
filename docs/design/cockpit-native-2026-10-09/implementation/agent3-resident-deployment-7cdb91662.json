@@ -1,0 +1,276 @@
+{
+  "deployment": "Resident agent3 test environment",
+  "completed_at": "2026-10-10T03:44:17.024340+00:00",
+  "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+  "host": "fosun_agent_3 / fosun-agent-3deMac-mini.local (10.35.182.2)",
+  "scope": "Updated the existing test application under ~/var/multica-dev; no production environment operated on.",
+  "release_directory": "/Users/fosun_agent_3/var/multica-dev-releases/7cdb91662-20261010T030738Z",
+  "frontend": {
+    "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+    "build_id": "-7nCkAhroGgEOM-LrOKQi",
+    "api_rewrites": [
+      {
+        "source": "/api/:path*",
+        "destination": "http://127.0.0.1:18080/api/:path*",
+        "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+      },
+      {
+        "source": "/ws",
+        "destination": "http://127.0.0.1:18080/ws",
+        "regex": "^/ws(?:/)?$"
+      }
+    ],
+    "old_static_assets_retained": 110,
+    "old_build_id": "fa0yDBxmUDYSCuFAjtgYi",
+    "env_sha256": "885941e58b41e703e63660b80f1f52a75014c2cdd9f53aa347950b5c65ba0f22"
+  },
+  "backup": {
+    "database": "multica_dev",
+    "backup_directory": "/Users/fosun_agent_3/var/multica-dev-backups/before-7cdb91662-20261010T030738Z",
+    "dump_bytes": 66612334,
+    "dump_sha256": "35ba8d822b9345a7a7fca0e6d3fc84a8d7e6c9218ddec68b4ea2089a0cfc0452",
+    "toc_entries": 942,
+    "counts": {
+      "workspaces": 55,
+      "issues": 554,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 325,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 198,
+      "fosun_meeting_links": 3,
+      "fosun_meeting_node_links": 1
+    },
+    "env_sha256": "885941e58b41e703e63660b80f1f52a75014c2cdd9f53aa347950b5c65ba0f22"
+  },
+  "migration": {
+    "ledger_count": 682,
+    "applied": [
+      "953_cockpit_node_binding",
+      "954_cockpit_node_project_binding_index",
+      "955_cockpit_node_module_binding_index",
+      "956_cockpit_meeting_issue_roles",
+      "957_cockpit_meeting_workflow",
+      "958_cockpit_work_package_pkey_index",
+      "959_cockpit_work_package_primary_key",
+      "960_cockpit_minutes_version_pkey_index",
+      "961_cockpit_minutes_version_primary_key",
+      "962_cockpit_work_package_issue_index",
+      "963_cockpit_minutes_review_issue_index",
+      "964_cockpit_minutes_submission_index",
+      "965_cockpit_minutes_number_index",
+      "966_cockpit_workflow_execution_gate",
+      "967_cockpit_reviewer_handoff",
+      "968_cockpit_reviewer_handoff_pkey_index",
+      "969_cockpit_reviewer_handoff_primary_key",
+      "970_cockpit_reviewer_handoff_key_index",
+      "971_cockpit_reviewer_handoff_from_issue_index",
+      "972_cockpit_reviewer_handoff_to_issue_index",
+      "973_cockpit_handoff_execution_gate",
+      "974_cockpit_minutes_export",
+      "975_cockpit_minutes_export_id_index",
+      "976_cockpit_minutes_export_primary_key",
+      "977_cockpit_minutes_export_destination_index",
+      "978_cockpit_minutes_export_due_index",
+      "979_cockpit_meeting_actions",
+      "980_cockpit_primary_issue_index",
+      "981_cockpit_primary_node_index",
+      "982_cockpit_primary_creation_index",
+      "983_cockpit_action_id_index",
+      "984_cockpit_action_proposal_index",
+      "985_cockpit_action_meeting_index",
+      "986_cockpit_action_primary_keys",
+      "987_cockpit_primary_integrity",
+      "988_cockpit_action_issue_index"
+    ],
+    "counts": {
+      "workspaces": 55,
+      "issues": 554,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 325,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 198,
+      "fosun_meeting_links": 3,
+      "fosun_meeting_node_links": 1
+    }
+  },
+  "active_processes": {
+    "api_pid": 62181,
+    "web_pid": 62182,
+    "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+    "release": "/Users/fosun_agent_3/var/multica-dev-releases/7cdb91662-20261010T030738Z"
+  },
+  "post_deployment": {
+    "before_counts": {
+      "workspaces": 55,
+      "issues": 554,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 325,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 198,
+      "fosun_meeting_links": 3,
+      "fosun_meeting_node_links": 1
+    },
+    "after_counts": {
+      "workspaces": 55,
+      "issues": 554,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 325,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 198,
+      "fosun_meeting_links": 3,
+      "fosun_meeting_node_links": 1
+    },
+    "counts_equal": true,
+    "new_domain_facts": {
+      "work_packages": 0,
+      "versions": 0,
+      "handoffs": 0,
+      "nas_exports": 0,
+      "actions": 0,
+      "primary_nodes": 0,
+      "probe_workspaces": 0
+    },
+    "ledger_count": 682,
+    "env_sha256": "885941e58b41e703e63660b80f1f52a75014c2cdd9f53aa347950b5c65ba0f22",
+    "apps_web_env_local_exists": false,
+    "build_id": "-7nCkAhroGgEOM-LrOKQi",
+    "health": {
+      "status": "ok",
+      "pid": 62181,
+      "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+      "started_at": "2026-10-10T03:32:23Z"
+    },
+    "web_status": 200,
+    "services_left_running": true
+  },
+  "public_origin_checks": {
+    "isolated_origins_in_public_assets": [],
+    "rendered_browser_api_base_undefined": true,
+    "rendered_websocket_url_undefined": true,
+    "database_backup_mode": "0o600",
+    "backup_directory_mode": "0o700"
+  },
+  "browser_probe": {
+    "result": "passed",
+    "seconds": 2.4,
+    "details": {
+      "workspace_id": "43fd1e6c-00ef-452b-b2ab-e44d7c47fcfb",
+      "workspace_slug": "deployment-check-mv1udvqx",
+      "overview_status": 200,
+      "browser_api_origin": "http://127.0.0.1:13000",
+      "first_overview_board_reads": 0,
+      "summary": {
+        "primary_issues": {
+          "total": 0,
+          "active": 0,
+          "unstarted": 0,
+          "started": 0,
+          "done": 0,
+          "closed": 0,
+          "unknown": 0,
+          "overdue": 0,
+          "blocked": 0,
+          "unassigned": 0
+        },
+        "my_primary_issues": {
+          "total": 0,
+          "active": 0,
+          "unstarted": 0,
+          "started": 0,
+          "done": 0,
+          "closed": 0,
+          "unknown": 0,
+          "overdue": 0,
+          "blocked": 0,
+          "unassigned": 0
+        },
+        "execution_nodes": {
+          "total": 0,
+          "with_active_issues": 0
+        },
+        "attention": {
+          "team_total": 0,
+          "mine_total": 0,
+          "team_by_kind": {
+            "action": 0,
+            "issue": 0,
+            "nas": 0,
+            "workflow": 0
+          },
+          "mine_by_kind": {
+            "action": 0,
+            "issue": 0,
+            "nas": 0,
+            "workflow": 0
+          }
+        }
+      },
+      "business_overview_status": 200,
+      "agent_queue_count": 0
+    },
+    "notes": [
+      "Synthetic account/workspace used, no existing user impersonated. External email delivery was disabled in the preserved resident configuration.",
+      "Browser used http://127.0.0.1:13000/api/cockpit/overview through the deployed same-origin proxy; initial full-board reads were zero.",
+      "Work overview rendered; Business overview returned200 and navigation back succeeded.",
+      "Synthetic workspace removed through the workspace API; its issues/cockpit data removed. Synthetic authentication identity has no workspace membership."
+    ]
+  },
+  "preserved": [
+    ".env kept byte-for-byte; hash recorded before and after.",
+    "apps/web/.env.local absent before and after.",
+    "Root path, absolute LOCAL_UPLOAD_DIR, uploads/, data/, and dev-run.sh retained.",
+    "Existing business bindings were not inferred and no primary ownership backfill was performed.",
+    "110 previous hashed static assets retained alongside the new build."
+  ],
+  "build_provenance": {
+    "source_archive_sha256": "6341bd5d0a24ccb8980b2f3c9fb3765f43f6c9af0b265655d97263707cfacc0f",
+    "server_sha256": "57099fe7b563c9f8bb077671feb9ac7a15e65eea7bf5c68c01f89b4be57c8a0b",
+    "migrator_sha256": "cc7dfb6c8005ef64855557adeeb4f7acdeae2eb2dc8fe1b120cd3dc213916399",
+    "runtime_source_files_verified": 2473,
+    "strategy": "Cold build could not resolve Google Fonts. Rebuilt accepted source at the previously validated agent3 build path using its webpack/font cache, with REMOTE_API_URL=18080 and an empty public API origin; staged the complete new build. No font code or network configuration changed.",
+    "excluded_environment_files": "No .env files extracted from the source archive; in particular unrelated tracked mobile production environment was excluded."
+  },
+  "isolated_tree": {
+    "ports_18880_13800": "stopped",
+    "private_runtime_profile": "unchanged",
+    "build_output": "The 18080 build was moved to release/build-source-next-18080. The isolated tree contains cache only, no BUILD_ID or routes-manifest.json.",
+    "next_run": "Must rebuild with REMOTE_API_URL=http://127.0.0.1:18880 and FRONTEND_ORIGIN=http://127.0.0.1:13800 before starting the isolated stack; explicit DEPLOYMENT_BUILD_ORIGIN.json marker records this."
+  },
+  "rollback_boundary": [
+    "Prefer restoring only the old frontend while retaining the new backend/schema.",
+    "Old backend rollback is only suitable before new workflow, ownership or binding facts have been used; verify this boundary again at rollback time.",
+    "Do not run global migrate down, delete migration ledger rows, or blindly retry a partly applied DDL batch.",
+    "Full database restoration requires a reviewed recovery decision; never automatically overwrite new user writes with this snapshot."
+  ],
+  "evidence_directory": "/tmp/multica-agent3-resident-deployment-7cdb91662",
+  "screenshots": [
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/resident-work-overview.png",
+      "sha256": "1edb692e242790788291115df1895424a1ba9ac6ecac704b7631fc11ab1c288b"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/resident-business-overview.png",
+      "sha256": "455534c7189e5f482de60722ca344b2e00c67a15719d0bd29c37430c48dffb83"
+    }
+  ]
+}

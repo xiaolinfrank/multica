@@ -2,7 +2,7 @@
 
 纪要工作台现在默认只读取摘要，正文按版本打开，版本、评审交接和 NAS 记录分别分页。当前工作版本与正式纪要同时显示，避免开始下一轮修订后误认生效版本。
 
-本批在 `codex/cockpit-native-foundation` 开发，运行验收仅在 agent 3；常驻测试应用和生产尚未部署。上一批首页说明仍见 [工作总览审核](./review-2026-10-10.md)。
+本批在 `codex/cockpit-native-foundation` 开发，运行验收仅在 agent 3。本批隔离验收之后，**已于 2026-10-10 部署到 agent 3 常驻测试应用**，详见[常驻部署记录](../../development/agent3-cockpit-deployment-2026-10-10.md)；生产未部署。上一批首页说明仍见 [工作总览审核](./review-2026-10-10.md)。
 
 ![当前 v35 与正式 v34](./implementation/minutes-current-and-published.png)
 
