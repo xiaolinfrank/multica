@@ -1,11 +1,36 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { buildIssueStatusCatalog } from "@multica/core/issue-statuses";
+import type { Issue, IssueBatchReceipt, UpdateIssueRequest } from "@multica/core/types";
+import { renderWithI18n } from "../../test/i18n";
+import { issueOperationFixture } from "../operation-basis-test-fixture";
 import { BatchActionToolbar } from "./batch-action-toolbar";
 
 // MUL-4155: batch status changes must apply directly (no run-confirm modal),
 // while agent/squad assignment still confirms and delete still confirms. These
 // tests drive the pickers' onUpdate callbacks and assert which path is taken.
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
+vi.mock("@multica/core/issue-statuses/hooks", () => ({ useIssueStatuses: () => buildIssueStatusCatalog(undefined) }));
+vi.mock("@multica/core/issues", async (original) => ({
+  ...await original<typeof import("@multica/core/issues")>(),
+  useIssueOperationBasis: (_wsId: string, ids: string[]) => ({
+    byIssue: new Map(ids.map((id) => [id, issueOperationFixture(id)])),
+    pendingIds: new Set(), errorIds: new Set(), isPending: false, isError: false, refetch: vi.fn(),
+  }),
+}));
+
+function render(issues: Issue[]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return renderWithI18n(<QueryClientProvider client={client}><BatchActionToolbar issues={issues} /></QueryClientProvider>);
+}
+
+function receipt(ids: string[]): IssueBatchReceipt {
+  return { workspace_id: "ws-1", requested_ids: ids, transaction_mode: "per_item", transaction_outcome: "committed",
+    results: ids.map((id) => ({ issue_id: id, outcome: "applied", revision: 2, changed: true })), unconfirmed_ids: [], updated: ids.length };
+}
 
 const selection = vi.hoisted(() => ({
   selectedIds: new Set<string>(),
@@ -30,7 +55,6 @@ vi.mock("@multica/core/modals", () => ({
   useModalStore: (selector: (s: { open: typeof openModal }) => unknown) => selector({ open: openModal }),
 }));
 
-vi.mock("../../i18n", () => ({ useT: () => ({ t: () => "label" }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // Interactive picker stubs: each renders buttons that fire the real onUpdate the
@@ -94,50 +118,55 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
 
 beforeEach(() => {
   selection.selectedIds = new Set(["a"]);
-  batchUpdate.mockClear();
+  selection.deselect.mockClear();
+  batchUpdate.mockReset().mockImplementation(async ({ ids }: { ids: string[] }) => receipt(ids));
   batchDelete.mockClear();
   openModal.mockClear();
 });
 
 describe("BatchActionToolbar status routing (MUL-4155)", () => {
-  it("applies every status target directly, never opening the run-confirm modal", () => {
+  it("applies every allowed status target directly, never opening the run-confirm modal", async () => {
     for (const status of [...ACTIVE_STATUSES, ...TERMINAL_STATUSES, "backlog"]) {
       batchUpdate.mockClear();
       openModal.mockClear();
       // A backlog issue in the selection is the case that historically could
       // start a run — it still must not pop the confirm modal now.
-      const { unmount } = render(<BatchActionToolbar issues={[makeIssue({ status: "backlog" })]} />);
+      const { unmount } = render([makeIssue({ status: "backlog" })]);
       fireEvent.click(screen.getByTestId(`status-${status}`));
       expect(openModal).not.toHaveBeenCalled();
-      expect(batchUpdate).toHaveBeenCalledWith({ ids: ["a"], updates: { status } });
+      expect(batchUpdate).toHaveBeenCalledWith({ ids: ["a"], updates: { status }, expected_revisions: { a: 1 } });
+      await waitFor(() => expect(selection.deselect).toHaveBeenCalledWith(["a"]));
+      selection.deselect.mockClear();
       unmount();
     }
   });
 
   it("still routes agent assignment through the run-confirm modal", () => {
-    render(<BatchActionToolbar issues={[makeIssue({ status: "todo" })]} />);
+    render([makeIssue({ status: "todo" })]);
     fireEvent.click(screen.getByTestId("assign-agent"));
     expect(openModal).toHaveBeenCalledWith(
       "issue-run-confirm",
-      expect.objectContaining({ issueIds: ["a"], mode: "assign", assigneeType: "agent", assigneeId: "agent-1" }),
+      expect.objectContaining({ issueIds: ["a"], mode: "assign", assigneeType: "agent", assigneeId: "agent-1", expectedRevisions: { a: 1 }, onBatchResult: expect.any(Function) }),
     );
     expect(batchUpdate).not.toHaveBeenCalled();
   });
 
-  it("applies member assignment directly (never starts a run)", () => {
-    render(<BatchActionToolbar issues={[makeIssue({ status: "todo" })]} />);
+  it("applies member assignment directly (never starts a run)", async () => {
+    render([makeIssue({ status: "todo" })]);
     fireEvent.click(screen.getByTestId("assign-member"));
     expect(openModal).not.toHaveBeenCalled();
     expect(batchUpdate).toHaveBeenCalledWith({
       ids: ["a"],
       updates: { assignee_type: "member", assignee_id: "user-1" },
+      expected_revisions: { a: 1 },
     });
+    await waitFor(() => expect(selection.deselect).toHaveBeenCalledWith(["a"]));
   });
 
   it("opens the dedicated delete confirmation, not the run-confirm modal", () => {
-    render(<BatchActionToolbar issues={[makeIssue({ status: "todo" })]} />);
-    fireEvent.click(screen.getByText("label", { selector: "button.text-destructive" }));
-    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    render([makeIssue({ status: "todo" })]);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.getByRole("dialog", { name: "Review selected issues" })).toBeInTheDocument();
     expect(openModal).not.toHaveBeenCalled();
     expect(batchDelete).not.toHaveBeenCalled();
   });

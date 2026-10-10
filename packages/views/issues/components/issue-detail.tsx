@@ -4,11 +4,11 @@ import {
   issueBehavesAs,
   issueBehavesAsAny,
   issueStatusCategory,
+  useIssueOperationBasis, issueOperationAllowed, issueStatusOperationAllowed, issueUpdateOperationAllowed,
 } from "@multica/core/issues";
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { useCockpitIssueFormalReview, cockpitFormalReviewAllowsStatus, cockpitArtifactPath, cockpitObjectPath, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
@@ -96,6 +96,7 @@ import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
 import { ProjectPicker } from "../../projects/components/project-picker";
 import { ModulePicker } from "../../projects/components/module-picker";
 import { IssuePropertyPills } from "./issue-property-pills";
+import { IssueOperationRestriction, type IssueOperationObservation } from "./issue-operation-restriction";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { useNewRunIds } from "./use-run-comment-motion";
 import { AgentRunComment, CommentCard } from "./comment-card";
@@ -118,7 +119,7 @@ import { WakeupsSection } from "./wakeups-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
-import { CockpitNodesSection } from "./cockpit-nodes-section";
+import { CockpitClearPrimaryNode, CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
 import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
 import { useGitHubSettings } from "@multica/core/github";
@@ -838,8 +839,10 @@ function SubIssueRow({
   childProgress,
   rowProps,
   customProperties,
+  observation,
 }: {
   child: Issue;
+  observation: IssueOperationObservation;
   /** The sub-issue's OWN children progress (it can itself be a parent). */
   childProgress?: { done: number; total: number };
   /** User-level display preference: which built-in fields the row shows. */
@@ -864,6 +867,7 @@ function SubIssueRow({
 
   const handleUpdate = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
+      if (!issueUpdateOperationAllowed(observation.basis, updates, childStatusCatalog.categoryOf)) { toast.error(t(($) => $.operation_basis.blocked)); return; }
       updateIssue.mutate(
         {
           id: child.id,
@@ -879,7 +883,7 @@ function SubIssueRow({
         },
       );
     },
-    [child.id, updateIssue, t],
+    [child.id, updateIssue, t, observation.basis, childStatusCatalog.categoryOf],
   );
 
   // AppLink wraps only the title/identifier area. Pickers and checkbox are
@@ -928,6 +932,8 @@ function SubIssueRow({
         <StatusPicker
           status={child.status}
           onUpdate={handleUpdate}
+          allowsCategory={(category) => issueStatusOperationAllowed(observation.basis, category)}
+          restriction={<IssueOperationRestriction observation={observation} operation="status" />}
           align="start"
           trigger={
             <StatusIcon
@@ -1025,6 +1031,8 @@ function SubIssueRow({
             assigneeType={child.assignee_type}
             assigneeId={child.assignee_id}
             onUpdate={handleUpdate}
+            readOnly={!issueOperationAllowed(observation.basis, "assignee")}
+            restriction={<IssueOperationRestriction observation={observation} operation="assignee" />}
             align="end"
             trigger={
               child.assignee_type && child.assignee_id ? (
@@ -1312,7 +1320,6 @@ export function IssueDetailSkeleton({
 export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId, highlightRequestToken, leadingAction, variant = "page", trailingActions }: IssueDetailProps) {
   const isPeek = variant === "peek";
   const { t } = useT("issues");
-  const { t: cockpitT } = useT("cockpit");
   const locale = useLocale();
   const timeAgo = useTimeAgo();
   const id = issueId;
@@ -1546,19 +1553,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       return cached?.description != null ? cached : undefined;
     },
   });
-  const formalReview = useCockpitIssueFormalReview(wsId, issue?.id ?? "");
-  const allowsStatusCategory = useCallback((category: string) => !formalReview.isPending && !formalReview.isError
-    && cockpitFormalReviewAllowsStatus(formalReview.review, category), [formalReview.isPending, formalReview.isError, formalReview.review]);
-  const assigneeReadOnly = formalReview.isPending || formalReview.isError || Boolean(formalReview.review);
-  const reviewRecord = formalReview.review;
-  const formalReviewHref = reviewRecord?.kind === "artifact_version" && reviewRecord.artifact_id
-    ? cockpitArtifactPath(paths.cockpit(), reviewRecord.artifact_id, EMPTY_COCKPIT_SCOPE, reviewRecord.version_id ?? undefined)
-    : reviewRecord?.kind === "acceptance_request" && reviewRecord.request_id && reviewRecord.node_id
-      ? cockpitObjectPath(paths.cockpit(), { kind: "node", id: reviewRecord.node_id, view: "acceptance", requestId: reviewRecord.request_id }) : null;
-  const formalRestriction = formalReview.isPending ? <p role="status" className="text-caption text-muted-foreground">{cockpitT(($) => $.issue_artifacts.formal_checking)}</p>
-    : formalReview.isError ? <div role="alert" className="space-y-2 text-caption"><p>{cockpitT(($) => $.issue_artifacts.formal_failed)}</p><Button size="sm" variant="outline" onClick={() => void formalReview.refetch()}>{cockpitT(($) => $.binding.retry)}</Button></div>
-      : reviewRecord ? <div className="space-y-2 text-caption text-muted-foreground"><p>{reviewRecord.stage === "pending" ? cockpitT(($) => $.issue_artifacts.formal_pending) : cockpitT(($) => $.issue_artifacts.formal_record)}</p>
-        {formalReviewHref && <AppLink href={formalReviewHref} className="text-primary underline underline-offset-4">{cockpitT(($) => $.issue_artifacts.open_formal)}</AppLink>}</div> : undefined;
+  const operationPolicy = useIssueOperationBasis(wsId, issue ? [issue.id] : []);
+  const operation = { basis: issue ? operationPolicy.byIssue.get(issue.id) : undefined, pending: operationPolicy.isPending, error: operationPolicy.isError, retry: () => { void operationPolicy.refetch(); } };
+  const basis = operation.basis;
+  const allowsStatusCategory = useCallback((category: string) => issueStatusOperationAllowed(basis, category), [basis]);
+  const assigneeReadOnly = !issueOperationAllowed(basis, "assignee");
+  const scopeReadOnly = !issueOperationAllowed(basis, "scope");
+  const formalRestriction = <IssueOperationRestriction observation={operation} operation="status" />;
+  const assigneeRestriction = <IssueOperationRestriction observation={operation} operation="assignee" />;
+  const scopeRestriction = <div className="space-y-2"><IssueOperationRestriction observation={operation} operation="scope" />{issue && basis?.scope.reason_codes.includes("primary_scope") && <CockpitClearPrimaryNode issueId={issue.id} />}</div>;
   const descriptionSourceId = `description:${id}`;
   const descriptionAnnotations = useCommentAnnotations({
     draftKey: `new:${id}`,
@@ -2091,6 +2094,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // this answer, so a defaulted or stale empty array must not count as "no
   // sub-issues" (MUL-5714).
   const childCountKnown = childIssuesLoaded && !childIssuesFetching;
+  const childOperations = useIssueOperationBasis(wsId, childIssues.map((child) => child.id));
   // Parent's children — used to render the "x/y" progress next to the
   // "Sub-issue of …" breadcrumb under the title.
   const { data: parentChildIssues = [] } = useQuery({
@@ -2459,16 +2463,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
   // Shared issue actions (mutations, pin, copy-link, modal dispatch, etc.).
   // Called before the `if (!issue)` early return so hook order stays stable.
-  const actions = useIssueActions(issue);
-  const updateIssueField = actions.updateField;
-  const handleUpdateField = useCallback<typeof updateIssueField>((updates, options) => {
-    if ((updates.status !== undefined && !allowsStatusCategory(resolveStatusCategory(updates.status)))
-      || (assigneeReadOnly && (updates.assignee_type !== undefined || updates.assignee_id !== undefined))) {
-      const error = new Error(cockpitT(($) => $.issue_artifacts.formal_pending));
-      options?.onError?.(error); toast.error(error.message); return;
-    }
-    updateIssueField(updates, options);
-  }, [updateIssueField, allowsStatusCategory, assigneeReadOnly, cockpitT, resolveStatusCategory]);
+  const actions = useIssueActions(issue, operation);
+  const handleUpdateField = actions.updateField;
 
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
@@ -2717,13 +2713,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_assignee)}>
-            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" readOnly={assigneeReadOnly} restriction={formalRestriction} />
+            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" readOnly={assigneeReadOnly} restriction={assigneeRestriction} />
           </PropRow>
           {formalRestriction && <div className="col-span-2 py-2">{formalRestriction}</div>}
           <PropRow label={t(($) => $.detail.prop_project)}>
             <ProjectPicker
               projectId={issue.project_id}
               onUpdate={handleUpdateField}
+              readOnly={scopeReadOnly}
+              restriction={scopeRestriction}
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_module)}>
@@ -2731,6 +2729,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               moduleId={issue.module_id ?? null}
               projectId={issue.project_id}
               onUpdate={handleUpdateField}
+              readOnly={scopeReadOnly}
+              restriction={scopeRestriction}
             />
           </PropRow>
 
@@ -3296,7 +3296,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               // to the list we came from, falling back to all issues.
               onDeletedFallbackPath={onDelete ? undefined : paths.issues()}
               trigger={
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
+                <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t(($) => $.operation_basis.actions)}>
                   <MoreHorizontal />
                 </Button>
               }
@@ -3351,6 +3351,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         >
           <IssueDuplicateBanner
             issue={issue}
+            canUnmark={allowsStatusCategory("unstarted")}
+            restriction={formalRestriction}
             onUnmark={() =>
               handleUpdateField(
                 { status: "todo" },
@@ -3502,6 +3504,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 isDuplicate={isDuplicateIssue(issue)}
                 allowsStatusCategory={allowsStatusCategory}
                 assigneeReadOnly={assigneeReadOnly}
+                scopeReadOnly={scopeReadOnly}
+                assigneeRestriction={assigneeRestriction}
+                scopeRestriction={scopeRestriction}
                 restriction={formalRestriction}
               />
             </div>
@@ -3704,6 +3709,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                             <SubIssueRow
                               key={child.id}
                               child={child}
+                              observation={{ basis: childOperations.byIssue.get(child.id), pending: childOperations.pendingIds.has(child.id), error: childOperations.errorIds.has(child.id), retry: () => { void childOperations.refetch(); } }}
                               childProgress={subIssueProgress?.get(child.id)}
                               rowProps={subIssueRowProps}
                               customProperties={subIssueCustomProps}

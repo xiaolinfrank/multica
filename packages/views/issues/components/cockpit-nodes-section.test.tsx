@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@multica/core/api";
@@ -9,8 +9,9 @@ import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider } from "../../navigation";
 import type { NavigationAdapter } from "../../navigation/types";
 import { CockpitNodesSection } from "./cockpit-nodes-section";
+import { issueOperationPageFixture } from "../operation-basis-test-fixture";
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("@multica/core/api", () => ({ api: { getCockpit: vi.fn(), getCockpitIssueNodeReferences: vi.fn(), getCockpitPrimaryNode: vi.fn(), getCockpitNodeIndex: vi.fn(), appendCockpitNodeIssue: vi.fn(), removeCockpitIssueNodeReference: vi.fn() } }));
+vi.mock("@multica/core/api", () => ({ api: { getCockpit: vi.fn(), getCockpitIssueNodeReferences: vi.fn(), getCockpitPrimaryNode: vi.fn(), setCockpitPrimaryNode: vi.fn(), getIssueOperationBasis: vi.fn(), getCockpitNodeIndex: vi.fn(), appendCockpitNodeIssue: vi.fn(), removeCockpitIssueNodeReference: vi.fn() } }));
 vi.mock("../../cockpit/components/cockpit-node-choice", () => ({ CockpitNodeChoicePicker: ({ onSelect, disabled, label }: { onSelect: (node: { id: string }) => Promise<unknown>; disabled?: boolean; label: string }) => <button disabled={disabled} onClick={() => void onSelect({ id: "node-3" })}>{label}</button> }));
 const adapter: NavigationAdapter = { push: vi.fn(), replace: vi.fn(), back: vi.fn(), pathname: "/", searchParams: new URLSearchParams(), hash: "", getShareableUrl: (path) => path };
 const ref = (id = "node-2", title = "Execution"): CockpitIssueNodeReference => ({ node_id: id, code: "02", title, available: true, relation: "reference", can_unlink: true });
@@ -21,6 +22,7 @@ function renderSection(issueId = "issue-1") {
 }
 beforeEach(() => {
   cleanup(); vi.clearAllMocks();
+  vi.mocked(api.getIssueOperationBasis).mockImplementation(async (ws, ids) => issueOperationPageFixture(ws, ids));
   page = { workspace_id: "ws-1", issue_id: "issue-1", items: [ref()], total: 1, next_cursor: null };
   vi.mocked(api.getCockpitIssueNodeReferences).mockImplementation(async () => structuredClone(page));
   vi.mocked(api.getCockpitPrimaryNode).mockResolvedValue({ issue_id: "issue-1", node_id: null, node_code: "", node_name: "", project_id: null, module_id: null, revision: 0 });
@@ -32,6 +34,33 @@ beforeEach(() => {
   vi.mocked(api.appendCockpitNodeIssue).mockResolvedValue({ id: "link-1", node_id: "node-3", issue_id: "issue-1", issue_number: 1, issue_identifier: "BIO-1", issue_title: "Issue", issue_status: "backlog", position: 0 } as Awaited<ReturnType<typeof api.appendCockpitNodeIssue>>);
 });
 describe("bounded issue work-item references", () => {
+  it("clears only the primary relationship after acknowledgement and preserves scope and reference links", async () => {
+    let current: Awaited<ReturnType<typeof api.getCockpitPrimaryNode>> = { issue_id: "issue-1", node_id: "primary", node_code: "01", node_name: "Primary execution", project_id: "p", module_id: "m", revision: 2 };
+    vi.mocked(api.getCockpitPrimaryNode).mockImplementation(async () => current);
+    let finish!: (value: Awaited<ReturnType<typeof api.setCockpitPrimaryNode>>) => void;
+    vi.mocked(api.setCockpitPrimaryNode).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    renderSection(); const originalLink = await screen.findByRole("link", { name: "01 Primary execution" }); fireEvent.click(await screen.findByRole("button", { name: "Clear primary work item" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm clearing" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm clearing" }));
+    await waitFor(() => expect(api.setCockpitPrimaryNode).toHaveBeenCalled());
+    expect(api.setCockpitPrimaryNode).toHaveBeenCalledExactlyOnceWith("ws-1", "issue-1", { node_id: null, expected_revision: 2 });
+    expect(screen.getByRole("alertdialog")).toBeVisible(); expect(originalLink).toBeInTheDocument(); expect(originalLink).toHaveAttribute("href", "/acme/cockpit?node=primary");
+    current = { ...current, node_id: null, node_code: "", node_name: "", revision: 3 };
+    await act(async () => finish(current));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "01 Primary execution" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "02 Execution" })).toBeVisible();
+    expect(current.project_id).toBe("p"); expect(current.module_id).toBe("m");
+  });
+  it("explains a protected formal primary without disabling ordinary references", async () => {
+    vi.mocked(api.getCockpitPrimaryNode).mockResolvedValue({ issue_id: "issue-1", node_id: "primary", node_code: "01", node_name: "Primary execution", project_id: "p", module_id: "m", revision: 2 });
+    const basis = issueOperationPageFixture("ws-1", ["issue-1"]); basis.items[0]!.primary = { state: "blocked", reason_codes: ["formal_review_scope"] };
+    vi.mocked(api.getIssueOperationBasis).mockResolvedValue(basis);
+    renderSection(); fireEvent.click(await screen.findByRole("button", { name: "Clear primary work item" }));
+    expect(await screen.findByText("A formal review keeps the scope of its fixed record.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Confirm clearing" })).toBeDisabled();
+    expect(api.setCockpitPrimaryNode).not.toHaveBeenCalled();
+  });
   it("reads this issue's reference page without loading the full board", async () => {
     renderSection();
     expect(await screen.findByRole("link", { name: "02 Execution" })).toHaveAttribute("href", "/acme/cockpit?node=node-2");

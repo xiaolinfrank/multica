@@ -27,6 +27,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components
 import { cn } from "@multica/ui/lib/utils";
 import { LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
+import { useNavigation } from "../../navigation";
+import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import {
   CockpitField,
   EditableDate,
@@ -67,6 +69,8 @@ export interface CockpitNodePanelProps {
   onSectionChange: (section: CockpitNodeView) => void;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
+  deleteAllowed: boolean;
+  deleteRestriction?: React.ReactNode;
   /** Localized destructive consequences, including descendants for a branch. */
   deleteConfirmationDescription: string;
   /** Zero-based tree depth, matching CockpitTreeNode.depth. */
@@ -105,6 +109,8 @@ export function CockpitNodePanel({
   section,
   onSectionChange,
   onDelete,
+  deleteAllowed,
+  deleteRestriction,
   deleteConfirmationDescription,
   depth,
   onClose,
@@ -122,6 +128,10 @@ export function CockpitNodePanel({
   const deletingRef = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const taskDetails = Boolean(taskWorkspace) || depth >= 2;
+  const navigation = useNavigation();
+  const deleteContext = JSON.stringify([node.id, section, navigation.pathname, navigation.searchParams.toString()]);
+  const captureDelete = useCockpitCommandContext(deleteContext);
+  useEffect(() => { deletingRef.current = false; setConfirmOpen(false); setDeleting(false); setDeleteFailed(false); }, [deleteContext]);
 
   useEffect(() => { closeButton.current?.focus(); }, [node.id]);
 
@@ -139,19 +149,18 @@ export function CockpitNodePanel({
   }, [confirmOpen, onClose]);
 
   const confirmDelete = async () => {
-    if (deletingRef.current) return;
+    if (deletingRef.current || !deleteAllowed) return;
+    const isCurrent = captureDelete();
     deletingRef.current = true;
     setDeleting(true);
     setDeleteFailed(false);
     try {
       await onDelete();
-      setConfirmOpen(false);
-      onClose();
+      if (isCurrent()) { setConfirmOpen(false); onClose(); }
     } catch {
-      setDeleteFailed(true);
+      if (isCurrent()) setDeleteFailed(true);
     } finally {
-      deletingRef.current = false;
-      setDeleting(false);
+      if (isCurrent()) { deletingRef.current = false; setDeleting(false); }
     }
   };
 
@@ -530,10 +539,11 @@ export function CockpitNodePanel({
                 </AlertDialogTitle>
                 <AlertDialogDescription>{deleteConfirmationDescription}</AlertDialogDescription>
               </AlertDialogHeader>
+              {deleteRestriction}
               {deleteFailed && <p role="alert" className="text-caption text-destructive">{t(($) => $.errors.save_failed)}</p>}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={deleting}>{common(($) => $.cancel)}</AlertDialogCancel>
-                <Button variant="destructive" disabled={deleting} aria-busy={deleting} onClick={confirmDelete}>
+                <Button variant="destructive" disabled={deleting || !deleteAllowed} aria-busy={deleting} onClick={confirmDelete}>
                   {deleting && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
                   {deleting ? common(($) => $.loading) : common(($) => $.delete)}
                 </Button>

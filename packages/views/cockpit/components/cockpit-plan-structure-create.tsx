@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { ApiError } from "@multica/core/api";
 import {
   buildCockpitDisplayCodesFromIndex, cockpitObjectPath, cockpitScopeViewKey, cockpitContextOptions, cockpitNodeDetailOptions, cockpitNodeCodePreviewOptions, useCreateCockpitNode,
@@ -34,6 +36,8 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
   const parentId = draft.kind === "project" ? null : draft.parentId || null;
   const selected = useQuery({ ...cockpitContextOptions(wsId, { projectId: draft.projectId || null, moduleId: draft.kind === "module" ? draft.moduleId || null : null }), enabled: open });
   const parent = useQuery({ ...cockpitNodeDetailOptions(wsId, parentId ?? "", scope), enabled: Boolean(open && parentId) });
+  const operation = useQuery({ ...containerOperationBasisOptions(wsId, "node", parentId ?? ""), enabled: Boolean(open && parentId && !draft.pending) });
+  const canAddChild = !parentId || !operation.isError && containerOperationAllowed(operation.data, "add_child");
   const code = useQuery({ ...cockpitNodeCodePreviewOptions(wsId, parentId), enabled: open && (draft.kind === "project" || Boolean(parentId)) && !draft.pending });
   const create = useCreateCockpitNode(wsId);
   const parentValid = draft.kind === "project" || Boolean(parent.data && !parent.isError && !parent.isFetching && (draft.kind === "module"
@@ -43,7 +47,7 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
   const busy = create.isPending; const frozen = Boolean(draft.pending);
   const choices = [{ value: "project", label: t(($) => $.plan_structure.project) }, { value: "module", label: t(($) => $.plan_structure.module) }, { value: "task", label: t(($) => $.plan_structure.task) }];
   const submit = async () => {
-    if (lock.current || disabled || (!draft.pending && (!parentValid || !scopeValid || !draft.name.trim()))) return;
+    if (lock.current || disabled || (!draft.pending && (!parentValid || !scopeValid || !canAddChild || !draft.name.trim()))) return;
     const command = draft.pending ?? { creation_key: crypto.randomUUID(), auto_code: true as const, name: draft.name.trim(), parent_id: parentId,
       project_id: draft.kind === "task" ? null : draft.projectId || null, module_id: draft.kind === "module" ? draft.moduleId || null : null, status: "" };
     const sent = { ...draft, pending: command }; updateCockpitPlanNodeDraft(key, sent);
@@ -73,6 +77,7 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
       {draft.kind !== "project" && <div className="space-y-2"><CockpitNodeChoicePicker wsId={wsId} scope={{ projectId: draft.projectId || scope.projectId, moduleId: draft.kind === "task" ? scope.moduleId : null }} eligible={false}
         label={t(($) => $.plan_structure.parent)} value={parent.data ? `${buildCockpitDisplayCodesFromIndex(parent.data.node_index).get(parent.data.node.id) ?? parent.data.node.code} ${parent.data.node.name}` : draft.parentId} disabled={busy || frozen} onSelect={(node) => change({ parentId: node.id })} />
         {parent.isError && <CockpitFlowError onRetry={() => void parent.refetch()} />}{draft.parentId && !parent.isPending && !parentValid && <p role="alert" className="text-caption text-destructive">{t(($) => $.plan_structure.invalid_parent)}</p>}
+        {parentId && !draft.pending && <ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="add_child" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
         <p className="text-caption text-muted-foreground">{draft.kind === "module" ? t(($) => $.plan_structure.module_parent) : t(($) => $.plan_structure.task_parent)}</p></div>}
       <label className="block space-y-1 text-caption">{t(($) => $.node.name)}<Input value={draft.name} disabled={busy || frozen} onChange={(event) => change({ name: event.target.value })} /></label>
       <p className="text-caption text-muted-foreground">{t(($) => $.task_create.code)}: <span className="font-mono">{code.data?.code || "—"}</span></p>
@@ -85,7 +90,7 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
       {creationGone && draft.pending && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { updateCockpitPlanNodeDraft(key, { pending: null, uncertain: false }); setCreationGone(false); setError(""); }}>{t(($) => $.meeting_center.restart_deleted)}</Button>}
       {draft.uncertain && <div className="space-y-2"><CockpitNodeChoicePicker wsId={wsId} eligible={false} scope={scope} label={t(($) => $.plan_structure.check_existing)} onSelect={(node) => { setOpen(false); onCreated(node.id); }} />
 </div>}</div>
-      <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>{t(($) => $.binding.cancel)}</DialogClose><Button type="button" disabled={disabled || busy || (!frozen && (!parentValid || !scopeValid || !draft.name.trim()))} onClick={() => void submit()}>{busy && <Spinner />}{frozen ? t(($) => $.binding.retry) : t(($) => $.plan_structure.confirm)}</Button></DialogFooter>
+      <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>{t(($) => $.binding.cancel)}</DialogClose><Button type="button" disabled={disabled || busy || (!frozen && (!parentValid || !scopeValid || !canAddChild || !draft.name.trim()))} onClick={() => void submit()}>{busy && <Spinner />}{frozen ? t(($) => $.binding.retry) : t(($) => $.plan_structure.confirm)}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }

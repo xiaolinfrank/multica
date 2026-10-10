@@ -35,9 +35,13 @@ export function isDuplicateIssue(issue: Pick<Issue, "status" | "duplicate_of">):
 export function IssueDuplicateBanner({
   issue,
   onUnmark,
+  canUnmark = true,
+  restriction,
 }: {
   issue: Issue;
   onUnmark: () => void;
+  canUnmark?: boolean;
+  restriction?: React.ReactNode;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -48,7 +52,7 @@ export function IssueDuplicateBanner({
   if (issue.status !== "cancelled" || !original) return null;
 
   return (
-    <div className="mb-4 flex items-center gap-1 rounded-md border bg-muted/40 py-1 pl-3 pr-1 text-body">
+    <div className="mb-4 flex flex-wrap items-center gap-1 rounded-md border bg-muted/40 py-1 pl-3 pr-1 text-body">
       <AppLink
         href={paths.issueDetail(original.id)}
         newTabTitle={original.identifier}
@@ -76,9 +80,11 @@ export function IssueDuplicateBanner({
         size="sm"
         className="shrink-0 text-muted-foreground"
         onClick={onUnmark}
+        disabled={!canUnmark}
       >
         {t(($) => $.duplicates.unmark)}
       </Button>
+      {!canUnmark && restriction && <div className="w-full py-2">{restriction}</div>}
     </div>
   );
 }

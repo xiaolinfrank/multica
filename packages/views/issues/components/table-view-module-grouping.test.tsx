@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiInstance } from "@multica/core/api";
+import { issueOperationPageFixture } from "../operation-basis-test-fixture";
 import type { ApiClient } from "@multica/core/api/client";
 import { ViewStoreProvider } from "@multica/core/issues/stores/view-store-context";
 import { getIssueSurfaceViewStore } from "@multica/core/issues/stores/surface-view-store";
@@ -227,6 +228,7 @@ describe("Table grouped by module", () => {
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
     setApiInstance({
+      getIssueOperationBasis: async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids),
       listProperties: async () => ({ properties: [] }),
       listMembers: async () => [],
       listAgents: async () => [],

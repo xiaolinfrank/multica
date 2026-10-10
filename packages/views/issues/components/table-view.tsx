@@ -1,5 +1,7 @@
 "use client";
 
+import { useIssueOperationBasis, issueOperationAllowed, issueStatusOperationAllowed, issueUpdateOperationAllowed } from "@multica/core/issues";
+import { IssueOperationRestriction, type IssueOperationObservation } from "./issue-operation-restriction";
 import { useStatusLabel } from "../utils/status-label";
 import {
   useCallback,
@@ -103,6 +105,7 @@ import {
 } from "@multica/core/workspace/queries";
 import type {
   Issue,
+  IssueOperationName,
   IssueProperty,
   IssuePropertyValue,
   IssueTableGroupDescriptor,
@@ -998,6 +1001,7 @@ type TableViewMeta = {
   propertyById: Map<string, IssueProperty>;
   properties: IssueProperty[];
   visibleIssueIds: string[];
+  operationFor: (id: string) => IssueOperationObservation;
   /** `${row.key}:${column.id}` of the cell whose editor popup / rename input
    *  is open, or null. Owned by TableView so the open editor survives cell
    *  remounts and freezes the table structure while it is up. */
@@ -1175,6 +1179,7 @@ function IssueTableBodyCell({
   if (row.original.kind !== "issue") return null;
   const issueRow = row.original;
   const issue = issueRow.issue;
+  const observation = meta.operationFor(issue.id);
   const key = column.id as TableColumnKey;
   const editorOpen = meta.editingCellKey === cellKey;
   const setEditorOpen = (open: boolean) =>
@@ -1222,6 +1227,8 @@ function IssueTableBodyCell({
         <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
           <StatusPicker
             status={issue.status}
+            allowsCategory={(category) => issueStatusOperationAllowed(observation.basis, category)}
+            restriction={<IssueOperationRestriction observation={observation} operation="status" />}
             onUpdate={onUpdate}
             align="start"
             open={editorOpen}
@@ -1247,6 +1254,8 @@ function IssueTableBodyCell({
           <AssigneePicker
             assigneeType={issue.assignee_type}
             assigneeId={issue.assignee_id}
+            readOnly={!issueOperationAllowed(observation.basis, "assignee")}
+            restriction={<IssueOperationRestriction observation={observation} operation="assignee" />}
             onUpdate={onUpdate}
             align="start"
             open={editorOpen}
@@ -1267,6 +1276,8 @@ function IssueTableBodyCell({
         <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
           <ProjectPicker
             projectId={issue.project_id}
+            readOnly={!issueOperationAllowed(observation.basis, "scope")}
+            restriction={<IssueOperationRestriction observation={observation} operation="scope" />}
             onUpdate={onUpdate}
             open={editorOpen}
             onOpenChange={setEditorOpen}
@@ -1285,6 +1296,8 @@ function IssueTableBodyCell({
           <ModulePicker
             moduleId={issue.module_id ?? null}
             projectId={issue.project_id}
+            readOnly={!issueOperationAllowed(observation.basis, "scope")}
+            restriction={<IssueOperationRestriction observation={observation} operation="scope" />}
             onUpdate={onUpdate}
             open={editorOpen}
             onOpenChange={setEditorOpen}
@@ -1371,7 +1384,7 @@ export function TableView({
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const resolveStatusLabel = useStatusLabel(wsId);
-  const { entryOf } = useIssueStatuses(wsId);
+  const { entryOf, categoryOf } = useIssueStatuses(wsId);
   const openModal = useModalStore((s) => s.open);
   const queryClient = useQueryClient();
   const intentNavigate = useIntentNavigate();
@@ -2221,6 +2234,9 @@ export function TableView({
         .map((row) => row.issue.id),
     [displayRows],
   );
+  const operationPolicy = useIssueOperationBasis(wsId, visibleIssueIds);
+  const operationFor = (id: string): IssueOperationObservation => ({ basis: operationPolicy.byIssue.get(id), pending: operationPolicy.pendingIds.has(id), error: operationPolicy.errorIds.has(id), retry: () => { void operationPolicy.refetch(); } });
+  const [blockedOperation, setBlockedOperation] = useState<{ id: string; operation: IssueOperationName } | null>(null);
   useEffect(() => {
     onLoadedIssuesChange(loadedIssues);
   }, [loadedIssues, onLoadedIssuesChange]);
@@ -2277,6 +2293,11 @@ export function TableView({
   // starts a run, and must confirm rather than fire from one click (MUL-6463).
   const updateIssue = useCallback(
     (issue: Issue, updates: Partial<UpdateIssueRequest>) => {
+      if (!issueUpdateOperationAllowed(operationPolicy.byIssue.get(issue.id), updates, categoryOf)) {
+        setBlockedOperation({ id: issue.id, operation: updates.status !== undefined ? "status" : updates.assignee_type !== undefined || updates.assignee_id !== undefined ? "assignee" : "scope" });
+        return;
+      }
+      setBlockedOperation(null);
       // A sub-issue cannot be re-filed without losing its parent, so the module
       // column confirms that trade before writing — same gate the picker in the
       // issue detail routes on.
@@ -2292,7 +2313,7 @@ export function TableView({
       }
       actions?.updateIssue(issue.id, updates);
     },
-    [actions, entryOf, openModal],
+    [actions, entryOf, openModal, operationPolicy.byIssue, categoryOf],
   );
 
   const openIssue = useCallback(
@@ -2368,6 +2389,7 @@ export function TableView({
     propertyById,
     properties,
     visibleIssueIds,
+    operationFor,
     editingCellKey,
     setEditingCellKey,
     updateIssue,
@@ -2474,19 +2496,19 @@ export function TableView({
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current as IssueRowDragData | undefined;
-    if (data?.type === ROW_DRAG_TYPE) setDraggingRowIssue(data.issue);
-  }, []);
+    if (data?.type === ROW_DRAG_TYPE && issueOperationAllowed(operationPolicy.byIssue.get(data.issue.id), "scope")) setDraggingRowIssue(data.issue);
+  }, [operationPolicy.byIssue]);
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const dragged = event.active.data.current as IssueRowDragData | undefined;
-    if (dragged?.type !== ROW_DRAG_TYPE) return;
+    if (dragged?.type !== ROW_DRAG_TYPE || !issueOperationAllowed(operationPolicy.byIssue.get(dragged.issue.id), "scope")) return;
     const target = event.over?.data.current as ModuleDropData | undefined;
     const groupKey =
       target?.type === ROW_DROP_TYPE && target.groupKey ? target.groupKey : null;
     // The group the row came from is not a destination, so its header does not
     // light up while the row is still hovering over its own neighbours.
     setOverGroupKey(groupKey === dragged.groupKey ? null : groupKey);
-  }, []);
+  }, [operationPolicy.byIssue]);
 
   // Filing a row by drag is the same write the module cell's picker makes, so
   // it goes through the same gate: the sub-issue confirmation, then the run
@@ -2720,6 +2742,10 @@ export function TableView({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {blockedOperation && <div role="alert" className="flex shrink-0 items-start gap-3 border-b p-3">
+        <div className="min-w-0 flex-1"><IssueOperationRestriction observation={operationFor(blockedOperation.id)} operation={blockedOperation.operation} /></div>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.operation_basis.dismiss)} onClick={() => setBlockedOperation(null)}><X className="size-4" /></Button>
+      </div>}
       <DndContext
         sensors={sensors}
         // One context for both gestures — a nested one would capture the
@@ -2798,6 +2824,7 @@ export function TableView({
                 return (
                   <DraggableIssueRow
                     id={issueRow.issue.id}
+                    disabled={!issueOperationAllowed(operationPolicy.byIssue.get(issueRow.issue.id), "scope")}
                     data={{
                       type: ROW_DRAG_TYPE,
                       issue: issueRow.issue,

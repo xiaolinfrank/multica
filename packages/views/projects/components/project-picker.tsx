@@ -25,6 +25,8 @@ export function ProjectPicker({
   open: controlledOpen,
   onOpenChange,
   disabled = false,
+  readOnly = false,
+  restriction,
 }: {
   projectId: string | null;
   onUpdate: (updates: Partial<UpdateIssueRequest>) => void;
@@ -41,6 +43,8 @@ export function ProjectPicker({
    *  the menu locks clearing too. Callers that must freeze the selection
    *  during a transient window (an in-flight chat send) pass this. */
   disabled?: boolean;
+  readOnly?: boolean;
+  restriction?: React.ReactNode;
 }) {
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
@@ -77,7 +81,9 @@ export function ProjectPicker({
         onOpenChange={setOpen}
         width="w-52"
         align={align}
-        searchable
+        searchable={!readOnly}
+        header={readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
+        footer={!readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
         searchPlaceholder={t(($) => $.picker.search_placeholder)}
         onSearchChange={setFilter}
         triggerRender={resolvedTriggerRender}
@@ -95,7 +101,7 @@ export function ProjectPicker({
           )
         }
       >
-        {/* "No project" — always the first row, search active or not, and the
+        {!readOnly && <>{/* "No project" — always the first row, search active or not, and the
             only clear entry now that the pill carries no inline ×. Mirrors
             the unassigned row in the assignee picker. */}
         <PickerItem
@@ -128,6 +134,7 @@ export function ProjectPicker({
           <div className="px-2 py-1.5 text-caption text-muted-foreground">{t(($) => $.picker.empty)}</div>
         )}
         {projects.length > 0 && filtered.length === 0 && query && <PickerEmpty />}
+        </>}
       </PropertyPicker>
     </div>
   );

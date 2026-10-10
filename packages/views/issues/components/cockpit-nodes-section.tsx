@@ -1,18 +1,54 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buildCockpitDisplayCodesFromIndex, cockpitIssueNodeReferencesOptions, cockpitNodeIndexOptions, cockpitObjectPath,
-  cockpitPrimaryNodeOptions, useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
+  cockpitPrimaryNodeOptions, useSetCockpitPrimaryNode, useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
+import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { ChevronRight, X } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from "@multica/ui/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 import { CockpitNodeChoicePicker } from "../../cockpit/components/cockpit-node-choice";
 import { CockpitFlowError, CockpitFlowPaging } from "../../cockpit/components/cockpit-task-flow";
+import { IssueOperationRestriction } from "./issue-operation-restriction";
+import { useCockpitCommandContext } from "../../cockpit/components/use-cockpit-command-context";
+
+export function CockpitClearPrimaryNode({ issueId }: { issueId: string }) {
+  const wsId = useWorkspaceId(); const { t } = useT("issues");
+  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, issueId)); const mutation = useSetCockpitPrimaryNode(wsId);
+  const policy = useIssueOperationBasis(wsId, [issueId]);
+  const observation = { basis: policy.byIssue.get(issueId), pending: policy.pendingIds.has(issueId), error: policy.errorIds.has(issueId), retry: () => { void policy.refetch(); } };
+  const [observed, setObserved] = useState<{ revision: number; nodeId: string } | null>(null); const [error, setError] = useState("");
+  const identity = `${wsId}:${issueId}`; const [confirmation, setConfirmation] = useState(0);
+  const captureContext = useCockpitCommandContext(`${identity}:${confirmation}`);
+  useEffect(() => { setObserved(null); setError(""); }, [identity]);
+  const stale = Boolean(observed && (primary.data?.revision !== observed.revision || primary.data?.node_id !== observed.nodeId));
+  const allowed = issueOperationAllowed(observation.basis, "primary") && !primary.isFetching && !primary.isError && Boolean(primary.data?.node_id);
+  if (!primary.data?.node_id && !primary.isError && !observed) return null;
+  return <>
+    {primary.isError ? <CockpitFlowError onRetry={() => void primary.refetch()} /> : <Button type="button" variant="ghost" size="sm" onClick={() => {
+      if (primary.data?.node_id) { setConfirmation((old) => old + 1); setObserved({ revision: primary.data.revision, nodeId: primary.data.node_id }); setError(""); }
+    }}>{t(($) => $.operation_basis.clear_primary)}</Button>}
+    <AlertDialog open={observed !== null} onOpenChange={(open) => { if (!open && !mutation.isPending) setObserved(null); }}><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>{t(($) => $.operation_basis.clear_primary)}</AlertDialogTitle><AlertDialogDescription>{t(($) => $.operation_basis.clear_primary_hint)}</AlertDialogDescription></AlertDialogHeader>
+      <IssueOperationRestriction observation={observation} operation="primary" />
+      {stale && <p role="alert" className="text-caption text-destructive">{t(($) => $.operation_basis.primary_changed)}</p>}
+      {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+      <AlertDialogFooter><Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => setObserved(null)}>{t(($) => $.batch.cancel)}</Button>
+        <Button type="button" disabled={!allowed || !observed || stale || mutation.isPending} onClick={async () => {
+          if (!allowed || !observed || stale || mutation.isPending) return;
+          const stillCurrent = captureContext();
+          try { await mutation.mutateAsync({ issueId, nodeId: null, revision: observed.revision }); if (stillCurrent()) setObserved(null); }
+          catch (cause) { if (stillCurrent()) setError(cause instanceof Error ? cause.message : t(($) => $.detail.update_failed)); }
+        }}>{t(($) => $.operation_basis.confirm_clear_primary)}</Button></AlertDialogFooter>
+    </AlertDialogContent></AlertDialog>
+  </>;
+}
 
 export function CockpitNodesSection({ issueId }: { issueId: string }) {
   const wsId = useWorkspaceId();
@@ -37,7 +73,7 @@ function CockpitNodeReferences({ wsId, issueId }: { wsId: string; issueId: strin
     {open && <div className="space-y-2 pl-2">
       {primaryNode?.node_id && <div><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
         <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primaryNode.node_id })} newTabTitle={primaryNode.node_name || primaryNode.node_code}
-          className="block break-words py-1 text-caption hover:underline">{codes.get(primaryNode.node_id) ?? primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink></div>}
+          className="block break-words py-1 text-caption hover:underline">{codes.get(primaryNode.node_id) ?? primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink><CockpitClearPrimaryNode issueId={issueId} /></div>}
       {primary.isError && <CockpitFlowError onRetry={() => void primary.refetch()} />}
       {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : <>
         {query.data.items.length === 0 && !primaryNode?.node_id && <p className="text-caption text-muted-foreground">{t(($) => $.issue_detail.none)}</p>}

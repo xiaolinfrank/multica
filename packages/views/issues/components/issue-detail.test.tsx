@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useRef, useState, useImperativeHandle } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { issueOperationFixture, issueOperationPageFixture } from "../operation-basis-test-fixture";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AgentTask, Attachment, Issue, IssueStatusEntry, Label, TimelineEntry } from "@multica/core/types";
@@ -320,6 +321,7 @@ const mockApiObj = vi.hoisted(() => ({
   getCockpit: vi.fn().mockResolvedValue(null),
   getCockpitContext: vi.fn().mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, cockpit: null, actor: { user_id: "user-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false, capabilities: { artifacts: false, acceptance: false } }),
   getCockpitIssueArtifacts: vi.fn(),
+  getIssueOperationBasis: vi.fn(),
   getCockpitIssueMeetingReferences: vi.fn(),
   getCockpitIssueActionSources: vi.fn(),
   listTimeline: vi.fn().mockResolvedValue([]),
@@ -734,6 +736,7 @@ describe("IssueDetail (shared)", () => {
     readonlyContentRenders.length = 0;
     descriptionSelectionAction.current = undefined;
     mockViewport.isMobile = false;
+    mockApiObj.getIssueOperationBasis.mockImplementation(async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids));
     // Default: issue loads successfully
     mockApiObj.getIssue.mockResolvedValue(mockIssue);
     mockApiObj.getCockpit.mockResolvedValue(null);
@@ -771,8 +774,14 @@ describe("IssueDetail (shared)", () => {
     mockApiObj.getCockpitIssueArtifacts.mockResolvedValue({ workspace_id: "ws-1", issue_id: "issue-1", items: [{ kind: "artifact", id: "other-artifact", artifact_id: "other-artifact", artifact_title: "Related artifact", roles: ["origin"], node_id: "other-node", node_label: "Related delivery", version_id: null, version_number: null, request_id: null, decision: "draft", reviewer_id: null, is_current_review: false }], total: 500, next_cursor: "later-page",
       formal_review: { kind: "artifact_version", stage: "pending", node_id: "node-1", artifact_id: "artifact-1", version_id: "version-1", request_id: null } });
     mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, status: "todo", assignee_type: "member", assignee_id: "user-1" });
+    mockApiObj.getIssueOperationBasis.mockResolvedValue({ ...issueOperationPageFixture("ws-1", ["issue-1"]), items: [issueOperationFixture("issue-1", {
+      status: { state: "allowed", reason_codes: ["formal_review_status"], allowed_categories: ["unstarted", "started"] },
+      assignee: { state: "blocked", reason_codes: ["formal_reviewer_binding"] },
+      scope: { state: "blocked", reason_codes: ["formal_review_scope"] },
+      targets: [{ kind: "artifact_version", artifact_id: "artifact-1", version_id: "version-1", label: "Open formal review", purpose: "formal_review" }], targets_total: 1,
+    })] });
     const done = vi.fn(); renderIssueDetail("TES-1", { variant, onDone: done });
-    const links = await screen.findAllByRole("link", { name: "Open formal review" });
+    const links = await screen.findAllByRole("link", { name: "Open formal review (new tab)" });
     expect(links[0]).toHaveAttribute("href", "/test/cockpit?tab=artifacts&artifact=artifact-1&artifact_version=version-1");
     expect(screen.getByRole("button", { name: enIssues.detail.mark_done_tooltip })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Todo" }));
@@ -780,7 +789,7 @@ describe("IssueDetail (shared)", () => {
     expect(options.find((item) => item.textContent === "Done")).toBeDisabled();
     expect(options.find((item) => item.textContent === "Cancelled")).toBeDisabled();
     expect(options.find((item) => item.textContent === "In Progress")).toBeEnabled();
-    expect(mockApiObj.getCockpitIssueArtifacts).toHaveBeenCalledWith("ws-1", "issue-1", expect.anything(), expect.anything());
+    expect(mockApiObj.getIssueOperationBasis).toHaveBeenCalledWith("ws-1", ["issue-1"], expect.any(AbortSignal));
     expect(done).not.toHaveBeenCalled();
   });
 

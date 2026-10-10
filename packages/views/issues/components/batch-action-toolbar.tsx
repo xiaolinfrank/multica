@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@multica/ui/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@multica/ui/components/ui/alert-dialog";
-import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import type { Issue, IssueBatchReceipt, UpdateIssueRequest } from "@multica/core/types";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
+import { useIssueOperationBasis, issueUpdateOperationAllowed, issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt } from "@multica/core/issues";
+import { IssueBatchOperationDialog, type IssueBatchIntent } from "./issue-batch-operation-dialog";
 import { commonIssueFields } from "@multica/core/issues/batch";
 import { useBatchUpdateIssues, useBatchDeleteIssues } from "@multica/core/issues/mutations";
 import { useModalStore } from "@multica/core/modals";
@@ -76,95 +70,85 @@ export function BatchActionToolbar({
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [review, setReview] = useState<{ intent: IssueBatchIntent; result?: { receipt: IssueBatchReceipt | null; submittedIds: string[] } } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const command = useRef<string | null>(null); const inFlight = useRef(false);
+  const wsId = useWorkspaceId(); const { categoryOf } = useIssueStatuses(wsId);
+  const selectedNow = useRef(selectedIds); selectedNow.current = selectedIds;
+  const workspaceNow = useRef(wsId); workspaceNow.current = wsId;
+  useEffect(() => () => { command.current = null; }, []);
+  useEffect(() => { command.current = null; inFlight.current = false; setSubmitting(false); setReview(null); }, [wsId]);
   const surfaceActions = useIssueSurfaceActionsOptional();
   const batchUpdate = useBatchUpdateIssues();
   const batchDelete = useBatchDeleteIssues();
   const openModal = useModalStore((s) => s.open);
   const loading =
-    surfaceActions?.isPending ?? (batchUpdate.isPending || batchDelete.isPending);
+    submitting || (surfaceActions?.isPending ?? (batchUpdate.isPending || batchDelete.isPending));
   const ids = selectedIssues.map((issue) => issue.id);
+  const policy = useIssueOperationBasis(wsId, ids);
 
   useEffect(() => {
     if (count > 0) return;
     setStatusOpen(false);
     setPriorityOpen(false);
     setAssigneeOpen(false);
-    setDeleteOpen(false);
   }, [count]);
 
-  const handleBatchUpdate = async (updates: Partial<UpdateIssueRequest>) => {
-    try {
-      if (surfaceActions) {
-        await surfaceActions.batchUpdate(ids, updates);
-      } else {
-        await batchUpdate.mutateAsync({ ids, updates });
-      }
-      toast.success(t(($) => $.batch.update_success, { count }));
-    } catch (err) {
-      toast.error(
-        err instanceof Error && err.message
-          ? err.message
-          : t(($) => $.batch.update_failed),
-      );
+  const submitIntent = async (intent: IssueBatchIntent, submittedIds: string[], revisions: Record<string, number>) => {
+    if (inFlight.current || submittedIds.length === 0 || intent.workspaceId !== wsId || submittedIds.some((id) => !ids.includes(id))) return;
+    const capturedWorkspace = wsId, capturedSelection = selectedNow.current;
+    command.current = intent.key;
+    const updates = intent.updates ?? {};
+    if (intent.kind === "update" && (updates.assignee_type === "agent" || updates.assignee_type === "squad") && updates.assignee_id
+      && submittedIds.some((id) => selectedIssues.find((issue) => issue.id === id)?.status !== "backlog")) {
+      setReview(null);
+      openModal("issue-run-confirm", { issueIds: submittedIds, mode: "assign", assigneeType: updates.assignee_type, assigneeId: updates.assignee_id,
+        expectedRevisions: revisions,
+        issueLabels: intent.issueLabels.filter((issue) => submittedIds.includes(issue.id)),
+        onBatchResult: (receipt: IssueBatchReceipt | null) => {
+          if (command.current !== intent.key || workspaceNow.current !== capturedWorkspace || selectedNow.current !== capturedSelection) return;
+          const applied = issueBatchAppliedIds(receipt); if (applied.length) selection.deselect(applied);
+        },
+      });
+      return;
     }
-  };
-
-  // Batch status changes apply directly — no run-confirm modal (MUL-4155).
-  // done/cancelled can never start a run, and a backlog → active promotion now
-  // starts its run the same way a single-issue status change or the CLI does,
-  // without an extra confirmation step (product decision on MUL-4155). The
-  // status change was previously routed through the pre-trigger modal, which for
-  // the common done/cancelled case only rendered a misleading "现在开始处理？ →
-  // 不会开始处理" box. Agent/squad assignment still confirms via
-  // handleBatchAssignee — that is the only batch action that should preview a
-  // run fan-out.
-  const handleBatchStatus = (updates: Partial<UpdateIssueRequest>) => {
-    if (!updates.status) return;
-    void handleBatchUpdate(updates);
-  };
-
-  const handleBatchAssignee = (updates: Partial<UpdateIssueRequest>) => {
-    if ((updates.assignee_type === "agent" || updates.assignee_type === "squad") && updates.assignee_id) {
-      // Backlog never starts a run on assign (parking lot), so if every selected
-      // issue is in backlog the confirm modal would only render an empty "won't
-      // start" box — apply directly, matching handleBatchStatus's backlog short-
-      // circuit. A mixed selection still routes through the modal: the non-backlog
-      // issues will trigger and need confirmation.
-      // Only the fixed Backlog key parks work; custom Unstarted does not.
-      const allBacklog = selectedIssues.every((i) => i.status === "backlog");
-      if (!allBacklog) {
-        openModal("issue-run-confirm", {
-          issueIds: ids,
-          mode: "assign",
-          assigneeType: updates.assignee_type,
-          assigneeId: updates.assignee_id,
-        });
-        return;
-      }
-    }
-    void handleBatchUpdate(updates);
-  };
-
-  const handleBatchDelete = async () => {
+    inFlight.current = true; setSubmitting(true);
+    const stillCurrent = () => command.current === intent.key && workspaceNow.current === capturedWorkspace;
+    const acknowledge = (receipt: IssueBatchReceipt | null) => {
+      if (!stillCurrent()) return;
+      const applied = issueBatchAppliedIds(receipt), complete = issueBatchComplete(receipt);
+      if (selectedNow.current === capturedSelection && applied.length) selection.deselect(applied);
+      if (complete) {
+        setReview(null);
+        toast.success(intent.kind === "delete" ? t(($) => $.batch.delete_success, { count: applied.length }) : t(($) => $.batch.update_success, { count: applied.length }));
+      } else setReview({ intent, result: { receipt, submittedIds } });
+    };
     try {
-      if (surfaceActions) {
-        await surfaceActions.batchDelete(ids);
-      } else {
-        await batchDelete.mutateAsync(ids);
-      }
-      clear();
-      toast.success(t(($) => $.batch.delete_success, { count }));
-    } catch (err) {
-      toast.error(
-        err instanceof Error && err.message
-          ? err.message
-          : t(($) => $.batch.delete_failed),
-      );
+      const receipt = intent.kind === "delete"
+        ? surfaceActions ? await surfaceActions.batchDelete(submittedIds, { expected_revisions: revisions }) : await batchDelete.mutateAsync({ ids: submittedIds, expected_revisions: revisions })
+        : surfaceActions ? await surfaceActions.batchUpdate(submittedIds, updates, { expected_revisions: revisions }) : await batchUpdate.mutateAsync({ ids: submittedIds, updates, expected_revisions: revisions });
+      acknowledge(receipt);
+    } catch (cause) {
+      acknowledge(issueBatchErrorReceipt(cause, capturedWorkspace, submittedIds, intent.kind));
     } finally {
-      setDeleteOpen(false);
+      if (stillCurrent()) { inFlight.current = false; setSubmitting(false); }
     }
   };
+
+  const handleBatchUpdate = (updates: Partial<UpdateIssueRequest>) => {
+    if (loading || ids.length === 0) return;
+    const intent: IssueBatchIntent = { key: crypto.randomUUID(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "update", updates: { ...updates } };
+    const revisions: Record<string, number> = {};
+    const available = ids.every((id) => {
+      const basis = policy.byIssue.get(id);
+      if (!issueUpdateOperationAllowed(basis, updates, categoryOf) || typeof basis?.issue_revision !== "number") return false;
+      revisions[id] = basis.issue_revision; return true;
+    });
+    if (!available || policy.isError || policy.isPending) { setReview({ intent }); return; }
+    void submitIntent(intent, ids, revisions);
+  };
+  const handleBatchStatus = (updates: Partial<UpdateIssueRequest>) => { if (updates.status) handleBatchUpdate(updates); };
+  const handleBatchAssignee = handleBatchUpdate;
 
   return (
     <>
@@ -173,14 +157,16 @@ export function BatchActionToolbar({
           <div
             key="issue-batch-toolbar"
             className={cn(
-              "z-50",
+              "z-50 max-w-[calc(100vw-2rem)]",
               placement === "fixed-bottom"
                 ? "fixed bottom-6 left-1/2 -translate-x-1/2 max-md:above-chat-launcher"
                 : "mb-2 w-fit",
             )}
           >
             <motion.div
-              className="flex items-center gap-1 rounded-lg border bg-background px-2 py-1.5 shadow-lg"
+              role="region"
+              aria-label={t(($) => $.operation_basis.batch_toolbar)}
+              className="flex flex-wrap items-center gap-1 rounded-lg border bg-background px-2 py-1.5 shadow-lg"
               initial={{
                 opacity: 0,
                 transform: shouldReduceMotion
@@ -212,6 +198,7 @@ export function BatchActionToolbar({
           <span className="text-body font-medium">{t(($) => $.batch.selected, { count })}</span>
           <button
             type="button"
+            aria-label={t(($) => $.operation_basis.clear_selection)}
             onClick={clear}
             className="rounded-xs p-0.5 hover:bg-accent transition-colors"
           >
@@ -259,7 +246,7 @@ export function BatchActionToolbar({
           variant="ghost"
           size="sm"
           disabled={loading}
-          onClick={() => setDeleteOpen(true)}
+          onClick={() => setReview({ intent: { key: crypto.randomUUID(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "delete" } })}
           className="text-destructive hover:text-destructive"
         >
           <Trash2 className="size-3.5 mr-1" />
@@ -270,30 +257,11 @@ export function BatchActionToolbar({
         )}
       </AnimatePresence>
 
-      {count > 0 && <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t(($) => $.batch.delete_dialog_title, { count })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(($) => $.batch.delete_dialog_desc, { count })}
-              <span className="mt-2 block text-caption text-muted-foreground">
-                {t(($) => $.batch.delete_dialog_warning)}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t(($) => $.batch.cancel)}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBatchDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t(($) => $.batch.delete)}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>}
+      {review && <IssueBatchOperationDialog key={review.intent.key} wsId={wsId} intent={review.intent} issues={issues} pending={submitting} result={review.result}
+        selectionChanged={review.intent.ids.length !== ids.length || review.intent.ids.some((id) => !ids.includes(id))}
+        onClose={() => { if (!inFlight.current) { command.current = null; setReview(null); } }}
+        onSubmit={(submittedIds, revisions) => { void submitIntent(review.intent, submittedIds, revisions); }} />}
+
     </>
   );
 }

@@ -1,11 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render as renderDOM, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { issueOperationPageFixture } from "../operation-basis-test-fixture";
 import type { Issue } from "@multica/core/types";
 import { BatchActionToolbar } from "./batch-action-toolbar";
 
 // Mutable selection state shared with the store mock below. The real toolbar
 // derives the pickers' current value from the issues it can resolve out of
 // this selection, so each test sets `selection.selectedIds` before rendering.
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("@multica/core/api", async (original) => ({ ...await original<typeof import("@multica/core/api")>(), api: {
+  getIssueOperationBasis: async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids), listIssueStatuses: async () => ({ statuses: [] }),
+} }));
+function render(ui: React.ReactNode) { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); return renderDOM(ui, { wrapper: ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> }); }
+
 const selection = vi.hoisted(() => ({
   selectedIds: new Set<string>(),
   clear: () => {},

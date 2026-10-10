@@ -747,6 +747,20 @@ export class TestApiClient {
     return response.json();
   }
 
+  async createOwnedPendingTextArtifact(nodeId: string, sourceIssueId: string, reviewerId: string): Promise<TestArtifactHeader> {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !this.createdCockpitNodeIds.includes(nodeId)
+      || !this.createdIssueIds.includes(sourceIssueId)) throw new Error("Artifact fixture must use this client's owned workspace, node and source issue");
+    const source = await this.getIssue(sourceIssueId);
+    if (source.workspace_id !== this.workspaceId) throw new Error("Artifact source fixture workspace mismatch");
+    const created = await this.authedFetch("/api/cockpit/artifacts", { method: "POST", body: JSON.stringify({ creation_key: crypto.randomUUID(), node_id: nodeId, source_issue_id: sourceIssueId, title: "Formal interface evidence", description: "", reviewer_id: reviewerId }) });
+    if (!created.ok) throw new Error(`Create owned artifact failed: ${created.status} ${await created.text()}`);
+    const artifact: TestArtifactHeader = await created.json();
+    if (artifact.workspace_id !== this.workspaceId || artifact.node_id !== nodeId || artifact.source_issue.id !== sourceIssueId || artifact.producer_issue.id !== sourceIssueId) throw new Error("Artifact fixture identity mismatch");
+    const submitted = await this.authedFetch(`/api/cockpit/artifacts/${encodeURIComponent(artifact.id)}/versions`, { method: "POST", body: JSON.stringify({ expected_revision: artifact.revision, submission_key: crypto.randomUUID(), producer_issue_id: sourceIssueId, payload: { kind: "text", content: "# Formal interface evidence\n\nA fixed human review fixture." } }) });
+    if (!submitted.ok) throw new Error(`Submit owned artifact failed: ${submitted.status} ${await submitted.text()}`);
+    return this.getCockpitArtifact(artifact.id);
+  }
+
   async renameOwnedArtifactForLayout(artifactId: string, title: string): Promise<void> {
     if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !title || title.length > 500) {
       throw new Error("Artifact layout fixture must belong to this client's created workspace");

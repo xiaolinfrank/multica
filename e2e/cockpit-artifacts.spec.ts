@@ -13,6 +13,18 @@ async function expectSeparatedNarrowHeader(page: Page) {
   expect(saved.x + saved.width).toBeLessThanOrEqual(report.x);
 }
 
+async function followFormalReview(page: Page, expectedTarget: RegExp, region: string) {
+  const entry = page.getByRole("link", { name: /^Open formal review · / }).first();
+  await expect(entry).toHaveAttribute("href", expectedTarget);
+  const opened = page.waitForEvent("popup");
+  await entry.click();
+  const review = await opened;
+  try {
+    await expect(review.getByRole("region", { name: region, exact: true })).toBeVisible();
+    await page.goto(review.url(), { waitUntil: "domcontentloaded" });
+  } finally { await review.close(); }
+}
+
 test("reviews fixed artifact revisions, accepts exact L3 evidence and follows meeting and issue references", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const api = new TestApiClient(); const run = `${Date.now().toString(36)}-${process.pid}`;
@@ -54,9 +66,8 @@ test("reviews fixed artifact revisions, accepts exact L3 evidence and follows me
     await expect(api.updateIssue(firstVersion.review_issue.id, { status: "done" })).rejects.toThrow(/^update issue failed: 409/);
     expect((await api.getCockpitArtifact(artifactId)).current_version?.decision).toBe("pending");
     await page.goto(`/${workspace.slug}/issues/${firstVersion.review_issue.id}`, { waitUntil: "domcontentloaded" });
-    const formalEntry = page.getByRole("link", { name: "Open formal review", exact: true }).first();
-    await expect(formalEntry).toHaveAttribute("href", new RegExp(`artifact_version=${firstVersion.id}`));
-    await formalEntry.click(); await expect(reader.getByRole("heading", { name: "Interface report v1", exact: true })).toBeVisible();
+    await followFormalReview(page, new RegExp(`artifact_version=${firstVersion.id}`), "Fixed version content");
+    await expect(reader.getByRole("heading", { name: "Interface report v1", exact: true })).toBeVisible();
     await reader.getByRole("combobox", { name: "Review decision", exact: true }).click();
     await page.getByRole("option", { name: "Changes requested", exact: true }).click();
     await reader.getByRole("textbox", { name: "Review feedback", exact: true }).fill("Correct the limit and resubmit a fixed revision.");
@@ -98,8 +109,8 @@ test("reviews fixed artifact revisions, accepts exact L3 evidence and follows me
     await expect(api.updateIssue(acceptance.current_request.review_issue.id, { status: "done" })).rejects.toThrow(/^update issue failed: 409/);
     expect((await api.getCockpitAcceptance(leaf.id)).current_request?.decision).toBe("pending");
     await page.goto(`/${workspace.slug}/issues/${acceptance.current_request.review_issue.id}`, { waitUntil: "domcontentloaded" });
-    await expect(formalEntry).toHaveAttribute("href", new RegExp(`acceptance=${acceptance.current_request.id}`));
-    await formalEntry.click(); await expect(packet).toBeVisible();
+    await followFormalReview(page, new RegExp(`acceptance=${acceptance.current_request.id}`), "Fixed acceptance packet");
+    await expect(packet).toBeVisible();
     await packet.getByRole("textbox", { name: "Review feedback", exact: true }).fill("Fixed evidence meets the recorded criterion. " + "The acceptance applies to this exact definition and these approved versions, not future edits. ".repeat(12));
     await packet.getByRole("button", { name: "Submit acceptance decision", exact: true }).click();
     await expect.poll(async () => (await api.getCockpitAcceptance(leaf.id)).last_approved_request?.id).toBe(acceptance.current_request.id);

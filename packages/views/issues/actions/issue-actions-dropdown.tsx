@@ -2,6 +2,9 @@
 
 import { useState, type ReactElement } from "react";
 import type { Issue } from "@multica/core/types";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
+import { IssueOperationRestriction } from "../components/issue-operation-restriction";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -30,8 +33,12 @@ export function IssueActionsDropdown({
   align = "end",
   onDeletedFallbackPath,
 }: IssueActionsDropdownProps) {
-  const actions = useIssueActions(issue);
+  const wsId = useWorkspaceId();
+  const [open, setOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const policy = useIssueOperationBasis(wsId, open || assigneeOpen ? [issue.id] : []);
+  const observation = { basis: policy.byIssue.get(issue.id), pending: policy.pendingIds.has(issue.id), error: policy.errorIds.has(issue.id), retry: () => { void policy.refetch(); } };
+  const actions = useIssueActions(issue, observation);
 
   // The outer `relative inline-flex` is the picker's anchor box: the
   // absolute, pointer-events-none span inside `triggerRender` fills it, so
@@ -39,7 +46,7 @@ export function IssueActionsDropdown({
   // without us having to thread a ref through Base UI's anchor API.
   return (
     <span className="relative inline-flex">
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger render={trigger} />
         <DropdownMenuContent align={align} className="w-auto">
           <IssueActionsMenuItems
@@ -48,6 +55,7 @@ export function IssueActionsDropdown({
             primitives={dropdownPrimitives}
             onOpenAssignee={() => setAssigneeOpen(true)}
             onDeletedFallbackPath={onDeletedFallbackPath}
+            observation={observation}
           />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -61,6 +69,8 @@ export function IssueActionsDropdown({
           onUpdate={actions.updateField}
           open={assigneeOpen}
           onOpenChange={setAssigneeOpen}
+          readOnly={!issueOperationAllowed(observation.basis, "assignee")}
+          restriction={<IssueOperationRestriction observation={observation} operation="assignee" />}
           triggerRender={
             <span
               aria-hidden

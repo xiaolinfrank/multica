@@ -21,7 +21,8 @@ import { useLocale, useT, useTimeAgo } from "../../i18n";
 import { ProjectIcon } from "../../projects/components/project-icon";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { PriorityIcon } from "./priority-icon";
-import { PriorityPicker, AssigneePicker, StartDatePicker, DueDatePicker } from "./pickers";
+import { PriorityPicker, StartDatePicker, DueDatePicker } from "./pickers";
+import { IssueAssigneeControl } from "./issue-assignee-control";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyIdFromViewKey } from "@multica/core/issues/stores/view-store";
 import { ProgressRing } from "./progress-ring";
@@ -193,9 +194,8 @@ export const BoardCardContent = memo(function BoardCardContent({
   const assigneeNode = showAssigneeSection ? (
     canEdit ? (
       <PickerWrapper className={assigneeContainerClass}>
-        <AssigneePicker
-          assigneeType={issue.assignee_type}
-          assigneeId={issue.assignee_id}
+        <IssueAssigneeControl
+          issue={issue}
           onUpdate={handleUpdate}
           trigger={assigneeInner}
         />

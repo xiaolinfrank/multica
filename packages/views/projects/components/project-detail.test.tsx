@@ -1,6 +1,7 @@
+import { containerOperationFixture } from "../../issues/container-operation-test-fixture";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project } from "@multica/core/types";
 import { useModalStore } from "@multica/core/modals";
@@ -11,6 +12,7 @@ import { ProjectDetail } from "./project-detail";
 
 const mocks = vi.hoisted(() => ({
   role: "admin",
+  operationBlocked: false,
   modules: { current: [] as Array<Record<string, unknown>> },
   issueSurface: { current: null as Record<string, unknown> | null },
   copyText: vi.fn(),
@@ -26,9 +28,11 @@ vi.mock("@multica/ui/lib/clipboard", () => ({
   copyText: mocks.copyText,
 }));
 
-vi.mock("@tanstack/react-query", () => ({
+vi.mock("@tanstack/react-query", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-query")>()),
   useQuery: (options: { queryKey?: readonly unknown[] }) => {
     switch (options.queryKey?.[0]) {
+      case "issue-operation-basis": return { data: containerOperationFixture(String(options.queryKey[1]), "project", String(options.queryKey[4]), mocks.operationBlocked ? { delete: { state: "blocked", reason_codes: ["retained_artifact_scope"] } } : {}), isPending: false, isError: false, refetch: vi.fn() };
       case "project-detail":
         return { data: PROJECT, isLoading: false };
       case "members":
@@ -329,6 +333,7 @@ function renderProjectDetail(search = "") {
 
 beforeEach(() => {
   mocks.role = "admin";
+  mocks.operationBlocked = false;
   mocks.copyText.mockReset().mockResolvedValue(true);
   mocks.deleteProject.mockReset();
   mocks.updateProject.mockReset();
@@ -626,4 +631,20 @@ describe("ProjectDetail module creation", () => {
     expect(useModalStore.getState().modal).toBe("create-module");
     expect(useModalStore.getState().data).toEqual({ projectId: PROJECT.id });
   });
+});
+
+it("shows the retained-project reason and prevents the delete command", async () => {
+  mocks.operationBlocked = true; renderProjectDetail(); await userEvent.click(screen.getByRole("button", { name: "Delete project" }));
+  expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled(); expect(mocks.deleteProject).not.toHaveBeenCalled();
+});
+
+it("does not navigate or close the new context when an old project delete returns after route ABA", async () => {
+  const adapter: NavigationAdapter = { push: mocks.push, replace: vi.fn(), back: vi.fn(), pathname: "/test-workspace/projects/project-1", searchParams: new URLSearchParams(), hash: "", getShareableUrl: mocks.getShareableUrl };
+  const show = (pathname: string) => <NavigationProvider value={{ ...adapter, pathname }}><ProjectDetail projectId={PROJECT.id} /></NavigationProvider>;
+  const view = renderWithI18n(show(adapter.pathname)); const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Delete project" })); await user.click(screen.getByRole("button", { name: "Delete" }));
+  const callbacks = mocks.deleteProject.mock.calls[0]![1] as { onSuccess: () => void; onSettled: () => void };
+  view.rerender(show("/test-workspace/projects/another-project")); view.rerender(show(adapter.pathname));
+  await act(async () => { callbacks.onSuccess(); callbacks.onSettled(); });
+  expect(mocks.push).not.toHaveBeenCalled(); expect(mocks.toastSuccess).not.toHaveBeenCalled(); expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 });

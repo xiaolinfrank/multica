@@ -7,12 +7,13 @@ import { useNavigation } from "../../navigation";
 export function useCockpitCommandContext(identity: string) {
   const navigation = useNavigation();
   const signature = JSON.stringify([identity, navigation.pathname, navigation.searchParams.toString()]);
-  const current = useRef(signature);
-  current.current = signature;
+  const current = useRef({ signature, generation: 0 });
+  if (current.current.signature !== signature) current.current = { signature, generation: current.current.generation + 1 };
+  const generation = current.current.generation;
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   return () => {
-    const captured = signature;
-    return () => mounted.current && current.current === captured;
+    const captured = generation;
+    return () => mounted.current && current.current.generation === captured;
   };
 }

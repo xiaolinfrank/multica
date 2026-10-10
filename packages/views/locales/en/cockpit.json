@@ -469,7 +469,7 @@
   },
   "panel": {
     "close": "Close panel",
-    "delete_node": "Delete this item",
+    "delete_node": "Delete plan item",
     "delete_branch": "Delete this branch"
   },
   "empty": {

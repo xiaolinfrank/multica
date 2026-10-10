@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AgentTask, Issue } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCommon from "../../../locales/en/common.json";
+import { issueOperationPageFixture } from "../../operation-basis-test-fixture";
 import enIssues from "../../../locales/en/issues.json";
 
 const TEST_RESOURCES = { en: { common: enCommon, issues: enIssues } };
@@ -95,6 +96,7 @@ const { openInNewTabMock, getShareableUrlMock, navState } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../navigation", () => ({
+  AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a>,
   useNavigation: () => ({
     push: vi.fn(),
     pathname: "/test/issues/issue-1",
@@ -118,6 +120,7 @@ vi.mock("sonner", () => ({
 const { apiMocks, copyTextMock } = vi.hoisted(() => ({
   apiMocks: {
     listTasksByIssue: vi.fn(),
+    getIssueOperationBasis: vi.fn(),
   },
   copyTextMock: vi.fn(),
 }));
@@ -176,6 +179,7 @@ function wrap(ui: React.ReactNode) {
 }
 
 beforeEach(() => {
+  apiMocks.getIssueOperationBasis.mockImplementation(async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids));
   mockOpenModal.mockReset();
   openInNewTabMock.mockReset();
   getShareableUrlMock.mockClear();

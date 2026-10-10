@@ -12,6 +12,9 @@ import {
   type ReactNode,
 } from "react";
 import type { Issue } from "@multica/core/types";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
+import { IssueOperationRestriction } from "../components/issue-operation-restriction";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -106,8 +109,11 @@ function IssueContextMenuSingleton({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const actions = useIssueActions(issue);
+  const wsId = useWorkspaceId();
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const policy = useIssueOperationBasis(wsId, open || assigneeOpen ? [issue.id] : []);
+  const observation = { basis: policy.byIssue.get(issue.id), pending: policy.pendingIds.has(issue.id), error: policy.errorIds.has(issue.id), retry: () => { void policy.refetch(); } };
+  const actions = useIssueActions(issue, observation);
 
   // Point-sized virtual anchor at the right-click position — replaces the
   // cursor anchor Base UI's own trigger would have registered.
@@ -133,6 +139,7 @@ function IssueContextMenuSingleton({
             actions={actions}
             primitives={contextPrimitives}
             onOpenAssignee={() => setAssigneeOpen(true)}
+            observation={observation}
           />
         </ContextMenuContent>
       </ContextMenu>
@@ -146,6 +153,8 @@ function IssueContextMenuSingleton({
           onUpdate={actions.updateField}
           open={assigneeOpen}
           onOpenChange={setAssigneeOpen}
+          readOnly={!issueOperationAllowed(observation.basis, "assignee")}
+          restriction={<IssueOperationRestriction observation={observation} operation="assignee" />}
           triggerRender={
             <span
               aria-hidden

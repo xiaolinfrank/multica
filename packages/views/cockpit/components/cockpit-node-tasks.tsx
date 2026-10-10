@@ -10,6 +10,8 @@ import {
   cockpitObjectPath, cockpitScope, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
+import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
+import { IssueOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
@@ -75,6 +77,9 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
   const [observed, setObserved] = useState<{ issueId: string; revision: number } | null>(null);
   const [error, setError] = useState("");
   const primary = useQuery(cockpitPrimaryNodeOptions(wsId, open && !reference ? selected?.id ?? "" : ""));
+  const policy = useIssueOperationBasis(wsId, open && !reference && selected ? [selected.id] : []);
+  const observation = { basis: selected ? policy.byIssue.get(selected.id) : undefined, pending: policy.isPending, error: policy.isError, retry: () => { void policy.refetch(); } };
+  const primaryAllowed = reference || issueOperationAllowed(observation.basis, "primary");
   const assign = useSetCockpitPrimaryNode(wsId);
   const link = useAppendCockpitNodeIssue(wsId);
   const working = assign.isPending || link.isPending;
@@ -91,13 +96,14 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
       <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setObserved(null); setError(""); }} disabled={working} />
       {selected && !reference && primary.isPending && <Spinner />}
       {selected && !reference && (primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => void primary.refetch()} />}
+      {selected && !reference && <IssueOperationRestriction observation={observation} operation="primary" />}
       {selected && primary.data && !valid && <p role="alert" className="text-caption text-destructive">{t(($) => $.task_flow.scope_mismatch)}</p>}
       {moving && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.move_primary, { from: primary.data?.node_name || primary.data?.node_code || primary.data?.node_id, to: node.name })}</p>}
       {stale && <p role="alert" className="text-caption text-destructive">{t(($) => $.task_flow.primary_changed)}</p>}
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={working} />}>{t(($) => $.binding.cancel)}</DialogClose>
-        <Button type="button" disabled={disabled || working || stale || (!reference && (!observed || primary.isFetching)) || !valid || (!reference && primary.data?.node_id === node.id)} aria-busy={working}
-          onClick={() => { if (!selected) return;
+        <Button type="button" disabled={disabled || working || stale || !primaryAllowed || (!reference && (!observed || primary.isFetching)) || !valid || (!reference && primary.data?.node_id === node.id)} aria-busy={working}
+          onClick={() => { if (!selected || !primaryAllowed || working || disabled || stale) return;
             const work = reference ? link.mutateAsync({ nodeId: node.id, issueId: selected.id }) : primary.data && observed ? assign.mutateAsync({ issueId: selected.id, nodeId: node.id, revision: observed.revision }) : Promise.reject(new CockpitUnconfirmedWriteError());
             void work.then(() => setOpen(false)).catch((cause) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))); }}>
           {working && <Spinner />}{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.confirm_primary)}</Button></DialogFooter>

@@ -469,7 +469,7 @@
   },
   "panel": {
     "close": "关闭详情",
-    "delete_node": "删除该任务",
+    "delete_node": "删除计划项",
     "delete_branch": "删除该分支"
   },
   "empty": {

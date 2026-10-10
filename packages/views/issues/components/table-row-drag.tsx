@@ -108,14 +108,16 @@ export function DraggableIssueRow({
   data,
   children,
   ref,
+  disabled = false,
   ...rest
 }: {
   id: string;
+  disabled?: boolean;
   data: IssueRowDragData;
   children: React.ReactElement;
   ref?: React.Ref<HTMLTableRowElement>;
 } & React.ComponentProps<"tr">) {
-  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({ id, data });
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({ id, data, disabled });
   // Every row in a group is a target for that group, so the pointer does not
   // have to find a header that may be far above the rows it is over. The id is
   // the row's, not the group's — a droppable id is unique per context, and the

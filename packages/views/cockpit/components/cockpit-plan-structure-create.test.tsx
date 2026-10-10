@@ -6,19 +6,22 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api, ApiError } from "@multica/core/api";
 import { CockpitNodeSchema, CockpitBoardSchema } from "@multica/core/api/schemas";
 import { useCockpitPlanNodeDraftStore } from "@multica/core/cockpit";
+import { containerOperationFixture } from "../../issues/container-operation-test-fixture";
+import enIssues from "../../locales/en/issues.json";
 import enCockpit from "../../locales/en/cockpit.json";
 import { cockpitNodeDetailFixture } from "./cockpit-read-test-fixture";
 import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
-vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitContext: vi.fn(), searchCockpitScopes: vi.fn(), getCockpitNodeCodePreview: vi.fn(), getCockpitNodeDetail: vi.fn(), getCockpitNodeIndex: vi.fn(), searchCockpitScopeNodes: vi.fn(), createCockpitNode: vi.fn() } }));
+vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getContainerOperationBasis: vi.fn(), getCockpitContext: vi.fn(), searchCockpitScopes: vi.fn(), getCockpitNodeCodePreview: vi.fn(), getCockpitNodeDetail: vi.fn(), getCockpitNodeIndex: vi.fn(), searchCockpitScopeNodes: vi.fn(), createCockpitNode: vi.fn() } }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}` }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("tab=plan") }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
 const scope = { projectId: null, moduleId: null };
 const created = CockpitNodeSchema.parse({ id: "new-row", code: "L1-01", name: "Project execution", parent_id: null, project_id: "project-1", module_id: null });
 function setup(defaultKind: "project" | "module" | "task" = "project") { const onCreated = vi.fn(); const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>{children}</I18nProvider></QueryClientProvider>;
+  const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}>{children}</I18nProvider></QueryClientProvider>;
   return { ...render(<CockpitPlanStructureCreate wsId="ws-1" scope={scope} defaultKind={defaultKind} onCreated={onCreated} />, { wrapper }), onCreated };
 }
-beforeEach(() => { vi.clearAllMocks(); useCockpitPlanNodeDraftStore.getState().clearDraft();
+beforeEach(() => {
+  vi.mocked(api.getContainerOperationBasis).mockImplementation(async (wsId, kind, id) => containerOperationFixture(wsId, kind, id)); vi.clearAllMocks(); useCockpitPlanNodeDraftStore.getState().clearDraft();
   vi.mocked(api.getCockpitContext).mockImplementation(async (_ws, input) => ({ workspace_id: "ws-1", scope: { project_id: input.projectId, module_id: input.moduleId, project_title: "Existing project", module_title: "" }, cockpit: null, actor: { user_id: "person", role: "member", is_human: true }, has_stable_bindings: false, has_meeting_workflows: false }));
   vi.mocked(api.searchCockpitScopes).mockResolvedValue({ workspace_id: "ws-1", project_id: null, items: [{ id: "project-1", title: "Existing project", project_id: null }], total: 1, next_cursor: null });
   vi.mocked(api.getCockpitNodeCodePreview).mockResolvedValue({ workspace_id: "ws-1", parent_id: null, code: "L1-01" });
@@ -85,3 +88,12 @@ describe("plan creation parent contract", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled(); expect(screen.queryByRole("link", { name: enCockpit.plan_structure.open_existing })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Retry" })); await waitFor(() => expect(api.createCockpitNode).toHaveBeenCalledTimes(2)); expect(vi.mocked(api.createCockpitNode).mock.calls[1]).toEqual(vi.mocked(api.createCockpitNode).mock.calls[0]);
   });
+
+it("does not turn a retained execution leaf into a group, while preserving the typed plan name", async () => {
+  mappedParent(); vi.mocked(api.getContainerOperationBasis).mockImplementation(async (wsId, kind, id) => containerOperationFixture(wsId, kind, id, { add_child: { state: "blocked", reason_codes: ["retained_execution_leaf"] } }));
+  setup("task"); const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "Add plan item" }));
+  await user.type(screen.getByRole("textbox", { name: "Name" }), "Keep this planned item");
+  await user.click(screen.getByRole("button", { name: "Parent plan item" })); await user.click(await screen.findByRole("button", { name: /Mapped parent/ }));
+  expect(await screen.findByText(enIssues.operation_basis.execution_leaf)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Create plan item" })).toBeDisabled(); expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Keep this planned item"); expect(api.createCockpitNode).not.toHaveBeenCalled();
+});

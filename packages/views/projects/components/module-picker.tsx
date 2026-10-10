@@ -27,6 +27,8 @@ export function ModulePicker({
   open: controlledOpen,
   onOpenChange,
   disabled = false,
+  readOnly = false,
+  restriction,
 }: {
   moduleId: string | null;
   /** The project whose modules are offered. A module belongs to exactly
@@ -40,6 +42,8 @@ export function ModulePicker({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
+  readOnly?: boolean;
+  restriction?: React.ReactNode;
 }) {
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
@@ -53,7 +57,7 @@ export function ModulePicker({
   // Same controlled-open normalization as the project picker: Base UI
   // latches a controlled open, and a locked picker can never be open.
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const locked = disabled || projectId === null;
+  const locked = disabled || (projectId === null && !readOnly);
   const open = locked ? false : controlledOpen ?? internalOpen;
   const setOpen = locked ? () => {} : onOpenChange ?? setInternalOpen;
 
@@ -83,7 +87,9 @@ export function ModulePicker({
         onOpenChange={setOpen}
         width="w-52"
         align={align}
-        searchable
+        searchable={!readOnly}
+        header={readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
+        footer={!readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
         searchPlaceholder={t(($) => $.module.picker.search_placeholder)}
         onSearchChange={setFilter}
         triggerRender={resolvedTriggerRender}
@@ -108,7 +114,7 @@ export function ModulePicker({
           )
         }
       >
-        {/* "No module" always leads the list — the only clear entry,
+        {!readOnly && <>{/* "No module" always leads the list — the only clear entry,
             mirroring the no-project row in the project picker. */}
         <PickerItem
           emptyValue
@@ -169,6 +175,7 @@ export function ModulePicker({
             </span>
           </PickerItem>
         )}
+        </>}
       </PropertyPicker>
     </div>
   );

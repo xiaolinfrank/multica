@@ -162,7 +162,7 @@ function AssigneePickerImpl({
       : t(($) => $.pickers.assignee.trigger_unassigned);
 
   if (readOnly) return <PropertyPicker open={open} onOpenChange={setOpen} align={align} width="w-64" triggerRender={triggerRender}
-    trigger={customTrigger ?? <><ActorAvatar actorType={assigneeType ?? "member"} actorId={assigneeId ?? ""} size="sm" /><span className="truncate">{triggerLabel}</span></>}
+    trigger={customTrigger ?? (assigneeType && assigneeId ? <><ActorAvatar actorType={assigneeType} actorId={assigneeId} size="sm" /><span className="truncate">{triggerLabel}</span></> : <span className="text-muted-foreground">{triggerLabel}</span>)}
     header={<div className="p-2 text-caption">{restriction}</div>}><></></PropertyPicker>;
 
   return (

@@ -6,6 +6,8 @@ import { buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitNod
   cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNode,
   useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment, useSetCockpitNodeBinding,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { useModalStore } from "@multica/core/modals";
 import type { Issue } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
@@ -34,6 +36,8 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const stillCurrent = captureContext();
   const close = () => { if (stillCurrent()) onClose(); };
   const query = useQuery(cockpitNodeDetailOptions(wsId, nodeId, scope)); const detail = query.data;
+  const operation = useQuery(containerOperationBasisOptions(wsId, "node", nodeId));
+  const deleteAllowed = !operation.isError && containerOperationAllowed(operation.data, "delete");
   const paymentKey = cockpitRelationViewKey(wsId, "payments", nodeId); const meetingKey = cockpitRelationViewKey(wsId, "node-meetings", nodeId);
   const paymentCursors = useCockpitScopeViewStore((state) => state.relations[paymentKey] ?? EMPTY_COCKPIT_RELATION_PAGE);
   const meetingCursors = useCockpitScopeViewStore((state) => state.relations[meetingKey] ?? EMPTY_COCKPIT_RELATION_PAGE);
@@ -85,7 +89,8 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
     notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: section, planView }, { projectId: binding.project_id, moduleId: binding.module_id })} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>
       : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} /> : undefined}
     statusSuggestions={[node.status].filter(Boolean)} execStatusSuggestions={[node.exec_status].filter(Boolean)} budgetCategorySuggestions={[node.budget_category].filter(Boolean)} ownerSuggestions={[node.owner].filter(Boolean)} vendorSuggestions={[node.vendor].filter(Boolean)}
-    readOnly={readonly} onPatch={(patch) => updateNode.mutate({ id: nodeId, patch }, { onError: fail })} onDelete={() => deleteNode.mutateAsync(nodeId)}
+    readOnly={readonly} onPatch={(patch) => updateNode.mutate({ id: nodeId, patch }, { onError: fail })} onDelete={() => { if (!deleteAllowed) return Promise.reject(new Error(t(($) => $.errors.save_failed))); return deleteNode.mutateAsync(nodeId); }}
+    deleteAllowed={deleteAllowed} deleteRestriction={<ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="delete" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
     deleteConfirmationDescription={detail.children_count > 0 ? t(($) => $.confirmation.delete_branch_description, { label: node.name || node.code }) : t(($) => $.confirmation.delete_description, { label: node.name || node.code })}
     onClose={close} onOpenMeeting={onOpenMeeting}
     onCreatePayment={() => createPayment.mutate({ nodeId, body: { label: t(($) => $.payment.new_label, { index: detail.payments.total + 1 }), amount: 0, position: detail.payments.total } }, { onError: fail })}

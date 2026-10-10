@@ -29,7 +29,10 @@ import {
   myRelationForViewVariant,
   type IssueScope,
 } from "@multica/core/issues/surface/scope";
-import type { Issue } from "@multica/core/types";
+import type { Issue, IssueOperationName, UpdateIssueRequest } from "@multica/core/types";
+import { issueUpdateOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
+import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
+import { IssueOperationRestriction } from "../components/issue-operation-restriction";
 import { BoardView } from "../components/board-view";
 import { BatchActionToolbar } from "../components/batch-action-toolbar";
 import { GanttView } from "../components/gantt-view";
@@ -257,6 +260,15 @@ function IssueSurfaceContent({
         : controller.swimlaneIssues,
     [clientFilter, controller.swimlaneIssues],
   );
+  const moveIssues = controller.viewMode === "table" ? [] : controller.viewMode === "swimlane" ? swimlaneIssues : issues;
+  const movePolicy = useIssueOperationBasis(workspaceId, moveIssues.map((issue) => issue.id));
+  const { categoryOf } = useIssueStatuses(workspaceId);
+  const { t: issueT } = useT("issues");
+  const [blockedMove, setBlockedMove] = useState<{ id: string; operation: IssueOperationName } | null>(null);
+  const canMoveIssue = useCallback((id: string, updates: Partial<UpdateIssueRequest>) => issueUpdateOperationAllowed(movePolicy.byIssue.get(id), updates, categoryOf), [movePolicy.byIssue, categoryOf]);
+  const onMoveBlocked = useCallback((id: string, updates: Partial<UpdateIssueRequest>) => {
+    setBlockedMove({ id, operation: updates.status !== undefined ? "status" : updates.assignee_type !== undefined || updates.assignee_id !== undefined ? "assignee" : updates.parent_issue_id !== undefined ? "parent" : "scope" });
+  }, []);
   const renderContext = useMemo(
     () => ({ controller, issues }),
     [controller, issues],
@@ -323,6 +335,10 @@ function IssueSurfaceContent({
             loading and empty states too, so a view switch that briefly shows
             a skeleton keeps the peek open. */}
         <IssuePeekHost>
+        {blockedMove && <div role="alert" className="flex shrink-0 items-start gap-3 border-b p-3">
+          <div className="min-w-0 flex-1"><IssueOperationRestriction operation={blockedMove.operation} observation={{ basis: movePolicy.byIssue.get(blockedMove.id), pending: movePolicy.pendingIds.has(blockedMove.id), error: movePolicy.errorIds.has(blockedMove.id), retry: () => { void movePolicy.refetch(); } }} /></div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setBlockedMove(null)}>{issueT(($) => $.operation_basis.dismiss)}</Button>
+        </div>}
         {/* A failed status catalog precedes loading/empty/content on purpose.
             Row fetching is suspended while it is down (a custom status filter
             cannot be routed without it), so every branch below would render an
@@ -372,6 +388,8 @@ function IssueSurfaceContent({
                 visibleStatuses={controller.visibleStatuses}
                 hiddenStatuses={controller.hiddenStatuses}
                 onMoveIssue={controller.moveIssue}
+                canMoveIssue={canMoveIssue}
+                onMoveBlocked={onMoveBlocked}
                 childProgressMap={controller.childProgressMap}
                 projectMap={controller.projectMap}
                 moduleMap={controller.moduleMap}
@@ -390,6 +408,8 @@ function IssueSurfaceContent({
                 projectMap={controller.projectMap}
                 projectId={controller.projectId}
                 onMoveIssue={controller.moveIssue}
+                canMoveIssue={canMoveIssue}
+                onMoveBlocked={onMoveBlocked}
                 onCreateIssue={openCreateIssue}
                 statusPagination={controller.statusPagination!}
               />
@@ -417,6 +437,8 @@ function IssueSurfaceContent({
                 visibleStatuses={controller.visibleStatuses}
                 hiddenStatuses={controller.hiddenStatuses}
                 onMoveIssue={controller.moveIssue}
+                canMoveIssue={canMoveIssue}
+                onMoveBlocked={onMoveBlocked}
                 childProgressMap={controller.childProgressMap}
                 projectMap={controller.projectMap}
                 moduleMap={controller.moduleMap}

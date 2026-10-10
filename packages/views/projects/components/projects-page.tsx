@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -18,8 +18,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
+import { useCockpitCommandContext } from "../../cockpit/components/use-cockpit-command-context";
 import {
   projectListOptions,
   useUpdateProject,
@@ -238,6 +240,18 @@ function ProjectRowActions({
   const deletePin = useDeletePin();
   const deleteProject = useDeleteProject();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const wsId = useWorkspaceId();
+  const deleteBasis = useQuery({ ...containerOperationBasisOptions(wsId, "project", project.id), enabled: deleteOpen });
+  const deleteAllowed = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
+  const deleteLock = useRef(false); const [deleteError, setDeleteError] = useState("");
+  const captureDelete = useCockpitCommandContext(JSON.stringify([wsId, project.id, deleteOpen]));
+  const remove = async () => {
+    if (deleteLock.current || !deleteAllowed) return;
+    const isCurrent = captureDelete(); deleteLock.current = true; setDeleteError("");
+    try { await deleteProject.mutateAsync(project.id); if (isCurrent()) setDeleteOpen(false); }
+    catch (cause) { if (isCurrent()) { setDeleteError(cause instanceof Error ? cause.message : String(cause)); void deleteBasis.refetch(); } }
+    finally { deleteLock.current = false; }
+  };
 
   const togglePin = () => {
     if (pinned) deletePin.mutate({ itemType: "project", itemId: project.id });
@@ -295,7 +309,7 @@ function ProjectRowActions({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!deleteLock.current) { setDeleteOpen(open); if (open) setDeleteError(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t(($) => $.delete_dialog.title)}</DialogTitle>
@@ -303,12 +317,14 @@ function ProjectRowActions({
               {t(($) => $.delete_dialog.description)}
             </DialogDescription>
           </DialogHeader>
+          <ContainerOperationRestriction basis={deleteBasis.isError ? undefined : deleteBasis.data} operation="delete" pending={deleteBasis.isPending} error={deleteBasis.isError} retry={() => void deleteBasis.refetch()} />
+          {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setDeleteOpen(false)}
+              disabled={deleteProject.isPending} onClick={() => setDeleteOpen(false)}
             >
               {t(($) => $.delete_dialog.cancel)}
             </Button>
@@ -316,15 +332,8 @@ function ProjectRowActions({
               type="button"
               variant="destructive"
               size="sm"
-              onClick={() => {
-                deleteProject.mutate(project.id, {
-                  onError: (err) =>
-                    toast.error(
-                      err instanceof Error ? err.message : String(err),
-                    ),
-                });
-                setDeleteOpen(false);
-              }}
+              disabled={!deleteAllowed || deleteProject.isPending}
+              onClick={() => void remove()}
             >
               {t(($) => $.delete_dialog.confirm)}
             </Button>
@@ -694,6 +703,29 @@ function countActiveFilters(f: ProjectListFilters): number {
   return c;
 }
 
+function ProjectBatchDeleteDialog({ rows, onClose, onApplied }: {
+  rows: Project[]; onClose: () => void; onApplied: (ids: string[]) => void;
+}) {
+  const { t } = useT("projects"); const wsId = useWorkspaceId();
+  const queries = useQueries({ queries: rows.map((row) => containerOperationBasisOptions(wsId, "project", row.id)) });
+  const deletion = useDeleteProject(); const lock = useRef(false); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const capture = useCockpitCommandContext(JSON.stringify([wsId, "project-batch-delete"]));
+  const allowed = rows.length > 0 && queries.every((query) => !query.isError && containerOperationAllowed(query.data, "delete"));
+  const submit = async () => {
+    if (lock.current || !allowed) return;
+    lock.current = true; setBusy(true); setError(""); const isCurrent = capture(); const selected = rows.map((row) => row.id);
+    try { for (const id of selected) { await deletion.mutateAsync(id); if (isCurrent()) onApplied([id]); } if (isCurrent()) onClose(); }
+    catch (cause) { if (isCurrent()) { setError(cause instanceof Error ? cause.message : String(cause)); void Promise.all(queries.map((query) => query.refetch())); } }
+    finally { lock.current = false; if (isCurrent()) setBusy(false); }
+  };
+  return <Dialog open onOpenChange={(open) => { if (!open && !lock.current) onClose(); }}><DialogContent className="sm:max-w-md">
+    <DialogHeader><DialogTitle>{t(($) => $.delete_dialog.title)}</DialogTitle><DialogDescription>{t(($) => $.delete_dialog.description)}</DialogDescription></DialogHeader>
+    <div className="max-h-[45vh] space-y-3 overflow-y-auto">{rows.map((row, index) => { const query = queries[index]!; return <section key={row.id} className="space-y-1"><p className="break-words text-caption font-medium">{row.title}</p><ContainerOperationRestriction basis={query.isError ? undefined : query.data} operation="delete" pending={query.isPending} error={query.isError} retry={() => void query.refetch()} /></section>; })}</div>
+    {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+    <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={onClose}>{t(($) => $.delete_dialog.cancel)}</Button><Button type="button" variant="destructive" disabled={busy || !allowed} aria-busy={busy} onClick={() => void submit()}>{t(($) => $.delete_dialog.confirm)}</Button></DialogFooter>
+  </DialogContent></Dialog>;
+}
+
 // Batch toolbar — page-anchored (not viewport). Pin all selected (any
 // member) + Delete (workspace admin). Mirrors the other lists.
 function ProjectBatchToolbar({
@@ -701,15 +733,16 @@ function ProjectBatchToolbar({
   pinnedIds,
   canDelete,
   onClear,
+  onApplied,
 }: {
   rows: Project[];
   pinnedIds: Set<string>;
   canDelete: boolean;
   onClear: () => void;
+  onApplied: (ids: string[]) => void;
 }) {
   const { t } = useT("projects");
   const createPin = useCreatePin();
-  const deleteProject = useDeleteProject();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (rows.length === 0) return null;
@@ -761,31 +794,7 @@ function ProjectBatchToolbar({
         )}
       </div>
 
-      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t(($) => $.delete_dialog.title)}</DialogTitle>
-            <DialogDescription>{t(($) => $.delete_dialog.description)}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
-              {t(($) => $.delete_dialog.cancel)}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                for (const p of rows) deleteProject.mutate(p.id);
-                setConfirmDelete(false);
-                onClear();
-              }}
-            >
-              {t(($) => $.delete_dialog.confirm)}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {confirmDelete && <ProjectBatchDeleteDialog rows={rows} onClose={() => setConfirmDelete(false)} onApplied={onApplied} />}
     </>
   );
 }
@@ -1288,6 +1297,7 @@ export function ProjectsPage() {
             pinnedIds={pinnedProjectIds}
             canDelete={isWorkspaceAdmin}
             onClear={() => setSelectedIds(new Set())}
+            onApplied={(ids) => setSelectedIds((previous) => new Set([...previous].filter((id) => !ids.includes(id))))}
           />
         </>
       )}

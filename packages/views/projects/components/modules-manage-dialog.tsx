@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FolderCog, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -24,10 +24,14 @@ import {
   useReorderModules,
   useUpdateModule,
 } from "@multica/core/modules/mutations";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
+import { useCockpitCommandContext } from "../../cockpit/components/use-cockpit-command-context";
 import { useModalStore } from "@multica/core/modals";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { Module } from "@multica/core/types";
 import { toast } from "sonner";
+import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +40,6 @@ import {
 } from "@multica/ui/components/ui/dialog";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -163,6 +166,10 @@ export function ModulesManageDialog({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Module | null>(null);
+  const deleteBasis = useQuery({ ...containerOperationBasisOptions(wsId, "module", deleteTarget?.id ?? ""), enabled: Boolean(open && deleteTarget) });
+  const canDelete = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
+  const deleteLock = useRef(false); const [deleteError, setDeleteError] = useState("");
+  const captureDelete = useCockpitCommandContext(JSON.stringify([wsId, projectId, deleteTarget?.id, open]));
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
@@ -213,15 +220,18 @@ export function ModulesManageDialog({
   };
 
   const handleDelete = () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDelete || deleteLock.current) return;
+    const isCurrent = captureDelete(); deleteLock.current = true; setDeleteError("");
     deleteModule.mutate(deleteTarget.id, {
       onSuccess: () => {
+        if (!isCurrent()) return;
         toast.success(t(($) => $.module.toast_deleted));
         // A deleted module id still in ?module= is healed by the project
         // detail's dead-id fallback, no URL work needed here.
         setDeleteTarget(null);
       },
-      onError: () => toast.error(t(($) => $.module.toast_delete_failed)),
+      onError: () => { if (isCurrent()) { setDeleteError(t(($) => $.module.toast_delete_failed)); void deleteBasis.refetch(); } },
+      onSettled: () => { deleteLock.current = false; },
     });
   };
 
@@ -282,7 +292,7 @@ export function ModulesManageDialog({
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setDeleteTarget(null);
+          if (!nextOpen && !deleteLock.current) { setDeleteTarget(null); setDeleteError(""); }
         }}
       >
         <AlertDialogContent>
@@ -296,14 +306,13 @@ export function ModulesManageDialog({
               {t(($) => $.module.delete_description)}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <ContainerOperationRestriction basis={deleteBasis.isError ? undefined : deleteBasis.data} operation="delete" pending={deleteBasis.isPending} error={deleteBasis.isError} retry={() => void deleteBasis.refetch()} />
+          {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel>{t(($) => $.module.delete_cancel)}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
+            <AlertDialogCancel disabled={deleteModule.isPending}>{t(($) => $.module.delete_cancel)}</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={deleteModule.isPending || !canDelete} onClick={handleDelete}>
               {t(($) => $.module.delete_confirm)}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

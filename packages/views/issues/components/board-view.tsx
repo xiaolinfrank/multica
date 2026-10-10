@@ -1,5 +1,7 @@
 "use client";
 
+import type { UpdateIssueRequest } from "@multica/core/types";
+
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { cn } from "@multica/ui/lib/utils";
 
@@ -340,6 +342,8 @@ function BoardViewImpl({
   visibleStatuses,
   hiddenStatuses,
   onMoveIssue,
+  canMoveIssue,
+  onMoveBlocked,
   childProgressMap = EMPTY_PROGRESS_MAP,
   projectMap,
   moduleMap,
@@ -352,6 +356,8 @@ function BoardViewImpl({
   visibleStatuses: IssueStatus[];
   hiddenStatuses: IssueStatus[];
   onMoveIssue: (issueId: string, updates: DragMoveUpdates, onSettled?: () => void) => void;
+  canMoveIssue?: (id: string, updates: Partial<UpdateIssueRequest>) => boolean;
+  onMoveBlocked?: (id: string, updates: Partial<UpdateIssueRequest>) => void;
   childProgressMap?: Map<string, ChildProgress>;
   projectMap?: Map<string, Project>;
   moduleMap?: Map<string, Module>;
@@ -669,6 +675,8 @@ function BoardViewImpl({
         const activeCol = findColumn(prev, activeId, groupIds);
         const overCol = findColumn(prev, overId, groupIds);
         if (!activeCol || !overCol || activeCol === overCol) return prev;
+        const target = groups.find((group) => group.id === overCol), current = issueMapRef.current.get(activeId);
+        if (target && current && canMoveIssue && !canMoveIssue(activeId, getMoveUpdates(target, current.position, current))) return prev;
         const targetStatus = groups.find((group) => group.id === overCol)?.status;
         if (targetStatus && catalog.entryOf(targetStatus)?.archived_at) return prev;
 
@@ -683,7 +691,7 @@ function BoardViewImpl({
         return { ...prev, [activeCol]: oldIds, [overCol]: newIds };
       });
     },
-    [groupIds, groups, catalog, sortBy, recentlyMovedRef, setColumns],
+    [groupIds, groups, catalog, sortBy, recentlyMovedRef, setColumns, canMoveIssue],
   );
 
   const handleDragEnd = useCallback(
@@ -704,6 +712,12 @@ function BoardViewImpl({
       const overId = over.id as string;
 
       const cols = columnsRef.current;
+      const observedIssue = issueMapRef.current.get(activeId);
+      const observedTarget = groupMap.get(findColumn(cols, overId, groupIds) ?? "");
+      if (observedIssue && observedTarget && canMoveIssue) {
+        const candidate = getMoveUpdates(observedTarget, observedIssue.position, observedIssue);
+        if (!canMoveIssue(activeId, candidate)) { resetColumns(); onMoveBlocked?.(activeId, candidate); return; }
+      }
       const activeCol = findColumn(cols, activeId, groupIds);
       const overCol = findColumn(cols, overId, groupIds);
       if (!activeCol || !overCol) {
@@ -835,7 +849,7 @@ function BoardViewImpl({
       );
       applyPropertyGroupValue(finalGroup, activeId);
     },
-    [groupedIssues, groups, grouping, groupingOptionIds, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, columnsRef, isDraggingRef, setColumns, applyPropertyGroupValue, catalog, openModal, t],
+    [groupedIssues, groups, grouping, groupingOptionIds, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, columnsRef, isDraggingRef, setColumns, applyPropertyGroupValue, catalog, openModal, t, canMoveIssue, onMoveBlocked],
   );
 
   // An aborted drag (pointercancel, window resize, tab hide, Escape) fires

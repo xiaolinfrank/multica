@@ -469,7 +469,7 @@
   },
   "panel": {
     "close": "パネルを閉じる",
-    "delete_node": "この項目を削除",
+    "delete_node": "計画項目を削除",
     "delete_branch": "このブランチを削除"
   },
   "empty": {

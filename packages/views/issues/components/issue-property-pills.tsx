@@ -28,6 +28,9 @@ export function IssuePropertyPills({
   isDuplicate,
   allowsStatusCategory,
   assigneeReadOnly,
+  scopeReadOnly,
+  assigneeRestriction,
+  scopeRestriction,
   restriction,
 }: {
   issue: Issue;
@@ -36,6 +39,9 @@ export function IssuePropertyPills({
   isDuplicate?: boolean;
   allowsStatusCategory?: (category: IssueStatusCategory) => boolean;
   assigneeReadOnly?: boolean;
+  scopeReadOnly?: boolean;
+  assigneeRestriction?: React.ReactNode;
+  scopeRestriction?: React.ReactNode;
   restriction?: React.ReactNode;
 }) {
   return (
@@ -63,11 +69,13 @@ export function IssuePropertyPills({
         triggerRender={<PillButton />}
         align="start"
         readOnly={assigneeReadOnly}
-        restriction={restriction}
+        restriction={assigneeRestriction ?? restriction}
       />
       <ProjectPicker
         projectId={issue.project_id}
         onUpdate={onUpdate}
+        readOnly={scopeReadOnly}
+        restriction={scopeRestriction}
         triggerRender={<PillButton />}
       />
       {issue.start_date && (

@@ -67,6 +67,11 @@ function renderPicker(onUpdate: () => void) {
 }
 
 describe("AssigneePicker search keyboard defaults", () => {
+  it("keeps an unassigned read-only trigger unassigned rather than creating an empty member avatar", () => {
+    render(<I18nProvider locale="en" resources={{ en: { issues: enIssues } }}><AssigneePicker assigneeType={null} assigneeId={null} onUpdate={vi.fn()} readOnly restriction={<p>Checking actions</p>} /></I18nProvider>);
+    expect(screen.getByRole("button", { name: "Unassigned" })).toBeVisible();
+    expect(screen.queryByTestId("actor-avatar")).not.toBeInTheDocument();
+  });
   it("shows the formal handoff entry without offering a silent assignee replacement", async () => {
     const update = vi.fn(); const user = userEvent.setup();
     render(<I18nProvider locale="en" resources={{ en: { issues: enIssues } }}><AssigneePicker assigneeType="member" assigneeId="user-1" onUpdate={update}

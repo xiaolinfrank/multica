@@ -3,7 +3,8 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import type { Issue, IssueOperationBasis, UpdateIssueRequest } from "@multica/core/types";
+import { issueOperationAllowed, issueStatusOperationAllowed, issueUpdateOperationAllowed } from "@multica/core/issues";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -47,7 +48,7 @@ export interface UseIssueActionsResult {
  * early-returned on a missing issue. Returned handlers are safe no-ops when
  * `issue` is null.
  */
-export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
+export function useIssueActions(issue: Issue | null, operation?: { basis?: IssueOperationBasis }): UseIssueActionsResult {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
@@ -79,13 +80,21 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
   const issueModuleId = issue?.module_id ?? null;
   const issueAssigneeType = issue?.assignee_type ?? null;
   const issueAssigneeId = issue?.assignee_id ?? null;
-  const { entryOf } = useIssueStatuses(wsId);
+  const { entryOf, categoryOf } = useIssueStatuses(wsId);
+  const basis = operation?.basis;
+  const hasOperationBasis = operation !== undefined;
   const updateField = useCallback(
     (
       updates: Partial<UpdateIssueRequest>,
       options?: IssueSurfaceMutationOptions,
     ) => {
       if (!issueId) return;
+      if (hasOperationBasis && ((basis && basis.issue_id !== issueId) || !issueUpdateOperationAllowed(basis, updates, categoryOf))) {
+        toast.error(t(($) => $.operation_basis.blocked));
+        options?.onError?.(new Error("issue_operation_unavailable"));
+        options?.onSettled?.();
+        return;
+      }
       // Re-filing a sub-issue is really two changes: the move, and the loss of
       // the parent link the module was standing in for. The server refuses the
       // pair, so the dialog is where the second one is agreed to — and it
@@ -135,7 +144,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
         );
       }
     },
-    [issue, issueId, entryOf, surfaceActions, updateIssue, openModal, t],
+    [issue, issueId, entryOf, surfaceActions, updateIssue, openModal, t, hasOperationBasis, basis, categoryOf],
   );
 
   // Explicit "open it somewhere else" CTA, so the new tab takes focus
@@ -239,13 +248,15 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
 
   const openSetParent = useCallback(() => {
     if (!issueId) return;
+    if (hasOperationBasis && !issueOperationAllowed(basis, "parent")) return;
     openModal("issue-set-parent", { issueId });
-  }, [openModal, issueId]);
+  }, [openModal, issueId, hasOperationBasis, basis]);
 
   const openMarkDuplicate = useCallback(() => {
     if (!issueId) return;
+    if (hasOperationBasis && !issueStatusOperationAllowed(basis, "closed")) return;
     openModal("issue-mark-duplicate", { issueId });
-  }, [openModal, issueId]);
+  }, [openModal, issueId, hasOperationBasis, basis]);
 
   // Detach from the parent and promote to a standalone issue. Reversible
   // (Set parent re-links it), non-destructive, and mirrors the clear-date
@@ -257,6 +268,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
   // error toast and the optimistic rollback (false confirmation).
   const removeParent = useCallback(() => {
     if (!issueId) return;
+    if (hasOperationBasis && !issueOperationAllowed(basis, "parent")) return;
     if (surfaceActions) {
       surfaceActions.updateIssue(
         issueId,
@@ -289,7 +301,7 @@ export function useIssueActions(issue: Issue | null): UseIssueActionsResult {
         },
       );
     }
-  }, [issueId, surfaceActions, updateIssue, t]);
+  }, [issueId, surfaceActions, updateIssue, t, hasOperationBasis, basis]);
 
   const openAddChild = useCallback(() => {
     if (!issueId) return;

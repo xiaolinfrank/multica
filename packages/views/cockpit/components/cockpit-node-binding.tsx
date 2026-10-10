@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { CockpitUnconfirmedWriteError, cockpitContextOptions } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitNodeBindingContext } from "@multica/core/types";
@@ -25,6 +27,8 @@ export function CockpitNodeBindingField({ wsId, node, ancestors, binding, onSave
   const [editing, setEditing] = useState(false); const [projectId, setProjectId] = useState<string | null>(null); const [moduleId, setModuleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const lock = useRef(false);
   const preview = useQuery({ ...cockpitContextOptions(wsId, { projectId, moduleId }), enabled: Boolean(editing && projectId) });
+  const operation = useQuery({ ...containerOperationBasisOptions(wsId, "node", node.id), enabled: !readOnly });
+  const structuralAllowed = !operation.isError && containerOperationAllowed(operation.data, "structural_edit");
   const inherited = Boolean(binding.source_node_id && binding.source_node_id !== node.id);
   const source = ancestors.find((entry) => entry.id === binding.source_node_id);
   const explicit = Boolean(node.project_id || node.module_id);
@@ -33,7 +37,7 @@ export function CockpitNodeBindingField({ wsId, node, ancestors, binding, onSave
   const bound = Boolean(binding.project_id);
   const begin = () => { setProjectId(node.project_id || binding.project_id); setModuleId(node.module_id || null); setError(""); setEditing(true); };
   async function save() {
-    if (lock.current || readOnly || !canEdit || (projectId && (!preview.data || preview.isError || preview.isFetching))) return;
+    if (lock.current || readOnly || !structuralAllowed || !canEdit || (projectId && (!preview.data || preview.isError || preview.isFetching))) return;
     lock.current = true; setSaving(true); setError("");
     try { await onSave({ project_id: projectId, module_id: moduleId }); setEditing(false); }
     catch (cause) { setError(cause instanceof CockpitUnconfirmedWriteError ? t(($) => $.binding.unconfirmed_save) : cause instanceof Error ? cause.message : t(($) => $.binding.save_failed)); }
@@ -46,7 +50,8 @@ export function CockpitNodeBindingField({ wsId, node, ancestors, binding, onSave
       {!binding.module_id && !explicit && <p className="text-muted-foreground">{t(($) => $.binding.module_required)}</p>}</div>
       : <p className="text-caption text-muted-foreground">{binding.reason === "binding_conflict" || binding.reason === "invalid_ancestry" ? t(($) => $.binding.invalid) : t(($) => $.binding.unbound)}</p>}
     {!editing && !readOnly && <div className="flex flex-wrap gap-2">{configureTarget && <Button type="button" variant="outline" size="sm" onClick={() => onOpenNode(configureTarget)}>{t(($) => $.binding.configure_parent)}</Button>}
-      {canEdit && <Button type="button" variant="outline" size="sm" onClick={begin}>{t(($) => $.binding.configure)}</Button>}</div>}
+      {canEdit && <Button type="button" variant="outline" size="sm" disabled={!structuralAllowed} onClick={begin}>{t(($) => $.binding.configure)}</Button>}</div>}
+    {!readOnly && canEdit && <ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="structural_edit" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
     {editing && <div className="space-y-3">
       <div className="flex flex-wrap gap-3"><CockpitScopePicker wsId={wsId} kind="project" projectId={null} selectedId={projectId} selectedTitle={preview.data?.scope.project_title ?? ""}
         label={t(($) => $.binding.project)} emptyLabel={t(($) => $.binding.none)} disabled={saving} onSelect={(value) => { if (!lock.current) { setProjectId(value); setModuleId(null); } }}
@@ -57,7 +62,7 @@ export function CockpitNodeBindingField({ wsId, node, ancestors, binding, onSave
       {projectId && preview.isError && <div role="alert" className="space-y-2 text-caption text-destructive"><p>{t(($) => $.shell.invalid_scope)}</p><Button type="button" size="sm" variant="outline" onClick={() => void preview.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
       <p className="text-caption text-muted-foreground">{t(($) => $.binding.hint)}</p>
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
-      <div className="flex flex-wrap gap-2"><Button type="button" size="sm" disabled={saving || Boolean(projectId && (preview.isFetching || preview.isError || !preview.data))} aria-busy={saving} onClick={() => void save()}>{saving && <Spinner />}{t(($) => $.binding.save)}</Button>
+      <div className="flex flex-wrap gap-2"><Button type="button" size="sm" disabled={saving || !structuralAllowed || Boolean(projectId && (preview.isFetching || preview.isError || !preview.data))} aria-busy={saving} onClick={() => void save()}>{saving && <Spinner />}{t(($) => $.binding.save)}</Button>
         <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => setEditing(false)}>{t(($) => $.binding.cancel)}</Button></div>
     </div>}
   </section>;

@@ -7,6 +7,8 @@ import type { CockpitNode } from "@multica/core/types";
 import { CockpitNodePanel, type CockpitNodePanelProps } from "./cockpit-node-panel";
 
 
+vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+
 const node: CockpitNode = {
   id: "task", cockpit_id: "board", parent_id: "module", code: "L3-01-01", name: "Task",
   position: 0, color: "", owner: "Owner", collaborators: "Collaborator",
@@ -19,7 +21,7 @@ const node: CockpitNode = {
 
 function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
-    node, parent: undefined, depth: 2, payments: [], meetings: [], referenceWorkspace: <p>Issue links</p>, isBranch: false,
+    node, deleteAllowed: true, parent: undefined, depth: 2, payments: [], meetings: [], referenceWorkspace: <p>Issue links</p>, isBranch: false,
     section: "tasks", onSectionChange: vi.fn(),
     statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [],
     vendorSuggestions: [],
@@ -37,7 +39,7 @@ function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
 }
 
 async function openConfirmation(branch = false) {
-  fireEvent.click(screen.getByRole("button", { name: branch ? "Delete this branch" : "Delete this item" }));
+  fireEvent.click(screen.getByRole("button", { name: branch ? "Delete this branch" : "Delete plan item" }));
   return screen.findByRole("alertdialog");
 }
 
@@ -137,7 +139,7 @@ describe("CockpitNodePanel", () => {
     expect(screen.getByText("Vendor text")).toBeInTheDocument();
     expect(screen.getByText("Deliverable text")).toBeInTheDocument();
     expect(screen.getByText("Issue links")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete this item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete plan item" })).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
@@ -151,4 +153,25 @@ describe("CockpitNodePanel", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+  it("keeps ordinary edits available while retained deletion explains its real destination", async () => {
+    const { props } = setup({ deleteAllowed: false, deleteRestriction: <a href="/ws/cockpit?node=task&node_view=acceptance">Open acceptance</a> });
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Updated label" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "Enter" });
+    expect(props.onPatch).toHaveBeenCalledWith({ name: "Updated label" });
+    const dialog = await openConfirmation();
+    expect(within(dialog).getByRole("button", { name: "Delete" })).toBeDisabled();
+    expect(within(dialog).getByRole("link", { name: "Open acceptance" })).toHaveAttribute("href", "/ws/cockpit?node=task&node_view=acceptance");
+    expect(props.onDelete).not.toHaveBeenCalled();
+  });
+
+it("does not close a newly opened A confirmation when an old A delete finishes after A→B→A", async () => {
+  let complete!: () => void; const onDelete = vi.fn(() => new Promise<void>((resolve) => { complete = resolve; }));
+  const view = setup({ onDelete }); const first = await openConfirmation(); fireEvent.click(within(first).getByRole("button", { name: "Delete" }));
+  const show = (id: string) => <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}><CockpitNodePanel {...view.props} node={{ ...node, id }} /></I18nProvider>;
+  view.rerender(show("B")); view.rerender(show(node.id)); const second = await openConfirmation();
+  await act(async () => { complete(); });
+  expect(second).toBeInTheDocument(); expect(view.props.onClose).not.toHaveBeenCalled(); expect(onDelete).toHaveBeenCalledOnce();
 });

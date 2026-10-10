@@ -469,7 +469,7 @@
   },
   "panel": {
     "close": "패널 닫기",
-    "delete_node": "이 항목 삭제",
+    "delete_node": "계획 항목 삭제",
     "delete_branch": "이 분기 삭제"
   },
   "empty": {
