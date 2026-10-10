@@ -87,7 +87,7 @@ describe("minutes NAS publishing and recovery", () => {
     expect(onPublish).toHaveBeenCalledWith(server.nas_destination);
   });
 
-  it("opens only the separate verified copy and completion record for create-only success", async () => {
+  it("keeps verified copy actions visible while loading technical details and attempts only when requested", async () => {
     const id = "70000000-0000-4000-8000-000000000001", attempt = "80000000-0000-4000-8000-000000000001";
     const base = `${destination.directory}/已发布纪要/创建式副本`;
     server.nas_destination = { ...destination, write_mode: "create_only" };
@@ -95,11 +95,24 @@ describe("minutes NAS publishing and recovery", () => {
       size_bytes: 18, verified_attempt_id: attempt, verified_path: `${base}/${id}/${attempt}/minutes.md`, receipt_path: `${base}/${id}/${attempt}/.multica-complete.json`, receipt_hash: "a".repeat(64) })];
     const { client } = setupCopies();
     expect(await screen.findByRole("button", { name: "Open verified copy" })).toHaveAttribute("data-path", server.nas_exports[0]!.verified_path);
-    expect(screen.getByRole("button", { name: "Open completion record" })).toHaveAttribute("data-path", server.nas_exports[0]!.receipt_path);
-    expect(screen.queryByRole("button", { name: `${base}/minutes.md` })).toBeNull();
-    expect(api.getCockpitNasExportAttempts).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Official minutes · version 1")).toHaveLength(1);
+    expect(screen.queryByText(server.nas_exports[0]!.verified_path!)).toBeNull();
+    expect(screen.queryByText(server.nas_exports[0]!.target_path)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open completion record" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export attempts" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy & verification details" })).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(screen.getByRole("button", { name: "Copy verified path" }));
     await waitFor(() => expect(copyText).toHaveBeenCalledWith(server.nas_exports[0]!.verified_path));
+    fireEvent.click(screen.getByRole("button", { name: "Copy & verification details" }));
+    expect(screen.getByRole("button", { name: "Open completion record" })).toHaveAttribute("data-path", server.nas_exports[0]!.receipt_path);
+    expect(screen.getByText(server.nas_exports[0]!.verified_path!)).toBeVisible();
+    expect(screen.getByText(server.nas_exports[0]!.target_path)).toBeVisible();
+    expect(screen.queryByRole("button", { name: `${base}/minutes.md` })).toBeNull();
+    expect(api.getCockpitNasExportAttempts).not.toHaveBeenCalled();
+    vi.mocked(api.getCockpitNasExportAttempts).mockResolvedValue({ workspace_id: "ws-1", meeting_id: WORKFLOW_MEETING_ID, export_id: id, items: [], total: 0, next_cursor: null });
+    fireEvent.click(screen.getByRole("button", { name: "Export attempts" }));
+    await screen.findByText(enCockpit.nas.no_attempts);
+    expect(api.getCockpitNasExportAttempts).toHaveBeenCalledWith("ws-1", WORKFLOW_MEETING_ID, id, { cursor: undefined, page_size: 25 }, expect.anything());
     server.nas_exports = [{ ...server.nas_exports[0]!, receipt_hash: null }];
     await act(async () => { await client.invalidateQueries({ queryKey: cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID) }); });
     await waitFor(() => expect(screen.queryByRole("button", { name: "Open verified copy" })).toBeNull());
@@ -270,9 +283,22 @@ describe("minutes NAS publishing and recovery", () => {
     expect(screen.queryByRole("button", { name: job().target_path })).toBeNull();
     server = { ...server, nas_exports: [job({ status: "succeeded", revision: 5, size_bytes: 42, completed_at: "2026-10-09T12:10:00Z" })] };
     await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
-    await waitFor(() => expect(screen.getByRole("button", { name: job().target_path })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open NAS copy" })).toHaveAttribute("data-path", job().target_path));
+    expect(screen.queryByText(job().target_path)).toBeNull();
     expect(screen.getByText("Exported to NAS")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry NAS export" })).toBeNull();
+  });
+
+  it("reveals the actual verified path for manual copy if the compact success action cannot access the clipboard", async () => {
+    vi.mocked(copyText).mockResolvedValue(false);
+    server.nas_exports = [job({ status: "succeeded", size_bytes: 42, completed_at: "2026-10-09T12:10:00Z" })];
+    setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy target path" }));
+    expect(await screen.findByText(enCockpit.nas.copy_failed)).toBeVisible();
+    expect(screen.getByText(job().target_path)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy & verification details" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Open NAS copy" })).toHaveAttribute("data-path", job().target_path);
+    expect(api.exportCockpitMinutesToNas).not.toHaveBeenCalled();
   });
 
   it("keeps unknown operation states visible and read-only even when an unfamiliar server sets can_retry", async () => {

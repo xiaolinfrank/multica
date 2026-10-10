@@ -246,6 +246,13 @@ test("publishes an explicit create-only copy with verified evidence and lazily l
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByRole("button", { name: "Copy verified path", exact: true }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(operation.verified_path);
+    const verifiedCopy = page.getByRole("status").filter({ hasText: "Exported to NAS" });
+    await verifiedCopy.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("create-only-verified-summary.png"), animations: "disabled" });
+    await expect(page.getByRole("button", { name: "Export attempts", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Copy & verification details", exact: true }).click();
+    await expect(page.getByText("Open completion record", { exact: true })).toBeVisible();
+    expect(attemptReads).toEqual([]);
     const attemptsResponse = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/exports/${operation.id}/attempts`));
     await page.getByRole("button", { name: "Export attempts", exact: true }).click();
     const attempts = await (await attemptsResponse).json();
