@@ -70,6 +70,7 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
+    mutationKey: ["deleteProject", wsId],
     mutationFn: (id: string) => api.deleteProject(wsId, id),
     onSuccess: (_data, id) => {
       qc.setQueryData<ListProjectsResponse>(projectKeys.list(wsId), (old) =>

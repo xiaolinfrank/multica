@@ -63,6 +63,7 @@ export function useDeleteModule() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
+    mutationKey: ["deleteModule", wsId],
     mutationFn: (id: string) => api.deleteModule(wsId, id),
     // Deliberately NOT optimistic: the server detaches the module's issues
     // (module_id → NULL) and deletes the row in one transaction, and a row

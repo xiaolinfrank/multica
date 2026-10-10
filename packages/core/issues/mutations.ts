@@ -425,6 +425,7 @@ export function useDeleteIssue() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
+    mutationKey: ["deleteIssue", wsId],
     mutationFn: (id: string) => api.deleteIssue(wsId, id),
     // Keep the visible object and all dependent state until the server confirms deletion.
     onMutate: (id) => ({ metadata: collectDeletedIssueCacheMetadata(qc, wsId, id) }),
@@ -489,6 +490,7 @@ export function useBatchDeleteIssues() {
     }
   };
   return useMutation({
+    mutationKey: ["batchDeleteIssues", wsId],
     mutationFn: ({ ids, expected_revisions }: BatchDeleteIssuesInput) => api.batchDeleteIssues(wsId, ids, { expected_revisions }),
     onMutate: ({ ids }) => ({ metadata: new Map(ids.map((id) => [id, collectDeletedIssueCacheMetadata(qc, wsId, id)])) }),
     onSuccess: (receipt, _vars, ctx) => acknowledge(receipt, ctx?.metadata),

@@ -18,6 +18,21 @@ function setup() {
 }
 
 describe("action projection cache ordering", () => {
+  it("settles primary ownership in the original workspace after a route switch", async () => {
+    const { client, wrapper } = setup();
+    const receipt: CockpitPrimaryNode = { issue_id: "issue-1", node_id: null, revision: 2, project_id: "p1", module_id: "m1", node_code: "", node_name: "" };
+    let resolve!: (value: CockpitPrimaryNode) => void;
+    vi.mocked(api.setCockpitPrimaryNode).mockReturnValue(new Promise((done) => { resolve = done; }));
+    const { result, rerender } = renderHook(({ wsId }) => useSetCockpitPrimaryNode(wsId), { wrapper, initialProps: { wsId: "ws-1" } });
+    let mutation!: Promise<CockpitPrimaryNode>;
+    await act(async () => { mutation = result.current.mutateAsync({ issueId: "issue-1", nodeId: null, revision: 1 }); await Promise.resolve(); });
+    rerender({ wsId: "ws-2" });
+    await act(async () => { resolve(receipt); await mutation; });
+    expect(client.getQueryData(cockpitKeys.primaryNode("ws-2", "issue-1"))).toBeUndefined();
+    expect(client.getQueryData(cockpitKeys.primaryNode("ws-1", "issue-1"))).toEqual(receipt);
+    client.clear();
+  });
+
   it("does not roll a newer primary ownership revision back with a delayed write response", async () => {
     const { client, wrapper } = setup();
     const newer: CockpitPrimaryNode = { issue_id: "issue-1", node_id: "node-2", revision: 5, project_id: "p1", module_id: "m1", node_code: "", node_name: "" };
