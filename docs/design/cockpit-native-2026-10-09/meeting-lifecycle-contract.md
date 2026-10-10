@@ -1,6 +1,6 @@
 # 会议生命周期：议题、准备与发生事实
 
-状态：首批后端已实现，agent 3 独立 `multica_test` 已应用 9066–9075；常驻仍为 9065，本批尚未部署到常驻。功能与规模回归已通过，最终浏览器验收及合并报告继续记录。日期：2026-10-11。现有产品依据为后端 `b2f191fc0` 及其已冻结客户端。本文件不改变正在验收、发布的任务操作依据批次。
+状态：本批已完成 agent 3 功能、规模与最终浏览器验收，并部署到常驻测试环境；独立 `multica_test` 与常驻均为 9075，账本分别 761 与 764。详见[验证记录](implementation/agent3-meeting-lifecycle-validation.json)及[部署记录](implementation/agent3-meeting-lifecycle-resident-deployment.json)。日期：2026-10-11。现有产品依据为后端 `b2f191fc0` 及其已冻结客户端。本批保留此前已发布的任务操作依据与恢复路径。
 
 ## 1. 本次交付
 
