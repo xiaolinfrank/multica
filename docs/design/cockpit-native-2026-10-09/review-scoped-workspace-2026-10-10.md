@@ -20,7 +20,7 @@
 
 agent 3 已通过 9 条独立浏览器路径；同一用例在后续构建复验不重复计数。service 554、handler 2615 个父测试通过（handler 首轮 9 项路径/夹具问题定向修正后通过，1 项显式外部联网测试跳过）；CLI 9 项通过；增量 core 27 / views 228 通过，快照比较的最终缓存恢复回归另行核验。完整结果及构建身份见[验证报告](./implementation/agent3-surfaces-validation-2026-10-10.json)。测试数据库和临时服务均已清理。常驻随后完成独立发布验收：BUILD_ID `U1qLnB7DKPSYTD6hUQtHJ`，中文深浅页面、默认入口、计划与汇报往返均通过；原业务基数保留。实际服务身份、988→994 迁移、完整备份和配置差异见[常驻部署报告](./implementation/agent3-resident-surfaces-7b670e5b.json)。
 
-NAS 创建式根仅显式启用于 `pmo-showcase` 已登记的真实目录，未改写旧目标或模式；`fosun-bio` 的本地会议目录保留。考虑到前者已有 Agent 自动化，真实 SMB 写入验收在独立测试库和私有验证目录完成并清理，常驻未产生业务导出。后续 NAS 卡片折叠优化仍是独立增量，不属于本次提交。
+NAS 创建式根仅显式启用于 `pmo-showcase` 已登记的真实目录，未改写旧目标或模式；`fosun-bio` 的本地会议目录保留。考虑到前者已有 Agent 自动化，真实 SMB 写入验收在独立测试库和私有验证目录完成并清理，常驻未产生业务导出。NAS 卡片折叠优化随后以 `e4c8845a` 独立更新常驻前端，当前 BUILD_ID 为 `p2ymotKv8IfznN_K81vBo`；后端、数据库和 NAS 配置保持本批状态，见[独立发布报告](./implementation/agent3-resident-nas-density-e4c8845a.json)。
 
 规模样本及证据见[范围读取验证](../../development/cockpit-read-scale.md)。v5 覆盖九类通用读取；v6 只重测会议标记，连续 21 次读取后的暖读 p95 为 99.037 ms。样本未包含尚未落表的 200000 个成果版本，不代表浏览器或多用户并发性能。
 

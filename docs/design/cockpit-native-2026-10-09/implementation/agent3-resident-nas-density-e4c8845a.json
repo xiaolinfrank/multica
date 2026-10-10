@@ -1,0 +1,37 @@
+{
+  "frontend_commit": "e4c8845a847b84dc800da65ef7b7a3e405d90843",
+  "build_id": "p2ymotKv8IfznN_K81vBo",
+  "previous_build_id": "U1qLnB7DKPSYTD6hUQtHJ",
+  "api_pid_unchanged": 33181,
+  "api_commit_unchanged": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+  "env_sha256_unchanged": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+  "isolated_build_restored": "6xAS3GHtGynXxBWBns-Ei",
+  "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-nas-density-e4c8845a",
+  "web_pid": 41313,
+  "verified_at": "2026-10-10T17:53:10.462491+00:00",
+  "host": "fosun_agent_3",
+  "status": "resident_web_deployed",
+  "archive_sha256": "281ec3ac0a6da7792425e2be42fcc403565997694fcde8f4017268ff186613d7",
+  "release_input_check": {
+    "compared_product_files": 2604,
+    "mismatches": 0,
+    "extra_test_source_and_host_metadata": "Moved out of isolated build input before final build; private backup retained."
+  },
+  "validation": {
+    "isolated_component": 18,
+    "isolated_locale_parity": 203,
+    "isolated_real_browser_seconds": 6.1,
+    "resident_owned_chinese_browser_seconds": 3.5,
+    "same_NAS_interaction_verified_on_identical_stage": true,
+    "resident_existing_business_exports_used": false
+  },
+  "scope": {
+    "database_migrated": false,
+    "api_restarted": false,
+    "resident_nas_configuration_changed": false,
+    "real_agent_smoke": false,
+    "new_artifact_core_or9000_migrations_included": false
+  },
+  "rollback": "Restore backed-up Web source and .next; keep API7b and schema994.",
+  "test_source_note": "Future artifact core tests use a separate frozen package. No incomplete artifact source is present in the deployed archive."
+}
