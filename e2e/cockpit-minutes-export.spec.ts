@@ -12,6 +12,7 @@ test.use({
 
 test("retains publication while a NAS copy fails, retries safely, and preserves a conflicting file", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
+  test.skip(process.env.MULTICA_E2E_NAS_WRITE_MODE === "create_only", "Atomic recovery has a separate configured fixture mode");
   const configuredRoot = process.env.MULTICA_E2E_NAS_ROOT_PATH;
   const rootId = process.env.MULTICA_E2E_NAS_ROOT_ID;
   const configured = configuredRoot && rootId && process.env.MULTICA_E2E_NAS_WORKSPACE_ID;
@@ -47,7 +48,7 @@ test("retains publication while a NAS copy fails, retries safely, and preserves 
     await api.seedPendingMeetingReview(meeting.id, auth.user.id, content);
     const approved = await api.approveMeetingMinutes(meeting.id);
     const version = approved.versions[0]!;
-    expect(approved.nas_destination).toEqual({ root_id: rootId, directory: meetingDir });
+    expect(approved.nas_destination).toEqual({ root_id: rootId, directory: meetingDir, write_mode: "atomic" });
     await showMeeting(meeting.id);
 
     await test.step("publish once while the meeting directory is unavailable", async () => {
@@ -125,7 +126,7 @@ test("retains publication while a NAS copy fails, retries safely, and preserves 
 
 test("preserves publication and files when real SMB cannot commit without replacement", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
-  test.skip(process.env.MULTICA_E2E_REAL_NAS !== "1", "Requires explicitly authorized real SMB verification");
+  test.skip(process.env.MULTICA_E2E_REAL_NAS !== "1" || process.env.MULTICA_E2E_NAS_WRITE_MODE === "create_only", "Requires explicitly authorized atomic-mode real SMB verification");
   await page.setViewportSize({ width: 1600, height: 1400 });
   const filesystem = await createNASFilesystemFixture();
   const api = new TestApiClient();
@@ -199,5 +200,65 @@ test("preserves publication and files when real SMB cannot commit without replac
   } finally {
     try { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }
     finally { await filesystem.cleanup(); }
+  }
+});
+
+test("publishes an explicit create-only copy with verified evidence and lazily loads attempts", async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
+  test.skip(process.env.MULTICA_E2E_NAS_WRITE_MODE !== "create_only", "Requires an explicitly configured create-only fixture root");
+  const filesystem = await createNASFilesystemFixture();
+  const api = new TestApiClient(); const run = `${Date.now().toString(36)}-${process.pid}`;
+  let ownsWorkspace = false;
+  try {
+    const auth = await api.login(`e2e-create-only-${run}@multica.ai`, "Create-only publication reviewer");
+    const workspace = await api.createNASFixtureWorkspace(`Create-only minutes ${run}`, `e2e-create-only-${run}`); ownsWorkspace = true;
+    await api.markUserOnboarded(); await api.updateCockpitBoard({ title: "Verified minutes archive" });
+    const directory = join(filesystem.directory, "review-meeting"); await mkdir(directory);
+    const meeting = await api.createCockpitMeeting({ title: "Create-only archive review", meet_date: new Date().toISOString().slice(0, 10), nas_dir: directory });
+    const content = "# Approved minutes\n\nA verified record identifies this exact fixed version.\n\n中文内容保持原样。";
+    await api.seedPendingMeetingReview(meeting.id, auth.user.id, content);
+    const approved = await api.approveMeetingMinutes(meeting.id); const version = approved.versions[0]!;
+    expect(approved.nas_destination).toEqual({ root_id: filesystem.rootId, directory, write_mode: "create_only" });
+    const logical = join(directory, "已发布纪要", "创建式副本", `minutes-v0001-${version.id}.md`);
+    await mkdir(join(directory, "已发布纪要", "创建式副本"), { recursive: true });
+    await writeFile(logical, "Unrelated existing file must remain byte-for-byte intact.", { flag: "wx" });
+    const token = api.getToken(); if (!token) throw new Error("Fixture token missing");
+    await page.addInitScript((value) => { localStorage.setItem("multica_token", value); localStorage.setItem("multica:chat:isOpen", "false"); document.cookie = "multica-locale=en; path=/"; }, token);
+    const attemptReads: string[] = [];
+    page.on("request", (request) => { if (request.method() === "GET" && new URL(request.url()).pathname.endsWith("/attempts")) attemptReads.push(request.url()); });
+    await page.goto(`/${workspace.slug}/cockpit?meeting=${meeting.id}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Create-only copy", { exact: true })).toBeVisible();
+    await expect(page.getByText("Files can be visible while being written. Only a copy with a verified completion record is complete; incomplete attempts are kept.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Publish version", exact: true }).click();
+    await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+    await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("succeeded");
+    await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+    const operation = (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]!;
+    expect(operation).toMatchObject({ write_mode: "create_only", target_path: logical, content_hash: version.content_hash });
+    expect(operation.verified_path).toBeTruthy(); expect(operation.receipt_path).toBeTruthy(); expect(operation.verified_attempt_id).toBeTruthy();
+    expect(operation.verified_path).not.toBe(operation.target_path);
+    const bytes = await readFile(operation.verified_path!);
+    expect(bytes.toString("utf8")).toBe(content); expect(createHash("sha256").update(bytes).digest("hex")).toBe(version.content_hash);
+    expect(JSON.parse(await readFile(operation.receipt_path!, "utf8"))).toMatchObject({ schema_version: 1, write_mode: "create_only", workspace_id: workspace.id,
+      meeting_id: meeting.id, root_id: filesystem.rootId, export_id: operation.id, version_id: version.id, attempt_id: operation.verified_attempt_id, content_hash: version.content_hash, size_bytes: bytes.length });
+    expect(await readFile(logical, "utf8")).toBe("Unrelated existing file must remain byte-for-byte intact.");
+    expect(attemptReads).toEqual([]);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByRole("button", { name: "Copy verified path", exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(operation.verified_path);
+    const attemptsResponse = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/exports/${operation.id}/attempts`));
+    await page.getByRole("button", { name: "Export attempts", exact: true }).click();
+    const attempts = await (await attemptsResponse).json();
+    expect(attempts.workspace_id).toBe(workspace.id); expect(attempts.export_id).toBe(operation.id); expect(attempts.items).toHaveLength(1);
+    expect(attempts.items[0]).toMatchObject({ status: "verified", verified_path: operation.verified_path, verified_receipt_path: operation.receipt_path });
+    expect(attempts.items[0]).not.toHaveProperty("content");
+    const replay = await api.compactMeetingWorkflowCommand(meeting.id, `/versions/${version.id}/nas-export`, approved.nas_destination!);
+    expect(replay.data.receipt.nas_export?.id).toBe(operation.id);
+    expect(replay.data.receipt.nas_export?.verified_path).toBe(operation.verified_path);
+    const copies = page.getByRole("status").filter({ hasText: "Exported to NAS" }); await expect(copies).toBeVisible();
+    await copies.scrollIntoViewIfNeeded(); await page.screenshot({ path: testInfo.outputPath("create-only-verified-minutes.png"), animations: "disabled" });
+    expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+  } finally {
+    try { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); } finally { await filesystem.cleanup(); }
   }
 });

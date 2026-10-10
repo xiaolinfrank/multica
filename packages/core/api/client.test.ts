@@ -513,7 +513,7 @@ describe("ApiClient server Table query", () => {
     expect(board.cockpit.title).toBe("");
   });
 
-  it("falls back per part when provisioning a meeting answers badly", async () => {
+  it("keeps provisioning unconfirmed when the server receipt is malformed", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
         new Response(JSON.stringify({ meeting: null, task: "nope" }), {
@@ -525,19 +525,14 @@ describe("ApiClient server Table query", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const client = new ApiClient("https://api.example.test");
-    const result = await client.provisionCockpitMeeting("m1", { create_task: true });
-    // The meeting itself is what the caller re-renders; an empty one is the
-    // honest answer to a response that cannot be read.
-    expect(result.meeting.id).toBe("");
-    expect(result.task).toBeNull();
-    expect(result.issues).toEqual([]);
+    await expect(client.provisionCockpitMeeting("m1", { create_task: true })).rejects.toThrow("cockpit_write_not_confirmed");
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/cockpit/meetings/m1/provision");
   });
 
   it("asks the destination endpoint for the project and module the form is showing", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ project_id: "p1", base_dir: "/Volumes/share/06.06" }), {
+        new Response(JSON.stringify({ project_id: "p1", module_id: "m9", base_dir: "/Volumes/share/06.06" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),

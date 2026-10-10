@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitAreaPath, cockpitDestination, cockpitObjectPath } from "./navigation";
+import { cockpitMeetingContextPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
   it.each(["", "tab=overview", "tab=unknown", "view=unknown", "node=", "action=orphan"])("opens the bounded work overview for %s", (query) => {
@@ -48,3 +48,38 @@ describe("cockpit destinations", () => {
       .toMatchObject({ area: "work", nodeView: null, meetingView: null });
   });
 });
+
+describe("unified cockpit destinations", () => {
+  it("carries project/module scope across primary tabs while removing stale object selections", () => {
+    const scope = { projectId: "project-a", moduleId: "module-b" };
+    expect(cockpitSurfacePath("/acme/cockpit", "meetings", scope)).toBe("/acme/cockpit?tab=meetings&project=project-a&module=module-b");
+    expect(cockpitSurfacePath("/acme/cockpit", "plan", scope, "finance")).toBe("/acme/cockpit?tab=plan&plan_view=finance&project=project-a&module=module-b");
+    expect(cockpitScopedPath("/acme/cockpit", new URLSearchParams("meeting=m1&meeting_view=resources&project=old"), scope))
+      .toBe("/acme/cockpit?meeting=m1&meeting_view=resources&project=project-a&module=module-b");
+    expect(cockpitObjectPath("/acme/cockpit", { kind: "node", id: "n1", view: "details", planView: "responsibility" }, scope))
+      .toBe("/acme/cockpit?node=n1&node_view=details&plan_view=responsibility&project=project-a&module=module-b");
+  });
+
+  it("does not silently turn an invalid module-only or unknown resource scope into all projects", () => {
+    expect(cockpitScope(new URLSearchParams("module=unknown"))).toEqual({ projectId: null, moduleId: "unknown" });
+    expect(cockpitShellDestination(new URLSearchParams("tab=plan&project=deleted&module=foreign")))
+      .toMatchObject({ surface: "plan", scope: { projectId: "deleted", moduleId: "foreign" } });
+  });
+
+  it("maps existing public links to the same five surfaces without losing object precedence", () => {
+    expect(cockpitShellDestination(new URLSearchParams("view=operations"))).toMatchObject({ surface: "plan", planView: "operations" });
+    expect(cockpitShellDestination(new URLSearchParams("tab=finance"))).toMatchObject({ surface: "plan", planView: "finance" });
+    expect(cockpitShellDestination(new URLSearchParams("tab=changes"))).toMatchObject({ surface: "governance", governanceView: "changes" });
+    expect(cockpitShellDestination(new URLSearchParams("tab=artifacts&node=n1&meeting=m1"))).toMatchObject({ surface: "meetings" });
+    expect(cockpitShellDestination(new URLSearchParams("tab=plan&plan_view=unknown"))).toMatchObject({ surface: "plan", planView: "gantt" });
+  });
+});
+
+  it("keeps a filtered register and the selected action across same-meeting workbench tabs, then closes to that register", () => {
+    const scope = { projectId: "project", moduleId: "module" };
+    const source = new URLSearchParams("meeting=m1&action=a1&meeting_nodes=n1,n2&from=2026-10-01&to=2026-10-02&artifact=unrelated");
+    const resources = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", scope, source, "resources"), "https://example.test");
+    expect(resources.searchParams.get("action")).toBe("a1"); expect(resources.searchParams.get("meeting_view")).toBe("resources"); expect(resources.searchParams.get("meeting_nodes")).toBe("n1,n2"); expect(resources.searchParams.has("artifact")).toBe(false);
+    const closed = new URL(cockpitMeetingContextPath("/acme/cockpit", null, scope, resources.searchParams), "https://example.test");
+    expect(closed.searchParams.get("tab")).toBe("meetings"); expect(closed.searchParams.get("from")).toBe("2026-10-01"); expect(closed.searchParams.get("module")).toBe("module"); expect(closed.searchParams.has("meeting")).toBe(false); expect(closed.searchParams.has("action")).toBe(false);
+  });

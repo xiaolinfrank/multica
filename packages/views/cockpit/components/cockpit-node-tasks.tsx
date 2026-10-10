@@ -6,8 +6,8 @@ import { ApiError } from "@multica/core/api";
 import {
   cockpitNodeTasksOptions, cockpitPrimaryNodeOptions, useCreateCockpitNodeTask, useSetCockpitPrimaryNode,
   clearCockpitActionCommand, rememberCockpitActionCommand, useCockpitActionCommandStore, CockpitUnconfirmedWriteError,
-  cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore, useSetCockpitNodeIssues, useDeleteCockpitNodeIssue,
-  cockpitObjectPath,
+  cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNodeIssue,
+  cockpitObjectPath, cockpitScope, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -18,7 +18,7 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { useStatusLabel } from "../../issues/utils/status-label";
-import { AppLink } from "../../navigation";
+import { useNavigation, AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitFlowError, CockpitFlowPaging, CockpitIssueChoice, CockpitTaskRows, useCockpitSearch } from "./cockpit-task-flow";
 import { CockpitTaskFields, cockpitTaskFieldsBody, cockpitTaskFieldsValue } from "./cockpit-task-fields";
@@ -33,11 +33,12 @@ function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [fields, setFields] = useState(() => cockpitTaskFieldsValue(userId));
+  const executor = useCockpitAssigneeAvailability(wsId, fields.assigneeType, fields.assigneeId);
   const [error, setError] = useState("");
   const lock = useRef(false);
   const create = useCreateCockpitNodeTask(wsId);
   async function submit() {
-    if (lock.current || disabled) return;
+    if (lock.current || disabled || (!pending && (!executor.available || !fields.assigneeId || !title.trim()))) return;
     const body: CockpitTaskCreate = pending?.body ?? { creation_key: crypto.randomUUID(), title: title.trim(), description: description.trim(), ...cockpitTaskFieldsBody(fields) };
     rememberCockpitActionCommand(scope, { kind: "task", node_id: node.id, body });
     lock.current = true; setError("");
@@ -56,11 +57,11 @@ function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: 
       <DialogHeader><DialogTitle>{t(($) => $.task_flow.create)}</DialogTitle><DialogDescription>{t(($) => $.task_flow.create_hint, { name: node.name })}</DialogDescription></DialogHeader>
       <label className="space-y-1 text-caption">{t(($) => $.task_flow.title)}<Input value={title} disabled={create.isPending || Boolean(pending)} onChange={(event) => setTitle(event.target.value)} /></label>
       <label className="space-y-1 text-caption">{t(($) => $.task_flow.description)}<Textarea value={description} rows={3} disabled={create.isPending || Boolean(pending)} onChange={(event) => setDescription(event.target.value)} /></label>
-      <CockpitTaskFields value={fields} onChange={setFields} disabled={create.isPending || Boolean(pending)} />
+      <CockpitTaskFields wsId={wsId} value={fields} onChange={setFields} disabled={create.isPending || Boolean(pending)} />
       {pending && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.pending_request)}</p>}
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={create.isPending} />}>{t(($) => $.binding.cancel)}</DialogClose>
-        <Button type="button" disabled={disabled || create.isPending || !title.trim() || (!pending && !fields.assigneeId)} aria-busy={create.isPending} onClick={() => void submit()}>
+        <Button type="button" disabled={disabled || create.isPending || !title.trim() || (!pending && (!fields.assigneeId || !executor.available))} aria-busy={create.isPending} onClick={() => void submit()}>
           {create.isPending && <Spinner />}{pending ? t(($) => $.task_flow.retry_creation) : t(($) => $.task_flow.create)}</Button></DialogFooter>
     </DialogContent>
   </Dialog>{create.data && !open && <p className="text-caption"><AppLink href={paths.issueDetail(create.data.id)} newTabTitle={create.data.title} className="hover:underline">
@@ -75,7 +76,7 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
   const [error, setError] = useState("");
   const primary = useQuery(cockpitPrimaryNodeOptions(wsId, open && !reference ? selected?.id ?? "" : ""));
   const assign = useSetCockpitPrimaryNode(wsId);
-  const link = useSetCockpitNodeIssues(wsId);
+  const link = useAppendCockpitNodeIssue(wsId);
   const working = assign.isPending || link.isPending;
   useEffect(() => {
     if (!reference && selected && primary.data?.issue_id === selected.id && !observed) setObserved({ issueId: selected.id, revision: primary.data.revision });
@@ -97,17 +98,16 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
       <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={working} />}>{t(($) => $.binding.cancel)}</DialogClose>
         <Button type="button" disabled={disabled || working || stale || (!reference && (!observed || primary.isFetching)) || !valid || (!reference && primary.data?.node_id === node.id)} aria-busy={working}
           onClick={() => { if (!selected) return;
-            const work = reference ? link.mutateAsync({ nodeId: node.id, issueIds: [selected.id], replace: false }).then((result) => {
-              if (result.node_id !== node.id || !result.links.some((entry) => entry.issue_id === selected.id)) throw new CockpitUnconfirmedWriteError();
-            }) : primary.data && observed ? assign.mutateAsync({ issueId: selected.id, nodeId: node.id, revision: observed.revision }) : Promise.reject(new CockpitUnconfirmedWriteError());
+            const work = reference ? link.mutateAsync({ nodeId: node.id, issueId: selected.id }) : primary.data && observed ? assign.mutateAsync({ issueId: selected.id, nodeId: node.id, revision: observed.revision }) : Promise.reject(new CockpitUnconfirmedWriteError());
             void work.then(() => setOpen(false)).catch((cause) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))); }}>
           {working && <Spinner />}{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.confirm_primary)}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
 
-export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: string; node: CockpitNode; userId: string; readOnly?: boolean }) {
+export function CockpitNodeTasks({ wsId, node, userId, readOnly, referenceOnly = false, onCreateReference }: { wsId: string; node: CockpitNode; userId: string; readOnly?: boolean; referenceOnly?: boolean; onCreateReference?: () => void }) {
   const { t } = useT("cockpit");
+  const navigation = useNavigation();
   const paths = useWorkspacePaths();
   const eligibilityReason = (reason: string) => {
     switch (reason) {
@@ -120,10 +120,11 @@ export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: strin
     }
   };
   const label = useStatusLabel(wsId);
-  const viewKey = cockpitTaskViewKey(wsId, "node", node.id);
+  const viewKey = cockpitTaskViewKey(wsId, "node", node.id) + (referenceOnly ? ":references" : "");
   const view = useCockpitTaskViewStore((state) => state.views[viewKey] ?? EMPTY_COCKPIT_TASK_VIEW);
   const setView = (patch: Partial<typeof view>) => useCockpitTaskViewStore.getState().update(viewKey, patch);
-  const { text, relation, category, status } = view;
+  const { text, category, status } = view;
+  const relation = referenceOnly ? "reference" : view.relation;
   const setText = (text: string) => setView({ text });
   const setRelation = (relation: "primary" | "reference") => setView({ relation });
   const setCategory = (category: string) => setView({ category });
@@ -142,15 +143,16 @@ export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: strin
   const blocked = Boolean(readOnly || !userId || !data?.eligibility.eligible || query.isFetching);
   const categoryLabels = { unstarted: t(($) => $.task_flow.unstarted), started: t(($) => $.task_flow.started), done: t(($) => $.task_flow.done), closed: t(($) => $.task_flow.closed), unknown: t(($) => $.task_flow.unknown) };
   return <section aria-label={t(($) => $.task_flow.region)} className="space-y-4">
-    <div className="flex flex-wrap items-center gap-2"><NodeTaskCreate wsId={wsId} node={node} userId={userId} disabled={blocked} />
-      <NodePrimaryAssign wsId={wsId} node={node} projectId={data?.eligibility.project_id ?? null} moduleId={data?.eligibility.module_id ?? null} disabled={blocked} /></div>
+    {!referenceOnly && <div className="flex flex-wrap items-center gap-2"><NodeTaskCreate wsId={wsId} node={node} userId={userId} disabled={blocked} />
+      <NodePrimaryAssign wsId={wsId} node={node} projectId={data?.eligibility.project_id ?? null} moduleId={data?.eligibility.module_id ?? null} disabled={blocked} /></div>}
+    {referenceOnly && onCreateReference && <Button type="button" variant="outline" size="sm" disabled={readOnly} onClick={onCreateReference}>{t(($) => $.issues.create)}</Button>}
     {relation === "reference" && <NodePrimaryAssign wsId={wsId} node={node} projectId={null} moduleId={null} disabled={Boolean(readOnly || !userId)} reference />}
     <label className="block space-y-1 text-caption">{t(($) => $.task_flow.search)}<Input value={text} onChange={(event) => setText(event.target.value)} /></label>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <label className="space-y-1 text-caption">{t(($) => $.task_flow.relationship)}<Select value={relation} onValueChange={(value) => { if (value === "primary" || value === "reference") setRelation(value); }}
+      {!referenceOnly && <label className="space-y-1 text-caption">{t(($) => $.task_flow.relationship)}<Select value={relation} onValueChange={(value) => { if (value === "primary" || value === "reference") setRelation(value); }}
         items={[{ value: "primary", label: t(($) => $.task_flow.primary) }, { value: "reference", label: t(($) => $.task_flow.reference) }]}>
         <SelectTrigger className="w-full" aria-label={t(($) => $.task_flow.relationship)}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="primary">{t(($) => $.task_flow.primary)}</SelectItem><SelectItem value="reference">{t(($) => $.task_flow.reference)}</SelectItem></SelectContent>
-      </Select></label>
+      </Select></label>}
       <label className="space-y-1 text-caption">{t(($) => $.task_flow.status)}<Select value={status || "__all__"} onValueChange={(value) => { if (typeof value === "string") setStatus(value !== "__all__" ? value : ""); }}
         items={statusChoices}>
         <SelectTrigger className="w-full" aria-label={t(($) => $.task_flow.status)}><SelectValue /></SelectTrigger><SelectContent>
@@ -160,9 +162,9 @@ export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: strin
     {query.isPending ? <div role="status" className="flex items-center gap-2 text-caption"><Spinner />{t(($) => $.workflow.loading)}</div>
       : query.isError || !data ? <div className="space-y-2"><CockpitFlowError onRetry={() => void query.refetch()} />
         {cursors.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => setPagination({ key: filterKey, cursors: [""] })}>{t(($) => $.task_flow.first_page)}</Button>}</div> : <>
-        {!data.eligibility.eligible && <div role="status" className="space-y-2 rounded-md bg-muted p-3 text-caption">
+        {!referenceOnly && !data.eligibility.eligible && <div role="status" className="space-y-2 rounded-md bg-muted p-3 text-caption">
           <p>{eligibilityReason(data.eligibility.reason)}</p>
-          <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, view: "details" })}
+          <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, view: "details" }, cockpitScope(navigation.searchParams))}
             className="inline-flex rounded-sm font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
             {t(($) => $.task_recovery.open_plan_details)}</AppLink>
         </div>}

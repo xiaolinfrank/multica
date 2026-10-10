@@ -2,6 +2,8 @@ export interface CockpitOverviewScope {
   workspace_id: string;
   project_id: string | null;
   project_title: string;
+  module_id?: string | null;
+  module_title?: string;
   as_of: string;
   generated_at: string;
 }
@@ -125,12 +127,14 @@ export interface CockpitOverviewData extends CockpitOverviewScope {
 export interface CockpitOverviewQuery {
   as_of: string;
   project_id?: string;
+  module_id?: string;
   attention_view?: "mine" | "team";
 }
 
 export interface CockpitOverviewPageQuery {
   as_of: string;
   project_id?: string;
+  module_id?: string;
   cursor?: string;
   page_size?: number;
 }

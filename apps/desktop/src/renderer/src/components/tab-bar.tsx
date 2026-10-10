@@ -1,3 +1,5 @@
+
+import { preferredWorkspacePath } from "@multica/core/paths";
 import {
   Fragment,
   useEffect,
@@ -37,7 +39,6 @@ import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { SIDEBAR_WRAPPER_FILL_CLASS } from "@multica/ui/components/ui/sidebar";
 import { cn } from "@multica/ui/lib/utils";
 import { useTabStore, useActiveGroup, type Tab } from "@/stores/tab-store";
-import { paths } from "@multica/core/paths";
 import {
   useTabPresentation,
   ResourceLeadingVisual,
@@ -535,8 +536,8 @@ function NewTabButton() {
     // per workspace, so there is no cross-workspace ambiguity to resolve.
     const activeSlug = useTabStore.getState().activeWorkspaceSlug;
     if (!activeSlug) return;
-    const path = paths.workspace(activeSlug).issues();
-    const tabId = addTab(path, "Issues");
+    const path = preferredWorkspacePath(activeSlug);
+    const tabId = addTab(path, "");
     if (tabId) setActiveTab(tabId);
   };
 

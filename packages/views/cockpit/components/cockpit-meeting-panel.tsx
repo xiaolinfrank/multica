@@ -13,20 +13,13 @@ import type {
   CockpitMeetingIssueLink,
   CockpitMeetingNodeLink,
   CockpitMeetingPatch,
-  CockpitNode,
-  MemberWithUser,
 } from "@multica/core/types";
 import {
-  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitObjectPath,
+  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitMeetingContextPath, cockpitScope,
   cockpitWorkflowSummaryPollInterval,
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
-  buildCockpitTree,
-  cockpitDirectoryNames,
-  cockpitDirectoryParties,
+  type CockpitMeetingVocabularySource,
   cockpitMeetingPeopleOptions,
   cockpitMeetingVocabulary,
-  dedupeCockpitValues,
   splitCockpitMeetingParties,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
@@ -41,10 +34,12 @@ import {
   EditableTextArea,
   EditableTokens,
 } from "./cockpit-fields";
+import { CockpitContactNamePicker } from "./cockpit-contact-name-picker";
+import { CockpitMemberNamePicker } from "./cockpit-member-name-picker";
 import { CockpitAttendeeField } from "./cockpit-attendees";
-import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
+import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cockpit-people";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
-import { CockpitNodePicker } from "./cockpit-node-picker";
+import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { CockpitMeetingMaterials } from "./cockpit-meeting-materials";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../../navigation";
@@ -58,34 +53,34 @@ export interface CockpitMeetingPanelProps {
   defaultAssigneeType: string | null;
   defaultAssigneeId: string | null;
   meeting: CockpitMeeting;
-  nodes: CockpitNode[];
-  /** The shipped row codes; derived from `nodes` when omitted. */
-  nodeCodes?: Map<string, string>;
-  /** Every meeting on the board — the vocabulary pickers offer what the
-   *  programme has already used on top of the words it starts with. */
-  meetings: CockpitMeeting[];
-  /** The workspace's people, offered by name in the person fields. */
-  members: MemberWithUser[];
-  membersLoaded: boolean;
-  /** The meeting contact book — grouping and 职位 in the attendee picker. */
-  directory: CockpitDirectoryEntry[];
+  /** Known metadata for optional suggestions, never the complete meeting register. */
+  meetings: CockpitMeetingVocabularySource[];
+  /** Already resolved names. Full membership choices are read through paged search. */
+  members: CockpitMember[];
   /** Files one contact into the book; resolves whether it landed. */
-  onSaveDirectoryEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  onSaveDirectoryEntry: (entry: CockpitDirectoryEntry & { clear_position?: boolean }) => Promise<boolean>;
   onDeleteDirectoryEntry?: (entry: { party: string; name: string }) => Promise<boolean>;
-  /** Fires after an attendee commit with the names the book did not know. */
+  /** Candidate names; the server determines which are absent from the full book. */
   onAutoSaveDirectory?: (entries: CockpitDirectoryEntry[]) => void;
   issueLinks: CockpitMeetingIssueLink[];
   nodeLinks: CockpitMeetingNodeLink[];
   /** Display codes ("06.06.02") for the linked work items, resolved by the
    *  page so the panel and the gantt address a node the same way. */
   nodeLabels: Map<string, string>;
+  nodeCodes: ReadonlyMap<string, string>;
   onPatch: (patch: CockpitMeetingPatch) => void;
   onClose: () => void;
   onDelete: () => void;
-  onLinkIssue: (issueId: string) => void;
+  onLinkIssue: (issueId: string) => Promise<unknown>;
   onUnlinkIssue: (issueId: string) => void;
   onSaveIssueRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
-  onToggleNode: (nodeId: string) => void;
+  onLinkNode: (nodeId: string) => Promise<unknown>;
+  onUnlinkNode: (nodeId: string) => void;
+  issuePaging?: React.ReactNode;
+  issuePageReady: boolean;
+  nodePageReady: boolean;
+  nodePaging?: React.ReactNode;
+  notice?: React.ReactNode;
   onOpenNode: (nodeId: string) => void;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
@@ -95,25 +90,21 @@ export interface CockpitMeetingPanelProps {
 export function CockpitMeetingPanel({
   wsId, currentUserId, defaultPlacement, defaultAssigneeType, defaultAssigneeId,
   meeting,
-  nodes,
-  nodeCodes,
   meetings,
   members,
-  membersLoaded,
-  directory,
   onSaveDirectoryEntry,
   onDeleteDirectoryEntry,
   onAutoSaveDirectory,
   issueLinks,
   nodeLinks,
-  nodeLabels,
+  nodeLabels, nodeCodes,
   onPatch,
   onClose,
   onDelete,
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onToggleNode,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice,
   onOpenNode,
   onSaveMaterialPatch,
   onPrepareDirectory,
@@ -124,19 +115,11 @@ export function CockpitMeetingPanel({
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
   const section = destination.meetingId === meeting.id ? destination.meetingView ?? "workflow" : "workflow";
-  const resourcesHref = cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: "resources" });
-  const workflowHref = cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: "workflow" });
+  const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
+  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "workflow");
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
   const unset = t(($) => $.common.unset);
-  // The picker's menu quotes the same shipped row codes the gantt and this
-  // panel's own linked list use — not the base tree's pre-merge numbering.
-  // The page hands its own down; deriving again only covers standalone use.
-  const derivedCodes = useMemo(
-    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes))),
-    [nodes],
-  );
-  const nodePickerCodes = nodeCodes ?? derivedCodes;
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
   const people = useCockpitPeople(members);
   // Members lead, then names the board has used, then the rest of the book —
@@ -146,18 +129,16 @@ export function CockpitMeetingPanel({
       cockpitMeetingPeopleOptions(people.names, [
         ...vocabulary.organizers,
         ...vocabulary.attendees,
-        ...cockpitDirectoryNames(directory),
       ]),
-    [people.names, vocabulary.organizers, vocabulary.attendees, directory],
+    [people.names, vocabulary.organizers, vocabulary.attendees],
   );
   const partyOptions = useMemo(
     () =>
-      dedupeCockpitValues(cockpitDirectoryParties(directory), vocabulary.parties).sort((a, b) =>
+      vocabulary.parties.sort((a, b) =>
         a.localeCompare(b),
       ),
-    [directory, vocabulary.parties],
+    [vocabulary.parties],
   );
-  const linkedNodeIds = useMemo(() => new Set(nodeLinks.map((l) => l.node_id)), [nodeLinks]);
   const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
   const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
     refetchInterval: (query) => {
@@ -227,6 +208,7 @@ export function CockpitMeetingPanel({
           have checked it. Its date, number, parties and subject came from a
           folder name, and presenting a guess as a fact is the one thing the
           scan must not do. */}
+      {notice && <div className="border-b p-3">{notice}</div>}
       {meeting.detected && (
         <div className="flex items-start gap-2 border-b border-border bg-warning-subtle px-3 py-2">
           <ScanSearch className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -248,7 +230,7 @@ export function CockpitMeetingPanel({
       )}
 
       <Tabs value={section} onValueChange={(value) => {
-        if (value === "workflow" || value === "resources" || value === "details") navigation.push(cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: value }));
+        if (value === "workflow" || value === "resources" || value === "details") navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
           <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
@@ -258,7 +240,7 @@ export function CockpitMeetingPanel({
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <TabsContent value="workflow" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
-              members={members} membersLoaded={membersLoaded} issueLinks={issueLinks} workflow={workflowQuery.data}
+              members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
               onReload={reloadWorkflow} resourcesHref={resourcesHref} defaultPlacement={defaultPlacement}
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
@@ -272,10 +254,12 @@ export function CockpitMeetingPanel({
             opened with the meeting leads the list and reads no differently —
             it is an ordinary issue, and unlinking it does not delete it. */}
         <CockpitField label={t(($) => $.meeting.issues)}>
-          {issueLinks.length === 0 ? (
+          {issuePageReady && issueLinks.length === 0 ? (
             <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
           ) : null}
+          {issuePaging}
           <CockpitMeetingIssueLinks
+            wsId={wsId}
             links={issueLinks}
             onLink={onLinkIssue}
             onUnlink={onUnlinkIssue}
@@ -287,7 +271,8 @@ export function CockpitMeetingPanel({
         </CockpitField>
 
         <CockpitField label={t(($) => $.meeting.nodes)} className="mt-3">
-          {nodeLinks.length === 0 ? (
+          {nodePaging}
+          {nodePageReady && nodeLinks.length === 0 ? (
             <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_nodes)}</p>
           ) : (
             <ul className="flex flex-col gap-1">
@@ -306,7 +291,7 @@ export function CockpitMeetingPanel({
                     {!readOnly && (
                       <button
                         type="button"
-                        onClick={() => onToggleNode(link.node_id)}
+                        onClick={() => onUnlinkNode(link.node_id)}
                         aria-label={t(($) => $.meeting.unlink_node, { label })}
                         className="rounded-full p-0.5 text-muted-foreground opacity-0 group-hover/node:opacity-100 hover:text-foreground focus-visible:opacity-100"
                       >
@@ -319,13 +304,8 @@ export function CockpitMeetingPanel({
             </ul>
           )}
           {!readOnly && (
-            <CockpitNodePicker
-              nodes={nodes}
-              selectedIds={linkedNodeIds}
-              onToggle={onToggleNode}
-              label={t(($) => $.meeting.link_node)}
-              codes={nodePickerCodes}
-            />
+            <CockpitNodeChoicePicker wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={cockpitScope(navigation.searchParams)}
+              onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
           )}
         </CockpitField>
 
@@ -437,13 +417,15 @@ export function CockpitMeetingPanel({
                 <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
               )}
             />
+            <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
+            <CockpitContactNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
           </CockpitField>
           <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
             <CockpitAttendeeField
               value={meeting.attendees}
               onCommit={(attendees) => onPatch({ attendees })}
               parties={splitCockpitMeetingParties(meeting.parties)}
-              directory={directory}
+              wsId={wsId}
               suggestions={personOptions}
               label={t(($) => $.meeting.attendees)}
               placeholder={unset}
@@ -458,6 +440,7 @@ export function CockpitMeetingPanel({
                 <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
               )}
             />
+            <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.attendees)} disabled={readOnly} onSelect={(name) => onPatch({ attendees: [...new Set([...splitCockpitMeetingParties(meeting.attendees), name])].join("、") })} />
             {!readOnly && (
               <p className="text-caption text-muted-foreground">
                 {t(($) => $.meetings.directory_hint)}

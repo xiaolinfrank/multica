@@ -1,5 +1,7 @@
 "use client";
 
+import { preferredWorkspacePath } from "@multica/core/paths";
+
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@multica/core/auth";
@@ -80,7 +82,7 @@ export default function OnboardingPage() {
               paths.workspace(ws.slug).issueDetail(destination.issueId),
             );
           } else if (ws) {
-            router.push(paths.workspace(ws.slug).issues());
+            router.push(preferredWorkspacePath(ws.slug));
           } else {
             router.push(paths.root());
           }

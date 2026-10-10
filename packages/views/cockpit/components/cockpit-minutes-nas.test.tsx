@@ -15,6 +15,7 @@ import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitMeetingWorkflowSummary: vi.fn(), commandCockpitMeetingWorkflow: vi.fn(), getCockpitNasExports: vi.fn(), getCockpitMinutesVersions: vi.fn(), getCockpitReviewerHandoffs: vi.fn(),
   getCockpitMeetingWorkflow: vi.fn(), exportCockpitMinutesToNas: vi.fn(), retryCockpitNasExport: vi.fn(),
+  getCockpitNasExportAttempts: vi.fn(),
 } }));
 vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path, children }: { path: string; children?: React.ReactNode }) => <button type="button" data-path={path}>{children ?? path}</button> }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
@@ -73,6 +74,67 @@ beforeEach(() => {
 });
 
 describe("minutes NAS publishing and recovery", () => {
+  it("requires confirmation when the same destination changes write mode", () => {
+    const onPublish = vi.fn();
+    const view = render(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
+    server.nas_destination = { ...destination, write_mode: "create_only" };
+    view.rerender(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
+    expect(screen.getByRole("button", { name: enCockpit.workflow.publish })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.nas.use_updated_destination }));
+    expect(screen.getByText(enCockpit.nas.mode_create_only)).toBeVisible();
+    expect(screen.getByText(enCockpit.nas.create_only_visibility)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.workflow.publish }));
+    expect(onPublish).toHaveBeenCalledWith(server.nas_destination);
+  });
+
+  it("opens only the separate verified copy and completion record for create-only success", async () => {
+    const id = "70000000-0000-4000-8000-000000000001", attempt = "80000000-0000-4000-8000-000000000001";
+    const base = `${destination.directory}/已发布纪要/创建式副本`;
+    server.nas_destination = { ...destination, write_mode: "create_only" };
+    server.nas_exports = [job({ id, write_mode: "create_only", target_path: `${base}/minutes.md`, status: "succeeded", completed_at: "2026-10-10T00:00:00Z",
+      size_bytes: 18, verified_attempt_id: attempt, verified_path: `${base}/${id}/${attempt}/minutes.md`, receipt_path: `${base}/${id}/${attempt}/.multica-complete.json`, receipt_hash: "a".repeat(64) })];
+    const { client } = setupCopies();
+    expect(await screen.findByRole("button", { name: "Open verified copy" })).toHaveAttribute("data-path", server.nas_exports[0]!.verified_path);
+    expect(screen.getByRole("button", { name: "Open completion record" })).toHaveAttribute("data-path", server.nas_exports[0]!.receipt_path);
+    expect(screen.queryByRole("button", { name: `${base}/minutes.md` })).toBeNull();
+    expect(api.getCockpitNasExportAttempts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Copy verified path" }));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith(server.nas_exports[0]!.verified_path));
+    server.nas_exports = [{ ...server.nas_exports[0]!, receipt_hash: null }];
+    await act(async () => { await client.invalidateQueries({ queryKey: cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID) }); });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open verified copy" })).toBeNull());
+    expect(screen.getByText(enCockpit.nas.incomplete)).toBeVisible();
+  });
+
+  it("reads attempts only when opened, pages by 25, and recovers a failed continuation", async () => {
+    const id = "70000000-0000-4000-8000-000000000001";
+    server.nas_destination = { ...destination, write_mode: "create_only" };
+    server.nas_exports = [job({ id, write_mode: "create_only", status: "retry_wait", attempts: 27, last_error_code: "storage_unavailable" })];
+    const rows = Array.from({ length: 27 }, (_, i) => ({ id: `80000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`, attempt_number: i + 1, status: "failed",
+      target_path: `/recorded/attempt-${i + 1}/minutes.md`, receipt_path: `/recorded/attempt-${i + 1}/.multica-complete.json`, content_hash: "a".repeat(64),
+      verified_path: null, verified_receipt_path: null, verified_attempt_id: null, receipt_hash: null, size_bytes: null,
+      last_error_code: "storage_unavailable", last_error: "Share unavailable", created_at: "2026-10-10T00:00:00Z", updated_at: "2026-10-10T00:00:00Z", verified_at: null }));
+    let fail = true;
+    vi.mocked(api.getCockpitNasExportAttempts).mockImplementation(async (_ws, _meeting, _export, query) => {
+      if (query?.cursor && fail) throw new Error("Cursor expired");
+      return { workspace_id: "ws-1", meeting_id: WORKFLOW_MEETING_ID, export_id: id, items: query?.cursor ? rows.slice(25) : rows.slice(0, 25), total: 27, next_cursor: query?.cursor ? null : "page-2" };
+    });
+    setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: "Export attempts" }));
+    const region = await screen.findByRole("region", { name: "Export attempts" });
+    expect(await within(region).findByText("Attempt 25")).toBeVisible();
+    expect(within(region).queryByText("Attempt 26")).toBeNull();
+    expect(api.getCockpitNasExportAttempts).toHaveBeenLastCalledWith("ws-1", WORKFLOW_MEETING_ID, id, { cursor: undefined, page_size: 25 }, expect.anything());
+    fireEvent.click(within(region).getByRole("button", { name: "Next page" }));
+    fireEvent.click(await within(region).findByRole("button", { name: "Return to first page" }));
+    expect(await within(region).findByText("Attempt 1")).toBeVisible();
+    fail = false;
+    await waitFor(() => expect(within(region).getByRole("button", { name: "Next page" })).toBeEnabled());
+    fireEvent.click(within(region).getByRole("button", { name: "Next page" }));
+    expect(await within(region).findByText("Attempt 27")).toBeVisible();
+    expect(within(region).queryByText("Attempt 1")).toBeNull();
+  });
+
   it("shows the configured-destination recovery message instead of the server's internal reason code", async () => {
     server = { ...server, nas_destination: null, nas_unavailable_reason: "not_configured" };
     setupCopies();

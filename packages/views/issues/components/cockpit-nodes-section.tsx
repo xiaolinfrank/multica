@@ -1,183 +1,61 @@
 "use client";
 
-// The board's work items this issue is carried out through — the reverse of
-// the issue picker on a gantt node. Reads the same cached board the cockpit
-// page reads and reuses its link/unlink mutations, so both ends of the
-// relation move together through the shared cache and the realtime board
-// events, and a member can wire a task into the programme without leaving
-// the task.
-//
-// Mounting the board read here also means opening any issue creates the
-// workspace's board row on first read (the server lazily creates it); an
-// empty board leaves this section hidden, so the row sits inert until
-// somebody actually builds a breakdown in the cockpit.
-
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { useWorkspacePaths } from "@multica/core/paths";
-import {
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
-  buildCockpitTree,
-  cockpitBoardOptions,
-  cockpitPrimaryNodeOptions,
-  useDeleteCockpitNodeIssue,
-  useSetCockpitNodeIssues,
-} from "@multica/core/cockpit";
-import type { CockpitNode } from "@multica/core/types";
+import { buildCockpitDisplayCodesFromIndex, cockpitIssueNodeReferencesOptions, cockpitNodeIndexOptions, cockpitObjectPath,
+  cockpitPrimaryNodeOptions, useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
 import { ChevronRight, X } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
-import { CockpitNodePicker } from "../../cockpit/components/cockpit-node-picker";
+import { CockpitNodeChoicePicker } from "../../cockpit/components/cockpit-node-choice";
+import { CockpitFlowError, CockpitFlowPaging } from "../../cockpit/components/cockpit-task-flow";
 
 export function CockpitNodesSection({ issueId }: { issueId: string }) {
-  // Cockpit vocabulary lives in the cockpit namespace — the fork-only one —
-  // so this copy travels with the board's, not with upstream's issue copy.
-  const { t } = useT("cockpit");
   const wsId = useWorkspaceId();
-  const paths = useWorkspacePaths();
-  const [open, setOpen] = useState(true);
-
-  const { data: board } = useQuery(cockpitBoardOptions(wsId));
+  return <CockpitNodeReferences key={`${wsId}:${issueId}`} wsId={wsId} issueId={issueId} />;
+}
+function CockpitNodeReferences({ wsId, issueId }: { wsId: string; issueId: string }) {
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths();
+  const [open, setOpen] = useState(true); const [cursors, setCursors] = useState<string[]>([""]);
+  const query = useQuery({ ...cockpitIssueNodeReferencesOptions(wsId, issueId, { cursor: cursors.at(-1) || undefined }), enabled: open });
   const primary = useQuery(cockpitPrimaryNodeOptions(wsId, issueId));
   const primaryNode = primary.data?.issue_id === issueId ? primary.data : null;
-  const linkNode = useSetCockpitNodeIssues(wsId);
-  const unlinkNode = useDeleteCockpitNodeIssue(wsId);
-
-  const fail = useCallback(
-    (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
-    },
-    [t],
-  );
-
-  // Display codes are how a work item is addressed everywhere else on the
-  // board ("06.06.02"), so derive them the way the gantt does — from the
-  // summary tree, not the raw one — and the labels here match the rows a
-  // reader correlating this task with the board is looking at.
-  const tree = useMemo(() => buildCockpitTree(board?.nodes ?? []), [board?.nodes]);
-  const codes = useMemo(() => buildCockpitDisplayCodes(buildCockpitSummaryTree(tree)), [tree]);
-
-  const { rows, linkedIds } = useMemo(() => {
-    const ids = new Set(
-      (board?.issue_links ?? []).filter((l) => l.issue_id === issueId).map((l) => l.node_id),
-    );
-    // Walk the board's own node order so the rows read top-down like the tree.
-    const entries: { id: string; node?: CockpitNode; code: string }[] = [];
-    const availableIds = new Set<string>();
-    for (const node of board?.nodes ?? []) {
-      availableIds.add(node.id);
-      if (ids.has(node.id) && node.id !== primaryNode?.node_id) entries.push({ id: node.id, node, code: codes.get(node.id) ?? node.code });
-    }
-    for (const id of ids) {
-      if (!availableIds.has(id) && id !== primaryNode?.node_id) entries.push({ id, code: "" });
-    }
-    return { rows: entries, linkedIds: ids };
-  }, [board, codes, issueId, primaryNode?.node_id]);
-
-  // An empty board has nothing to offer the picker, but unresolved links
-  // still need a visible status and an unlink action.
-  if ((!board || (board.nodes.length === 0 && rows.length === 0)) && !primaryNode?.node_id && !primary.isError) return null;
-
-  const busy = linkNode.isPending || unlinkNode.isPending;
-  const toggleNode = (nodeId: string) => {
-    if (linkedIds.has(nodeId)) {
-      unlinkNode.mutate({ nodeId, issueId }, { onError: fail });
-      return;
-    }
-    // Same shape as the cockpit's own pickers: send the node's whole link
-    // set with this issue appended, so the chip order on the node stays what
-    // this end sees instead of the new link jumping to the front.
-    const current = (board?.issue_links ?? [])
-      .filter((l) => l.node_id === nodeId)
-      .map((l) => l.issue_id);
-    linkNode.mutate({ nodeId, issueIds: [...current, issueId], replace: true }, { onError: fail });
-  };
-
-  return (
-    <div>
-      <button
-        type="button"
-        className={`flex w-full min-w-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-caption font-medium transition-colors mb-2 hover:bg-accent/70 ${
-          open ? "" : "text-muted-foreground hover:text-foreground"
-        }`}
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        {/* The label is the one item that may shrink; without nowrap +
-            truncate a long translation reflows the heading (MUL-5804). */}
-        <span className="truncate">{t(($) => $.issue_detail.title)}</span>
-        <ChevronRight
-          className={`!size-3 shrink-0 stroke-[2.5] text-muted-foreground transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
-        />
-        <span className="ml-auto shrink-0 font-mono tabular-nums text-muted-foreground">
-          {rows.length + (primaryNode?.node_id ? 1 : 0)}
-        </span>
-      </button>
-      {open ? (
-        <div className="pl-2">
-          {primaryNode?.node_id && <div className="mb-2 space-y-1"><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
-            <AppLink href={`${paths.cockpit()}?node=${encodeURIComponent(primaryNode.node_id)}`} newTabTitle={primaryNode.node_name || primaryNode.node_code}
-              className="block min-w-0 break-words py-1 text-caption hover:underline">{primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink></div>}
-          {primary.isError && <div className="mb-2 space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.task_flow.primary_unavailable)}</p>
-            <Button type="button" variant="ghost" size="xs" onClick={() => void primary.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
-          {rows.length === 0 && !primaryNode?.node_id ? (
-            <p className="text-caption text-muted-foreground">
-              {t(($) => $.issue_detail.none)}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {rows.map(({ id, node, code }) => {
-                const name = node?.name.trim() || t(($) => $.issue_detail.untitled);
-                const label = node ? `${code} ${name}`.trim() : t(($) => $.issue_detail.unavailable);
-                return (
-                  <li
-                    key={id}
-                    className="group/node -mx-1 flex items-center gap-1 rounded-sm px-1 transition-colors hover:bg-accent/50"
-                  >
-                    {node ? (
-                      <AppLink
-                        href={`${paths.cockpit()}?node=${encodeURIComponent(id)}`}
-                        newTabTitle={label}
-                        className="min-w-0 flex-1 truncate py-1 text-caption hover:text-foreground hover:underline"
-                      >
-                        <span className="font-mono text-muted-foreground">{code}</span> {name}
-                      </AppLink>
-                    ) : (
-                      <span className="min-w-0 flex-1 py-1 text-caption text-muted-foreground">{label}</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => unlinkNode.mutate({ nodeId: id, issueId }, { onError: fail })}
-                      disabled={busy}
-                      aria-label={t(($) => $.issue_detail.unlink, { label })}
-                      title={t(($) => $.issue_detail.unlink, { label })}
-                      className="shrink-0 rounded-xs p-1 text-muted-foreground opacity-0 pointer-events-none transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/node:pointer-events-auto group-hover/node:opacity-100 disabled:opacity-40"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {(board?.nodes.length ?? 0) > 0 && (
-            <CockpitNodePicker
-              nodes={board?.nodes ?? []}
-              selectedIds={linkedIds}
-              onToggle={toggleNode}
-              label={t(($) => $.issue_detail.link)}
-              disabled={busy}
-              codes={codes}
-            />
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
+  const index = useQuery({ ...cockpitNodeIndexOptions(wsId), enabled: open && Boolean(query.data?.items.length || primaryNode?.node_id) });
+  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(index.data?.items ?? []), [index.data]);
+  const link = useAppendCockpitNodeIssue(wsId); const unlink = useRemoveCockpitIssueNodeReference(wsId);
+  const busy = link.isPending || unlink.isPending;
+  const fail = (error: unknown) => toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
+  return <div>
+    <button type="button" className="mb-2 flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-caption font-medium hover:bg-accent/70" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <span className="truncate">{t(($) => $.issue_detail.title)}</span><ChevronRight className={`size-3 shrink-0 ${open ? "rotate-90" : ""}`} />
+      <span className="ml-auto font-mono tabular-nums text-muted-foreground">{query.data && !primary.isPending && !primary.isError ? query.data.total + (primaryNode?.node_id ? 1 : 0) : "—"}</span>
+    </button>
+    {open && <div className="space-y-2 pl-2">
+      {primaryNode?.node_id && <div><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
+        <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primaryNode.node_id })} newTabTitle={primaryNode.node_name || primaryNode.node_code}
+          className="block break-words py-1 text-caption hover:underline">{codes.get(primaryNode.node_id) ?? primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink></div>}
+      {primary.isError && <CockpitFlowError onRetry={() => void primary.refetch()} />}
+      {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : <>
+        {query.data.items.length === 0 && !primaryNode?.node_id && <p className="text-caption text-muted-foreground">{t(($) => $.issue_detail.none)}</p>}
+        <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{query.data.items.map((row) => {
+          const code = codes.get(row.node_id) ?? row.code;
+          const label = row.available ? `${code} ${row.title || t(($) => $.issue_detail.untitled)}`.trim() : t(($) => $.issue_detail.unavailable);
+          return <li key={row.node_id} className="flex min-w-0 items-center gap-1 rounded-sm px-1 hover:bg-accent/50">
+            {row.available ? <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: row.node_id })} newTabTitle={label} className="min-w-0 flex-1 truncate py-1 text-caption hover:underline" title={label}>{label}</AppLink>
+              : <span className="min-w-0 flex-1 py-1 text-caption text-muted-foreground">{label}<span className="block break-all font-mono text-micro">{row.node_id}</span></span>}
+            <Button type="button" variant="ghost" size="icon-xs" disabled={busy || !row.can_unlink || row.relation !== "reference"}
+              aria-label={row.available ? t(($) => $.issue_detail.unlink, { label }) : t(($) => $.issue_detail.remove_unavailable, { id: row.node_id })} onClick={() => unlink.mutate({ nodeId: row.node_id, issueId }, { onError: fail })}><X className="size-3.5" /></Button>
+          </li>;
+        })}</ul>
+        {(query.data.total > 25 || cursors.length > 1) && <CockpitFlowPaging page={cursors.length} shown={query.data.items.length} total={query.data.total} hasNext={Boolean(query.data.next_cursor)} busy={query.isFetching || busy}
+          onPrevious={() => setCursors((old) => old.slice(0, -1))} onNext={() => { if (query.data.next_cursor) setCursors((old) => [...old, query.data.next_cursor!]); }} />}
+      </>}
+      <CockpitNodeChoicePicker wsId={wsId} label={t(($) => $.issue_detail.link)} eligible={false} disabled={unlink.isPending}
+        onSelect={(node) => link.mutateAsync({ nodeId: node.id, issueId })} />
+    </div>}
+  </div>;
 }

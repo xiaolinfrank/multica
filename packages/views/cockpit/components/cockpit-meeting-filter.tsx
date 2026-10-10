@@ -9,15 +9,14 @@
 // below it and the rows on screen are one fact, not three.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CockpitMeeting } from "@multica/core/types";
 import {
   COCKPIT_MEETING_ONLY_FLAGS,
   countCockpitMeetingFilters,
-  cockpitMeetingTrackColor,
   cockpitMeetingVocabulary,
   emptyCockpitMeetingFilter,
   type CockpitMeetingFilter,
   type CockpitMeetingOnlyFlag,
+  type CockpitMeetingVocabularySource,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
@@ -29,9 +28,8 @@ import { useT } from "../../i18n";
 export interface CockpitMeetingFilterBarProps {
   filter: CockpitMeetingFilter;
   onChange: (next: CockpitMeetingFilter) => void;
-  /** Every meeting on the board — the popover's vocabulary comes from what
-   *  the programme has actually used, not from what is currently visible. */
-  meetings: CockpitMeeting[];
+  /** Current-page suggestions only; users can add any exact filter value. */
+  meetings: CockpitMeetingVocabularySource[];
   today: string;
 }
 
@@ -100,16 +98,34 @@ function ChipSection({
   );
 }
 
+/** Bounded suggestions do not constrain which exact server-side values can be queried. */
+function NamedFilter({ label, values, selected, onToggle, emptyLabel = "" }: {
+  label: string; values: string[]; selected: string[]; onToggle: (value: string) => void; emptyLabel?: string;
+}) {
+  const { t } = useT("cockpit");
+  const [text, setText] = useState("");
+  const value = text.trim();
+  const suggestions = [...new Set([...selected, ...values])].filter((candidate) => selected.includes(candidate) || candidate.toLowerCase().includes(value.toLowerCase())).slice(0, 12);
+  const add = () => { if (value && !selected.includes(value)) { onToggle(value); setText(""); } };
+  return <div className="space-y-2">
+    <ChipSection label={label} values={suggestions.map((item) => ({ value: item, label: item || emptyLabel }))} selected={selected} onToggle={onToggle} />
+    {suggestions.length === 0 && <span className="text-micro font-medium text-muted-foreground">{label}</span>}
+    <div className="flex gap-2"><Input value={text} maxLength={200} autoComplete="off" aria-label={t(($) => $.meeting_center.filter_value, { label })}
+      onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); add(); } }} />
+      <Button type="button" variant="outline" size="sm" aria-label={t(($) => $.meeting_center.filter_add, { label })} disabled={!value || selected.includes(value)} onClick={add}>{t(($) => $.meeting_center.add_value)}</Button></div>
+  </div>;
+}
+
 /** The quick ranges a leadership review actually asks for. */
 function quickRange(which: "month" | "last30" | "year", today: string): { from: string; to: string } {
-  const [y, m] = today.split("-").map(Number);
+  const [y, m, d] = today.split("-").map(Number);
   const pad = (n: number) => String(n).padStart(2, "0");
   if (which === "month") {
     const last = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
     return { from: `${y}-${pad(m!)}-01`, to: `${y}-${pad(m!)}-${pad(last)}` };
   }
   if (which === "last30") {
-    const from = new Date(Date.UTC(y!, m! - 1, 1));
+    const from = new Date(Date.UTC(y!, m! - 1, d!));
     from.setUTCDate(from.getUTCDate() - 29);
     const fmt = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
     return { from: fmt(from), to: today };
@@ -126,7 +142,6 @@ export function CockpitMeetingFilterBar({
 }: CockpitMeetingFilterBarProps) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
-  const [partyQuery, setPartyQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
@@ -149,14 +164,6 @@ export function CockpitMeetingFilterBar({
   }, []);
 
   const patch = (part: Partial<CockpitMeetingFilter>) => onChange({ ...filter, ...part });
-
-  const partyOptions = useMemo(() => {
-    const query = partyQuery.trim().toLowerCase();
-    const list = query
-      ? vocabulary.parties.filter((p) => p.toLowerCase().includes(query))
-      : vocabulary.parties;
-    return list.slice(0, 12);
-  }, [vocabulary.parties, partyQuery]);
 
   const onlyLabels: Record<CockpitMeetingOnlyFlag, string> = {
     consensus: t(($) => $.meetings.only_consensus),
@@ -227,7 +234,7 @@ export function CockpitMeetingFilterBar({
             </Button>
           }
         />
-        <PopoverContent align="start" className="flex w-80 flex-col gap-3 p-3">
+        <PopoverContent align="start" className="flex max-h-[80vh] w-[min(26rem,calc(100vw-2rem))] flex-col gap-3 overflow-y-auto p-3">
           {/* The date range, with the ranges a review actually asks for one
               tap away. */}
           <div className="flex flex-col gap-1.5">
@@ -276,67 +283,11 @@ export function CockpitMeetingFilterBar({
             </div>
           </div>
 
-          <ChipSection
-            label={t(($) => $.meetings.filter_track)}
-            values={[
-              ...vocabulary.tracks.map((track) => ({ value: track, label: track })),
-              { value: "", label: t(($) => $.meetings.track_none) },
-            ]}
-            selected={filter.tracks}
-            onToggle={(track) => patch({ tracks: toggle(filter.tracks, track) })}
-            colors={(track) => cockpitMeetingTrackColor(track)}
-          />
-          <ChipSection
-            label={t(($) => $.meetings.filter_kind)}
-            values={vocabulary.kinds.map((kind) => ({ value: kind, label: kind }))}
-            selected={filter.kinds}
-            onToggle={(kind) => patch({ kinds: toggle(filter.kinds, kind) })}
-          />
-          <ChipSection
-            label={t(($) => $.meetings.filter_status)}
-            values={vocabulary.statuses.map((status) => ({ value: status, label: status }))}
-            selected={filter.statuses}
-            onToggle={(status) => patch({ statuses: toggle(filter.statuses, status) })}
-          />
-
-          {/* Parties can be a long list; it searches rather than scrolls. */}
-          {vocabulary.parties.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
-                {t(($) => $.meetings.filter_parties)}
-              </span>
-              {vocabulary.parties.length > 8 && (
-                <Input
-                  value={partyQuery}
-                  onChange={(e) => setPartyQuery(e.target.value)}
-                  placeholder={t(($) => $.meetings.filter_parties_placeholder)}
-                  aria-label={t(($) => $.meetings.filter_parties_placeholder)}
-                  className="h-7 text-caption"
-                />
-              )}
-              <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
-                {partyOptions.map((party) => {
-                  const on = filter.parties.includes(party);
-                  return (
-                    <button
-                      key={party}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => patch({ parties: toggle(filter.parties, party) })}
-                      className={cn(
-                        "flex h-6 items-center rounded-full border px-2 text-micro transition-colors",
-                        on
-                          ? "border-brand/40 bg-brand/10 font-medium text-foreground"
-                          : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground",
-                      )}
-                    >
-                      {party}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <p className="text-caption text-muted-foreground">{t(($) => $.meeting_center.filter_values_hint)}</p>
+          <NamedFilter label={t(($) => $.meetings.filter_track)} values={[...vocabulary.tracks, ""]} selected={filter.tracks} emptyLabel={t(($) => $.meetings.track_none)} onToggle={(value) => patch({ tracks: toggle(filter.tracks, value) })} />
+          <NamedFilter label={t(($) => $.meetings.filter_kind)} values={vocabulary.kinds} selected={filter.kinds} onToggle={(value) => patch({ kinds: toggle(filter.kinds, value) })} />
+          <NamedFilter label={t(($) => $.meetings.filter_status)} values={vocabulary.statuses} selected={filter.statuses} onToggle={(value) => patch({ statuses: toggle(filter.statuses, value) })} />
+          <NamedFilter label={t(($) => $.meetings.filter_parties)} values={vocabulary.parties} selected={filter.parties} onToggle={(value) => patch({ parties: toggle(filter.parties, value) })} />
 
           <ChipSection
             label={t(($) => $.meetings.filter_only)}

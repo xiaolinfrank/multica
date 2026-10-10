@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "../types";
 import { workspaceListOptions } from "../workspace/queries";
 import { paths, type WorkspacePaths } from "./paths";
+import { useWorkspaceStartStore } from "./workspace-start-store";
 
 /**
  * Context for the current workspace slug (read from URL by the platform layer).
@@ -66,5 +67,6 @@ export function useCurrentWorkspace(): Workspace | null {
  */
 export function useWorkspacePaths(): WorkspacePaths {
   const slug = useRequiredWorkspaceSlug();
-  return paths.workspace(slug);
+  const page = useWorkspaceStartStore((state) => state.page);
+  return paths.workspace(slug, page);
 }

@@ -1,8 +1,11 @@
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CockpitBoard, CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
+import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
 import { CockpitTable, type CockpitTableProps } from "./cockpit-table";
 
 function node(overrides: Partial<CockpitNode> & { id: string; code: string }): CockpitNode {
@@ -20,14 +23,14 @@ const nodes = [
   node({ id: "branch", code: "historic-branch", parent_id: "root", name: "Branch" }),
   node({ id: "leaf", code: "historic-task-18", parent_id: "branch", name: "Execution task", progress: 40, note: "hidden diagnostic needle" }),
 ];
-function show(overrides: Partial<CockpitTableProps> = {}) {
+function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: CockpitBoard } = {}) {
   const board: CockpitBoard = {
     cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
       summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
     nodes, payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
   };
   const onSelect = vi.fn();
-  const props: CockpitTableProps = { board, mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
+  const props: CockpitTableProps = { board, contextNodeIds: new Set(), taskCounts: new Map(), displayCodes: buildCockpitDisplayCodesFromIndex(overrides.board?.nodes ?? nodes), mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
     onSelect, onPatchNode: vi.fn(), statusSuggestions: [], execStatusSuggestions: [],
     budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [], ...overrides };
   const view = render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>

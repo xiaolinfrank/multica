@@ -20,7 +20,7 @@ const link: CockpitMeetingIssueLink = {
 
 function setup(roles: string[] = [], save = vi.fn().mockResolvedValue(undefined), disabled = false, requiredRolesByIssue?: ReadonlyMap<string, readonly string[]>) {
   render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-    <CockpitMeetingIssueLinks links={[{ ...link, roles }]} onLink={vi.fn()} onUnlink={vi.fn()}
+    <CockpitMeetingIssueLinks wsId="ws-1" links={[{ ...link, roles }]} onLink={vi.fn()} onUnlink={vi.fn()}
       onSaveRoles={save} disabled={disabled} requiredRolesByIssue={requiredRolesByIssue} />
   </I18nProvider>);
   return save;

@@ -129,6 +129,7 @@ describe("module mutations", () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: issueKeys.all("ws-1") }),
     );
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.surfaces("ws-1") });
   });
 
   it("optimistically reorders by the given ids and keeps the settled order", async () => {

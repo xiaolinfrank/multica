@@ -1,20 +1,21 @@
 "use client";
 import type { CockpitWorkflowIssue } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { useActorName } from "@multica/core/workspace/hooks";
+import { useQuery } from "@tanstack/react-query";
+import { cockpitActorLabelOptions } from "@multica/core/cockpit";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { StatusIcon } from "../../issues/components/status-icon";
 
-export function WorkflowIssueLink({ issue, newTab = false }: { issue: CockpitWorkflowIssue; newTab?: boolean }) {
+export function WorkflowIssueLink({ wsId, issue, newTab = false }: { wsId: string; issue: Pick<CockpitWorkflowIssue, "id" | "identifier" | "title" | "status" | "assignee_id"> & { assignee_type: string | null; assignee_name?: string }; newTab?: boolean }) {
   const paths = useWorkspacePaths();
   const { t } = useT("cockpit");
   const { t: issueT } = useT("issues");
-  const { getActorName } = useActorName();
+  const assigneeQuery = useQuery({ ...cockpitActorLabelOptions(wsId, issue.assignee_type, issue.assignee_id), enabled: Boolean(!issue.assignee_name && issue.assignee_type && issue.assignee_id) });
   const statusKey = issue.status;
   const status = isBuiltInIssueStatus(statusKey) ? issueT(($) => $.status[statusKey]) : statusKey;
-  const assignee = issue.assignee_id ? getActorName(issue.assignee_type, issue.assignee_id) : t(($) => $.workflow.unassigned);
+  const assignee = issue.assignee_id && issue.assignee_type ? issue.assignee_name || assigneeQuery.data || issue.assignee_id : t(($) => $.workflow.unassigned);
   return <div className="space-y-1"><AppLink href={paths.issueDetail(issue.identifier || issue.id)} newTabTitle={issue.title}
     target={newTab ? "_blank" : undefined} rel={newTab ? "noreferrer" : undefined}
     className="inline-flex max-w-full items-start gap-2 text-caption hover:underline">

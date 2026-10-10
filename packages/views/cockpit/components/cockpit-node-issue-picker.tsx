@@ -1,194 +1,41 @@
 "use client";
 
-// The work item a new issue is being opened against.
-//
-// The cockpit's "New issue" arrives at the create dialog with a row already
-// chosen — that row is what decided the project, the module and the number the
-// title opens on — and this is where the choice is shown and, when it was the
-// wrong row, changed. Only execution rows inheriting an explicit module UUID
-// are offered; mapped project/module rows themselves remain structural.
-
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ListTree } from "lucide-react";
 import { useWorkspaceId } from "@multica/core/hooks";
-import {
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
-  buildCockpitTree,
-  cockpitBoardOptions,
-  cockpitNodeIssueFiling,
-} from "@multica/core/cockpit";
-import { moduleListOptions } from "@multica/core/modules/queries";
-import {
-  PICKER_TRIGGER_CLASS,
-  PickerEmpty,
-  PickerItem,
-  PropertyPicker,
-} from "../../issues/components/pickers/property-picker";
-import { matchesPinyin } from "../../editor/extensions/pinyin-match";
+import { buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitScope, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
+import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { useT } from "../../i18n";
+import { useNavigation } from "../../navigation";
 
-/**
- * A work item an issue can be filed against, resolved down to everything the
- * create dialog needs from it. Travels whole so the field can name the row
- * before the board query has answered — it is seeded by the surface that
- * opened the dialog, which had already resolved it.
- */
 export interface CockpitNodeIssueOption {
-  node_id: string;
-  /** The row's display code — "01.01.01". */
-  code: string;
-  /** Code and name together, as the gantt's leftmost column reads. */
-  label: string;
-  project_id: string;
-  module_id: string;
+  node_id: string; code: string; label: string; project_id: string; module_id: string;
 }
 
-/** Eligible rows plus query health, so a failed load cannot masquerade as an empty plan. */
-export function useCockpitNodeIssueOptions(leafOnly = false) {
+/** Resolve one persisted selection independently of any search page. */
+export function useCockpitSelectedNodeIssueOption(nodeId: string) {
   const wsId = useWorkspaceId();
-  const boardQuery = useQuery(cockpitBoardOptions(wsId));
-  const moduleQuery = useQuery(moduleListOptions(wsId));
-  const board = boardQuery.data;
-  const modules = moduleQuery.data;
-
-  const options = useMemo(() => {
-    const nodes = board?.nodes ?? [];
-    if (nodes.length === 0 || !modules) return [];
-    // Display codes label options only; ancestry and explicit UUIDs determine filing.
-    const codes = buildCockpitDisplayCodes(buildCockpitSummaryTree(buildCockpitTree(nodes)));
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const parents = new Set(nodes.map((node) => node.parent_id).filter(Boolean));
-    const options: CockpitNodeIssueOption[] = [];
-    for (const [id, code] of codes) {
-      const node = byId.get(id);
-      // A merged group row is synthetic — it stands in for its members and has
-      // no row of its own to link against.
-      if (!node) continue;
-      if (leafOnly && parents.has(node.id)) continue;
-      const filing = cockpitNodeIssueFiling(
-        node,
-        byId,
-        modules,
-        code,
-      );
-      if (!filing) continue;
-      options.push({
-        node_id: id,
-        code,
-        label: `${code} ${node.name}`.trim(),
-        project_id: filing.project_id,
-        module_id: filing.module_id,
-      });
-    }
-    options.sort((a, b) => a.code.localeCompare(b.code));
-    return options;
-  }, [board?.nodes, modules, leafOnly]);
-  return { options, isPending: boardQuery.isPending || moduleQuery.isPending,
-    isFetching: boardQuery.isFetching || moduleQuery.isFetching,
-    isError: boardQuery.isError || moduleQuery.isError,
-    refetch: () => Promise.all([boardQuery.refetch(), moduleQuery.refetch()]) };
+  const query = useQuery({ ...cockpitNodeDetailOptions(wsId, nodeId, EMPTY_COCKPIT_SCOPE), enabled: Boolean(nodeId) });
+  const option = useMemo(() => {
+    const data = query.data;
+    if (!data || !data.binding.eligible || !data.binding.project_id || !data.binding.module_id) return null;
+    const code = buildCockpitDisplayCodesFromIndex(data.node_index).get(data.node.id) ?? data.node.code;
+    return { node_id: data.node.id, code, label: `${code} ${data.node.name}`.trim(), project_id: data.binding.project_id, module_id: data.binding.module_id };
+  }, [query.data]);
+  return { option, isPending: Boolean(nodeId) && query.isPending, isFetching: query.isFetching, isError: query.isError || (query.isSuccess && !query.data), refetch: query.refetch };
 }
 
-export function CockpitNodeIssuePicker({
-  value,
-  onUpdate,
-  triggerRender,
-  align = "start",
-  open: controlledOpen,
-  onOpenChange,
-  disabled = false,
-  leafOnly = false,
-  maxResults,
-}: {
-  value: CockpitNodeIssueOption | null;
-  /** Null clears the link; the dialog decides what that leaves behind. */
-  onUpdate: (next: CockpitNodeIssueOption | null) => void;
-  triggerRender?: React.ReactElement;
-  align?: "start" | "center" | "end";
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  disabled?: boolean;
-  leafOnly?: boolean;
-  maxResults?: number;
+export function CockpitNodeIssuePicker({ value, onUpdate, disabled = false, triggerRender, align, open, onOpenChange }: {
+  value: CockpitNodeIssueOption | null; onUpdate: (next: CockpitNodeIssueOption | null) => void;
+  triggerRender?: React.ReactElement; align?: "start" | "center" | "end"; open?: boolean;
+  onOpenChange?: (open: boolean) => void; disabled?: boolean;
 }) {
+  const wsId = useWorkspaceId();
   const { t } = useT("cockpit");
-  const queryState = useCockpitNodeIssueOptions(leafOnly);
-  const { options } = queryState;
-  const [filter, setFilter] = useState("");
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = disabled ? false : controlledOpen ?? internalOpen;
-  const setOpen = disabled ? () => {} : onOpenChange ?? setInternalOpen;
-
-  // Substring plus pinyin, as the project and module pickers do: the rows are
-  // "01.01.01 数据产权登记", reachable by number or by name from latin input.
-  const query = filter.trim().toLowerCase();
-  const filtered = options.filter(
-    (o) => o.label.toLowerCase().includes(query) || matchesPinyin(o.label, query),
-  );
-
-  const resolvedTriggerRender = triggerRender ?? (
-    <button type="button" disabled={disabled} className={PICKER_TRIGGER_CLASS} />
-  );
-
-  return (
-    <div className="inline-flex min-w-0">
-      <PropertyPicker
-        open={open}
-        onOpenChange={setOpen}
-        width="w-72"
-        align={align}
-        searchable
-        searchPlaceholder={t(($) => $.node_picker.search_placeholder)}
-        onSearchChange={setFilter}
-        triggerRender={resolvedTriggerRender}
-        trigger={
-          <>
-            <ListTree className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className={value ? "truncate" : "truncate text-muted-foreground"}>
-              {value ? value.label : t(($) => $.node_picker.none)}
-            </span>
-          </>
-        }
-      >
-        <PickerItem
-          emptyValue
-          selected={!value}
-          onClick={() => {
-            onUpdate(null);
-            setOpen(false);
-          }}
-        >
-          <ListTree className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">{t(($) => $.node_picker.none)}</span>
-        </PickerItem>
-
-        {!queryState.isError && !queryState.isPending && filtered.slice(0, maxResults).map((option) => (
-          <PickerItem
-            key={option.node_id}
-            selected={option.node_id === value?.node_id}
-            onClick={() => {
-              onUpdate(option);
-              setOpen(false);
-            }}
-          >
-            <ListTree className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="truncate">{option.label}</span>
-          </PickerItem>
-        ))}
-        {maxResults && filtered.length > maxResults && <p className="p-2 text-caption text-muted-foreground">{t(($) => $.task_flow.narrow_nodes, { count: filtered.length, shown: maxResults })}</p>}
-
-        {queryState.isError ? <div role="alert" className="space-y-1 px-2 py-1.5 text-caption">
-          <p>{t(($) => $.action_flow.nodes_failed)}</p>
-          <button type="button" className="text-primary hover:underline" onClick={() => void queryState.refetch()}>{t(($) => $.binding.retry)}</button>
-        </div> : queryState.isPending ? <p role="status" className="px-2 py-1.5 text-caption text-muted-foreground">{t(($) => $.workflow.loading)}</p> : options.length === 0 && (
-          <div className="px-2 py-1.5 text-caption text-muted-foreground">
-            {t(($) => $.node_picker.empty)}
-          </div>
-        )}
-        {!queryState.isError && !queryState.isPending && options.length > 0 && filtered.length === 0 && query && <PickerEmpty />}
-      </PropertyPicker>
-    </div>
-  );
+  const navigation = useNavigation();
+  return <CockpitNodeChoicePicker scope={cockpitScope(navigation.searchParams)} wsId={wsId} triggerRender={triggerRender} align={align} open={open} onOpenChange={onOpenChange} eligible disabled={disabled} value={value?.label}
+    label={t(($) => $.node_picker.none)} allowClear onClear={() => onUpdate(null)} onSelect={(node, displayCode) => {
+      if (node.eligible && node.project_id && node.module_id) onUpdate({ node_id: node.id, code: displayCode,
+        label: `${displayCode} ${node.title}`.trim(), project_id: node.project_id, module_id: node.module_id });
+    }} />;
 }

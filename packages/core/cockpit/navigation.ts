@@ -1,7 +1,53 @@
 export type CockpitArea = "work" | "operations" | "gantt" | "meetings" | "changes" | "finance";
 export type CockpitBoardTab = "overview" | "gantt" | "meetings" | "changes" | "finance";
-export type CockpitNodeView = "tasks" | "details";
+export type CockpitNodeView = "tasks" | "artifacts" | "acceptance" | "details";
 export type CockpitMeetingView = "workflow" | "resources" | "details";
+export type CockpitSurface = "work" | "plan" | "meetings" | "artifacts" | "governance";
+export type CockpitPlanView = "gantt" | "table" | "responsibility" | "milestones" | "finance" | "operations";
+export type CockpitGovernanceView = "changes" | "decisions" | "risks" | "history" | "automation";
+export type CockpitArtifactView = "review" | "all" | "directory";
+
+/** URL-owned project scope. A module without a project remains invalid rather than silently becoming all projects. */
+export interface CockpitScope { projectId: string | null; moduleId: string | null }
+export const EMPTY_COCKPIT_SCOPE: CockpitScope = { projectId: null, moduleId: null };
+
+export function cockpitScope(search: { get: (name: string) => string | null }): CockpitScope {
+  return { projectId: search.get("project") || null, moduleId: search.get("module") || null };
+}
+
+export function cockpitScopedPath(pathname: string, search: URLSearchParams, scope: CockpitScope): string {
+  const query = new URLSearchParams(search);
+  if (scope.projectId) query.set("project", scope.projectId); else query.delete("project");
+  if (scope.moduleId) query.set("module", scope.moduleId); else query.delete("module");
+  const suffix = query.toString();
+  return suffix ? `${pathname}?${suffix}` : pathname;
+}
+
+export function cockpitSurfacePath(pathname: string, surface: CockpitSurface, scope: CockpitScope = EMPTY_COCKPIT_SCOPE,
+  view?: CockpitPlanView | CockpitGovernanceView | CockpitArtifactView): string {
+  const query = new URLSearchParams();
+  if (surface !== "work") query.set("tab", surface);
+  if (view && surface === "plan") query.set("plan_view", view);
+  if (view && surface === "governance") query.set("governance_view", view);
+  if (view && surface === "artifacts") query.set("artifact_view", view);
+  return cockpitScopedPath(pathname, query, scope);
+}
+
+export function cockpitShellDestination(search: { get: (name: string) => string | null }): {
+  surface: CockpitSurface; planView: CockpitPlanView; governanceView: CockpitGovernanceView; artifactView: CockpitArtifactView; scope: CockpitScope;
+} {
+  const tab = search.get("tab");
+  const plan = search.get("plan_view"), governance = search.get("governance_view"), artifact = search.get("artifact_view");
+  const surface: CockpitSurface = search.get("artifact") ? "artifacts" : search.get("meeting") ? "meetings" : search.get("node") ? "plan"
+    : search.get("view") === "operations" || tab === "gantt" || tab === "finance" || tab === "plan" ? "plan"
+      : tab === "changes" || tab === "governance" ? "governance"
+        : tab === "meetings" || tab === "artifacts" ? tab : "work";
+  const planView: CockpitPlanView = search.get("view") === "operations" ? "operations" : tab === "finance" ? "finance"
+    : plan === "table" || plan === "responsibility" || plan === "milestones" || plan === "finance" || plan === "operations" ? plan : "gantt";
+  return { surface, planView,
+    governanceView: governance === "decisions" || governance === "risks" || governance === "history" || governance === "automation" ? governance : "changes",
+    artifactView: artifact === "all" || artifact === "directory" ? artifact : "review", scope: cockpitScope(search) };
+}
 
 export interface CockpitDestination {
   area: CockpitArea;
@@ -21,7 +67,7 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
   const actionId = meetingId ? search.get("action") || null : null;
   const requestedNodeView = search.get("node_view");
   const requestedMeetingView = search.get("meeting_view");
-  const nodeView = nodeId && (requestedNodeView === "tasks" || requestedNodeView === "details") ? requestedNodeView : null;
+  const nodeView = nodeId && (requestedNodeView === "tasks" || requestedNodeView === "artifacts" || requestedNodeView === "acceptance" || requestedNodeView === "details") ? requestedNodeView : null;
   const meetingView = meetingId && (requestedMeetingView === "workflow" || requestedMeetingView === "resources" || requestedMeetingView === "details") ? requestedMeetingView : null;
   const tab = search.get("tab");
   const area: CockpitArea = meetingId ? "meetings" : nodeId ? "gantt"
@@ -37,9 +83,36 @@ export function cockpitAreaPath(pathname: string, area: CockpitArea): string {
   return `${pathname}?${area === "operations" ? "view=operations" : `tab=${area}`}`;
 }
 
-export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView } | { kind: "meeting"; id: string; actionId?: string; view?: CockpitMeetingView }): string {
+export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView; planView?: CockpitPlanView; requestId?: string } | { kind: "meeting"; id: string; actionId?: string; view?: CockpitMeetingView }, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
   const query = new URLSearchParams({ [target.kind]: target.id });
   if (target.kind === "meeting" && target.actionId) query.set("action", target.actionId);
   if (target.view) query.set(`${target.kind}_view`, target.view);
-  return `${pathname}?${query.toString()}`;
+  if (target.kind === "node" && target.requestId) query.set("acceptance", target.requestId);
+  if (target.kind === "node" && target.planView) query.set("plan_view", target.planView);
+  return cockpitScopedPath(pathname, query, scope);
+}
+
+export interface CockpitArtifactReturn { nodeId: string; view: "artifacts" | "acceptance"; requestId?: string }
+export function cockpitArtifactReturn(search: { get: (name: string) => string | null }): CockpitArtifactReturn | undefined {
+  const nodeId = search.get("from_node");
+  if (!nodeId) return undefined;
+  return { nodeId, view: search.get("from_view") === "acceptance" ? "acceptance" : "artifacts", ...(search.get("from_request") ? { requestId: search.get("from_request")! } : {}) };
+}
+export function cockpitArtifactPath(pathname: string, artifactId: string, scope: CockpitScope, versionId?: string, back?: CockpitArtifactReturn): string {
+  const query = new URLSearchParams({ tab: "artifacts", artifact: artifactId });
+  if (versionId) query.set("artifact_version", versionId);
+  if (back) { query.set("from_node", back.nodeId); query.set("from_view", back.view); if (back.requestId) query.set("from_request", back.requestId); }
+  return cockpitScopedPath(pathname, query, scope);
+}
+
+/** Keep the originating meeting register window while opening or closing its workbench. */
+export function cockpitMeetingContextPath(pathname: string, meetingId: string | null, scope: CockpitScope,
+  source: { get: (key: string) => string | null }, view?: CockpitMeetingView): string {
+  const base = meetingId ? cockpitObjectPath(pathname, { kind: "meeting", id: meetingId, view }, scope) : cockpitSurfacePath(pathname, "meetings", scope);
+  const query = new URLSearchParams(base.split("?")[1] ?? "");
+  if (meetingId && source.get("meeting") === meetingId && source.get("action")) query.set("action", source.get("action")!);
+  for (const name of ["meeting_node", "meeting_nodes", "from", "to"] as const) {
+    const value = source.get(name); if (value) query.set(name, value);
+  }
+  return `${pathname}?${query}`;
 }

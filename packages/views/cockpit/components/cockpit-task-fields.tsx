@@ -4,7 +4,7 @@ import type { IssueAssigneeType } from "@multica/core/types";
 import { Input } from "@multica/ui/components/ui/input";
 import { Button } from "@multica/ui/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
-import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
+import { CockpitAssigneePicker } from "./cockpit-assignee-picker";
 import { useT } from "../../i18n";
 
 export interface CockpitTaskFieldsValue { assigneeType: IssueAssigneeType; assigneeId: string; priority: string; dueDate: string }
@@ -15,14 +15,14 @@ export function cockpitTaskFieldsValue(userId: string, input?: { assignee_type?:
 export function cockpitTaskFieldsBody(value: CockpitTaskFieldsValue) {
   return { assignee_type: value.assigneeType, assignee_id: value.assigneeId, priority: value.priority, ...(value.dueDate ? { due_date: value.dueDate } : {}) };
 }
-export function CockpitTaskFields({ value, onChange, disabled }: { value: CockpitTaskFieldsValue; onChange: (next: CockpitTaskFieldsValue) => void; disabled: boolean }) {
+export function CockpitTaskFields({ wsId, value, onChange, disabled }: { wsId: string; value: CockpitTaskFieldsValue; onChange: (next: CockpitTaskFieldsValue) => void; disabled: boolean }) {
   const { t } = useT("cockpit");
   const { t: issueT } = useT("issues");
   const assigneeHintId = useId();
   const priorities = ["none", "low", "medium", "high", "urgent"] as const;
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <div className="space-y-1"><p className="text-caption">{t(($) => $.task_flow.assignee)}</p>
-      <AssigneePicker assigneeType={value.assigneeType} assigneeId={value.assigneeId || null} open={disabled ? false : undefined}
+      <CockpitAssigneePicker wsId={wsId} assigneeType={value.assigneeType} assigneeId={value.assigneeId || null} open={disabled ? false : undefined}
         triggerRender={<Button type="button" variant="outline" size="sm" disabled={disabled}
           aria-label={t(($) => $.task_flow.assignee)} aria-describedby={!value.assigneeId ? assigneeHintId : undefined} />}
         onUpdate={(update) => { if (!disabled) onChange({ ...value, assigneeType: update.assignee_type ?? "member", assigneeId: update.assignee_id ?? "" }); }} />

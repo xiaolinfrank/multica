@@ -1,0 +1,56 @@
+"use client";
+
+import { cockpitSurfacePath, type CockpitScope, type CockpitSurface } from "@multica/core/cockpit";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { buttonVariants } from "@multica/ui/components/ui/button";
+import { cn } from "@multica/ui/lib/utils";
+import { CalendarDays, ChartNoAxesGantt, Files, LayoutDashboard, Layers3, ShieldCheck } from "lucide-react";
+import { AppLink } from "../../navigation";
+import { useT } from "../../i18n";
+
+export function CockpitShell({ surface, scope, title, scopeControl, secondaryNavigation, actions, notice, pendingChangeCount, artifactsAvailable = false, children }: {
+  surface: CockpitSurface;
+  scope: CockpitScope;
+  title?: React.ReactNode;
+  scopeControl: React.ReactNode;
+  secondaryNavigation?: React.ReactNode;
+  actions?: React.ReactNode;
+  notice?: React.ReactNode;
+  pendingChangeCount?: number;
+  artifactsAvailable?: boolean;
+  children: React.ReactNode;
+}) {
+  const { t } = useT("cockpit");
+  const paths = useWorkspacePaths();
+  const navigation = [
+    { value: "work" as const, label: t(($) => $.shell.overview), Icon: LayoutDashboard },
+    { value: "plan" as const, label: t(($) => $.shell.plan), Icon: ChartNoAxesGantt },
+    { value: "meetings" as const, label: t(($) => $.shell.meetings), Icon: CalendarDays },
+    ...(artifactsAvailable ? [{ value: "artifacts" as const, label: t(($) => $.shell.artifacts), Icon: Files }] : []),
+    { value: "governance" as const, label: t(($) => $.shell.governance), Icon: ShieldCheck },
+  ];
+  return <section className="cockpit-skin flex h-full min-h-0 min-w-0 flex-col" aria-label={t(($) => $.work_overview.cockpit)}>
+    <header className="shrink-0 border-b border-border bg-card/90 px-4 pt-4 lg:px-6">
+      <div className="flex min-w-0 flex-wrap items-center gap-3 pb-4">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand"><Layers3 className="size-4" aria-hidden /></span>
+        <div className="min-w-0 flex-1"><p className="text-micro text-muted-foreground">{t(($) => $.work_overview.cockpit)}</p>
+          <div className="min-w-0 break-words text-title-sm font-semibold">{title ?? t(($) => $.shell.workspace_view)}</div></div>
+        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      <nav aria-label={t(($) => $.shell.navigation)} className="flex min-w-0 flex-wrap gap-1 pb-3">
+        {navigation.map(({ value, label, Icon }) => <AppLink key={value} href={cockpitSurfacePath(paths.cockpit(), value, scope)}
+          aria-current={surface === value ? "page" : undefined}
+          className={cn(buttonVariants({ variant: surface === value ? "brandSubtle" : "ghost", size: "sm" }), "gap-2 rounded-lg px-3") }>
+          <Icon className="size-4" aria-hidden />{label}
+          {value === "governance" && pendingChangeCount !== undefined && pendingChangeCount > 0 && <span className="rounded-full bg-brand/10 px-1.5 text-micro tabular-nums text-brand" title={t(($) => $.governance.pending)}>{pendingChangeCount}</span>}
+        </AppLink>)}
+      </nav>
+      <div className="flex min-w-0 flex-wrap items-center gap-3 border-t border-border/70 py-3">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{scopeControl}</div>
+        {secondaryNavigation && <div className="flex min-w-0 max-w-full flex-1 flex-wrap justify-end gap-1">{secondaryNavigation}</div>}
+      </div>
+    </header>
+    {notice && <div className="shrink-0 border-b border-border bg-muted/40 px-4 py-3 lg:px-6">{notice}</div>}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+  </section>;
+}

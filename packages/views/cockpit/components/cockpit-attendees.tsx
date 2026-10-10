@@ -1,30 +1,17 @@
 "use client";
 
-// The attendee picker.
-//
-// A meeting stores its people as one "、"-joined string, but picking them is
-// not a flat search across everyone the board has ever met: the room is read
-// by unit first ("深圳联通 sent …"). Once the parties field says who is at
-// the table, this picker shows just those units' contacts — each row a name
-// with its 职位, any number a tick away — and a toggle at the foot widens the
-// browse to the whole book. Typing always searches everything. Without
-// parties (or with units the book does not know), the full grouped list
-// shows: workspace members, names the board has used and unit-less contacts
-// follow the units under one "others" bucket.
-//
-// The book grows by using the form: a typed-in name is offered for filing
-// under the meeting's unit when the field commits (the edit panel saves at
-// once; the create form holds it until the meeting exists), and the "new
-// contact" row opens a small editor for the 职位 (and the unit, when several
-// are at the table) that saves on the spot. Rows the form filed carry a
-// two-step inline delete; the preset roster (source "seed") does not. The
-// hint under the field says the saving part — copy in
-// meetings.directory_hint.
+// The attendee picker keeps the meeting's free-text names while browsing
+// bounded workspace contact pages. Unit filters are OR; typing searches the
+// whole workspace. An empty selected-unit scope falls back only after a real
+// server total confirms that it is empty. Selection survives pagination.
+// Manual edits await a compact receipt. Auto-file candidates are checked by
+// the server against every existing name, not guessed from the visible page.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { CockpitDirectoryEntry } from "@multica/core/types";
 import {
-  cockpitDirectoryAutoSaveEntries,
+  cockpitDirectoryPageOptions,
   cockpitDirectoryGroups,
   cockpitDirectoryPosition,
   cockpitDirectoryUnaffiliated,
@@ -65,6 +52,7 @@ interface ContactDraft {
   position: string;
   /** Existing rows keep their unit; only a new contact chooses one. */
   partyLocked: boolean;
+  clearPosition?: boolean;
 }
 
 export interface CockpitAttendeeFieldProps {
@@ -73,22 +61,20 @@ export interface CockpitAttendeeFieldProps {
   onCommit: (next: string) => void;
   /** The meeting's committed parties, already split — they order the groups. */
   parties: string[];
-  /** The contact book as the server knows it. */
-  directory: CockpitDirectoryEntry[];
-  /** Flat names beyond the book: workspace members, then names the board has
-   *  used. A name the book knows never appears here — its group row is the
-   *  one place it shows. */
+  /** The contact book belongs to the workspace, never a project scope. */
+  wsId: string;
+  /** Additional explicitly resolved names, not a copy of the contact book. */
   suggestions: string[];
   label: string;
   placeholder: string;
   disabled?: boolean;
   /** Files one contact into the book; resolves whether it landed. */
-  onSaveEntry: (entry: CockpitDirectoryEntry) => Promise<boolean>;
+  onSaveEntry: (entry: CockpitDirectoryEntry & { clear_position?: boolean }) => Promise<boolean>;
   /** Deletes one form-filed contact after its inline confirm; resolves
    *  whether it landed. Absent on servers too old to know deletion. */
   onDeleteEntry?: (entry: { party: string; name: string }) => Promise<boolean>;
-  /** Fires after a commit with the attendees the book did not know,
-   *  attributed to the meeting's unit (empty when the unit is ambiguous). */
+  /** Candidates for server-side only_unknown_names filing; no attribution
+   *  is guessed when the meeting has more than one unit. */
   onAutoSave?: (entries: CockpitDirectoryEntry[]) => void;
   renderToken?: (token: string) => React.ReactNode;
   /** Renders an others-bucket row (member recognition lives at the call site). */
@@ -96,11 +82,16 @@ export interface CockpitAttendeeFieldProps {
   triggerClassName?: string;
 }
 
-export function CockpitAttendeeField({
+export function CockpitAttendeeField(props: CockpitAttendeeFieldProps) {
+  return <CockpitAttendeeFieldContent key={props.wsId} {...props} />;
+}
+
+const EMPTY_DIRECTORY: CockpitDirectoryEntry[] = [];
+function CockpitAttendeeFieldContent({
   value,
   onCommit,
   parties,
-  directory,
+  wsId,
   suggestions,
   label,
   placeholder,
@@ -129,6 +120,33 @@ export function CockpitAttendeeField({
    * auto-file must not resurrect what this form just removed. */
   const deletedNames = useRef<Set<string>>(new Set());
 
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [previous, setPrevious] = useState<(string | undefined)[]>([]);
+  const scopeKey = JSON.stringify(parties);
+  const [pageScope, setPageScope] = useState(scopeKey);
+  const scopedCursor = pageScope === scopeKey ? cursor : undefined;
+  const [writeError, setWriteError] = useState(false);
+  const live = useRef(true);
+  const currentContact = useRef(contact);
+  const currentDelete = useRef(deleting);
+  currentContact.current = contact;
+  currentDelete.current = deleting;
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const resetPage = () => { setCursor(undefined); setPrevious([]); };
+  const needle = query.trim().toLowerCase();
+  const attemptScope = !needle && !showAll && parties.length > 0;
+  const scopedFirst = useQuery({ ...cockpitDirectoryPageOptions(wsId, { parties, page_size: 25 }), enabled: editing && attemptScope });
+  // Probe only the first bounded page to establish whether the selected units
+  // have contacts. A failed probe is not an empty book; an All cursor must
+  // never be sent back to the narrower unit scope after the fallback.
+  const emptyScope = attemptScope && scopedFirst.isSuccess && scopedFirst.data.total === 0;
+  const page = useQuery({ ...cockpitDirectoryPageOptions(wsId, {
+    q: query, ...(attemptScope && !emptyScope ? { parties } : {}), cursor: scopedCursor, page_size: 25,
+  }), enabled: editing && (!attemptScope || scopedFirst.isSuccess) });
+  const activePage = attemptScope && (scopedFirst.isPending || scopedFirst.isError) ? scopedFirst : page;
+  const directory = activePage.data?.items ?? EMPTY_DIRECTORY;
+  useEffect(() => { setCursor(undefined); setPrevious([]); setPageScope(scopeKey); }, [scopeKey]);
+
   const committed = useMemo(() => splitCockpitMeetingPeople(value), [value]);
   useEffect(() => {
     if (!editing) {
@@ -137,6 +155,9 @@ export function CockpitAttendeeField({
       setContact(null);
       setDeleting(null);
       setShowAll(false);
+      setCursor(undefined);
+      setPrevious([]);
+      setWriteError(false);
       deletedNames.current.clear();
     }
   }, [committed, editing]);
@@ -150,35 +171,13 @@ export function CockpitAttendeeField({
       : null;
 
   const chosen = useMemo(() => new Set(draft), [draft]);
-  const needle = query.trim().toLowerCase();
-
   // The book, grouped, the meeting's own parties leading. Browsing scopes to
   // those parties — pick 联通 and 联通's people are what the list shows — with
   // everyone else one toggle away. Typing always searches the whole book, so
   // "联通" still finds the unit's section and a name from any unit.
   const allGroups = useMemo(() => cockpitDirectoryGroups(directory, parties), [directory, parties]);
-  const partySet = useMemo(() => new Set(parties), [parties]);
-  const hasPartyContacts = useMemo(
-    () => allGroups.some((group) => partySet.has(group.party)),
-    [allGroups, partySet],
-  );
-  const scoped = !needle && !showAll && hasPartyContacts;
-  const groups = useMemo(() => {
-    if (!needle) {
-      return scoped ? allGroups.filter((group) => partySet.has(group.party)) : allGroups;
-    }
-    return allGroups
-      .map((group) => ({
-        ...group,
-        entries: group.entries.filter(
-          (entry) =>
-            entry.name.toLowerCase().includes(needle) ||
-            entry.position.toLowerCase().includes(needle) ||
-            group.party.toLowerCase().includes(needle),
-        ),
-      }))
-      .filter((group) => group.entries.length > 0);
-  }, [allGroups, needle, scoped, partySet]);
+  const scoped = attemptScope && !emptyScope;
+  const groups = allGroups;
 
   const groupedNames = useMemo(() => {
     const names = new Set<string>();
@@ -208,7 +207,7 @@ export function CockpitAttendeeField({
     const out = groups.map((group) => ({
       header: group.party as string | null,
       rows: group.entries.map((entry) => ({
-        key: `${group.party} ${entry.name}`,
+        key: JSON.stringify([group.party, entry.name]),
         name: entry.name,
         party: group.party,
         position: entry.position,
@@ -259,11 +258,11 @@ export function CockpitAttendeeField({
     const joined = joinCockpitMeetingValues(next);
     if (joined !== joinCockpitMeetingValues(committed)) {
       onCommit(joined);
-      // The book learns by being used: names nobody picked from it are filed
-      // under the meeting's unit, so the next form offers them directly.
-      const fresh = cockpitDirectoryAutoSaveEntries(directory, parties.join("、"), joined).filter(
-        (entry) => !deletedNames.current.has(entry.name),
-      );
+      // The server checks these candidates against all known names. A page
+      // cannot prove that a name is absent from another unit or later page.
+      const fresh: CockpitDirectoryEntry[] = parties.length === 1 && parties[0]
+        ? next.filter((name) => !deletedNames.current.has(name)).map((name) => ({ party: parties[0]!, name, position: "", source: "user" }))
+        : [];
       if (fresh.length > 0) onAutoSave?.(fresh);
     }
   };
@@ -284,6 +283,7 @@ export function CockpitAttendeeField({
   const addTyped = (name: string) => {
     toggle(name);
     setQuery("");
+    resetPage();
     setHighlighted(-1);
     // A name the book does not know gets the inline editor: 职位 optional,
     // unit defaulted to the meeting's own. Cancelling it keeps the token —
@@ -294,30 +294,39 @@ export function CockpitAttendeeField({
   const saveContact = async () => {
     if (!contact || saving) return;
     setSaving(true);
+    setWriteError(false);
+    const captured = contact;
     try {
       const ok = await onSaveEntry({
         party: contact.party.trim(),
         name: contact.name,
         position: contact.position.trim(),
         source: "user",
+        ...(contact.clearPosition ? { clear_position: true } : {}),
       });
-      if (ok) setContact(null);
+      if (live.current && currentContact.current === captured) { if (ok) setContact(null); else setWriteError(true); }
+    } catch {
+      if (live.current && currentContact.current === captured) setWriteError(true);
     } finally {
-      setSaving(false);
+      if (live.current) setSaving(false);
     }
   };
 
   const confirmDelete = async () => {
     if (!deleting || deleteBusy || !onDeleteEntry) return;
     setDeleteBusy(true);
+    setWriteError(false);
+    const captured = deleting;
     try {
       const ok = await onDeleteEntry({ party: deleting.party, name: deleting.name });
-      if (ok) {
+      if (ok && live.current && currentDelete.current === captured) {
         deletedNames.current.add(deleting.name);
         setDeleting(null);
-      }
+      } else if (live.current && currentDelete.current === captured) setWriteError(true);
+    } catch {
+      if (live.current && currentDelete.current === captured) setWriteError(true);
     } finally {
-      setDeleteBusy(false);
+      if (live.current) setDeleteBusy(false);
     }
   };
 
@@ -440,6 +449,7 @@ export function CockpitAttendeeField({
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
+            resetPage();
             setHighlighted(-1);
           }}
           onKeyDown={(e) => {
@@ -454,6 +464,7 @@ export function CockpitAttendeeField({
                 return;
               }
               setQuery("");
+              resetPage();
               setHighlighted(-1);
             } else if (e.key === "Backspace" && !query) {
               setDraft((current) => current.slice(0, -1));
@@ -472,6 +483,19 @@ export function CockpitAttendeeField({
           }}
           className="h-7 px-2 text-caption"
         />
+        <div className="flex flex-wrap items-center justify-between gap-1 px-1" aria-label={t(($) => $.directory.page_label)}>
+          <span className="text-micro text-muted-foreground">{t(($) => $.directory.workspace_scope)}</span>
+          {activePage.data && <span className="text-micro text-muted-foreground">{t(($) => $.directory.total, { count: activePage.data.total })}</span>}
+          <Button type="button" size="xs" variant="ghost" disabled={!previous.length || activePage.isFetching} onClick={() => { setCursor(previous.at(-1)); setPrevious(previous.slice(0, -1)); }}>{t(($) => $.task_flow.previous)}</Button>
+          <Button type="button" size="xs" variant="ghost" disabled={!activePage.data?.next_cursor || activePage.isFetching} onClick={() => { setPrevious([...previous, cursor]); setCursor(activePage.data?.next_cursor ?? undefined); }}>{t(($) => $.task_flow.next)}</Button>
+        </div>
+        {activePage.isPending && <p role="status" className="px-2 text-caption">{common(($) => $.loading)}</p>}
+        {activePage.isError && <div role="alert" className="px-2 text-caption text-destructive">
+          {t(($) => $.directory.load_failed)}
+          <Button type="button" variant="ghost" size="xs" onClick={() => void activePage.refetch()}>{t(($) => $.directory.retry)}</Button>
+          {cursor && <Button type="button" variant="ghost" size="xs" onClick={resetPage}>{t(($) => $.directory.first_page)}</Button>}
+        </div>}
+        {writeError && <p role="alert" className="px-2 text-caption text-destructive">{t(($) => $.directory.write_failed)}</p>}
         {(rows.length > 0 || addable) && (
           <ul
             role="listbox"
@@ -525,7 +549,7 @@ export function CockpitAttendeeField({
                       return (
                         <li key={row.key} role="presentation" className="group/row flex items-center">
                           {optionRow(row, i)}
-                          {!row.other && (
+                          {!row.other && (row.source === "user" || row.source === "seed") && (
                             <>
                               <button
                                 type="button"
@@ -547,7 +571,7 @@ export function CockpitAttendeeField({
                               >
                                 <Pencil className="size-3" aria-hidden />
                               </button>
-                              {row.source !== "seed" && onDeleteEntry && (
+                              {row.source === "user" && onDeleteEntry && (
                                 <button
                                   type="button"
                                   aria-label={t(($) => $.meetings.directory_delete, { name: row.name })}
@@ -572,13 +596,13 @@ export function CockpitAttendeeField({
             })()}
           </ul>
         )}
-        {!needle && hasPartyContacts && (
+        {!needle && parties.length > 0 && !emptyScope && (
           // Browsing is scoped to the meeting's units; this row widens it (or
           // narrows it back). A typed query always searches the whole book, so
           // the toggle only exists while the box is empty.
           <button
             type="button"
-            onClick={() => setShowAll((v) => !v)}
+            onClick={() => { setShowAll((v) => !v); resetPage(); }}
             className="w-full rounded-sm border-t border-border px-2 py-1 text-left text-micro text-muted-foreground hover:bg-accent/50"
           >
             {showAll
@@ -672,7 +696,7 @@ export function CockpitAttendeeField({
               aria-label={t(($) => $.meeting.position)}
               placeholder={t(($) => $.meetings.directory_position_placeholder)}
               value={contact.position}
-              onChange={(e) => setContact({ ...contact, position: e.target.value })}
+              onChange={(e) => setContact({ ...contact, position: e.target.value, clearPosition: false })}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -685,6 +709,9 @@ export function CockpitAttendeeField({
               }}
               className="h-7 px-2 text-caption"
             />
+            {contact.partyLocked && <Button type="button" size="xs" variant="ghost" disabled={saving} onClick={() => setContact({ ...contact, position: "", clearPosition: true })}>
+              {contact.clearPosition ? t(($) => $.directory.position_will_clear) : t(($) => $.directory.clear_position)}
+            </Button>}
             <div className="flex justify-end gap-1">
               <Button
                 variant="ghost"

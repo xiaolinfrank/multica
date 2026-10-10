@@ -1,86 +1,47 @@
 "use client";
 
-// Board tools for plan, meeting and business views. cockpit-entry mounts this
-// workspace only when requested; the work overview has its own bounded reads.
-//
-// One board per workspace, edited by everyone at once. Server state lives in the
-// board query; the view state below (which tab, which branch, what is collapsed,
-// what is selected) belongs to this screen. Entry routes select the initial
-// surface; task/action workspaces preserve their own session navigation context.
+// Bounded plan reads and independent node/meeting workbenches share URL scope.
+// Query owns read models; the core view store retains filters, layout and return
+// position. Contact books and object relationships are loaded on demand.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type {
   CockpitDirectoryEntry,
-  CockpitIssueLink,
-  CockpitMeeting,
-  CockpitMeetingIssueLink,
-  CockpitMeetingNodeLink,
-  CockpitMeetingPatch,
   CockpitMeetingImportItem,
+  CockpitMeetingImportResult,
   CockpitMeetingProvision,
   CockpitMeetingWorkflowSetup,
-  CockpitMeetingWorkflowSummary,
-  MemberWithUser,
   CockpitMilestonePatch,
   CockpitNode,
   CockpitNodePatch,
   CockpitPatch,
-  CockpitPayment,
-  CockpitPaymentPatch,
-  Issue,
-  Module,
 } from "@multica/core/types";
 import {
-  buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
-  cockpitBoardOptions,
-  cockpitAreaPath,
-  cockpitObjectPath,
+  cockpitScopeViewKey, useCockpitScopeViewStore, EMPTY_COCKPIT_PLAN_CONTEXT,
+  useCockpitMeetingCreateDraftStore, checkpointCockpitMeetingCreation,
+  cockpitPlanOptions, cockpitContextOptions, cockpitSelectedMemberOptions, buildCockpitDisplayCodesFromIndex,
+  cockpitSurfacePath,
+  cockpitShellDestination,
+  cockpitObjectPath, cockpitMeetingContextPath,
   cockpitDestination,
-  cockpitKeys,
-  cockpitMeetingWorkflowOptions,
-  cockpitChangesOptions,
-  cockpitNodeIssueFiling,
+  cockpitScope,
   cockpitOverallProgress,
   cockpitSummaryCollapseIds,
-  cockpitTasksCsv,
   flattenCockpitTree,
-  groupMeetingIssues,
-  groupMeetingNodes,
-  groupMeetingsByNode,
-  groupIssueLinksByNode,
-  groupPaymentsByNode,
-  isCockpitExecNode,
   useCreateCockpitMeeting,
-  useCreateCockpitMilestone,
-  useCreateCockpitPayment,
-  useDeleteCockpitMeeting,
   useDeleteCockpitMilestone,
-  useDeleteCockpitNode,
-  useDeleteCockpitMeetingIssue,
-  useDeleteCockpitMeetingNode,
-  useDeleteCockpitNodeIssue,
-  useDeleteCockpitPayment,
   useImportCockpitMeetingFolders,
   useProvisionCockpitMeeting,
   useEnableCockpitMeetingWorkflow,
-  useSetCockpitMeetingIssues,
-  useSetCockpitMeetingIssueRoles,
-  useSetCockpitMeetingNodes,
-  useSetCockpitNodeIssues,
-  useSetCockpitNodeBinding,
   useUpdateCockpit,
-  useUpdateCockpitMeeting,
-  useSaveCockpitMeetingMaterials,
-  cockpitDirectoryOptions,
-  useDeleteCockpitDirectoryEntry,
-  useUpsertCockpitDirectory,
+  useDeleteCockpitDirectoryCompact,
+  useUpsertCockpitDirectoryCompact,
   useUpdateCockpitMilestone,
   useUpdateCockpitNode,
-  useUpdateCockpitPayment,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
@@ -115,46 +76,35 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import { useAuthStore } from "@multica/core/auth";
-import { memberListOptions } from "@multica/core/workspace/queries";
-import { moduleListOptions } from "@multica/core/modules/queries";
-import { useModalStore } from "@multica/core/modals";
-import { AppLink, useNavigation } from "../../navigation";
+import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
-import { EditableText } from "./cockpit-fields";
 import { CockpitChanges } from "./cockpit-changes";
 import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
+import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meeting-create";
-import { CockpitTaskCreateDialog } from "./cockpit-task-create";
+import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
-import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
-import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
+import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
+import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
+import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitMeetings } from "./cockpit-meetings";
-import type { CockpitNodeIssueOption } from "./cockpit-node-issue-picker";
-import { CockpitNodePanel } from "./cockpit-node-panel";
-import { CockpitNodeTasks } from "./cockpit-node-tasks";
-import { CockpitNodeBindingField } from "./cockpit-node-binding";
+import { CockpitSelectedNode } from "./cockpit-selected-node";
+import { CockpitResponsibilities } from "./cockpit-responsibilities";
+import { CockpitMilestoneCreate } from "./cockpit-milestone-create";
+import { CockpitMilestones } from "./cockpit-milestones";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
+import { CockpitCsvExport } from "./cockpit-csv-export";
 import { CockpitVersions } from "./cockpit-versions";
 
 type CockpitTab = "overview" | "gantt" | "meetings" | "changes" | "finance";
 
-const TABS: CockpitTab[] = ["overview", "gantt", "meetings", "changes", "finance"];
 
 // Stable empty arrays: an inline `?? []` allocates a fresh array on every
 // render while the board query is loading, which invalidates every memo
 // downstream of it.
 const EMPTY_NODES: CockpitNode[] = [];
-const EMPTY_MEMBERS: MemberWithUser[] = [];
-const EMPTY_DIRECTORY: CockpitDirectoryEntry[] = [];
-const EMPTY_MODULES: Module[] = [];
-const EMPTY_PAYMENTS: CockpitPayment[] = [];
-const EMPTY_LINKS: CockpitIssueLink[] = [];
-const EMPTY_MEETINGS: CockpitMeeting[] = [];
-const EMPTY_MEETING_ISSUES: CockpitMeetingIssueLink[] = [];
-const EMPTY_MEETING_NODES: CockpitMeetingNodeLink[] = [];
 
 /**
  * One derived headline figure for the toolbar: a label, a percentage and a
@@ -216,62 +166,50 @@ function suggestionsFor(values: string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort();
 }
 
-/** Hands the browser a file. The CSV itself is built in `@multica/core`. */
-function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  // Revoked on the next tick rather than immediately: Safari reads the blob
-  // after the click returns.
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-
-export function CockpitBoardWorkspace({ initialTab = "overview", today: suppliedToday, onWorkOverview, onSelectTab }: {
+export function CockpitBoardWorkspace({ initialTab = "overview", today: suppliedToday }: {
   initialTab?: CockpitTab;
   today?: string;
-  onWorkOverview?: () => void;
-  onSelectTab?: (tab: CockpitTab) => void;
 }) {
   const { t } = useT("cockpit");
   const { t: commonT } = useT("common");
   const wsId = useWorkspaceId();
-  const queryClient = useQueryClient();
   const navigation = useNavigation();
+  const { scope, planView } = cockpitShellDestination(navigation.searchParams);
   const [tab, setTab] = useState<CockpitTab>(initialTab);
-  const tabPillRef = useSegmentedPill(tab);
-  const [zoom, setZoom] = useState<CockpitZoom>("month");
-  const [query, setQuery] = useState("");
+  useEffect(() => setTab(initialTab), [initialTab]);
+  const planKey = cockpitScopeViewKey(wsId, scope);
+  const planState = useCockpitScopeViewStore((store) => store.plans[planKey] ?? EMPTY_COCKPIT_PLAN_CONTEXT);
+  const zoom = planState.zoom, query = planState.query, showFinance = planState.showFinance, toolsOpen = planState.toolsOpen;
+  const setZoom = (zoom: CockpitZoom) => useCockpitScopeViewStore.getState().updatePlan(planKey, { zoom });
+  const setQuery = (query: string) => useCockpitScopeViewStore.getState().updatePlan(planKey, { query });
+  const setShowFinance = (value: boolean | ((current: boolean) => boolean)) => useCockpitScopeViewStore.getState().updatePlan(planKey, { showFinance: typeof value === "function" ? value(planState.showFinance) : value });
+  const setToolsOpen = (value: boolean | ((current: boolean) => boolean)) => useCockpitScopeViewStore.getState().updatePlan(planKey, { toolsOpen: typeof value === "function" ? value(planState.toolsOpen) : value });
   // Empty means "every module"; the menu is multi-select, so comparing two
   // modules side by side does not mean opening the board twice.
-  const [rootIds, setRootIds] = useState<Set<string>>(new Set());
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const rootIds = useMemo(() => new Set(planState.rootIds), [planState.rootIds]);
+  const collapsed = useMemo(() => new Set(planState.collapsedIds), [planState.collapsedIds]);
+  const setRootIds = useCallback((value: Set<string> | ((current: Set<string>) => Set<string>)) => {
+    const store = useCockpitScopeViewStore.getState();
+    store.updatePlan(planKey, { rootIds: [...(typeof value === "function" ? value(new Set(store.plans[planKey]?.rootIds ?? [])) : value)] });
+  }, [planKey]);
+  const setCollapsed = useCallback((value: Set<string> | ((current: Set<string>) => Set<string>)) => {
+    const store = useCockpitScopeViewStore.getState();
+    store.updatePlan(planKey, { collapsedIds: [...(typeof value === "function" ? value(new Set(store.plans[planKey]?.collapsedIds ?? [])) : value)], seeded: true });
+  }, [planKey]);
+  const destination = cockpitDestination(navigation.searchParams);
+  const selectedId = destination.nodeId;
+  const selectedMeetingId = destination.meetingId;
   const [creatingMeeting, setCreatingMeeting] = useState(false);
-  const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
-  const [meetingWorkflowCreated, setMeetingWorkflowCreated] = useState(false);
-  const meetingCreationRef = useRef<{ meeting: CockpitMeeting; workflowCreated: boolean; directoryReady: boolean } | null>(null);
-  const onMeetingCreateOpenChange = (open: boolean) => {
-    if (!open) {
-      meetingCreationRef.current = null;
-      setSavedMeetingId(null);
-      setMeetingWorkflowCreated(false);
-    }
-    setCreatingMeeting(open);
-  };
-  // The direction a pending "new execution task" confirmation targets.
-  const [addingTask, setAddingTask] = useState<{ direction: CockpitNode; position: number } | null>(
-    null,
-  );
+  const meetingCreateKey = cockpitScopeViewKey(wsId, scope);
+  const creation = useCockpitMeetingCreateDraftStore((state) => state.draft.byScope[meetingCreateKey]);
+  const savedMeetingId = creation?.meetingId ?? null;
+  const meetingWorkflowCreated = creation?.workflowCreated ?? false;
+  const captureMeetingContext = useCockpitCommandContext(JSON.stringify([meetingCreateKey, creatingMeeting]));
+  const onMeetingCreateOpenChange = setCreatingMeeting;
   const [scanningMeetings, setScanningMeetings] = useState(false);
-  const [showFinance, setShowFinance] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const [deletion, setDeletion] = useState<{ kind: "meeting" | "milestone" | "payment"; id: string; label: string } | null>(null);
+  const captureImportContext = useCockpitCommandContext(JSON.stringify([meetingCreateKey, scanningMeetings]));
+  const [creatingMilestone, setCreatingMilestone] = useState(false);
+  const [deletion, setDeletion] = useState<{ kind: "milestone"; id: string; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletionLock = useRef(false);
   const deletionOpener = useRef<HTMLElement | null>(null);
@@ -284,76 +222,32 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const [dayAtMount] = useState(todayString);
   const today = suppliedToday ?? dayAtMount;
 
-  const { data: board, isLoading, isError: boardError, refetch: reloadBoard, isFetching: reloadingBoard } = useQuery(cockpitBoardOptions(wsId));
-
-  // Deep link `?meeting=<id>` (graph node menu, issue sidebar): land on the
-  // meetings tab with that meeting's panel open. Waits for the board so the
-  // stale-selection cleanup cannot eat the id before the meeting arrives;
-  // applied once per distinct param value — closing the panel by hand does
-  // not bounce it back because the URL does not change on close. An unknown
-  // id is silently ignored.
-  const destination = cockpitDestination(navigation.searchParams);
-  const deepLinkMeeting = destination.meetingId;
-  const deepLinkAppliedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!deepLinkMeeting || deepLinkAppliedRef.current === deepLinkMeeting) return;
-    if (!(board?.meetings ?? []).some((m) => m.id === deepLinkMeeting)) return;
-    deepLinkAppliedRef.current = deepLinkMeeting;
-    setTab("meetings");
-    setSelectedMeetingId(deepLinkMeeting);
-  }, [deepLinkMeeting, board]);
-  const { data: pendingChanges } = useQuery(cockpitChangesOptions(wsId));
-  const pendingCount = useMemo(
-    () => (pendingChanges ?? []).filter((c) => c.status === "pending").length,
-    [pendingChanges],
-  );
-
-  // Restore replaces the whole board, which the server gates to owner/admin.
-  // The role check here only decides whether the affordance is offered.
-  const currentUserId = useAuthStore((s) => s.user?.id ?? "");
-  const { data: members, isPending: membersLoading, isError: membersError } = useQuery(memberListOptions(wsId));
-  // The workspace's modules, read for one reason: a work item files its
-  // issues into the module its row code names.
-  const { data: modules, isPending: modulesLoading, isError: modulesError, refetch: reloadModules } = useQuery(moduleListOptions(wsId));
-  const openModal = useModalStore((state) => state.open);
-  const canRestore = useMemo(() => {
-    const mine = (members ?? []).find((m) => m.user_id === currentUserId);
-    return mine?.role === "owner" || mine?.role === "admin";
-  }, [members, currentUserId]);
-  const currentUserName = useMemo(
-    () => (members ?? []).find((m) => m.user_id === currentUserId)?.name ?? "",
-    [members, currentUserId],
-  );
+  const planQuery = useQuery({ ...cockpitPlanOptions(wsId, scope), enabled: tab !== "meetings" && tab !== "changes" });
+  const taskCounts = useMemo(() => new Map((planQuery.data?.task_counts ?? []).map((item) => [item.node_id, item])), [planQuery.data?.task_counts]);
+  const contextNodeIds = useMemo(() => new Set(planQuery.data?.context_node_ids ?? []), [planQuery.data?.context_node_ids]);
+  const context = useQuery(cockpitContextOptions(wsId, scope));
+  const board = planQuery.data?.cockpit ? { ...planQuery.data, cockpit: planQuery.data.cockpit } : null;
+  const cockpit = context.data?.cockpit;
+  const meetingProjectId = scope.projectId ?? cockpit?.meeting_project_id ?? null;
+  const meetingModuleId = scope.moduleId ?? (!scope.projectId || scope.projectId === cockpit?.meeting_project_id ? cockpit?.meeting_module_id ?? null : null);
+  const meetingNodeId = meetingProjectId === cockpit?.meeting_project_id && meetingModuleId === cockpit?.meeting_module_id ? cockpit?.meeting_node_id ?? null : null;
+  const currentUserId = context.data?.actor.user_id ?? "";
+  const currentMember = useQuery(cockpitSelectedMemberOptions(wsId, currentUserId));
+  const currentUserName = currentMember.data?.items.find((member) => member.id === currentUserId)?.title ?? "";
+  const members = useMemo(() => (currentMember.data?.items ?? []).map((member) => ({ user_id: member.id, name: member.title, avatar_url: member.avatar_url })), [currentMember.data]);
+  const canRestore = context.data?.actor.is_human === true && ["owner", "admin"].includes(context.data.actor.role);
 
   const updateBoard = useUpdateCockpit(wsId);
   const updateNode = useUpdateCockpitNode(wsId);
-  const setNodeBinding = useSetCockpitNodeBinding(wsId);
-  const deleteNode = useDeleteCockpitNode(wsId);
-  const setNodeIssues = useSetCockpitNodeIssues(wsId);
-  const unlinkIssue = useDeleteCockpitNodeIssue(wsId);
-  const createPayment = useCreateCockpitPayment(wsId);
-  const updatePayment = useUpdateCockpitPayment(wsId);
-  const deletePayment = useDeleteCockpitPayment(wsId);
-  const createMilestone = useCreateCockpitMilestone(wsId);
   const updateMilestone = useUpdateCockpitMilestone(wsId);
   const deleteMilestone = useDeleteCockpitMilestone(wsId);
   const createMeeting = useCreateCockpitMeeting(wsId);
-  const updateMeeting = useUpdateCockpitMeeting(wsId);
-  const saveMeetingMaterials = useSaveCockpitMeetingMaterials(wsId);
-  const deleteMeeting = useDeleteCockpitMeeting(wsId);
   const provisionMeeting = useProvisionCockpitMeeting(wsId);
   const enableMeetingWorkflow = useEnableCockpitMeetingWorkflow(wsId);
   const importMeetings = useImportCockpitMeetingFolders(wsId);
-  const setMeetingIssues = useSetCockpitMeetingIssues(wsId);
-  const setMeetingIssueRoles = useSetCockpitMeetingIssueRoles(wsId);
-  const unlinkMeetingIssue = useDeleteCockpitMeetingIssue(wsId);
-  const setMeetingNodes = useSetCockpitMeetingNodes(wsId);
-  const unlinkMeetingNode = useDeleteCockpitMeetingNode(wsId);
-  // The meetings' contact book: which people at each unit, with their 职位.
-  // The meeting forms read it and the auto-save appends to it.
-  const { data: directoryData } = useQuery(cockpitDirectoryOptions(wsId));
-  const upsertDirectory = useUpsertCockpitDirectory(wsId);
-  const deleteDirectoryEntry = useDeleteCockpitDirectoryEntry(wsId);
+  // The contact editor reads bounded pages; these writes return exact receipts.
+  const upsertDirectory = useUpsertCockpitDirectoryCompact(wsId);
+  const deleteDirectoryEntry = useDeleteCockpitDirectoryCompact(wsId);
 
   // `board?.nodes ?? []` inline would mint a new array on every render where
   // the query is still loading, invalidating every memo below it.
@@ -364,16 +258,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   // tree, so a code means the same row everywhere.
   const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
   const summaryFlat = useMemo(() => flattenCockpitTree(summaryTree), [summaryTree]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(summaryTree), [summaryTree]);
-  // "06.06.02 会议台账与会议号" — how a linked work item reads wherever it is
-  // named outside the gantt itself.
-  const nodeLabels = useMemo(() => {
-    const labels = new Map<string, string>();
-    for (const node of nodes) {
-      labels.set(node.id, `${displayCodes.get(node.id) ?? node.code} ${node.name}`.trim());
-    }
-    return labels;
-  }, [nodes, displayCodes]);
+  const displayCodes = useMemo(() => buildCockpitDisplayCodesFromIndex(planQuery.data?.node_index ?? []), [planQuery.data?.node_index]);
   // The summary tree's parent links, for jumps that must open a row whose
   // display parent is a merged group rather than its stored parent.
   const summaryParent = useMemo(() => {
@@ -386,18 +271,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     };
     summaryTree.forEach(walk);
     return map;
-  }, [summaryTree, summaryFlat]);
-  const flat = useMemo(() => flattenCockpitTree(tree), [tree]);
-  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-  const paymentsByNode = useMemo(
-    () => groupPaymentsByNode(board?.payments ?? EMPTY_PAYMENTS),
-    [board?.payments],
-  );
-  const linksByNode = useMemo(
-    () => groupIssueLinksByNode(board?.issue_links ?? EMPTY_LINKS),
-    [board?.issue_links],
-  );
-
+  }, [summaryTree]);
   const statusSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.status)), [nodes]);
   const execStatusSuggestions = useMemo(
     () => suggestionsFor(nodes.map((n) => n.exec_status)),
@@ -410,31 +284,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const ownerSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.owner)), [nodes]);
   const vendorSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.vendor)), [nodes]);
 
-  const meetings = board?.meetings ?? EMPTY_MEETINGS;
-  const meetingIssues = board?.meeting_issues ?? EMPTY_MEETING_ISSUES;
-  const meetingNodes = board?.meeting_nodes ?? EMPTY_MEETING_NODES;
-  const meetingIssuesByMeeting = useMemo(() => groupMeetingIssues(meetingIssues), [meetingIssues]);
-  const meetingNodesByMeeting = useMemo(() => groupMeetingNodes(meetingNodes), [meetingNodes]);
-  const meetingsByNode = useMemo(
-    () => groupMeetingsByNode(meetings, meetingNodes),
-    [meetings, meetingNodes],
-  );
-  const selectedMeeting = useMemo(
-    () => meetings.find((m) => m.id === selectedMeetingId) ?? null,
-    [meetings, selectedMeetingId],
-  );
-
-  // A node deleted by someone else must not leave the panel showing a ghost.
-  useEffect(() => {
-    if (selectedId && !nodeById.has(selectedId)) setSelectedId(null);
-  }, [selectedId, nodeById]);
-
-  useEffect(() => {
-    if (selectedMeetingId && !meetings.some((m) => m.id === selectedMeetingId)) {
-      setSelectedMeetingId(null);
-    }
-  }, [selectedMeetingId, meetings]);
-
   const fail = useCallback(
     (error: unknown) => {
       toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -443,30 +292,25 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   );
 
   const patchBoard = useCallback(
-    (patch: CockpitPatch) => updateBoard.mutate(patch, { onError: fail }),
-    [updateBoard, fail],
+    (patch: CockpitPatch) => { if (context.data?.actor.is_human === true) updateBoard.mutate(patch, { onError: fail }); },
+    [updateBoard, fail, context.data?.actor.is_human],
   );
   const patchNode = useCallback(
-    (id: string, patch: CockpitNodePatch) => updateNode.mutate({ id, patch }, { onError: fail }),
-    [updateNode, fail],
-  );
-  const patchPayment = useCallback(
-    (id: string, patch: CockpitPaymentPatch) => updatePayment.mutate({ id, patch }, { onError: fail }),
-    [updatePayment, fail],
+    (id: string, patch: CockpitNodePatch) => { if (context.data?.actor.is_human === true && !contextNodeIds.has(id)) updateNode.mutate({ id, patch }, { onError: fail }); },
+    [updateNode, fail, context.data?.actor.is_human, contextNodeIds],
   );
   const patchMilestone = useCallback(
-    (id: string, patch: CockpitMilestonePatch) =>
-      updateMilestone.mutate({ id, patch }, { onError: fail }),
-    [updateMilestone, fail],
+    (id: string, patch: CockpitMilestonePatch) => { if (context.data?.actor.is_human === true) updateMilestone.mutate({ id, patch }, { onError: fail }); },
+    [updateMilestone, fail, context.data?.actor.is_human],
   );
   // The directory save is shared by the picker (one contact, awaited) and
   // the auto-save (a batch, fired alongside a meeting commit). A failure is
   // told, not swallowed — the entry would otherwise vanish from the next
   // form with nobody the wiser.
   const saveDirectoryEntries = useCallback(
-    async (entries: CockpitDirectoryEntry[]): Promise<boolean> => {
+    async (entries: (CockpitDirectoryEntry & { clear_position?: boolean })[]): Promise<boolean> => {
       try {
-        await upsertDirectory.mutateAsync(entries);
+        await upsertDirectory.mutateAsync({ entries: entries.map(({ party, name, position, clear_position }) => ({ party, name, position, clear_position })) });
         return true;
       } catch {
         toast.error(t(($) => $.meetings.directory_save_failed));
@@ -476,19 +320,18 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     [upsertDirectory, t],
   );
   const saveDirectoryEntry = useCallback(
-    (entry: CockpitDirectoryEntry) => saveDirectoryEntries([entry]),
+    (entry: CockpitDirectoryEntry & { clear_position?: boolean }) => saveDirectoryEntries([entry]),
     [saveDirectoryEntries],
   );
   const autoSaveDirectory = useCallback(
     (entries: CockpitDirectoryEntry[]) => {
-      void saveDirectoryEntries(entries);
+      upsertDirectory.mutate({ entries: entries.map(({ party, name, position }) => ({ party, name, position })), only_unknown_names: true }, { onError: () => toast.error(t(($) => $.meetings.directory_save_failed)) });
     },
-    [saveDirectoryEntries],
+    [upsertDirectory, t],
   );
 
-  // Deletes land through the same whole-book refresh as saves. The preset
-  // roster never reaches this: the server refuses it and the picker hides
-  // the affordance for seed rows.
+  // Contact writes invalidate the shared directory pages. Preset rows remain
+  // protected by both the editor and the server.
   const removeDirectoryEntry = useCallback(
     async (entry: { party: string; name: string }): Promise<boolean> => {
       try {
@@ -502,67 +345,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     [deleteDirectoryEntry, t],
   );
 
-  const patchMeeting = useCallback(
-    (id: string, patch: CockpitMeetingPatch) => updateMeeting.mutate({ id, patch }, { onError: fail }),
-    [updateMeeting, fail],
-  );
-
-  // Read at call time, not captured: a linker can outlive the render that
-  // produced it — the create dialog keeps its callback across a whole run of
-  // "Create another" — and a replace built from a captured set would drop
-  // every link made in between.
-  const linksByNodeRef = useRef(linksByNode);
-  useEffect(() => {
-    linksByNodeRef.current = linksByNode;
-  }, [linksByNode]);
-
-  const linkIssue = useCallback(
-    (nodeId: string, issueId: string) => {
-      // Sent as a replace of the full set rather than as an append, so the
-      // server writes the order this client is showing. Both clients derive
-      // that set from the same realtime-synced board, so the last write wins
-      // on a set that already agrees.
-      const existing = (linksByNodeRef.current.get(nodeId) ?? []).map((l) => l.issue_id);
-      if (existing.includes(issueId)) return;
-      setNodeIssues.mutate(
-        { nodeId, issueIds: [...existing, issueId], replace: true },
-        { onError: fail },
-      );
-    },
-    [setNodeIssues, fail],
-  );
-
-  /**
-   * Open work using the item's inherited project/module UUID binding.
-   * The display code seeds the title only; renaming or renumbering cannot
-   * change where the issue is filed.
-   *
-   * The issue is linked to the row as soon as it exists. Creating work from a
-   * work item and then having to search for it to attach it would leave the
-   * board no better off than before the link table.
-   */
-  const createIssueForNode = useCallback(
-    (option: CockpitNodeIssueOption) => {
-      openModal("create-issue", {
-        title: option.code,
-        project_id: option.project_id,
-        module_id: option.module_id,
-        // The row travels whole so the dialog can name it, and show it as a
-        // field the user can move off: the row it proposes is a guess from
-        // where the click came from, not a decision.
-        cockpit_node: option,
-        on_created: (issue: Issue, state: { cockpit_node_id: string | null }) => {
-          if (state.cockpit_node_id) linkIssue(state.cockpit_node_id, issue.id);
-        },
-      });
-    },
-    [openModal, linkIssue],
-  );
-
-  /**
-   * Jump from a digest-card task row into the gantt: expand its ancestors so
-   * the row is rendered, select it (opens the node panel) and flash it.
-   */
   const focusTask = useCallback(
     (nodeId: string) => {
       setCollapsed((prev) => {
@@ -579,29 +361,17 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         ancestors.forEach((id) => next.delete(id));
         return next;
       });
-      setSelectedId(nodeId);
       setFocusTarget((prev) => ({ nodeId, nonce: (prev?.nonce ?? 0) + 1 }));
       setTab("gantt");
     },
-    [summaryParent],
+    [summaryParent, setCollapsed],
   );
 
   const openTask = useCallback((nodeId: string) => {
-    if (onSelectTab && destination.nodeId !== nodeId) {
-      navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId }));
-      return;
-    }
-    focusTask(nodeId);
-  }, [onSelectTab, destination.nodeId, navigation, focusTask]);
-
+    navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, planView }, scope));
+  }, [navigation, planView, scope]);
   const openMeeting = (meetingId?: string | null) => {
-    if (onSelectTab && (destination.area !== "meetings" || destination.meetingId !== (meetingId ?? null))) {
-      navigation.push(meetingId ? cockpitObjectPath(navigation.pathname, { kind: "meeting", id: meetingId })
-        : cockpitAreaPath(navigation.pathname, "meetings"));
-      return;
-    }
-    setSelectedMeetingId(meetingId ?? null);
-    setTab("meetings");
+    navigation.push(cockpitMeetingContextPath(navigation.pathname, meetingId ?? null, scope, navigation.searchParams));
   };
 
   const toggleCollapse = useCallback((nodeId: string) => {
@@ -611,7 +381,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
       else next.add(nodeId);
       return next;
     });
-  }, []);
+  }, [setCollapsed]);
 
   /**
    * Open the tree down to one level and no further. A six-module board with
@@ -630,7 +400,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         ),
       );
     },
-    [summaryFlat],
+    [summaryFlat, setCollapsed],
   );
 
   /**
@@ -639,28 +409,12 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
    * the tasks. This runs once: a live edit or a websocket refresh must not
    * fold a branch the reader just opened.
    */
-  const didSeedCollapse = useRef(false);
   useEffect(() => {
-    if (didSeedCollapse.current || summaryFlat.length === 0) return;
-    didSeedCollapse.current = true;
+    if (planState.seeded || summaryFlat.length === 0) return;
     setCollapsed(new Set(cockpitSummaryCollapseIds(summaryTree)));
-  }, [summaryFlat, summaryTree]);
+  }, [planState.seeded, summaryFlat.length, summaryTree, setCollapsed]);
 
-  // Deep link `?node=<id>` (graph execution-node menu): same landing as a
-  // digest-card jump — ancestors expanded, row selected and flashed. Declared
-  // after the seed-collapse effect on purpose: the expansion must carve the
-  // row's ancestors out of the SEEDED collapse set (a functional update after
-  // seeding), not the empty initial one. `collapsed` in the deps re-fires the
-  // effect right after seeding when the board was still loading on mount.
-  const deepLinkNode = destination.nodeId;
-  const deepLinkNodeAppliedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!deepLinkNode || deepLinkNodeAppliedRef.current === deepLinkNode) return;
-    if (!didSeedCollapse.current) return;
-    if (!(board?.nodes ?? []).some((n) => n.id === deepLinkNode)) return;
-    deepLinkNodeAppliedRef.current = deepLinkNode;
-    focusTask(deepLinkNode);
-  }, [deepLinkNode, board, focusTask, collapsed]);
+  useEffect(() => { if (selectedId && nodes.some((node) => node.id === selectedId)) focusTask(selectedId); }, [selectedId, nodes, focusTask]);
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
@@ -674,69 +428,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
       else next.add(nodeId);
       return next;
     });
-  }, []);
-
-  const addNode = useCallback(() => {
-    // The button files one thing: an execution task. It lands under a
-    // direction row — the selected direction itself, or the direction above
-    // the selected task. Modules hold structure, tasks hold nothing below
-    // them, so a click anywhere else explains what to select instead of
-    // creating at the wrong level.
-    const selected = selectedId ? nodeById.get(selectedId) : undefined;
-    const entry = selected ? flat.find((e) => e.node.id === selected.id) : undefined;
-    const parent =
-      selected?.parent_id != null ? nodeById.get(selected.parent_id) : undefined;
-    const direction =
-      entry?.depth === 1 && selected && !isCockpitExecNode(selected.code)
-        ? selected
-        : entry?.depth === 2 &&
-            selected &&
-            isCockpitExecNode(selected.code) &&
-            parent &&
-            flat.find((e) => e.node.id === parent.id)?.depth === 1 &&
-            !isCockpitExecNode(parent.code)
-          ? parent
-          : undefined;
-    if (!direction) {
-      toast.info(t(($) => $.toolbar.add_node_hint));
-      return;
-    }
-    // The click proposes; the dialog confirms. The code is not minted here
-    // anymore: numbers are spent once used (deleted rows keep theirs), so
-    // the server names the next one and the dialog shows it for a yes.
-    const siblings = nodes.filter((n) => n.parent_id === direction.id);
-    const position = siblings.reduce((max, n) => Math.max(max, n.position), 0) + 1;
-    setAddingTask({ direction, position });
-  }, [selectedId, nodeById, nodes, flat, t]);
-
-  // Linking is additive at this level, same as a work item's issues: the
-  // picker sends the full set it wants rather than a diff.
-  const linkMeetingIssue = useCallback(
-    (meetingId: string, issueId: string) => {
-      const current = (meetingIssuesByMeeting.get(meetingId) ?? []).map((l) => l.issue_id);
-      if (current.includes(issueId)) return;
-      setMeetingIssues.mutate(
-        { meetingId, issueIds: [...current, issueId], replace: true },
-        { onError: fail },
-      );
-    },
-    [meetingIssuesByMeeting, setMeetingIssues, fail],
-  );
-
-  const toggleMeetingNode = useCallback(
-    (meetingId: string, nodeId: string) => {
-      const current = (meetingNodesByMeeting.get(meetingId) ?? []).map((l) => l.node_id);
-      if (current.includes(nodeId)) {
-        unlinkMeetingNode.mutate({ meetingId, nodeId }, { onError: fail });
-        return;
-      }
-      setMeetingNodes.mutate(
-        { meetingId, nodeIds: [...current, nodeId], replace: true },
-        { onError: fail },
-      );
-    },
-    [meetingNodesByMeeting, setMeetingNodes, unlinkMeetingNode, fail],
-  );
+  }, [setRootIds]);
 
   /** Reports what provisioning actually managed, part by part. */
   const reportProvision = useCallback(
@@ -755,129 +447,64 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     [t],
   );
 
-  const prepareMeetingDirectory = useCallback(
-    async (meetingId: string) => {
-      const result = await provisionMeeting.mutateAsync({
-        id: meetingId,
-        body: { create_task: false, create_dir: true, remember: true },
-      });
-      if (result.dir_error) throw new Error(result.dir_error);
-      if (result.meeting?.id !== meetingId || !result.meeting.nas_dir?.trim()) {
-        throw new Error(t(($) => $.workflow.unconfirmed));
-      }
-    },
-    [provisionMeeting, t],
-  );
-
-  /** Files a meeting: the row first, then whatever the form asked for on top
-   *  of it. The row is what must not be lost, so it is written on its own. */
+  /** Each retry resumes the same confirmed command. The form owns navigation after the full operation settles. */
   const submitMeeting = useCallback(
-    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null) => {
+    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null): Promise<string> => {
+      const isCurrent = captureMeetingContext();
+      const existing = useCockpitMeetingCreateDraftStore.getState().draft.byScope[meetingCreateKey];
+      const progress = existing?.meeting.creation_key === draft.creation_key ? existing : null;
+      if (!progress) throw new Error(t(($) => $.workflow.unconfirmed));
       try {
-        let progress = meetingCreationRef.current;
-        if (!progress) {
+        let meetingId = progress?.meetingId ?? null;
+        if (!meetingId) {
           const meeting = await createMeeting.mutateAsync({
-          meet_date: draft.meet_date || null,
-          start_time: draft.start_time || null,
-          end_time: draft.end_time || null,
-          kind: draft.kind,
-          status: draft.status,
-          track: draft.track,
-          parties: draft.parties,
-          organizer: draft.organizer,
-          attendees: draft.attendees,
-          location: draft.location,
-          title: draft.title,
-          code: draft.code,
+            creation_key: draft.creation_key, node_id: draft.node_id || undefined,
+            meet_date: draft.meet_date || null, start_time: draft.start_time || null, end_time: draft.end_time || null,
+            kind: draft.kind, status: draft.status, track: draft.track, parties: draft.parties,
+            organizer: draft.organizer, attendees: draft.attendees, location: draft.location, title: draft.title,
           });
-          if (!meeting.id) throw new Error(t(($) => $.workflow.unconfirmed));
-          progress = { meeting, workflowCreated: false, directoryReady: false };
-          meetingCreationRef.current = progress;
-          setSavedMeetingId(meeting.id);
+          if (!meeting.id || meeting.creation_key !== draft.creation_key || typeof meeting.replayed !== "boolean") throw new Error(t(($) => $.workflow.unconfirmed));
+          meetingId = meeting.id;
+          checkpointCockpitMeetingCreation(meetingCreateKey, progress, { meetingId });
         }
-        const meeting = progress.meeting;
-        setSelectedMeetingId(meeting.id);
-        setTab("meetings");
-        if (workflow && !progress.workflowCreated) {
-          await enableMeetingWorkflow.mutateAsync({ meetingId: meeting.id, body: workflow });
-          progress.workflowCreated = true;
-          setMeetingWorkflowCreated(true);
+        if (workflow && !progress?.workflowCreated) {
+          await enableMeetingWorkflow.mutateAsync({ meetingId, body: workflow });
+          checkpointCockpitMeetingCreation(meetingCreateKey, progress, { workflowCreated: true });
         }
-        if (provision.create_dir && !progress.directoryReady) {
-          const result = await provisionMeeting.mutateAsync({ id: meeting.id, body: { ...provision, create_task: false } });
-          reportProvision(result);
+        if (provision.create_dir && !progress?.directoryReady) {
+          const result = await provisionMeeting.mutateAsync({ id: meetingId, body: { ...provision, create_task: false } });
+          if (isCurrent()) reportProvision(result);
           if (result.dir_error) throw new Error(result.dir_error);
-          if (!result.meeting.id) throw new Error(t(($) => $.workflow.unconfirmed));
-          progress.directoryReady = true;
+          if (result.meeting.id !== meetingId || !result.meeting.nas_dir) throw new Error(t(($) => $.workflow.unconfirmed));
+          checkpointCockpitMeetingCreation(meetingCreateKey, progress, { directoryReady: true });
         }
+        return meetingId;
       } catch (error) {
-        fail(error);
+        if (isCurrent()) fail(error);
         throw error;
       }
     },
-    [createMeeting, enableMeetingWorkflow, provisionMeeting, reportProvision, fail, t],
+    [createMeeting, enableMeetingWorkflow, provisionMeeting, reportProvision, fail, t, captureMeetingContext, meetingCreateKey],
   );
 
-  /** Turns the archive folders someone picked into meeting rows. */
+  /** The import dialog keeps per-folder receipts and recoverable edits in the captured scope. */
   const submitMeetingImport = useCallback(
-    async (items: CockpitMeetingImportItem[], createTask: boolean) => {
+    async (items: CockpitMeetingImportItem[], createTask: boolean, expectedBaseDir: string): Promise<CockpitMeetingImportResult> => {
+      const isCurrent = captureImportContext();
       try {
-        const result = await importMeetings.mutateAsync({
-          items,
-          project_id: board?.cockpit.meeting_project_id ?? undefined,
-          module_id: board?.cockpit.meeting_module_id ?? undefined,
-          node_id: board?.cockpit.meeting_node_id ?? undefined,
-          create_task: createTask,
-        });
-        if (result.meetings.length > 0) {
-          toast.success(t(($) => $.meetings.scan_imported, { n: result.meetings.length }));
-          setTab("meetings");
-          setSelectedMeetingId(result.meetings[0]!.id);
-        }
-        // Every folder that was asked for and not taken says why, one by one:
-        // a batch that half worked must not read as a batch that worked.
-        for (const skip of result.skipped) {
-          toast.error(t(($) => $.meetings.scan_skipped, { folder: skip.name, reason: skip.reason }));
-        }
+        return await importMeetings.mutateAsync({ items, project_id: meetingProjectId ?? undefined,
+          module_id: meetingModuleId ?? undefined, node_id: meetingNodeId ?? undefined, create_task: createTask, expected_base_dir: expectedBaseDir });
       } catch (error) {
-        fail(error);
+        if (isCurrent()) fail(error);
         throw error;
       }
     },
-    [importMeetings, board, t, fail],
+    [importMeetings, meetingProjectId, meetingModuleId, meetingNodeId, fail, captureImportContext],
   );
 
-  const requestDeletion = async (kind: "meeting" | "milestone" | "payment", id: string) => {
-    // Deleting the selected meeting closes its panel once the server agrees;
-    // the panel itself only asks.
+  const requestDeletion = (kind: "milestone", id: string) => {
     deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (kind === "meeting") {
-      try {
-        const cached = queryClient.getQueryData<CockpitMeetingWorkflowSummary>(cockpitKeys.workflow(wsId, id));
-        const workflow = cached?.enabled ? cached
-          : await queryClient.fetchQuery({ ...cockpitMeetingWorkflowOptions(wsId, id), staleTime: 0 });
-        if (!workflow || workflow.meeting_id !== id) throw new Error(t(($) => $.workflow.load_failed));
-        if (workflow.enabled) {
-          toast.info(t(($) => $.workflow.delete_protected));
-          openMeeting(id);
-          return;
-        }
-      } catch (error) {
-        fail(error);
-        return;
-      }
-    }
-    // What the confirmation names is the record, not the button that asked:
-    // "meeting.delete" is the delete control's accessible name and reading it
-    // back in makes the prompt say it will delete "delete meeting X".
-    const named = (value: string | undefined, fallback: string) =>
-      value?.trim() ? value.trim() : fallback;
-    const label = kind === "meeting"
-      ? named(board?.meetings.find((item) => item.id === id)?.title, t(($) => $.meeting.title_placeholder))
-      : kind === "milestone"
-        ? named(board?.milestones.find((item) => item.id === id)?.name, t(($) => $.milestone.new))
-        : named(board?.payments.find((item) => item.id === id)?.label, t(($) => $.payment.label));
-    setDeletion({ kind, id, label });
+    setDeletion({ kind, id, label: board?.milestones.find((item) => item.id === id)?.name || t(($) => $.milestone.new) });
   };
 
   const confirmDeletion = async () => {
@@ -885,9 +512,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     deletionLock.current = true;
     setDeleting(true);
     try {
-      const mutation = deletion.kind === "meeting" ? deleteMeeting
-        : deletion.kind === "milestone" ? deleteMilestone : deletePayment;
-      await mutation.mutateAsync(deletion.id);
+      await deleteMilestone.mutateAsync(deletion.id);
       setDeletion(null);
     } catch (error) {
       fail(error);
@@ -897,21 +522,18 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     }
   };
 
-  const exportTasks = useCallback(() => {
-    if (!board) return;
-    downloadCsv(cockpitTasksCsv(board), `${board.cockpit.title || "cockpit"}-${today}-tasks.csv`);
-  }, [board, today]);
-
   const [exporting, setExporting] = useState(false);
   const chartContainer = useRef<HTMLDivElement>(null);
   const exportChart = async (format: "png" | "pdf") => {
     const chart = chartContainer.current?.querySelector<HTMLElement>("[data-cockpit-gantt]");
     if (!board || !chart || exporting) return;
+    if (Number(chart.dataset.cockpitRowCount) > 300) { fail(new Error(t(($) => $.plan_views.export_too_large))); return; }
     const popup = format === "pdf" ? window.open("", "_blank", "popup,width=1100,height=800") : null;
     if (format === "pdf" && !popup) { fail(new Error(t(($) => $.errors.save_failed))); return; }
     if (popup) popup.opener = null;
     setExporting(true);
     try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       const canvas = await captureCockpitGantt(chart, format === "pdf");
       const filename = `${board.cockpit.title || "cockpit"}-${today}`;
       if (popup) await printCockpitGantt(canvas, popup, filename);
@@ -920,103 +542,14 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     finally { setExporting(false); }
   };
 
-  const selected = selectedId ? nodeById.get(selectedId) : undefined;
-  const selectedEntry = selectedId ? flat.find((e) => e.node.id === selectedId) : undefined;
-  // WBS codes are labels; only an explicit ancestor binding chooses the issue destination.
-  const selectedFiling = useMemo((): CockpitNodeIssueOption | null => {
-    if (!selected) return null;
-    const code = displayCodes.get(selected.id) ?? selected.code;
-    const filing = cockpitNodeIssueFiling(
-      selected,
-      nodeById,
-      modules ?? EMPTY_MODULES,
-      code,
-    );
-    if (!filing) return null;
-    return {
-      node_id: selected.id,
-      code,
-      label: nodeLabels.get(selected.id) ?? code,
-      project_id: filing.project_id,
-      module_id: filing.module_id,
-    };
-  }, [selected, displayCodes, nodeLabels, modules, nodeById]);
-  const showTaskWorkspace = Boolean(selected && !selected.project_id && !selected.module_id
-    && (selectedFiling || (selectedEntry?.depth ?? 0) >= 2)
-    && !nodes.some((node) => node.parent_id === selected.id));
-
-  if (boardError && !board) {
-    return <div className="cockpit-skin flex flex-col items-start gap-3 p-4" role="alert">
-      <p className="text-body text-destructive">{t(($) => $.errors.load_failed)}</p>
-      <Button type="button" variant="outline" disabled={reloadingBoard} aria-busy={reloadingBoard}
-        onClick={() => void reloadBoard()}>{t(($) => $.binding.retry)}</Button>
-    </div>;
-  }
-
-  if (isLoading || !board) {
-    return (
-      // cockpit-skin also on the loading frame so the board never flashes the
-      // app theme while the query resolves.
-      <div className="cockpit-skin flex flex-col gap-3 p-4">
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  const showTaskWorkspace = Boolean(selectedId);
 
   const roots = tree.map((entry) => entry.node);
   const isBoardView = tab === "gantt" || tab === "finance";
-  // A lookup rather than a ternary chain: five tabs is where the chain stops
-  // being readable and starts hiding a missing label.
-  const tabLabels: Record<CockpitTab, string> = {
-    overview: t(($) => $.tabs.overview),
-    gantt: t(($) => $.tabs.gantt),
-    meetings: t(($) => $.tabs.meetings),
-    changes: t(($) => $.tabs.changes),
-    finance: t(($) => $.tabs.finance),
-  };
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <EditableText
-          value={board.cockpit.title}
-          onCommit={(title) => patchBoard({ title })}
-          label={t(($) => $.header.title)}
-          placeholder={t(($) => $.header.title_placeholder)}
-          displayClassName="text-title-sm font-semibold"
-        />
-
-        {/* One pill glides to the active tab; the buttons themselves stay
-            transparent, so a switch reads as motion, not repaints. */}
-        <nav
-          ref={tabPillRef}
-          className="cockpit-segmented ml-2 flex items-center gap-0.5 rounded-md bg-muted p-0.5"
-        >
-          <SegmentedPill />
-          {TABS.map((key) => {
-            const className = cn(
-              "rounded-sm px-2.5 py-1 text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tab === key ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-            );
-            const label = <>{tabLabels[key]}
-              {key === "changes" && pendingCount > 0 && (
-                <span
-                  className="ml-1 rounded-full bg-brand px-1.5 py-px text-micro leading-4 font-medium text-brand-foreground"
-                  aria-label={t(($) => $.changes.queue_title, { n: pendingCount })}
-                >
-                  {pendingCount > 99 ? "99+" : pendingCount}
-                </span>
-              )}
-            </>;
-            return onSelectTab ? <AppLink key={key} href={cockpitAreaPath(navigation.pathname, key === "overview" ? "work" : key)}
-              data-active={tab === key} aria-current={tab === key ? "page" : undefined} className={className}>{label}</AppLink>
-              : <button key={key} type="button" data-active={tab === key} aria-current={tab === key ? "page" : undefined}
-                onClick={() => setTab(key)} className={className}>{label}</button>;
-          })}
-        </nav>
-
         <span className="flex-1" />
 
         {isBoardView && (
@@ -1081,7 +614,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           </>
         )}
 
-        {tab === "gantt" && (
+        {tab === "gantt" && planView === "gantt" && (
           <Button variant="ghost" size="icon-sm" aria-expanded={toolsOpen}
             aria-controls="cockpit-secondary-toolbar"
             aria-label={toolsOpen ? t(($) => $.toolbar.collapse_controls) : t(($) => $.toolbar.expand_controls)}
@@ -1093,7 +626,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         {/* The two headline figures stay out of the collapsible toolbar: they
             are the board's state, not a control, and the shipped board keeps
             them visible however the controls are folded. */}
-        {tab === "gantt" && (
+        {tab === "gantt" && planView === "gantt" && (
           <div className="flex items-center gap-2">
             <ProgressChip
               label={t(($) => $.toolbar.overall_progress)}
@@ -1114,7 +647,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           </div>
         )}
 
-        {tab === "gantt" && toolsOpen && (
+        {tab === "gantt" && planView === "gantt" && toolsOpen && (
           <div id="cockpit-secondary-toolbar" className="order-last flex w-full flex-wrap items-center gap-2">
             <Select
               items={[
@@ -1185,11 +718,12 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           </div>
         )}
 
-        <CockpitVersions wsId={wsId} canRestore={canRestore}
-          hasMeetingWorkflows={board.has_meeting_workflows === true}
-          hasStableBindings={nodes.some((node) => Boolean(node.project_id || node.module_id))} />
+        {board && tab !== "meetings" && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
+        {cockpit && <CockpitVersions wsId={wsId} canRestore={canRestore}
+          hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
+          hasStableBindings={context.data?.has_stable_bindings !== false} />}
 
-        <DropdownMenu>
+        {tab === "gantt" && planView === "gantt" && board && <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
@@ -1205,67 +739,54 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("pdf")}>
               {t(($) => $.toolbar.export_pdf)}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={exportTasks}>
-              {t(($) => $.toolbar.export_tasks)}
-            </DropdownMenuItem>
+
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
 
         {/* The register's primary action is a meeting, not a work item —
             offering "add node" while showing meetings would file the wrong
             thing in one click. */}
         {tab === "meetings" ? (
-          <Button size="sm" className="h-7 gap-1 px-2" onClick={() => setCreatingMeeting(true)}>
+          <Button size="sm" className="h-7 gap-1 px-2" disabled={context.data?.actor.is_human !== true} onClick={() => setCreatingMeeting(true)}>
             <Plus className="size-3.5" />
             {t(($) => $.meeting.new)}
           </Button>
-        ) : (
-          <Button size="sm" className="h-7 gap-1 px-2" onClick={addNode}>
-            <Plus className="size-3.5" />
-            {t(($) => $.toolbar.add_node)}
-          </Button>
-        )}
+        ) : tab !== "changes" ? (
+          <CockpitPlanStructureCreate wsId={wsId} scope={scope} defaultKind={scope.moduleId && nodes.some((node) => node.module_id === scope.moduleId) ? "task" : scope.projectId && nodes.some((node) => node.project_id === scope.projectId && !node.module_id) ? "module" : "project"} disabled={context.data?.actor.is_human !== true || planQuery.isError} onCreated={openTask} />
+        ) : null}
       </header>
 
       <div className="relative flex min-h-0 flex-1">
         {/* Keyed on the tab so each switch replays the short entrance on the
             fresh body — the chrome stays put, the content arrives. */}
-        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeeting && "max-xl:hidden",
+        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeetingId && "max-xl:hidden",
           tab !== "meetings" && showTaskWorkspace && "max-xl:hidden")}>
-          {tab === "overview" && (
+          {tab !== "meetings" && tab !== "changes" && planQuery.isError && <CockpitReadFailure error={planQuery.error} wsId={wsId} scope={scope} resource="plan" busy={planQuery.isFetching} onRetry={() => void planQuery.refetch()} />}
+          {tab !== "meetings" && tab !== "changes" && planQuery.isSuccess && !planQuery.isError && (!board || board.nodes.length === 0) && <p className="p-8 text-body text-muted-foreground">{t(($) => $.plan_structure.empty)}</p>}
+          {tab !== "meetings" && tab !== "changes" && planQuery.isPending && <div className="space-y-3 p-4"><Skeleton className="h-20" /><Skeleton className="h-64" /></div>}
+          {tab === "overview" && board && (
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {onWorkOverview && <div className="flex flex-wrap gap-1 border-b border-border px-4 py-2">
-                <AppLink href={cockpitAreaPath(navigation.pathname, "work")} className="rounded-md px-3 py-1.5 text-caption text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t(($) => $.work_overview.work)}</AppLink>
-                <span aria-current="page" className="rounded-md bg-secondary px-3 py-1.5 text-caption font-medium text-secondary-foreground">{t(($) => $.work_overview.operations)}</span>
-              </div>}
               <CockpitOverview
                 board={board}
+                contextNodeIds={contextNodeIds}
+                displayCodes={displayCodes}
                 today={today}
                 onPatchBoard={patchBoard}
                 onPatchNode={patchNode}
                 onPatchMilestone={patchMilestone}
-                onCreateMilestone={() =>
-                  createMilestone.mutate({ name: t(($) => $.milestone.new), status: "" }, { onError: fail })
-                }
+                onCreateMilestone={() => setCreatingMilestone(true)}
                 onDeleteMilestone={(id) => requestDeletion("milestone", id)}
-                onPatchMeeting={patchMeeting}
-                // The same dialog the register's own "new meeting" opens.
-                // A meeting is not a row someone fills in afterwards: it
-                // decides a number, a folder and a task at the moment it is
-                // filed, and a quick-add that skipped all three left rows the
-                // rest of the register could not be read against.
-                onCreateMeeting={() => setCreatingMeeting(true)}
-                onDeleteMeeting={(id) => requestDeletion("meeting", id)}
-                onOpenMeetings={openMeeting}
+                readOnly={context.data?.actor.is_human !== true || planQuery.isError}
+                meetingsSlot={<CockpitBusinessMeetings readOnly={context.data?.actor.is_human !== true} wsId={wsId} scope={scope} today={today} onOpenMeeting={openMeeting} onCreate={() => setCreatingMeeting(true)} />}
                 onOpenBranch={(nodeId) => {
                   setRootIds(new Set([nodeId]));
-                  setTab("gantt");
+                  navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, "gantt"));
                 }}
                 onOpenModule={(rootCode) => {
                   const root = tree.find((entry) => entry.node.code === rootCode);
                   if (root) {
                     setRootIds(new Set([root.node.id]));
-                    setTab("gantt");
+                    navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, "gantt"));
                   }
                 }}
                 onOpenTask={openTask}
@@ -1274,25 +795,30 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             </div>
           )}
 
-          {tab === "gantt" && (
+          {tab === "gantt" && planView === "gantt" && board && (
             <div ref={chartContainer} className="flex min-h-0 flex-1 flex-col" aria-busy={exporting}>
             <CockpitGantt
               board={board}
+              displayCodes={displayCodes}
+              contextNodeIds={contextNodeIds}
+              taskCounts={taskCounts}
               today={today}
               zoom={zoom}
               query={query}
               rootIds={rootIds}
               collapsed={collapsed}
               onToggleCollapse={toggleCollapse}
-              onSelect={setSelectedId}
+              onSelect={openTask}
               selectedId={selectedId}
               onPatchNode={patchNode}
+              readOnly={planQuery.isError || context.data?.actor.is_human !== true}
               statusSuggestions={statusSuggestions}
               ownerSuggestions={ownerSuggestions}
               showFinance={showFinance}
               toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
+              renderAllRows={exporting}
               onOpenMeeting={openMeeting}
             />
             </div>
@@ -1300,28 +826,38 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
           {tab === "meetings" && (
             <CockpitMeetings
-              board={board}
+              wsId={wsId}
+              scope={cockpitScope(navigation.searchParams)}
               today={today}
               selectedId={selectedMeetingId}
-              onSelect={setSelectedMeetingId}
+              onSelect={openMeeting}
               onCreate={() => setCreatingMeeting(true)}
               onScan={() => setScanningMeetings(true)}
+              readOnly={context.data?.actor.is_human !== true}
             />
           )}
 
           {tab === "changes" && (
-            <CockpitChanges wsId={wsId} nodes={nodes} onOpenTask={openTask} />
+            <CockpitChanges key={planKey} wsId={wsId} scope={scope} readOnly={context.data?.actor.is_human !== true} onOpenTask={openTask} />
           )}
 
-          {tab === "finance" && (
+          {tab === "gantt" && planView === "responsibility" && <CockpitResponsibilities wsId={wsId} query={query} rootIds={rootIds} nodes={nodes} displayCodes={displayCodes} scope={scope} />}
+          {tab === "gantt" && planView === "milestones" && board && <CockpitMilestones wsId={wsId} query={query} rootIds={rootIds} readOnly={context.data?.actor.is_human !== true || planQuery.isError} nodes={nodes} milestones={board.milestones} displayCodes={displayCodes} scope={scope}
+            today={today} goalDate={board.cockpit.goal_date} onCreate={() => setCreatingMilestone(true)}
+            onPatch={patchMilestone} onDelete={(id) => requestDeletion("milestone", id)} />}
+          {(tab === "finance" || (tab === "gantt" && (planView === "table" || planView === "finance"))) && board && (
             <CockpitTable
               board={board}
-              mode="finance"
+              displayCodes={displayCodes}
+              contextNodeIds={contextNodeIds}
+              taskCounts={taskCounts}
+              mode={planView === "table" ? "tasks" : "finance"}
               query={query}
               rootIds={rootIds}
-              onSelect={setSelectedId}
+              onSelect={openTask}
               selectedId={selectedId}
               onPatchNode={patchNode}
+              readOnly={planQuery.isError || context.data?.actor.is_human !== true}
               statusSuggestions={statusSuggestions}
               execStatusSuggestions={execStatusSuggestions}
               budgetCategorySuggestions={budgetCategorySuggestions}
@@ -1331,117 +867,22 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           )}
         </div>
 
-        {tab === "meetings" && selectedMeeting && (
-          <CockpitMeetingPanel
-            key={selectedMeeting.id}
-            wsId={wsId} currentUserId={currentUserId}
-            defaultPlacement={{ project_id: board.cockpit.meeting_project_id, module_id: board.cockpit.meeting_module_id, node_id: board.cockpit.meeting_node_id }}
-            defaultAssigneeType={board.cockpit.meeting_assignee_type || null}
-            defaultAssigneeId={board.cockpit.meeting_assignee_id}
-            meeting={selectedMeeting}
-            nodes={nodes}
-            nodeCodes={displayCodes}
-            meetings={meetings}
-            members={members ?? EMPTY_MEMBERS}
-            membersLoaded={members !== undefined && !membersLoading && !membersError}
-            directory={directoryData?.entries ?? EMPTY_DIRECTORY}
-            onSaveDirectoryEntry={saveDirectoryEntry}
-            onDeleteDirectoryEntry={removeDirectoryEntry}
-            onAutoSaveDirectory={autoSaveDirectory}
-            issueLinks={meetingIssuesByMeeting.get(selectedMeeting.id) ?? []}
-            nodeLinks={meetingNodesByMeeting.get(selectedMeeting.id) ?? []}
-            nodeLabels={nodeLabels}
-            onPatch={(patch) => patchMeeting(selectedMeeting.id, patch)}
-            onClose={() => setSelectedMeetingId(null)}
-            onDelete={() => requestDeletion("meeting", selectedMeeting.id)}
-            onLinkIssue={(issueId) => linkMeetingIssue(selectedMeeting.id, issueId)}
-            onSaveIssueRoles={(issueId, roles) => setMeetingIssueRoles.mutateAsync({
-              meetingId: selectedMeeting.id, issueId, roles,
-            })}
-            onUnlinkIssue={(issueId) =>
-              unlinkMeetingIssue.mutate({ meetingId: selectedMeeting.id, issueId }, { onError: fail })
-            }
-            onToggleNode={(nodeId) => toggleMeetingNode(selectedMeeting.id, nodeId)}
-            onOpenNode={openTask}
-            onSaveMaterialPatch={async (patch) => {
-              await saveMeetingMaterials.mutateAsync({ id: selectedMeeting.id, patch });
-            }}
-            onPrepareDirectory={() => prepareMeetingDirectory(selectedMeeting.id)}
-          />
-        )}
+        {tab === "meetings" && selectedMeetingId && <CockpitSelectedMeeting key={selectedMeetingId} wsId={wsId} meetingId={selectedMeetingId} scope={scope}
+          onClose={() => navigation.push(cockpitMeetingContextPath(navigation.pathname, null, scope, navigation.searchParams))} onOpenNode={openTask} />}
 
-        {tab !== "meetings" && selected && (
-          <CockpitNodePanel
-            key={selected.id}
-            node={selected}
-            section={destination.nodeId === selected.id ? destination.nodeView ?? "tasks" : "tasks"}
-            onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: selected.id, view }))}
-            taskWorkspace={showTaskWorkspace
-              ? <CockpitNodeTasks wsId={wsId} node={selected} userId={currentUserId} /> : undefined}
-            binding={<CockpitNodeBindingField node={selected} nodes={nodeById} modules={modules ?? []}
-              modulesLoading={modulesLoading} modulesError={modulesError} onRetryModules={() => void reloadModules()}
-              onSave={(binding) => setNodeBinding.mutateAsync({ id: selected.id, ...binding })}
-              onOpenNode={openTask} />}
-            displayCode={displayCodes.get(selected.id)}
-            parent={selected.parent_id ? nodeById.get(selected.parent_id) : undefined}
-            payments={paymentsByNode.get(selected.id) ?? []}
-            links={linksByNode.get(selected.id) ?? []}
-            meetings={meetingsByNode.get(selected.id) ?? []}
-            isBranch={(selectedEntry?.children.length ?? 0) > 0}
-            depth={selectedEntry?.depth ?? 0}
-            deleteConfirmationDescription={(selectedEntry?.children.length ?? 0) > 0
-              ? t(($) => $.confirmation.delete_branch_description, { label: selected.name || selected.code })
-              : t(($) => $.confirmation.delete_description, { label: selected.name || selected.code })}
-            statusSuggestions={statusSuggestions}
-            execStatusSuggestions={execStatusSuggestions}
-            budgetCategorySuggestions={budgetCategorySuggestions}
-            ownerSuggestions={ownerSuggestions}
-            vendorSuggestions={vendorSuggestions}
-            onPatch={(patch) => patchNode(selected.id, patch)}
-            onDelete={() =>
-              deleteNode.mutateAsync(selected.id, {
-                onSuccess: () => setSelectedId(null),
-                onError: fail,
-              })
-            }
-            onClose={() => setSelectedId(null)}
-            onLinkIssue={(issueId) => linkIssue(selected.id, issueId)}
-            onUnlinkIssue={(issueId) =>
-              unlinkIssue.mutate({ nodeId: selected.id, issueId }, { onError: fail })
-            }
-            onCreateIssue={
-              selectedFiling && nodes.some((node) => node.parent_id === selected.id) ? () => createIssueForNode(selectedFiling) : undefined
-            }
-            onOpenMeeting={openMeeting}
-            onCreatePayment={() =>
-              createPayment.mutate(
-                {
-                  nodeId: selected.id,
-                  body: {
-                    label: t(($) => $.payment.new_label, {
-                      index: (paymentsByNode.get(selected.id)?.length ?? 0) + 1,
-                    }),
-                    amount: 0,
-                    position: paymentsByNode.get(selected.id)?.length ?? 0,
-                  },
-                },
-                { onError: fail },
-              )
-            }
-            onPatchPayment={patchPayment}
-            onDeletePayment={(paymentId) => requestDeletion("payment", paymentId)}
-          />
-        )}
+        {tab !== "meetings" && selectedId && <CockpitSelectedNode key={selectedId} wsId={wsId} nodeId={selectedId} scope={scope} planView={planView}
+          section={destination.nodeView ?? "tasks"} onClose={() => navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, planView))}
+          onOpenNode={openTask} onOpenMeeting={openMeeting} />}
+
       </div>
-      <CockpitMeetingCreate
+      <CockpitMilestoneCreate wsId={wsId} scope={scope} open={creatingMilestone} onOpenChange={setCreatingMilestone} initialNodeId={selectedId && nodes.some((node) => node.id === selectedId) && !contextNodeIds.has(selectedId) ? selectedId : null} disabled={context.data?.actor.is_human !== true} />
+      <CockpitMeetingCreate key={meetingCreateKey}
         open={creatingMeeting}
         onOpenChange={onMeetingCreateOpenChange}
         wsId={wsId}
+        scope={scope}
         today={today}
-        meetings={meetings}
-        nodes={nodes}
-        members={members ?? EMPTY_MEMBERS}
-        directory={directoryData?.entries ?? EMPTY_DIRECTORY}
+        members={members}
         onSaveDirectoryEntry={saveDirectoryEntry}
         onDeleteDirectoryEntry={removeDirectoryEntry}
         onAutoSaveDirectory={autoSaveDirectory}
@@ -1449,34 +890,21 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         currentUserId={currentUserId}
         savedMeetingId={savedMeetingId}
         workflowCreated={meetingWorkflowCreated}
-        defaultProjectId={board.cockpit.meeting_project_id}
-        defaultModuleId={board.cockpit.meeting_module_id}
-        defaultNodeId={board.cockpit.meeting_node_id}
-        defaultAssigneeType={board.cockpit.meeting_assignee_type || null}
-        defaultAssigneeId={board.cockpit.meeting_assignee_id}
+        defaultProjectId={meetingProjectId}
+        defaultModuleId={meetingModuleId}
+        defaultNodeId={meetingNodeId}
+        defaultAssigneeType={cockpit?.meeting_assignee_type || null}
+        defaultAssigneeId={cockpit?.meeting_assignee_id ?? null}
         onSubmit={submitMeeting}
-      />
-      <CockpitTaskCreateDialog
-        wsId={wsId}
-        direction={addingTask?.direction ?? null}
-        position={addingTask?.position ?? 0}
-        displayCode={addingTask ? (displayCodes.get(addingTask.direction.id) ?? null) : null}
-        onOpenChange={(open) => {
-          if (!open) setAddingTask(null);
-        }}
-        onCreated={(node) => {
-          setSelectedId(node.id);
-          setTab("gantt");
-        }}
-        onFail={fail}
+        onCreated={openMeeting}
       />
       <CockpitMeetingImport
         open={scanningMeetings}
         onOpenChange={setScanningMeetings}
         wsId={wsId}
-        projectId={board.cockpit.meeting_project_id}
-        moduleId={board.cockpit.meeting_module_id}
-        nodeId={board.cockpit.meeting_node_id}
+        projectId={meetingProjectId}
+        moduleId={meetingModuleId}
+        nodeId={meetingNodeId}
         onSubmit={submitMeetingImport}
       />
       <AlertDialog open={deletion !== null} onOpenChange={(open) => {

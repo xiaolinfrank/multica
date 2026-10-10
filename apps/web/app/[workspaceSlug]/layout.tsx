@@ -3,7 +3,7 @@
 import { use, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, usePathname } from "next/navigation";
-import { WorkspaceSlugProvider, paths } from "@multica/core/paths";
+import { WorkspaceSlugProvider, paths, useWorkspaceStartStore, WORKSPACE_START_COOKIE } from "@multica/core/paths";
 import { workspaceBySlugOptions } from "@multica/core/workspace";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import { useAuthStore } from "@multica/core/auth";
@@ -25,6 +25,11 @@ export default function WorkspaceLayout({
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const router = useRouter();
   const pathname = usePathname();
+  const startPage = useWorkspaceStartStore((state) => state.page);
+  useEffect(() => {
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${WORKSPACE_START_COOKIE}=${startPage}; path=/; max-age=31536000; SameSite=Lax${secure}`;
+  }, [startPage]);
 
   // Workspace routes require auth. If user is unauthenticated (initial visit
   // without a session, token expired, another tab logged out, etc.), bounce

@@ -172,7 +172,7 @@ export interface TestMeetingWorkflow {
   can_review: boolean;
   can_publish: boolean;
   can_reassign_reviewer: boolean;
-  nas_destination: { root_id: string; directory: string } | null;
+  nas_destination: { root_id: string; directory: string; write_mode?: string } | null;
   nas_unavailable_reason: string;
   can_export_nas: boolean;
   nas_exports: Array<{
@@ -180,7 +180,8 @@ export interface TestMeetingWorkflow {
     content_hash: string; root_id: string; directory: string; target_path: string;
     size_bytes: number | null; status: string; attempts: number; revision: number;
     next_retry_at: string | null; completed_at: string | null; last_error_code: string;
-    last_error: string; can_retry: boolean;
+    last_error: string; can_retry: boolean; write_mode?: string; verified_path?: string | null;
+    receipt_path?: string | null; verified_attempt_id?: string | null; verified_at?: string | null;
   }>;
   reviewer_handoffs: Array<{
     id: string; handoff_key: string; from_reviewer_id: string; to_reviewer_id: string;
@@ -522,7 +523,7 @@ export class TestApiClient {
     return node;
   }
 
-  async createCockpitMeeting(body: { title: string; meet_date: string; nas_dir?: string }): Promise<TestCockpitMeeting> {
+  async createCockpitMeeting(body: { title: string; meet_date: string; nas_dir?: string; note?: string; parties?: string }): Promise<TestCockpitMeeting> {
     const res = await this.authedFetch("/api/cockpit/meetings", {
       method: "POST",
       body: JSON.stringify(body),
@@ -531,6 +532,59 @@ export class TestApiClient {
     const meeting = (await res.json()) as TestCockpitMeeting;
     this.createdCockpitMeetingIds.push(meeting.id);
     return meeting;
+  }
+
+  async seedCockpitProposals(changes: Array<{ node: string; field: string; new_value: string; reason?: string }>) {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || changes.some((change) => !this.createdCockpitNodeIds.includes(change.node))) throw new Error("Proposal fixture must reference only this client's nodes");
+    const response = await this.authedFetch("/api/cockpit/changes/ingest", { method: "POST", body: JSON.stringify({ changes }) });
+    if (!response.ok) throw new Error(`Proposal fixture failed: ${response.status} ${await response.text()}`);
+    const result = await response.json();
+    if (result.results?.length !== changes.length || result.results.some((row: { status: string }) => row.status !== "queued")) throw new Error("Proposal fixture did not queue every change");
+  }
+  async patchOwnedCockpitNode(nodeId: string, patch: { progress?: number; owner?: string; name?: string; code?: string }) {
+    if (!this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Node mutation requires fixture ownership");
+    const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}`, { method: "PATCH", body: JSON.stringify(patch) });
+    if (!response.ok) throw new Error(`Node fixture patch failed: ${response.status} ${await response.text()}`);
+    const node = await response.json(); if (node.id !== nodeId) throw new Error("Node fixture patch identity mismatch");
+    return node;
+  }
+  async getOwnedCockpitNode(nodeId: string) {
+    if (!this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Node read requires fixture ownership");
+    const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}`);
+    if (!response.ok) throw new Error(`Node fixture read failed: ${response.status}`);
+    const detail = await response.json(); if (detail.node?.id !== nodeId) throw new Error("Node fixture read identity mismatch");
+    return detail.node;
+  }
+
+  async deleteOwnedCockpitNode(nodeId: string) {
+    if (!this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Node deletion requires fixture ownership");
+    const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`Node fixture deletion failed: ${response.status} ${await response.text()}`);
+  }
+
+  async saveOwnedCockpitSnapshot(label: string): Promise<{ id: string; label: string; node_count: number }> {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId)) throw new Error("Snapshot requires fixture workspace ownership");
+    const response = await this.authedFetch("/api/cockpit/snapshots", { method: "POST", body: JSON.stringify({ label }) });
+    if (!response.ok) throw new Error(`Snapshot fixture save failed: ${response.status} ${await response.text()}`);
+    const result = await response.json();
+    if (typeof result.id !== "string" || result.label !== label || !Number.isInteger(result.node_count)) throw new Error("Snapshot fixture identity was not confirmed");
+    return result;
+  }
+
+  async getOwnedCockpitMeetingRegister() {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId)) throw new Error("Meeting register read requires fixture ownership");
+    const response = await this.authedFetch("/api/cockpit/meetings?page_size=25");
+    if (!response.ok) throw new Error(`Meeting register fixture read failed: ${response.status}`);
+    const page = await response.json(); if (page.workspace_id !== this.workspaceId) throw new Error("Meeting register fixture scope mismatch");
+    return page;
+  }
+
+  async seedCockpitDirectory(entries: Array<{ party: string; name: string; position?: string }>) {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId)) throw new Error("Directory fixtures require a workspace created by this client");
+    const response = await this.authedFetch("/api/cockpit/directory?response=compact", { method: "PUT", body: JSON.stringify({ entries }) });
+    if (!response.ok) throw new Error(`Directory fixture failed: ${response.status} ${await response.text()}`);
+    const receipt = await response.json();
+    if (receipt.workspace_id !== this.workspaceId || receipt.scope !== "workspace" || receipt.action !== "upserted" || receipt.entries?.length !== entries.length) throw new Error("Directory fixture receipt mismatch");
   }
 
   async linkCockpitNodeIssue(nodeId: string, issueId: string) {
@@ -547,6 +601,16 @@ export class TestApiClient {
       body: JSON.stringify({ issue_ids: [issueId] }),
     });
     if (!res.ok) throw new Error(`link cockpit meeting failed: ${res.status} ${await res.text()}`);
+  }
+
+  async appendCockpitMeetingNode(meetingId: string, nodeId: string) {
+    if (!this.createdCockpitMeetingIds.includes(meetingId) || !this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Meeting reference fixture must use this client's owned objects");
+    const res = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/nodes`, { method: "POST", body: JSON.stringify({ node_id: nodeId }) });
+    if (!res.ok) throw new Error(`append meeting node failed: ${res.status} ${await res.text()}`);
+    const body = await res.json();
+    if (body.workspace_id !== this.workspaceId || body.meeting_id !== meetingId || body.link?.meeting_id !== meetingId || body.link?.node_id !== nodeId || body.links) {
+      throw new Error("Meeting reference returned no exact single-link receipt");
+    }
   }
 
   async getCockpitTasks(nodeId: string, query: Record<string, string | number> = {}): Promise<TestCockpitTaskPage> {

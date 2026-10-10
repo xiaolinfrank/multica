@@ -13,6 +13,7 @@ import {
   pruneIssueSurfaceViewStates,
 } from "../issues/stores/surface-view-store";
 import { issueKeys } from "../issues/queries";
+import { cockpitKeys } from "../cockpit/queries";
 import { useDeleteProject, useUpdateProject } from "./mutations";
 
 vi.mock("../hooks", () => ({
@@ -91,6 +92,10 @@ describe("useDeleteProject", () => {
   it("invalidates the issue table windows", async () => {
     const tableKey = [...issueKeys.tableAll("ws-1"), "window"];
     qc.setQueryData(tableKey, { rows: [] });
+    const choices = [...cockpitKeys.surfaces("ws-1"), "scope-selectors", "nodes"];
+    const otherChoices = [...cockpitKeys.surfaces("ws-2"), "scope-selectors", "nodes"];
+    qc.setQueryData(choices, { items: [] });
+    qc.setQueryData(otherChoices, { items: [] });
 
     const { result } = renderHook(() => useDeleteProject(), {
       wrapper: createWrapper(qc),
@@ -101,6 +106,8 @@ describe("useDeleteProject", () => {
     });
 
     expect(qc.getQueryState(tableKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(choices)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(otherChoices)?.isInvalidated).toBe(false);
   });
 });
 

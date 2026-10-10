@@ -99,6 +99,24 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
 }
 
 describe("buildCockpitTree", () => {
+  it("keeps ancestor context in the hierarchy without charging its own budget to a scoped finance view", () => {
+    const tree = buildCockpitTree([
+      node({ id: "project", code: "P", budget_amount: 900 }),
+      node({ id: "module", code: "M", parent_id: "project", budget_amount: 300 }),
+      node({ id: "task", code: "T", parent_id: "module", budget_amount: 40 }),
+    ]);
+    const payments = [{ id: "payment", node_id: "task", label: "Verification", pay_date: "2026-10-10", amount: 10, position: 0 }];
+    const rows = computeCockpitFinanceRows(tree, payments, new Set(["project"]));
+    expect(rows.map((row) => [row.node.id, row.rootCode, row.budget])).toEqual([["module", "P", 300], ["task", "P", 40]]);
+    expect(tree[0]?.node.budget_amount).toBe(900);
+    expect(rows[1]?.payments).toEqual(payments);
+    const context = new Set(["project"]);
+    const snapshot = board({ nodes: [tree[0]!.node, tree[0]!.children[0]!.node, tree[0]!.children[0]!.children[0]!.node], payments: [
+      ...payments, { id: "context-payment", node_id: "project", label: "Outside scope", pay_date: "2026-10-10", amount: 900, position: 0 },
+    ] });
+    expect(computeCockpitFinance(snapshot, context)).toMatchObject({ budget: 340, planned: 340, paymentCount: 1, byModule: [{ code: "P", planned: 340 }] });
+    expect(computeCockpitMonths(snapshot, context)[0]).toMatchObject({ amount: 10, plannedSpend: 40, byModule: [{ code: "P", amount: 10 }] });
+  });
   it("nests by parent_id and orders siblings by position then code", () => {
     const tree = buildCockpitTree([
       node({ id: "c2", code: "01.02", parent_id: "r", position: 2 }),

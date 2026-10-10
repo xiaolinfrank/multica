@@ -10,7 +10,7 @@
 // it, so a pixel decision here can never disagree with the tested one.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CockpitMeeting } from "@multica/core/types";
+import type { CockpitMeetingCard } from "@multica/core/types";
 import type { CockpitTimelineGroup } from "@multica/core/cockpit";
 import {
   buildCockpitMeetingTimeline,
@@ -85,20 +85,15 @@ const LANE_GEOM = {
 };
 
 export interface CockpitMeetingTimelineProps {
-  meetings: CockpitMeeting[];
+  meetings: CockpitMeetingCard[];
   today: string;
   selectedId: string | null;
   onSelect: (meetingId: string) => void;
 }
 
 /** What a card says about what the meeting produced, and with which icon. */
-function consensusOf(meeting: CockpitMeeting): { icon: "decision" | "agenda"; text: string } | null {
-  const firstLine = (value: string) => value.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-  const decision = firstLine(meeting.decisions) || firstLine(meeting.actions);
-  if (decision) return { icon: "decision", text: decision };
-  const agenda = firstLine(meeting.note);
-  if (agenda) return { icon: "agenda", text: agenda };
-  return null;
+function consensusOf(meeting: CockpitMeetingCard): { icon: "decision" | "agenda"; text: string } | null {
+  return meeting.display_excerpt ? { icon: "agenda", text: meeting.display_excerpt } : null;
 }
 
 /**
@@ -118,7 +113,7 @@ function TimelineCard({
   onSelect,
   zoomMs,
 }: {
-  group: CockpitTimelineGroup;
+  group: CockpitTimelineGroup<CockpitMeetingCard>;
   x: number;
   side: "above" | "below";
   row: number;

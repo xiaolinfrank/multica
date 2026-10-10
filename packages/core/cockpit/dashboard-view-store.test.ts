@@ -12,20 +12,19 @@ beforeEach(() => {
 describe("dashboard navigation context", () => {
   it("keeps workspace filters and section cursor stacks separate", () => {
     const store = useCockpitDashboardViewStore.getState();
-    store.update("ws-a", { projectId: "project-a", audience: "team" });
+    store.update("ws-a", { audience: "team" });
     store.update("ws-a", { scrollTop: 400 });
     store.setPage("ws-a", "attention", "a:team:day:25", ["", "a-page-2"]);
     store.setPage("ws-a", "meetings", "a:day:6", ["", "meeting-page-2"]);
-    store.update("ws-b", { projectId: "project-b" });
+    store.update("ws-b", { mode: "overview" });
     store.setPage("ws-b", "attention", "b:mine:day:25", ["", "b-page-2"]);
-    expect(useCockpitDashboardViewStore.getState().views["ws-a"]).toMatchObject({ projectId: "project-a", audience: "team", scrollTop: 400,
+    expect(useCockpitDashboardViewStore.getState().views["ws-a"]).toMatchObject({ audience: "team", scrollTop: 400,
       pages: { attention: { cursors: ["", "a-page-2"] }, meetings: { cursors: ["", "meeting-page-2"] } } });
-    expect(useCockpitDashboardViewStore.getState().views["ws-b"]).toMatchObject({ projectId: "project-b", audience: "mine", pages: { attention: { cursors: ["", "b-page-2"] } } });
+    expect(useCockpitDashboardViewStore.getState().views["ws-b"]).toMatchObject({ audience: "mine", pages: { attention: { cursors: ["", "b-page-2"] } } });
     expect(EMPTY_COCKPIT_DASHBOARD_VIEW.pages).toEqual({});
-    expect(EMPTY_COCKPIT_DASHBOARD_VIEW.projectId).toBe("");
   });
 
-  it.each(["projectId", "audience", "kind"] as const)("discards stale cursors and scroll when %s changes, including changing back", (field) => {
+  it.each(["audience", "kind"] as const)("discards stale cursors and scroll when %s changes, including changing back", (field) => {
     const store = useCockpitDashboardViewStore.getState();
     store.setPage("ws-a", "attention", "original", ["", "page-2"]);
     store.update("ws-a", { scrollTop: 900 });
@@ -42,7 +41,6 @@ describe("dashboard navigation context", () => {
 
   it.each(["audience", "kind"] as const)("preserves execution and meeting positions when the %s queue filter changes", (field) => {
     const store = useCockpitDashboardViewStore.getState();
-    store.update("ws-a", { projectId: "project-a" });
     store.setPage("ws-a", "attention-preview", "project-a:mine:8", ["", "preview-page-2"]);
     store.setPage("ws-a", "attention-full", "project-a:mine:25", ["", "full-page-2"]);
     store.setPage("ws-a", "execution", "project-a:6", ["", "execution-page-2"]);
@@ -59,16 +57,14 @@ describe("dashboard navigation context", () => {
     expect(Object.keys(useCockpitDashboardViewStore.getState().views["ws-a"]!.pages).sort()).toEqual(["execution", "meetings"]);
     expect(useCockpitDashboardViewStore.getState().sessionGeneration).toBe(generation);
 
-    store.update("ws-a", { projectId: "project-b" });
-    expect(useCockpitDashboardViewStore.getState().views["ws-a"]?.pages).toEqual({});
   });
 
   it("clears the previous actor's navigation context through the registered session cleanup", () => {
     const dashboard = useCockpitDashboardViewStore.getState();
-    dashboard.update("ws-a", { projectId: "private-project", audience: "team", kind: "workflow", mode: "attention" });
+    dashboard.update("ws-a", { audience: "team", kind: "workflow", mode: "attention" });
     dashboard.update("ws-a", { scrollTop: 800 });
     dashboard.setPage("ws-a", "attention", "previous-actor-scope", ["", "previous-actor-cursor"]);
-    dashboard.update("ws-b", { projectId: "second-project" });
+    dashboard.update("ws-b", { audience: "team" });
     const taskKey = cockpitTaskViewKey("ws-a", "node", "node-1");
     const tasks = useCockpitTaskViewStore.getState();
     tasks.update(taskKey, { text: "previous actor filter", category: "done" });
@@ -86,12 +82,12 @@ describe("dashboard navigation context", () => {
 
   it("preserves context when returning between overview and the full queue, without storing API facts", () => {
     const store = useCockpitDashboardViewStore.getState();
-    store.update("ws-a", { mode: "attention", projectId: "project-a", audience: "team", kind: "issue" });
+    store.update("ws-a", { mode: "attention", audience: "team", kind: "issue" });
     store.setPage("ws-a", "attention", "project-a:team:issue:day:25", ["", "page-2"]);
     store.update("ws-a", { scrollTop: 540 });
     store.update("ws-a", { mode: "overview" });
     store.update("ws-a", { mode: "attention" });
-    expect(useCockpitDashboardViewStore.getState().views["ws-a"]).toEqual({ projectId: "project-a", audience: "team", kind: "issue", mode: "attention", scrollTop: 540,
+    expect(useCockpitDashboardViewStore.getState().views["ws-a"]).toEqual({ audience: "team", kind: "issue", mode: "attention", scrollTop: 540,
       pages: { attention: { signature: "project-a:team:issue:day:25", cursors: ["", "page-2"] } } });
     store.reset();
     expect(useCockpitDashboardViewStore.getState().views).toEqual({});

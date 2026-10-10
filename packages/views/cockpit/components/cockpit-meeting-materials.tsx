@@ -51,7 +51,7 @@ export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref,
       <AppLink href={workflowHref} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>{t(($) => $.meeting_materials.return_workflow)}</AppLink></div>
     <div className="space-y-3 rounded-lg border border-border p-4">
       <h4 className="text-caption font-medium">{t(($) => $.meeting_materials.issue_inputs)}</h4>
-      {issue ? <><WorkflowIssueLink issue={issue} newTab />
+      {issue ? <><WorkflowIssueLink wsId={wsId} issue={issue} newTab />
         <AppLink href={paths.issueDetail(issue.id)} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-auto min-h-8 max-w-full whitespace-normal text-left")}>{t(($) => $.meeting_materials.open_issue)}</AppLink>
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.issue_hint)}</p></>
         : <><p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.no_minutes_issue)}</p>

@@ -1,3 +1,10 @@
+import { installCockpitTestLayout } from "./test/cockpit-layout-test-fixture";
+import { beforeEach as beforeLayout, afterEach as afterLayout } from "vitest";
+let restoreLayout = () => {};
+beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
+afterLayout(() => restoreLayout());
+import { useCockpitScopeViewStore } from "@multica/core/cockpit";
+import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
@@ -6,7 +13,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCockpit from "../../locales/en/cockpit.json";
-import type { CockpitBoard } from "@multica/core/types";
+import type { SearchIssueResult, CockpitBoard, CockpitSnapshot, CockpitPendingChange } from "@multica/core/types";
 
 // The derivation matrix (tree building, roll-ups, finance, the monthly strip,
 // the digest, the timeline axis) is pinned in
@@ -35,8 +42,9 @@ vi.mock("../../navigation", async () => {
     return { ...navigation, push: (href: string) => { navSearch.push(href); navigation.push(href); } }; }, AppLink: fixture.CockpitTestLink };
 });
 
-vi.mock("@multica/core/api", () => ({
+vi.mock("@multica/core/api", async () => ({
   api: {
+    ...(await import("./test/cockpit-read-mocks-fixture")).makeCockpitReadApiMocks(),
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
     getCockpitMeetingWorkflowSummary: vi.fn(),
@@ -94,8 +102,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
-import { toast } from "sonner";
-import { CockpitBoardWorkspace } from "./cockpit-page";
+import { CockpitPage } from "./cockpit-entry";
 
 function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code: string }) {
   return {
@@ -237,15 +244,15 @@ function useDetailedBoard(legacyGroup = false) {
   detailed.nodes[1]!.parent_id = "module";
   detailed.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", name: "Governance" }));
   if (legacyGroup) detailed.nodes.push(node({ id: "agreement-detail", code: "detail", parent_id: "task", name: "Agreement detail" }));
-  vi.mocked(api.getCockpit).mockResolvedValue(detailed);
+  readCockpitFixture.mockResolvedValue(detailed);
 }
 
-function renderPage(props: Parameters<typeof CockpitBoardWorkspace>[0] = {}) {
+function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-        <CockpitBoardWorkspace {...props} />
+        <CockpitPage />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -254,9 +261,10 @@ function renderPage(props: Parameters<typeof CockpitBoardWorkspace>[0] = {}) {
 describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCockpitScopeViewStore.getState().reset();
     navSearch.params = new URLSearchParams();
-    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
-    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
+    readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
@@ -265,7 +273,7 @@ describe("CockpitPage", () => {
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
-    vi.mocked(api.listMembers).mockResolvedValue([
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",
@@ -280,12 +288,12 @@ describe("CockpitPage", () => {
   });
 
   it("offers a retry when the board request fails instead of keeping the loading skeleton forever", async () => {
-    vi.mocked(api.getCockpit).mockRejectedValueOnce(new Error("Offline"));
+    readCockpitFixture.mockRejectedValueOnce(new Error("Offline"));
     renderPage();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the cockpit");
+    expect(await screen.findByRole("alert")).toHaveTextContent(enCockpit.shell.invalid_scope);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(await screen.findByRole("button", { name: "Gantt" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Gantt" })).toBeInTheDocument();
   });
 
   it("opens the meeting panel from the ?meeting= deep link", async () => {
@@ -300,16 +308,12 @@ describe("CockpitPage", () => {
   });
 
   it("keeps a meeting destination in the URL when leaving the routed business view", async () => {
-    navSearch.params = new URLSearchParams("view=operations");
-    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
-    renderPage({ onSelectTab: vi.fn(), onWorkOverview: vi.fn() });
-    fireEvent.click(await screen.findByRole("button", { name: "Open the meeting register" }));
-    expect(navSearch.push).toHaveBeenLastCalledWith("/ws/cockpit?tab=meetings");
-
-    fireEvent.click(screen.getByRole("button", { name: "Meeting details: Working group weekly" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Open the meeting register" }));
-    expect(navSearch.push).toHaveBeenLastCalledWith("/ws/cockpit?meeting=meet-1");
+    navSearch.params = new URLSearchParams("view=operations"); resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`); renderPage();
+    const register = await screen.findByRole("link", { name: enCockpit.meetings.open_register }); expect(register).toHaveAttribute("href", "/ws/cockpit?tab=meetings");
+    fireEvent.click(register); expect(await screen.findByRole("button", { name: "List", pressed: true })).toBeInTheDocument();
+    fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
+    expect(await screen.findByRole("button", { name: "Close panel" })).toBeInTheDocument();
+    expect(api.getCockpitMeetingDetail).toHaveBeenCalledWith("ws-1", "meet-1", { projectId: null, moduleId: null }, expect.any(AbortSignal));
   });
 
   it("lands on the folded gantt row from the ?node= deep link", async () => {
@@ -335,7 +339,7 @@ describe("CockpitPage", () => {
     // The module name is printed twice on purpose: once on the module card and
     // once in the spend-by-module table.
     expect(screen.getAllByText("High-quality datasets").length).toBeGreaterThan(0);
-    expect(screen.getByText("Working group weekly")).toBeInTheDocument();
+    expect(await screen.findByText("Working group weekly")).toBeInTheDocument();
 
     // Budget rolls up from the leaf, quoted in the board's 万元 unit.
     const finance = screen.getByText("2026 budget total (per master sheet)").closest("div")!;
@@ -356,7 +360,7 @@ describe("CockpitPage", () => {
   });
 
   it("quotes the same average on the small module cards", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue(
+    readCockpitFixture.mockResolvedValue(
       structuredClone({
         ...board,
         nodes: [
@@ -401,7 +405,7 @@ describe("CockpitPage", () => {
   }
 
   it("numbers digest tasks with the shipped row codes, not the pre-merge outline", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue(
+    readCockpitFixture.mockResolvedValue(
       structuredClone({
         ...board,
         nodes: [
@@ -419,23 +423,24 @@ describe("CockpitPage", () => {
   });
 
   it("shows the shipped row code beside the stored code in the node panel", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue(
+    readCockpitFixture.mockResolvedValue(
       structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
     );
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     // The renamed direction ships as "02.03 院端一体机与部署" (stored 02.10).
     fireEvent.click(await screen.findByRole("button", { name: "Open 02.03" }));
-    const panel = await screen.findByRole("complementary");
+    await screen.findByRole("button", { name: enCockpit.node.stored_code });
+    const panel = screen.getByRole("complementary");
     expect(within(panel).getByText("02.03")).toBeInTheDocument();
     expect(within(panel).getByText("02.10")).toBeInTheDocument();
   });
 
   it("numbers change rows with the shipped row codes", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue(
+    readCockpitFixture.mockResolvedValue(
       structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
     );
-    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+    vi.mocked(api.listCockpitChangePage).mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, q: "", status: "pending", total: 1, next_cursor: null, counts: { pending: 1, decided: 0 }, items: [
       {
         id: "ch1", cockpit_id: "cp", node_id: "t3",
         node_code: "02.03", node_name: "Ship",
@@ -444,10 +449,10 @@ describe("CockpitPage", () => {
         created_by_type: "member", created_by_label: "Li",
         decided_by_type: "", decided_by_label: "", decided_at: null,
         created_at: "", updated_at: "",
-      },
-    ] as unknown as Awaited<ReturnType<typeof api.listCockpitChanges>>);
+      }
+    ] });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
+    fireEvent.click(await screen.findByRole("link", { name: "Governance" }));
     expect(
       await screen.findByRole("button", { name: "Locate 02.02.02 in the gantt" }),
     ).toBeInTheDocument();
@@ -481,7 +486,7 @@ describe("CockpitPage", () => {
 
   it("switches to the gantt and lists the tree with its rolled-up branch progress", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     expect(await screen.findByRole("button", { name: "Open 01.01" })).toBeInTheDocument();
     // The branch has one leaf at 40%, so it reports 40% and is not editable.
@@ -495,7 +500,7 @@ describe("CockpitPage", () => {
       owner: "Wang",
     });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     // Two rows carry an owner; the leaf is the second.
     const ownerButtons = await screen.findAllByRole("button", { name: "Owner" });
@@ -511,7 +516,7 @@ describe("CockpitPage", () => {
 
   it("reverts an inline edit on Escape without calling the API", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     const ownerButtons = await screen.findAllByRole("button", { name: "Owner" });
     fireEvent.click(ownerButtons[1]!);
@@ -525,10 +530,10 @@ describe("CockpitPage", () => {
   it("picks an owner from the board's existing owners in the gantt dropdown", async () => {
     const twoOwners = structuredClone(board);
     twoOwners.nodes[1]!.owner = "Wang";
-    vi.mocked(api.getCockpit).mockResolvedValue(twoOwners);
+    readCockpitFixture.mockResolvedValue(twoOwners);
     vi.mocked(api.updateCockpitNode).mockResolvedValue({ ...twoOwners.nodes[1]!, owner: "Li" });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     const ownerButtons = await screen.findAllByRole("button", { name: "Owner" });
     fireEvent.click(ownerButtons[1]!);
@@ -541,7 +546,7 @@ describe("CockpitPage", () => {
   it("opens a grouping panel and preserves its detailed fields and legacy reference chips", async () => {
     useDetailedBoard(true);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
 
@@ -549,47 +554,36 @@ describe("CockpitPage", () => {
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
     expect(screen.getByText("Budget status")).toBeInTheDocument();
     // The linked issue renders as the live issue, not as free text.
-    expect(screen.getAllByText("BIO-314").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("BIO-314")).length).toBeGreaterThan(0);
   });
 
   it("searches and appends a legacy reference on a grouping without replacing its existing links", async () => {
-    vi.mocked(api.searchIssues).mockResolvedValue({
-      issues: [
-        {
-          id: "issue-2",
-          identifier: "BIO-320",
-          title: "Cohort protocol",
-          status: "todo",
-        } as never,
-      ],
-    });
-    vi.mocked(api.setCockpitNodeIssues).mockResolvedValue({ node_id: "task", links: [] });
+    const result: SearchIssueResult = {
+      id: "issue-2", workspace_id: "ws-1", number: 320, identifier: "BIO-320", title: "Cohort protocol", description: null,
+      status: "todo", status_category: "unstarted", priority: "none", assignee_type: null, assignee_id: null,
+      creator_type: "member", creator_id: "user-1", parent_issue_id: null, project_id: null, module_id: null,
+      position: 1, stage: null, start_date: null, due_date: null, metadata: {}, properties: {}, created_at: "", updated_at: "", match_source: "title",
+    };
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [result] });
+    vi.mocked(api.appendCockpitNodeIssue).mockResolvedValue({ id: "reference-2", issue_number: 320, node_id: "task", issue_id: "issue-2", issue_identifier: "BIO-320", issue_title: "Cohort protocol", issue_status: "todo", position: 1 });
 
     useDetailedBoard(true);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Link issue" }));
-    const search = await screen.findByPlaceholderText("Search issues by title or identifier…");
-    fireEvent.change(search, { target: { value: "cohort" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Link reference issue" }));
+    const dialog = await screen.findByRole("dialog"); const search = within(dialog).getByRole("textbox", { name: enCockpit.task_flow.issue_search }); fireEvent.change(search, { target: { value: "cohort" } });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "BIO-320 Cohort protocol" })); fireEvent.click(within(dialog).getByRole("button", { name: "Link reference issue" }));
+    await waitFor(() => expect(api.appendCockpitNodeIssue).toHaveBeenCalledExactlyOnceWith("ws-1", "task", "issue-2"));
+    expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
 
-    fireEvent.click(await screen.findByText("Cohort protocol"));
-
-    await waitFor(() => {
-      // The existing link survives: linking is additive, not a replacement.
-      expect(api.setCockpitNodeIssues).toHaveBeenCalledWith(
-        "task",
-        ["issue-1", "issue-2"],
-        { replace: true },
-      );
-    });
   });
 
   it("filters the tree by search while keeping a matched row's ancestors visible", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     fireEvent.change(await screen.findByLabelText("Search the board"), {
       target: { value: "governance" },
@@ -601,7 +595,7 @@ describe("CockpitPage", () => {
   });
 
   it("shows an empty board as an invitation to add work, not as an error", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue({
+    readCockpitFixture.mockResolvedValue({
       ...structuredClone(board),
       nodes: [],
       payments: [],
@@ -610,239 +604,32 @@ describe("CockpitPage", () => {
       meetings: [],
     });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
   });
 
-  // The toolbar button files execution tasks only: modules and directions
-  // are structure, and a task under a task falls below the level the gantt
-  // counts. The matrix below pins where a click may and may not create.
-  it("files a new execution task under the selected direction row", async () => {
-    const withDirection = structuredClone(board);
-    withDirection.nodes.push(
-      // Position keeps the direction behind the existing task, so its
-      // display code is 01.02 and the fixture stays readable.
-      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
-    vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "01.02-01", parent_id: "dir" }),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-
-    await waitFor(() => {
-      expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "01.02-01",
-        name: "",
-        parent_id: "dir",
-        position: 1,
-        status: "",
-      });
-    });
-  });
-
-  it("refuses to file a task before a direction row is selected", async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    expect(api.createCockpitNode).not.toHaveBeenCalled();
-    expect(vi.mocked(toast.info)).toHaveBeenCalledWith(
-      "Execution tasks sit under a direction row — select a direction, or an execution task beneath it.",
-    );
-  });
-
-  it("refuses to file a task under a module row", async () => {
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+  // Parent binding, observed code, retry identity and late receipts have their
+  // canonical component regressions in cockpit-plan-structure-create.test.tsx.
+  it("opens explicit plan structure creation from the toolbar without guessing a parent from the selected row", async () => {
+    renderPage(); fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    expect(api.createCockpitNode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Add plan item" })); const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveValue("");
+    expect(within(dialog).getByRole("button", { name: "Create plan item" })).toBeDisabled(); expect(api.createCockpitNode).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.createCockpitNode).not.toHaveBeenCalled(); expect(api.getCockpitNextNodeCode).not.toHaveBeenCalled();
   });
 
-  it("files a new task next to the selected execution task", async () => {
-    const withBranch = structuredClone(board);
-    withBranch.nodes.push(
-      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-      node({ id: "leaf", code: "01.02-01", parent_id: "dir", name: "Existing task", position: 1 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withBranch);
-    vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "01.02-02", parent_id: "dir" }),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand Datasets" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02.01" }));
-
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-02" });
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("01.02-02")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-
-    await waitFor(() => {
-      expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "01.02-02",
-        name: "",
-        parent_id: "dir",
-        position: 2,
-        status: "",
-      });
-    });
-  });
-
-  // A direction folded into a summary group renders only as the group's
-  // synthetic row, which can never be selected — the task rows beneath it
-  // are the way in. This pins that escape hatch.
-  it("files a task under a merged direction through one of its tasks", async () => {
-    const grouped = structuredClone(board);
-    grouped.nodes.push(
-      node({ id: "mod2", code: "L1-02", name: "Platform", position: 20 }),
-      node({ id: "d0202", code: "02.02", parent_id: "mod2", name: "Platform core" }),
-      node({ id: "t1", code: "02.02-01", parent_id: "d0202", name: "Port the registry" }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(grouped);
-    vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "02.02-02", parent_id: "d0202" }),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand 平台架构与开发" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 02.01.01" }));
-
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "02.02-02" });
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("02.02-02")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-
-    await waitFor(() => {
-      expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "02.02-02",
-        name: "",
-        parent_id: "d0202",
-        position: 1,
-        status: "",
-      });
-    });
-  });
-
-  // AI-prefixed directions carry two dashes; a task beneath one must not
-  // accidentally read as structure again.
-  it("files a task under an AI direction row", async () => {
-    const withAI = structuredClone(board);
-    withAI.nodes.push(
-      node({ id: "aidir", code: "AI-03-02", parent_id: "root", name: "AI direction", position: 30 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withAI);
-    vi.mocked(api.createCockpitNode).mockResolvedValue(
-      node({ id: "new", code: "AI-03-02-01", parent_id: "aidir" }),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
-
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "AI-03-02-01" });
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    // The dialog shows the code it is about to spend before creating.
-    expect(await screen.findByText("AI-03-02-01")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-
-    await waitFor(() => {
-      expect(api.createCockpitNode).toHaveBeenCalledWith({
-        code: "AI-03-02-01",
-        name: "",
-        parent_id: "aidir",
-        position: 1,
-        status: "",
-      });
-    });
-  });
-
-  // A cancelled confirmation spends nothing: no API call leaves the dialog.
-  it("cancels the new-task dialog without creating anything", async () => {
-    const withDirection = structuredClone(board);
-    withDirection.nodes.push(
-      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-
-    expect(api.createCockpitNode).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-
-  // Without a previewed code there is nothing to confirm: the failed fetch
-  // says so and the button stays inert.
-  it("keeps the create button inert when the code preview fails", async () => {
-    const withDirection = structuredClone(board);
-    withDirection.nodes.push(
-      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
-    vi.mocked(api.getCockpitNextNodeCode).mockRejectedValue(new Error("boom"));
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-
-    expect(await screen.findByText(/could not load the next code/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
-    expect(api.createCockpitNode).not.toHaveBeenCalled();
-  });
-
-  // A failed spend keeps the dialog open and refetches the preview: the
-  // number on screen may already be taken, so the same one is never offered
-  // twice.
-  it("keeps the dialog open and refetches the code when the create call fails", async () => {
-    const withDirection = structuredClone(board);
-    withDirection.nodes.push(
-      node({ id: "dir", code: "01.02", parent_id: "root", name: "Datasets", position: 10 }),
-    );
-    vi.mocked(api.getCockpit).mockResolvedValue(withDirection);
-    vi.mocked(api.createCockpitNode).mockRejectedValue(new Error("conflict"));
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.02" }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New execution task" }));
-    expect(await screen.findByText("01.02-01")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-
-    await waitFor(() => expect(api.createCockpitNode).toHaveBeenCalled());
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    await waitFor(() => expect(api.getCockpitNextNodeCode).toHaveBeenCalledTimes(2));
-  });
 });
 
 describe("CockpitPage detail tables", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCockpitScopeViewStore.getState().reset();
     navSearch.params = new URLSearchParams();
-    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
-    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
+    readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -850,7 +637,7 @@ describe("CockpitPage detail tables", () => {
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
-    vi.mocked(api.listMembers).mockResolvedValue([
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",
@@ -866,7 +653,7 @@ describe("CockpitPage detail tables", () => {
 
   it("lists only the rows that carry money on the spend table, with derived dates", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Spend" }));
+    fireEvent.click(await screen.findByRole("link", { name: enCockpit.plan_views.finance }));
 
     const rows = await screen.findAllByRole("row");
     // Header plus the one budgeted node; the branch carries no money of its own.
@@ -878,9 +665,9 @@ describe("CockpitPage detail tables", () => {
   it("offers vendor names, not owners, as vendor picks and keeps linked issues read-only", async () => {
     const vendored = structuredClone(board);
     vendored.nodes[1]!.vendor = "Acme Cloud";
-    vi.mocked(api.getCockpit).mockResolvedValue(vendored);
+    readCockpitFixture.mockResolvedValue(vendored);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Spend" }));
+    fireEvent.click(await screen.findByRole("link", { name: enCockpit.plan_views.finance }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Vendor" }));
     // The vendor dropdown draws from the board's vendor values; owners never
@@ -890,14 +677,14 @@ describe("CockpitPage detail tables", () => {
 
     // Linked issues on the spend table are reference chips, not an editable
     // field: the association is maintained from the node panel, never here.
-    expect(screen.getByText("BIO-314")).toBeInTheDocument();
+    expect(screen.getByText(/1 reference/)).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Linked issues" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Linked issues" })).not.toBeInTheDocument();
   });
 
   it("shows budget and instalment badges on the gantt only once money is turned on", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     expect(screen.queryByRole("columnheader", { name: "Budget / paid" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show money" }));
@@ -907,15 +694,27 @@ describe("CockpitPage detail tables", () => {
 });
 
 describe("CockpitPage versions", () => {
+  let snapshots: CockpitSnapshot[] = [];
+  let changes: CockpitPendingChange[] = [];
+  const scope = { project_id: null, module_id: null, project_title: "", module_title: "" };
+  const observation = (change: CockpitPendingChange) => ({ workspace_id: "ws-1", context: scope, change, current_value: change.old_value, conflict: false, review_token: `"${"a".repeat(64)}"` });
   beforeEach(() => {
     vi.clearAllMocks();
+    changes = [];
+    vi.mocked(api.listCockpitSnapshotPage).mockImplementation(async (_ws, query = {}) => ({ workspace_id: "ws-1", scope: "workspace", q: query.q ?? "", items: snapshots, total: snapshots.length, next_cursor: null }));
+    vi.mocked(api.listCockpitChangePage).mockImplementation(async (_ws, _scope, query = {}) => {
+      const matched = changes.filter((row) => query.status === "all" || (query.status === "decided" ? row.status !== "pending" : row.status === "pending"));
+      return { workspace_id: "ws-1", scope, q: query.q ?? "", status: query.status ?? "all", items: matched.slice(0, query.page_size ?? 25), total: matched.length, next_cursor: null, counts: { pending: changes.filter((row) => row.status === "pending").length, decided: changes.filter((row) => row.status !== "pending").length } };
+    });
+    vi.mocked(api.getCockpitChangePreview).mockImplementation(async (_ws, id) => observation(changes.find((change) => change.id === id)!));
+    useCockpitScopeViewStore.getState().reset();
     navSearch.params = new URLSearchParams();
-    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
-    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
+    readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
-    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
+    snapshots = [
       {
         id: "snap-1",
         trigger_kind: "import",
@@ -925,8 +724,8 @@ describe("CockpitPage versions", () => {
         created_by_label: "Owner",
         created_at: "2026-09-07T05:00:00Z",
       },
-    ]);
-    vi.mocked(api.listMembers).mockResolvedValue([
+    ];
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",
@@ -943,7 +742,7 @@ describe("CockpitPage versions", () => {
   it("explains protected restore on a UUID-bound board while preserving snapshot save and delete permissions", async () => {
     const bound = structuredClone(board);
     bound.nodes[0]!.project_id = "project-1";
-    vi.mocked(api.getCockpit).mockResolvedValue(bound);
+    readCockpitFixture.mockResolvedValue(bound);
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
     const row = await screen.findByText("217 nodes · Owner");
@@ -958,7 +757,7 @@ describe("CockpitPage versions", () => {
   });
 
   it("protects a board with meeting workflows without querying every meeting", async () => {
-    vi.mocked(api.getCockpit).mockResolvedValue({ ...structuredClone(board), has_meeting_workflows: true });
+    readCockpitFixture.mockResolvedValue({ ...structuredClone(board), has_meeting_workflows: true });
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
     const row = await screen.findByText("217 nodes · Owner");
@@ -997,7 +796,7 @@ describe("CockpitPage versions", () => {
       created_by_label: "Mika",
       created_at: new Date(Date.UTC(2026, 8, 7, 5) - minutesAgo * 60_000).toISOString(),
     });
-    vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
+    snapshots = [
       auto("a3", 6),
       auto("a2", 12),
       auto("a1", 18),
@@ -1010,7 +809,7 @@ describe("CockpitPage versions", () => {
         created_by_label: "Owner",
         created_at: "2026-09-07T04:00:00Z",
       },
-    ]);
+    ];
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
@@ -1025,7 +824,7 @@ describe("CockpitPage versions", () => {
   });
 
   it("badges the changes tab with the open count and renders the queue", async () => {
-    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+    changes = [
       {
         id: "chg-1",
         cockpit_id: "cp",
@@ -1046,25 +845,26 @@ describe("CockpitPage versions", () => {
         created_at: "2026-09-08T02:00:00Z",
         updated_at: "2026-09-08T02:00:00Z",
       },
-    ]);
+    ];
 
     renderPage();
 
     // The badge is the tab's whole pitch: an unread count, before the click.
-    const tab = await screen.findByRole("button", { name: /Changes/ });
-    expect(tab).toHaveTextContent("1");
+    const tab = await screen.findByRole("link", { name: /^Governance/ });
+    await waitFor(() => expect(tab).toHaveTextContent("1"));
+    expect(api.listCockpitChanges).not.toHaveBeenCalled();
 
     fireEvent.click(tab);
     expect(await screen.findByText("Sign the governance agreement")).toBeInTheDocument();
     expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("agent")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Apply" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: enCockpit.governance.review_single })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Reject/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Withdraw/ })).toBeInTheDocument();
   });
 
   it("applies a queued change through the API and settles the node it returns", async () => {
-    vi.mocked(api.listCockpitChanges).mockResolvedValue([
+    changes = [
       {
         id: "chg-2",
         cockpit_id: "cp",
@@ -1085,8 +885,8 @@ describe("CockpitPage versions", () => {
         created_at: "2026-09-08T02:00:00Z",
         updated_at: "2026-09-08T02:00:00Z",
       },
-    ]);
-    vi.mocked(api.applyCockpitChange).mockResolvedValue({
+    ];
+    vi.mocked(api.applyReviewedCockpitChange).mockResolvedValue({
       change: {
         id: "chg-2",
         cockpit_id: "cp",
@@ -1111,15 +911,21 @@ describe("CockpitPage versions", () => {
     });
 
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Apply" }));
+    fireEvent.click(await screen.findByRole("link", { name: /^Governance/ }));
+    fireEvent.click(await screen.findByRole("button", { name: enCockpit.governance.review_single }));
 
-    await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledWith("chg-2"));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: enCockpit.governance.confirm_reviewed });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(api.applyReviewedCockpitChange).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.applyReviewedCockpitChange).toHaveBeenCalledWith("ws-1", observation(changes[0]!)));
+    expect(api.applyCockpitChange).not.toHaveBeenCalled();
   });
 
   it("offers the filing form and keeps it inert until a task is picked", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /Changes/ }));
+    fireEvent.click(await screen.findByRole("link", { name: /^Governance/ }));
 
     expect(await screen.findByText("File a change for review")).toBeInTheDocument();
     const submit = screen.getByRole("button", { name: "File change" });
@@ -1128,7 +934,7 @@ describe("CockpitPage versions", () => {
   });
 
   it("hides the restore affordance from a plain member, who the server would refuse anyway", async () => {
-    vi.mocked(api.listMembers).mockResolvedValue([
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",

@@ -194,6 +194,14 @@
       "quick": "Create with agent",
       "manual": "Manual create",
       "unsupported": "Not available when creating with an agent"
+    },
+    "workspace_start": {
+      "title": "Workspace start page",
+      "hint": "Used when entering a workspace. Open tabs and links keep their destination.",
+      "cockpit": "Cockpit",
+      "issues": "Issues",
+      "my_issues": "My Issues",
+      "inbox": "Inbox"
     }
   },
   "shortcuts": {

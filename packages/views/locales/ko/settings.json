@@ -193,6 +193,14 @@
       "quick": "에이전트로 생성",
       "manual": "수동 생성",
       "unsupported": "에이전트로 생성할 때는 사용할 수 없습니다"
+    },
+    "workspace_start": {
+      "title": "워크스페이스 시작 페이지",
+      "hint": "워크스페이스에 들어갈 때 사용합니다. 열린 탭과 링크의 목적지는 유지됩니다.",
+      "cockpit": "프로젝트 콕핏",
+      "issues": "태스크",
+      "my_issues": "내 태스크",
+      "inbox": "인박스"
     }
   },
   "shortcuts": {

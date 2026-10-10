@@ -6,14 +6,6 @@ import enCommon from "../../locales/en/common.json";
 import type { CockpitNode } from "@multica/core/types";
 import { CockpitNodePanel, type CockpitNodePanelProps } from "./cockpit-node-panel";
 
-vi.mock("./cockpit-issue-links", () => ({
-  CockpitIssueLinks: ({ disabled, onLink, onUnlink }: {
-    disabled?: boolean; onLink: (id: string) => void; onUnlink: (id: string) => void;
-  }) => <div>Issue links
-    <button disabled={disabled} onClick={() => onLink("issue-2")}>Link issue</button>
-    <button disabled={disabled} onClick={() => onUnlink("issue-1")}>Unlink issue</button>
-  </div>,
-}));
 
 const node: CockpitNode = {
   id: "task", cockpit_id: "board", parent_id: "module", code: "L3-01-01", name: "Task",
@@ -27,13 +19,13 @@ const node: CockpitNode = {
 
 function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
-    node, parent: undefined, depth: 2, payments: [], links: [], meetings: [], isBranch: false,
+    node, parent: undefined, depth: 2, payments: [], meetings: [], referenceWorkspace: <p>Issue links</p>, isBranch: false,
     section: "tasks", onSectionChange: vi.fn(),
     statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [],
     vendorSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
     deleteConfirmationDescription: "This permanently deletes the item and its payments and issue links.",
-    onLinkIssue: vi.fn(), onUnlinkIssue: vi.fn(), onOpenMeeting: vi.fn(), onCreatePayment: vi.fn(),
+    onOpenMeeting: vi.fn(), onCreatePayment: vi.fn(),
     onPatchPayment: vi.fn(), onDeletePayment: vi.fn(), ...overrides,
   };
   const view = render(
@@ -110,25 +102,9 @@ describe("CockpitNodePanel", () => {
     expect(node.deliverable).toBe("Deliverable text");
   });
 
-  it.each([0, 1, 2])("keeps issue management wired at depth %i", (depth) => {
-    const { props } = setup({ depth });
-    fireEvent.click(screen.getByRole("button", { name: "Link issue" }));
-    fireEvent.click(screen.getByRole("button", { name: "Unlink issue" }));
-    expect(props.onLinkIssue).toHaveBeenCalledWith("issue-2");
-    expect(props.onUnlinkIssue).toHaveBeenCalledWith("issue-1");
-  });
-
-  it.each([0, 1, 2])("disables issue management in read-only depth %i", (depth) => {
-    const { props } = setup({ depth, readOnly: true });
-    expect(screen.getByText("Issue links")).toBeInTheDocument();
-    const link = screen.getByRole("button", { name: "Link issue" });
-    const unlink = screen.getByRole("button", { name: "Unlink issue" });
-    expect(link).toBeDisabled();
-    expect(unlink).toBeDisabled();
-    fireEvent.click(link);
-    fireEvent.click(unlink);
-    expect(props.onLinkIssue).not.toHaveBeenCalled();
-    expect(props.onUnlinkIssue).not.toHaveBeenCalled();
+  it.each([0, 1, 2])("keeps the supplied bounded reference workspace reachable at depth %i", (depth) => {
+    const open = vi.fn(); setup({ depth, referenceWorkspace: <button onClick={open}>Manage references</button> });
+    fireEvent.click(screen.getByRole("button", { name: "Manage references" })); expect(open).toHaveBeenCalledOnce();
   });
 
   const payments = [{ id: "pay-1", node_id: "task", label: "First", pay_date: null, amount: 15, position: 0 }];

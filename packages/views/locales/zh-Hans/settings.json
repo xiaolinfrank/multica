@@ -193,6 +193,14 @@
       "quick": "智能体创建",
       "manual": "手动创建",
       "unsupported": "智能体创建时不支持此字段"
+    },
+    "workspace_start": {
+      "title": "工作区默认入口",
+      "hint": "进入工作区时使用。已打开的标签页和链接仍前往原位置。",
+      "cockpit": "项目驾驶舱",
+      "issues": "任务",
+      "my_issues": "我的任务",
+      "inbox": "收件箱"
     }
   },
   "shortcuts": {

@@ -14,6 +14,8 @@ import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
 import { cockpitKeys } from "../cockpit/queries";
+import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
+import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
 import type { CockpitBoard } from "../types";
 import {
   markWorkspaceDeletePending,
@@ -96,6 +98,22 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-1") });
   });
 
+  it("refreshes bounded assignee capabilities after agent, squad and runtime changes", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      for (const type of ["agent:updated", "agent:archived", "squad:updated", "squad:deleted", "daemon:deleted"]) {
+        invalidateSpy.mockClear(); onAny({ type, payload: {} } as never); vi.advanceTimersByTime(150);
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitScopeSelectorKeys.all("ws-1") });
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitActorLabelKeys.all("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.surfaces("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitScopeSelectorKeys.all("ws-2") });
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
   it("refreshes overview responsibility, scope and category facts without invalidating another workspace", () => {
     vi.useFakeTimers();
     try {
@@ -106,9 +124,36 @@ describe("useRealtimeSync — ws instance change", () => {
         invalidateSpy.mockClear();
         onAny({ type, payload: {} } as never);
         vi.advanceTimersByTime(150);
-        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-1") });
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: type.startsWith("member:") ? cockpitKeys.all("ws-1") : cockpitKeys.dashboard("ws-1") });
         expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-2") });
       }
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes selected people and node choices after membership or scope changes", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      const local = [...cockpitKeys.surfaces("ws-1"), "scope-selectors", "members", "selected", "departed-user"];
+      const other = [...cockpitKeys.surfaces("ws-2"), "scope-selectors", "members", "selected", "departed-user"];
+      for (const type of ["member:removed", "member:updated", "project:updated", "project:deleted", "module:updated"]) {
+        qc.setQueryData(local, { items: [] });
+        qc.setQueryData(other, { items: [] });
+        onAny({ type, payload: {} } as never);
+        vi.advanceTimersByTime(150);
+        expect(qc.getQueryState(local)?.isInvalidated, type).toBe(true);
+        expect(qc.getQueryState(other)?.isInvalidated, type).toBe(false);
+      }
+      qc.setQueryData(local, { items: [] });
+      const onModuleDeleted = vi.mocked(ws.on).mock.calls.find(([type]) => type === "module:deleted")?.[1];
+      (onModuleDeleted as (payload: unknown) => void)({ module_id: "removed-module" });
+      expect(qc.getQueryState(local)?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
     } finally {
       cleanup();
       vi.useRealTimers();

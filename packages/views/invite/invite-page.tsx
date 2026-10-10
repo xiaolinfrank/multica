@@ -1,5 +1,7 @@
 "use client";
 
+import { preferredWorkspacePath } from "@multica/core/paths";
+
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
@@ -9,7 +11,6 @@ import {
   workspaceListOptions,
 } from "@multica/core/workspace/queries";
 import {
-  paths,
   resolvePostAuthDestination,
   useHasOnboarded,
 } from "@multica/core/paths";
@@ -85,7 +86,7 @@ export function InvitePage({ invitationId, onBack }: InvitePageProps) {
       // Navigate into the joined workspace. The [workspaceSlug]/layout will
       // sync api client, stores, and the last_workspace_slug cookie from the URL.
       const dest = joined
-        ? paths.workspace(joined.slug).issues()
+        ? preferredWorkspacePath(joined.slug)
         : fallbackDest;
       setTimeout(() => push(dest), 1000);
     } catch (e) {

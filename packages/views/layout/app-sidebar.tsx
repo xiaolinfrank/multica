@@ -1,4 +1,6 @@
 "use client";
+
+import { preferredWorkspacePath } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 
 import { issueStatusCategory } from "@multica/core/issues";
@@ -169,12 +171,12 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 // @multica/core/paths, so a BayClaw page added here must also be registered
 // in WORKSPACE_PAGES or it silently renders the Issues icon.
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+  { key: "cockpit", labelKey: "cockpit" },
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
   { key: "graph", labelKey: "graph" },
   { key: "gallery", labelKey: "gallery" },
-  { key: "cockpit", labelKey: "cockpit" },
 ];
 
 const aiTeamNav: { key: NavKey; labelKey: NavLabelKey }[] = [
@@ -639,7 +641,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         ? list.find((w) => w.id === invitation.workspace_id)
         : null;
       if (joined) {
-        push(paths.workspace(joined.slug).issues());
+        push(preferredWorkspacePath(joined.slug));
       }
     },
     onError: () => {
@@ -721,7 +723,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       <DropdownMenuItem
                         key={ws.id}
                         render={
-                          <AppLink href={paths.workspace(ws.slug).issues()} />
+                          <AppLink href={preferredWorkspacePath(ws.slug)} />
                         }
                       >
                         <WorkspaceAvatar name={ws.name} avatarUrl={ws.avatar_url} size="sm" />

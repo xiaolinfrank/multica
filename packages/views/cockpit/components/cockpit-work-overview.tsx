@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  cockpitAreaPath, cockpitObjectPath, cockpitAttentionDestination, cockpitDashboardKeys,
+  cockpitSurfacePath, cockpitScopeViewKey, cockpitObjectPath, cockpitAttentionDestination, cockpitDashboardKeys, type CockpitScope,
   cockpitWorkOverviewOptions, cockpitOverviewAttentionOptions, cockpitOverviewExecutionOptions, cockpitOverviewMeetingsOptions,
   EMPTY_COCKPIT_DASHBOARD_VIEW, useCockpitDashboardViewStore, parseDay,
 } from "@multica/core/cockpit";
@@ -13,15 +13,14 @@ import { isBuiltInIssueStatus, isIssueStatusCategory } from "@multica/core/issue
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { cn } from "@multica/ui/lib/utils";
-import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, Clock3, FolderKanban, HardDrive, Inbox, Layers3, ListTodo, RefreshCw, Target, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, ChevronLeft, ChevronRight, CircleDot, ClipboardCheck, Clock3, HardDrive, Inbox, Layers3, ListTodo, RefreshCw, Target, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
-import { CockpitDashboardScope } from "./cockpit-dashboard-scope";
 
 export interface CockpitWorkOverviewProps {
   wsId: string;
   today: string;
-  onOpenArea: (area: "gantt" | "meetings" | "changes" | "finance" | "operations") => void;
+  scope: CockpitScope;
 }
 
 function useOverviewLabels() {
@@ -79,7 +78,7 @@ function PanelHeading({ title, icon: Icon, extra }: { title: string; icon: Lucid
   return <div className="mb-4 flex flex-wrap items-center gap-2"><Icon className="size-4 text-muted-foreground" aria-hidden /><h2 className="min-w-0 text-title-sm font-medium">{title}</h2>{extra && <div className="ml-auto">{extra}</div>}</div>;
 }
 
-function AttentionRows({ items, human }: { items: CockpitAttentionItem[]; human: boolean }) {
+function AttentionRows({ items, human, scope }: { items: CockpitAttentionItem[]; human: boolean; scope: CockpitScope }) {
   const { t } = useT("cockpit");
   const { t: issueT } = useT("issues");
   const locale = useLocale();
@@ -90,7 +89,7 @@ function AttentionRows({ items, human }: { items: CockpitAttentionItem[]; human:
   return <ul className="divide-y divide-border/70">{items.map((item) => {
     const target = cockpitAttentionDestination(item.target);
     const restoreIssue = item.kind === "workflow" && item.reason === "restore_backlog" && item.next_action === "restore_backlog" ? item.target.issue_id : null;
-    const href = restoreIssue ? paths.issueDetail(restoreIssue) : target ? target.kind === "issue" ? paths.issueDetail(target.id) : cockpitObjectPath(paths.cockpit(), target) : null;
+    const href = restoreIssue ? paths.issueDetail(restoreIssue) : target ? target.kind === "issue" ? paths.issueDetail(target.id) : cockpitObjectPath(paths.cockpit(), target, scope) : null;
     const Icon = icons[item.kind] ?? Layers3;
     const action = human && item.can_act && kinds[item.kind] && reasons[item.reason]
       ? item.next_action === "restore_backlog" && !restoreIssue ? t(($) => $.work_overview.release_minutes) : actions[item.next_action] ?? t(($) => $.work_overview.view_details)
@@ -136,11 +135,11 @@ function IssueDistribution({ counts }: { counts: CockpitOverviewIssueCounts }) {
   </div>;
 }
 
-function ExecutionRows({ items }: { items: CockpitExecutionOverviewItem[] }) {
+function ExecutionRows({ items, scope }: { items: CockpitExecutionOverviewItem[]; scope: CockpitScope }) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const paths = useWorkspacePaths();
-  return <ul className="divide-y divide-border/70">{items.map((node) => <li key={node.id} className="py-4 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id })} newTabTitle={node.name}
+  return <ul className="divide-y divide-border/70">{items.map((node) => <li key={node.id} className="py-4 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id }, scope)} newTabTitle={node.name}
     className="group block rounded-lg outline-offset-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="mb-1 line-clamp-1 text-micro text-muted-foreground" title={`${node.project_title} / ${node.module_title}`}>{node.project_title} / {node.module_title}</p>
       <h3 className="line-clamp-2 break-words text-body font-medium group-hover:underline" title={`${node.code} ${node.name}`}><span className="mr-2 font-mono text-caption text-muted-foreground">{node.code}</span>{node.name}</h3></div><ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden /></div>
     <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption [overflow-wrap:anywhere]"><span className="rounded bg-brand/8 px-1.5 py-0.5 font-medium text-brand">{t(($) => $.work_overview.open_task_count, { count: node.issue_counts.active })}</span>
@@ -151,12 +150,12 @@ function ExecutionRows({ items }: { items: CockpitExecutionOverviewItem[] }) {
   </AppLink></li>)}</ul>;
 }
 
-function MeetingRows({ items }: { items: CockpitRecentMeeting[] }) {
+function MeetingRows({ items, scope }: { items: CockpitRecentMeeting[]; scope: CockpitScope }) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const paths = useWorkspacePaths();
   const { reasons } = useOverviewLabels();
-  return <ul className="divide-y divide-border/70">{items.map((meeting) => <li key={meeting.id} className="py-4 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id })} newTabTitle={meeting.title}
+  return <ul className="divide-y divide-border/70">{items.map((meeting) => <li key={meeting.id} className="py-4 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id }, scope)} newTabTitle={meeting.title}
     className="group flex min-w-0 items-start gap-3 rounded-lg outline-offset-4"><div className="flex w-14 shrink-0 flex-col items-center rounded-xl border border-border bg-muted/40 px-1 py-2">
       <span className="text-micro text-muted-foreground">{parseDay(meeting.meet_date)?.toLocaleDateString(locale, { month: "short" })}</span><span className="text-title-lg font-medium tabular-nums">{parseDay(meeting.meet_date)?.getDate()}</span></div>
     <div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-micro text-muted-foreground [overflow-wrap:anywhere]"><time dateTime={meeting.meet_date}>{meeting.meet_date}</time>{meeting.time_range && <span className="line-clamp-1 min-w-0 max-w-full" title={meeting.time_range}>{meeting.time_range}</span>}</div>
@@ -168,32 +167,33 @@ function MeetingRows({ items }: { items: CockpitRecentMeeting[] }) {
   </AppLink></li>)}</ul>;
 }
 
-export function CockpitWorkOverview({ wsId, today }: CockpitWorkOverviewProps) {
+export function CockpitWorkOverview({ wsId, today, scope }: CockpitWorkOverviewProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const paths = useWorkspacePaths();
   const client = useQueryClient();
-  const view = useCockpitDashboardViewStore((state) => state.views[wsId] ?? EMPTY_COCKPIT_DASHBOARD_VIEW);
-  const update = (patch: Parameters<ReturnType<typeof useCockpitDashboardViewStore.getState>["update"]>[1]) => useCockpitDashboardViewStore.getState().update(wsId, patch);
+  const viewKey = cockpitScopeViewKey(wsId, scope);
+  const view = useCockpitDashboardViewStore((state) => state.views[viewKey] ?? EMPTY_COCKPIT_DASHBOARD_VIEW);
+  const update = (patch: Parameters<ReturnType<typeof useCockpitDashboardViewStore.getState>["update"]>[1]) => useCockpitDashboardViewStore.getState().update(viewKey, patch);
   const { kinds } = useOverviewLabels();
   const scroll = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
   const lastScroll = useRef(0);
-  const overview = useQuery({ ...cockpitWorkOverviewOptions(wsId, { as_of: today, project_id: view.projectId || undefined, attention_view: view.audience }),
-    placeholderData: (previous) => previous?.workspace_id === wsId && previous.project_id === (view.projectId || null) && previous.as_of === today ? previous : undefined });
+  const overview = useQuery({ ...cockpitWorkOverviewOptions(wsId, { as_of: today, project_id: scope.projectId || undefined, module_id: scope.moduleId || undefined, attention_view: view.audience }),
+    placeholderData: (previous) => previous?.workspace_id === wsId && previous.project_id === scope.projectId && (previous.module_id ?? null) === scope.moduleId && previous.as_of === today ? previous : undefined });
   const data = overview.data;
   const full = view.mode === "attention";
   const size = full ? 25 : 8;
   const queueSection = full ? "attention-full" : "attention-preview";
-  const signature = JSON.stringify([wsId, today, view.projectId, view.audience, view.kind, size]);
+  const signature = JSON.stringify([wsId, today, scope.projectId, scope.moduleId, view.audience, view.kind, size]);
   const queueCursors = view.pages[queueSection]?.signature === signature ? view.pages[queueSection]!.cursors : [""];
-  const pageSignature = JSON.stringify([wsId, today, view.projectId, 6]);
+  const pageSignature = JSON.stringify([wsId, today, scope.projectId, scope.moduleId, 6]);
   const executionCursors = view.pages.execution?.signature === pageSignature ? view.pages.execution.cursors : [""];
   const meetingCursors = view.pages.meetings?.signature === pageSignature ? view.pages.meetings.cursors : [""];
   const bundledQueue = !full && !view.kind && queueCursors.length === 1;
-  const attentionQuery = useQuery({ ...cockpitOverviewAttentionOptions(wsId, { as_of: today, project_id: view.projectId || undefined, view: view.audience, kind: view.kind || undefined, page_size: size, cursor: queueCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !bundledQueue) });
-  const executionQuery = useQuery({ ...cockpitOverviewExecutionOptions(wsId, { as_of: today, project_id: view.projectId || undefined, page_size: 6, cursor: executionCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !full && executionCursors.length > 1) });
-  const meetingsQuery = useQuery({ ...cockpitOverviewMeetingsOptions(wsId, { as_of: today, project_id: view.projectId || undefined, days: 30, page_size: 6, cursor: meetingCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !full && meetingCursors.length > 1) });
+  const attentionQuery = useQuery({ ...cockpitOverviewAttentionOptions(wsId, { as_of: today, project_id: scope.projectId || undefined, module_id: scope.moduleId || undefined, view: view.audience, kind: view.kind || undefined, page_size: size, cursor: queueCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !bundledQueue) });
+  const executionQuery = useQuery({ ...cockpitOverviewExecutionOptions(wsId, { as_of: today, project_id: scope.projectId || undefined, module_id: scope.moduleId || undefined, page_size: 6, cursor: executionCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !full && executionCursors.length > 1) });
+  const meetingsQuery = useQuery({ ...cockpitOverviewMeetingsOptions(wsId, { as_of: today, project_id: scope.projectId || undefined, module_id: scope.moduleId || undefined, days: 30, page_size: 6, cursor: meetingCursors.at(-1) || undefined }), enabled: Boolean(wsId && today && !full && meetingCursors.length > 1) });
   const attention = bundledQueue ? data?.attention.view === view.audience ? data.attention : undefined : attentionQuery.data;
   const attentionLoading = bundledQueue ? overview.isPending || (!attention && overview.isFetching) : attentionQuery.isPending;
   const attentionError = bundledQueue ? overview.isError || (!attentionLoading && !attention) : attentionQuery.isError || (!attentionLoading && !attention);
@@ -201,7 +201,7 @@ export function CockpitWorkOverview({ wsId, today }: CockpitWorkOverviewProps) {
   const meetings = meetingCursors.length === 1 ? data?.recent_meetings : meetingsQuery.data;
   const executionLoading = executionCursors.length === 1 ? overview.isPending : executionQuery.isPending;
   const meetingsLoading = meetingCursors.length === 1 ? overview.isPending : meetingsQuery.isPending;
-  const setPage = (section: string, scope: string, cursors: string[]) => useCockpitDashboardViewStore.getState().setPage(wsId, section, scope, cursors);
+  const setPage = (section: string, scope: string, cursors: string[]) => useCockpitDashboardViewStore.getState().setPage(viewKey, section, scope, cursors);
   const refresh = () => { void client.invalidateQueries({ queryKey: cockpitDashboardKeys.all(wsId) }); };
   const scrollToTop = () => { if (scroll.current) scroll.current.scrollTop = 0; lastScroll.current = 0; };
   const openQueue = (kind = view.kind, audience = view.audience) => {
@@ -209,46 +209,35 @@ export function CockpitWorkOverview({ wsId, today }: CockpitWorkOverviewProps) {
     setPage("attention-full", "", [""]);
     scrollToTop();
   };
-  useEffect(() => { restored.current = false; lastScroll.current = useCockpitDashboardViewStore.getState().views[wsId]?.scrollTop ?? 0; }, [wsId]);
+  useEffect(() => { restored.current = false; lastScroll.current = useCockpitDashboardViewStore.getState().views[viewKey]?.scrollTop ?? 0; }, [viewKey]);
   useEffect(() => {
     if (!data || restored.current || attentionLoading || !attention || (!full && (executionLoading || meetingsLoading || !execution || !meetings))) return;
     restored.current = true;
     if (scroll.current) scroll.current.scrollTop = lastScroll.current;
-  }, [data, wsId, attentionLoading, attention, full, executionLoading, meetingsLoading, execution, meetings]);
+  }, [data, viewKey, attentionLoading, attention, full, executionLoading, meetingsLoading, execution, meetings]);
   useEffect(() => {
     const element = scroll.current;
     const generation = useCockpitDashboardViewStore.getState().sessionGeneration;
     return () => {
       const state = useCockpitDashboardViewStore.getState();
-      if (element && state.sessionGeneration === generation) state.update(wsId, { scrollTop: element.isConnected ? element.scrollTop : lastScroll.current });
+      if (element && state.sessionGeneration === generation) state.update(viewKey, { scrollTop: element.isConnected ? element.scrollTop : lastScroll.current });
     };
-  }, [wsId]);
+  }, [viewKey]);
   const counts = data ? view.audience === "mine" ? data.summary.my_primary_issues : data.summary.primary_issues : null;
-  const nav = [{ area: "gantt" as const, label: t(($) => $.work_overview.execution_plan) }, { area: "meetings" as const, label: t(($) => $.tabs.meetings) }, { area: "changes" as const, label: t(($) => $.tabs.changes) }, { area: "finance" as const, label: t(($) => $.tabs.finance) }];
   const kindOptions = [{ value: "__all__", label: t(($) => $.work_overview.all_work) }, ...Object.entries(kinds).map(([value, label]) => ({ value, label }))];
   return <section aria-label={t(($) => $.work_overview.work)} className="cockpit-skin flex h-full min-h-0 flex-col">
-    <header className="shrink-0 border-b border-border bg-card/80 px-4 py-3">
-      <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-3"><div className="flex items-center gap-2.5"><span className="flex size-8 items-center justify-center rounded-lg bg-brand/10 text-brand"><Layers3 className="size-4" aria-hidden /></span><span className="text-body font-medium">{t(($) => $.work_overview.cockpit)}</span></div>
-        <nav aria-label={t(($) => $.work_overview.navigation)} className="order-3 flex max-w-full basis-full flex-wrap items-center gap-1 md:order-none md:ml-4 md:min-w-0 md:flex-1 md:basis-auto">
-          <AppLink href={cockpitAreaPath(paths.cockpit(), "work")} aria-current="page" className={buttonVariants({ variant: "brandSubtle", size: "sm" })}
-            onClick={(event) => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { update({ mode: "overview", scrollTop: 0 }); scrollToTop(); } }}>{t(($) => $.work_overview.work)}</AppLink>
-          {nav.map((item) => <AppLink key={item.area} href={cockpitAreaPath(paths.cockpit(), item.area)} className={buttonVariants({ variant: "ghost", size: "sm" })}>{item.label}</AppLink>)}
-        </nav>
-        <AppLink href={cockpitAreaPath(paths.cockpit(), "operations")} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto gap-1.5")}><FolderKanban className="size-3.5" aria-hidden />{t(($) => $.work_overview.operations)}<ArrowUpRight className="size-3" aria-hidden /></AppLink>
-      </div>
-    </header>
     <div ref={scroll} onScroll={(event) => { lastScroll.current = event.currentTarget.scrollTop; }} className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1480px] space-y-5 px-4 py-6 lg:space-y-6 lg:px-7 lg:py-8">
         <div className="flex flex-wrap items-end justify-between gap-4"><div className="min-w-0 space-y-1.5">
           {full && <Button type="button" variant="ghost" size="sm" className="-ml-2 mb-1" onClick={() => { update({ mode: "overview", scrollTop: 0 }); scrollToTop(); }}><ArrowLeft className="size-3.5" />{t(($) => $.work_overview.back)}</Button>}
           <p className="text-caption text-muted-foreground">{t(($) => $.work_overview.working_date, { date: calendarDate(today, locale) })}</p>
           <h1 className="text-display-sm font-semibold tracking-tight">{full ? t(($) => $.work_overview.next_actions) : t(($) => $.work_overview.work)}</h1>
-          {data?.board?.goal_title && !view.projectId && !full && <p className="line-clamp-2 max-w-2xl break-words text-body text-muted-foreground" title={data.board.goal_title}>{data.board.goal_title}{data.board.goal_date ? ` · ${calendarDate(data.board.goal_date, locale)}` : ""}</p>}
-        </div><div className="flex max-w-full flex-wrap items-center gap-2"><CockpitDashboardScope wsId={wsId} projectId={view.projectId} projectTitle={data?.project_title ?? ""} onSelect={(projectId) => { update({ projectId }); scrollToTop(); }} />
+          {data?.board?.goal_title && !scope.projectId && !full && <p className="line-clamp-2 max-w-2xl break-words text-body text-muted-foreground" title={data.board.goal_title}>{data.board.goal_title}{data.board.goal_date ? ` · ${calendarDate(data.board.goal_date, locale)}` : ""}</p>}
+        </div><div className="flex max-w-full flex-wrap items-center gap-2">
           <Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.work_overview.refresh)} onClick={refresh} disabled={overview.isFetching}><RefreshCw className={cn("size-4", overview.isFetching && "motion-safe:animate-spin")} /></Button></div></div>
         {!data ? overview.isPending ? <div className="cockpit-card p-6"><OverviewLoading rows={5} /></div> : <OverviewError onRetry={() => void overview.refetch()} /> : <>
           {overview.isError && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-warning-subtle px-4 py-3 text-caption"><TriangleAlert className="size-4" />{t(($) => $.work_overview.refresh_failed)}<Button type="button" variant="ghost" size="sm" onClick={() => void overview.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
-          {!data.board && <div className="cockpit-card flex flex-wrap items-center justify-between gap-4 p-5"><div><h2 className="text-title-sm font-medium">{t(($) => $.work_overview.no_plan)}</h2><p className="mt-1 text-caption text-muted-foreground">{t(($) => $.work_overview.no_plan_hint)}</p></div><AppLink href={cockpitAreaPath(paths.cockpit(), "gantt")} className={buttonVariants({ size: "sm" })}>{t(($) => $.work_overview.open_plan)}<ArrowRight className="ml-1 size-3.5" /></AppLink></div>}
+          {!data.board && <div className="cockpit-card flex flex-wrap items-center justify-between gap-4 p-5"><div><h2 className="text-title-sm font-medium">{t(($) => $.work_overview.no_plan)}</h2><p className="mt-1 text-caption text-muted-foreground">{t(($) => $.work_overview.no_plan_hint)}</p></div><AppLink href={cockpitSurfacePath(paths.cockpit(), "plan", scope)} className={buttonVariants({ size: "sm" })}>{t(($) => $.work_overview.open_plan)}<ArrowRight className="ml-1 size-3.5" /></AppLink></div>}
           <div className={cn("grid min-w-0 gap-5 lg:gap-6", !full && "xl:grid-cols-12")}>
             <section aria-label={t(($) => $.work_overview.next_actions)} className={cn("cockpit-card min-w-0 overflow-hidden", !full && "xl:col-span-7")}>
               <div className="space-y-4 border-b border-border/70 bg-brand/5 p-5 lg:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="space-y-1"><p className="flex items-center gap-2 text-caption font-medium text-muted-foreground"><Inbox className="size-4" aria-hidden />{t(($) => $.work_overview.next_actions)}</p>
@@ -261,7 +250,7 @@ export function CockpitWorkOverview({ wsId, today }: CockpitWorkOverviewProps) {
               <div className="space-y-3 p-5 lg:p-6"><OverviewPager page={queueCursors.length} shown={attention?.items.length} total={attention?.total} next={attention?.next_cursor} loading={attentionLoading || attentionQuery.isFetching || (bundledQueue && overview.isFetching)}
                 onPrevious={() => setPage(queueSection, signature, queueCursors.slice(0, -1))} onNext={() => { if (attention?.next_cursor) setPage(queueSection, signature, [...queueCursors, attention.next_cursor]); }} />
                 {attentionLoading ? <OverviewLoading /> : attentionError || !attention ? <OverviewError onRetry={() => { if (bundledQueue) void overview.refetch(); else void attentionQuery.refetch(); }} />
-                  : attention.items.length > 0 ? <div className={cn("overflow-y-auto overscroll-contain", full ? "max-h-[62vh]" : "max-h-[22rem]")}><AttentionRows items={attention.items} human={data.actor.is_human} /></div>
+                  : attention.items.length > 0 ? <div className={cn("overflow-y-auto overscroll-contain", full ? "max-h-[62vh]" : "max-h-[22rem]")}><AttentionRows scope={scope} items={attention.items} human={data.actor.is_human} /></div>
                     : <div className="space-y-3 py-8 text-center"><Inbox className="mx-auto size-7 text-muted-foreground/60" aria-hidden /><h3 className="text-body font-medium">{t(($) => $.work_overview.queue_empty)}</h3>
                       {view.audience === "mine" && data.summary.attention.team_total > 0 && <Button type="button" variant="outline" size="sm" onClick={() => update({ audience: "team", kind: "" })}>{t(($) => $.work_overview.open_team, { count: data.summary.attention.team_total })}</Button>}</div>}
                 <p className="border-t border-border/70 pt-3 text-micro text-muted-foreground">{t(($) => $.work_overview.queue_basis)}</p>
@@ -286,15 +275,15 @@ export function CockpitWorkOverview({ wsId, today }: CockpitWorkOverviewProps) {
             <p className="mb-4 text-micro text-muted-foreground">{t(($) => $.work_overview.execution_basis)}</p><OverviewPager page={executionCursors.length} shown={execution?.items.length} total={execution?.total} next={execution?.next_cursor} loading={executionLoading || executionQuery.isFetching}
               onPrevious={() => setPage("execution", pageSignature, executionCursors.slice(0, -1))} onNext={() => { if (execution?.next_cursor) setPage("execution", pageSignature, [...executionCursors, execution.next_cursor]); }} />
             <div className="mt-4 max-h-[32rem] overflow-y-auto overscroll-contain">{executionLoading ? <OverviewLoading /> : executionQuery.isError || !execution ? <OverviewError onRetry={() => { if (executionCursors.length === 1) void overview.refetch(); else void executionQuery.refetch(); }} />
-              : execution.items.length ? <ExecutionRows items={execution.items} /> : <p className="py-8 text-center text-caption text-muted-foreground">{t(($) => $.work_overview.execution_empty)}</p>}</div>
-            <AppLink href={cockpitAreaPath(paths.cockpit(), "gantt")} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-2 w-full justify-between")}>{t(($) => $.work_overview.open_plan)}<ArrowRight className="size-3.5" /></AppLink>
+              : execution.items.length ? <ExecutionRows scope={scope} items={execution.items} /> : <p className="py-8 text-center text-caption text-muted-foreground">{t(($) => $.work_overview.execution_empty)}</p>}</div>
+            <AppLink href={cockpitSurfacePath(paths.cockpit(), "plan", scope)} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-2 w-full justify-between")}>{t(($) => $.work_overview.open_plan)}<ArrowRight className="size-3.5" /></AppLink>
           </section><section aria-label={t(($) => $.work_overview.recent_meetings)} className="cockpit-card min-w-0 p-5 lg:p-6"><PanelHeading title={t(($) => $.work_overview.recent_meetings)} icon={CalendarDays} />
             <p className="mb-4 text-micro text-muted-foreground">{meetings ? `${calendarDate(meetings.range_start, locale)} – ${calendarDate(meetings.range_end, locale)}` : t(($) => $.work_overview.loading)}</p>
             <OverviewPager page={meetingCursors.length} shown={meetings?.items.length} total={meetings?.total} next={meetings?.next_cursor} loading={meetingsLoading || meetingsQuery.isFetching}
               onPrevious={() => setPage("meetings", pageSignature, meetingCursors.slice(0, -1))} onNext={() => { if (meetings?.next_cursor) setPage("meetings", pageSignature, [...meetingCursors, meetings.next_cursor]); }} />
             <div className="mt-4 max-h-[32rem] overflow-y-auto overscroll-contain">{meetingsLoading ? <OverviewLoading /> : meetingsQuery.isError || !meetings ? <OverviewError onRetry={() => { if (meetingCursors.length === 1) void overview.refetch(); else void meetingsQuery.refetch(); }} />
-              : meetings.items.length ? <MeetingRows items={meetings.items} /> : <p className="py-8 text-center text-caption text-muted-foreground">{t(($) => $.work_overview.meetings_empty)}</p>}</div>
-            <AppLink href={cockpitAreaPath(paths.cockpit(), "meetings")} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-2 w-full justify-between")}>{t(($) => $.work_overview.open_meetings)}<ArrowRight className="size-3.5" /></AppLink>
+              : meetings.items.length ? <MeetingRows scope={scope} items={meetings.items} /> : <p className="py-8 text-center text-caption text-muted-foreground">{t(($) => $.work_overview.meetings_empty)}</p>}</div>
+            <AppLink href={cockpitSurfacePath(paths.cockpit(), "meetings", scope)} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-2 w-full justify-between")}>{t(($) => $.work_overview.open_meetings)}<ArrowRight className="size-3.5" /></AppLink>
           </section></div>}
           <div className="flex flex-wrap items-center justify-between gap-2 pb-2 text-micro text-muted-foreground"><span className="flex items-center gap-1.5"><CheckCheck className="size-3.5" aria-hidden />{t(($) => $.work_overview.live_source)}</span><time dateTime={data.generated_at}>{t(($) => $.work_overview.updated, { time: new Date(data.generated_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) })}</time></div>
         </>}

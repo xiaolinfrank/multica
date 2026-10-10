@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { CockpitMeetingIssueLink } from "@multica/core/types";
+import type { CockpitMeetingIssueLink, Issue } from "@multica/core/types";
 import { COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
@@ -11,7 +11,7 @@ import { LoaderCircle, X } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { StatusIcon } from "../../issues/components/status-icon";
-import { IssueSearchPopover } from "./cockpit-issue-links";
+import { CockpitIssueChoice } from "./cockpit-task-flow";
 
 function useRoleLabels() {
   const { t } = useT("cockpit");
@@ -125,9 +125,10 @@ function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: 
   );
 }
 
-export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles, disabled, requiredRolesByIssue }: {
+export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSaveRoles, disabled, requiredRolesByIssue }: {
+  wsId: string;
   links: CockpitMeetingIssueLink[];
-  onLink: (issueId: string) => void;
+  onLink: (issueId: string) => Promise<unknown>;
   onUnlink: (issueId: string) => void;
   onSaveRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
   disabled?: boolean;
@@ -137,14 +138,14 @@ export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles,
   const { t } = useT("cockpit");
   return (
     <div className="space-y-2">
-      <ul className="space-y-2">
+      <ul className="max-h-[45vh] space-y-2 overflow-y-auto overscroll-contain">
         {links.map((link) => (
           <li key={link.issue_id} className="space-y-1.5 rounded-md border border-border p-2">
             <div className="flex items-start gap-1.5">
               <AppLink href={paths.issueDetail(link.issue_identifier || link.issue_id)}
                 newTabTitle={link.issue_title} className="flex min-w-0 flex-1 items-start gap-1.5 text-caption hover:underline">
                 <StatusIcon status={link.issue_status} className="mt-0.5 size-3.5 shrink-0" />
-                <span className="min-w-0 break-words"><span className="mr-1.5 font-mono text-muted-foreground">{link.issue_identifier || link.issue_id}</span>{" "}{link.issue_title}</span>
+                <span className="line-clamp-2 min-w-0 break-words" title={link.issue_title}><span className="mr-1.5 font-mono text-muted-foreground">{link.issue_identifier || link.issue_id}</span>{" "}{link.issue_title}</span>
               </AppLink>
               {!disabled && !requiredRolesByIssue?.has(link.issue_id) && (
                 <Button variant="ghost" size="icon-xs" onClick={() => onUnlink(link.issue_id)}
@@ -161,8 +162,29 @@ export function CockpitMeetingIssueLinks({ links, onLink, onUnlink, onSaveRoles,
           </li>
         ))}
       </ul>
-      {!disabled && <IssueSearchPopover linkedIssueIds={new Set(links.map((link) => link.issue_id))}
-        onToggle={(issue, linked) => linked ? onUnlink(issue.id) : onLink(issue.id)} />}
+      {!disabled && <MeetingIssueAppend wsId={wsId} onLink={onLink} />}
     </div>
   );
+}
+
+function MeetingIssueAppend({ wsId, onLink }: { wsId: string; onLink: (id: string) => Promise<unknown> }) {
+  const { t } = useT("cockpit");
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Issue | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  return <Popover open={open} onOpenChange={(next) => { if (!lock.current) setOpen(next); }}>
+    <PopoverTrigger render={<Button type="button" variant="outline" size="sm" />}>{t(($) => $.issues.link)}</PopoverTrigger>
+    <PopoverContent align="start" className="w-[min(28rem,calc(100vw-2rem))] space-y-3">
+      <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setError(""); }} disabled={busy} />
+      {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+      <Button type="button" size="sm" disabled={!selected || busy} onClick={() => {
+        if (!selected || lock.current) return; lock.current = true; setBusy(true); setError("");
+        void onLink(selected.id).then(() => { setSelected(null); setOpen(false); })
+          .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed)))
+          .finally(() => { lock.current = false; setBusy(false); });
+      }}>{busy && <LoaderCircle className="size-3 animate-spin" />}{t(($) => $.issues.link)}</Button>
+    </PopoverContent>
+  </Popover>;
 }

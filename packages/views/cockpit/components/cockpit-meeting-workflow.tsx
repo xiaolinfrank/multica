@@ -3,21 +3,20 @@
 import { useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
+import { issueDetailOptions } from "@multica/core/issues/queries";
 import {
-  acknowledgeCockpitMinutesSubmission, CockpitUnconfirmedWriteError, cockpitWorkflowSummaryActions, cockpitHistoryViewKey, useCockpitHistoryViewStore,
+  acknowledgeCockpitMinutesSubmission, cockpitContextOptions, cockpitSelectedMemberOptions, CockpitUnconfirmedWriteError, cockpitWorkflowSummaryActions, cockpitHistoryViewKey, useCockpitHistoryViewStore,
   EMPTY_COCKPIT_MINUTES_DRAFT, prepareCockpitMinutesSubmission, rejectCockpitMinutesSubmission,
   setCockpitMinutesDraftContent, useCockpitMinutesDraftStore,
   useEnableCockpitMeetingWorkflow, useUpdateCockpitMeetingReadiness,
   useReleaseCockpitMeetingWorkflow, useSubmitCockpitMinutesVersion,
-  useReviewCockpitMinutesVersion, usePublishCockpitMinutesVersion,
+  useReviewCockpitMinutesVersion, usePublishCockpitMinutesVersion, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
 import type {
   CockpitMeetingWorkflowSummary, CockpitMeetingWorkflowSetup, CockpitMeetingIssueLink,
-  CockpitMinutesDecision, MemberWithUser, IssueAssigneeType,
+  CockpitMinutesDecision, IssueAssigneeType,
 } from "@multica/core/types";
-import { projectListOptions } from "@multica/core/projects/queries";
-import { moduleListOptions } from "@multica/core/modules/queries";
-import { memberListOptions } from "@multica/core/workspace/queries";
+import type { CockpitMember } from "./cockpit-people";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { cn } from "@multica/ui/lib/utils";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -28,28 +27,29 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Dialog, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
-import { settingsHref } from "../../settings/components/settings-navigation";
-import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
+import { CockpitAssigneePicker } from "./cockpit-assignee-picker";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
+import { CockpitScopePicker } from "./cockpit-scope-control";
 import { CockpitReviewerHandoffControl } from "./cockpit-reviewer-handoff";
 import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit-minutes-nas";
 import { CockpitMinutesReader, useMinutesDecisionLabel } from "./cockpit-minutes-reader";
 import { CockpitMeetingHistory } from "./cockpit-meeting-history";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitMeetingActions } from "./cockpit-meeting-actions";
+import { CockpitFlowError, CockpitIssueChoice } from "./cockpit-task-flow";
 
 const NEW_ISSUE = "__new_minutes_issue__";
+const ADOPT_ISSUE = "__adopt_minutes_issue__";
 
 
 export function CockpitMeetingWorkflowPanel({
-  wsId, meetingId, currentUserId, members, membersLoaded, issueLinks, workflow,
+  wsId, meetingId, currentUserId, members, issueLinks, workflow,
   loading, loadError, onReload, resourcesHref, defaultPlacement, defaultAssigneeType, defaultAssigneeId, readOnly,
 }: {
   wsId: string;
   meetingId: string;
   currentUserId: string;
-  members: MemberWithUser[];
-  membersLoaded: boolean;
+  members: CockpitMember[];
   issueLinks: CockpitMeetingIssueLink[];
   workflow: CockpitMeetingWorkflowSummary | null | undefined;
   loading: boolean;
@@ -78,14 +78,27 @@ export function CockpitMeetingWorkflowPanel({
   const [projectId, setProjectId] = useState(defaultPlacement.project_id || "");
   const [moduleId, setModuleId] = useState(defaultPlacement.module_id || "");
   const [existingIssueId, setExistingIssueId] = useState(NEW_ISSUE);
+  const [adoptedIssueId, setAdoptedIssueId] = useState("");
   const [assigneeType, setAssigneeType] = useState<IssueAssigneeType | null>((defaultAssigneeType || "member") as IssueAssigneeType);
   const [assigneeId, setAssigneeId] = useState(defaultAssigneeId || currentUserId);
   const [error, setError] = useState("");
   const commandLock = useRef(false);
   const [commandBusy, setCommandBusy] = useState(false);
-  const projects = useQuery({ ...projectListOptions(wsId), enabled: Boolean(workflow && !workflow.enabled && wsId && existingIssueId === NEW_ISSUE) });
-  const modules = useQuery({ ...moduleListOptions(wsId, projectId || undefined), enabled: Boolean(workflow && !workflow.enabled && wsId && projectId && existingIssueId === NEW_ISSUE) });
-  const memberQuery = useQuery({ ...memberListOptions(wsId), enabled: false });
+  const placementQuery = useQuery({ ...cockpitContextOptions(wsId, { projectId: projectId || null, moduleId: moduleId || null }),
+    enabled: Boolean(workflow && !workflow.enabled && wsId && projectId && existingIssueId === NEW_ISSUE) });
+  const placementConfirmed = Boolean(projectId && moduleId && !placementQuery.isError && !placementQuery.isFetching
+    && placementQuery.data?.scope.project_id === projectId && placementQuery.data.scope.module_id === moduleId);
+  const setupMember = useQuery(cockpitSelectedMemberOptions(wsId, workflow?.enabled === false ? reviewerId : ""));
+  const futureMember = useQuery(cockpitSelectedMemberOptions(wsId, workflow?.enabled ? workflow.reviewer_id ?? "" : ""));
+  const currentMember = useQuery(cockpitSelectedMemberOptions(wsId, workflow?.enabled ? workflow.current_version?.reviewer_id ?? "" : ""));
+  const setupReviewerConfirmed = !setupMember.isError && !setupMember.isFetching && Boolean(setupMember.data?.items.some((entry) => entry.id === reviewerId));
+  const futureReviewerConfirmed = !futureMember.isError && !futureMember.isFetching && Boolean(futureMember.data?.items.some((entry) => entry.id === workflow?.reviewer_id));
+  const currentReviewerConfirmed = !currentMember.isError && !currentMember.isFetching && Boolean(currentMember.data?.items.some((entry) => entry.id === workflow?.current_version?.reviewer_id));
+  const executor = useCockpitAssigneeAvailability(wsId, workflow?.enabled === false && existingIssueId === NEW_ISSUE ? assigneeType : null, workflow?.enabled === false && existingIssueId === NEW_ISSUE ? assigneeId : null);
+  const minutesExecutor = useCockpitAssigneeAvailability(wsId, workflow?.enabled && !workflow.released_at ? workflow.minutes_issue?.assignee_type ?? null : null, workflow?.enabled && !workflow.released_at ? workflow.minutes_issue?.assignee_id ?? null : null);
+  const adopted = useQuery({ ...issueDetailOptions(wsId, adoptedIssueId), enabled: Boolean(workflow?.enabled === false && existingIssueId === ADOPT_ISSUE && adoptedIssueId) });
+  const adoptedIssue = adopted.data?.id === adoptedIssueId && adopted.data.workspace_id === wsId ? adopted.data : null;
+  const adoptionConfirmed = !adopted.isError && !adopted.isFetching && adoptedIssue?.status === "backlog";
   const enable = useEnableCockpitMeetingWorkflow(wsId);
   const readiness = useUpdateCockpitMeetingReadiness(wsId);
   const release = useReleaseCockpitMeetingWorkflow(wsId);
@@ -123,8 +136,9 @@ export function CockpitMeetingWorkflowPanel({
 
   if (!workflow.enabled) {
     const setup = async () => {
+      if (!setupReviewerConfirmed || (existingIssueId === NEW_ISSUE ? !placementConfirmed || !executor.available : !adoptionConfirmed)) return;
       const body: CockpitMeetingWorkflowSetup = { reviewer_id: reviewerId };
-      if (existingIssueId !== NEW_ISSUE) body.existing_issue_id = existingIssueId;
+      if (existingIssueId === ADOPT_ISSUE) body.existing_issue_id = adoptedIssueId;
       else {
         body.project_id = projectId || undefined;
         body.module_id = moduleId || undefined;
@@ -144,47 +158,32 @@ export function CockpitMeetingWorkflowPanel({
       {!readOnly && <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {existingIssueId === NEW_ISSUE && <>
-          <div className="space-y-1"><label htmlFor={`${id}-project`} className="text-caption">{t(($) => $.binding.project)}</label>
-            <Select value={projectId || null} disabled={commandBusy || projects.isPending}
-              items={(projects.data ?? []).map((entry) => ({ value: entry.id, label: entry.title }))}
-              onValueChange={(value) => { setProjectId(value || ""); setModuleId(""); }}>
-              <SelectTrigger id={`${id}-project`} className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{(projects.data ?? []).map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.title}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1"><label htmlFor={`${id}-module`} className="text-caption">{t(($) => $.binding.module)}</label>
-            <Select value={moduleId || null} disabled={commandBusy || !projectId || modules.isPending}
-              items={(modules.data ?? []).map((entry) => ({ value: entry.id, label: entry.title }))}
-              onValueChange={(value) => setModuleId(value || "")}>
-              <SelectTrigger id={`${id}-module`} className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{(modules.data ?? []).map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.title}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
+          <CockpitScopePicker wsId={wsId} kind="project" projectId={null} selectedId={projectId || null} selectedTitle={placementQuery.data?.scope.project_title ?? ""}
+            label={t(($) => $.binding.project)} emptyLabel={t(($) => $.binding.choose_project)} disabled={commandBusy}
+            emptyAction={<AppLink href={paths.projects()} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_projects)}</AppLink>}
+            onSelect={(value) => { setProjectId(value || ""); setModuleId(""); }} />
+          <CockpitScopePicker wsId={wsId} kind="module" projectId={projectId || null} selectedId={moduleId || null} selectedTitle={placementQuery.data?.scope.module_title ?? ""}
+            label={t(($) => $.binding.module)} emptyLabel={t(($) => $.binding.choose_module)} disabled={commandBusy || !projectId}
+            emptyAction={projectId ? <AppLink href={paths.projectDetail(projectId)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_project)}</AppLink> : undefined}
+            onSelect={(value) => setModuleId(value || "")} />
           </>}
-          {existingIssueId === NEW_ISSUE && projects.data?.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.task_recovery.no_projects)}{" "}
-            <AppLink href={paths.projects()} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_projects)}</AppLink></p>}
-          {existingIssueId === NEW_ISSUE && projectId && modules.data?.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.task_recovery.no_modules)}{" "}
-            <AppLink href={paths.projectDetail(projectId)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_project)}</AppLink></p>}
-          <CockpitReviewerSelect members={members} value={reviewerId} onChange={setReviewerId} disabled={commandBusy || !membersLoaded} />
-          {!membersLoaded && <div className="space-y-1 text-caption text-muted-foreground" role={memberQuery.isError ? "alert" : "status"}>
-            <p>{t(($) => $.workflow.members_loading)}</p><Button type="button" size="sm" variant="outline" disabled={memberQuery.isFetching} onClick={() => void memberQuery.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
-          {membersLoaded && members.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.no_reviewers)}{" "}
-            <AppLink href={settingsHref(paths.settings(), new URLSearchParams(), "members")} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.open_members)}</AppLink></p>}
+          <CockpitReviewerSelect wsId={wsId} value={reviewerId} onChange={setReviewerId} disabled={commandBusy} />
           <div className="space-y-1"><label htmlFor={`${id}-existing`} className="text-caption">{t(($) => $.workflow.existing_issue)}</label>
             <Select value={existingIssueId} disabled={commandBusy} onValueChange={(value) => setExistingIssueId(value || NEW_ISSUE)}
-              items={[{ value: NEW_ISSUE, label: t(($) => $.workflow.new_issue) }, ...issueLinks.map((link) => ({ value: link.issue_id, label: `${link.issue_identifier} ${link.issue_title}` }))]}>
+              items={[{ value: NEW_ISSUE, label: t(($) => $.workflow.new_issue) }, { value: ADOPT_ISSUE, label: t(($) => $.workflow.adopt_existing) }]}>
               <SelectTrigger id={`${id}-existing`} className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value={NEW_ISSUE}>{t(($) => $.workflow.new_issue)}</SelectItem>
-                {issueLinks.map((link) => <SelectItem key={link.issue_id} value={link.issue_id} disabled={link.issue_status !== "backlog"}>
-                  {link.issue_identifier} {link.issue_title}
-                </SelectItem>)}
-              </SelectContent>
+              <SelectContent><SelectItem value={NEW_ISSUE}>{t(($) => $.workflow.new_issue)}</SelectItem><SelectItem value={ADOPT_ISSUE}>{t(($) => $.workflow.adopt_existing)}</SelectItem></SelectContent>
             </Select>
           </div>
         </div>
+        {existingIssueId === ADOPT_ISSUE && <div className="space-y-2">
+          <CockpitIssueChoice wsId={wsId} selected={adoptedIssue} onSelect={(issue) => setAdoptedIssueId(issue.id)} disabled={commandBusy} />
+          {adoptedIssueId && (adopted.isError || (!adopted.isPending && !adoptedIssue)) && <CockpitFlowError onRetry={() => void adopted.refetch()} />}
+          {adoptedIssue && adoptedIssue.status !== "backlog" && <p role="alert" className="text-caption text-destructive">{t(($) => $.workflow.adopt_hint)}</p>}
+        </div>}
         {existingIssueId === NEW_ISSUE ? <div className="flex flex-wrap items-center gap-2">
           <span className="text-caption">{t(($) => $.workflow.writer)}</span>
-          <AssigneePicker assigneeType={assigneeType} assigneeId={assigneeId || null}
+          <CockpitAssigneePicker wsId={wsId} assigneeType={assigneeType} assigneeId={assigneeId || null}
             open={commandBusy ? false : undefined}
             triggerRender={<Button type="button" variant="outline" size="sm" disabled={commandBusy} />}
             onUpdate={(update) => {
@@ -193,31 +192,35 @@ export function CockpitMeetingWorkflowPanel({
           }} />
         </div> : <p className="text-caption text-muted-foreground">{t(($) => $.workflow.adopt_hint)}</p>}
         {issueLinks.length > 0 && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.legacy_hint)}</p>}
-        {existingIssueId === NEW_ISSUE && (projects.isError || modules.isError) && <div role="alert" className="space-y-2 text-caption text-destructive">
+        {existingIssueId === NEW_ISSUE && (placementQuery.isError || (placementQuery.isSuccess && !placementQuery.data)) && <div role="alert" className="space-y-2 text-caption text-destructive">
           <p>{t(($) => $.workflow.placement_failed)}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => { void projects.refetch(); if (projectId) void modules.refetch(); }}>{t(($) => $.binding.retry)}</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => void placementQuery.refetch()}>{t(($) => $.binding.retry)}</Button>
         </div>}
         {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
-        <Button type="button" size="sm" disabled={commandBusy || loadError || !currentUserId || !reviewerId || !membersLoaded || !members.some((member) => member.user_id === reviewerId)
-          || (existingIssueId === NEW_ISSUE && (!projectId || !moduleId || projects.isError || modules.isError))}
+        <Button type="button" size="sm" disabled={commandBusy || loadError || !currentUserId || !reviewerId || !setupReviewerConfirmed
+          || (existingIssueId === NEW_ISSUE ? !placementConfirmed || !executor.available : !adoptionConfirmed)}
           aria-busy={commandBusy} onClick={() => void runCommand(setup)}>{commandBusy && <Spinner />}{t(($) => $.workflow.enable)}</Button>
       </>}
     </section>;
   }
 
   const actions = cockpitWorkflowSummaryActions(workflow, currentUserId);
+  const retryRelease = release.isError && release.variables?.meetingId === meetingId
+    && !(release.error instanceof ApiError && [400,403,404,409,422].includes(release.error.status)) ? release.variables : null;
+  const canRelease = Boolean(retryRelease) || (actions.canRelease && minutesExecutor.available);
   const current = actions.current;
   if (!actions.valid) return <div role="alert" className="space-y-3">
     <p className="text-caption text-destructive">{t(($) => $.workflow.incomplete)}</p>
     <Button type="button" variant="outline" size="sm" onClick={onReload}>{t(($) => $.binding.retry)}</Button>
   </div>;
-  const memberName = (userId: string | null) => members.find((member) => member.user_id === userId)?.name
-    || members.find((member) => member.user_id === userId)?.email || userId;
-  const reviewerName = memberName(workflow.reviewer_id);
-  const reviewerMissing = membersLoaded && Boolean(workflow.reviewer_id)
-    && !members.some((member) => member.user_id === workflow.reviewer_id);
-  const currentReviewerMissing = membersLoaded && Boolean(current)
-    && !members.some((member) => member.user_id === current?.reviewer_id);
+  const memberName = (userId: string | null) => futureMember.data?.items.find((member) => member.id === userId)?.title
+    || currentMember.data?.items.find((member) => member.id === userId)?.title
+    || members.find((member) => member.user_id === userId)?.name || userId;
+  const reviewerName = futureMember.data?.items.find((entry) => entry.id === workflow.reviewer_id)?.title || memberName(workflow.reviewer_id);
+  const reviewerMissing = Boolean(workflow.reviewer_id && futureMember.data && !futureMember.isError && !futureMember.isFetching && !futureReviewerConfirmed);
+  const currentReviewerMissing = Boolean(current && currentMember.data && !currentMember.isError && !currentMember.isFetching && !currentReviewerConfirmed);
+  const memberQuery = current?.decision === "pending" ? currentMember : futureMember;
+  const memberReadUnconfirmed = memberQuery.isPending || memberQuery.isFetching || memberQuery.isError || !memberQuery.data;
   const pendingReviewerMissing = current?.decision === "pending" && currentReviewerMissing;
   const submitVersion = async () => {
     const body = prepareCockpitMinutesSubmission(meetingId, workflow.revision, draft.submission_key || crypto.randomUUID());
@@ -230,10 +233,11 @@ export function CockpitMeetingWorkflowPanel({
       <p>{actions.canReassignReviewer && !readOnly ? t(($) => $.workflow.handoff_recovery) : t(($) => $.workflow.handoff_manager_only)}</p>
     </div>}
     <div className="space-y-2">
-      {!membersLoaded && <div role={memberQuery.isError ? "alert" : "status"} className="space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.workflow.members_loading)}</p>
-        <Button type="button" size="sm" variant="outline" disabled={memberQuery.isFetching} onClick={() => void memberQuery.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
+      {memberReadUnconfirmed && (memberQuery.isError || (memberQuery.isSuccess && !memberQuery.data)
+        ? <CockpitFlowError onRetry={() => void memberQuery.refetch()} />
+        : <div role="status" className="flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.workflow.loading)}</div>)}
       {current?.decision !== "pending" && <p className="break-words text-caption text-muted-foreground">{t(($) => $.workflow.future_reviewer, { name: reviewerName })}</p>}
-      <CockpitReviewerHandoffControl wsId={wsId} workflow={workflow} members={members} membersLoaded={membersLoaded}
+      <CockpitReviewerHandoffControl wsId={wsId} workflow={workflow} members={members}
         canTransfer={actions.canReassignReviewer && !readOnly} disabled={commandBusy || loadError} onReload={onReload} />
     </div>
     {loadError && <div role="alert" className="space-y-2 text-caption text-destructive">
@@ -265,14 +269,19 @@ export function CockpitMeetingWorkflowPanel({
           {!workflow.materials_ready && <li>{t(($) => $.workflow.need_materials)}</li>}
           {!actions.hasExecutor && <li>{t(($) => $.workflow.executor_required)}{" "}{workflow.minutes_issue && <AppLink href={paths.issueDetail(workflow.minutes_issue.id)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.assign_executor)}</AppLink>}</li>}
           {workflow.minutes_issue?.status !== "backlog" && <li>{t(($) => $.workflow.need_backlog)}{" "}{workflow.minutes_issue && <AppLink href={paths.issueDetail(workflow.minutes_issue.id)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.fix_issue_status)}</AppLink>}</li>}
-          {actions.canRelease && <li>{t(($) => $.workflow.ready_hint)}</li>}
+          {actions.hasExecutor && !minutesExecutor.available && !retryRelease && <li>
+            {minutesExecutor.isPending ? t(($) => $.workflow.executor_checking) : t(($) => $.workflow.executor_unavailable)}{" "}
+            {workflow.minutes_issue && <AppLink href={paths.issueDetail(workflow.minutes_issue.id)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.assign_executor)}</AppLink>}
+            {minutesExecutor.isError && <Button type="button" variant="ghost" size="xs" onClick={() => void minutesExecutor.refetch()}>{t(($) => $.binding.retry)}</Button>}
+          </li>}
+          {actions.canRelease && minutesExecutor.available && !retryRelease && <li>{t(($) => $.workflow.ready_hint)}</li>}
         </ul>
-        <Button type="button" size="sm" disabled={readOnly || !actions.canRelease || commandBusy} aria-busy={release.isPending}
-          onClick={() => void runCommand(() => release.mutateAsync({ meetingId, revision: workflow.revision }))}>
-          {release.isPending && <Spinner />}{t(($) => $.workflow.release)}</Button>
+        <Button type="button" size="sm" disabled={readOnly || !canRelease || commandBusy} aria-busy={release.isPending}
+          onClick={() => { if (!readOnly && canRelease && !commandBusy) void runCommand(() => release.mutateAsync(retryRelease ?? { meetingId, revision: workflow.revision })); }}>
+          {release.isPending && <Spinner />}{retryRelease ? t(($) => $.workflow.retry_release) : t(($) => $.workflow.release)}</Button>
       </>}
       <div className="space-y-1"><p className="text-caption font-medium">{t(($) => $.workflow.minutes_issue)}</p>
-        {workflow.minutes_issue && <WorkflowIssueLink issue={workflow.minutes_issue} newTab />}</div>
+        {workflow.minutes_issue && <WorkflowIssueLink wsId={wsId} issue={workflow.minutes_issue} newTab />}</div>
     </section>
     {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
     {current && <section className="space-y-3 rounded-lg border border-border p-4" aria-label={t(($) => $.workflow.current_version)}>
@@ -281,9 +290,9 @@ export function CockpitMeetingWorkflowPanel({
           <span className="text-muted-foreground">{current.published_at ? t(($) => $.workflow.published) : t(($) => $.workflow.unpublished)}</span></div></div>
       <p className="text-caption text-muted-foreground">{t(($) => $.workflow.review_issue)}</p>
       <p className="text-caption text-muted-foreground">{t(($) => $.workflow.reviewer_name, {
-        name: members.find((member) => member.user_id === current.reviewer_id)?.name || current.reviewer_id,
+        name: memberName(current.reviewer_id),
       })}</p>
-      <WorkflowIssueLink issue={current.review_issue} />
+      <WorkflowIssueLink wsId={wsId} issue={current.review_issue} />
       <DialogTrigger render={<Button type="button" size="sm" variant={actions.canReview && !readOnly ? "default" : "outline"} onClick={() => setReader({ id: current.id, number: current.version_number, reviewIssueId: current.review_issue.id, reviewerId: current.reviewer_id })} />}>
         {actions.canReview && !readOnly ? t(($) => $.workflow.read_and_review) : t(($) => $.minutes_history.read_current)}</DialogTrigger>
       {current.has_feedback && <p className="text-caption text-muted-foreground">{t(($) => $.minutes_history.has_feedback)}</p>}
@@ -312,7 +321,7 @@ export function CockpitMeetingWorkflowPanel({
         onChange={(event) => setCockpitMinutesDraftContent(meetingId, event.target.value)} />
       <p className="text-caption text-muted-foreground">{draft.pending ? t(($) => $.workflow.submission_pending) : t(($) => $.workflow.draft_hint)}</p>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={commandBusy || !draft.content.trim() || (!actions.canSubmit && !draft.pending) || (reviewerMissing && !draft.pending)} aria-busy={submit.isPending}
+        <Button type="button" size="sm" disabled={commandBusy || !draft.content.trim() || (!actions.canSubmit && !draft.pending) || (!futureReviewerConfirmed && !draft.pending)} aria-busy={submit.isPending}
           onClick={() => void runCommand(submitVersion, true)}>{submit.isPending && <Spinner />}{draft.pending ? t(($) => $.workflow.retry_submission) : t(($) => $.workflow.submit_version)}</Button>
         {draft.pending && <Button type="button" size="sm" variant="outline" disabled={commandBusy} onClick={onReload}>{t(($) => $.workflow.refresh_status)}</Button>}
       </div>
@@ -323,7 +332,7 @@ export function CockpitMeetingWorkflowPanel({
       {(detail) => current && reader.id === current.id && reader.reviewIssueId === current.review_issue.id && reader.reviewerId === current.reviewer_id && detail.version.id === current.id && detail.version.content_hash === current.content_hash
         && detail.version.review_issue.id === current.review_issue.id && detail.version.reviewer_id === current.reviewer_id
         && detail.version.decision === current.decision
-        && detail.can_review && actions.canReview && !readOnly && !currentReviewerMissing && !loadError
+        && detail.can_review && actions.canReview && !readOnly && currentReviewerConfirmed && !loadError
         ? <>{error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       <div className="space-y-3 border-t pt-3">
         <div className="space-y-1"><label htmlFor={`${id}-decision`} className="text-caption">{t(($) => $.workflow.decision)}</label>

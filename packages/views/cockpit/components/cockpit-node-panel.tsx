@@ -3,7 +3,6 @@
 // Structural levels expose basic fields; task-level details remain stored when hidden.
 
 import type {
-  CockpitIssueLink,
   CockpitMeeting,
   CockpitNode,
   CockpitNodePatch,
@@ -37,7 +36,6 @@ import {
   EditableTextArea,
   ProgressField,
 } from "./cockpit-fields";
-import { CockpitIssueLinks } from "./cockpit-issue-links";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
 
 export interface CockpitNodePanelProps {
@@ -47,9 +45,8 @@ export interface CockpitNodePanelProps {
   displayCode?: string;
   parent: CockpitNode | undefined;
   payments: CockpitPayment[];
-  links: CockpitIssueLink[];
   /** The meetings that discussed this work item, newest first. */
-  meetings: CockpitMeeting[];
+  meetings: Pick<CockpitMeeting, "id" | "title" | "meet_date" | "time_range" | "start_time" | "end_time">[];
   isBranch: boolean;
   statusSuggestions: string[];
   execStatusSuggestions: string[];
@@ -58,7 +55,14 @@ export interface CockpitNodePanelProps {
   vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
   binding?: React.ReactNode;
+  notice?: React.ReactNode;
   taskWorkspace?: React.ReactNode;
+  artifactWorkspace?: React.ReactNode;
+  acceptanceWorkspace?: React.ReactNode;
+  referenceWorkspace?: React.ReactNode;
+  paymentPaging?: React.ReactNode;
+  meetingPaging?: React.ReactNode;
+  paymentTotal?: number;
   section: CockpitNodeView;
   onSectionChange: (section: CockpitNodeView) => void;
   /** Resolve only after the server has deleted the node; reject on failure. */
@@ -68,11 +72,6 @@ export interface CockpitNodePanelProps {
   /** Zero-based tree depth, matching CockpitTreeNode.depth. */
   depth: number;
   onClose: () => void;
-  onLinkIssue: (issueId: string) => void;
-  onUnlinkIssue: (issueId: string) => void;
-  /** Opens a create dialog using the item's inherited UUID binding.
-   *  The display code seeds the title without determining its destination. */
-  onCreateIssue?: () => void;
   /** Opens one of this item's meetings in the register. */
   onOpenMeeting: (meetingId: string) => void;
   onCreatePayment: () => void;
@@ -86,7 +85,6 @@ export function CockpitNodePanel({
   displayCode,
   parent,
   payments,
-  links,
   meetings,
   isBranch,
   statusSuggestions,
@@ -96,16 +94,20 @@ export function CockpitNodePanel({
   vendorSuggestions,
   onPatch,
   binding,
+  notice,
   taskWorkspace,
+  artifactWorkspace,
+  acceptanceWorkspace,
+  referenceWorkspace,
+  paymentPaging,
+  meetingPaging,
+  paymentTotal: confirmedPaymentTotal,
   section,
   onSectionChange,
   onDelete,
   deleteConfirmationDescription,
   depth,
   onClose,
-  onLinkIssue,
-  onUnlinkIssue,
-  onCreateIssue,
   onOpenMeeting,
   onCreatePayment,
   onPatchPayment,
@@ -119,7 +121,7 @@ export function CockpitNodePanel({
   const [deleteFailed, setDeleteFailed] = useState(false);
   const deletingRef = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const taskDetails = depth >= 2;
+  const taskDetails = Boolean(taskWorkspace) || depth >= 2;
 
   useEffect(() => { closeButton.current?.focus(); }, [node.id]);
 
@@ -154,11 +156,11 @@ export function CockpitNodePanel({
   };
 
   const unset = t(($) => $.common.unset);
-  const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentTotal = confirmedPaymentTotal ?? payments.reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <aside className={cn("cockpit-panel-enter flex max-w-full shrink-0 flex-col border-l border-border bg-card",
-      taskWorkspace ? "w-[min(54rem,70vw)] max-xl:w-full max-xl:border-l-0" : "w-96 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl")}>
+      (taskWorkspace || referenceWorkspace) ? "w-[min(54rem,70vw)] max-xl:w-full max-xl:border-l-0" : "w-96 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl")}>
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -211,11 +213,18 @@ export function CockpitNodePanel({
         </button>
       </header>
 
-      <Tabs value={taskWorkspace ? section : "details"} onValueChange={(value) => { if (value === "tasks" || value === "details") onSectionChange(value); }} className="min-h-0 flex-1 gap-0">
+      {notice && <div className="shrink-0 border-b border-border p-3">{notice}</div>}
+      {((section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace)) && <p role="status" className="px-4 py-3 text-caption text-muted-foreground">{t(($) => $.feature_availability.unavailable)}</p>}
+      <Tabs value={!taskWorkspace || (section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace) ? "details" : section} onValueChange={(value) => { if (value === "tasks" || value === "artifacts" || value === "acceptance" || value === "details") onSectionChange(value); }} className="min-h-0 flex-1 gap-0">
         {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1">
-          <TabsTrigger value="tasks">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger><TabsTrigger value="details">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
+          <TabsTrigger value="tasks">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger>
+          {artifactWorkspace && <TabsTrigger value="artifacts">{t(($) => $.shell.artifacts)}</TabsTrigger>}
+          {acceptanceWorkspace && <TabsTrigger value="acceptance">{t(($) => $.acceptance.title)}</TabsTrigger>}
+          <TabsTrigger value="details">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
         </TabsList>}
         {taskWorkspace && <TabsContent value="tasks" keepMounted className="min-h-0 overflow-y-auto p-4">{taskWorkspace}</TabsContent>}
+        {artifactWorkspace && <TabsContent value="artifacts" className="flex min-h-0 flex-1 flex-col overflow-hidden [&[hidden]]:hidden">{artifactWorkspace}</TabsContent>}
+        {acceptanceWorkspace && <TabsContent value="acceptance" className="min-h-0 overflow-y-auto p-4">{acceptanceWorkspace}</TabsContent>}
         <TabsContent value="details" className="min-h-0 overflow-y-auto p-3">
         {binding && <div className="mb-4">{binding}</div>}
         <div className="grid grid-cols-2 gap-3">
@@ -284,22 +293,17 @@ export function CockpitNodePanel({
 
         <Separator className="my-4" />
         <CockpitField label={t(($) => $.node.linked_issues)}>
-          {taskWorkspace ? <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.reference_location)}</p> : <CockpitIssueLinks
-            links={links}
-            onLink={onLinkIssue}
-            onUnlink={onUnlinkIssue}
-            onCreate={onCreateIssue}
-            disabled={readOnly}
-          />}
+          {taskWorkspace ? <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.reference_location)}</p> : referenceWorkspace}
         </CockpitField>
 
         {/* The other direction of the meeting register: what was discussed
             here, and when. Read-only — a meeting is attached from the meeting,
             which is where the rest of its record lives. */}
-        {meetings.length > 0 && (
+        {(meetings.length > 0 || meetingPaging) && (
           <CockpitField label={t(($) => $.meetings.node_meetings)} className="mt-3">
+            {meetingPaging}
             <ul className="flex flex-col gap-0.5">
-              {meetings.slice(0, 5).map((meeting) => (
+              {meetings.map((meeting) => (
                 <li key={meeting.id}>
                   <button
                     type="button"
@@ -385,8 +389,9 @@ export function CockpitNodePanel({
           </>
         )}
 
-        {(taskDetails || payments.length > 0) && (
+        {(taskDetails || payments.length > 0 || paymentPaging) && (
             <div className="mt-3">
+              {paymentPaging}
               <div className="flex items-baseline gap-2">
                 <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
                   {t(($) => $.node.payments)}

@@ -2,6 +2,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
 import { issueKeys } from "../issues/queries";
+import { cockpitReadKeys } from "./read-queries";
+import { CockpitNodeIssueLinkReceiptSchema, CockpitMeetingIssueLinkReceiptSchema, CockpitMeetingNodeLinkReceiptSchema } from "../api/cockpit-reference-schemas";
 import type {
   CockpitBoard,
   CockpitChangedPayload,
@@ -108,6 +110,7 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
   void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
 
   if (scope === "meeting_actions") {
@@ -145,6 +148,37 @@ export function onCockpitChanged(
   // and meeting_nodes scopes never touch what the graph draws.
   if (scope === "meeting" || scope === "meeting_issues") {
     qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+  }
+
+  if (scope === "board" && action === "reference_changed") {
+    const frame = asRecord(entity);
+    const kind = frame?.["relation_kind"];
+    const reference = frame?.["reference"];
+    if (kind === "issue_links") {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+      const parsed = CockpitNodeIssueLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.node_id === parsed.data.link.node_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, issue_links: [...board.issue_links.filter((item) => item.node_id !== link.node_id || item.issue_id !== link.issue_id), link] }));
+        return;
+      }
+    } else if (kind === "meeting_issues") {
+      void qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+      const parsed = CockpitMeetingIssueLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.meeting_id === parsed.data.link.meeting_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, meeting_issues: [...board.meeting_issues.filter((item) => item.meeting_id !== link.meeting_id || item.issue_id !== link.issue_id), link] }));
+        return;
+      }
+    } else if (kind === "meeting_nodes") {
+      const parsed = CockpitMeetingNodeLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.meeting_id === parsed.data.link.meeting_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, meeting_nodes: [...board.meeting_nodes.filter((item) => item.meeting_id !== link.meeting_id || item.node_id !== link.node_id), link] }));
+        return;
+      }
+    }
+    // An unfamiliar receipt uses the same board refresh as an older client.
   }
 
   // An import or restore rewrote the board; nothing here can reconstruct it

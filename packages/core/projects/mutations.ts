@@ -23,6 +23,7 @@ export function useCreateProject() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
     },
   });
 }
@@ -52,6 +53,7 @@ export function useUpdateProject() {
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: projectKeys.detail(wsId, vars.id) });
       qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
       // A project's status is a filter dimension of the issue table, so
       // changing it moves issues in and out of a filtered window. Nothing
       // in the issue payload changes, so only this invalidation can
@@ -87,6 +89,7 @@ export function useDeleteProject() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
       // Deleting a project removes its status from the workspace, so a table
       // window filtered on that status still holds its issues. The realtime
       // event invalidates too, but a delivery gap must not leave the window

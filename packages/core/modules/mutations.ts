@@ -23,6 +23,7 @@ export function useCreateModule() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: moduleKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
     },
   });
 }
@@ -52,6 +53,7 @@ export function useUpdateModule() {
     onSettled: (_data, _err, vars) => {
       qc.invalidateQueries({ queryKey: moduleKeys.detail(wsId, vars.id) });
       qc.invalidateQueries({ queryKey: moduleKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
     },
   });
 }
@@ -85,6 +87,7 @@ export function useDeleteModule() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
     },
   });
 }
@@ -125,6 +128,7 @@ export function useReorderModules() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: moduleKeys.list(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
     },
   });
 }

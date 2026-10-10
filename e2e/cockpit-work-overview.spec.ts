@@ -195,30 +195,36 @@ test("drives the cockpit from scoped live work while retaining historical duties
     });
 
     const projectScope = page.getByRole("region", { name: "Project scope", exact: true });
-    const projectRead = (q: string, offset: number) => page.waitForResponse((response) => {
+    const projectRead = (q: string, cursor = "") => page.waitForResponse((response) => {
       const url = new URL(response.url());
-      return url.pathname === "/api/projects/search" && url.searchParams.get("q") === q && Number(url.searchParams.get("offset") ?? 0) === offset;
+      return url.pathname === "/api/cockpit/scopes/projects" && url.searchParams.get("q") === q && (url.searchParams.get("cursor") ?? "") === cursor;
     });
     const chooseProject = async (project: { id: string; title: string }, expected: number, audience: string) => {
       await page.getByRole("button", { name: "Project scope", exact: true }).click();
-      const search = projectRead(project.title, 0);
+      const search = projectRead(project.title);
       await projectScope.getByRole("textbox", { name: "Search projects", exact: true }).fill(project.title);
       expect((await search).status()).toBe(200);
-      const read = attentionRead(page, (query) => query.get("project_id") === project.id && query.get("view") === audience && !query.get("cursor"));
+      const initial = overviewRead(page, (query) => query.get("project_id") === project.id && query.get("attention_view") === "mine");
       await projectScope.getByRole("button", { name: project.title, exact: true }).click();
+      const preview = await (await initial).json() as TestCockpitWorkOverview;
+      expect(preview.attention.view).toBe("mine"); expect(preview.attention.items.length).toBeLessThanOrEqual(8);
+      if (audience === "team") await page.getByRole("button", { name: "Team queue", exact: true }).click();
+      const read = attentionRead(page, (query) => query.get("project_id") === project.id && query.get("view") === audience && query.get("page_size") === "25" && !query.get("cursor"));
+      await page.getByRole("button", { name: "View all next actions", exact: true }).click();
       expect((await attentionBody(await read)).total).toBe(expected);
       await expect(nextActions.getByText(`Page 1 · ${Math.min(25, expected)} shown · ${expected} matching`, { exact: true })).toBeVisible();
     };
-    await test.step("search project scope in bounded pages and reset the queue on every scope change", async () => {
+    await test.step("search project scope in bounded pages and keep each scope’s queue independent", async () => {
       await page.getByRole("button", { name: "Project scope", exact: true }).click();
-      const first = projectRead("Dashboard review", 0);
+      const first = projectRead("Dashboard review");
       await projectScope.getByRole("textbox", { name: "Search projects", exact: true }).fill("Dashboard review");
       const searchFirst = await first;
-      expect(new URL(searchFirst.url()).searchParams.get("limit")).toBe("20");
-      expect((await searchFirst.json()).projects).toHaveLength(20);
-      const second = projectRead("Dashboard review", 20);
+      const projectsFirst = await searchFirst.json();
+      expect(projectsFirst.items).toHaveLength(20);
+      expect(projectsFirst.next_cursor).toBeTruthy();
+      const second = projectRead("Dashboard review", projectsFirst.next_cursor);
       await projectScope.getByRole("button", { name: "Next page", exact: true }).click();
-      expect((await (await second).json()).projects).toHaveLength(7);
+      expect((await (await second).json()).items).toHaveLength(7);
       await page.keyboard.press("Escape");
       await chooseProject(alpha, 72, "team");
       const mine = attentionRead(page, (query) => query.get("view") === "mine" && query.get("project_id") === alpha.id && !query.get("cursor"));
@@ -232,6 +238,9 @@ test("drives the cockpit from scoped live work while retaining historical duties
       await expect(nextActions.getByText("No pending work in this scope.", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Project scope", exact: true }).click();
       await projectScope.getByRole("button", { name: "All projects", exact: true }).click();
+      await expect(nextActions.getByText("Page 5 · 20 shown · 120 matching", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back to work overview", exact: true }).click();
+      await page.getByRole("button", { name: "View all next actions", exact: true }).click();
       await expect(nextActions.getByText("Page 1 · 25 shown · 120 matching", { exact: true })).toBeVisible();
       expect(boardReads).toHaveLength(0);
     });
@@ -263,7 +272,7 @@ test("drives the cockpit from scoped live work while retaining historical duties
       await expect(ownerLink).toHaveAttribute("href", `/${workspace.slug}/cockpit?meeting=${ownerMeeting.id}`);
       await ownerLink.click();
       await expect(page).toHaveURL(new RegExp(`meeting=${ownerMeeting.id}`));
-      await expect(page.getByRole("button", { name: `Delete meeting ${ownerMeeting.title}`, exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Read and review minutes", exact: true })).toBeVisible();
       await expect(page.getByText("Pending review", { exact: true }).first()).toBeVisible();
       await page.goBack();
       await expect(nextActions.getByRole("article")).toHaveCount(3);
@@ -298,11 +307,12 @@ test("drives the cockpit from scoped live work while retaining historical duties
       await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(priorScroll - 20);
       await scroller.evaluate((element) => { element.scrollTop = 0; });
       await page.setViewportSize({ width: 1600, height: 1150 });
+      await page.getByRole("navigation", { name: "Cockpit sections", exact: true }).getByRole("link", { name: "Execution plan", exact: true }).click();
       await page.getByRole("link", { name: "Business overview", exact: true }).click();
-      await expect(page).toHaveURL(new RegExp("view=operations"));
+      await expect(page).toHaveURL(new RegExp("plan_view=operations"));
       await expect(page.getByText(goal, { exact: true }).first()).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("work-overview-business-access.png"), animations: "disabled" });
-      await page.getByRole("link", { name: "Work overview", exact: true }).click();
+      await page.getByRole("navigation", { name: "Cockpit sections", exact: true }).getByRole("link", { name: "Overview", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Work overview", exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("work-overview-team-home.png"), animations: "disabled" });
       await page.setViewportSize({ width: 1100, height: 1100 });

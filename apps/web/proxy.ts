@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeWorkspaceStartPage, workspaceStartPath, WORKSPACE_START_COOKIE } from "@multica/core/paths/workspace-start";
 import { LOCALE_COOKIE } from "@multica/core/i18n";
 import {
   MULTICA_LOCALE_HEADER,
@@ -102,7 +103,7 @@ export function proxy(req: NextRequest) {
     !isOfficialMarketingHost(req.nextUrl.hostname)
   ) {
     const url = req.nextUrl.clone();
-    url.pathname = `/${lastSlug}/issues`;
+    url.pathname = workspaceStartPath(lastSlug, normalizeWorkspaceStartPage(req.cookies.get(WORKSPACE_START_COOKIE)?.value));
     return NextResponse.redirect(url);
   }
 

@@ -1,3 +1,11 @@
+import { installCockpitTestLayout } from "./test/cockpit-layout-test-fixture";
+import { beforeEach as beforeLayout, afterEach as afterLayout } from "vitest";
+let restoreLayout = () => {};
+beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
+afterLayout(() => restoreLayout());
+import { useCockpitScopeViewStore } from "@multica/core/cockpit";
+import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
+import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { workflowFixture, workflowSummary } from "./workflow-test-fixtures";
@@ -34,8 +42,9 @@ vi.mock("../../navigation", async () => {
   return { useNavigation: fixture.useCockpitTestNavigation, AppLink: fixture.CockpitTestLink };
 });
 
-vi.mock("@multica/core/api", () => ({
+vi.mock("@multica/core/api", async () => ({
   api: {
+    ...(await import("./test/cockpit-read-mocks-fixture")).makeCockpitReadApiMocks(),
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
     getCockpitMeetingWorkflowSummary: vi.fn(),
@@ -85,7 +94,7 @@ vi.mock("@multica/core/auth", () => {
 
 import { api } from "@multica/core/api";
 import { useModalStore } from "@multica/core/modals";
-import { CockpitBoardWorkspace } from "./cockpit-page";
+import { CockpitPage } from "./cockpit-entry";
 import { captureCockpitGantt, printCockpitGantt } from "./cockpit-export";
 vi.mock("./cockpit-export", () => ({ captureCockpitGantt: vi.fn(), printCockpitGantt: vi.fn(), downloadCockpitPng: vi.fn() }));
 
@@ -218,7 +227,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
-        <CockpitBoardWorkspace />
+        <CockpitPage />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -226,9 +235,10 @@ function renderPage() {
 
 describe("Cockpit secondary interactions", () => {
   beforeEach(() => {
-    resetCockpitTestNavigation();
+    resetCockpitTestNavigation("/ws/cockpit?view=operations");
     vi.clearAllMocks();
-    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    useCockpitScopeViewStore.getState().reset();
+    readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -236,7 +246,7 @@ describe("Cockpit secondary interactions", () => {
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
-    vi.mocked(api.listMembers).mockResolvedValue([
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",
@@ -268,9 +278,9 @@ describe("Cockpit secondary interactions", () => {
   it("checks workflow protection before offering deletion from an overview meeting card", async () => {
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary(workflowFixture({ meeting_id: meetingId })));
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Meeting details: Working group weekly" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+    expect(await screen.findByRole("button", { name: "Delete meeting Working group weekly" })).toBeDisabled();
     expect(await screen.findByText("This meeting has a work package and cannot be deleted. Its tasks and versions are retained.")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(api.deleteCockpitMeeting).not.toHaveBeenCalled();
@@ -280,18 +290,14 @@ describe("Cockpit secondary interactions", () => {
     let finish!: () => void;
     vi.mocked(api.deleteCockpitMeeting).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderPage();
-    // The meeting row opens a read-only detail dialog; deletion lives behind
-    // its Edit entry, one hop from reading.
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Meeting details: Working group weekly" }),
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete meeting Working group weekly" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+    const trigger = await screen.findByRole("button", { name: "Delete meeting Working group weekly" }); await waitFor(() => expect(trigger).toBeEnabled()); fireEvent.click(trigger);
     const dialog = await screen.findByRole("alertdialog");
-    const remove = within(dialog).getByRole("button", { name: "Delete" });
+    const remove = within(dialog).getByRole("button", { name: "Delete meeting Working group weekly" });
     fireEvent.click(remove);
     fireEvent.click(remove);
-    expect(remove).toBeDisabled();
+    await waitFor(() => expect(remove).toBeDisabled());
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     await waitFor(() => expect(api.deleteCockpitMeeting).toHaveBeenCalledTimes(1));
     finish();
@@ -300,13 +306,13 @@ describe("Cockpit secondary interactions", () => {
 
   it("collapses only the secondary controls, retaining search and exports", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     const toggle = screen.getAllByRole("button", { name: enCockpit.toolbar.collapse_controls })
       .find((el) => el.getAttribute("aria-controls") === "cockpit-secondary-toolbar")!;
     fireEvent.click(toggle);
     expect(screen.queryByRole("combobox", { name: "Timeline density" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Search the board" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Export" })).toBeInTheDocument();
     fireEvent.click(toggle);
     expect(screen.getByRole("combobox", { name: "Timeline density" })).toBeInTheDocument();
   });
@@ -316,9 +322,9 @@ describe("Cockpit secondary interactions", () => {
     const paymentBoard = structuredClone(board);
     paymentBoard.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root" }));
     paymentBoard.nodes[1]!.parent_id = "module";
-    vi.mocked(api.getCockpit).mockResolvedValue(paymentBoard);
+    readCockpitFixture.mockResolvedValue(paymentBoard);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
@@ -326,7 +332,7 @@ describe("Cockpit secondary interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete instalment" }));
     expect(api.deleteCockpitPayment).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete instalment" }));
     await waitFor(() => expect(api.deleteCockpitPayment).toHaveBeenCalled());
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
@@ -338,31 +344,16 @@ describe("Cockpit secondary interactions", () => {
     // Eligible leaves use the primary-task workspace (covered in node-tasks).
     // A grouping retains the legacy reference creation flow and callback.
     threeLevel.nodes.push(node({ id: "execution-leaf", code: "detail", parent_id: "task" }));
-    vi.mocked(api.getCockpit).mockResolvedValue(threeLevel);
+    readCockpitFixture.mockResolvedValue(threeLevel);
     vi.mocked(api.listModules).mockResolvedValue({
       modules: [
         { id: "m-0101", project_id: "p-01", title: "01.01 Retrospective cohort" },
         { id: "m-other", project_id: "p-09", title: "Meeting material" },
       ],
     } as unknown as Awaited<ReturnType<typeof api.listModules>>);
-    // Echo the node's whole set back, as the server does — the next link is
-    // built from it.
-    vi.mocked(api.setCockpitNodeIssues).mockImplementation(async (_nodeId, issueIds) =>
-      ({
-        node_id: "task",
-        links: issueIds.map((issue_id, position) => ({
-          id: `link-${issue_id}`,
-          node_id: "task",
-          issue_id,
-          issue_number: 0,
-          issue_identifier: issue_id.toUpperCase(),
-          issue_title: issue_id,
-          issue_status: "todo",
-          position,
-        })),
-      }) as unknown as Awaited<ReturnType<typeof api.setCockpitNodeIssues>>);
+    vi.mocked(api.appendCockpitNodeIssue).mockImplementation(async (_ws, nodeId, issueId) => ({ id: `reference-${issueId}`, issue_number: 0, node_id: nodeId, issue_id: issueId, issue_identifier: issueId.toUpperCase(), issue_title: issueId, issue_status: "todo", position: 1 }));
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
 
@@ -397,31 +388,12 @@ describe("Cockpit secondary interactions", () => {
       state: { cockpit_node_id: string | null },
     ) => unknown;
     await onCreated({ id: "issue-9" }, { cockpit_node_id: "task" });
-    await waitFor(() =>
-      expect(api.setCockpitNodeIssues).toHaveBeenCalledWith(
-        "task",
-        ["issue-1", "issue-9"],
-        { replace: true },
-      ),
-    );
-
-    // "Create another" keeps the same callback for the whole run, so the
-    // second issue must not replace the set the first one joined.
-    await waitFor(() => expect(screen.getByText("issue-9")).toBeInTheDocument());
+    await waitFor(() => expect(api.appendCockpitNodeIssue).toHaveBeenCalledExactlyOnceWith("ws-1", "task", "issue-9"));
+    // Create another appends independently; it never replaces a collection read from a page.
     await onCreated({ id: "issue-10" }, { cockpit_node_id: "task" });
-    await waitFor(() =>
-      expect(api.setCockpitNodeIssues).toHaveBeenLastCalledWith(
-        "task",
-        ["issue-1", "issue-9", "issue-10"],
-        { replace: true },
-      ),
-    );
-
-    // The dialog owns the final answer: an issue moved off this row is filed
-    // where the user left it, and one with no row is not filed at all.
-    vi.mocked(api.setCockpitNodeIssues).mockClear();
-    await onCreated({ id: "issue-11" }, { cockpit_node_id: null });
+    await waitFor(() => expect(api.appendCockpitNodeIssue).toHaveBeenLastCalledWith("ws-1", "task", "issue-10"));
     expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
+    vi.mocked(api.appendCockpitNodeIssue).mockClear(); await onCreated({ id: "issue-11" }, { cockpit_node_id: null }); expect(api.appendCockpitNodeIssue).not.toHaveBeenCalled();
     useModalStore.getState().close();
   });
 
@@ -434,8 +406,8 @@ describe("Cockpit secondary interactions", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
     try {
       renderPage();
-      fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Export" }));
       fireEvent.click(await screen.findByRole("menuitem", { name: enCockpit.toolbar.export_pdf }));
       await waitFor(() => expect(printCockpitGantt).toHaveBeenCalledWith(canvas, popup, expect.stringMatching(/^Programme board-/)));
       expect(captureCockpitGantt).toHaveBeenCalledWith(expect.objectContaining({ dataset: expect.objectContaining({ cockpitGantt: "true" }) }), true);
@@ -445,12 +417,12 @@ describe("Cockpit secondary interactions", () => {
 
   it("opens week details for tasks inside a collapsed branch without obsolete core markers", async () => {
     const select = vi.fn();
-    render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-      <CockpitGantt board={board} today="2026-09-18" zoom="week" query=""
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
+      <CockpitGantt board={board} displayCodes={buildCockpitDisplayCodesFromIndex(board.nodes)} contextNodeIds={new Set()} taskCounts={new Map()} today="2026-09-18" zoom="week" query=""
         rootIds={new Set()} collapsed={new Set(["root"])} onToggleCollapse={vi.fn()}
         onSelect={select} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
         ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
-    </I18nProvider>);
+    </I18nProvider></QueryClientProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "01.01 Sign the governance agreement" }));
@@ -495,12 +467,12 @@ describe("Cockpit secondary interactions", () => {
       issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
     };
     render(
-      <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-        <CockpitGantt board={markerBoard} today="2026-09-18" zoom="month" query=""
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
+        <CockpitGantt board={markerBoard} displayCodes={buildCockpitDisplayCodesFromIndex(markerBoard.nodes)} contextNodeIds={new Set()} taskCounts={new Map()} today="2026-09-18" zoom="month" query=""
           rootIds={new Set()} collapsed={new Set()} onToggleCollapse={vi.fn()}
           onSelect={vi.fn()} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
           ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
-      </I18nProvider>,
+      </I18nProvider></QueryClientProvider>,
     );
     const markersIn = (nodeId: string, name: string | RegExp) =>
       Array.from(document.querySelectorAll<HTMLElement>(`[data-cockpit-node="${nodeId}"]`))

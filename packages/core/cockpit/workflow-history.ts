@@ -1,6 +1,6 @@
 import type { CockpitMeetingWorkflowSummary, CockpitMinutesVersionMetadata, CockpitWorkflowCommand, CockpitWorkflowCommandResponse, CockpitWorkflowNasExport } from "../types";
 import { isAbsoluteCollabPath } from "../projects/collab-path";
-import { sameCockpitNasDestination } from "./nas-export";
+import { cockpitNasCopyEvidenceValid, sameCockpitNasDestination } from "./nas-export";
 
 export function cockpitWorkflowVersionMatches(summary: CockpitMeetingWorkflowSummary, version: CockpitMinutesVersionMetadata | null): boolean {
   return Boolean(version?.id && version.version_number > 0 && version.content_hash && version.source_issue_id === summary.minutes_issue?.id && version.review_issue.id && version.reviewer_id);
@@ -41,6 +41,7 @@ export function cockpitWorkflowNasExportValid(summary: CockpitMeetingWorkflowSum
   return Boolean(summary.enabled && cockpitWorkflowVersionMatches(summary, version) && version.decision === "approved" && version.published_at
     && job.id && job.revision > 0 && job.version_id === version.id && job.version_number === version.version_number && job.content_hash === version.content_hash
     && job.source_issue_id === version.source_issue_id && job.root_id && isAbsoluteCollabPath(job.directory) && isAbsoluteCollabPath(job.target_path)
+    && cockpitNasCopyEvidenceValid(job)
     && (job.status !== "succeeded" || (job.completed_at && job.size_bytes !== null)));
 }
 

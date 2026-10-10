@@ -1,3 +1,10 @@
+import { installCockpitTestLayout } from "./test/cockpit-layout-test-fixture";
+import { beforeEach as beforeLayout, afterEach as afterLayout } from "vitest";
+let restoreLayout = () => {};
+beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
+afterLayout(() => restoreLayout());
+import { useCockpitScopeViewStore } from "@multica/core/cockpit";
+import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
@@ -29,8 +36,9 @@ vi.mock("../../navigation", async () => {
   return { useNavigation: fixture.useCockpitTestNavigation, AppLink: fixture.CockpitTestLink };
 });
 
-vi.mock("@multica/core/api", () => ({
+vi.mock("@multica/core/api", async () => ({
   api: {
+    ...(await import("./test/cockpit-read-mocks-fixture")).makeCockpitReadApiMocks(),
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
     getCockpitMeetingWorkflowSummary: vi.fn(),
@@ -79,7 +87,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
-import { CockpitBoardWorkspace } from "./cockpit-page";
+import { CockpitPage } from "./cockpit-entry";
 
 function node(over: Partial<CockpitBoard["nodes"][number]> & { id: string; code: string }) {
   return {
@@ -210,7 +218,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
-        <CockpitBoardWorkspace />
+        <CockpitPage />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -218,9 +226,10 @@ function renderPage() {
 
 describe("Cockpit controls regressions", () => {
   beforeEach(() => {
-    resetCockpitTestNavigation();
+    resetCockpitTestNavigation("/ws/cockpit?view=operations");
     vi.clearAllMocks();
-    vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
+    useCockpitScopeViewStore.getState().reset();
+    readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -228,7 +237,7 @@ describe("Cockpit controls regressions", () => {
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
     vi.mocked(api.listModules).mockResolvedValue({ modules: [], total: 0 });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
-    vi.mocked(api.listMembers).mockResolvedValue([
+    readCockpitMembersFixture.mockResolvedValue([
       {
         id: "m1",
         workspace_id: "ws-1",
@@ -270,8 +279,11 @@ describe("Cockpit controls regressions", () => {
 
   it("opens week details with tasks even when the root branch is collapsed", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
-    fireEvent.click(screen.getByRole("button", { name: "Collapse High-quality datasets" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
+    await screen.findByRole("button", { name: "Open 01" });
+    const collapse = screen.queryByRole("button", { name: "Collapse High-quality datasets" });
+    if (collapse) fireEvent.click(collapse);
+    expect(await screen.findByRole("button", { name: "Expand High-quality datasets" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "Timeline density" }));
     await userEvent.click(await screen.findByRole("option", { name: "Week" }));
     fireEvent.click(await screen.findByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));
@@ -281,7 +293,7 @@ describe("Cockpit controls regressions", () => {
   });
   it("collapses only secondary controls, leaving search available", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(screen.getByRole("button", { name: "Hide timeline controls" }));
     expect(screen.queryByRole("combobox", { name: "Timeline density" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Search the board" })).toBeInTheDocument();

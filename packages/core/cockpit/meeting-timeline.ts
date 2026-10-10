@@ -21,30 +21,32 @@ import {
  * fraction of the domain. Meetings share a card per day rather than stacking
  * three deep — the timeline is a programme view, and "three acceptances on
  * the 21st" reads better as one card than as a pile. */
-export interface CockpitTimelineGroup {
+export type CockpitTimelineMeeting = Pick<CockpitMeeting, "id" | "meet_date" | "start_time" | "title" | "track">;
+
+export interface CockpitTimelineGroup<T extends CockpitTimelineMeeting = CockpitTimelineMeeting> {
   /** The shared day (YYYY-MM-DD). */
   day: string;
   /** The day's meetings, time-ordered. */
-  meetings: CockpitMeeting[];
+  meetings: T[];
   at: number;
 }
 
-export interface CockpitTimelineLane {
+export interface CockpitTimelineLane<T extends CockpitTimelineMeeting = CockpitTimelineMeeting> {
   /** The line these meetings advanced; "" is the unfiled lane. */
   track: string;
   color: string;
   /** One entry per day the line met, in date order. */
-  items: CockpitTimelineGroup[];
+  items: CockpitTimelineGroup<T>[];
 }
 
-export interface CockpitMeetingTimeline {
-  lanes: CockpitTimelineLane[];
+export interface CockpitMeetingTimeline<T extends CockpitTimelineMeeting = CockpitTimelineMeeting> {
+  lanes: CockpitTimelineLane<T>[];
   /** Domain bounds as day strings, aligned to whole months. */
   from: string;
   to: string;
   /** Meetings with no date have no place on a timeline; the view says how
    *  many it is holding back rather than dropping them silently. */
-  undated: CockpitMeeting[];
+  undated: T[];
 }
 
 /** Day string → absolute day number, the one conversion the maths needs. */
@@ -62,10 +64,10 @@ function dayNumber(day: string): number {
  * the point of the view, and a programme whose meetings all ran last month
  * still wants to see where "now" fell off the end.
  */
-export function buildCockpitMeetingTimeline(
-  meetings: CockpitMeeting[],
+export function buildCockpitMeetingTimeline<T extends CockpitTimelineMeeting>(
+  meetings: T[],
   today: string,
-): CockpitMeetingTimeline {
+): CockpitMeetingTimeline<T> {
   const dated = sortCockpitMeetings(meetings.filter((m) => m.meet_date));
   const undated = meetings.filter((m) => !m.meet_date);
   if (dated.length === 0) {
@@ -86,10 +88,10 @@ export function buildCockpitMeetingTimeline(
   const to = `${shiftMonthKey(endMonth, 1)}-01`;
   const span = Math.max(1, dayNumber(to) - dayNumber(from));
 
-  const lanes: CockpitTimelineLane[] = [];
+  const lanes: CockpitTimelineLane<T>[] = [];
   // One group per (track, day): the meetings of a day share a card, which is
   // what keeps a busy acceptance day one tier tall instead of three.
-  const byTrack = new Map<string, Map<string, CockpitMeeting[]>>();
+  const byTrack = new Map<string, Map<string, T[]>>();
   for (const meeting of dated) {
     const track = meeting.track.trim();
     let days = byTrack.get(track);
@@ -102,7 +104,7 @@ export function buildCockpitMeetingTimeline(
   for (const track of cockpitMeetingTracksInUse(dated)) {
     const days = byTrack.get(track);
     if (!days || days.size === 0) continue;
-    const items: CockpitTimelineGroup[] = [...days.entries()].map(([day, meetings]) => ({
+    const items: CockpitTimelineGroup<T>[] = [...days.entries()].map(([day, meetings]) => ({
       day,
       meetings,
       // The day's number plus its first meeting's slot within it: a timed
@@ -119,7 +121,7 @@ export function buildCockpitMeetingTimeline(
  * sits inside its day rather than on its left edge, which is what keeps two
  * meetings of one afternoon from stacking on the same pixel.
  */
-export function cockpitTimelineDayFraction(meeting: CockpitMeeting): number {
+export function cockpitTimelineDayFraction(meeting: Pick<CockpitMeeting, "start_time">): number {
   const minutes = cockpitMeetingMinutes(meeting.start_time);
   if (minutes === null) return 0.5;
   return Math.min(1, Math.max(0, minutes / 1440));

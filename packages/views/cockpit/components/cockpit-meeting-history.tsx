@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { cockpitHistoryViewKey, cockpitMinutesVersionsOptions, cockpitReviewerHandoffsOptions, cockpitNasExportsOptions,
   EMPTY_COCKPIT_HISTORY_VIEW, useCockpitHistoryViewStore } from "@multica/core/cockpit";
-import type { CockpitMeetingWorkflowSummary, CockpitMinutesVersionMetadata, MemberWithUser } from "@multica/core/types";
+import type { CockpitMeetingWorkflowSummary, CockpitMinutesVersionMetadata } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
@@ -14,9 +14,10 @@ import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { CockpitNasExportList } from "./cockpit-minutes-nas";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { useMinutesDecisionLabel } from "./cockpit-minutes-reader";
+import type { CockpitMember } from "./cockpit-people";
 
 export function CockpitMeetingHistory({ wsId, workflow, members, userId, readOnly, disabled, open, onOpenChange, onRead }: {
-  wsId: string; workflow: CockpitMeetingWorkflowSummary; members: MemberWithUser[]; userId: string; readOnly?: boolean; disabled: boolean;
+  wsId: string; workflow: CockpitMeetingWorkflowSummary; members: CockpitMember[]; userId: string; readOnly?: boolean; disabled: boolean;
   open: boolean; onOpenChange: (open: boolean) => void; onRead: (version: CockpitMinutesVersionMetadata) => void;
 }) {
   const { t } = useT("cockpit");
@@ -75,8 +76,8 @@ export function CockpitMeetingHistory({ wsId, workflow, members, userId, readOnl
                 <p className="line-clamp-2 whitespace-pre-wrap break-words text-caption" title={handoff.reason}>{handoff.reason}</p>
                 <details><summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.minutes_history.handoff_details)}</summary>
                   <div className="mt-3 space-y-3"><p className="whitespace-pre-wrap break-words text-caption">{handoff.reason}</p>
-                    {handoff.from_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_previous_issue)}</p><WorkflowIssueLink issue={handoff.from_review_issue} /></div>}
-                    {handoff.to_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_replacement_issue)}</p><WorkflowIssueLink issue={handoff.to_review_issue} /></div>}
+                    {handoff.from_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_previous_issue)}</p><WorkflowIssueLink wsId={wsId} issue={handoff.from_review_issue} /></div>}
+                    {handoff.to_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_replacement_issue)}</p><WorkflowIssueLink wsId={wsId} issue={handoff.to_review_issue} /></div>}
                   </div></details>
               </article>)}
               {view.section === "exports" && <CockpitNasExportList wsId={wsId} workflow={workflow} jobs={exports.data?.items ?? []} userId={userId} readOnly={readOnly} disabled={disabled || exports.isFetching} />}

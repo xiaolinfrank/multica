@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@multica/core/api";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { resetAllRegisteredDrafts } from "@multica/core/drafts/cleanup-registry";
-import { useCockpitDashboardViewStore } from "@multica/core/cockpit";
+import { cockpitScopeViewKey, EMPTY_COCKPIT_SCOPE, useCockpitDashboardViewStore, type CockpitScope } from "@multica/core/cockpit";
 import { CockpitWorkOverview } from "./cockpit-work-overview";
 import { overviewAttention, overviewScope, workOverview } from "./overview-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -16,15 +16,16 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children, newTabTitle: _title, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { newTabTitle?: string }) => <a href={href} {...props}>{children}</a> }));
 
-function setup() {
+const viewKey = cockpitScopeViewKey("ws-1", EMPTY_COCKPIT_SCOPE);
+function setup(scope: CockpitScope = EMPTY_COCKPIT_SCOPE) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}>
-    <CockpitWorkOverview wsId="ws-1" today="2026-10-10" onOpenArea={vi.fn()} />
+    <CockpitWorkOverview wsId="ws-1" today="2026-10-10" scope={scope} />
   </I18nProvider></QueryClientProvider>);
 }
 function queue() { return within(screen.getByRole("region", { name: "Next actions" })); }
 function scrollElement(): HTMLElement {
-  const element = screen.getByRole("region", { name: "Work overview" }).children[1];
+  const element = screen.getByRole("region", { name: "Work overview" }).children[0];
   if (!(element instanceof HTMLElement)) throw new Error("Overview scroll surface missing");
   return element;
 }
@@ -53,7 +54,6 @@ describe("work overview read model", () => {
     expect(api.getCockpitOverviewExecution).not.toHaveBeenCalled();
     expect(api.getCockpitOverviewMeetings).not.toHaveBeenCalled();
     expect(api.searchProjects).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: "Business overview" })).toHaveAttribute("href", "/ws/cockpit?view=operations");
     expect(screen.getByRole("link", { name: /Release verification/ })).toHaveAttribute("href", "/ws/cockpit?node=node-1");
     expect(screen.getByRole("link", { name: /Release review/ })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1");
   });
@@ -90,17 +90,23 @@ describe("work overview read model", () => {
     expect(queue().getByRole("link", { name: "Open minutes issue" })).toHaveAttribute("href", "/ws/issues/minutes-2");
   });
 
-  it("keeps a failed project scope explicit and recoverable without silently querying all projects", async () => {
-    useCockpitDashboardViewStore.getState().update("ws-1", { projectId: "deleted-project" });
+  it("keeps a failed requested scope explicit without silently querying all projects", async () => {
     vi.mocked(api.getCockpitWorkOverview).mockResolvedValue(null);
-    setup();
+    setup({ projectId: "deleted-project", moduleId: "selected-module" });
     expect(await screen.findByRole("alert")).toHaveTextContent("This view could not be loaded");
-    expect(screen.getByRole("button", { name: "Project scope" })).toBeVisible();
-    expect(vi.mocked(api.getCockpitWorkOverview).mock.lastCall?.[1].project_id).toBe("deleted-project");
+    expect(vi.mocked(api.getCockpitWorkOverview).mock.lastCall?.[1]).toMatchObject({ project_id: "deleted-project", module_id: "selected-module" });
     expect(screen.queryByRole("region", { name: "Execution snapshot" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Project scope" }));
-    fireEvent.click(await screen.findByRole("button", { name: "All projects" }));
-    await waitFor(() => expect(vi.mocked(api.getCockpitWorkOverview).mock.lastCall?.[1].project_id).toBeUndefined());
+    expect(api.getCockpitWorkOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the URL project and module on bounded queries and object return links", async () => {
+    setup({ projectId: "project-a", moduleId: "module-b" });
+    await screen.findByText("Open item 1");
+    expect(vi.mocked(api.getCockpitWorkOverview).mock.lastCall?.[1]).toMatchObject({ project_id: "project-a", module_id: "module-b" });
+    expect(screen.getByRole("link", { name: /Release verification/ })).toHaveAttribute("href", "/ws/cockpit?node=node-1&project=project-a&module=module-b");
+    fireEvent.click(queue().getByRole("button", { name: "Next page" }));
+    await screen.findByText("Open item 9");
+    expect(vi.mocked(api.getCockpitOverviewAttention).mock.lastCall?.[1]).toMatchObject({ project_id: "project-a", module_id: "module-b", page_size: 8 });
   });
 
   it("marks a failed refresh as stale without replacing known counts with zero", async () => {
@@ -112,12 +118,12 @@ describe("work overview read model", () => {
   });
 
   it("restores scroll after the required data arrives and remembers it across an ordinary return", async () => {
-    useCockpitDashboardViewStore.getState().update("ws-1", { scrollTop: 360 });
+    useCockpitDashboardViewStore.getState().update(viewKey, { scrollTop: 360 });
     const view = setup(); await screen.findByText("Open item 1");
     await waitFor(() => expect(scrollElement().scrollTop).toBe(360));
     fireEvent.scroll(scrollElement(), { target: { scrollTop: 720 } });
     view.unmount();
-    expect(useCockpitDashboardViewStore.getState().views["ws-1"]?.scrollTop).toBe(720);
+    expect(useCockpitDashboardViewStore.getState().views[viewKey]?.scrollTop).toBe(720);
     setup(); await screen.findByText("Open item 1");
     await waitFor(() => expect(scrollElement().scrollTop).toBe(720));
   });

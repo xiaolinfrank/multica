@@ -8,6 +8,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
 const optionalDate = date.nullable().catch(null).default(null);
 export const CockpitOverviewScopeSchema = z.object({
   workspace_id: z.string().min(1), project_id: z.string().nullable(), project_title: z.string().default(""),
+  module_id: z.string().nullable().default(null), module_title: z.string().default(""),
   as_of: date, generated_at: z.string().datetime({ offset: true }).refine((value) => Number.isFinite(Date.parse(value))),
 }).loose();
 export const CockpitOverviewIssueCountsSchema = z.object({

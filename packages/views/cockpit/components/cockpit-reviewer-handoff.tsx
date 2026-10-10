@@ -1,13 +1,14 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
 import {
-  acknowledgeCockpitCompactReviewerHandoff, CockpitUnconfirmedWriteError,
+  acknowledgeCockpitCompactReviewerHandoff, cockpitSelectedMemberOptions, CockpitUnconfirmedWriteError,
   EMPTY_COCKPIT_REVIEWER_HANDOFF_DRAFT, prepareCockpitReviewerHandoff, rejectCockpitReviewerHandoff,
   setCockpitReviewerHandoffDraft, useCockpitReviewerHandoffDraftStore, useReassignCockpitMeetingReviewer,
 } from "@multica/core/cockpit";
-import type { CockpitMeetingWorkflowSummary, MemberWithUser } from "@multica/core/types";
+import type { CockpitMeetingWorkflowSummary } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -20,12 +21,12 @@ import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 import { settingsHref } from "../../settings/components/settings-navigation";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
+import type { CockpitMember } from "./cockpit-people";
 
-export function CockpitReviewerHandoffControl({ wsId, workflow, members, membersLoaded, canTransfer, disabled, onReload }: {
+export function CockpitReviewerHandoffControl({ wsId, workflow, members, canTransfer, disabled, onReload }: {
   wsId: string;
   workflow: CockpitMeetingWorkflowSummary;
-  members: MemberWithUser[];
-  membersLoaded: boolean;
+  members: CockpitMember[];
   canTransfer: boolean;
   disabled: boolean;
   onReload: () => void;
@@ -42,12 +43,12 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
   const meetingId = workflow.meeting_id;
   const draft = useCockpitReviewerHandoffDraftStore((state) => state.draft.byMeeting[meetingId] ?? EMPTY_COCKPIT_REVIEWER_HANDOFF_DRAFT);
   const current = workflow.current_version;
-  const candidates = members.filter((member) => member.user_id !== workflow.reviewer_id);
+  const selected = useQuery({ ...cockpitSelectedMemberOptions(wsId, draft.reviewer_id), enabled: Boolean(open && draft.reviewer_id && !draft.pending) });
+  const targetConfirmed = !selected.isError && !selected.isFetching && Boolean(selected.data?.items.some((entry) => entry.id === draft.reviewer_id)) && draft.reviewer_id !== workflow.reviewer_id;
   const currentName = members.find((member) => member.user_id === workflow.reviewer_id)?.name || workflow.reviewer_id;
   const staleObservation = open && !draft.pending && observedRevision !== workflow.revision;
   const canConfirm = canTransfer && !disabled && !busy && (Boolean(draft.pending)
-    || (!staleObservation && observedRevision !== null && membersLoaded
-      && candidates.some((member) => member.user_id === draft.reviewer_id) && Boolean(draft.reason.trim())));
+    || (!staleObservation && observedRevision !== null && targetConfirmed && Boolean(draft.reason.trim())));
 
 
 
@@ -79,7 +80,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
       setOpen(next);
       if (next) { setObservedRevision(workflow.revision); setError(""); }
     }}>
-      {canTransfer && <AlertDialogTrigger render={<Button type="button" size="sm" variant="outline" disabled={disabled || (!membersLoaded && !draft.pending)} />}>
+      {canTransfer && <AlertDialogTrigger render={<Button type="button" size="sm" variant="outline" disabled={disabled} />}>
         {draft.pending ? t(($) => $.workflow.handoff_retry) : t(($) => $.workflow.handoff_action)}
       </AlertDialogTrigger>}
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-md">
@@ -92,10 +93,10 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
         <p className="break-words text-caption text-muted-foreground">{t(($) => $.workflow.reviewer_name, { name: currentName })}</p>
         {draft.pending ? <p className="break-words text-caption">{t(($) => $.workflow.handoff_target, {
           name: members.find((member) => member.user_id === draft.pending?.reviewer_id)?.name || draft.pending.reviewer_id,
-        })}</p> : <CockpitReviewerSelect members={candidates} value={draft.reviewer_id}
-          label={t(($) => $.workflow.handoff_new_reviewer)} disabled={busy || !canTransfer || !membersLoaded}
+        })}</p> : <CockpitReviewerSelect wsId={wsId} value={draft.reviewer_id}
+          label={t(($) => $.workflow.handoff_new_reviewer)} disabled={busy || !canTransfer} excludeId={workflow.reviewer_id ?? undefined}
           onChange={(reviewer_id) => setCockpitReviewerHandoffDraft(meetingId, { reviewer_id })} />}
-        {!draft.pending && membersLoaded && candidates.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_no_candidates)}{" "}
+        {!draft.pending && draft.reviewer_id && !targetConfirmed && !selected.isFetching && !selected.isPending && <p className="text-caption text-muted-foreground">
           <AppLink href={settingsHref(paths.settings(), new URLSearchParams(), "members")} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.open_members)}</AppLink></p>}
         <div className="space-y-1"><label htmlFor={`${id}-reason`} className="text-caption">{t(($) => $.workflow.handoff_reason)}</label>
           <Textarea id={`${id}-reason`} value={draft.reason} required rows={3} disabled={busy || Boolean(draft.pending) || !canTransfer}

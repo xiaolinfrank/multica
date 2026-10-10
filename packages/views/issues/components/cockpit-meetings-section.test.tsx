@@ -1,359 +1,101 @@
 // @vitest-environment jsdom
-
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CockpitBoard, CockpitMeeting, CockpitIssueActionSourcesPage } from "@multica/core/types";
+import { api } from "@multica/core/api";
+import type { CockpitIssueMeetingReference, CockpitIssueReferencePage } from "@multica/core/types";
 import { WorkspaceSlugProvider } from "@multica/core/paths";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider } from "../../navigation";
 import type { NavigationAdapter } from "../../navigation/types";
-
-const queryRef = vi.hoisted(() => ({
-  current: { data: undefined as CockpitBoard | undefined, isLoading: false },
-  sources: null as CockpitIssueActionSourcesPage | null,
-}));
-
-const mutRef = vi.hoisted(() => ({
-  link: { mutate: vi.fn(), isPending: false },
-  unlink: { mutate: vi.fn(), isPending: false },
-}));
-
-vi.mock("@tanstack/react-query", async () => {
-  const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
-    "@tanstack/react-query",
-  );
-  return { ...actual, useQuery: (options: { queryKey: readonly unknown[] }) => options.queryKey[2] === "issue-action-sources"
-    ? { data: queryRef.sources ?? { issue_id: options.queryKey[3], items: [], total: 0, next_cursor: null }, isPending: false, isError: false } : queryRef.current };
-});
-
-vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-
-vi.mock("@multica/core/cockpit", async () => {
-  const actual = await vi.importActual<typeof import("@multica/core/cockpit")>(
-    "@multica/core/cockpit",
-  );
-  return {
-    ...actual,
-    useSetCockpitMeetingIssues: () => mutRef.link,
-    useDeleteCockpitMeetingIssue: () => mutRef.unlink,
-  };
-});
-
-// The picker is a portal-mounted popover with its own filtering; the stub
-// surfaces what the section wired into it so both sides of the toggle stay
-// testable without driving one.
-vi.mock("../../cockpit/components/cockpit-meeting-picker", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../cockpit/components/cockpit-meeting-picker")
-  >("../../cockpit/components/cockpit-meeting-picker");
-  return {
-    ...actual,
-    CockpitMeetingPicker: ({
-      meetings,
-      selectedIds,
-      onToggle,
-      label,
-      disabled,
-      lockedIds,
-    }: {
-      meetings: CockpitMeeting[];
-      selectedIds: Set<string>;
-      onToggle: (meetingId: string) => void;
-      label: string;
-      disabled?: boolean;
-      lockedIds?: ReadonlySet<string>;
-    }) => (
-      <div>
-        <span data-testid="picker-label">{label}</span>
-        <span data-testid="picker-count">{meetings.length}</span>
-        <span data-testid="picker-selected">{[...selectedIds].sort().join(",")}</span>
-        <button
-          type="button"
-          data-testid="picker-toggle"
-          disabled={disabled || lockedIds?.has("m3")}
-          onClick={() => onToggle("m3")}
-        >
-          toggle m3
-        </button>
-      </div>
-    ),
-  };
-});
-
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
-
-const adapter: NavigationAdapter = {
-  push: vi.fn(),
-  replace: vi.fn(),
-  back: vi.fn(),
-  pathname: "/",
-  searchParams: new URLSearchParams(),
-  hash: "",
-  getShareableUrl: (p) => p,
-};
-
-function renderSection(ui: React.ReactElement) {
-  return renderWithI18n(
-    <WorkspaceSlugProvider slug="acme">
-      <NavigationProvider value={adapter}>{ui}</NavigationProvider>
-    </WorkspaceSlugProvider>,
-  );
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("@multica/core/api", () => ({ api: { getCockpit: vi.fn(), getCockpitIssueMeetingReferences: vi.fn(), getCockpitMeetingRegister: vi.fn(), getCockpitIssueActionSources: vi.fn(), appendCockpitMeetingIssue: vi.fn(), removeCockpitIssueMeetingReference: vi.fn() } }));
+const adapter: NavigationAdapter = { push: vi.fn(), replace: vi.fn(), back: vi.fn(), pathname: "/", searchParams: new URLSearchParams(), hash: "", getShareableUrl: (path) => path };
+const ref = (id = "meeting-1", title = "Review"): CockpitIssueMeetingReference => ({ meeting_id: id, code: "M-01", title, meet_date: "2026-10-10", available: true, role: "task", roles: [], required_roles: [], can_unlink: true });
+let page: CockpitIssueReferencePage<CockpitIssueMeetingReference>;
+function renderSection(issueId = "issue-1") {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return renderWithI18n(<QueryClientProvider client={client}><WorkspaceSlugProvider slug="acme"><NavigationProvider value={adapter}><CockpitMeetingsSection issueId={issueId} /></NavigationProvider></WorkspaceSlugProvider></QueryClientProvider>);
 }
-
-function meeting(partial: Partial<CockpitMeeting> & { id: string }): CockpitMeeting {
-  return {
-    meet_date: null,
-    time_range: "",
-    start_time: null,
-    end_time: null,
-    title: "",
-    code: "",
-    kind: "",
-    status: "",
-    parties: "",
-    organizer: "",
-    location: "",
-    attendees: "",
-    meet_no: "",
-    link: "",
-    note: "",
-    minutes: "",
-    decisions: "",
-    actions: "",
-    nas_dir: "",
-    detected: false,
-    track: "",
-    ...partial,
-  };
-}
-
-function link(meetingId: string, issueId: string, role = "") {
-  return {
-    meeting_id: meetingId,
-    issue_id: issueId,
-    role,
-    roles: [],
-    issue_number: 1,
-    issue_identifier: "BIO-1",
-    issue_title: "One",
-    issue_status: "todo",
-    position: 0,
-  };
-}
-
-function makeBoard(partial: Partial<CockpitBoard> = {}): CockpitBoard {
-  return {
-    cockpit: {
-      id: "board-1",
-      workspace_id: "ws-1",
-      title: "Programme",
-      goal_title: "",
-      goal_date: null,
-      summary_overall: "",
-      summary_next: "",
-      summary_support: "",
-      basis: "",
-      meeting_assignee_type: "",
-      meeting_assignee_id: null,
-      meeting_project_id: null,
-      meeting_module_id: null,
-      meeting_node_id: null,
-      meeting_dir: "",
-      created_at: "2026-09-01T00:00:00Z",
-      updated_at: "2026-09-01T00:00:00Z",
-    },
-    nodes: [],
-    payments: [],
-    issue_links: [],
-    milestones: [],
-    meetings: [
-      meeting({ id: "m1", code: "20260921-01", title: "工作组周会", meet_date: "2026-09-21" }),
-      meeting({ id: "m2", code: "20260918-01", title: "数据治理对接", meet_date: "2026-09-18" }),
-      meeting({ id: "m3", code: "20260915-01", title: "启动会", meet_date: "2026-09-15" }),
-    ],
-    // m1 filed this issue (the meeting's own task); m2 was attached by hand.
-    meeting_issues: [
-      link("m1", "issue-1", "task"),
-      link("m2", "issue-1"),
-      link("m3", "issue-2"),
-    ],
-    meeting_nodes: [],
-    ...partial,
-  };
-}
-
 beforeEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-  mutRef.link.isPending = false;
-  mutRef.unlink.isPending = false;
-  queryRef.current = { data: undefined, isLoading: false };
-  queryRef.sources = null;
+  cleanup(); vi.clearAllMocks();
+  page = { workspace_id: "ws-1", issue_id: "issue-1", items: [ref()], total: 1, next_cursor: null };
+  vi.mocked(api.getCockpitIssueMeetingReferences).mockImplementation(async () => structuredClone(page));
+  vi.mocked(api.getCockpitIssueActionSources).mockResolvedValue({ issue_id: "issue-1", items: [], total: 0, next_cursor: null });
+  vi.mocked(api.getCockpitMeetingRegister).mockImplementation(async (_ws, _scope, query) => ({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, node_id: null, node_ids: [], day_counts: [], date_from: null, date_to: null,
+    items: [{ id: query?.cursor ? "meeting-3" : "meeting-2", code: query?.cursor ? "M-03" : "M-02", title: "Candidate meeting" }], total: 30, next_cursor: query?.cursor ? null : "next-search" }) as unknown as Awaited<ReturnType<typeof api.getCockpitMeetingRegister>>);
+  vi.mocked(api.removeCockpitIssueMeetingReference).mockImplementation(async (_ws, issueId, targetId) => {
+    page.items = page.items.filter((item) => item.meeting_id !== targetId); page.total = page.items.length;
+    return { workspace_id: "ws-1", issue_id: issueId, kind: "meeting", target_id: targetId, removed: true };
+  });
+  vi.mocked(api.appendCockpitMeetingIssue).mockResolvedValue({ meeting_id: "meeting-2", issue_id: "issue-1", issue_number: 1, issue_identifier: "BIO-1", issue_title: "Issue", issue_status: "backlog", role: "", roles: [], required_roles: [], position: 0 } as Awaited<ReturnType<typeof api.appendCockpitMeetingIssue>>);
 });
-
-describe("CockpitMeetingsSection", () => {
-  it("protects required workflow associations at both unlink entries while manually assigned purposes remain removable", () => {
-    queryRef.current = { isLoading: false, data: makeBoard({ meeting_issues: [
-      { ...link("m3", "issue-1"), roles: ["review"], required_roles: ["review"] },
-      { ...link("m2", "issue-1"), roles: ["review"], required_roles: [] },
-    ] }) };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-    const protectedRow = screen.getByRole("link", { name: "20260915-01 启动会" }).closest("li")!;
-    expect(protectedRow).toHaveTextContent("Managed by the meeting workflow");
-    expect(within(protectedRow).getByRole("button", { name: "Unlink 20260915-01 启动会" })).toBeDisabled();
-    expect(screen.getByTestId("picker-toggle")).toBeDisabled();
-    fireEvent.click(screen.getByTestId("picker-toggle"));
-    expect(mutRef.unlink.mutate).not.toHaveBeenCalled();
-    expect(within(protectedRow).getByRole("link")).toHaveAttribute("href", "/acme/cockpit?meeting=m3");
-    fireEvent.click(screen.getByRole("button", { name: "Unlink 20260918-01 数据治理对接" }));
-    expect(mutRef.unlink.mutate).toHaveBeenCalledWith({ meetingId: "m2", issueId: "issue-1" }, expect.objectContaining({ onError: expect.any(Function) }));
+describe("bounded issue meeting references", () => {
+  it("reads lightweight reverse links including the filing role without the board", async () => {
+    renderSection(); expect(await screen.findByRole("link", { name: "M-01 Review" })).toHaveAttribute("href", "/acme/cockpit?meeting=meeting-1");
+    expect(api.getCockpitIssueMeetingReferences).toHaveBeenCalledWith("ws-1", "issue-1", { cursor: undefined }, expect.any(AbortSignal));
+    expect(api.getCockpit).not.toHaveBeenCalled(); expect(api.getCockpitMeetingRegister).not.toHaveBeenCalled();
   });
-
-  it("shows an accepted action source independently of editable reference meetings", () => {
-    queryRef.sources = { issue_id: "issue-1", total: 1, next_cursor: null, items: [{ id: "action-1", meeting_id: "meeting-1", meeting_code: "M-01", meeting_title: "Delivery review", version_id: "v1", version_number: 1, title: "Verify interface" }] };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-    const sources = screen.getByRole("region", { name: "Meeting action sources" });
+  it("protects formal and retired review relationships while manual purposes remain removable", async () => {
+    page.items = [{ ...ref("retired", "Retired review"), roles: ["review"], required_roles: ["review"], can_unlink: false }, { ...ref(), roles: ["review", "future_role"] }]; page.total = 2;
+    renderSection(); const protectedRow = (await screen.findByRole("link", { name: "M-01 Retired review" })).closest("li")!;
+    expect(protectedRow).toHaveTextContent("Managed by the meeting workflow"); expect(within(protectedRow).getByRole("button")).toBeDisabled();
+    expect(screen.getByText("Other: future_role")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Unlink M-01 Review" })); await waitFor(() => expect(api.removeCockpitIssueMeetingReference).toHaveBeenCalledWith("ws-1", "issue-1", "meeting-1"));
+  });
+  it("shows fixed action sources independently from mutable references", async () => {
+    vi.mocked(api.getCockpitIssueActionSources).mockResolvedValue({ issue_id: "issue-1", total: 1, next_cursor: null, items: [{ id: "action-1", meeting_id: "meeting-1", meeting_code: "M-01", meeting_title: "Delivery review", version_id: "v1", version_number: 1, title: "Verify interface" }] });
+    renderSection(); const sources = await screen.findByRole("region", { name: "Meeting action sources" });
     expect(within(sources).getByRole("link", { name: "M-01 Delivery review" })).toHaveAttribute("href", "/acme/cockpit?meeting=meeting-1&action=action-1");
-    expect(within(sources).queryByRole("button", { name: /Unlink/ })).toBeNull();
-    expect(sources).toHaveTextContent("Minutes v1 · Verify interface");
+    expect(within(sources).queryByRole("button", { name: /Unlink/ })).toBeNull(); expect(sources).toHaveTextContent("Minutes v1 · Verify interface");
   });
-  it("renders nothing while the board loads or the programme keeps no register", () => {
-    queryRef.current = { data: undefined, isLoading: true };
-    expect(
-      renderSection(<CockpitMeetingsSection issueId="issue-1" />).container,
-    ).toBeEmptyDOMElement();
-
-    queryRef.current = { data: makeBoard({ meetings: [], meeting_issues: [] }), isLoading: false };
-    expect(
-      renderSection(<CockpitMeetingsSection issueId="issue-1" />).container,
-    ).toBeEmptyDOMElement();
+  it("keeps orphan and unnamed references readable and cleans only the explicit orphan", async () => {
+    page.items = [{ ...ref("missing", ""), available: false, can_unlink: true, code: "" }, { ...ref("untitled", ""), code: "", meet_date: "" }]; page.total = 2; renderSection();
+    await screen.findByText("Meeting unavailable"); expect(screen.getByRole("link", { name: "Untitled meeting" })).toHaveAttribute("href", "/acme/cockpit?meeting=untitled");
+    expect(screen.getAllByRole("link")).toHaveLength(1); expect(api.removeCockpitIssueMeetingReference).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Remove unavailable meeting reference missing" }));
+    await waitFor(() => expect(api.removeCockpitIssueMeetingReference).toHaveBeenCalledWith("ws-1", "issue-1", "missing"));
+    expect(screen.getByRole("link", { name: "Untitled meeting" })).toBeInTheDocument();
   });
-
-  it("lists this issue's meetings in register order, the filing one included", () => {
-    queryRef.current = { data: makeBoard(), isLoading: false };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    // The meeting that opened this task is a link like any other, so a task
-    // filed by provisioning shows where it came from without being wired up.
-    const first = screen.getByRole("link", { name: "20260921-01 工作组周会" });
-    expect(first).toHaveAttribute("href", "/acme/cockpit?meeting=m1");
-    expect(screen.getByRole("link", { name: "20260918-01 数据治理对接" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /启动会/ })).toBeNull();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByTestId("picker-count").textContent).toBe("3");
-    expect(screen.getByTestId("picker-selected").textContent).toBe("m1,m2");
+  it("uses encoded identities through the workspace navigation adapter", async () => {
+    const id = "会议/1?scope=a&b"; page.items = [ref(id)]; renderSection(); const row = await screen.findByRole("link", { name: "M-01 Review" });
+    const href = `/acme/cockpit?meeting=${encodeURIComponent(id)}`; expect(row).toHaveAttribute("href", href); fireEvent.click(row); expect(adapter.push).toHaveBeenCalledWith(href);
   });
-
-  it("opens the exact meeting through the workspace adapter with an encoded identity", () => {
-    const meetingId = "会议/1?scope=a&b";
-    queryRef.current = {
-      data: makeBoard({
-        meetings: [meeting({ id: meetingId, title: "Review" })],
-        meeting_issues: [link(meetingId, "issue-1")],
-      }),
-      isLoading: false,
-    };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    const target = `/acme/cockpit?meeting=${encodeURIComponent(meetingId)}`;
-    const row = screen.getByRole("link", { name: "Review" });
-    expect(row).toHaveAttribute("href", target);
-    fireEvent.click(row);
-    expect(adapter.push).toHaveBeenCalledWith(target);
+  it("searches and pages meeting choices on demand, then appends only the chosen pair", async () => {
+    renderSection(); await screen.findByRole("link", { name: "M-01 Review" }); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Add meeting" })); await screen.findByRole("button", { name: "M-02 Candidate meeting" });
+    await user.click(screen.getByRole("button", { name: "Next page" })); await screen.findByRole("button", { name: "M-03 Candidate meeting" });
+    expect(api.getCockpitMeetingRegister).toHaveBeenLastCalledWith("ws-1", { projectId: null, moduleId: null }, { q: "", cursor: "next-search", page_size: 25 }, expect.any(AbortSignal));
+    await user.type(screen.getByRole("textbox", { name: "Search by number, name or parties" }), "Candidate");
+    await waitFor(() => expect(api.getCockpitMeetingRegister).toHaveBeenLastCalledWith("ws-1", { projectId: null, moduleId: null }, { q: "Candidate", cursor: undefined, page_size: 25 }, expect.any(AbortSignal)));
+    await user.click(await screen.findByRole("button", { name: "M-02 Candidate meeting" })); await waitFor(() => expect(api.appendCockpitMeetingIssue).toHaveBeenCalledWith("ws-1", "meeting-2", "issue-1"));
+    expect(screen.queryByRole("textbox", { name: "Search by number, name or parties" })).toBeNull();
+  });
+  it("keeps the choice and error visible until an append is confirmed", async () => {
+    let reject!: (error: Error) => void;
+    vi.mocked(api.appendCockpitMeetingIssue).mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+    renderSection(); await screen.findByRole("link", { name: "M-01 Review" });
+    fireEvent.click(screen.getByRole("button", { name: "Add meeting" }));
+    fireEvent.click(await screen.findByRole("button", { name: "M-02 Candidate meeting" }));
+    await waitFor(() => expect(api.appendCockpitMeetingIssue).toHaveBeenCalled());
+    expect(screen.getByRole("textbox", { name: "Search by number, name or parties" })).toBeInTheDocument();
+    reject(new Error("Result not confirmed"));
+    await screen.findByText("Result not confirmed");
+    expect(screen.getByRole("button", { name: "M-02 Candidate meeting" })).toBeEnabled();
   });
 
-  it("keeps unavailable meeting relations visible without sending users to the cockpit root", () => {
-    queryRef.current = {
-      data: makeBoard({ meetings: [], meeting_issues: [link("missing", "issue-1")] }),
-      isLoading: false,
-    };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    expect(screen.getByText("Meeting unavailable")).toBeInTheDocument();
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.queryByText("No meetings linked.")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Unlink Meeting unavailable" }));
-    expect(mutRef.unlink.mutate).toHaveBeenCalledWith(
-      { meetingId: "missing", issueId: "issue-1" },
-      expect.objectContaining({ onError: expect.any(Function) }),
-    );
+  it("paginates references using server totals rather than an in-memory board", async () => {
+    page.total = 31; page.next_cursor = "next-ref";
+    vi.mocked(api.getCockpitIssueMeetingReferences).mockImplementation(async (_ws, _issue, query) => ({ ...page, items: [ref(query?.cursor ? "last" : "first", query?.cursor ? "Last" : "First")], next_cursor: query?.cursor ? null : "next-ref" }));
+    renderSection(); await screen.findByRole("link", { name: "M-01 First" }); fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByRole("link", { name: "M-01 Last" }); expect(api.getCockpitIssueMeetingReferences).toHaveBeenLastCalledWith("ws-1", "issue-1", { cursor: "next-ref" }, expect.any(AbortSignal));
   });
-
-  it("gives an unnamed meeting an accessible label and preserves its destination", () => {
-    queryRef.current = {
-      data: makeBoard({ meetings: [meeting({ id: "m1" })], meeting_issues: [link("m1", "issue-1")] }),
-      isLoading: false,
-    };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    expect(screen.getByRole("link", { name: "Untitled meeting" })).toHaveAttribute(
-      "href", "/acme/cockpit?meeting=m1",
-    );
-  });
-
-  it("shows the purposes for the linked meeting, including a newer server role", () => {
-    queryRef.current = {
-      data: makeBoard({
-        meeting_issues: [{ ...link("m1", "issue-1"), roles: ["preparation", "future_role"] }],
-      }),
-      isLoading: false,
-    };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    const row = screen.getByRole("listitem");
-    expect(within(row).getByText("Preparation")).toBeInTheDocument();
-    expect(within(row).getByText("Other: future_role")).toBeInTheDocument();
-    expect(within(row).getByRole("link", { name: "20260921-01 工作组周会" })).toHaveAttribute(
-      "href", "/acme/cockpit?meeting=m1",
-    );
-  });
-
-  it("shows the empty state and the picker when nothing is linked yet", () => {
-    queryRef.current = { data: makeBoard(), isLoading: false };
-    renderSection(<CockpitMeetingsSection issueId="issue-9" />);
-
-    expect(screen.getByText("No meetings linked.")).toBeInTheDocument();
-    expect(screen.getByTestId("picker-selected").textContent).toBe("");
-    expect(screen.getByTestId("picker-label").textContent).toBe("Add meeting");
-  });
-
-  it("unlinks through the row button and appends through the picker toggle", () => {
-    queryRef.current = { data: makeBoard(), isLoading: false };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Unlink 20260918-01 数据治理对接" }));
-    expect(mutRef.unlink.mutate).toHaveBeenCalledWith(
-      { meetingId: "m2", issueId: "issue-1" },
-      expect.objectContaining({ onError: expect.any(Function) }),
-    );
-
-    // m3 already carries another issue's link. This end sends only its own —
-    // replacing the set from here would drop links it cannot see, and the
-    // server keeps each surviving pair's role.
-    fireEvent.click(screen.getByTestId("picker-toggle"));
-    expect(mutRef.link.mutate).toHaveBeenCalledWith(
-      { meetingId: "m3", issueIds: ["issue-1"] },
-      expect.objectContaining({ onError: expect.any(Function) }),
-    );
-  });
-
-  it("collapses and re-expands its body from the header", () => {
-    queryRef.current = { data: makeBoard(), isLoading: false };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Meetings/ }));
-    expect(screen.queryByRole("link")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /Meetings/ }));
-    expect(screen.getByRole("link", { name: "20260921-01 工作组周会" })).toBeInTheDocument();
-  });
-
-  it("disables editing while a link mutation is in flight", () => {
-    mutRef.link.isPending = true;
-    queryRef.current = { data: makeBoard(), isLoading: false };
-    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
-
-    expect(screen.getByTestId("picker-toggle")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Unlink 20260921-01 工作组周会" })).toBeDisabled();
+  it("shows failed reads honestly and preserves add/collapse on a confirmed empty page", async () => {
+    vi.mocked(api.getCockpitIssueMeetingReferences).mockRejectedValueOnce(new Error("Offline")); page.items = []; page.total = 0; renderSection();
+    await screen.findByRole("alert"); expect(screen.queryByText("No meetings linked.")).toBeNull(); fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("No meetings linked."); expect(screen.getByRole("button", { name: "Add meeting" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /Meetings/ })); expect(screen.queryByRole("button", { name: "Add meeting" })).toBeNull();
   });
 });

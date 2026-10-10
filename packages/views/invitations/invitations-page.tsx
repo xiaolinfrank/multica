@@ -1,5 +1,7 @@
 "use client";
 
+import { preferredWorkspacePath } from "@multica/core/paths";
+
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
@@ -112,7 +114,7 @@ export function InvitationsPage() {
       // wsList[0]: that could teleport the user into an unrelated old
       // workspace they happen to also belong to.
       push(
-        targetWs ? paths.workspace(targetWs.slug).issues() : paths.newWorkspace(),
+        targetWs ? preferredWorkspacePath(targetWs.slug) : paths.newWorkspace(),
       );
     } catch (e) {
       setError(

@@ -7,10 +7,10 @@ import { api } from "../api";
 import { CockpitBoardSchema, CockpitMeetingSchema } from "../api/schemas";
 import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
-import { useSetCockpitMeetingIssueRoles, useSetCockpitNodeBinding, useUpdateCockpitMeeting, useProvisionCockpitMeeting } from "./mutations";
+import { useSetCockpitMeetingIssueRoles, useSetCockpitNodeBinding, useUpdateCockpitMeeting, useProvisionCockpitMeeting, useImportCockpitMeetingFolders } from "./mutations";
 import { CockpitUnconfirmedWriteError } from "./errors";
 
-vi.mock("../api", () => ({ api: { updateCockpitNode: vi.fn(), setCockpitMeetingIssueRoles: vi.fn(), updateCockpitMeeting: vi.fn(), provisionCockpitMeeting: vi.fn() } }));
+vi.mock("../api", () => ({ api: { updateCockpitNode: vi.fn(), setCockpitMeetingIssueRoles: vi.fn(), updateCockpitMeeting: vi.fn(), provisionCockpitMeeting: vi.fn(), importCockpitMeetingFolders: vi.fn() } }));
 afterEach(cleanup);
 
 function setup() {
@@ -29,6 +29,24 @@ function setup() {
 }
 
 describe("cockpit structural writes", () => {
+  it("does not treat an import receipt as all relationships and refreshes after an unknown outcome", async () => {
+    for (const lostResponse of [false, true]) {
+      const { board, wrapper, client, cached } = setup();
+      const meeting = CockpitMeetingSchema.parse({ id: "m1", nas_dir: "/share/folder" });
+      if (lostResponse) vi.mocked(api.importCockpitMeetingFolders).mockRejectedValue(new Error("response lost"));
+      else vi.mocked(api.importCockpitMeetingFolders).mockResolvedValue({ meetings: [meeting], issues: [board.meeting_issues[0]!], skipped: [] });
+      const { result, unmount } = renderHook(() => useImportCockpitMeetingFolders("ws-1"), { wrapper });
+      const body = { items: [{ name: "folder" }], expected_base_dir: "/share" };
+      await act(async () => {
+        if (lostResponse) await expect(result.current.mutateAsync(body)).rejects.toThrow("response lost");
+        else await result.current.mutateAsync(body);
+      });
+      expect(api.importCockpitMeetingFolders).toHaveBeenLastCalledWith(body, "ws-1");
+      expect(cached().meeting_issues).toEqual(board.meeting_issues);
+      expect(client.getQueryState(cockpitKeys.board("ws-1"))?.isInvalidated).toBe(true);
+      unmount();
+    }
+  });
   it("refreshes the permitted export destination after editing or provisioning the meeting folder", async () => {
     const { wrapper, client } = setup();
     const meeting = CockpitMeetingSchema.parse({ id: "m1", nas_dir: "/Volumes/team/New" });

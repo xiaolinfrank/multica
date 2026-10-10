@@ -16,14 +16,14 @@ import enIssues from "../../locales/en/issues.json";
 
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitMinutesVersion: vi.fn(), listCockpitMeetingActions: vi.fn(), getCockpitMeetingAction: vi.fn(), resolveCockpitMeetingAction: vi.fn(), updateCockpitMeetingAction: vi.fn(), createCockpitMeetingAction: vi.fn(),
-  searchIssues: vi.fn(), getIssue: vi.fn(), getCockpitPrimaryNode: vi.fn(), listIssueStatuses: vi.fn(),
+  searchIssues: vi.fn(), getIssue: vi.fn(), getCockpitPrimaryNode: vi.fn(), listIssueStatuses: vi.fn(), searchCockpitAssignees: vi.fn(),
 } }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
-vi.mock("../../issues/components/pickers/assignee-picker", () => ({ AssigneePicker: ({ onUpdate }: { onUpdate: (value: { assignee_type: "member"; assignee_id: null }) => void }) => <button type="button" onClick={() => onUpdate({ assignee_type: "member", assignee_id: null })}>Clear assignee</button> }));
+vi.mock("./cockpit-assignee-picker", () => ({ CockpitAssigneePicker: () => <button type="button">Assignee picker</button> }));
 const nodePicker = vi.hoisted(() => ({ options: [{ node_id: "node-1", code: "01.01.01", label: "01.01.01 Large L3", project_id: "project-1", module_id: "module-1" }], isPending: false, isFetching: false, isError: false, refetch: vi.fn() }));
 vi.mock("./cockpit-node-issue-picker", () => {
   const option = { node_id: "node-1", code: "01.01.01", label: "01.01.01 Large L3", project_id: "project-1", module_id: "module-1" };
-  return { useCockpitNodeIssueOptions: () => nodePicker, CockpitNodeIssuePicker: ({ onUpdate }: { onUpdate: (value: typeof option) => void }) =>
+  return { useCockpitSelectedNodeIssueOption: (nodeId: string) => ({ ...nodePicker, option: nodePicker.options.find((entry) => entry.node_id === nodeId) ?? null }), CockpitNodeIssuePicker: ({ onUpdate }: { onUpdate: (value: typeof option) => void }) =>
     <button type="button" aria-label="Primary work item" onClick={() => onUpdate(option)}>01.01.01 Large L3</button> };
 });
 
@@ -57,6 +57,8 @@ beforeEach(() => {
     const version = workflow.versions.find((entry) => entry.id === id);
     return version ? { workspace_id: "ws-1", meeting_id: workflow.meeting_id, workflow_revision: workflow.revision, version, can_review: false, can_publish: false, can_export_nas: false } : null;
   });
+  vi.mocked(api.searchCockpitAssignees).mockImplementation(async (_ws, query) => ({ workspace_id: "ws-1", q: query?.q ?? "", kind: query?.kind ?? "all", selected_type: query?.selected_type ?? null, selected_id: query?.selected_id ?? null,
+    items: [{ id: query?.selected_id ?? "reviewer-1", type: query?.selected_type ?? "member", title: "Minutes Writer", email: "", avatar_url: "", status: "active", runtime_bound: null, can_assign: true, reason: "" }], total: 1, next_cursor: null }));
   vi.mocked(api.listIssueStatuses).mockResolvedValue({ statuses: [], categories: [], total: 0 });
   vi.mocked(api.listCockpitMeetingActions).mockImplementation(async (_meetingId, query) => ({ meeting_id: WORKFLOW_MEETING_ID,
     items: query?.q === "needle" ? [meetingAction({ id: "action-51", title: "Needle outside page" })]
@@ -146,12 +148,13 @@ describe("meeting action decisions", () => {
     expect(api.resolveCockpitMeetingAction).not.toHaveBeenCalled();
   });
 
-  it("offers a workspace-scoped execution plan when no eligible L3 exists, without inventing a confirmation", async () => {
+  it("offers the execution plan when the selected L3 is unavailable without inferring a global empty inventory", async () => {
     nodePicker.options = [];
+    currentPath = "/ws/cockpit?project=project-1&module=module-1";
     setup();
     const dialog = await openAction();
-    expect(dialog).toHaveTextContent("No eligible L3 work item is available");
-    expect(within(dialog).getByRole("link", { name: "Open execution plan (new tab)" })).toHaveAttribute("href", "/ws/cockpit?tab=gantt");
+    expect(dialog).not.toHaveTextContent("No eligible L3 work item is available");
+    expect(within(dialog).getByRole("link", { name: "Open execution plan (new tab)" })).toHaveAttribute("href", "/ws/cockpit?tab=plan&plan_view=gantt&project=project-1&module=module-1");
     expect(within(dialog).getByRole("link", { name: "Open execution plan (new tab)" })).toHaveAttribute("target", "_blank");
     expect(within(dialog).getByRole("button", { name: "Confirm action" })).toBeDisabled();
     expect(api.resolveCockpitMeetingAction).not.toHaveBeenCalled();
@@ -234,12 +237,12 @@ describe("meeting action decisions", () => {
     expect(api.createCockpitMeetingAction).not.toHaveBeenCalled();
   });
 
-  it("explains an empty assignee beside the existing picker before issue creation", async () => {
+  it("blocks a new action issue when its selected executor can no longer be assigned", async () => {
+    vi.mocked(api.searchCockpitAssignees).mockResolvedValue({ workspace_id: "ws-1", q: "", kind: "all", selected_type: "member", selected_id: "reviewer-1", items: [], total: 0, next_cursor: null });
     setup();
     const dialog = await openAction();
     fireEvent.click(within(dialog).getByRole("button", { name: "Primary work item" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Clear assignee" }));
-    expect(dialog).toHaveTextContent(enCockpit.task_flow.assignee_required);
+    await waitFor(() => expect(api.searchCockpitAssignees).toHaveBeenCalled());
     expect(within(dialog).getByRole("button", { name: "Confirm action" })).toBeDisabled();
     expect(api.resolveCockpitMeetingAction).not.toHaveBeenCalled();
   });

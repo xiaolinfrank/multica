@@ -1,3 +1,5 @@
+export type * from "./cockpit-governance";
+export type * from "./cockpit-read";
 export type { Issue, IssueStatus, BuiltInIssueStatus, IssuePriority, IssueAssigneeType, IssueMetadata, IssueMetadataValue, IssueReaction, SourceContextAttachment, SourceContextAuthor, SourceContextIssueSnapshot, SourceContextCommentSnapshot, SourceContextSnapshot, SourceContextLimitUsage, SourceContextPreview, SourceContextAuthorState, IssueSourceContext,
   IssueDuplicateOf,
 } from "./issue";
@@ -274,7 +276,7 @@ export type {
   CockpitNodePatch,
   CockpitPaymentPatch,
   CockpitMilestonePatch,
-  CockpitMeetingPatch,
+  CockpitMeetingPatch, CockpitMeetingCreate, CockpitMeetingCreated,
   CockpitSnapshot,
   CockpitImportResult,
   CockpitPendingChange,
@@ -438,3 +440,11 @@ export type {
   CockpitMeetingWorkflowSummary, CockpitWorkflowHistoryPage, CockpitWorkflowHistoryQuery,
   CockpitWorkflowExportQuery, CockpitWorkflowExportPage, CockpitMinutesVersionDetail, CockpitWorkflowCommandResponse, CockpitWorkflowCommand,
 } from "./cockpit-workflow-history";
+export type * from "./cockpit-artifacts";
+export type * from "./cockpit-scope-selectors";
+export * from "./cockpit-nas-attempts";
+
+export * from "./cockpit-issue-references";
+
+export type * from "./cockpit-directory";
+export type * from "./cockpit-snapshot-diff";

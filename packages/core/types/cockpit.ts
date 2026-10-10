@@ -473,6 +473,11 @@ export type CockpitMilestonePatch = Partial<
   >
 >;
 
+export type CockpitNodeCreate = Omit<CockpitNodePatch, "code"> & ({ auto_code: true; creation_key: string; code?: never } | { code: string; auto_code?: false; creation_key?: string });
+export type CockpitNodeCreated = CockpitNode & { workspace_id?: string; creation_key?: string; replayed?: boolean };
+export type CockpitMeetingCreate = CockpitMeetingPatch & { node_id?: string; creation_key?: string };
+export type CockpitMeetingCreated = CockpitMeeting & { node_link?: CockpitMeetingNodeLink; workspace_id?: string; creation_key?: string; replayed?: boolean };
+
 export type CockpitMeetingPatch = Partial<
   Pick<
     CockpitMeeting,
@@ -596,6 +601,8 @@ export interface CockpitMeetingWorkflow {
 export interface CockpitNasDestination {
   root_id: string;
   directory: string;
+  /** Absent on older atomic servers. Unknown modes never grant writes. */
+  write_mode?: string;
 }
 
 export interface CockpitNasExport {
@@ -607,6 +614,11 @@ export interface CockpitNasExport {
   root_id: string;
   directory: string;
   target_path: string;
+  write_mode?: string;
+  verified_path?: string | null;
+  receipt_path?: string | null;
+  verified_attempt_id?: string | null;
+  receipt_hash?: string | null;
   size_bytes: number | null;
   /** Unknown states remain readable but never grant file operations. */
   status: string;

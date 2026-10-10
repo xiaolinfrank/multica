@@ -1,3 +1,5 @@
+import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
+import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { runtimeKeys } from "./queries";
@@ -9,6 +11,8 @@ export function useDeleteRuntime(wsId: string) {
   return useMutation({
     mutationFn: (runtimeId: string) => api.deleteRuntime(runtimeId),
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
       qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     },
   });
@@ -35,6 +39,8 @@ export function useUnbindAgentsAndDeleteRuntime(wsId: string) {
       expectedActiveAgentIds: string[];
     }) => api.unbindAgentsAndDeleteRuntime(runtimeId, expectedActiveAgentIds),
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
       qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
       qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
       qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
@@ -61,6 +67,8 @@ export function useUpdateRuntime(wsId: string) {
       };
     }) => api.updateRuntime(runtimeId, patch),
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+      qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
       qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     },
   });

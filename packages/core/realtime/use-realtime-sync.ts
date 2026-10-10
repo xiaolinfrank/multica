@@ -1,5 +1,8 @@
 "use client";
 
+import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
+import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
+
 import { useEffect, useRef } from "react";
 import { forgetLocalSearchIndex } from "../search-index/instance";
 import { useQueryClient, type InfiniteData, type QueryClient, type QueryFilters } from "@tanstack/react-query";
@@ -804,6 +807,8 @@ export function useRealtimeSync(
       agent: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Squad members status is derived per agent, so any agent
@@ -817,8 +822,8 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
-          // Formal reviewer membership and current capabilities are overview facts.
-          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+          // Membership affects picker recovery and all formal human capabilities.
+          qc.invalidateQueries({ queryKey: cockpitKeys.all(wsId) });
         }
       },
       // workspace:updated is handled by the specific handler below
@@ -838,6 +843,7 @@ export function useRealtimeSync(
         if (wsId) {
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
           // Project deletion sweeps the project's module rows too, so a
           // project:* event must also drop module caches or ghost modules
           // linger under a project that no longer exists.
@@ -855,11 +861,14 @@ export function useRealtimeSync(
         if (wsId) {
           qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
         }
       },
       squad: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: workspaceKeys.squads(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // squad:deleted triggers assignee transfer — refresh issues too.
@@ -916,6 +925,8 @@ export function useRealtimeSync(
       daemon: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
           // Shared agents may carry a redacted runtime liveness projection;
           // refetch it when a daemon changes state even if its private runtime
@@ -1176,6 +1187,7 @@ export function useRealtimeSync(
         qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
         qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
       }
     });
 

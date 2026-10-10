@@ -17,6 +17,7 @@ import type {
 // moved — splitting it would mean six keys that always invalidate together.
 export const cockpitKeys = {
   all: (wsId: string) => ["cockpit", wsId] as const,
+  surfaces: (wsId: string) => [...cockpitKeys.all(wsId), "surfaces"] as const,
   dashboard: (wsId: string) => [...cockpitKeys.all(wsId), "work-overview"] as const,
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
@@ -68,6 +69,7 @@ export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: st
 
 /** Invalidating inactive pages marks them stale; only currently observed scopes refetch. */
 export function invalidateCockpitTaskFlow(client: QueryClient, wsId: string) {
+  void client.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
@@ -153,7 +155,7 @@ export function cockpitMeetingDestinationOptions(
       params.moduleId ?? "",
       params.nodeId ?? "",
     ),
-    queryFn: () => api.getCockpitMeetingDestination(params),
+    queryFn: () => api.getCockpitMeetingDestination(params, wsId),
     enabled: Boolean(wsId),
   });
 }
@@ -166,15 +168,11 @@ export function cockpitMeetingDestinationOptions(
 export function cockpitMeetingScanOptions(
   wsId: string,
   params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
+  sessionId?: string,
 ) {
   return queryOptions({
-    queryKey: cockpitKeys.meetingScan(
-      wsId,
-      params.projectId ?? "",
-      params.moduleId ?? "",
-      params.nodeId ?? "",
-    ),
-    queryFn: () => api.scanCockpitMeetingFolders(params),
+    queryKey: [...cockpitKeys.meetingScan(wsId, params.projectId ?? "", params.moduleId ?? "", params.nodeId ?? ""), ...(sessionId ? ["import-session", sessionId] : [])],
+    queryFn: () => api.scanCockpitMeetingFolders(params, wsId),
     enabled: Boolean(wsId),
     // The folder changes behind the platform's back, so a scan is only ever
     // as good as the moment it ran.

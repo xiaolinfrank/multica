@@ -8,8 +8,8 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import {
   clearCockpitActionCommand, cockpitMeetingActionOptions, cockpitPrimaryNodeOptions, cockpitMinutesVersionOptions, rememberCockpitActionCommand,
   useCockpitActionCommandStore, useCreateCockpitMeetingAction, useResolveCockpitMeetingAction, useUpdateCockpitMeetingAction, CockpitUnconfirmedWriteError,
-  cockpitActionFormKey, clearCockpitActionFormDraft, saveCockpitActionFormDraft, useCockpitActionFormDraftStore, cockpitAreaPath, cockpitObjectPath,
-  type CockpitActionProposalDraft, type CockpitActionDecisionDraft,
+  cockpitActionFormKey, clearCockpitActionFormDraft, saveCockpitActionFormDraft, useCockpitActionFormDraftStore, cockpitScope, cockpitSurfacePath, cockpitObjectPath,
+  type CockpitActionProposalDraft, type CockpitActionDecisionDraft, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
 import type { CockpitActionResolution, CockpitMeetingAction, CockpitMeetingWorkflowSummary, CockpitMinutesVersion } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
@@ -20,9 +20,9 @@ import { Markdown } from "@multica/ui/markdown";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { useT } from "../../i18n";
-import { AppLink } from "../../navigation";
+import { AppLink, useNavigation } from "../../navigation";
 import { CockpitFlowError, CockpitIssueChoice, CockpitTaskRows } from "./cockpit-task-flow";
-import { CockpitNodeIssuePicker, useCockpitNodeIssueOptions } from "./cockpit-node-issue-picker";
+import { CockpitNodeIssuePicker, useCockpitSelectedNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitTaskFields, cockpitTaskFieldsBody, cockpitTaskFieldsValue } from "./cockpit-task-fields";
 
 function SourceMinutes({ version, quote }: { version: CockpitMinutesVersion | undefined; quote: string }) {
@@ -127,6 +127,8 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   const source = useQuery(cockpitMinutesVersionOptions(wsId, workflow.meeting_id, action.version_id));
   const version = source.data?.version;
   const paths = useWorkspacePaths();
+  const navigation = useNavigation();
+  const routeScope = cockpitScope(navigation.searchParams);
   const formKey = cockpitActionFormKey(wsId, "decision", action.id);
   const newForm = (): CockpitActionDecisionDraft => ({ kind: "decision", versionId: action.version_id, sourceHash: action.source_content_hash,
     revision: action.revision, editing: false, title: action.title, description: action.description, sourceQuote: action.source_quote,
@@ -141,9 +143,9 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
     const next = { ...form, ...patch }; setForm(next); saveCockpitActionFormDraft(formKey, next);
   };
   const { revision: observedRevision, editing, title, description, sourceQuote: quote, outcome, fields, reason } = form;
-  const nodeQuery = useCockpitNodeIssueOptions(true);
-  const { options } = nodeQuery;
-  const node = options.find((entry) => entry.node_id === form.nodeId) ?? null;
+  const executor = useCockpitAssigneeAvailability(wsId, outcome === "create" && !pending ? fields.assigneeType : null, outcome === "create" && !pending ? fields.assigneeId : null);
+  const nodeQuery = useCockpitSelectedNodeIssueOption(outcome === "dismiss" ? "" : pending?.body.node_id ?? form.nodeId);
+  const node = nodeQuery.option;
   const selectedQuery = useQuery({ ...issueDetailOptions(wsId, form.issueId), enabled: outcome === "reuse" && !pending && Boolean(form.issueId) });
   const selected = selectedQuery.data?.id === form.issueId && selectedQuery.data.workspace_id === wsId ? selectedQuery.data : null;
   const primary = useQuery(cockpitPrimaryNodeOptions(wsId, outcome === "reuse" && !pending ? form.issueId : ""));
@@ -157,12 +159,12 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   const oldSource = action.source_superseded || workflow.published_version_id !== action.version_id
     || !version?.published_at || version.decision !== "approved" || version.content_hash !== action.source_content_hash;
   const canEdit = authorized && action.status === "draft" && action.can_edit && !oldSource;
-  const selectedNode = pending ? options.find((entry) => entry.node_id === pending.body.node_id) ?? null : node;
+  const selectedNode = node;
   const scopeMatches = Boolean(node && selected && primary.data?.issue_id === selected.id && primary.data.project_id === node.project_id && primary.data.module_id === node.module_id);
   const reuseConflict = Boolean(node && selected && primary.data && (!scopeMatches || (primary.data.node_id && primary.data.node_id !== node.node_id)));
   const canResolve = authorized && !busy && !refreshing && !stale && (Boolean(pending) || (action.status === "draft" && action.can_resolve
     && (outcome === "dismiss" ? Boolean(reason.trim()) : !oldSource && !source.isError && !source.isFetching && Boolean(node) && !nodeQuery.isError && !nodeQuery.isFetching && !nodeQuery.isPending
-      && (outcome === "create" ? Boolean(fields.assigneeId) : scopeMatches && primary.data?.issue_id === selected?.id && !primary.isError && !primary.isFetching && !selectedQuery.isError && !selectedQuery.isFetching && !reuseConflict))));
+      && (outcome === "create" ? executor.available : scopeMatches && primary.data?.issue_id === selected?.id && !primary.isError && !primary.isFetching && !selectedQuery.isError && !selectedQuery.isFetching && !reuseConflict))));
 
   useEffect(() => {
     if (pending && action.decision_key === pending.body.decision_key && action.resolution === pending.body.outcome && action.resolved_at) {
@@ -215,18 +217,17 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
           <SelectItem value="create" disabled={oldSource}>{t(($) => $.meeting_actions.create)}</SelectItem><SelectItem value="reuse" disabled={oldSource}>{t(($) => $.meeting_actions.reuse)}</SelectItem><SelectItem value="dismiss">{t(($) => $.meeting_actions.dismiss)}</SelectItem>
         </SelectContent></Select></label>
       {outcome !== "dismiss" && <div className="space-y-2"><p className="text-caption">{t(($) => $.meeting_actions.primary_node)}</p>
-        {pending ? <p className="text-caption">{selectedNode?.label || pending.body.node_id}</p> : <CockpitNodeIssuePicker leafOnly maxResults={25} value={node} onUpdate={(value) => changeForm({ nodeId: value?.node_id ?? "" })} disabled={busy || !authorized}
+        {pending ? <p className="text-caption">{selectedNode?.label || pending.body.node_id}</p> : <CockpitNodeIssuePicker value={node} onUpdate={(value) => changeForm({ nodeId: value?.node_id ?? "" })} disabled={busy || !authorized}
           triggerRender={<Button type="button" variant="outline" size="sm" aria-label={t(($) => $.meeting_actions.primary_node)} />} />}
         {!pending && (nodeQuery.isError ? <CockpitFlowError onRetry={() => void nodeQuery.refetch()} />
           : nodeQuery.isPending ? <p role="status" className="text-caption text-muted-foreground">{t(($) => $.workflow.loading)}</p>
-            : options.length === 0 ? <p className="text-caption text-muted-foreground">{t(($) => $.action_flow.no_nodes)}</p>
-              : form.nodeId && !node ? <p role="alert" className="text-caption text-destructive">{t(($) => $.action_flow.node_unavailable)}</p> : null)}
+            : form.nodeId && !node ? <p role="alert" className="text-caption text-destructive">{t(($) => $.action_flow.node_unavailable)}</p> : null)}
         <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <ActionRepairLink href={cockpitAreaPath(paths.cockpit(), "gantt")}>{t(($) => $.action_flow.open_plan)}</ActionRepairLink>
-          {(pending?.body.node_id || form.nodeId) && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: pending?.body.node_id || form.nodeId, view: "details" })}>{t(($) => $.action_flow.configure_node)}</ActionRepairLink>}
+          <ActionRepairLink href={cockpitSurfacePath(paths.cockpit(), "plan", routeScope, "gantt")}>{t(($) => $.action_flow.open_plan)}</ActionRepairLink>
+          {(pending?.body.node_id || form.nodeId) && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: pending?.body.node_id || form.nodeId, view: "details" }, routeScope)}>{t(($) => $.action_flow.configure_node)}</ActionRepairLink>}
         </div>
       </div>}
-      {outcome === "create" && <><CockpitTaskFields value={fields} onChange={(fields) => changeForm({ fields })} disabled={busy || Boolean(pending) || !authorized} />
+      {outcome === "create" && <><CockpitTaskFields wsId={wsId} value={fields} onChange={(fields) => changeForm({ fields })} disabled={busy || Boolean(pending) || !authorized} />
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.create_hint)}</p></>}
       {outcome === "reuse" && <>
         {pending ? <p className="text-caption">{t(($) => $.task_flow.selected_issue, { name: pending.body.issue_id })}</p>
@@ -234,7 +235,7 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
         {form.issueId && !pending && (selectedQuery.isError || (!selectedQuery.isPending && !selected) || primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => { void selectedQuery.refetch(); void primary.refetch(); }} />}
         {(pending?.body.issue_id || form.issueId) && <div className="flex flex-wrap gap-x-4 gap-y-1">
           <ActionRepairLink href={paths.issueDetail(pending?.body.issue_id || selected?.identifier || form.issueId)}>{t(($) => $.action_flow.open_issue_materials)}</ActionRepairLink>
-          {!pending && primary.data?.node_id && primary.data.issue_id === form.issueId && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primary.data.node_id, view: "details" })}>{t(($) => $.action_flow.open_primary)}</ActionRepairLink>}
+          {!pending && primary.data?.node_id && primary.data.issue_id === form.issueId && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primary.data.node_id, view: "details" }, routeScope)}>{t(($) => $.action_flow.open_primary)}</ActionRepairLink>}
         </div>}
         {reuseConflict && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_actions.reuse_conflict)}</p>}
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.reuse_hint)}</p>

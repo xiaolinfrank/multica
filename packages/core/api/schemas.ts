@@ -1889,6 +1889,12 @@ export const CockpitNodeBindingResponseSchema = CockpitNodeSchema.extend({
   module_id: z.string().nullable(),
 });
 
+export const CockpitNodeCreateResponseSchema = CockpitNodeBindingResponseSchema.extend({
+  workspace_id: z.string().min(1).optional(), creation_key: z.string().uuid().optional(), replayed: z.boolean().optional(),
+  id: z.string().min(1), cockpit_id: z.string().min(1),
+  parent_id: z.string().nullable(), code: z.string().min(1), name: z.string(), position: z.number().finite(),
+});
+
 export const CockpitPaymentSchema = z.object({
   id: z.string(),
   node_id: z.string().default(""),
@@ -2021,6 +2027,14 @@ export const CockpitMeetingNodeLinkSchema = z.object({
   position: z.number().default(0),
 }).loose();
 
+export const CockpitMeetingCreateResponseSchema = CockpitMeetingSchema.extend({
+  workspace_id: z.string().min(1).optional(), creation_key: z.string().uuid().optional(), replayed: z.boolean().optional(),
+  id: z.string().min(1), title: z.string(), code: z.string(), meet_date: z.string().nullable(),
+  node_link: CockpitMeetingNodeLinkSchema.extend({
+    meeting_id: z.string().min(1), node_id: z.string().min(1), position: z.number().finite(),
+  }).optional(),
+});
+
 export const CockpitMeetingIssuesResponseSchema = z.object({
   meeting_id: z.string().default(""),
   links: z.array(CockpitMeetingIssueLinkSchema).default([]),
@@ -2057,6 +2071,13 @@ export const CockpitMeetingProvisionResultSchema = z.object({
   dir_created: z.boolean().default(false),
   dir_error: z.string().default(""),
 }).loose();
+
+export const CockpitMeetingProvisionWriteSchema = CockpitMeetingProvisionResultSchema.extend({
+  meeting: CockpitMeetingSchema.extend({ id: z.string().min(1), nas_dir: z.string() }),
+  issues: z.array(CockpitMeetingIssueLinkSchema),
+  task: CockpitMeetingIssueLinkSchema.extend({ meeting_id: z.string().min(1), issue_id: z.string().min(1) }).nullable(),
+  task_error: z.string(), dir: z.string(), dir_created: z.boolean(), dir_error: z.string(),
+});
 
 export const CockpitWorkflowIssueSchema = z.object({
   id: z.string(),
@@ -2107,6 +2128,7 @@ export const CockpitReviewerHandoffSchema = z.object({
 export const CockpitNasDestinationSchema = z.object({
   root_id: z.string().min(1),
   directory: z.string().min(1),
+  write_mode: z.string().catch("").default("atomic"),
 }).loose();
 
 export const CockpitNasExportSchema = z.object({
@@ -2118,6 +2140,11 @@ export const CockpitNasExportSchema = z.object({
   root_id: z.string().default(""),
   directory: z.string().default(""),
   target_path: z.string().default(""),
+  write_mode: z.string().catch("").default("atomic"),
+  verified_path: z.string().nullable().default(null),
+  receipt_path: z.string().nullable().default(null),
+  verified_attempt_id: z.string().nullable().default(null),
+  receipt_hash: z.string().nullable().default(null),
   size_bytes: z.number().int().nonnegative().nullable().default(null),
   status: z.string().default(""),
   attempts: z.number().int().nonnegative().default(0),
@@ -2260,6 +2287,10 @@ export const CockpitMeetingDestinationSchema = z.object({
   error: z.string().default(""),
 }).loose();
 
+export const CockpitMeetingDestinationReadSchema = CockpitMeetingDestinationSchema.extend({
+  project_id: z.string(), base_dir: z.string(),
+});
+
 // What the archive folder holds that the register does not. Every guessed
 // field defaults to empty rather than to something plausible: an empty field
 // asks to be filled in, a wrong one has to be spotted first.
@@ -2284,6 +2315,11 @@ export const CockpitMeetingScanSchema = z.object({
   error: z.string().default(""),
 }).loose();
 
+export const CockpitMeetingScanReadSchema = CockpitMeetingScanSchema.extend({
+  base_dir: z.string(), base_dir_exists: z.boolean(), entries: z.array(CockpitMeetingScanEntrySchema),
+  matched: z.number().int().nonnegative(), truncated: z.boolean(), error: z.string(),
+});
+
 export const CockpitMeetingImportResultSchema = z.object({
   meetings: z.array(CockpitMeetingSchema).default([]),
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
@@ -2291,6 +2327,12 @@ export const CockpitMeetingImportResultSchema = z.object({
     .array(z.object({ name: z.string().default(""), reason: z.string().default("") }).loose())
     .default([]),
 }).loose();
+
+export const CockpitMeetingImportWriteSchema = CockpitMeetingImportResultSchema.extend({
+  meetings: z.array(CockpitMeetingSchema.extend({ id: z.string().min(1), nas_dir: z.string().min(1) })),
+  issues: z.array(CockpitMeetingIssueLinkSchema),
+  skipped: z.array(z.object({ name: z.string(), reason: z.string().min(1) }).loose()),
+});
 
 export const CockpitBoardSchema = z.object({
   has_meeting_workflows: z.boolean().default(false),

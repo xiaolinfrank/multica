@@ -74,6 +74,7 @@ import {
   workspaceSubscriptionSummaryOptions,
 } from "@multica/core/billing";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { cockpitKeys } from "@multica/core/cockpit/queries";
 import { useFeatureEnabled } from "@multica/core/config";
 import { BILLING_WORKSPACE_SUBSCRIPTIONS_FLAG } from "@multica/core/feature-flags";
 import { useCurrentWorkspace } from "@multica/core/paths";
@@ -788,6 +789,7 @@ export function MembersTab() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t(($) => $.members.toast_role_failed));
     } finally {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.all(workspace.id) });
       setMemberActionId(null);
     }
   };
@@ -807,6 +809,7 @@ export function MembersTab() {
         } catch (e) {
           toast.error(e instanceof Error ? e.message : t(($) => $.members.toast_member_remove_failed));
         } finally {
+          void qc.invalidateQueries({ queryKey: cockpitKeys.all(workspace.id) });
           setMemberActionId(null);
         }
       },

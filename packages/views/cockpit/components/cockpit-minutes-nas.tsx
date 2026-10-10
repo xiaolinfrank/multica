@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
-  cockpitNasDestination, cockpitWorkflowNasExportValid,
+  cockpitNasDestination, cockpitNasWriteMode, cockpitWorkflowNasExportValid,
   CockpitUnconfirmedWriteError, sameCockpitNasDestination, useExportCockpitMinutesToNas, useRetryCockpitNasExport,
 } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflowSummary, CockpitNasDestination, CockpitWorkflowNasExport } from "@multica/core/types";
@@ -13,6 +13,15 @@ import { copyText } from "@multica/ui/lib/clipboard";
 import { LocalPathLink } from "../../common/local-path-link";
 import { AppLink } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
+import { CockpitNasAttempts } from "./cockpit-nas-attempts";
+
+function NasWriteMode({ destination }: { destination: { write_mode?: string } }) {
+  const { t } = useT("cockpit");
+  const mode = cockpitNasWriteMode(destination);
+  return <div className="space-y-1 text-caption"><p className="font-medium">{mode === "atomic" ? t(($) => $.nas.mode_atomic)
+    : mode === "create_only" ? t(($) => $.nas.mode_create_only) : t(($) => $.nas.unknown_mode, { mode })}</p>
+    {mode === "create_only" && <p className="text-muted-foreground">{t(($) => $.nas.create_only_visibility)}</p>}</div>;
+}
 
 function NasDeploymentHelp() {
   const { t } = useT("cockpit");
@@ -21,6 +30,7 @@ function NasDeploymentHelp() {
       <p>{t(($) => $.nas.deployment_roots)}</p>
       <pre dir="ltr" className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-micro">{'COCKPIT_NAS_EXPORT_ROOTS=[{"workspace_id":"<workspace UUID>","root_id":"<root UUID>","path":"/mounted/share/workspace","allow_local":false}]'}</pre>
       <p>{t(($) => $.nas.deployment_identity)}</p><p>{t(($) => $.nas.deployment_access)}</p>
+      <p>{t(($) => $.nas.deployment_create_only)}</p>
     </div>
   </details>;
 }
@@ -42,16 +52,25 @@ function NasDestinationRecovery({ reason, resourcesHref }: { reason: string; res
 function NasExportTarget({ job, succeeded }: { job: CockpitWorkflowNasExport; succeeded: boolean }) {
   const { t } = useT("cockpit");
   const [copyResult, setCopyResult] = useState<"copied" | "failed" | "">("");
+  const createOnly = cockpitNasWriteMode(job) === "create_only";
+  const copyPath = succeeded && createOnly && job.verified_path ? job.verified_path : job.target_path;
   async function copyTarget() {
-    try { setCopyResult(await copyText(job.target_path) ? "copied" : "failed"); }
+    try { setCopyResult(await copyText(copyPath) ? "copied" : "failed"); }
     catch { setCopyResult("failed"); }
   }
   return <div className="space-y-2 text-caption">
-    {job.target_path && <><div title={job.target_path}>{succeeded ? <LocalPathLink path={job.target_path} className="text-caption" />
+    {job.target_path && <><div title={job.target_path}>{succeeded && !createOnly ? <LocalPathLink path={job.target_path} className="text-caption" />
       : <p dir="ltr" className="break-all font-mono text-muted-foreground">{job.target_path}</p>}</div>
+      {createOnly && <p className="text-muted-foreground">{t(($) => $.nas.logical_target_hint)}</p>}
+      {succeeded && createOnly && job.verified_path && job.receipt_path && <div className="space-y-2">
+        <LocalPathLink path={job.verified_path} className="text-caption">{t(($) => $.nas.open_verified_copy)}</LocalPathLink>
+        <p dir="ltr" className="break-all font-mono text-micro">{job.verified_path}</p>
+        <LocalPathLink path={job.receipt_path} className="text-caption">{t(($) => $.nas.open_completion_record)}</LocalPathLink>
+        <p className="text-muted-foreground">{t(($) => $.nas.recorded_verification)}</p>
+      </div>}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {job.directory && <LocalPathLink path={job.directory} className="text-caption">{t(($) => $.nas.open_frozen_directory)}</LocalPathLink>}
-        <Button type="button" variant="ghost" size="xs" onClick={() => void copyTarget()}>{t(($) => $.nas.copy_target)}</Button>
+        <Button type="button" variant="ghost" size="xs" onClick={() => void copyTarget()}>{succeeded && createOnly ? t(($) => $.nas.copy_verified_path) : t(($) => $.nas.copy_target)}</Button>
       </div>
       {copyResult && <p role="status" className={copyResult === "failed" ? "text-destructive" : "text-muted-foreground"}>{copyResult === "copied" ? t(($) => $.nas.target_copied) : t(($) => $.nas.copy_failed)}</p>}
     </>}
@@ -92,6 +111,7 @@ export function CockpitMinutesPublishControl({ workflow, disabled, pending, onPu
       onCheckedChange={(checked) => setSelected(checked === true ? destination : null)} />
       {t(($) => $.nas.sync_on_publish)}</label>
     {(selected || destination) && <p dir="ltr" className="break-all font-mono text-caption text-muted-foreground">{(selected || destination)?.directory}</p>}
+    {(selected || destination) && <NasWriteMode destination={(selected || destination)!} />}
     {!destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} resourcesHref={resourcesHref} />}
     {selected && <p className="text-caption text-muted-foreground">{t(($) => $.nas.publish_queue_hint)}</p>}
     {changed && <div role="alert" className="space-y-2 text-caption">
@@ -140,6 +160,7 @@ export function CockpitNasExportList({ wsId, workflow, jobs, userId, readOnly, d
       return <article key={job.id} className="space-y-2 rounded-md bg-muted/40 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-caption"><span className="font-medium">{t(($) => $.workflow.version, { number: job.version_number })}</span>
           <span role="status" className="inline-flex items-center gap-1.5">{valid && ["queued", "running"].includes(job.status) && <Spinner />}{statusLabel(job, valid)}</span></div>
+        <NasWriteMode destination={job} />
         <NasExportTarget job={job} succeeded={succeeded} />
         {(job.last_error || job.last_error_code) && <details className="text-caption"><summary className="cursor-pointer text-destructive">{t(($) => $.nas.error_details)}</summary>
           <div className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-destructive">
@@ -152,6 +173,7 @@ export function CockpitNasExportList({ wsId, workflow, jobs, userId, readOnly, d
           aria-busy={retry.isPending && retry.variables?.operation.id === job.id} onClick={() => void retryJob(job)}>
           {retry.isPending && retry.variables?.operation.id === job.id && <Spinner />}{["unsupported_commit", "unsupported_sync", "unsupported_platform"].includes(job.last_error_code)
             ? t(($) => $.nas.retry_after_storage_fix) : t(($) => $.nas.retry)}</Button>}
+        {cockpitNasWriteMode(job) === "create_only" && <CockpitNasAttempts key={`${wsId}:${workflow.meeting_id}:${job.id}`} wsId={wsId} meetingId={workflow.meeting_id} exportId={job.id} />}
       </article>;
     })}
   </div>;
@@ -184,6 +206,7 @@ export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disa
     {published && !destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} resourcesHref={resourcesHref} />}
     {published && destination && !existing && <div className="space-y-2"><p className="text-caption text-muted-foreground">{t(($) => $.nas.configured_destination)}</p>
       <p dir="ltr" className="break-all font-mono text-caption">{destination.directory}</p>
+      <NasWriteMode destination={destination} />
       {canExport && !readOnly && <Button type="button" size="sm" variant="outline" disabled={disabled || request.isPending} aria-busy={request.isPending} onClick={() => void exportMinutes()}>
         {request.isPending && <Spinner />}{t(($) => $.nas.export)}</Button>}</div>}
     <p className="text-caption text-muted-foreground">{t(($) => $.nas.immutable_hint)}</p>

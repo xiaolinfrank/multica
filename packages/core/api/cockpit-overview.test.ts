@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
 import type { CockpitOverviewData, CockpitOverviewIssueCounts } from "../types/cockpit-overview";
 
-const scope = { workspace_id: "ws-1", project_id: "project-1", project_title: "Delivery", as_of: "2026-10-10", generated_at: "2026-10-10T01:02:03Z" };
+const scope = { workspace_id: "ws-1", project_id: "project-1", project_title: "Delivery", module_id: null, module_title: "", as_of: "2026-10-10", generated_at: "2026-10-10T01:02:03Z" };
 const query = { as_of: scope.as_of, project_id: scope.project_id };
 const counts = (total = 1): CockpitOverviewIssueCounts => ({ total, active: total, unstarted: total, started: 0, done: 0, closed: 0, unknown: 0, overdue: 0, blocked: 0, unassigned: 0 });
 

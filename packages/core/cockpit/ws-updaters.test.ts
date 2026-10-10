@@ -3,11 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
+import { cockpitReadKeys } from "./read-queries";
 import { onCockpitChanged } from "./ws-updaters";
 
 const WS = "ws-1";
 
 describe("meeting destination refresh", () => {
+  it("merges a single-reference event without replacing unmentioned relationships", () => {
+    const { qc, board } = seedBoard();
+    const link = { meeting_id: "meeting-append", issue_id: "issue-append", issue_number: 900, issue_identifier: "BIO-900", issue_title: "Appended", issue_status: "backlog", role: "", roles: ["preparation"], required_roles: [], position: 44 };
+    const original = [...board.meeting_issues];
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
+    expect(qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS))?.meeting_issues).toEqual([...original, link]);
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: "other", meeting_id: link.meeting_id, link: { ...link, roles: [] } } } });
+    expect(qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS))?.meeting_issues).toEqual([...original, link]);
+  });
   it("invalidates only the changed meeting's workflow for remote folder edits and provisioning", () => {
     const qc = new QueryClient();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
@@ -127,8 +138,20 @@ describe("onCockpitChanged", () => {
     expect(read(qc).nodes[0]!.name).toBe("Renamed");
     expect(read(qc).nodes[0]!.progress).toBe(60);
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }],
       [{ queryKey: cockpitKeys.dashboard(WS) }],
       [{ queryKey: cockpitKeys.tasks(WS) }],
+    ]);
+  });
+
+  it("invalidates paged directories from a backward-readable directory event without replacing the book", () => {
+    const { qc } = seedBoard();
+    qc.setQueryData(cockpitKeys.directory(WS), { entries: [{ party: "Existing", name: "Preserved" }] });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onCockpitChanged(qc, WS, { scope: "directory", action: "changed", entity: { entries: [{ party: "New", name: "One saved row" }] } });
+    expect(qc.getQueryData(cockpitKeys.directory(WS))).toEqual({ entries: [{ party: "Existing", name: "Preserved" }] });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }], [{ queryKey: cockpitKeys.dashboard(WS) }], [{ queryKey: cockpitKeys.directory(WS) }],
     ]);
   });
 
@@ -216,6 +239,7 @@ describe("onCockpitChanged", () => {
     onCockpitChanged(qc, WS, { scope: "snapshots", action: "created", entity: null });
 
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }],
       [{ queryKey: cockpitKeys.dashboard(WS) }],
       [{ queryKey: cockpitKeys.snapshots(WS) }],
     ]);
@@ -228,6 +252,7 @@ describe("onCockpitChanged", () => {
     onCockpitChanged(qc, WS, { scope: "changes", action: "queued", entity: null });
 
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }],
       [{ queryKey: cockpitKeys.dashboard(WS) }],
       [{ queryKey: cockpitKeys.changes(WS) }],
     ]);

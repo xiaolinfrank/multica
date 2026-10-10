@@ -16,8 +16,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   CockpitBoard,
-  CockpitMeeting,
-  CockpitMeetingPatch,
   CockpitMilestone,
   CockpitMilestonePatch,
   CockpitNode,
@@ -25,11 +23,7 @@ import type {
   CockpitPatch,
 } from "@multica/core/types";
 import {
-  addDays,
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
   buildCockpitTree,
-  cockpitMeetingSpan,
   cockpitMilestoneStatusColor,
   cockpitModuleHighlights,
   cockpitSubtreeAverage,
@@ -38,7 +32,6 @@ import {
   computeCockpitMonths,
   computeCockpitRollups,
   daysBetween,
-  formatDay,
   isCockpitMilestoneDone,
   isCockpitSummaryGroup,
   parseCockpitCardText,
@@ -53,18 +46,7 @@ import {
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@multica/ui/components/ui/dialog";
-import {
-  CalendarDays,
   CircleDollarSign,
-  Clock,
-  ExternalLink,
   Flag,
   Goal,
   Handshake,
@@ -73,9 +55,9 @@ import {
   Target,
   Trash2,
   TrendingUp,
-  Users,
 } from "lucide-react";
 import { useT, useLocale } from "../../i18n";
+import { CockpitNarrativeCard as NarrativeCard } from "./cockpit-narrative-card";
 import { EditableDate, EditableSuggest, EditableText, EditableTextArea } from "./cockpit-fields";
 
 /** The banner's live clock, read off local Date components — the wall clock
@@ -378,55 +360,17 @@ function ManualCardBody({
   return <div className="flex flex-col">{blocks}</div>;
 }
 
-/** The shell every bottom card shares: title, window hint, and the gradient
- * cap that tells the four apart at a glance. */
-function NarrativeCard({
-  title,
-  icon,
-  hint,
-  cap,
-  badge,
-  action,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  hint?: string;
-  cap?: "next" | "meetings" | "support";
-  badge?: React.ReactNode;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="cockpit-card-top cockpit-card p-4" data-cap={cap}>
-      <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span aria-hidden className="inline-flex self-center" style={{ color: "var(--top-from)" }}>
-          {icon}
-        </span>
-        <h2 className="text-title-sm font-semibold">{title}</h2>
-        {hint && <span className="text-micro text-muted-foreground">{hint}</span>}
-        <span className="flex-1" />
-        {badge}
-        {action}
-      </header>
-      {children}
-    </section>
-  );
-}
-
 export interface CockpitOverviewProps {
-  board: CockpitBoard;
+  board: Pick<CockpitBoard, "cockpit" | "nodes" | "payments" | "milestones">;
+  contextNodeIds: ReadonlySet<string>;
+  displayCodes: ReadonlyMap<string, string>;
   today: string;
   onPatchBoard: (patch: CockpitPatch) => void;
   onPatchNode: (nodeId: string, patch: CockpitNodePatch) => void;
   onPatchMilestone: (id: string, patch: CockpitMilestonePatch) => void;
   onCreateMilestone: () => void;
   onDeleteMilestone: (id: string) => void;
-  onPatchMeeting: (id: string, patch: CockpitMeetingPatch) => void;
-  onCreateMeeting: () => void;
-  onDeleteMeeting: (id: string) => void;
-  /** Opens the meeting register, on one meeting when named. */
-  onOpenMeetings: (meetingId?: string) => void;
+  meetingsSlot: React.ReactNode;
   onOpenBranch: (nodeId: string) => void;
   /** Locates and highlights one task row in the gantt. */
   onOpenTask?: (nodeId: string) => void;
@@ -440,16 +384,15 @@ export interface CockpitOverviewProps {
 
 export function CockpitOverview({
   board,
+  contextNodeIds,
+  displayCodes,
   today,
   onPatchBoard,
   onPatchNode,
   onPatchMilestone,
   onCreateMilestone,
   onDeleteMilestone,
-  onPatchMeeting,
-  onCreateMeeting,
-  onDeleteMeeting,
-  onOpenMeetings,
+  meetingsSlot,
   onOpenBranch,
   onOpenTask,
   onOpenModule,
@@ -460,14 +403,9 @@ export function CockpitOverview({
   const locale = useLocale();
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  // The overview quotes the same row numbers the gantt ships: the summary
-  // tree's display codes. The base tree's positional codes would number a
-  // merged direction's tasks by a row the reader never sees.
-  const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(summaryTree), [summaryTree]);
   const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
-  const finance = useMemo(() => computeCockpitFinance(board), [board]);
-  const months = useMemo(() => computeCockpitMonths(board), [board]);
+  const finance = useMemo(() => computeCockpitFinance(board, contextNodeIds), [board, contextNodeIds]);
+  const months = useMemo(() => computeCockpitMonths(board, contextNodeIds), [board, contextNodeIds]);
   const digest = useMemo(() => computeCockpitDigest(board, today), [board, today]);
   const milestones = useMemo(() => sortCockpitMilestones(board.milestones), [board.milestones]);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
@@ -582,7 +520,7 @@ export function CockpitOverview({
             {milestones.map((milestone) => {
               const node = milestone.node_id ? nodeById.get(milestone.node_id) : undefined;
               return (
-                <MilestoneCard
+                <CockpitMilestoneCard
                   key={milestone.id}
                   milestone={milestone}
                   node={node}
@@ -610,7 +548,7 @@ export function CockpitOverview({
               code={displayCodes.get(entry.node.id) ?? entry.node.code}
               rollup={rollups.get(entry.node.id)}
               today={today}
-              readOnly={readOnly}
+              readOnly={readOnly || contextNodeIds.has(entry.node.id)}
               emptyLabel={emptyLabel}
               ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
@@ -627,7 +565,7 @@ export function CockpitOverview({
               code={displayCodes.get(entry.node.id) ?? entry.node.code}
               rollup={rollups.get(entry.node.id)}
               today={today}
-              readOnly={readOnly}
+              readOnly={readOnly || contextNodeIds.has(entry.node.id)}
               emptyLabel={emptyLabel}
               ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
@@ -706,16 +644,7 @@ export function CockpitOverview({
           onOpenCode={openByCode}
           readOnly={readOnly}
         />
-        <MeetingsCard
-          onOpenMeetings={onOpenMeetings}
-          meetings={board.meetings}
-          today={today}
-          locale={locale}
-          onPatch={onPatchMeeting}
-          onCreate={onCreateMeeting}
-          onDelete={onDeleteMeeting}
-          readOnly={readOnly}
-        />
+        {meetingsSlot}
         <DigestCard
           title={t(($) => $.overview.card_support)}
           icon={<Handshake className="size-4" />}
@@ -1216,7 +1145,7 @@ function ModuleSmallCard({
   );
 }
 
-function MilestoneCard({
+export function CockpitMilestoneCard({
   milestone,
   node,
   nodeCode,
@@ -1454,308 +1383,5 @@ function DigestCard({
         </>
       )}
     </NarrativeCard>
-  );
-}
-
-/** Monday of the week `iso` falls in, and the Sunday that closes it. */
-function weekWindow(iso: string): [string, string] | null {
-  const date = parseDay(iso);
-  if (!date) return null;
-  const offset = (date.getUTCDay() + 6) % 7;
-  const start = addDays(date, -offset);
-  return [formatDay(start), formatDay(addDays(start, 6))];
-}
-
-function MeetingsCard({
-  meetings,
-  today,
-  locale,
-  onPatch,
-  onCreate,
-  onDelete,
-  onOpenMeetings,
-  readOnly,
-}: {
-  meetings: CockpitMeeting[];
-  today: string;
-  locale: string;
-  onPatch: (id: string, patch: CockpitMeetingPatch) => void;
-  onCreate: () => void;
-  onDelete: (id: string) => void;
-  onOpenMeetings: (meetingId?: string) => void;
-  readOnly?: boolean;
-}) {
-  const { t } = useT("cockpit");
-  const [showAll, setShowAll] = useState(false);
-
-  const { shown, thisWeek } = useMemo(() => {
-    const week = weekWindow(today);
-    const sorted = [...meetings].sort((a, b) =>
-      `${a.meet_date ?? ""}${a.time_range}`.localeCompare(`${b.meet_date ?? ""}${b.time_range}`),
-    );
-    const inWeek = new Set(
-      week
-        ? sorted.filter((m) => m.meet_date && m.meet_date >= week[0] && m.meet_date <= week[1])
-        : [],
-    );
-    if (inWeek.size > 0) return { shown: sorted.filter((m) => inWeek.has(m)), thisWeek: inWeek };
-    // Nothing this week — lead with the next one on the calendar, and say so
-    // plainly when there is none either. History stays where it belongs,
-    // behind the "show all" toggle.
-    const next = sorted.find((m) => m.meet_date && m.meet_date > today);
-    if (next) return { shown: [next], thisWeek: inWeek };
-    return { shown: [], thisWeek: inWeek };
-  }, [meetings, today]);
-
-  const list = showAll ? [...meetings] : shown;
-
-  return (
-    <NarrativeCard
-      title={t(($) => $.overview.card_meetings)}
-      icon={<CalendarDays className="size-4" />}
-      cap="meetings"
-      hint={t(($) => $.overview.card_meetings_hint)}
-      action={
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2"
-            onClick={() => onOpenMeetings()}
-          >
-            {t(($) => $.meetings.open_register)}
-          </Button>
-          {!readOnly && (
-            <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
-              <Plus className="size-3.5" />
-              {t(($) => $.meeting.new)}
-            </Button>
-          )}
-        </>
-      }
-    >
-      {list.length === 0 ? (
-        <p className="text-body text-muted-foreground">{t(($) => $.overview.meetings_empty)}</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-border">
-          {list.map((meeting) => (
-            <MeetingRow
-              key={meeting.id}
-              meeting={meeting}
-              locale={locale}
-              tag={
-                thisWeek.has(meeting)
-                  ? t(($) => $.meeting.this_week)
-                  : meeting.meet_date && meeting.meet_date > today
-                    ? t(($) => $.meeting.upcoming)
-                    : null
-              }
-              onPatch={(patch) => onPatch(meeting.id, patch)}
-              onDelete={() => onDelete(meeting.id)}
-              onOpen={() => onOpenMeetings(meeting.id)}
-              readOnly={readOnly}
-            />
-          ))}
-        </ul>
-      )}
-      {meetings.length > shown.length && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2 h-7 px-2 text-caption"
-          onClick={() => setShowAll((value) => !value)}
-        >
-          {showAll
-            ? t(($) => $.meeting.show_upcoming)
-            : t(($) => $.meeting.show_all, { n: meetings.length })}
-        </Button>
-      )}
-    </NarrativeCard>
-  );
-}
-
-function MeetingRow({
-  meeting,
-  locale,
-  tag,
-  onPatch,
-  onDelete,
-  onOpen,
-  readOnly,
-}: {
-  meeting: CockpitMeeting;
-  locale: string;
-  tag: string | null;
-  onPatch: (patch: CockpitMeetingPatch) => void;
-  onDelete: () => void;
-  onOpen: () => void;
-  readOnly?: boolean;
-}) {
-  const { t } = useT("cockpit");
-  // The row opens the read-only detail dialog; the inline editor is reached
-  // from the dialog's footer, so editing stays one hop from reading.
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const date = parseDay(meeting.meet_date);
-  // Agenda lines are written as a list, one bullet per line or semicolon.
-  const agenda = useMemo(
-    () =>
-      meeting.note
-        .split(/\n|;|；/)
-        .map((line) => line.trim())
-        .filter(Boolean),
-    [meeting.note],
-  );
-
-  return (
-    <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-      <li className="group/meet">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={t(($) => $.meeting.details, {
-            title: meeting.title || t(($) => $.meeting.title_placeholder),
-          })}
-          onClick={() => setDetailOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            setDetailOpen(true);
-          }}
-          className="flex cursor-pointer gap-2.5 rounded-sm py-2 hover:bg-accent"
-        >
-          {/* A calendar chip reads faster than an ISO date in a list of five. */}
-          <div className="flex size-9 shrink-0 flex-col items-center justify-center rounded-md border border-border bg-muted/50 leading-none">
-            <b className="text-caption tabular-nums">{date ? date.getUTCDate() : "--"}</b>
-            <span className="text-micro text-muted-foreground">
-              {date ? date.toLocaleDateString(locale, { month: "short" }) : ""}
-            </span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-left font-medium">
-                {meeting.title || t(($) => $.meeting.title_placeholder)}
-              </span>
-              {tag && (
-                <span className="shrink-0 rounded-sm border border-border px-1 text-micro text-muted-foreground">
-                  {tag}
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-micro text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <Clock className="size-3" aria-hidden />
-                {cockpitMeetingSpan(meeting) || t(($) => $.common.unset)}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Users className="size-3" aria-hidden />
-                {meeting.parties || meeting.attendees || t(($) => $.common.unset)}
-              </span>
-              {meeting.meet_no && <span>#{meeting.meet_no}</span>}
-            </div>
-          </div>
-        </div>
-        {editOpen && (
-          <div className="mb-2 flex flex-col gap-1 rounded-md border border-border p-2">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <EditableDate
-                value={meeting.meet_date}
-                onCommit={(meet_date) => onPatch({ meet_date })}
-                label={t(($) => $.meeting.date)}
-                placeholder={t(($) => $.common.unset)}
-                disabled={readOnly}
-              />
-              <EditableText
-                value={meeting.time_range}
-                onCommit={(time_range) => onPatch({ time_range })}
-                label={t(($) => $.meeting.time)}
-                placeholder={t(($) => $.meeting.time)}
-                disabled={readOnly}
-                displayClassName="text-caption text-muted-foreground tabular-nums"
-              />
-              <EditableText
-                value={meeting.title}
-                onCommit={(title) => onPatch({ title })}
-                label={t(($) => $.meeting.title)}
-                placeholder={t(($) => $.meeting.title_placeholder)}
-                disabled={readOnly}
-                displayClassName="min-w-40 flex-1 font-medium"
-              />
-            </div>
-            <EditableText
-              value={meeting.attendees}
-              onCommit={(attendees) => onPatch({ attendees })}
-              label={t(($) => $.meeting.attendees)}
-              placeholder={t(($) => $.meeting.attendees)}
-              disabled={readOnly}
-              displayClassName="text-caption text-muted-foreground"
-            />
-            {meeting.note && (
-              <p className="whitespace-pre-line text-micro text-muted-foreground">{meeting.note}</p>
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={onDelete}
-                aria-label={t(($) => $.meeting.delete, { title: meeting.title })}
-                className="self-start rounded-sm p-1 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-      </li>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{meeting.title || t(($) => $.meeting.title_placeholder)}</DialogTitle>
-        </DialogHeader>
-        <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
-          <CalendarDays className="size-3.5" aria-hidden />
-          {meeting.meet_date || t(($) => $.meeting.date)}
-          {meeting.time_range ? ` ${meeting.time_range}` : ""}
-        </p>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
-          <dt className="text-muted-foreground">{t(($) => $.meeting.attendees)}</dt>
-          <dd className="min-w-0">{meeting.attendees || t(($) => $.common.unset)}</dd>
-          <dt className="text-muted-foreground">{t(($) => $.meeting.meet_no)}</dt>
-          <dd className="min-w-0 font-medium tracking-wide">
-            {meeting.meet_no || t(($) => $.common.unset)}
-          </dd>
-        </dl>
-        <div className="flex flex-col gap-1 text-caption">
-          {agenda.length > 0 ? (
-            agenda.map((line) => (
-              <p key={line}>• {line}</p>
-            ))
-          ) : (
-            <p className="text-muted-foreground">{t(($) => $.meeting.no_agenda)}</p>
-          )}
-        </div>
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" size="sm" onClick={onOpen} />}>
-            {t(($) => $.meetings.open_register)}
-          </DialogClose>
-          {!readOnly && (
-            <DialogClose
-              render={
-                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} />
-              }
-            >
-              {t(($) => $.meeting.edit)}
-            </DialogClose>
-          )}
-          {meeting.link && (
-            <Button
-              size="sm"
-              render={<a href={meeting.link} target="_blank" rel="noopener noreferrer" />}
-            >
-              {t(($) => $.meeting.open)}
-              <ExternalLink className="size-3.5" />
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

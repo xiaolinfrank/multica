@@ -37,7 +37,7 @@ export function CockpitMinutesReader({ wsId, workflow, versionId, versionNumber,
           : <><div className="flex flex-wrap gap-2 text-caption"><span>{label(detail.version.decision)}</span>
             {detail.version.id === workflow.published_version_id && <span className="text-brand">{t(($) => $.minutes_history.official)}</span>}</div>
             {detail.version.published_at && detail.version.id !== workflow.published_version_id && <p className="text-caption text-muted-foreground">{t(($) => $.minutes_history.previously_published)}</p>}
-            <WorkflowIssueLink issue={detail.version.review_issue} />
+            <WorkflowIssueLink wsId={wsId} issue={detail.version.review_issue} />
             <div className="min-w-0 max-w-full overflow-x-auto break-words"><Markdown mode="full">{detail.version.content}</Markdown></div>
             {detail.version.feedback && <section className="space-y-2 border-t pt-3"><h3 className="text-caption font-medium">{t(($) => $.workflow.feedback)}</h3>
               <p className="whitespace-pre-wrap break-words text-body">{detail.version.feedback}</p></section>}
