@@ -2,7 +2,25 @@
 
 ## 当前结论
 
-2026-10-09 在 `fosun_agent_3`（`10.35.182.2`）的真实 `/Volumes/人机协作空间` SMB 挂载上验证。NAS 可访问，具备创建、读写和清理本轮测试目录的权限；**当前固定纪要导出尚未通过真实 NAS 验收**。
+2026-10-10，正式执行器新增的显式 `create_only` 模式已在 `fosun_agent_3`（`10.35.182.2`）的真实 `/Volumes/人机协作空间` SMB 挂载上通过文件系统和 PostgreSQL 后台执行链验证。原 `atomic` 模式的独占提交限制仍在，系统不会自动降级。此次尚未部署常驻环境；新界面的浏览器整体验收另行记录。
+
+## 2026-10-10 创建式正式实现验证
+
+配置根、预览、写请求与操作记录必须明确匹配 `write_mode: "create_only"`。固定的 `target_path` 是逻辑目标；成功操作另外保存 `verified_path`、`receipt_path`、`verified_attempt_id`、`receipt_hash`，页面只将完整证据对应的副本视为成功。每次尝试先登记于 PostgreSQL，再在独立尝试目录中以排他创建方式写正文和 `.multica-complete.json`，不会覆盖、删除或重命名旧文件。
+
+带 race 的 `TestRealNASCreateOnly` 7 个子例全部通过：精确字节及完整记录恢复、正文中断保留旧文件并另开尝试、完成记录中断恢复、不同内容不覆盖、并发尝试各自保存副本、根身份拒绝，以及共享盘同步句柄能力探测。带 race 的 `TestRealNASCreateOnlyWorker` 通过真实 `multica_test` 数据库、正式 worker 和真实 SMB 验证：固定已批准版本→持久操作与尝试→文件及完成记录→读回核验→数据库成功证据；同操作再次请求不增加尝试。
+
+首次正式实现验证暴露 SMB 兼容性：对只读文件描述符调用 `fsync` 返回 `permission_denied`。现有文件核验后的同步改用不带 CREATE/TRUNC/APPEND 的写句柄，仅执行同步，并在打开及同步后核对文件身份；不写入已有正文。修复后上述成功路径全过，默认本地夹具 16 个父测试也通过。此前“文件同步成功”记录指写入句柄，不能外推为只读句柄也支持。
+
+创建式模式仍不保证 NAS 目录中的文件原子可见，写入时可能看到不完整文件；失败文件保留。只有完成记录完整解析、作用域/版本/尝试身份与正文 hash/长度都一致时才记录成功。目录同步调用被接受不等于证明断电持久性；未执行断电、断网或显式拒绝删除 ACL 测试，也没有修改任何账户权限。
+
+本轮正式文件系统根 `.multica-validation-2593bcbd-38f7-4b84-8943-31146ac39ee3` 与 worker 根 `.multica-validation-5b392e15-990d-4d5f-af40-c7d94b75caa2` 均在核对自身目录身份后清理。首次失败及诊断根同样已清理；既有业务目录保持不变。仅专用 `multica_test` 应用 989–991，常驻 `multica_dev`、API 18080/Web 13000 未修改。全部实际执行在 agent 3，未执行真实 Agent。
+
+证据与产物 hash 见 [本轮创建式验证记录](../design/cockpit-native-2026-10-09/implementation/agent3-create-only-nas-validation.json)，[文件系统原始日志](../design/cockpit-native-2026-10-09/implementation/agent3-create-only-nas-filesystem.txt)和[后台执行链原始日志](../design/cockpit-native-2026-10-09/implementation/agent3-create-only-nas-worker.txt)。复现正式模式时分别编译 `./internal/cockpitnas` 与 `./internal/service` 的 `-race -tags=nasintegration` 测试二进制，在 agent 3 专用 profile 下设置 `MULTICA_RUN_REAL_NAS_TEST=1`、`MULTICA_REAL_NAS_PARENT='/Volumes/人机协作空间'`，只运行 `^TestRealNASCreateOnly$` 或 `^TestRealNASCreateOnlyWorker$`。默认测试不会访问共享盘。
+
+## 2026-10-09 原子模式历史结果
+
+当日 NAS 可访问，具备创建、读写和清理本轮测试目录的权限；**原子模式固定纪要导出未通过真实 NAS 验收**。以下保留原始失败与原型边界。
 
 阻塞发生在文件最终提交：Darwin `renameatx_np(..., RENAME_EXCL)` 返回 `ENOTSUP`，操作进入 `unsupported_commit`；此次直接观测到的是接口不支持，并非权限拒绝。测试账号可以清理自己创建的夹具，但这不证明其他 NAS 账号或既有业务文件具有删除权限。独立系统调用探测中，硬链接也返回 `ENOTSUP`（errno 45）；文件与目录 `fsync` 返回成功。
 

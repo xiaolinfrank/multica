@@ -1,0 +1,50 @@
+{
+  "fixture": {
+    "issues": 100000,
+    "l3": 3000,
+    "meetings": 20000,
+    "modules": 300,
+    "projects": 30
+  },
+  "seed_ms": 16626.996,
+  "cache_note": "First read is the first call in this test, not an OS/PostgreSQL cache flush. Latency covers service reads and JSON encoding; excludes HTTP, browser and transport.",
+  "statistics_note": "Fixture tables are explicitly ANALYZEd after bulk insertion, before primary integrity checks and before measurements. No JIT/work_mem/plan-cache configuration changes.",
+  "unverified": [
+    "200000 artifact versions: artifact tables not yet implemented",
+    "concurrent users",
+    "large populations of enabled meeting work packages"
+  ],
+  "measurements": [
+    {
+      "name": "markers_visible100",
+      "failed": false,
+      "first_read_ms": 80.3,
+      "first_payload_bytes": 116025,
+      "warm_read_ms": [
+        61.996,
+        62.484,
+        59.651,
+        57.492,
+        86.472,
+        87.646,
+        93.214,
+        92.602,
+        94.57,
+        96.211,
+        95.263,
+        99.124,
+        98.141,
+        94.591,
+        96.33,
+        99.037,
+        95.672,
+        97.392,
+        97.869,
+        96.844
+      ],
+      "warm_p50_ms": 94.591,
+      "warm_p95_ms": 99.037,
+      "maximum_payload_bytes": 116025
+    }
+  ]
+}

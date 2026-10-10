@@ -15,37 +15,39 @@
 部署参数`COCKPIT_NAS_EXPORT_ROOTS`为JSON数组，初版每个工作区最多一个受管根：
 
 ```json
-[{"workspace_id":"<uuid>","root_id":"<uuid>","path":"/mounted/share/workspace","allow_local":false}]
+[{"workspace_id":"<uuid>","root_id":"<uuid>","path":"/mounted/share/workspace","write_mode":"atomic","allow_local":false}]
 ```
 
 不同工作区的根不能重叠，root_id不可重复。根由部署配置授权，不能由会议的可编辑路径创造授权。预置文件`.multica-root-id`的文本必须等于root_id；平台不创建根或身份文件。默认要求实际网络文件系统，显式`allow_local:true`仅用于受控本地存储或测试夹具，不是自动降级。
 
 `meeting.nas_dir`必须是受管根内的服务器原生绝对路径；新导出请求与事务内当前会议目录比较，过时目标返回409。目录预览只验证配置和范围，不宣称NAS在线。会议目录必须已经存在；文件执行器只创建其下的“已发布纪要”目录。
 
-输出名称固定为`已发布纪要/minutes-v0001-<完整版本UUID>.md`，数字为版本号且至少四位。文件是数据库版本的精确UTF-8内容，不加头部、不修改换行。根路径、会议目录、相对路径和完整目标路径随记录保存，根映射变化不会默默改投新位置。
+`atomic`模式的输出名称固定为`已发布纪要/minutes-v0001-<完整版本UUID>.md`，数字为版本号且至少四位。文件是数据库版本的精确UTF-8内容，不加头部、不修改换行。根路径、会议目录、相对路径和逻辑目标路径随记录保存，根映射变化不会默默改投新位置。缺省模式为`atomic`；创建式模式见后文，不自动降级。
 
 当前执行位置为配置该根的服务器；仅macOS/Linux支持，其他平台明确报告不支持。名称标记是身份核对，不替代部署账户/NAS权限；不宣称平台已隔离拥有共享盘权限的Agent shell。
 
 ## HTTP
 
-现有发布路径的body扩展为`{expected_revision, nas_export?:{root_id,directory}}`。省略nas_export保留原行为。目录/根输入不合法则拒绝请求；网络存储离线不属于这类输入错误。
+现有发布路径的body扩展为`{expected_revision, nas_export?:{root_id,directory,write_mode?}}`。省略nas_export保留原行为。目录/根输入不合法则拒绝请求；网络存储离线不属于这类输入错误。缺少write_mode按atomic处理；创建式根必须显式回传create_only，否则在事务提交前拒绝。
 
 | 动作 | 路径与body |
 | --- | --- |
-| 单独导出已发布版本 | POST `.../workflow/versions/{versionId}/nas-export`，`{root_id,directory}` |
+| 单独导出已发布版本 | POST `.../workflow/versions/{versionId}/nas-export`，`{root_id,directory,write_mode?}` |
 | 重试固定目标 | POST `.../workflow/exports/{exportId}/retry`，`{expected_revision}`，使用操作自身修订 |
+| 单个操作的尝试记录 | GET `.../workflow/exports/{exportId}/attempts`，`page_size`默认25、最大100，`cursor`绑定工作区/会议/操作/页大小 |
 
 均要求工作区成员身份且为人类管理人或该版本的评审人，不接受机器凭据。单独导出可作用于仍保留批准/发布记录的旧版本。所有写入返回直接完整workflow DTO。
 
 GETworkflow新增：
 
 ```text
-nas_destination: {root_id,directory} | null
+nas_destination: {root_id,directory,write_mode} | null
 nas_unavailable_reason: string
 can_export_nas: boolean  // 对当前published_version_id的能力提示
 nas_exports: [{
   id,version_id,version_number,source_issue_id,content_hash,
-  root_id,directory,target_path,status,attempts,revision,
+  root_id,directory,target_path,write_mode,status,attempts,revision,
+  verified_path,receipt_path,verified_attempt_id,receipt_hash,
   next_retry_at,created_at,updated_at,completed_at,
   last_error_code,last_error,size_bytes,can_retry
 }]
@@ -58,7 +60,7 @@ directory和target_path均为绝对路径；旧响应默认空目的地/空数�
 - PostgreSQL记录自然去重键（工作区、版本、根ID、相对路径），不为确定性文件复制创建新Issue。
 - 领取使用数据库时间、SKIP LOCKED与租约令牌；只领取本执行器已配置的根。状态落库必须匹配本轮令牌，旧执行器不能覆盖新尝试的结果。
 - 每轮最多8次自动尝试，按退避延迟推进；手工重试保留累计attempts、重置本轮预算，不改变固定目标。重试要求操作修订一致，旧修订返回409。
-- 文件执行在数据库事务之外。打开根目录句柄并核对挂载和标记，逐段NOFOLLOW打开既有会议目录；临时文件使用操作ID/租约令牌区分，写入和同步后原子、不覆盖地提交。文件系统不支持该提交能力时明确拒绝，不能退回覆盖式rename。
+- 文件执行在数据库事务之外。打开根目录句柄并核对挂载和标记，逐段NOFOLLOW打开既有会议目录；atomic模式的临时文件使用操作ID/租约令牌区分，写入和同步后原子、不覆盖地提交。文件系统不支持该提交能力时明确拒绝，不能退回覆盖式rename或静默改用创建式模式。
 - NAS系统调用可能在内核中阻塞。执行器并发受限，不用不断派生的goroutine假装实现可取消I/O；租约与固定内容、不覆盖写入共同处理重复执行和重启恢复。
 - 数据库记账失败但文件已提交时，重新核对相同路径/内容后收敛；不因响应丢失再创建版本或任务。
 - 删除工作区清理导出记录，但不自动删除团队NAS文件。已领取的外部I/O可能在删除时完成，不能宣称数据库删除会原子撤回共享盘写入；其晚到结果不能恢复已删除记录。
@@ -84,3 +86,21 @@ multica cockpit meeting workflow retry-nas <meeting-id> <export-id> --revision <
 CLI 还核对回执中的操作 UUID、版本、根、规范目录和固定内容 hash；重试核对操作 ID、修订及已排队／执行中／成功状态。旧后端忽略发布的 NAS 参数或回执不完整时返回错误，并明确提示平台发布可能已经成功，应先重读确认；不自动重发，也不更换凭据。
 
 副本状态描述最后一次成功核验，不持续监控外部修改；检测到提交期间目录移动或替换会拒绝确认原路径。进程硬退出可能遗留本轮隐藏临时文件，文件名含操作/租约ID，不被当作正式成果；本批不做跨目录临时文件清扫。
+
+## 创建式模式与完成证据
+
+`write_mode=create_only`是运营者明确配置、人类明确请求的独立模式。它为每次尝试新建目录与文件，不覆盖、追加、删除或重命名既有文件；不会在atomic失败后自行启用。
+
+输出布局为`已发布纪要/创建式副本/<export UUID>/<attempt UUID>/minutes-vNNNN-<version UUID>.md`，同目录另有`.multica-complete.json`。操作的固定`target_path`仍是逻辑意图；完成后单独保存`verified_path`、`receipt_path`、`verified_attempt_id`和`receipt_hash`。未核验时这些证据为空，界面不能把逻辑目标当成已经生成的正式副本。
+
+每个租约在文件访问前登记尝试身份、序号、预定正文/完成记录路径和源hash。执行器仅用排他新建写入正文，同步并完整读回固定字节后，排他新建完成记录。记录必须完整解析，且schema、工作区、会议、根、操作、版本、尝试、文件名、字节数及SHA-256全部与固定意图一致；再核正文、文件身份和目录身份后才确认成功。
+
+恢复只查询数据库记录的尝试，按25条分页核验，不扫描NAS全目录。已存在的有效完整记录直接复用；缺失或截断记录保留现场并另开尝试。完整但身份或内容不符的证据进入需处理。文件已完成、数据库回执丢失可从完成记录收敛；旧租约的结果不能替代新租约选定的副本，也不能恢复已删除的工作区记录。
+
+SMB对只读句柄的fsync可能拒绝。执行器可用不含CREATE、TRUNC或APPEND的现存普通文件写句柄执行fsync，并在前后核对设备与inode；该句柄不执行内容写入。这条路径没有删除或重命名调用，不改变现有账户权限；没有据此宣称已通过显式拒绝删除的ACL验收。目录同步返回成功仍不能证明NAS断电持久性。
+
+此模式不提供文件系统级原子可见性：直接浏览NAS可能看到尚未写完的正文或完成记录，失败尝试会保留。并发或租约过期可能留下多份已核验尝试，平台操作仅确认当前有效租约选定的一份。清理保留文件属于另行授权的存储维护流程，不通过工作区删除或普通重试自动执行。
+
+尝试历史只返回元数据，状态为`planned`、`failed`、`verified`、`recovered`。每页包含`workspace_id`、`meeting_id`、`export_id`、`items`、`total`、`next_cursor`；单条提供预定路径、确认路径、源hash、完成记录hash、失败说明和时间，不携带纪要正文。GET不访问NAS。989–991新增操作证据列、尝试表及两条独立并发唯一索引；工作区清理在应用事务中删除账本，保留NAS文件。
+
+CLI使用`--nas-write-mode create_only`随发布的两个NAS目标参数提交，或在独立`export-nas`中使用`--write-mode create_only`。`workflow export-attempts <meeting-id> <export-id> --page-size 25`读取一页记录；模式不一致或创建式成功缺少精确完成证据时不确认回执。

@@ -1,0 +1,21 @@
+=== RUN   TestRealNASCreateOnly
+    create_only_real_nas_test.go:47: create-only real NAS sandbox: /Volumes/人机协作空间/.multica-validation-2593bcbd-38f7-4b84-8943-31146ac39ee3
+=== RUN   TestRealNASCreateOnly/file_sync_handle_capability
+    create_only_real_nas_test.go:118: read-only fsync result: sync /Volumes/人机协作空间/.multica-validation-2593bcbd-38f7-4b84-8943-31146ac39ee3/sync-capability-58550812-69f2-4caf-af93-f935e71c21c2: permission denied
+=== RUN   TestRealNASCreateOnly/exact_bytes_complete_receipt_and_non_mutating_recovery
+=== RUN   TestRealNASCreateOnly/interrupted_content_retained_and_new_attempt_verified
+=== RUN   TestRealNASCreateOnly/interrupted_receipt_retained_and_new_attempt_verified
+=== RUN   TestRealNASCreateOnly/different_existing_file_is_never_overwritten
+=== RUN   TestRealNASCreateOnly/concurrent_attempts_keep_independent_completed_copies
+=== RUN   TestRealNASCreateOnly/wrong_root_identity_refuses_writes
+=== NAME  TestRealNASCreateOnly
+    create_only_real_nas_test.go:66: removed owned create-only NAS sandbox: /Volumes/人机协作空间/.multica-validation-2593bcbd-38f7-4b84-8943-31146ac39ee3
+--- PASS: TestRealNASCreateOnly (1.88s)
+    --- PASS: TestRealNASCreateOnly/file_sync_handle_capability (0.08s)
+    --- PASS: TestRealNASCreateOnly/exact_bytes_complete_receipt_and_non_mutating_recovery (0.15s)
+    --- PASS: TestRealNASCreateOnly/interrupted_content_retained_and_new_attempt_verified (0.39s)
+    --- PASS: TestRealNASCreateOnly/interrupted_receipt_retained_and_new_attempt_verified (0.37s)
+    --- PASS: TestRealNASCreateOnly/different_existing_file_is_never_overwritten (0.02s)
+    --- PASS: TestRealNASCreateOnly/concurrent_attempts_keep_independent_completed_copies (0.64s)
+    --- PASS: TestRealNASCreateOnly/wrong_root_identity_refuses_writes (0.01s)
+PASS
