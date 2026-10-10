@@ -1,0 +1,211 @@
+{
+  "status": "deployed_to_agent3_resident_test_only",
+  "verified_at": "2026-10-10T16:23:02.178238+00:00",
+  "host": "fosun_agent_3 / fosun-agent-3deMac-mini.local (trusted HostKeyAlias 10.35.182.2)",
+  "commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+  "archive_sha256": "b4be75016467a137dbd5d7d960f174bca86493269ba543d8b6d5756c1d221000",
+  "candidate": {
+    "build_id": "U1qLnB7DKPSYTD6hUQtHJ",
+    "old_build_id": "Mk9vXStKm8jGaV-pTTHw5",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-surfaces-7b670e5b",
+    "api_sha256": "26524651cdf2c01e09248788d2c0c36041c51b2842238293ff234e10afa640da",
+    "migrator_sha256": "e51fedf786420a8c5634880ba5b210e7fd7d839433e8b66258b58b6789f28bb8"
+  },
+  "running": {
+    "api_pid": 33181,
+    "web_pid": 33182,
+    "commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+    "build_id": "U1qLnB7DKPSYTD6hUQtHJ"
+  },
+  "backup": {
+    "completed_at": "2026-10-10T16:11:43.012450+00:00",
+    "counts": {
+      "workspace": 55,
+      "projects": 25,
+      "modules": 18,
+      "issues": 556,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "exports": 0,
+      "primary": 0,
+      "active_connections": 0,
+      "fosun_bio": {
+        "issues": 327,
+        "projects": 17,
+        "modules": 4,
+        "nodes": 218,
+        "meetings": 14
+      }
+    },
+    "dump_bytes": 66872264,
+    "dump_sha256": "ba4e14e5be0a8dfa9959ff65dc0b2aaa03d8c55c46df22f14fe91da23f06d7aa",
+    "dump_entries": 985,
+    "path": "/Users/fosun_agent_3/var/multica-dev-backups/before-surfaces-7b670e5b"
+  },
+  "migration": {
+    "ledger_before": 682,
+    "ledger_after": 688,
+    "applied": [
+      "989_cockpit_minutes_create_only",
+      "990_cockpit_minutes_export_attempt_id_index",
+      "991_cockpit_minutes_export_attempt_scope_index",
+      "992_cockpit_creation_intent",
+      "993_cockpit_creation_intent_key_index",
+      "994_cockpit_creation_intent_resource_index"
+    ],
+    "old_entries_unchanged": true,
+    "indexes": [
+      {
+        "index": "cockpit_minutes_export_attempt_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "index": "cockpit_minutes_export_attempt_scope_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "index": "cockpit_creation_intent_key_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "index": "cockpit_creation_intent_resource_idx",
+        "valid": true,
+        "ready": true
+      }
+    ],
+    "new_attempt_rows": 0,
+    "new_creation_intents": 0
+  },
+  "configuration": {
+    "release_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+    "build_id": "U1qLnB7DKPSYTD6hUQtHJ",
+    "nas_roots": [
+      {
+        "workspace_id": "9a9967e8-cf59-4904-bc11-1f43228d06eb",
+        "root_id": "66859815-dfa3-469a-b774-67be5737a57b",
+        "path": "/Volumes/人机协作空间/复星PMO演示",
+        "allow_local": false,
+        "write_mode": "create_only"
+      }
+    ],
+    "root_identity": {
+      "device": 905969683,
+      "inode": 9053
+    },
+    "old_env_sha256": "885941e58b41e703e63660b80f1f52a75014c2cdd9f53aa347950b5c65ba0f22",
+    "new_env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "old_environment_prefix_preserved": true,
+    "existing_business_files_modified": false,
+    "fosun_bio_destination_changed": false
+  },
+  "preservation": {
+    "counts": {
+      "workspace": 55,
+      "projects": 25,
+      "modules": 18,
+      "issues": 556,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "exports": 0,
+      "primary": 0,
+      "active_connections": 0,
+      "fosun_bio": {
+        "issues": 327,
+        "projects": 17,
+        "modules": 4,
+        "nodes": 218,
+        "meetings": 14
+      }
+    },
+    "business_count_changes": {},
+    "probe_workspaces_remaining": 0,
+    "probe_accounts_without_workspace": 2
+  },
+  "cleanup": {
+    "stopped": {
+      "web": 33746,
+      "api": 33745
+    },
+    "checked_at": "2026-10-10T16:20:25.655646+00:00",
+    "owned_smb_root_removed": "/Volumes/人机协作空间/.multica-validation-feb5bc57-4ad9-46d0-8c48-50a3ae3e3d7f",
+    "registered_pmo_marker_retained": "66859815-dfa3-469a-b774-67be5737a57b",
+    "isolated_build_id": "rI4Op3UkkI07UFfPipaUA",
+    "isolated_profiles": {
+      "redis.env": "d6fff8c0fbdf280485c2fb2e0c43b20893a20440075dd1b5203baea3aa936ad7",
+      "nas-api/runtime.env": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0"
+    },
+    "resident_health": {
+      "status": "ok",
+      "pid": 33181,
+      "commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+      "started_at": "2026-10-10T16:13:59Z"
+    }
+  },
+  "entry_urls": [
+    "http://localhost:23000/fosun-bio/cockpit",
+    "http://localhost:23000/pmo-showcase/cockpit"
+  ],
+  "access_forward": {
+    "api_health_commit_confirmed": true,
+    "web_login_http": 200,
+    "note": "Coordinator HTTP checks confirm the SSH access path only. All browser/runtime acceptance ran on agent3."
+  },
+  "resident_browser": {
+    "passed": 1,
+    "seconds": 3.1,
+    "scope": "New owned synthetic workspace only; Chinese light/dark, default cockpit, one member-assigned backlog primary Issue, scoped plan, preserved business overview, report and return",
+    "agent_runs": 0,
+    "full_board_first_load_requests": 0,
+    "fixture_cleanup": "Workspace/resources deleted through owned workspace API. Two synthetic login identities remain without workspace memberships; no claim of zero new auth rows.",
+    "initial_fixture_fix": "Raw Fetch Response.ok is boolean, unlike Playwright Response.ok(); corrected probe-only typo and reran."
+  },
+  "nas_validation": {
+    "resident_root_registration": "Explicit create_only root for existing pmo-showcase only, allow_local=false; root marker 66859815-dfa3-469a-b774-67be5737a57b retained intentionally. Startup confirmed NAS worker enabled roots=1.",
+    "business_exports_before_after": 0,
+    "resident_automation": "Two active scheduled Agent autopilots and a default Agent writer found. Preserved all existing rules; no synthetic Issue/meeting was created in that workspace.",
+    "actual_smb_test": {
+      "passed": 1,
+      "seconds": 5.5,
+      "database": "multica_test",
+      "api_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+      "allow_local": false,
+      "root": "Unique .multica-validation-UUID directory on mounted SMB, removed after exact identity checks",
+      "coverage": [
+        "Published platform version remains independent",
+        "Create-only real worker produces exact UTF-8 SHA256 and matching completion record",
+        "Existing foreign logical-target file unchanged",
+        "UI uses verified_path and reads attempts only on request",
+        "Idempotent repeat retains exact operation/path",
+        "Workspace Agent runs=0"
+      ]
+    },
+    "fosun_bio": "Existing local meeting-verify destination retained. No automatic move or root enablement for that workspace."
+  },
+  "runtime_boundaries": {
+    "production_changed": false,
+    "resident_left_running": true,
+    "isolated_api_web_stopped": true,
+    "isolated_18880_build_restored": true,
+    "protected_isolated_profiles_unchanged": true,
+    "real_agent_smoke_executed": false,
+    "temporary_font_proxy_used": false
+  },
+  "remaining_scope": "Artifact and formal Acceptance backend are not part of this deployed release; unavailable capability gates remain explicit. Later 9000+ migrations and in-progress NAS visual-density change were excluded by git archive.",
+  "rollback": [
+    "Prefer forward repair; the previous complete database dump is retained, not auto-restored over new writes.",
+    "UI-only rollback may retain the new backend/schema.",
+    "Older backend does not understand new create-only root configuration and ledgers; do not automatically revert it after new business facts."
+  ],
+  "screenshots": [
+    "resident-surfaces-zh-light.png",
+    "resident-surfaces-zh-dark.png",
+    "resident-surfaces-zh-plan.png",
+    "resident-surfaces-zh-report.png",
+    "isolated-release-realnas-verified.png"
+  ]
+}
