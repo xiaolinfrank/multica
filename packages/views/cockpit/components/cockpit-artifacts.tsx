@@ -25,10 +25,10 @@ export function CockpitArtifacts({ wsId, scope, nodeId, sourceIssueId, registrat
   const update = (patch: Parameters<ReturnType<typeof useCockpitScopeViewStore.getState>["updateArtifact"]>[1]) => useCockpitScopeViewStore.getState().updateArtifact(key, patch);
   const q = useCockpitSearch(state.query);
   const changing = q !== state.query.trim();
-  const signature = JSON.stringify([scope, nodeId, sourceIssueId, q, state.status]);
+  const signature = JSON.stringify([scope, nodeId, sourceIssueId, q, state.status, state.relation]);
   const cursors = state.cursorKey === signature ? state.cursors : [""];
   const query = useQuery({ ...cockpitArtifactsOptions(wsId, { project_id: nodeId ? undefined : scope.projectId ?? undefined, module_id: nodeId ? undefined : scope.moduleId ?? undefined,
-    node_id: nodeId, source_issue_id: sourceIssueId, q, status: state.status || undefined, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: Boolean(wsId && !changing) });
+    node_id: nodeId, relation: nodeId ? state.relation : undefined, source_issue_id: sourceIssueId, q, status: state.status || undefined, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: Boolean(wsId && !changing) });
   const data = query.data;
   const statuses = ["draft", "pending", "approved", "changes_requested", "rejected", "capturing", "needs_attention", "archived", "unknown"];
   const options = [{ value: "__all__", label: t(($) => $.artifacts.all_statuses) }, ...statuses.map((value) => ({ value, label: label(value) }))];
@@ -39,6 +39,7 @@ export function CockpitArtifacts({ wsId, scope, nodeId, sourceIssueId, registrat
       {data?.can_create && (registration ?? <AppLink href={cockpitSurfacePath(paths.cockpit(), "plan", scope)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.artifacts.choose_work_item)}<ArrowUpRight className="size-3.5" aria-hidden /></AppLink>)}
     </div>
     <div className="flex min-w-0 flex-wrap gap-3 border-b border-border px-4 py-3 lg:px-6">
+      {nodeId && <div role="group" aria-label={t(($) => $.artifact_runtime.artifact_relation)} className="flex flex-wrap gap-1">{(["owned", "referenced", "all"] as const).map((value) => <Button key={value} size="sm" variant={state.relation === value ? "secondary" : "outline"} aria-pressed={state.relation === value} onClick={() => update({ relation: value })}>{t(($) => $.artifact_runtime.relations[value])}</Button>)}</div>}
       <label className="relative min-w-0 max-w-full flex-1 sm:max-w-80"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />
         <Input name="cockpit-artifact-search" autoComplete="off" spellCheck={false} value={state.query} aria-label={t(($) => $.artifacts.search)} placeholder={t(($) => $.artifacts.search)} className="pl-8" onChange={(event) => update({ query: event.target.value })} /></label>
       <Select value={state.status || "__all__"} items={options} onValueChange={(value) => { if (value) update({ status: value === "__all__" ? "" : value }); }}>

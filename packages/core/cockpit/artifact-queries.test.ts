@@ -3,8 +3,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
 import type { Attachment } from "../types";
-import { cockpitArtifactSelectedAttachmentOptions, cockpitArtifactVersionActions, cockpitArtifactsOptions, cockpitAcceptanceOptions } from "./artifact-queries";
-import { artifactVersionFixture } from "./artifact-test-fixtures";
+import { cockpitArtifactKeys, cockpitArtifactSelectedAttachmentOptions, cockpitArtifactVersionActions, cockpitArtifactsOptions, cockpitAcceptanceOptions, invalidateCockpitArtifactSourceAttachments, invalidateCockpitArtifactIssueFacts, invalidateCockpitArtifactEvent } from "./artifact-queries";
+import { artifactFixture, artifactVersionFixture, artifactVersionDetailFixture, acceptanceFixture } from "./artifact-test-fixtures";
 import { CockpitUnconfirmedReadError } from "./errors";
 import { cockpitScopeMembersOptions, cockpitSelectedMemberOptions, cockpitScopeNodesOptions } from "./scope-selector-queries";
 
@@ -15,6 +15,45 @@ const source = (): Attachment => ({ id: "file-1", workspace_id: "ws-1", issue_id
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
 
 describe("artifact source and responsibility reads", () => {
+  it("does not restart unrelated fixed-content verification when another task or artifact changes", () => {
+    const qc = client();
+    const header = cockpitArtifactKeys.artifact("ws-1", "artifact-1");
+    const fixed = cockpitArtifactKeys.version("ws-1", "artifact-1", "version-1");
+    const acceptance = cockpitArtifactKeys.request("ws-1", "node-1", "acceptance-1");
+    const summary = cockpitArtifactKeys.acceptance("ws-1", "node-1");
+    qc.setQueryData(header, artifactFixture());
+    qc.setQueryData(fixed, artifactVersionDetailFixture());
+    qc.setQueryData(acceptance, acceptanceFixture());
+    qc.setQueryData(summary, { current_request: { id: "acceptance-1" } });
+    invalidateCockpitArtifactIssueFacts(qc, "ws-1", "unrelated-issue");
+    for (const key of [header, fixed, acceptance]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    invalidateCockpitArtifactIssueFacts(qc, "ws-1", "source-1");
+    expect(qc.getQueryState(header)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fixed)?.isInvalidated).toBe(false);
+    invalidateCockpitArtifactEvent(qc, "ws-1", "artifacts", { artifact_id: "another-artifact" });
+    expect(qc.getQueryState(summary)?.isInvalidated).toBe(true);
+    for (const key of [fixed, acceptance]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    invalidateCockpitArtifactEvent(qc, "ws-1", "artifacts", { artifact_id: "artifact-1" });
+    for (const key of [fixed, acceptance]) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    qc.clear();
+  });
+  it("refreshes mutable producer file choices after uploads without reproving frozen versions or unrelated producers", () => {
+    const qc = client();
+    const artifact = artifactFixture();
+    qc.setQueryData(cockpitArtifactKeys.artifact("ws-1", "artifact-1"), artifact);
+    qc.setQueryData(cockpitArtifactKeys.artifact("ws-1", "other-artifact"), { ...artifact, id: "other-artifact", producer_issue: { ...artifact.producer_issue, id: "other-producer" } });
+    const source = [...cockpitArtifactKeys.sourceAttachments("ws-1", "artifact-1"), { page_size: 25 }];
+    const chosen = cockpitArtifactKeys.selectedAttachment("ws-1", "artifact-1", "source-1", "file-1");
+    const fixed = cockpitArtifactKeys.version("ws-1", "artifact-1", "version-1");
+    const unrelated = cockpitArtifactKeys.sourceAttachments("ws-1", "other-artifact");
+    const outside = cockpitArtifactKeys.sourceAttachments("ws-2", "artifact-1");
+    for (const key of [source, chosen, fixed, unrelated, outside]) qc.setQueryData(key, { items: [] });
+    invalidateCockpitArtifactSourceAttachments(qc, "ws-1", "source-1");
+    expect(qc.getQueryState(source)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(chosen)?.isInvalidated).toBe(true);
+    for (const key of [fixed, unrelated, outside]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    qc.clear();
+  });
   it("recovers one selected attachment without fetching the complete attachment collection", async () => {
     const value = source();
     vi.mocked(api.getAttachment).mockResolvedValue(value);

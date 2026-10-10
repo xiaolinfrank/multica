@@ -12,19 +12,19 @@ import { useT } from "../../i18n";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
 export function approvedAcceptanceEvidence(artifact: CockpitArtifactHeader | null | undefined) {
-  const version = artifact?.approved_version;
+  const version = artifact?.evidence_version;
   return artifact && !artifact.archived_at && version?.artifact_id === artifact.id && version.decision === "approved" && version.capture_status === "ready"
     && version.content_hash && ["text", "attachment"].includes(version.payload_kind) ? version : null;
 }
 
-export function CockpitAcceptanceEvidencePicker({ wsId, scope, criterionTitle, selected, disabled, onSelect }: {
-  wsId: string; scope: CockpitScope; criterionTitle: string; selected: CockpitAcceptanceEvidenceSelection[]; disabled: boolean;
+export function CockpitAcceptanceEvidencePicker({ wsId, nodeId, criterionTitle, selected, disabled, onSelect }: {
+  wsId: string; nodeId: string; scope: CockpitScope; criterionTitle: string; selected: CockpitAcceptanceEvidenceSelection[]; disabled: boolean;
   onSelect: (reference: CockpitAcceptanceEvidenceSelection) => void;
 }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false); const [text, setText] = useState(""); const [cursors, setCursors] = useState<string[]>([""]);
   const q = useCockpitSearch(text); const changing = q !== text.trim();
-  const query = useQuery({ ...cockpitArtifactsOptions(wsId, { project_id: scope.projectId ?? undefined, module_id: scope.moduleId ?? undefined,
+  const query = useQuery({ ...cockpitArtifactsOptions(wsId, { node_id: nodeId, relation: "all",
     q, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: open && !changing });
   const page = query.data;
   return <Popover open={open} onOpenChange={setOpen}>

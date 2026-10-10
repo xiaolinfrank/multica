@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@multica/core/api";
 import { I18nProvider } from "@multica/core/i18n/react";
-import { cockpitAcceptanceDraftKey, cockpitArtifactKeys, updateCockpitAcceptanceRequestDraft, useCockpitAcceptanceDraftStore } from "@multica/core/cockpit";
+import { cockpitAcceptanceDraftKey, cockpitArtifactsOptions, updateCockpitAcceptanceRequestDraft, useCockpitAcceptanceDraftStore } from "@multica/core/cockpit";
 import { acceptanceFixture, artifactFixture, artifactVersionFixture } from "./artifact-test-fixtures";
 import type { CockpitAcceptanceHeader, CockpitAcceptanceCriteriaView, CockpitAcceptanceRequestDetail } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -21,10 +21,10 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
 } }));
 const scope = { projectId: "project-1", moduleId: "module-1" };
 const version = artifactVersionFixture({ decision: "approved", reviewed_at: "2026-10-10T02:00:00Z" });
-const artifact = artifactFixture({ approved_version: version, current_version: artifactVersionFixture({ id: "version-2", version_number: 2 }), version_count: 2 });
+const artifact = artifactFixture({ approved_version: version, evidence_version: version, current_version: artifactVersionFixture({ id: "version-2", version_number: 2 }), version_count: 2 });
 function header(over: Partial<CockpitAcceptanceHeader> = {}): CockpitAcceptanceHeader {
   return { workspace_id: "ws-1", node_id: "node-1", criteria_revision: 1, current_request: null, last_approved_request: null, request_count: 0,
-    can_edit_criteria: true, can_request: true, needs_reacceptance: false, ...over };
+    can_edit_criteria: true, can_reassign_reviewer: true, can_request: true, needs_reacceptance: false, ...over };
 }
 function definition(over: Partial<CockpitAcceptanceCriteriaView> = {}): CockpitAcceptanceCriteriaView {
   return { workspace_id: "ws-1", node_id: "node-1", revision: 1, items: acceptanceFixture().evidence.map((item) => item.criterion), max_items: 50, can_edit: true, ...over };
@@ -44,8 +44,9 @@ function setup(initialHeader = header(), initialDefinition = definition()) {
 beforeEach(() => {
   vi.clearAllMocks(); useCockpitAcceptanceDraftStore.getState().clearDraft(); navigation.searchParams = new URLSearchParams("node=node-1&node_view=acceptance");
   vi.mocked(api.getCockpitArtifact).mockResolvedValue(artifact);
+  vi.mocked(api.getCockpitArtifacts).mockImplementation(async (_ws, query) => ({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, node_id: query?.node_id ?? null, source_issue_id: null, q: "", status: "", relation: query?.relation ?? "owned", ids: query?.ids ?? [] }, items: [artifact], total: 1, filtered_total: 1, next_cursor: null, can_create: true }));
   vi.mocked(api.searchCockpitScopeMembers).mockResolvedValue({ workspace_id: "ws-1", scope: { q: "", ids: ["reviewer-1"] },
-    items: [{ id: "reviewer-1", title: "Reviewer", avatar_url: "", role: "member" }], total: 1, filtered_total: 1, next_cursor: null });
+    items: [{ id: "reviewer-1", title: "Reviewer", email: "reviewer@example.test", avatar_url: "", role: "member" }], total: 1, filtered_total: 1, next_cursor: null });
   vi.mocked(api.getCockpitAcceptanceRequest).mockResolvedValue(acceptanceFixture());
   vi.mocked(api.createCockpitAcceptanceRequest).mockImplementation(async (_ws, nodeId, body) => {
     const receipt = acceptanceFixture();
@@ -77,8 +78,8 @@ describe("acceptance request evidence and recovery", () => {
 
   it("pages candidate headers without body prefetch and allows approved v1 while v2 is pending", async () => {
     const first = Array.from({ length: 25 }, (_, i) => artifactFixture({ id: `draft-${i}`, title: `Draft ${i}` }));
-    vi.mocked(api.getCockpitArtifacts).mockImplementation(async (_ws, query) => ({ workspace_id: "ws-1", scope: { project_id: "project-1", module_id: "module-1", node_id: null, source_issue_id: null, q: "", status: "" },
-      items: query?.cursor ? [artifact] : first, total: 26, filtered_total: 26, next_cursor: query?.cursor ? null : "page-2", can_create: true }));
+    vi.mocked(api.getCockpitArtifacts).mockImplementation(async (_ws, query) => ({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, node_id: query?.node_id ?? null, source_issue_id: null, q: "", status: "", relation: query?.relation ?? "owned", ids: query?.ids ?? [] },
+      items: query?.ids?.length || query?.cursor ? [artifact] : first, total: 26, filtered_total: query?.ids?.length ? 1 : 26, next_cursor: query?.ids?.length || query?.cursor ? null : "page-2", can_create: true }));
     setup(); fireEvent.click(screen.getByRole("button", { name: "Request acceptance" }));
     expect(api.getCockpitArtifacts).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole("combobox", { name: "Reviewer" }), { target: { value: "reviewer-1" } });
@@ -88,7 +89,7 @@ describe("acceptance request evidence and recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     fireEvent.click(await screen.findByRole("button", { name: /Delivery report.*Version 1/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Send acceptance request" })).toBeEnabled());
-    expect(api.getCockpitArtifacts).toHaveBeenLastCalledWith("ws-1", expect.objectContaining({ project_id: "project-1", module_id: "module-1", page_size: 25, cursor: "page-2" }), expect.anything());
+    expect(api.getCockpitArtifacts).toHaveBeenCalledWith("ws-1", expect.objectContaining({ node_id: "node-1", relation: "all", page_size: 25, cursor: "page-2" }), expect.anything());
     expect(vi.mocked(api.getCockpitArtifacts).mock.calls[0]?.[1]?.status).toBeUndefined();
     expect(api.getCockpitArtifactVersion).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Send acceptance request" }));
@@ -128,7 +129,8 @@ describe("acceptance request evidence and recovery", () => {
     expect(screen.getByRole("button", { name: "Send acceptance request" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: enCockpit.acceptance_request.rebase }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Send acceptance request" })).toBeEnabled());
-    await act(async () => view.client.setQueryData(cockpitArtifactKeys.artifact("ws-1", "artifact-1"), { ...artifact, approved_version: { ...version, id: "version-3", version_number: 3 } }));
+    await act(async () => view.client.setQueryData(cockpitArtifactsOptions("ws-1", { node_id: "node-1", relation: "all", ids: ["artifact-1"], page_size: 100 }).queryKey,
+      { workspace_id: "ws-1", scope: { project_id: null, module_id: null, node_id: "node-1", source_issue_id: null, q: "", status: "", relation: "all", ids: ["artifact-1"] }, items: [{ ...artifact, evidence_version: null, approved_version: { ...version, id: "version-3", version_number: 3 } }], total: 1, filtered_total: 1, next_cursor: null, can_create: true }));
     expect(await screen.findByText(enCockpit.acceptance_request.evidence_changed)).toBeVisible();
     expect(screen.getByRole("button", { name: "Send acceptance request" })).toBeDisabled();
     expect(useCockpitAcceptanceDraftStore.getState().draft.requests[cockpitAcceptanceDraftKey("ws-1", "node-1")]?.evidence["criterion-1"]?.[0]?.versionId).toBe("version-1");

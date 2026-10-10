@@ -38,6 +38,23 @@ export interface TestCockpitMeeting {
   title: string;
 }
 
+export interface TestArtifactVersion {
+  id: string; version_number: number; revision: number; producer_issue_id: string; content_hash: string | null;
+  capture_status: string; decision: string; reviewer_id: string; review_issue: { id: string; status: string } | null;
+  payload_kind: string; source_attachment_id: string | null; size_bytes: number | null;
+}
+export interface TestOwnedAttachment { id: string; workspace_id: string; issue_id: string; filename: string; content_type: string; size_bytes: number }
+export interface TestArtifactHeader {
+  id: string; node_id: string; source_issue: { id: string }; producer_issue: { id: string }; revision: number;
+  workspace_id: string; title: string; description: string;
+  current_version: TestArtifactVersion | null; approved_version: TestArtifactVersion | null;
+}
+export interface TestArtifactVersionDetail { artifact_id: string; version: TestArtifactVersion; content: string | null; feedback: string; content_available: boolean }
+export interface TestAcceptanceRequest {
+  id: string; revision: number; decision: string; criteria_revision: number; reviewer_id: string; review_issue: { id: string; status: string };
+}
+export interface TestAcceptanceHeader { node_id: string; criteria_revision: number; current_request: TestAcceptanceRequest | null; last_approved_request: TestAcceptanceRequest | null }
+
 export interface TestCockpitBoard {
   nodes: TestCockpitNode[];
   meetings: TestCockpitMeeting[];
@@ -279,6 +296,7 @@ export class TestApiClient {
   private createdCockpitMeetingIds: string[] = [];
   private createdWorkspaceIds: string[] = [];
   private seededIssueIds: string[] = [];
+  private ownedAttachmentIssues = new Map<string, string>();
 
   async login(email: string, name: string) {
     const client = new pg.Client(DATABASE_URL);
@@ -723,6 +741,37 @@ export class TestApiClient {
     return res.json();
   }
 
+  async getCockpitArtifact(artifactId: string): Promise<TestArtifactHeader> {
+    const response = await this.authedFetch(`/api/cockpit/artifacts/${encodeURIComponent(artifactId)}`);
+    if (!response.ok) throw new Error(`get artifact failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  async renameOwnedArtifactForLayout(artifactId: string, title: string): Promise<void> {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !title || title.length > 500) {
+      throw new Error("Artifact layout fixture must belong to this client's created workspace");
+    }
+    const artifact = await this.getCockpitArtifact(artifactId);
+    if (artifact.workspace_id !== this.workspaceId || !this.createdIssueIds.includes(artifact.source_issue.id)) {
+      throw new Error("Artifact layout fixture must retain this client's created source issue");
+    }
+    const response = await this.authedFetch(`/api/cockpit/artifacts/${encodeURIComponent(artifactId)}`, { method: "PATCH",
+      body: JSON.stringify({ expected_revision: artifact.revision, title, description: artifact.description }) });
+    if (!response.ok) throw new Error(`rename artifact layout fixture failed: ${response.status} ${await response.text()}`);
+  }
+
+  async getCockpitArtifactVersion(artifactId: string, versionId: string): Promise<TestArtifactVersionDetail> {
+    const response = await this.authedFetch(`/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}`);
+    if (!response.ok) throw new Error(`get artifact version failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  async getCockpitAcceptance(nodeId: string): Promise<TestAcceptanceHeader> {
+    const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/acceptance`);
+    if (!response.ok) throw new Error(`get acceptance failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
   async updateCockpitBoard(body: { title?: string; goal_title?: string; goal_date?: string }): Promise<void> {
     const response = await this.authedFetch("/api/cockpit", { method: "PATCH", body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`update cockpit failed: ${response.status} ${await response.text()}`);
@@ -862,6 +911,45 @@ export class TestApiClient {
     const issue = await res.json();
     this.createdIssueIds.push(issue.id);
     return issue;
+  }
+
+  /** A small source file belonging only to this client's isolated fixture workspace and issue. */
+  async uploadOwnedIssueAttachment(issueId: string, filename: string, content: string): Promise<TestOwnedAttachment> {
+    if (!this.token || !this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !this.createdIssueIds.includes(issueId)) {
+      throw new Error("Attachment fixture must belong to this client's created workspace and issue");
+    }
+    if (!filename || /[\\/]/.test(filename) || Buffer.byteLength(content, "utf8") > 64 * 1024 || content.length === 0) {
+      throw new Error("Attachment fixture must be a named, nonempty UTF-8 file of at most 64 KiB");
+    }
+    const form = new FormData();
+    form.append("file", new Blob([content], { type: "text/plain" }), filename);
+    form.append("issue_id", issueId);
+    const response = await fetch(`${API_BASE}/api/upload-file`, { method: "POST", body: form,
+      headers: { Authorization: `Bearer ${this.token}`, "X-Workspace-ID": this.workspaceId } });
+    if (!response.ok) throw new Error(`upload owned attachment failed: ${response.status} ${await response.text()}`);
+    const attachment = await response.json() as TestOwnedAttachment;
+    if (!attachment.id || attachment.workspace_id !== this.workspaceId || attachment.issue_id !== issueId || attachment.filename !== filename) {
+      throw new Error("Uploaded attachment did not identify the exact fixture owner and filename");
+    }
+    this.ownedAttachmentIssues.set(attachment.id, issueId);
+    return attachment;
+  }
+
+  async deleteOwnedIssueAttachment(attachmentId: string): Promise<void> {
+    const issueId = this.ownedAttachmentIssues.get(attachmentId);
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !issueId || !this.createdIssueIds.includes(issueId)) {
+      throw new Error("Can only delete an attachment uploaded by this fixture client");
+    }
+    const response = await this.authedFetch(`/api/attachments/${encodeURIComponent(attachmentId)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`delete owned attachment failed: ${response.status} ${await response.text()}`);
+  }
+
+  async getOwnedAttachmentStatus(attachmentId: string): Promise<number> {
+    const issueId = this.ownedAttachmentIssues.get(attachmentId);
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !issueId || !this.createdIssueIds.includes(issueId)) {
+      throw new Error("Can only inspect an attachment uploaded by this fixture client");
+    }
+    return (await this.authedFetch(`/api/attachments/${encodeURIComponent(attachmentId)}`)).status;
   }
 
   /**

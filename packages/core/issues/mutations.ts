@@ -7,6 +7,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
 import { issueKeys } from "./queries";
 import { projectKeys } from "../projects/queries";
 import { inboxKeys, type ArchivedInboxCache } from "../inbox/queries";
@@ -378,6 +379,7 @@ export function useUpdateIssue() {
       // payload mutates the attachment join table.
       if (vars.attachment_ids?.length) {
         qc.invalidateQueries({ queryKey: issueKeys.attachments(vars.id) });
+        invalidateCockpitArtifactSourceAttachments(qc, wsId, vars.id);
       }
       // A duplicate mark is not on Issue; refresh both sides now rather than
       // waiting for the realtime echo.
@@ -842,7 +844,8 @@ export function useCreateComment(issueId: string) {
       /** Running turns this comment goes into instead of a follow-up run. */
       steerTaskIds?: string[];
     }) => api.createComment(issueId, content, type, parentId, attachmentIds, suppressAgentIds, steerTaskIds),
-    onSuccess: (comment) => {
+    onSuccess: (comment, variables) => {
+      if (variables.attachmentIds?.length) invalidateCockpitArtifactSourceAttachments(qc, wsId, issueId);
       if (comment.issue_revision) {
         onIssueAuxiliaryRevision(qc, wsId, issueId, comment.issue_revision);
       } else {

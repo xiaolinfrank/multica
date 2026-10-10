@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
-import { cockpitAcceptanceDraftKey, cockpitAcceptanceRequestOptions, cockpitArtifactOptions, cockpitObjectPath, cockpitSelectedMemberOptions,
+import { isCockpitDefinitiveCommandRejection, cockpitAcceptanceDraftKey, cockpitAcceptanceRequestOptions, cockpitArtifactsOptions, cockpitObjectPath, cockpitSelectedMemberOptions,
   prepareCockpitAcceptanceRequest, rebaseCockpitAcceptanceRequestDraft, settleCockpitAcceptanceRequest, updateCockpitAcceptanceRequestDraft,
   useCockpitAcceptanceDraftStore, useCreateCockpitAcceptanceRequest, type CockpitScope, type CockpitAcceptanceRequestDraft } from "@multica/core/cockpit";
 import type { CockpitAcceptanceHeader, CockpitAcceptanceCriteriaView } from "@multica/core/types";
@@ -40,8 +40,9 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
     || !currentDetail.isError && !currentDetail.isFetching && currentDetail.data?.request.id === current.id && (currentDetail.data.definition_changed || currentDetail.data.evidence_outdated)));
   const reviewer = useQuery({ ...cockpitSelectedMemberOptions(wsId, draft.reviewerId), enabled: Boolean(open && draft.reviewerId) });
   const artifactIds = [...new Set(Object.values(draft.evidence).flat().map((item) => item.artifactId))].sort();
-  const selected = useQueries({ queries: artifactIds.slice(0, 200).map((id) => ({ ...cockpitArtifactOptions(wsId, id), enabled: open })) });
-  const selectedById = new Map(artifactIds.slice(0, 200).map((id, index) => [id, selected[index]]));
+  const batches = [artifactIds.slice(0, 100), artifactIds.slice(100, 200)].filter((ids) => ids.length > 0);
+  const selected = useQueries({ queries: batches.map((ids) => ({ ...cockpitArtifactsOptions(wsId, { node_id: header.node_id, relation: "all", ids, page_size: 100 }), enabled: open })) });
+  const selectedById = new Map(batches.flatMap((ids, index) => ids.map((id) => [id, { query: selected[index], artifact: selected[index]?.data?.items.find((item) => item.id === id) }] as const)));
   const allVersions = Object.values(draft.evidence).flat().map((item) => item.versionId);
   const hasDraft = Boolean(draft.pending || draft.note || draft.reviewerId || allVersions.length);
   const stale = draft !== EMPTY_REQUEST && draft.criteriaRevision !== definition.revision;
@@ -50,7 +51,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
   const evidenceValid = artifactIds.length <= 200 && new Set(allVersions).size <= 200 && definition.items.every((criterion) => {
     const values = draft.evidence[criterion.id] ?? [];
     return values.length > 0 && values.length <= 20 && new Set(values.map((item) => item.versionId)).size === values.length && values.every((item) => {
-      const query = selectedById.get(item.artifactId); const artifact = query?.data;
+      const entry = selectedById.get(item.artifactId); const query = entry?.query; const artifact = entry?.artifact;
       return !query?.isError && !query?.isFetching && artifact?.workspace_id === wsId && approvedAcceptanceEvidence(artifact)?.id === item.versionId;
     });
   }) && Object.keys(draft.evidence).every((id) => definition.items.some((item) => item.id === id));
@@ -58,7 +59,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
   const canStart = header.can_request && (!pendingCurrent || canReplace && draft.supersedesRequestId === current.id)
     && (pendingCurrent || !draft.supersedesRequestId);
   const noteValid = new TextEncoder().encode(draft.note.trim()).length <= 16000;
-  const valid = Boolean(ownerValid && currentUserId && knownDecision && (draft.pending || definitionValid && !stale && canStart && evidenceValid && reviewerValid && noteValid));
+  const valid = Boolean(ownerValid && currentUserId && (draft.pending || knownDecision && definitionValid && !stale && canStart && evidenceValid && reviewerValid && noteValid));
   const locked = disabled || create.isPending || Boolean(draft.pending);
   async function save() {
     if (lock.current || disabled || !valid) return;
@@ -69,7 +70,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
       settleCockpitAcceptanceRequest(key, body.request_key, true);
       if (stillCurrent()) { setOpen(false); navigation.push(cockpitObjectPath(paths.cockpit(), { kind: "node", id: header.node_id, view: "acceptance", requestId: result.request.id }, scope)); }
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) settleCockpitAcceptanceRequest(key, body.request_key, false);
+      if (isCockpitDefinitiveCommandRejection(cause)) settleCockpitAcceptanceRequest(key, body.request_key, false);
       if (stillCurrent()) setError(cause instanceof ApiError ? cause.message : t(($) => $.task_flow.unconfirmed));
     } finally { lock.current = false; }
   }
@@ -98,7 +99,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
       <ol className="space-y-4">{definition.items.map((criterion) => <li key={criterion.id} className="space-y-2 rounded-lg border border-border p-3">
         <h3 className="break-words text-caption font-medium">{criterion.title}</h3>{criterion.description && <p className="whitespace-pre-wrap break-words text-caption text-muted-foreground">{criterion.description}</p>}
         {(draft.evidence[criterion.id] ?? []).map((reference) => {
-          const query = selectedById.get(reference.artifactId); const artifact = query?.data; const version = approvedAcceptanceEvidence(artifact);
+          const entry = selectedById.get(reference.artifactId); const query = entry?.query; const artifact = entry?.artifact; const version = approvedAcceptanceEvidence(artifact);
           const ready = !query?.isError && version?.id === reference.versionId;
           return <div key={reference.versionId} className="space-y-1 rounded-md bg-muted p-2 text-caption"><div className="flex items-start gap-2"><p className="min-w-0 flex-1 break-words">{artifact?.title || reference.artifactId}
             <span className="block text-micro text-muted-foreground">{ready ? t(($) => $.workflow.version, { number: version.version_number }) : reference.versionId}</span></p>
@@ -108,7 +109,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
             {query?.isError && <CockpitFlowError onRetry={() => void query.refetch()} />}
           </div>;
         })}
-        <CockpitAcceptanceEvidencePicker key={`${wsId}:${scope.projectId}:${scope.moduleId}:${criterion.id}`} wsId={wsId} scope={scope} criterionTitle={criterion.title} selected={draft.evidence[criterion.id] ?? []} disabled={locked || stale}
+        <CockpitAcceptanceEvidencePicker key={`${wsId}:${scope.projectId}:${scope.moduleId}:${criterion.id}`} wsId={wsId} nodeId={header.node_id} scope={scope} criterionTitle={criterion.title} selected={draft.evidence[criterion.id] ?? []} disabled={locked || stale}
           onSelect={(reference) => update({ evidence: { ...draft.evidence, [criterion.id]: [...(draft.evidence[criterion.id] ?? []), reference] } })} />
       </li>)}</ol>
       {(artifactIds.length > 200 || new Set(allVersions).size > 200) && <p role="alert" className="text-caption text-destructive">{t(($) => $.acceptance_request.limits)}</p>}

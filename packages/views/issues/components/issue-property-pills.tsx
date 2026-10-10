@@ -1,6 +1,6 @@
 "use client";
 
-import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import type { Issue, IssueStatusCategory, UpdateIssueRequest } from "@multica/core/types";
 import { PillButton } from "../../common/pill-button";
 import { ProjectPicker } from "../../projects/components/project-picker";
 import {
@@ -26,14 +26,20 @@ export function IssuePropertyPills({
   onUpdate,
   onMarkDuplicate,
   isDuplicate,
+  allowsStatusCategory,
+  assigneeReadOnly,
+  restriction,
 }: {
   issue: Issue;
   onUpdate: (updates: Partial<UpdateIssueRequest>) => void;
   onMarkDuplicate?: () => void;
   isDuplicate?: boolean;
+  allowsStatusCategory?: (category: IssueStatusCategory) => boolean;
+  assigneeReadOnly?: boolean;
+  restriction?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="space-y-2"><div className="flex flex-wrap items-center gap-1.5">
       <StatusPicker
         status={issue.status}
         onUpdate={onUpdate}
@@ -41,6 +47,8 @@ export function IssuePropertyPills({
         align="start"
         onMarkDuplicate={onMarkDuplicate}
         isDuplicate={isDuplicate}
+        allowsCategory={allowsStatusCategory}
+        restriction={restriction}
       />
       <PriorityPicker
         priority={issue.priority}
@@ -54,6 +62,8 @@ export function IssuePropertyPills({
         onUpdate={onUpdate}
         triggerRender={<PillButton />}
         align="start"
+        readOnly={assigneeReadOnly}
+        restriction={restriction}
       />
       <ProjectPicker
         projectId={issue.project_id}
@@ -75,6 +85,6 @@ export function IssuePropertyPills({
         align="start"
       />
       <LabelPicker issueId={issue.id} triggerRender={<PillButton />} align="start" />
-    </div>
+    </div>{restriction && <div className="text-caption">{restriction}</div>}</div>
   );
 }

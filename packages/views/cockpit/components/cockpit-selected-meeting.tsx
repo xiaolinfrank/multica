@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
+import { CockpitMeetingArtifactReferences } from "./cockpit-meeting-artifact-references";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
@@ -77,6 +78,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
     </div>;
   };
   return <><CockpitMeetingPanel wsId={wsId} currentUserId={actorId} meeting={detail.meeting}
+    artifactReferences={detail.capabilities?.artifacts === true ? <CockpitMeetingArtifactReferences key={`${wsId}:${meetingId}`} wsId={wsId} meetingId={meetingId} /> : undefined}
     meetings={[detail.meeting]} members={people}
     defaultPlacement={{ project_id: projectId, module_id: moduleId, node_id: defaultNodeId }}
     defaultAssigneeType={defaults?.meeting_assignee_type || null} defaultAssigneeId={defaults?.meeting_assignee_id ?? null}

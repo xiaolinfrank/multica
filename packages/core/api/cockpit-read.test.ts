@@ -23,6 +23,7 @@ describe("cockpit scoped read contracts", () => {
     const { client, fetchMock } = reply(header);
     await expect(client.getCockpitContext("ws-1", scope)).resolves.toEqual(header);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ "X-Workspace-ID": "ws-1" });
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get("client_contract")).toBe("artifacts-v1");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("project_id=project-1&module_id=module-1");
     await expect(reply({ ...header, scope: { ...header.scope, module_id: "other" } }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();
     await expect(reply({ ...header, workspace_id: "other" }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();

@@ -8,15 +8,17 @@ import type {
   CockpitAcceptanceRequestDetail,
 } from "../types";
 import { issueKeys } from "../issues/queries";
-import { cockpitKeys } from "./queries";
+import { cockpitKeys, invalidateCockpitTaskFlow } from "./queries";
 import { cockpitArtifactKeys } from "./artifact-queries";
 import { CockpitUnconfirmedWriteError } from "./errors";
 
-function invalidateArtifactFacts(client: QueryClient, wsId: string) {
+export function invalidateCockpitArtifactFacts(client: QueryClient, wsId: string) {
   void client.invalidateQueries({ queryKey: cockpitArtifactKeys.all(wsId) });
   void client.invalidateQueries({ queryKey: cockpitArtifactKeys.acceptances(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   void client.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitArtifactKeys.issueContexts(wsId) });
+  invalidateCockpitTaskFlow(client, wsId);
 }
 
 function headerMatches(value: CockpitArtifactHeader | null, wsId: string, artifactId?: string): value is CockpitArtifactHeader {
@@ -39,7 +41,7 @@ export function useCreateCockpitArtifact(wsId: string) {
     // A replay may follow a later rename or review handover; its stable creation identity is authoritative.
     if (!headerMatches(result, wsId) || result.creation_key !== body.creation_key || result.node_id !== body.node_id || result.source_issue.id !== body.source_issue_id) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useUpdateCockpitArtifact(wsId: string) {
   const client = useQueryClient();
@@ -47,17 +49,19 @@ export function useUpdateCockpitArtifact(wsId: string) {
     const result = await api.updateCockpitArtifact(wsId, artifactId, body);
     if (!headerMatches(result, wsId, artifactId) || result.revision < body.expected_revision || result.title !== body.title.trim() || result.description !== body.description.trim()) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useSubmitCockpitArtifactVersion(wsId: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: async ({ artifactId, body }: { artifactId: string; body: CockpitArtifactSubmit }) => {
     const result = await api.submitCockpitArtifactVersion(wsId, artifactId, body);
-    if (!versionMatches(result, wsId, artifactId) || result.version.version.submission_key !== body.submission_key || result.version.version.payload_kind !== body.payload.kind) throw new CockpitUnconfirmedWriteError();
+    if (!versionMatches(result, wsId, artifactId) || result.version.version.submission_key !== body.submission_key || result.version.version.payload_kind !== body.payload.kind
+      || result.version.version.producer_issue_id !== body.producer_issue_id || result.version.version.source_meeting_id !== (body.source_meeting_id || null)
+      || result.version.version.source_minutes_version_id !== (body.source_minutes_version_id || null)) throw new CockpitUnconfirmedWriteError();
     if (body.payload.kind === "text" ? result.version.content !== body.payload.content || !result.version.version.content_hash || result.version.version.capture_status !== "ready"
       : result.version.version.source_attachment_id !== body.payload.attachment_id || !["queued", "running", "retry_wait", "ready", "needs_attention"].includes(result.version.version.capture_status)) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useReviewCockpitArtifactVersion(wsId: string) {
   const client = useQueryClient();
@@ -66,7 +70,7 @@ export function useReviewCockpitArtifactVersion(wsId: string) {
     if (!versionMatches(result, wsId, artifactId, versionId) || result.version.version.revision < body.expected_revision || result.version.version.decision !== body.decision
       || !result.version.version.reviewed_at || result.version.feedback !== body.feedback.trim()) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useRetryCockpitArtifactCapture(wsId: string) {
   const client = useQueryClient();
@@ -74,7 +78,7 @@ export function useRetryCockpitArtifactCapture(wsId: string) {
     const result = await api.retryCockpitArtifactCapture(wsId, artifactId, versionId, body);
     if (!versionMatches(result, wsId, artifactId, versionId) || result.version.version.revision < body.expected_revision || !["queued", "running", "ready"].includes(result.version.version.capture_status)) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useSaveCockpitAcceptanceCriteria(wsId: string) {
   const client = useQueryClient();
@@ -83,7 +87,7 @@ export function useSaveCockpitAcceptanceCriteria(wsId: string) {
     if (!result || result.workspace_id !== wsId || result.node_id !== nodeId || result.revision < body.expected_revision || result.items.length !== body.criteria.length
       || result.items.some((entry, index) => entry.id !== body.criteria[index]?.id || entry.title !== body.criteria[index]?.title.trim() || entry.description !== body.criteria[index]?.description.trim())) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useCreateCockpitAcceptanceRequest(wsId: string) {
   const client = useQueryClient();
@@ -96,7 +100,7 @@ export function useCreateCockpitAcceptanceRequest(wsId: string) {
         return !expected || actual.join("\n") !== [...expected.version_ids].sort().join("\n");
       })) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useReviewCockpitAcceptanceRequest(wsId: string) {
   const client = useQueryClient();
@@ -105,5 +109,5 @@ export function useReviewCockpitAcceptanceRequest(wsId: string) {
     if (!requestMatches(result, wsId, nodeId, requestId) || result.request.revision < body.expected_revision || result.request.decision !== body.decision
       || !result.request.reviewed_at || result.feedback !== body.feedback.trim()) throw new CockpitUnconfirmedWriteError();
     return result;
-  }, onSettled: () => invalidateArtifactFacts(client, wsId) });
+  }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }

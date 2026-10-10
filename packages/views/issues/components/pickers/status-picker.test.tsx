@@ -114,6 +114,17 @@ describe("StatusPicker trigger color", () => {
 });
 
 describe("StatusPicker mark-as-duplicate action", () => {
+  it("disables formal terminal categories including custom states while preserving working states and the repair link", () => {
+    catalogEntries = [IN_REVIEW, QA, entry({ key: "accepted", category: "done", name: "Accepted" }), entry({ key: "withdrawn", category: "closed", name: "Withdrawn" })];
+    const update = vi.fn(); const markDuplicate = vi.fn();
+    renderWithI18n(<StatusPicker status="todo" onUpdate={update} open onOpenChange={() => {}} onMarkDuplicate={markDuplicate}
+      allowsCategory={(category) => category !== "done" && category !== "closed"} restriction={<a href="/ws/cockpit?artifact=a&artifact_version=v">Open formal review</a>} />);
+    expect(optionRow("Accepted")).toBeDisabled(); expect(optionRow("Withdrawn")).toBeDisabled();
+    fireEvent.click(optionRow("Accepted")); expect(update).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Mark as duplicate" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Open formal review" })).toHaveAttribute("href", "/ws/cockpit?artifact=a&artifact_version=v");
+    expect(optionRow("QA")).toBeEnabled(); fireEvent.click(optionRow("QA")); expect(update).toHaveBeenCalledWith({ status: "qa" });
+  });
   // Create and batch surfaces must never offer it: an issue that does not
   // exist yet cannot duplicate anything.
   it("is absent unless the caller opts in", () => {

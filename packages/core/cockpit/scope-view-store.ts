@@ -41,8 +41,8 @@ export const cockpitScopeViewKey = (wsId: string, scope: CockpitScope) => JSON.s
 export interface CockpitGovernanceContext { query: string; status: "pending" | "decided" | "all"; cursors: string[]; qualityOpen: boolean }
 export const EMPTY_COCKPIT_GOVERNANCE_CONTEXT: CockpitGovernanceContext = { query: "", status: "pending", cursors: [""], qualityOpen: false };
 
-export interface CockpitArtifactContext { query: string; status: string; cursorKey: string; cursors: string[]; scrollTop: number }
-export const EMPTY_COCKPIT_ARTIFACT_CONTEXT: CockpitArtifactContext = { query: "", status: "", cursorKey: "", cursors: [""], scrollTop: 0 };
+export interface CockpitArtifactContext { query: string; status: string; relation: "owned" | "referenced" | "all"; cursorKey: string; cursors: string[]; scrollTop: number }
+export const EMPTY_COCKPIT_ARTIFACT_CONTEXT: CockpitArtifactContext = { query: "", status: "", relation: "owned", cursorKey: "", cursors: [""], scrollTop: 0 };
 
 /** Session navigation state only. Scope belongs to the URL; read models and document bodies stay in Query. */
 export const useCockpitScopeViewStore = create<{
@@ -73,7 +73,7 @@ export const useCockpitScopeViewStore = create<{
   }),
   updateArtifact: (key, patch) => set((state) => {
     const current = state.artifacts[key] ?? EMPTY_COCKPIT_ARTIFACT_CONTEXT;
-    const changed = (["query", "status"] as const).some((field) => field in patch && current[field] !== patch[field]);
+    const changed = (["query", "status", "relation"] as const).some((field) => field in patch && current[field] !== patch[field]);
     return { artifacts: { ...state.artifacts, [key]: { ...current, ...patch, ...(changed ? { cursors: [""], cursorKey: "", scrollTop: 0 } : {}) } } };
   }),
   setRelationPage: (key, cursors) => set((state) => ({ relations: { ...state.relations, [key]: cursors } })),

@@ -8,6 +8,7 @@ import {
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
+import { useCockpitIssueFormalReview, cockpitFormalReviewAllowsStatus, cockpitArtifactPath, cockpitObjectPath, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
@@ -119,6 +120,7 @@ import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
 import { CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
+import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
 import { useGitHubSettings } from "@multica/core/github";
 import { DeliverablesSection } from "./deliverables/deliverables-section";
 import { DeliverablesOverview } from "./deliverables/deliverables-overview";
@@ -1310,6 +1312,7 @@ export function IssueDetailSkeleton({
 export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId, highlightRequestToken, leadingAction, variant = "page", trailingActions }: IssueDetailProps) {
   const isPeek = variant === "peek";
   const { t } = useT("issues");
+  const { t: cockpitT } = useT("cockpit");
   const locale = useLocale();
   const timeAgo = useTimeAgo();
   const id = issueId;
@@ -1543,6 +1546,19 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       return cached?.description != null ? cached : undefined;
     },
   });
+  const formalReview = useCockpitIssueFormalReview(wsId, issue?.id ?? "");
+  const allowsStatusCategory = useCallback((category: string) => !formalReview.isPending && !formalReview.isError
+    && cockpitFormalReviewAllowsStatus(formalReview.review, category), [formalReview.isPending, formalReview.isError, formalReview.review]);
+  const assigneeReadOnly = formalReview.isPending || formalReview.isError || Boolean(formalReview.review);
+  const reviewRecord = formalReview.review;
+  const formalReviewHref = reviewRecord?.kind === "artifact_version" && reviewRecord.artifact_id
+    ? cockpitArtifactPath(paths.cockpit(), reviewRecord.artifact_id, EMPTY_COCKPIT_SCOPE, reviewRecord.version_id ?? undefined)
+    : reviewRecord?.kind === "acceptance_request" && reviewRecord.request_id && reviewRecord.node_id
+      ? cockpitObjectPath(paths.cockpit(), { kind: "node", id: reviewRecord.node_id, view: "acceptance", requestId: reviewRecord.request_id }) : null;
+  const formalRestriction = formalReview.isPending ? <p role="status" className="text-caption text-muted-foreground">{cockpitT(($) => $.issue_artifacts.formal_checking)}</p>
+    : formalReview.isError ? <div role="alert" className="space-y-2 text-caption"><p>{cockpitT(($) => $.issue_artifacts.formal_failed)}</p><Button size="sm" variant="outline" onClick={() => void formalReview.refetch()}>{cockpitT(($) => $.binding.retry)}</Button></div>
+      : reviewRecord ? <div className="space-y-2 text-caption text-muted-foreground"><p>{reviewRecord.stage === "pending" ? cockpitT(($) => $.issue_artifacts.formal_pending) : cockpitT(($) => $.issue_artifacts.formal_record)}</p>
+        {formalReviewHref && <AppLink href={formalReviewHref} className="text-primary underline underline-offset-4">{cockpitT(($) => $.issue_artifacts.open_formal)}</AppLink>}</div> : undefined;
   const descriptionSourceId = `description:${id}`;
   const descriptionAnnotations = useCommentAnnotations({
     draftKey: `new:${id}`,
@@ -2444,7 +2460,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // Shared issue actions (mutations, pin, copy-link, modal dispatch, etc.).
   // Called before the `if (!issue)` early return so hook order stays stable.
   const actions = useIssueActions(issue);
-  const handleUpdateField = actions.updateField;
+  const updateIssueField = actions.updateField;
+  const handleUpdateField = useCallback<typeof updateIssueField>((updates, options) => {
+    if ((updates.status !== undefined && !allowsStatusCategory(resolveStatusCategory(updates.status)))
+      || (assigneeReadOnly && (updates.assignee_type !== undefined || updates.assignee_id !== undefined))) {
+      const error = new Error(cockpitT(($) => $.issue_artifacts.formal_pending));
+      options?.onError?.(error); toast.error(error.message); return;
+    }
+    updateIssueField(updates, options);
+  }, [updateIssueField, allowsStatusCategory, assigneeReadOnly, cockpitT, resolveStatusCategory]);
 
   // Labels live in their own query (not on the issue body) — fetch the count
   // here so seeding can decide whether the "Labels" optional row should be
@@ -2688,11 +2712,14 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               align="start"
               onMarkDuplicate={actions.openMarkDuplicate}
               isDuplicate={isDuplicateIssue(issue)}
+              allowsCategory={allowsStatusCategory}
+              restriction={formalRestriction}
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_assignee)}>
-            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" />
+            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" readOnly={assigneeReadOnly} restriction={formalRestriction} />
           </PropRow>
+          {formalRestriction && <div className="col-span-2 py-2">{formalRestriction}</div>}
           <PropRow label={t(($) => $.detail.prop_project)}>
             <ProjectPicker
               projectId={issue.project_id}
@@ -2954,6 +2981,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           against, including the meeting that filed it. Editable from either
           end; hides itself when the workspace keeps no register. */}
       <CockpitMeetingsSection issueId={issue.id} />
+      <CockpitArtifactContexts issueId={issue.id} />
 
       {/* Deliverables — the files this issue's comments delivered. Hidden
           while there are none. */}
@@ -3201,7 +3229,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                       variant="ghost"
                       size="icon-sm"
                       className="text-muted-foreground"
-                      onClick={() => { handleUpdateField({ status: "done" }); onDone?.(); }}
+                      disabled={!allowsStatusCategory("done")}
+                      aria-label={t(($) => $.detail.mark_done_tooltip)}
+                      onClick={() => { if (allowsStatusCategory("done")) handleUpdateField({ status: "done" }, { onSuccess: () => onDone?.() }); }}
                     >
                       <CircleCheck />
                     </Button>
@@ -3470,6 +3500,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 onUpdate={handleUpdateField}
                 onMarkDuplicate={actions.openMarkDuplicate}
                 isDuplicate={isDuplicateIssue(issue)}
+                allowsStatusCategory={allowsStatusCategory}
+                assigneeReadOnly={assigneeReadOnly}
+                restriction={formalRestriction}
               />
             </div>
           )}

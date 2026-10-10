@@ -60,6 +60,8 @@ describe("cockpit scope navigation", () => {
     store.updateArtifact("artifact-scope", { query: "audit" });
     store.updateArtifact("artifact-scope", { query: "" });
     expect(useCockpitScopeViewStore.getState().artifacts["artifact-scope"]).toMatchObject({ cursors: [""], scrollTop: 0, cursorKey: "" });
+    store.updateArtifact("artifact-scope", { relation: "referenced", cursors: ["", "old-owned-page"], scrollTop: 90 });
+    expect(useCockpitScopeViewStore.getState().artifacts["artifact-scope"]).toMatchObject({ relation: "referenced", cursors: [""], scrollTop: 0 });
     expect(useCockpitScopeViewStore.getState().meetings).toEqual({});
   });
 });

@@ -448,3 +448,5 @@ export * from "./cockpit-issue-references";
 
 export type * from "./cockpit-directory";
 export type * from "./cockpit-snapshot-diff";
+export type * from "./cockpit-artifact-responsibility";
+export * from "./cockpit-issue-artifacts";

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
-import { cockpitArtifactDraftKey, cockpitArtifactPath, EMPTY_ARTIFACT_CREATION_DRAFT, prepareCockpitArtifactCreation,
+import { isCockpitDefinitiveCommandRejection, cockpitArtifactDraftKey, cockpitArtifactPath, EMPTY_ARTIFACT_CREATION_DRAFT, prepareCockpitArtifactCreation,
   cockpitSelectedMemberOptions, settleCockpitArtifactCreation, updateCockpitArtifactCreationDraft, useCockpitArtifactDraftStore, useCreateCockpitArtifact, type CockpitScope } from "@multica/core/cockpit";
 import { issueDetailOptions } from "@multica/core/issues/queries";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -45,7 +45,7 @@ export function CockpitArtifactCreate({ wsId, nodeId, nodeLabel, projectId, modu
       settleCockpitArtifactCreation(key, body.creation_key, true);
       if (stillCurrent()) { setOpen(false); navigation.push(cockpitArtifactPath(paths.cockpit(), result.id, scope, undefined, { nodeId, view: "artifacts" })); }
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) settleCockpitArtifactCreation(key, body.creation_key, false);
+      if (isCockpitDefinitiveCommandRejection(cause)) settleCockpitArtifactCreation(key, body.creation_key, false);
       if (stillCurrent()) setError(cause instanceof ApiError ? cause.message : t(($) => $.task_flow.unconfirmed));
     } finally { lock.current = false; }
   }

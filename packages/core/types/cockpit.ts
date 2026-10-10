@@ -391,6 +391,8 @@ export interface CockpitBoard {
  * rather than patch; `snapshots` means only the version history moved.
  */
 export type CockpitEventScope =
+  | "artifacts"
+  | "acceptance"
   | "cockpit"
   | "node"
   | "payment"

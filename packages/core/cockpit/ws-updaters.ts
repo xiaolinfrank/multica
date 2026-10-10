@@ -3,6 +3,7 @@ import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
 import { issueKeys } from "../issues/queries";
 import { cockpitReadKeys } from "./read-queries";
+import { invalidateCockpitArtifactEvent, invalidateCockpitArtifactLabels } from "./artifact-queries";
 import { CockpitNodeIssueLinkReceiptSchema, CockpitMeetingIssueLinkReceiptSchema, CockpitMeetingNodeLinkReceiptSchema } from "../api/cockpit-reference-schemas";
 import type {
   CockpitBoard,
@@ -112,6 +113,16 @@ export function onCockpitChanged(
   const { scope, action, entity } = payload;
   void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
   void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+  if (scope === "node" || scope === "meeting") invalidateCockpitArtifactLabels(qc, wsId);
+
+  if (scope === "artifacts" || scope === "acceptance") {
+    // Fixed-version receipts are not current headers. Refetch affected facts
+    // instead of letting a late event replace a newer responsibility or pin.
+    invalidateCockpitArtifactEvent(qc, wsId, scope, entity);
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    invalidateCockpitTaskFlow(qc, wsId);
+    return;
+  }
 
   if (scope === "meeting_actions") {
     void qc.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });

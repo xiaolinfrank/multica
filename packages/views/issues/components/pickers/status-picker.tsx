@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CircleEqual } from "lucide-react";
-import type { IssueStatus, UpdateIssueRequest } from "@multica/core/types";
+import type { IssueStatus, IssueStatusCategory, UpdateIssueRequest } from "@multica/core/types";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -25,6 +25,8 @@ export function StatusPicker({
   align,
   onMarkDuplicate,
   isDuplicate,
+  allowsCategory,
+  restriction,
 }: {
   /**
    * The currently-selected status, used to check the matching row. `null`
@@ -47,6 +49,8 @@ export function StatusPicker({
   onMarkDuplicate?: () => void;
   /** The issue already carries a mark, so the action re-points it. */
   isDuplicate?: boolean;
+  allowsCategory?: (category: IssueStatusCategory) => boolean;
+  restriction?: React.ReactNode;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
@@ -92,12 +96,16 @@ export function StatusPicker({
       searchPlaceholder={t(($) => $.filters.search_status)}
       onSearchChange={setQuery}
       footer={
-        onMarkDuplicate ? (
+        restriction || onMarkDuplicate ? (<>
+          {restriction && <div className="px-2 py-2 text-caption">{restriction}</div>}
+          {onMarkDuplicate && (
           // Rendered outside the arrow-key listbox so keyboard nav and search
           // never treat the action as another status option.
           <button
             type="button"
+            disabled={allowsCategory?.("closed") === false}
             onClick={() => {
+              if (allowsCategory?.("closed") === false) return;
               setOpen(false);
               setQuery("");
               onMarkDuplicate();
@@ -111,7 +119,7 @@ export function StatusPicker({
               )}
             </span>
           </button>
-        ) : undefined
+          )}</>) : undefined
       }
       trigger={
         customTrigger ??
@@ -133,8 +141,10 @@ export function StatusPicker({
         <PickerItem
           key={option.key}
           selected={option.key === status}
+          disabled={allowsCategory?.(option.category) === false}
           hoverClassName={STATUS_CONFIG[option.category].hoverBg}
           onClick={() => {
+            if (allowsCategory?.(option.category) === false) return;
             onUpdate({ status: option.key });
             setOpen(false);
             setQuery("");

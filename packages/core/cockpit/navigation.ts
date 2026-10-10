@@ -92,16 +92,21 @@ export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: 
   return cockpitScopedPath(pathname, query, scope);
 }
 
-export interface CockpitArtifactReturn { nodeId: string; view: "artifacts" | "acceptance"; requestId?: string }
+export interface CockpitArtifactReturn { nodeId: string; view: "artifacts" | "acceptance"; requestId?: string; scope?: CockpitScope }
 export function cockpitArtifactReturn(search: { get: (name: string) => string | null }): CockpitArtifactReturn | undefined {
   const nodeId = search.get("from_node");
   if (!nodeId) return undefined;
-  return { nodeId, view: search.get("from_view") === "acceptance" ? "acceptance" : "artifacts", ...(search.get("from_request") ? { requestId: search.get("from_request")! } : {}) };
+  return { nodeId, view: search.get("from_view") === "acceptance" ? "acceptance" : "artifacts", scope: { projectId: search.get("from_project") || null, moduleId: search.get("from_module") || null }, ...(search.get("from_request") ? { requestId: search.get("from_request")! } : {}) };
 }
 export function cockpitArtifactPath(pathname: string, artifactId: string, scope: CockpitScope, versionId?: string, back?: CockpitArtifactReturn): string {
   const query = new URLSearchParams({ tab: "artifacts", artifact: artifactId });
   if (versionId) query.set("artifact_version", versionId);
-  if (back) { query.set("from_node", back.nodeId); query.set("from_view", back.view); if (back.requestId) query.set("from_request", back.requestId); }
+  if (back) {
+    query.set("from_node", back.nodeId); query.set("from_view", back.view); if (back.requestId) query.set("from_request", back.requestId);
+    const originScope = back.scope ?? scope;
+    if (originScope.projectId) query.set("from_project", originScope.projectId);
+    if (originScope.moduleId) query.set("from_module", originScope.moduleId);
+  }
   return cockpitScopedPath(pathname, query, scope);
 }
 

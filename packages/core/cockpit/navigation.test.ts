@@ -1,8 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitMeetingContextPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
+  it("returns to the original acceptance scope after opening an externally owned artifact", () => {
+    const origin = { projectId: "target-project", moduleId: "target-module" };
+    const first = cockpitArtifactPath("/acme/cockpit", "artifact-1", origin, "version-1", { nodeId: "target-node", view: "acceptance", requestId: "request-1" });
+    const back = cockpitArtifactReturn(new URLSearchParams(first.split("?")[1]));
+    expect(back?.scope).toEqual(origin);
+    const ownerPath = cockpitArtifactPath("/acme/cockpit", "artifact-1", { projectId: "owner-project", moduleId: "owner-module" }, "version-1", back);
+    const restored = cockpitArtifactReturn(new URLSearchParams(ownerPath.split("?")[1]));
+    expect(restored).toEqual(back);
+    expect(cockpitObjectPath("/acme/cockpit", { kind: "node", id: restored!.nodeId, view: restored!.view, requestId: restored!.requestId }, restored!.scope)).toBe("/acme/cockpit?node=target-node&node_view=acceptance&acceptance=request-1&project=target-project&module=target-module");
+  });
   it.each(["", "tab=overview", "tab=unknown", "view=unknown", "node=", "action=orphan"])("opens the bounded work overview for %s", (query) => {
     expect(cockpitDestination(new URLSearchParams(query)).area).toBe("work");
   });

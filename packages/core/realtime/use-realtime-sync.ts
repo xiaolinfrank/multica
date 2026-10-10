@@ -53,6 +53,7 @@ import {
 } from "../issues/cache-coordinator";
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged, onInboxIssueDeleted, onInboxSummaryInvalidate } from "../inbox/ws-updaters";
 import { onCockpitChanged } from "../cockpit/ws-updaters";
+import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
 import {
   notificationPreferenceOptions,
   notificationPreferenceKeys,
@@ -1203,7 +1204,10 @@ export function useRealtimeSync(
       if (!issue_id) return;
       qc.invalidateQueries({ queryKey: issueKeys.attachments(issue_id) });
       const wsId = getCurrentWsId();
-      if (wsId) onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);
+      if (wsId) {
+        onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);
+        invalidateCockpitArtifactSourceAttachments(qc, wsId, issue_id);
+      }
     });
 
     const unsubIssueMetadataChanged = ws.on("issue_metadata:changed", (p) => {

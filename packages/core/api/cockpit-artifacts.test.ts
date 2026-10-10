@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
 import { artifactFixture, artifactVersionDetailFixture, artifactVersionFixture, acceptanceFixture, ARTIFACT_SUBMISSION_KEY } from "../cockpit/artifact-test-fixtures";
 
-const scope = { project_id: "project-1", module_id: null, node_id: null, source_issue_id: null, q: "", status: "" };
+const scope = { project_id: "project-1", module_id: null, node_id: null, source_issue_id: null, q: "", status: "", relation: "owned", ids: [] };
 const page = () => ({ workspace_id: "ws-1", scope, items: [artifactFixture()], total: 1, filtered_total: 1, next_cursor: null, can_create: true });
 function reply(body: unknown, status = 200) {
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
@@ -13,6 +13,22 @@ function reply(body: unknown, status = 200) {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("artifact API scopes and fixed response boundaries", () => {
+  it("restores selected evidence in bounded ID batches and verifies the echoed set", async () => {
+    const body = { ...page(), scope: { ...scope, node_id: "target-node", relation: "all", ids: ["artifact-1", "artifact-2"] } };
+    const query = { project_id: "project-1", node_id: "target-node", relation: "all" as const, ids: ["artifact-2", "artifact-1", "artifact-1"], page_size: 100 };
+    const { client, fetchMock } = reply(body);
+    await expect(client.getCockpitArtifacts("ws-1", query)).resolves.toEqual(body);
+    expect(new URL(fetchMock.mock.calls[0]![0]).searchParams.get("ids")).toBe("artifact-1,artifact-2");
+    await expect(reply({ ...body, scope: { ...body.scope, ids: [] } }).client.getCockpitArtifacts("ws-1", query)).resolves.toBeNull();
+    await expect(reply({ ...body, items: [artifactFixture({ id: "unrequested", current_version: null })] }).client.getCockpitArtifacts("ws-1", query)).resolves.toBeNull();
+  });
+  it("keeps the owner visible when a different L3 explicitly references a fixed version", async () => {
+    const body = { ...page(), scope: { ...scope, node_id: "target-node", relation: "referenced" } };
+    const query = { project_id: "project-1", node_id: "target-node", relation: "referenced" as const };
+    await expect(reply(body).client.getCockpitArtifacts("ws-1", query)).resolves.toEqual(body);
+    await expect(reply(body).client.getCockpitArtifacts("ws-1", { ...query, relation: "owned", ids: [] })).resolves.toBeNull();
+    await expect(reply({ ...body, scope: { ...body.scope, node_id: "another-node" } }).client.getCockpitArtifacts("ws-1", query)).resolves.toBeNull();
+  });
   it("requests one workspace-scoped page and verifies the complete requested filter scope", async () => {
     const body = page();
     const { client, fetchMock } = reply(body);
@@ -50,7 +66,7 @@ describe("artifact API scopes and fixed response boundaries", () => {
     const result = { workspace_id: "ws-1", artifact: artifactFixture({ current_version: artifactVersionFixture({ id: "version-2", version_number: 2 }), version_count: 2 }),
       version: artifactVersionDetailFixture({ content }) };
     const { client, fetchMock } = reply(result, 202);
-    await expect(client.submitCockpitArtifactVersion("ws-1", "artifact-1", { expected_revision: 1, submission_key: ARTIFACT_SUBMISSION_KEY, payload: { kind: "text", content } })).resolves.toEqual(result);
+    await expect(client.submitCockpitArtifactVersion("ws-1", "artifact-1", { expected_revision: 1, submission_key: ARTIFACT_SUBMISSION_KEY, producer_issue_id: "source-1", payload: { kind: "text", content } })).resolves.toEqual(result);
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body).payload.content).toBe(content);
     expect(new Headers(fetchMock.mock.calls[0]![1].headers).get("X-Workspace-ID")).toBe("ws-1");
   });
@@ -63,16 +79,16 @@ describe("artifact API scopes and fixed response boundaries", () => {
   });
 
   it("accepts only a fresh link for the exact artifact version, excluding executable and unrelated relative URLs", async () => {
-    const link = { workspace_id: "ws-1", artifact_id: "artifact-1", version_id: "version-1", url: "https://storage.example.test/fixed-file?signature=test", expires_at: new Date(Date.now() + 60_000).toISOString() };
+    const link = { workspace_id: "ws-1", artifact_id: "artifact-1", version_id: "version-1", url: "https://storage.example.test/api/cockpit/artifact-files/version-1/download?token=test", expires_at: new Date(Date.now() + 60_000).toISOString() };
     await expect(reply(link).client.getCockpitArtifactDownloadLink("ws-1", "artifact-1", "version-1")).resolves.toEqual(link);
-    for (const patch of [{ url: "javascript:alert(1)" }, { url: "//other.example/file" }, { url: "https://user:secret@example.test/file" },
-      { url: "/api/cockpit/artifacts/other/versions/version-1/download?signature=test" }, { version_id: "version-2" }, { expires_at: "2000-01-01T00:00:00Z" }]) {
+    for (const patch of [{ url: "https://storage.example.test/unrelated-file?token=test" }, { url: "/api/cockpit/artifact-files/version-1/download" }, { url: "/api/cockpit/artifact-files/version-2/download?token=test" }, { url: "/api/cockpit/artifact-files/version-1/download?token=a&token=b" }, { url: "javascript:alert(1)" }, { url: "//other.example/file" }, { url: "https://user:secret@example.test/file" },
+      { url: "/api/cockpit/artifacts/other/versions/version-1/download?signature=test" }, { url: "/api/cockpit/artifacts/artifact-1/versions/version-1/download" }, { version_id: "version-2" }, { expires_at: "2000-01-01T00:00:00Z" }]) {
       await expect(reply({ ...link, ...patch }).client.getCockpitArtifactDownloadLink("ws-1", "artifact-1", "version-1")).resolves.toBeNull();
     }
   });
 
   it("keeps attachment choices bounded to one artifact source and search", async () => {
-    const body = { workspace_id: "ws-1", artifact_id: "artifact-1", source_issue_id: "source-1", q: "report", items: [
+    const body = { workspace_id: "ws-1", artifact_id: "artifact-1", producer_issue_id: "source-1", q: "report", items: [
       { id: "attachment-1", source_issue_id: "source-1", filename: "report.pdf", content_type: "application/pdf", size_bytes: 100, created_at: "2026-10-10T00:00:00Z" },
     ], total: 10, filtered_total: 1, next_cursor: null };
     await expect(reply(body).client.getCockpitArtifactSourceAttachments("ws-1", "artifact-1", { q: "report" })).resolves.toEqual(body);

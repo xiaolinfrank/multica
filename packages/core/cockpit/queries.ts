@@ -1,5 +1,6 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateCockpitArtifactIssueFacts } from "./artifact-queries";
 import type {
   CockpitBoard,
   CockpitIssueLink,
@@ -57,6 +58,7 @@ export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
 /** Issue status/assignee changes affect the read model, but never its formal review decision. */
 export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
   invalidateCockpitTaskFlow(client, wsId);
+  invalidateCockpitArtifactIssueFacts(client, wsId, issueId);
   // An old review task may be outside the loaded page; only observed history queries will refetch.
   void client.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
   for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflowSummary | null>({ queryKey: cockpitKeys.workflows(wsId) })) {

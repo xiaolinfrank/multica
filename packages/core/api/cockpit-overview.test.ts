@@ -43,6 +43,7 @@ describe("cockpit overview API boundary", () => {
     const { client, fetchMock } = clientReply(body);
     await expect(client.getCockpitWorkOverview("ws-1", query)).resolves.toEqual(body);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ headers: { "X-Workspace-ID": "ws-1" } });
     const url = new URL(fetchMock.mock.calls[0]![0]);
     expect(url.pathname).toBe("/api/cockpit/overview");
     expect(Object.fromEntries(url.searchParams)).toEqual(query);

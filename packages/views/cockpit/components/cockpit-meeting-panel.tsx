@@ -81,6 +81,7 @@ export interface CockpitMeetingPanelProps {
   nodePageReady: boolean;
   nodePaging?: React.ReactNode;
   notice?: React.ReactNode;
+  artifactReferences?: React.ReactNode;
   onOpenNode: (nodeId: string) => void;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
@@ -104,7 +105,7 @@ export function CockpitMeetingPanel({
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences,
   onOpenNode,
   onSaveMaterialPatch,
   onPrepareDirectory,
@@ -246,6 +247,7 @@ export function CockpitMeetingPanel({
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>
+            {artifactReferences}
             <CockpitMeetingMaterials wsId={wsId} meeting={meeting} workflow={workflowQuery.data} workflowHref={workflowHref} readOnly={readOnly}
               onSaveMaterialPatch={onSaveMaterialPatch} onPrepareDirectory={onPrepareDirectory} />
         <Separator className="my-3" />

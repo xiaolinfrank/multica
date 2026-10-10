@@ -318,6 +318,10 @@ vi.mock("../../projects/components/project-picker", () => ({
 const mockApiObj = vi.hoisted(() => ({
   getIssue: vi.fn(),
   getCockpit: vi.fn().mockResolvedValue(null),
+  getCockpitContext: vi.fn().mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, cockpit: null, actor: { user_id: "user-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false, capabilities: { artifacts: false, acceptance: false } }),
+  getCockpitIssueArtifacts: vi.fn(),
+  getCockpitIssueMeetingReferences: vi.fn(),
+  getCockpitIssueActionSources: vi.fn(),
   listTimeline: vi.fn().mockResolvedValue([]),
   listComments: vi.fn().mockResolvedValue([]),
   createComment: vi.fn(),
@@ -646,12 +650,12 @@ function createTestQueryClient() {
   });
 }
 
-function renderIssueDetail(issueId = "issue-1") {
+function renderIssueDetail(issueId = "issue-1", options: Pick<React.ComponentProps<typeof IssueDetail>, "variant" | "onDone"> = {}) {
   const queryClient = createTestQueryClient();
   return render(
     <I18nProvider locale="en" resources={TEST_RESOURCES}>
       <QueryClientProvider client={queryClient}>
-        <IssueDetail issueId={issueId} />
+        <IssueDetail issueId={issueId} {...options} />
       </QueryClientProvider>
     </I18nProvider>,
   );
@@ -733,6 +737,11 @@ describe("IssueDetail (shared)", () => {
     // Default: issue loads successfully
     mockApiObj.getIssue.mockResolvedValue(mockIssue);
     mockApiObj.getCockpit.mockResolvedValue(null);
+    mockApiObj.getCockpitContext.mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, cockpit: null,
+      actor: { user_id: "user-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false, capabilities: { artifacts: false, acceptance: false } });
+    mockApiObj.getCockpitIssueArtifacts.mockResolvedValue({ workspace_id: "ws-1", issue_id: "issue-1", formal_review: null, items: [], total: 0, next_cursor: null });
+    mockApiObj.getCockpitIssueMeetingReferences.mockResolvedValue({ workspace_id: "ws-1", issue_id: "issue-1", items: [], total: 0, next_cursor: null });
+    mockApiObj.getCockpitIssueActionSources.mockResolvedValue({ issue_id: "issue-1", items: [], total: 0, next_cursor: null });
     // /timeline returns the entries flat in chronological order (oldest first).
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline);
     mockApiObj.listIssueReactions.mockResolvedValue([]);
@@ -756,12 +765,28 @@ describe("IssueDetail (shared)", () => {
     mockApiObj.getProject.mockReset();
   });
 
+  it.each(["page", "peek"] as const)("keeps formal review terminal states and assignee protected in the %s properties", async (variant) => {
+    mockApiObj.getCockpitContext.mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, cockpit: null,
+      actor: { user_id: "user-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false, capabilities: { artifacts: true, acceptance: true } });
+    mockApiObj.getCockpitIssueArtifacts.mockResolvedValue({ workspace_id: "ws-1", issue_id: "issue-1", items: [{ kind: "artifact", id: "other-artifact", artifact_id: "other-artifact", artifact_title: "Related artifact", roles: ["origin"], node_id: "other-node", node_label: "Related delivery", version_id: null, version_number: null, request_id: null, decision: "draft", reviewer_id: null, is_current_review: false }], total: 500, next_cursor: "later-page",
+      formal_review: { kind: "artifact_version", stage: "pending", node_id: "node-1", artifact_id: "artifact-1", version_id: "version-1", request_id: null } });
+    mockApiObj.getIssue.mockResolvedValue({ ...mockIssue, status: "todo", assignee_type: "member", assignee_id: "user-1" });
+    const done = vi.fn(); renderIssueDetail("TES-1", { variant, onDone: done });
+    const links = await screen.findAllByRole("link", { name: "Open formal review" });
+    expect(links[0]).toHaveAttribute("href", "/test/cockpit?tab=artifacts&artifact=artifact-1&artifact_version=version-1");
+    expect(screen.getByRole("button", { name: enIssues.detail.mark_done_tooltip })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Todo" }));
+    const options = Array.from(document.querySelectorAll<HTMLButtonElement>("button[data-picker-item]"));
+    expect(options.find((item) => item.textContent === "Done")).toBeDisabled();
+    expect(options.find((item) => item.textContent === "Cancelled")).toBeDisabled();
+    expect(options.find((item) => item.textContent === "In Progress")).toBeEnabled();
+    expect(mockApiObj.getCockpitIssueArtifacts).toHaveBeenCalledWith("ws-1", "issue-1", expect.anything(), expect.anything());
+    expect(done).not.toHaveBeenCalled();
+  });
+
   it.each(["issue-1", "TES-1"])("shows one editable meeting context when opened as %s", async (issueId) => {
-    mockApiObj.getCockpit.mockResolvedValue({
-      nodes: [],
-      issue_links: [],
-      meetings: [{ id: "meeting-1", code: "20261009-01", title: "Design review", meet_date: "2026-10-09" }],
-      meeting_issues: [{ meeting_id: "meeting-1", issue_id: "issue-1", role: "task", roles: [] }],
+    mockApiObj.getCockpitIssueMeetingReferences.mockResolvedValue({ workspace_id: "ws-1", issue_id: "issue-1", total: 1, next_cursor: null,
+      items: [{ meeting_id: "meeting-1", code: "20261009-01", title: "Design review", meet_date: "2026-10-09", available: true, role: "task", roles: [], required_roles: [], can_unlink: true }],
     });
     renderIssueDetail(issueId);
 
@@ -769,7 +794,9 @@ describe("IssueDetail (shared)", () => {
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveAttribute("href", "/test/cockpit?meeting=meeting-1");
     expect(screen.getByRole("button", { name: "Add meeting" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Unlink 20261009-01 Design review" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unlink 20261009-01 Design review" })).toBeEnabled();
+    expect(mockApiObj.getCockpitIssueMeetingReferences).toHaveBeenCalledWith("ws-1", "issue-1", { cursor: undefined }, expect.any(AbortSignal));
+    expect(mockApiObj.getCockpit).not.toHaveBeenCalled();
   });
 
   it("counts comment files as deliverables, a re-upload once as v2, never the description's (MUL-7649)", async () => {

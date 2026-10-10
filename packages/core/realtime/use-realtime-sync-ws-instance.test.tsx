@@ -14,6 +14,7 @@ import { workspaceWorkingAgentsKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
 import { cockpitKeys } from "../cockpit/queries";
+import { cockpitArtifactKeys } from "../cockpit/artifact-queries";
 import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
 import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
 import type { CockpitBoard } from "../types";
@@ -343,6 +344,10 @@ describe("useRealtimeSync — ws instance change", () => {
   });
 
   it("invalidates one issue attachment cache after detached channel media binds", () => {
+    const choices = cockpitArtifactKeys.sourceAttachments("ws-1", "artifact-1");
+    const fixed = cockpitArtifactKeys.version("ws-1", "artifact-1", "version-1");
+    qc.setQueryData(choices, { items: [] });
+    qc.setQueryData(fixed, { content: "Fixed evidence" });
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {
       wrapper: createWrapper(qc),
@@ -357,6 +362,8 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: issueKeys.attachments("issue-1"),
     });
+    expect(qc.getQueryState(choices)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fixed)?.isInvalidated).toBe(false);
   });
   // The cockpit board is edited by several people at once, and by agents
   // through the CLI. A frame carries the row that moved, so this must patch the

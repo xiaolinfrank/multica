@@ -1,4 +1,8 @@
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
+import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-artifacts";
+import type { CockpitMeetingArtifactReferencePage } from "../types/cockpit-artifact-responsibility";
+import { CockpitMeetingArtifactReferencePageSchema } from "./cockpit-artifact-responsibility-schemas";
+import { CockpitIssueArtifactContextPageSchema } from "./cockpit-issue-artifact-schemas";
 import { CockpitUnconfirmedReadError } from "../cockpit/errors";
 import type { CockpitNodeCreate, CockpitNodeCreated } from "../types/cockpit";
 import type { CockpitDirectoryPage, CockpitDirectoryPageQuery, CockpitDirectoryReceipt, CockpitDirectoryWrite, CockpitDirectoryNaturalKey } from "../types/cockpit-directory";
@@ -7,6 +11,15 @@ import { normalizedCockpitDirectoryQuery, cockpitDirectoryNaturalKey, cockpitDir
 import type { CockpitChangePage, CockpitSnapshotPage, CockpitChangePageQuery, CockpitGovernancePageQuery, CockpitChangePreview } from "../types/cockpit-governance";
 import type { CockpitSnapshotDiff } from "../types/cockpit-snapshot-diff";
 import { CockpitSnapshotDiffSchema } from "./cockpit-snapshot-diff-schema";
+import type {
+  CockpitArtifactProducerCommand, CockpitArtifactReviewerCommand, CockpitArtifactProducerPage, CockpitArtifactProducerResponse,
+  CockpitArtifactHandoffPage, CockpitArtifactHandoffResponse, CockpitArtifactReferenceKind, CockpitArtifactNodeReferenceCreate,
+  CockpitArtifactMeetingReferenceCreate, CockpitArtifactReferencePage, CockpitArtifactReferenceResponse, CockpitAcceptanceHandoffPage, CockpitAcceptanceHandoffResponse,
+} from "../types/cockpit-artifact-responsibility";
+import {
+  CockpitArtifactProducerPageSchema, CockpitArtifactProducerResponseSchema, CockpitArtifactHandoffPageSchema, CockpitArtifactHandoffResponseSchema,
+  CockpitArtifactReferencePageSchema, CockpitArtifactReferenceResponseSchema, CockpitAcceptanceHandoffPageSchema, CockpitAcceptanceHandoffResponseSchema,
+} from "./cockpit-artifact-responsibility-schemas";
 import { CockpitChangePageSchema, CockpitSnapshotPageSchema, CockpitChangePreviewSchema, CockpitReviewedChangeResponseSchema } from "./cockpit-governance-schemas";
 import { CockpitIssueNodeReferencesSchema, CockpitIssueMeetingReferencesSchema, CockpitIssueReferenceRemovalSchema } from "./cockpit-issue-reference-schemas";
 import type { CockpitIssueNodeReference, CockpitIssueMeetingReference, CockpitIssueReferencePage, CockpitIssueReferenceQuery, CockpitIssueReferenceRemoval } from "../types/cockpit-issue-references";
@@ -2263,7 +2276,7 @@ export class ApiClient {
   ): Promise<T | null> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
-    const raw = await this.fetch<unknown>(`/api/cockpit/overview${path}?${params}`, { signal });
+    const raw = await this.fetch<unknown>(`/api/cockpit/overview${path}?${params}`, { signal, headers: { "X-Workspace-ID": wsId } });
     const result = parseWithFallback<T | null>(raw, schema, null, { endpoint: `GET /api/cockpit/overview${path}` });
     return result?.workspace_id === wsId && result.project_id === (query.project_id || null)
       && (result.module_id ?? null) === (query.module_id || null) && result.as_of === query.as_of ? result : null;
@@ -2279,6 +2292,8 @@ export class ApiClient {
       if (Array.isArray(value)) for (const item of value) params.append(key, item);
       else if (value !== undefined && value !== "") params.set(key, String(value));
     }
+    // A query declaration also works with older servers' CORS allowlists.
+    params.set("client_contract", "artifacts-v1");
     const raw = await this.fetch<unknown>(`/api/cockpit${path}?${params}`, { signal, headers: { "X-Workspace-ID": wsId } });
     const result = parseWithFallback<T | null>(raw, schema, null, { endpoint: `GET /api/cockpit${path}` });
     return result?.workspace_id === wsId && result.scope.project_id === scope.projectId && result.scope.module_id === scope.moduleId ? result : null;
@@ -2293,13 +2308,29 @@ export class ApiClient {
     return result?.workspace_id === wsId ? result : null;
   }
 
+  async getCockpitIssueArtifacts(wsId: string, issueId: string, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitIssueArtifactContextPage | null> {
+    const result = await this.cockpitArtifactResource<CockpitIssueArtifactContextPage>(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/artifacts`, CockpitIssueArtifactContextPageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25 });
+    return result && result.issue_id === issueId && result.items.length <= (query.page_size ?? 25) ? result : null;
+  }
+
+  async getCockpitMeetingArtifactReferences(wsId: string, meetingId: string, query: CockpitArtifactPageQuery & { include_removed?: boolean } = {}, signal?: AbortSignal): Promise<CockpitMeetingArtifactReferencePage | null> {
+    const result = await this.cockpitArtifactResource<CockpitMeetingArtifactReferencePage>(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/artifact-references`, CockpitMeetingArtifactReferencePageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25, include_removed: query.include_removed ?? false });
+    return result?.meeting_id === meetingId && result.include_removed === (query.include_removed ?? false)
+      && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor) ? result : null;
+  }
+
   async getCockpitArtifacts(wsId: string, query: CockpitArtifactQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactPage | null> {
-    const result = await this.cockpitArtifactResource<CockpitArtifactPage>(wsId, "/api/cockpit/artifacts", CockpitArtifactPageSchema, { signal }, { ...query, page_size: query.page_size ?? 25 });
+    const ids = [...new Set(query.ids ?? [])].sort();
+    const result = await this.cockpitArtifactResource<CockpitArtifactPage>(wsId, "/api/cockpit/artifacts", CockpitArtifactPageSchema, { signal }, { ...query, ids: ids.join(","), page_size: query.page_size ?? 25 });
+    const includesReferences = Boolean(query.node_id && query.relation && query.relation !== "owned");
     return result && result.items.length <= (query.page_size ?? 25) && result.scope.project_id === (query.project_id || null)
       && result.scope.module_id === (query.module_id || null) && result.scope.node_id === (query.node_id || null)
-      && result.scope.source_issue_id === (query.source_issue_id || null) && result.scope.q === (query.q?.trim() || "") && result.scope.status === (query.status || "")
-      && result.items.every((item) => (!query.project_id || item.project_id === query.project_id) && (!query.module_id || item.module_id === query.module_id)
-        && (!query.node_id || item.node_id === query.node_id) && (!query.source_issue_id || item.source_issue.id === query.source_issue_id) && (!query.status || item.status === query.status)) ? result : null;
+      && result.scope.source_issue_id === (query.source_issue_id || null) && result.scope.q === (query.q?.trim() || "") && result.scope.status === (query.status || "") && result.scope.relation === (query.relation ?? "owned")
+      && result.scope.ids.slice().sort().join(",") === ids.join(",") && result.items.every((item) => !ids.length || ids.includes(item.id))
+      && result.items.every((item) => (includesReferences || ((!query.project_id || item.project_id === query.project_id) && (!query.module_id || item.module_id === query.module_id)
+        && (!query.node_id || item.node_id === query.node_id))) && (!query.source_issue_id || item.source_issue.id === query.source_issue_id) && (!query.status || item.status === query.status)) ? result : null;
   }
 
   async searchCockpitScopeNodes(wsId: string, query: CockpitNodeSelectorQuery = {}, signal?: AbortSignal): Promise<CockpitNodeChoicePage | null> {
@@ -2332,8 +2363,8 @@ export class ApiClient {
       && result.items.length <= (query.page_size ?? 20) ? result : null;
   }
 
-  async getCockpitArtifact(wsId: string, artifactId: string, signal?: AbortSignal): Promise<CockpitArtifactHeader | null> {
-    const result = await this.cockpitArtifactResource<CockpitArtifactHeader>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}`, CockpitArtifactHeaderSchema, { signal });
+  async getCockpitArtifact(wsId: string, artifactId: string, signal?: AbortSignal, nodeId?: string): Promise<CockpitArtifactHeader | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactHeader>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}`, CockpitArtifactHeaderSchema, { signal }, { node_id: nodeId });
     return result?.id === artifactId ? result : null;
   }
 
@@ -2384,6 +2415,59 @@ export class ApiClient {
   async getCockpitArtifactDownloadLink(wsId: string, artifactId: string, versionId: string): Promise<CockpitArtifactDownloadLink | null> {
     const result = await this.cockpitArtifactResource<CockpitArtifactDownloadLink>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/versions/${encodeURIComponent(versionId)}/download-link`, CockpitArtifactDownloadLinkSchema);
     return result?.artifact_id === artifactId && result.version_id === versionId && Date.parse(result.expires_at) > Date.now() ? result : null;
+  }
+
+  async assignCockpitArtifactProducer(wsId: string, artifactId: string, body: CockpitArtifactProducerCommand): Promise<CockpitArtifactProducerResponse | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactProducerResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/producer`, CockpitArtifactProducerResponseSchema,
+      { method: "POST", body: JSON.stringify(body) });
+    return result?.artifact.id === artifactId ? result : null;
+  }
+  async getCockpitArtifactProducerHistory(wsId: string, artifactId: string, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactProducerPage | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactProducerPage>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/producer-history`, CockpitArtifactProducerPageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25 });
+    return result?.artifact_id === artifactId && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor) ? result : null;
+  }
+  async reassignCockpitArtifactReviewer(wsId: string, artifactId: string, body: CockpitArtifactReviewerCommand): Promise<CockpitArtifactHandoffResponse | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactHandoffResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/reviewer`, CockpitArtifactHandoffResponseSchema,
+      { method: "POST", body: JSON.stringify(body) });
+    return result?.artifact.id === artifactId ? result : null;
+  }
+  async getCockpitArtifactReviewerHandoffs(wsId: string, artifactId: string, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactHandoffPage | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactHandoffPage>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/reviewer-handoffs`, CockpitArtifactHandoffPageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25 });
+    return result?.artifact_id === artifactId && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor) ? result : null;
+  }
+  async setCockpitArtifactArchived(wsId: string, artifactId: string, archived: boolean, expectedRevision: number): Promise<CockpitArtifactHeader | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactHeader>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${archived ? "archive" : "unarchive"}`, CockpitArtifactHeaderSchema,
+      { method: "POST", body: JSON.stringify({ expected_revision: expectedRevision }) });
+    return result?.id === artifactId && Boolean(result.archived_at) === archived ? result : null;
+  }
+  async getCockpitArtifactReferences(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactReferencePage | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactReferencePage>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references`, CockpitArtifactReferencePageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25 });
+    return result?.artifact_id === artifactId && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor)
+      && result.items.every((item) => Boolean(kind === "node" ? item.node_id : item.meeting_id)) ? result : null;
+  }
+  async createCockpitArtifactReference(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, body: CockpitArtifactNodeReferenceCreate | CockpitArtifactMeetingReferenceCreate): Promise<CockpitArtifactReferenceResponse | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactReferenceResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references`, CockpitArtifactReferenceResponseSchema,
+      { method: "POST", body: JSON.stringify(body) });
+    return result?.reference.artifact_id === artifactId && Boolean(kind === "node" ? result.reference.node_id : result.reference.meeting_id) ? result : null;
+  }
+  async removeCockpitArtifactReference(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, referenceId: string): Promise<CockpitArtifactReferenceResponse | null> {
+    const result = await this.cockpitArtifactResource<CockpitArtifactReferenceResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references/${encodeURIComponent(referenceId)}`, CockpitArtifactReferenceResponseSchema,
+      { method: "DELETE" });
+    return result?.reference.artifact_id === artifactId && result.reference.id === referenceId && Boolean(result.reference.removed_at)
+      && Boolean(kind === "node" ? result.reference.node_id : result.reference.meeting_id) ? result : null;
+  }
+  async getCockpitAcceptanceReviewerHandoffs(wsId: string, nodeId: string, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitAcceptanceHandoffPage | null> {
+    const result = await this.cockpitArtifactResource<CockpitAcceptanceHandoffPage>(wsId, `/api/cockpit/nodes/${encodeURIComponent(nodeId)}/acceptance/reviewer-handoffs`, CockpitAcceptanceHandoffPageSchema,
+      { signal }, { ...query, page_size: query.page_size ?? 25 });
+    return result?.node_id === nodeId && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor) ? result : null;
+  }
+  async reassignCockpitAcceptanceReviewer(wsId: string, nodeId: string, requestId: string, body: CockpitArtifactReviewerCommand): Promise<CockpitAcceptanceHandoffResponse | null> {
+    const result = await this.cockpitArtifactResource<CockpitAcceptanceHandoffResponse>(wsId, `/api/cockpit/nodes/${encodeURIComponent(nodeId)}/acceptance/requests/${encodeURIComponent(requestId)}/reviewer`, CockpitAcceptanceHandoffResponseSchema,
+      { method: "POST", body: JSON.stringify(body) });
+    return result?.acceptance.node_id === nodeId && result.request.request.id === requestId ? result : null;
   }
 
   async getCockpitAcceptance(wsId: string, nodeId: string, signal?: AbortSignal): Promise<CockpitAcceptanceHeader | null> {

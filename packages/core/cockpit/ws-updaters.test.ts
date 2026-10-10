@@ -4,9 +4,25 @@ import { QueryClient } from "@tanstack/react-query";
 import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
 import { cockpitReadKeys } from "./read-queries";
+import { cockpitArtifactKeys } from "./artifact-queries";
 import { onCockpitChanged } from "./ws-updaters";
 
 const WS = "ws-1";
+
+it("refreshes artifact responsibility and acceptance facts without applying a late receipt as the current version", () => {
+  const qc = new QueryClient();
+  const headerKey = cockpitArtifactKeys.artifact(WS, "artifact-1");
+  const acceptanceKey = cockpitArtifactKeys.acceptance(WS, "node-1");
+  const issueKey = [...cockpitArtifactKeys.issueContexts(WS), "issue-1"];
+  const otherKey = cockpitArtifactKeys.artifact("other", "artifact-1");
+  const header = { revision: 9, current_version: { id: "version-3", revision: 2 } };
+  for (const key of [headerKey, acceptanceKey, issueKey, otherKey]) qc.setQueryData(key, header);
+  onCockpitChanged(qc, WS, { scope: "artifacts", action: "reviewed", entity: { artifact_id: "artifact-1", version_id: "version-1", revision: 1 } });
+  for (const key of [headerKey, acceptanceKey, issueKey]) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(qc.getQueryState(otherKey)?.isInvalidated).toBe(false);
+  expect(qc.getQueryData(headerKey)).toEqual(header);
+  qc.clear();
+});
 
 describe("meeting destination refresh", () => {
   it("merges a single-reference event without replacing unmentioned relationships", () => {
@@ -128,6 +144,17 @@ describe("onCockpitChanged", () => {
   it("patches a changed node in place instead of refetching the board", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const metadata = [
+      cockpitArtifactKeys.artifact(WS, "artifact-1"),
+      cockpitArtifactKeys.references(WS, "artifact-1", "node"),
+      [...cockpitArtifactKeys.issueContexts(WS), "issue-1"],
+    ];
+    const stableContent = [
+      cockpitArtifactKeys.version(WS, "artifact-1", "version-1"),
+      cockpitArtifactKeys.request(WS, "n1", "request-1"),
+      cockpitArtifactKeys.artifact("other", "artifact-1"),
+    ];
+    for (const key of [...metadata, ...stableContent]) qc.setQueryData(key, { id: "cached" });
 
     onCockpitChanged(qc, WS, {
       scope: "node",
@@ -140,8 +167,14 @@ describe("onCockpitChanged", () => {
     expect(invalidate.mock.calls).toEqual([
       [{ queryKey: cockpitReadKeys.all(WS) }],
       [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitArtifactKeys.all(WS), predicate: expect.any(Function) }],
+      [{ queryKey: cockpitArtifactKeys.issueContexts(WS) }],
       [{ queryKey: cockpitKeys.tasks(WS) }],
     ]);
+    for (const key of metadata) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    for (const key of stableContent) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(cockpitKeys.board(WS))?.isInvalidated).toBe(false);
+    qc.clear();
   });
 
   it("invalidates paged directories from a backward-readable directory event without replacing the book", () => {

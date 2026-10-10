@@ -11,10 +11,12 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useT } from "../../i18n";
+import { useCockpitCommandContext } from "./use-cockpit-command-context";
 
 export function CockpitAcceptanceCriteriaEditor({ wsId, definition, disabled }: { wsId: string; definition: CockpitAcceptanceCriteriaView; disabled: boolean }) {
   const { t } = useT("cockpit"); const [open, setOpen] = useState(false); const [error, setError] = useState(""); const lock = useRef(false);
   const key = cockpitAcceptanceDraftKey(wsId, definition.node_id);
+  const captureContext = useCockpitCommandContext(key);
   const draft = useCockpitAcceptanceDraftStore((state) => state.draft.criteria[key]);
   const save = useSaveCockpitAcceptanceCriteria(wsId);
   const stale = Boolean(draft && draft.baseRevision !== definition.revision);
@@ -26,11 +28,12 @@ export function CockpitAcceptanceCriteriaEditor({ wsId, definition, disabled }: 
     [next[index], next[target]] = [next[target]!, next[index]!]; change(next); };
   async function submit() {
     if (!draft || lock.current || disabled || !definition.can_edit || stale || !valid) return;
+    const stillCurrent = captureContext();
     lock.current = true; setError("");
     try {
       await save.mutateAsync({ nodeId: definition.node_id, body: { expected_revision: draft.baseRevision, criteria: draft.items } });
-      clearCockpitCriteriaDraft(key, draft); setOpen(false);
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : t(($) => $.task_flow.unconfirmed)); }
+      clearCockpitCriteriaDraft(key, draft); if (stillCurrent()) setOpen(false);
+    } catch (cause) { if (stillCurrent()) setError(cause instanceof ApiError ? cause.message : t(($) => $.task_flow.unconfirmed)); }
     finally { lock.current = false; }
   }
   return <Dialog open={open} onOpenChange={(next) => {

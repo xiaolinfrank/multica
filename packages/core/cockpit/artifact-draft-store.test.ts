@@ -3,13 +3,25 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetAllRegisteredDrafts } from "../drafts/cleanup-registry";
 import { cockpitArtifactDraftKey, prepareCockpitArtifactCreation, prepareCockpitArtifactSubmission, rebaseCockpitArtifactSubmissionDraft,
   settleCockpitArtifactCreation, settleCockpitArtifactSubmission, updateCockpitArtifactCreationDraft, updateCockpitArtifactReviewDraft,
-  updateCockpitArtifactSubmissionDraft, useCockpitArtifactDraftStore } from "./artifact-draft-store";
+  updateCockpitArtifactSubmissionDraft, useCockpitArtifactDraftStore, cockpitArtifactSubmissionNeedsRebase } from "./artifact-draft-store";
 
 const firstKey = "12345678-1234-4234-8234-123456789001";
 const nextKey = "12345678-1234-4234-8234-123456789002";
 beforeEach(() => useCockpitArtifactDraftStore.getState().clearDraft());
 
 describe("artifact command drafts", () => {
+  it("requires explicit producer confirmation, drops foreign attachments, and preserves fixed provenance during retry", () => {
+    const scope = cockpitArtifactDraftKey("ws", "submit", "artifact");
+    const before = { revision: 1, producerIssueId: "producer-a" }, after = { revision: 2, producerIssueId: "producer-b" };
+    updateCockpitArtifactSubmissionDraft(scope, before, { text: "Keep this working draft", attachmentId: "old-attachment", sourceMeetingId: "meeting", sourceMinutesVersionId: "published-version" });
+    expect(cockpitArtifactSubmissionNeedsRebase(useCockpitArtifactDraftStore.getState().draft.submissions[scope]!, after)).toBe(true);
+    expect(() => prepareCockpitArtifactSubmission(scope, after, firstKey)).toThrow("artifact_producer_changed");
+    rebaseCockpitArtifactSubmissionDraft(scope, after);
+    expect(useCockpitArtifactDraftStore.getState().draft.submissions[scope]).toMatchObject({ text: "Keep this working draft", attachmentId: "", producerIssueId: "producer-b", sourceMeetingId: "meeting" });
+    const command = prepareCockpitArtifactSubmission(scope, after, firstKey);
+    expect(command).toMatchObject({ producer_issue_id: "producer-b", source_meeting_id: "meeting", source_minutes_version_id: "published-version" });
+    expect(prepareCockpitArtifactSubmission(scope, { revision: 3, producerIssueId: "producer-c" }, nextKey)).toEqual(command);
+  });
   it("keeps unknown creation results tied to the original node, source, reviewer and key until exact acknowledgement", () => {
     const scope = cockpitArtifactDraftKey("ws", "create", "node-a");
     updateCockpitArtifactCreationDraft(scope, { title: "  Dataset  ", sourceIssueId: "issue-a", reviewerId: "person-a" });
@@ -26,25 +38,25 @@ describe("artifact command drafts", () => {
   it("freezes exact text bytes and observed revision across retry, and allows an explicit rebase only after definite refusal", () => {
     const scope = cockpitArtifactDraftKey("ws", "submit", "artifact");
     const content = "\n# Fixed evidence\n\nLine with spaces.  \n";
-    updateCockpitArtifactSubmissionDraft(scope, 4, { text: content });
-    const original = prepareCockpitArtifactSubmission(scope, 99, firstKey);
-    expect(original).toEqual({ expected_revision: 4, submission_key: firstKey, payload: { kind: "text", content } });
-    updateCockpitArtifactSubmissionDraft(scope, 9, { text: "changed" });
-    rebaseCockpitArtifactSubmissionDraft(scope, 9);
-    expect(prepareCockpitArtifactSubmission(scope, 9, nextKey)).toEqual(original);
+    updateCockpitArtifactSubmissionDraft(scope, { revision: 4, producerIssueId: "source-1" }, { text: content });
+    const original = prepareCockpitArtifactSubmission(scope, { revision: 99, producerIssueId: "source-1" }, firstKey);
+    expect(original).toEqual({ expected_revision: 4, submission_key: firstKey, producer_issue_id: "source-1", payload: { kind: "text", content } });
+    updateCockpitArtifactSubmissionDraft(scope, { revision: 9, producerIssueId: "source-1" }, { text: "changed" });
+    rebaseCockpitArtifactSubmissionDraft(scope, { revision: 9, producerIssueId: "source-1" });
+    expect(prepareCockpitArtifactSubmission(scope, { revision: 9, producerIssueId: "source-1" }, nextKey)).toEqual(original);
     settleCockpitArtifactSubmission(scope, firstKey, false);
-    updateCockpitArtifactSubmissionDraft(scope, 9, { text: "corrected\n" });
+    updateCockpitArtifactSubmissionDraft(scope, { revision: 9, producerIssueId: "source-1" }, { text: "corrected\n" });
     expect(useCockpitArtifactDraftStore.getState().draft.submissions[scope]?.baseRevision).toBe(4);
-    rebaseCockpitArtifactSubmissionDraft(scope, 9);
-    expect(prepareCockpitArtifactSubmission(scope, 99, nextKey)).toEqual({ expected_revision: 9, submission_key: nextKey, payload: { kind: "text", content: "corrected\n" } });
+    rebaseCockpitArtifactSubmissionDraft(scope, { revision: 9, producerIssueId: "source-1" });
+    expect(prepareCockpitArtifactSubmission(scope, { revision: 99, producerIssueId: "source-1" }, nextKey)).toEqual({ expected_revision: 9, submission_key: nextKey, producer_issue_id: "source-1", payload: { kind: "text", content: "corrected\n" } });
     settleCockpitArtifactSubmission(scope, firstKey, true);
     expect(useCockpitArtifactDraftStore.getState().draft.submissions[scope]?.pending?.submission_key).toBe(nextKey);
   });
 
   it("retains the selected attachment identity without accidentally carrying text into a file command", () => {
     const scope = cockpitArtifactDraftKey("ws", "submit", "artifact");
-    updateCockpitArtifactSubmissionDraft(scope, 2, { text: "old text", kind: "attachment", attachmentId: "attachment-1" });
-    expect(prepareCockpitArtifactSubmission(scope, 2, firstKey).payload).toEqual({ kind: "attachment", attachment_id: "attachment-1" });
+    updateCockpitArtifactSubmissionDraft(scope, { revision: 2, producerIssueId: "source-1" }, { text: "old text", kind: "attachment", attachmentId: "attachment-1" });
+    expect(prepareCockpitArtifactSubmission(scope, { revision: 2, producerIssueId: "source-1" }, firstKey).payload).toEqual({ kind: "attachment", attachment_id: "attachment-1" });
     settleCockpitArtifactSubmission(scope, firstKey, true);
     expect(useCockpitArtifactDraftStore.getState().draft.submissions[scope]).toBeUndefined();
   });

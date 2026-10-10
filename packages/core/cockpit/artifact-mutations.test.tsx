@@ -8,8 +8,9 @@ import { CockpitUnconfirmedWriteError } from "./errors";
 import { cockpitArtifactKeys } from "./artifact-queries";
 import { artifactFixture, artifactVersionDetailFixture, artifactVersionFixture, acceptanceFixture, ARTIFACT_CREATION_KEY, ARTIFACT_SUBMISSION_KEY, ACCEPTANCE_REQUEST_KEY } from "./artifact-test-fixtures";
 import { useCreateCockpitArtifact, useSubmitCockpitArtifactVersion, useCreateCockpitAcceptanceRequest } from "./artifact-mutations";
+import { useAssignCockpitArtifactProducer } from "./artifact-responsibility-mutations";
 
-vi.mock("../api", () => ({ api: { createCockpitArtifact: vi.fn(), submitCockpitArtifactVersion: vi.fn(), createCockpitAcceptanceRequest: vi.fn() } }));
+vi.mock("../api", () => ({ api: { createCockpitArtifact: vi.fn(), submitCockpitArtifactVersion: vi.fn(), createCockpitAcceptanceRequest: vi.fn(), assignCockpitArtifactProducer: vi.fn() } }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -18,6 +19,19 @@ function setup() {
 }
 
 describe("confirmed artifact commands", () => {
+  it("confirms the immutable production handoff receipt after a later reassignment or rename", async () => {
+    const state = setup();
+    const artifact = artifactFixture();
+    const receipt = { workspace_id: "ws-1", artifact,
+      assignment: { id: "assignment-1", artifact_id: "artifact-1", command_key: ARTIFACT_CREATION_KEY, from_issue_id: "source-1", to_issue_id: "producer-2", reason: "Revise report", created_by: "author-1", created_at: "2026-10-11T00:00:00Z", revision: 3 },
+      to_issue: { ...artifact.producer_issue, id: "producer-2", title: "A later renamed task" } };
+    const { result } = renderHook(() => useAssignCockpitArtifactProducer("ws-1"), { wrapper: state.wrapper });
+    vi.mocked(api.assignCockpitArtifactProducer).mockResolvedValue(receipt);
+    const body = { expected_revision: 2, command_key: ARTIFACT_CREATION_KEY, reason: " Revise report ", new_issue: { title: "Initial revision task", description: "" } };
+    await act(async () => { await expect(result.current.mutateAsync({ artifactId: "artifact-1", body })).resolves.toEqual(receipt); });
+    vi.mocked(api.assignCockpitArtifactProducer).mockResolvedValue({ ...receipt, assignment: { ...receipt.assignment, command_key: ARTIFACT_SUBMISSION_KEY } });
+    await act(async () => { await expect(result.current.mutateAsync({ artifactId: "artifact-1", body })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError); });
+  });
   it("accepts the stable creation receipt after a later rename without copying server state into drafts", async () => {
     const state = setup();
     const body = { creation_key: ARTIFACT_CREATION_KEY, node_id: "node-1", source_issue_id: "source-1", title: "Initial title", description: "", reviewer_id: "reviewer-1" };
@@ -36,7 +50,7 @@ describe("confirmed artifact commands", () => {
     const receipt = { workspace_id: "ws-1", artifact: artifactFixture({ current_version: artifactVersionFixture({ id: "new-version", version_number: 2 }), version_count: 2 }), version: artifactVersionDetailFixture({ content }) };
     vi.mocked(api.submitCockpitArtifactVersion).mockResolvedValue(receipt);
     const { result } = renderHook(() => useSubmitCockpitArtifactVersion("ws-1"), { wrapper: state.wrapper });
-    const command = { artifactId: "artifact-1", body: { expected_revision: 1, submission_key: ARTIFACT_SUBMISSION_KEY, payload: { kind: "text" as const, content } } };
+    const command = { artifactId: "artifact-1", body: { expected_revision: 1, submission_key: ARTIFACT_SUBMISSION_KEY, producer_issue_id: "source-1", payload: { kind: "text" as const, content } } };
     await act(async () => { await expect(result.current.mutateAsync(command)).resolves.toEqual(receipt); });
     expect(api.submitCockpitArtifactVersion).toHaveBeenLastCalledWith("ws-1", "artifact-1", command.body);
     vi.mocked(api.submitCockpitArtifactVersion).mockResolvedValue({ ...receipt, version: { ...receipt.version, content: content.trim() } });
@@ -53,7 +67,7 @@ describe("confirmed artifact commands", () => {
     vi.mocked(api.submitCockpitArtifactVersion).mockResolvedValue({ workspace_id: "ws-1", artifact: artifactFixture(), version: artifactVersionDetailFixture({ version, content: null }) });
     const { result } = renderHook(() => useSubmitCockpitArtifactVersion("ws-1"), { wrapper: state.wrapper });
     await act(async () => {
-      await expect(result.current.mutateAsync({ artifactId: "artifact-1", body: { expected_revision: 2, submission_key: ARTIFACT_SUBMISSION_KEY, payload: { kind: "attachment", attachment_id: "selected-file" } } })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
+      await expect(result.current.mutateAsync({ artifactId: "artifact-1", body: { expected_revision: 2, submission_key: ARTIFACT_SUBMISSION_KEY, producer_issue_id: "source-1", payload: { kind: "attachment", attachment_id: "selected-file" } } })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
     });
     expect(state.client.getQueryState(localKey)?.isInvalidated).toBe(true);
     expect(state.client.getQueryState(otherKey)?.isInvalidated).toBe(false);

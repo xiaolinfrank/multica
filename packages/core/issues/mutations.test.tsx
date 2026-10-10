@@ -10,6 +10,7 @@ import { setApiInstance } from "../api";
 import { configStore } from "../config";
 import type { ApiClient } from "../api/client";
 import { createQueryClient } from "../query-client";
+import { cockpitArtifactKeys } from "../cockpit/artifact-queries";
 import {
   useBatchUpdateIssues,
   useCreateComment,
@@ -1459,6 +1460,17 @@ describe("useCreateComment — sibling caches under a shared key prefix", () => 
   afterEach(() => {
     qc.clear();
     vi.restoreAllMocks();
+  });
+
+  it("refreshes producer attachment choices after a local comment binds uploads without invalidating fixed version bodies", async () => {
+    const choices = cockpitArtifactKeys.sourceAttachments(WS_ID, "artifact-1");
+    const fixed = cockpitArtifactKeys.version(WS_ID, "artifact-1", "version-1");
+    qc.setQueryData(choices, { items: [] });
+    qc.setQueryData(fixed, { content: "Fixed evidence" });
+    const { result } = renderHook(() => useCreateComment(ISSUE_ID), { wrapper: createWrapper(qc) });
+    await act(async () => { await result.current.mutateAsync({ content: "Report attached", attachmentIds: ["file-1"] }); });
+    expect(qc.getQueryState(choices)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fixed)?.isInvalidated).toBe(false);
   });
 
   it("appends the created comment even when non-row table caches are loaded", async () => {
