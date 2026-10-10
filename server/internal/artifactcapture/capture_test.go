@@ -22,6 +22,8 @@ type memoryStore struct {
 	readErr   error
 }
 
+func (s *memoryStore) SupportsPrivateArtifactFiles() bool { return true }
+
 func (s *memoryStore) GetReader(_ context.Context, key string) (io.ReadCloser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

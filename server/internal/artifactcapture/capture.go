@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/multica-ai/multica/server/internal/storage"
 )
 
 const MaxBytes = int64(500 << 20)
@@ -103,6 +104,16 @@ type Capturer struct {
 	TempDir string
 }
 
+func (c *Capturer) requirePrivateStorage() error {
+	if c == nil || c.Store == nil {
+		return captureError("storage_unavailable", "Artifact storage is not configured.", true)
+	}
+	if !storage.SupportsPrivateArtifactFiles(c.Store) {
+		return captureError("private_storage_required", "Fixed artifact files require a storage provider with a private artifact namespace.", false)
+	}
+	return nil
+}
+
 // Capture performs no database operations and never publishes a version. The
 // caller must have recorded TargetKey under this attempt's durable intent first.
 // Failed or abandoned objects remain owned by that intent for reconciliation.
@@ -111,8 +122,8 @@ func (c *Capturer) Capture(ctx context.Context, request Request) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
-	if c == nil || c.Store == nil {
-		return Result{}, captureError("storage_unavailable", "Artifact storage is not configured.", true)
+	if err := c.requirePrivateStorage(); err != nil {
+		return Result{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -145,8 +156,8 @@ func (c *Capturer) Capture(ctx context.Context, request Request) (Result, error)
 
 // Verify checks the stored object, rather than treating a successful upload call as evidence.
 func (c *Capturer) Verify(ctx context.Context, key string, size int64, hash string) error {
-	if c == nil || c.Store == nil {
-		return captureError("storage_unavailable", "Artifact storage is not configured.", true)
+	if err := c.requirePrivateStorage(); err != nil {
+		return err
 	}
 	if !validKey(key) || size < 0 || size > MaxBytes || !validHash(hash) {
 		return captureError("invalid_payload", "The fixed artifact identity or fingerprint is invalid.", false)
@@ -158,10 +169,13 @@ func (c *Capturer) Verify(ctx context.Context, key string, size int64, hash stri
 	if err != nil {
 		return captureError("capture_unavailable", "The fixed artifact copy could not be read back.", true)
 	}
-	defer reader.Close()
 	digest := sha256.New()
 	read, err := io.Copy(digest, io.LimitReader(&contextReader{ctx: ctx, reader: reader}, size+1))
-	if err != nil {
+	closeErr := reader.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err != nil || closeErr != nil {
 		return captureError("capture_verify_failed", "The fixed artifact copy could not be verified.", true)
 	}
 	if read != size || hex.EncodeToString(digest.Sum(nil)) != hash {
