@@ -54,6 +54,11 @@ func normalizeCockpitMeetingRoles(values, existing []string) ([]string, error) {
 // SetCockpitMeetingIssueRoles classifies an existing relation without changing
 // issue ownership, its execution status, or the meeting's occurrence state.
 func (h *Handler) SetCockpitMeetingIssueRoles(w http.ResponseWriter, r *http.Request) {
+	response := r.URL.Query().Get("response")
+	if response != "" && response != "compact" {
+		writeError(w, http.StatusBadRequest, "response must be compact or omitted")
+		return
+	}
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -115,6 +120,16 @@ func (h *Handler) SetCockpitMeetingIssueRoles(w http.ResponseWriter, r *http.Req
 		WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issue.ID, Roles: roles,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update meeting issue roles")
+		return
+	}
+	if response == "compact" {
+		link, err := readCockpitMeetingIssueReceipt(ctx, q, cc, meeting.ID, issue.ID)
+		if writeCockpitReferenceError(w, err) || writeCockpitReferenceError(w, tx.Commit(ctx)) {
+			return
+		}
+		receipt := CockpitMeetingIssueLinkReceipt{WorkspaceID: uuidToString(cc.workspaceID), MeetingID: uuidToString(meeting.ID), Link: link}
+		h.publishCockpitReference(r, cc, "meeting_issues", receipt)
+		writeJSON(w, http.StatusOK, receipt)
 		return
 	}
 	links, err := meetingIssueLinksWithQueries(ctx, q, cc, meeting.ID)

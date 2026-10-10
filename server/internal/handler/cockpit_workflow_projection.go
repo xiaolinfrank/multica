@@ -158,6 +158,7 @@ func cockpitNASExportToResponse(e db.CockpitMinutesExport, mayExport bool) Cockp
 		next = cockpitWorkflowTime(e.NextRetryAt)
 	}
 	return CockpitMinutesExportResponse{ID: uuidToString(e.ID), VersionID: uuidToString(e.VersionID), VersionNumber: e.VersionNumber, SourceIssueID: uuidToString(e.SourceIssueID), ContentHash: e.ContentHash, RootID: e.RootID, Directory: e.Directory, TargetPath: e.TargetPath, Status: e.Status, Attempts: e.Attempts, Revision: e.Revision, NextRetryAt: next,
+		WriteMode: e.WriteMode, VerifiedPath: textToPtr(e.VerifiedPath), ReceiptPath: textToPtr(e.ReceiptPath), VerifiedAttemptID: uuidToPtr(e.VerifiedAttemptID), ReceiptHash: textToPtr(e.ReceiptHash),
 		CreatedAt: e.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: e.UpdatedAt.Time.UTC().Format(time.RFC3339Nano), CompletedAt: cockpitWorkflowTime(e.CompletedAt), LastErrorCode: e.LastErrorCode, LastError: e.LastError, SizeBytes: size, CanRetry: mayExport && (e.Status == "retry_wait" || e.Status == "needs_attention")}
 }
 func (x *cockpitHistoryRead) exports(ids []pgtype.UUID) (map[pgtype.UUID]CockpitNASHistoryItem, error) {

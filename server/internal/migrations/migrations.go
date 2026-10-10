@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/selfexec"
@@ -63,12 +64,35 @@ func Files(direction string) ([]string, error) {
 		return nil, err
 	}
 
-	if direction == "down" {
-		sort.Sort(sort.Reverse(sort.StringSlice(files)))
-	} else {
-		sort.Strings(files)
+	if err := sortMigrationFiles(files, direction == "down"); err != nil {
+		return nil, err
 	}
 	return files, nil
+}
+
+// The numeric prefix defines execution order; the full filename remains the
+// ledger identity and the deterministic tie-break for historical duplicates.
+func sortMigrationFiles(files []string, descending bool) error {
+	numbers := make(map[string]uint64, len(files))
+	for _, file := range files {
+		prefix, _, _ := strings.Cut(ExtractVersion(file), "_")
+		number, err := strconv.ParseUint(prefix, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid migration numeric prefix in %s: %w", filepath.Base(file), err)
+		}
+		numbers[file] = number
+	}
+	sort.Slice(files, func(i, j int) bool {
+		left, right := files[i], files[j]
+		if descending {
+			left, right = right, left
+		}
+		if numbers[left] != numbers[right] {
+			return numbers[left] < numbers[right]
+		}
+		return filepath.Base(left) < filepath.Base(right)
+	})
+	return nil
 }
 
 // AllVersions returns every "up" migration version found on disk, in apply

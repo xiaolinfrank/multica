@@ -54,6 +54,7 @@ Web 和 Desktop 都有的逻辑，**必须**抽到共享包。"小段重复"也�
 - 迁移文件：`NNN_descriptive_name.up.sql` + `.down.sql`，**永远写双向**
 - 不创建数据库 foreign key，也不使用级联删除或级联更新；关系校验和清理由应用层完成
 - 所有索引都使用 `CREATE INDEX CONCURRENTLY` 或 `CREATE UNIQUE INDEX CONCURRENTLY`，每条 concurrent index 单独占一个 migration 文件
+- 新增 fork 迁移使用 9000–9999 数字前缀。保留所有已执行文件名，包括既有 900–999 编号；按数字前缀排序，账本仍以完整文件名主干识别迁移。
 
 ### Go
 

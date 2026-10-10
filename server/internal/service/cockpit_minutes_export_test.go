@@ -27,8 +27,10 @@ type fakeMinutesExporter struct {
 	mu         sync.Mutex
 	rootPath   string
 	rootIDs    []string
+	mode       string
 	resolveErr error
 	write      func(context.Context, cockpitnas.Request) (cockpitnas.Result, error)
+	verify     func(context.Context, cockpitnas.Request) (cockpitnas.Result, error)
 	requests   []cockpitnas.Request
 	writeCount atomic.Int32
 }
@@ -45,7 +47,13 @@ func (e *fakeMinutesExporter) RootIDs() []string {
 }
 
 func (e *fakeMinutesExporter) Preview(_ string, directory string) (cockpitnas.Directory, error) {
-	return cockpitnas.Directory{RootID: exportFixtureRootID, Directory: directory}, nil
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	mode := e.mode
+	if mode == "" {
+		mode = cockpitnas.ModeAtomic
+	}
+	return cockpitnas.Directory{RootID: exportFixtureRootID, Directory: directory, WriteMode: mode}, nil
 }
 func (e *fakeMinutesExporter) Resolve(_ string, directory, version string, number int32) (cockpitnas.Destination, error) {
 	e.mu.Lock()
@@ -60,8 +68,25 @@ func (e *fakeMinutesExporter) Resolve(_ string, directory, version string, numbe
 	if root == "" {
 		root = "/test-nas"
 	}
-	rel := filepath.Join(strings.TrimPrefix(directory, "/test-nas/"), "已发布纪要", fmt.Sprintf("minutes-v%04d-%s.md", number, version))
-	return cockpitnas.Destination{RootID: exportFixtureRootID, RootPath: root, Directory: directory, RelativePath: rel, TargetPath: filepath.Join(root, rel)}, nil
+	mode := e.mode
+	if mode == "" {
+		mode = cockpitnas.ModeAtomic
+	}
+	rel := filepath.Join(strings.TrimPrefix(directory, "/test-nas/"), "已发布纪要")
+	if mode == cockpitnas.ModeCreateOnly {
+		rel = filepath.Join(rel, cockpitnas.CreateOnlyDirectory)
+	}
+	rel = filepath.Join(rel, fmt.Sprintf("minutes-v%04d-%s.md", number, version))
+	return cockpitnas.Destination{RootID: exportFixtureRootID, RootPath: root, Directory: directory, RelativePath: rel, TargetPath: filepath.Join(root, rel), WriteMode: mode}, nil
+}
+func (e *fakeMinutesExporter) VerifyAttempt(ctx context.Context, request cockpitnas.Request) (cockpitnas.Result, error) {
+	e.mu.Lock()
+	verify := e.verify
+	e.mu.Unlock()
+	if verify != nil {
+		return verify(ctx, request)
+	}
+	return cockpitnas.Result{}, &cockpitnas.Error{Code: "attempt_incomplete", Message: "No completed attempt in the fake exporter", Retryable: true}
 }
 func (e *fakeMinutesExporter) Write(ctx context.Context, req cockpitnas.Request) (cockpitnas.Result, error) {
 	e.writeCount.Add(1)
@@ -75,6 +100,10 @@ func (e *fakeMinutesExporter) Write(ctx context.Context, req cockpitnas.Request)
 	return fakeMinutesExportResult(req), nil
 }
 func fakeMinutesExportResult(req cockpitnas.Request) cockpitnas.Result {
+	if req.Destination.WriteMode == cockpitnas.ModeCreateOnly {
+		path, receipt, _ := cockpitnas.AttemptPaths(req.Destination, req.OperationID, req.AttemptID)
+		return cockpitnas.Result{Path: path, ReceiptPath: receipt, AttemptID: req.AttemptID, ReceiptHash: minutesContentHash(req.AttemptID + req.ContentHash), ContentHash: req.ContentHash, Size: int64(len(req.Content))}
+	}
 	return cockpitnas.Result{Path: req.Destination.TargetPath, ContentHash: req.ContentHash, Size: int64(len([]byte(req.Content)))}
 }
 func (e *fakeMinutesExporter) setWrite(write func(context.Context, cockpitnas.Request) (cockpitnas.Result, error)) {

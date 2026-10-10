@@ -30,7 +30,7 @@ UPDATE cockpit_minutes_export AS op SET
  last_error_code=CASE WHEN op.cycle_attempts >= 8 THEN 'attempts_exhausted' ELSE op.last_error_code END,
  last_error=CASE WHEN op.cycle_attempts >= 8 THEN 'Automatic export attempts exhausted; inspect the destination and retry.' ELSE op.last_error END,
  updated_at=now()
-FROM candidate WHERE op.id=candidate.id RETURNING op.id, op.workspace_id, op.meeting_id, op.version_id, op.version_number, op.source_issue_id, op.root_id, op.root_path, op.directory, op.relative_path, op.target_path, op.content_hash, op.status, op.attempts, op.cycle_attempts, op.revision, op.next_retry_at, op.lease_token, op.lease_expires_at, op.last_error_code, op.last_error, op.created_by, op.created_at, op.updated_at, op.completed_at, op.size_bytes
+FROM candidate WHERE op.id=candidate.id RETURNING op.id, op.workspace_id, op.meeting_id, op.version_id, op.version_number, op.source_issue_id, op.root_id, op.root_path, op.directory, op.relative_path, op.target_path, op.content_hash, op.status, op.attempts, op.cycle_attempts, op.revision, op.next_retry_at, op.lease_token, op.lease_expires_at, op.last_error_code, op.last_error, op.created_by, op.created_at, op.updated_at, op.completed_at, op.size_bytes, op.write_mode, op.verified_path, op.receipt_path, op.verified_attempt_id, op.receipt_hash
 `
 
 // A lost eighth attempt is surfaced for manual reconciliation instead of
@@ -65,6 +65,11 @@ func (q *Queries) ClaimCockpitMinutesExport(ctx context.Context, rootIds []strin
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
 }
@@ -72,22 +77,32 @@ func (q *Queries) ClaimCockpitMinutesExport(ctx context.Context, rootIds []strin
 const completeCockpitMinutesExport = `-- name: CompleteCockpitMinutesExport :one
 UPDATE cockpit_minutes_export SET status='succeeded',revision=revision+1,
  completed_at=now(),updated_at=now(),size_bytes=$1::bigint,
+ verified_path=$2::text,receipt_path=$3::text,
+ verified_attempt_id=$4::uuid,receipt_hash=$5::text,
  last_error_code='',last_error='',next_retry_at=NULL,lease_token=NULL,lease_expires_at=NULL
-WHERE id=$2::uuid AND workspace_id=$3::uuid
- AND status='running' AND lease_token=$4::uuid AND lease_expires_at > now()
-RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes
+WHERE id=$6::uuid AND workspace_id=$7::uuid
+ AND status='running' AND lease_token=$8::uuid AND lease_expires_at > now()
+RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash
 `
 
 type CompleteCockpitMinutesExportParams struct {
-	SizeBytes   int64       `json:"size_bytes"`
-	ID          pgtype.UUID `json:"id"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	LeaseToken  pgtype.UUID `json:"lease_token"`
+	SizeBytes         int64       `json:"size_bytes"`
+	VerifiedPath      pgtype.Text `json:"verified_path"`
+	ReceiptPath       pgtype.Text `json:"receipt_path"`
+	VerifiedAttemptID pgtype.UUID `json:"verified_attempt_id"`
+	ReceiptHash       pgtype.Text `json:"receipt_hash"`
+	ID                pgtype.UUID `json:"id"`
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	LeaseToken        pgtype.UUID `json:"lease_token"`
 }
 
 func (q *Queries) CompleteCockpitMinutesExport(ctx context.Context, arg CompleteCockpitMinutesExportParams) (CockpitMinutesExport, error) {
 	row := q.db.QueryRow(ctx, completeCockpitMinutesExport,
 		arg.SizeBytes,
+		arg.VerifiedPath,
+		arg.ReceiptPath,
+		arg.VerifiedAttemptID,
+		arg.ReceiptHash,
 		arg.ID,
 		arg.WorkspaceID,
 		arg.LeaseToken,
@@ -120,16 +135,39 @@ func (q *Queries) CompleteCockpitMinutesExport(ctx context.Context, arg Complete
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
+}
+
+const countCockpitMinutesExportAttempts = `-- name: CountCockpitMinutesExportAttempts :one
+SELECT count(*) FROM cockpit_minutes_export_attempt
+WHERE workspace_id=$1 AND meeting_id=$2 AND export_id=$3
+`
+
+type CountCockpitMinutesExportAttemptsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ExportID    pgtype.UUID `json:"export_id"`
+}
+
+func (q *Queries) CountCockpitMinutesExportAttempts(ctx context.Context, arg CountCockpitMinutesExportAttemptsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCockpitMinutesExportAttempts, arg.WorkspaceID, arg.MeetingID, arg.ExportID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createCockpitMinutesExport = `-- name: CreateCockpitMinutesExport :one
 INSERT INTO cockpit_minutes_export (
  id,workspace_id,meeting_id,version_id,version_number,source_issue_id,
- root_id,root_path,directory,relative_path,target_path,content_hash,created_by
-) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes
+ root_id,root_path,directory,relative_path,target_path,content_hash,created_by,write_mode
+) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash
 `
 
 type CreateCockpitMinutesExportParams struct {
@@ -146,6 +184,7 @@ type CreateCockpitMinutesExportParams struct {
 	TargetPath    string      `json:"target_path"`
 	ContentHash   string      `json:"content_hash"`
 	CreatedBy     pgtype.UUID `json:"created_by"`
+	WriteMode     string      `json:"write_mode"`
 }
 
 func (q *Queries) CreateCockpitMinutesExport(ctx context.Context, arg CreateCockpitMinutesExportParams) (CockpitMinutesExport, error) {
@@ -163,6 +202,7 @@ func (q *Queries) CreateCockpitMinutesExport(ctx context.Context, arg CreateCock
 		arg.TargetPath,
 		arg.ContentHash,
 		arg.CreatedBy,
+		arg.WriteMode,
 	)
 	var i CockpitMinutesExport
 	err := row.Scan(
@@ -192,12 +232,73 @@ func (q *Queries) CreateCockpitMinutesExport(ctx context.Context, arg CreateCock
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
+	)
+	return i, err
+}
+
+const createCockpitMinutesExportAttempt = `-- name: CreateCockpitMinutesExportAttempt :one
+INSERT INTO cockpit_minutes_export_attempt (
+ id,workspace_id,meeting_id,export_id,attempt_number,target_path,receipt_path,content_hash
+)
+SELECT op.lease_token,op.workspace_id,op.meeting_id,op.id,op.attempts,
+ $1::text,$2::text,op.content_hash
+FROM cockpit_minutes_export op
+WHERE op.workspace_id=$3::uuid AND op.id=$4::uuid
+ AND op.status='running' AND op.write_mode='create_only'
+ AND op.lease_token=$5::uuid AND op.lease_expires_at>now()
+ON CONFLICT (id) DO NOTHING
+RETURNING id, workspace_id, meeting_id, export_id, attempt_number, target_path, receipt_path, content_hash, status, verified_path, verified_receipt_path, verified_attempt_id, receipt_hash, size_bytes, last_error_code, last_error, created_at, updated_at, verified_at
+`
+
+type CreateCockpitMinutesExportAttemptParams struct {
+	TargetPath  string      `json:"target_path"`
+	ReceiptPath string      `json:"receipt_path"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ExportID    pgtype.UUID `json:"export_id"`
+	LeaseToken  pgtype.UUID `json:"lease_token"`
+}
+
+func (q *Queries) CreateCockpitMinutesExportAttempt(ctx context.Context, arg CreateCockpitMinutesExportAttemptParams) (CockpitMinutesExportAttempt, error) {
+	row := q.db.QueryRow(ctx, createCockpitMinutesExportAttempt,
+		arg.TargetPath,
+		arg.ReceiptPath,
+		arg.WorkspaceID,
+		arg.ExportID,
+		arg.LeaseToken,
+	)
+	var i CockpitMinutesExportAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.ExportID,
+		&i.AttemptNumber,
+		&i.TargetPath,
+		&i.ReceiptPath,
+		&i.ContentHash,
+		&i.Status,
+		&i.VerifiedPath,
+		&i.VerifiedReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
+		&i.SizeBytes,
+		&i.LastErrorCode,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.VerifiedAt,
 	)
 	return i, err
 }
 
 const deleteCockpitMinutesExportsByWorkspace = `-- name: DeleteCockpitMinutesExportsByWorkspace :exec
-DELETE FROM cockpit_minutes_export WHERE workspace_id=$1
+WITH attempts AS (DELETE FROM cockpit_minutes_export_attempt WHERE cockpit_minutes_export_attempt.workspace_id=$1)
+DELETE FROM cockpit_minutes_export WHERE cockpit_minutes_export.workspace_id=$1
 `
 
 func (q *Queries) DeleteCockpitMinutesExportsByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
@@ -213,7 +314,7 @@ UPDATE cockpit_minutes_export SET
  lease_token=NULL,lease_expires_at=NULL
 WHERE id=$5::uuid AND workspace_id=$6::uuid
  AND status='running' AND lease_token=$7::uuid AND lease_expires_at > now()
-RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes
+RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash
 `
 
 type FailCockpitMinutesExportParams struct {
@@ -264,12 +365,43 @@ func (q *Queries) FailCockpitMinutesExport(ctx context.Context, arg FailCockpitM
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
 }
 
+const failCockpitMinutesExportAttempt = `-- name: FailCockpitMinutesExportAttempt :exec
+UPDATE cockpit_minutes_export_attempt SET status='failed',updated_at=now(),
+ last_error_code=$1::text,last_error=$2::text
+WHERE id=$3::uuid AND workspace_id=$4::uuid
+ AND export_id=$5::uuid AND status='planned'
+`
+
+type FailCockpitMinutesExportAttemptParams struct {
+	ErrorCode    string      `json:"error_code"`
+	ErrorMessage string      `json:"error_message"`
+	ID           pgtype.UUID `json:"id"`
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+	ExportID     pgtype.UUID `json:"export_id"`
+}
+
+func (q *Queries) FailCockpitMinutesExportAttempt(ctx context.Context, arg FailCockpitMinutesExportAttemptParams) error {
+	_, err := q.db.Exec(ctx, failCockpitMinutesExportAttempt,
+		arg.ErrorCode,
+		arg.ErrorMessage,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExportID,
+	)
+	return err
+}
+
 const getCockpitMinutesExport = `-- name: GetCockpitMinutesExport :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
 `
 
 type GetCockpitMinutesExportParams struct {
@@ -308,12 +440,61 @@ func (q *Queries) GetCockpitMinutesExport(ctx context.Context, arg GetCockpitMin
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
+	)
+	return i, err
+}
+
+const getCockpitMinutesExportAttempt = `-- name: GetCockpitMinutesExportAttempt :one
+SELECT id, workspace_id, meeting_id, export_id, attempt_number, target_path, receipt_path, content_hash, status, verified_path, verified_receipt_path, verified_attempt_id, receipt_hash, size_bytes, last_error_code, last_error, created_at, updated_at, verified_at FROM cockpit_minutes_export_attempt
+WHERE workspace_id=$1 AND meeting_id=$2 AND export_id=$3 AND id=$4
+`
+
+type GetCockpitMinutesExportAttemptParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ExportID    pgtype.UUID `json:"export_id"`
+	ID          pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetCockpitMinutesExportAttempt(ctx context.Context, arg GetCockpitMinutesExportAttemptParams) (CockpitMinutesExportAttempt, error) {
+	row := q.db.QueryRow(ctx, getCockpitMinutesExportAttempt,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.ExportID,
+		arg.ID,
+	)
+	var i CockpitMinutesExportAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.ExportID,
+		&i.AttemptNumber,
+		&i.TargetPath,
+		&i.ReceiptPath,
+		&i.ContentHash,
+		&i.Status,
+		&i.VerifiedPath,
+		&i.VerifiedReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
+		&i.SizeBytes,
+		&i.LastErrorCode,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.VerifiedAt,
 	)
 	return i, err
 }
 
 const getCockpitMinutesExportDestination = `-- name: GetCockpitMinutesExportDestination :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes FROM cockpit_minutes_export WHERE workspace_id=$1 AND version_id=$2 AND root_id=$3 AND relative_path=$4
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash FROM cockpit_minutes_export WHERE workspace_id=$1 AND version_id=$2 AND root_id=$3 AND relative_path=$4
 `
 
 type GetCockpitMinutesExportDestinationParams struct {
@@ -358,12 +539,80 @@ func (q *Queries) GetCockpitMinutesExportDestination(ctx context.Context, arg Ge
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
 }
 
+const listCockpitMinutesExportAttemptsPage = `-- name: ListCockpitMinutesExportAttemptsPage :many
+SELECT id, workspace_id, meeting_id, export_id, attempt_number, target_path, receipt_path, content_hash, status, verified_path, verified_receipt_path, verified_attempt_id, receipt_hash, size_bytes, last_error_code, last_error, created_at, updated_at, verified_at FROM cockpit_minutes_export_attempt
+WHERE workspace_id=$1::uuid AND meeting_id=$2::uuid
+ AND export_id=$3::uuid
+ AND ($4::integer=0 OR attempt_number<$4::integer)
+ORDER BY attempt_number DESC
+LIMIT $5::integer
+`
+
+type ListCockpitMinutesExportAttemptsPageParams struct {
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	MeetingID     pgtype.UUID `json:"meeting_id"`
+	ExportID      pgtype.UUID `json:"export_id"`
+	BeforeAttempt int32       `json:"before_attempt"`
+	PageLimit     int32       `json:"page_limit"`
+}
+
+func (q *Queries) ListCockpitMinutesExportAttemptsPage(ctx context.Context, arg ListCockpitMinutesExportAttemptsPageParams) ([]CockpitMinutesExportAttempt, error) {
+	rows, err := q.db.Query(ctx, listCockpitMinutesExportAttemptsPage,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.ExportID,
+		arg.BeforeAttempt,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CockpitMinutesExportAttempt{}
+	for rows.Next() {
+		var i CockpitMinutesExportAttempt
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.MeetingID,
+			&i.ExportID,
+			&i.AttemptNumber,
+			&i.TargetPath,
+			&i.ReceiptPath,
+			&i.ContentHash,
+			&i.Status,
+			&i.VerifiedPath,
+			&i.VerifiedReceiptPath,
+			&i.VerifiedAttemptID,
+			&i.ReceiptHash,
+			&i.SizeBytes,
+			&i.LastErrorCode,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.VerifiedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCockpitMinutesExports = `-- name: ListCockpitMinutesExports :many
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY created_at DESC,id DESC
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY created_at DESC,id DESC
 `
 
 type ListCockpitMinutesExportsParams struct {
@@ -407,6 +656,11 @@ func (q *Queries) ListCockpitMinutesExports(ctx context.Context, arg ListCockpit
 			&i.UpdatedAt,
 			&i.CompletedAt,
 			&i.SizeBytes,
+			&i.WriteMode,
+			&i.VerifiedPath,
+			&i.ReceiptPath,
+			&i.VerifiedAttemptID,
+			&i.ReceiptHash,
 		); err != nil {
 			return nil, err
 		}
@@ -419,7 +673,7 @@ func (q *Queries) ListCockpitMinutesExports(ctx context.Context, arg ListCockpit
 }
 
 const lockCockpitMinutesExport = `-- name: LockCockpitMinutesExport :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 FOR UPDATE
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash FROM cockpit_minutes_export WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 FOR UPDATE
 `
 
 type LockCockpitMinutesExportParams struct {
@@ -458,8 +712,50 @@ func (q *Queries) LockCockpitMinutesExport(ctx context.Context, arg LockCockpitM
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
+}
+
+const recordCockpitMinutesExportAttemptResult = `-- name: RecordCockpitMinutesExportAttemptResult :exec
+UPDATE cockpit_minutes_export_attempt SET
+ status=CASE WHEN id=$1::uuid THEN 'verified' ELSE 'recovered' END,
+ verified_path=$2::text,verified_receipt_path=$3::text,
+ verified_attempt_id=$1::uuid,receipt_hash=$4::text,
+ size_bytes=$5::bigint,verified_at=now(),updated_at=now(),last_error_code='',last_error=''
+WHERE id=$6::uuid AND workspace_id=$7::uuid
+ AND export_id=$8::uuid AND content_hash=$9::text
+`
+
+type RecordCockpitMinutesExportAttemptResultParams struct {
+	VerifiedAttemptID   pgtype.UUID `json:"verified_attempt_id"`
+	VerifiedPath        string      `json:"verified_path"`
+	VerifiedReceiptPath string      `json:"verified_receipt_path"`
+	ReceiptHash         string      `json:"receipt_hash"`
+	SizeBytes           int64       `json:"size_bytes"`
+	ID                  pgtype.UUID `json:"id"`
+	WorkspaceID         pgtype.UUID `json:"workspace_id"`
+	ExportID            pgtype.UUID `json:"export_id"`
+	ContentHash         string      `json:"content_hash"`
+}
+
+func (q *Queries) RecordCockpitMinutesExportAttemptResult(ctx context.Context, arg RecordCockpitMinutesExportAttemptResultParams) error {
+	_, err := q.db.Exec(ctx, recordCockpitMinutesExportAttemptResult,
+		arg.VerifiedAttemptID,
+		arg.VerifiedPath,
+		arg.VerifiedReceiptPath,
+		arg.ReceiptHash,
+		arg.SizeBytes,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ExportID,
+		arg.ContentHash,
+	)
+	return err
 }
 
 const retryCockpitMinutesExport = `-- name: RetryCockpitMinutesExport :one
@@ -468,7 +764,7 @@ UPDATE cockpit_minutes_export SET status='queued',cycle_attempts=0,
  last_error_code='',last_error='',updated_at=now()
 WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND revision=$4
  AND status IN ('retry_wait','needs_attention')
-RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes
+RETURNING id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash
 `
 
 type RetryCockpitMinutesExportParams struct {
@@ -513,6 +809,11 @@ func (q *Queries) RetryCockpitMinutesExport(ctx context.Context, arg RetryCockpi
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.SizeBytes,
+		&i.WriteMode,
+		&i.VerifiedPath,
+		&i.ReceiptPath,
+		&i.VerifiedAttemptID,
+		&i.ReceiptHash,
 	)
 	return i, err
 }

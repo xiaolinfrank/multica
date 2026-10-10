@@ -18,6 +18,7 @@ func newCockpitOverviewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error { return runCockpitOverview(cmd, "") }}
 	cmd.PersistentFlags().String("as-of", "", "Required local calendar date (YYYY-MM-DD); do not infer it from the server timezone")
 	cmd.PersistentFlags().String("project-id", "", "Optional project UUID; omitted means the workspace scope")
+	cmd.PersistentFlags().String("module-id", "", "Optional module UUID; requires its project UUID")
 	cmd.PersistentFlags().String("view", "mine", "mine or team; applies to attention only, not overall execution counts")
 	for _, section := range []string{"attention", "execution", "meetings"} {
 		child := &cobra.Command{Use: section, Args: exactArgs(0), Short: "Read one bounded " + section + " page",
@@ -49,6 +50,17 @@ func cockpitOverviewQuery(cmd *cobra.Command, section string) (url.Values, error
 			return nil, err
 		}
 		q.Set("project_id", id)
+	}
+	if cmd.Flags().Changed("module-id") {
+		value, _ := cmd.Flags().GetString("module-id")
+		id, err := cockpitWorkflowUUID(value, "--module-id")
+		if err != nil {
+			return nil, err
+		}
+		if q.Get("project_id") == "" {
+			return nil, fmt.Errorf("--module-id requires --project-id")
+		}
+		q.Set("module_id", id)
 	}
 	view, _ := cmd.Flags().GetString("view")
 	if view != "mine" && view != "team" {
@@ -99,6 +111,9 @@ func confirmCockpitOverviewScope(value map[string]any, ws string, q url.Values) 
 			return false
 		}
 	} else if project != nil {
+		return false
+	}
+	if !cockpitNullableScope(value, "module_id", q.Get("module_id"), true) {
 		return false
 	}
 	stamp, _ := value["generated_at"].(string)

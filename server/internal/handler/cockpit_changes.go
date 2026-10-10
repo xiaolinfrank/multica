@@ -283,8 +283,13 @@ func cockpitNormalizeChangeValue(field string, raw string) (string, bool) {
 		if field == "progress" && (v < 0 || v > 100) {
 			return "", false
 		}
-		if field == "budget_amount" && math.Abs(v) >= 1e14 {
-			return "", false // NUMERIC(14,4): fourteen digits before the point.
+		if field == "budget_amount" {
+			// NUMERIC(14,4) has ten integer digits. A reviewed proposal must
+			// not be silently rounded into a different persisted amount.
+			rounded, _ := strconv.ParseFloat(strconv.FormatFloat(v, 'f', 4, 64), 64)
+			if math.Abs(v) >= 1e10 || rounded != v {
+				return "", false
+			}
 		}
 		return strconv.FormatFloat(v, 'f', -1, 64), true
 	}
@@ -297,11 +302,8 @@ func cockpitNormalizeChangeValue(field string, raw string) (string, bool) {
 // checks rather than trusting its own history.
 func cockpitChangeWriteParams(field, value string, params *db.UpdateCockpitNodeParams) bool {
 	setText := func(dst *pgtype.Text) {
-		if value == "" {
-			*dst = pgtype.Text{}
-		} else {
-			*dst = pgtype.Text{String: value, Valid: true}
-		}
+		// Empty is an explicit clear; NULL means omitted in the update query.
+		*dst = pgtype.Text{String: value, Valid: true}
 	}
 	setDate := func(dst *pgtype.Date, clear *bool) bool {
 		if value == "" {
@@ -360,7 +362,11 @@ func cockpitChangeWriteParams(field, value string, params *db.UpdateCockpitNodeP
 			params.ClearBudgetAmount = true
 			return true
 		}
-		v, err := strconv.ParseFloat(value, 64)
+		normalized, ok := cockpitNormalizeChangeValue("budget_amount", value)
+		if !ok {
+			return false
+		}
+		v, err := strconv.ParseFloat(normalized, 64)
 		if err != nil {
 			return false
 		}
@@ -570,10 +576,25 @@ func (h *Handler) CreateCockpitChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorType, actorLabel := h.cockpitActor(r, cc)
-	change, status, reason, err := h.ingestCockpitChange(r.Context(), h.Queries, cc, req, actorType, actorLabel)
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, 500, "failed to file cockpit change")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(r.Context(), qtx, cc); err != nil {
+		writeError(w, 500, "failed to lock cockpit changes")
+		return
+	}
+	change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, req, actorType, actorLabel)
 	if err != nil {
 		slog.Warn("ingestCockpitChange failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to file cockpit change")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, 500, "failed to file cockpit change")
 		return
 	}
 	switch status {
@@ -636,6 +657,10 @@ func (h *Handler) IngestCockpitChanges(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(r.Context(), qtx, cc); err != nil {
+		writeError(w, 500, "failed to lock cockpit changes")
+		return
+	}
 
 	results := make([]CockpitIngestItem, 0, len(req.Changes))
 	queued := false
@@ -681,6 +706,10 @@ func (h *Handler) IngestCockpitChanges(w http.ResponseWriter, r *http.Request) {
 // is the truth of what it overwrote (old_value), so the history reads what
 // actually happened even then.
 func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "reviewed plan changes require a human actor")
+		return
+	}
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -740,6 +769,39 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(ctx, qtx, cc); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock plan for review")
+		return
+	}
+	change, err = qtx.LockCockpitChangeForReview(ctx, db.LockCockpitChangeForReviewParams{WorkspaceID: cc.workspaceID, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && change.Status != "pending" {
+		writeError(w, http.StatusConflict, "this change has already been decided")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read current proposal")
+		return
+	}
+	node, err = qtx.LockCockpitChangeNode(ctx, db.LockCockpitChangeNodeParams{WorkspaceID: cc.workspaceID, ID: change.NodeID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusConflict, "the node this change targets no longer exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read current plan field")
+		return
+	}
+	if token := r.Header.Get("If-Match"); token != "" {
+		reviewContext, e := cockpitChangeReviewContext(ctx, qtx, node)
+		if e != nil && !errors.Is(e, errCockpitChangeContextInvalid) {
+			writeError(w, http.StatusInternalServerError, "failed to read plan context")
+			return
+		}
+		if e != nil || token != cockpitChangeReviewToken(change, node, reviewContext) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "the proposal, plan field or project context changed; review the current values before applying", "code": "review_changed"})
+			return
+		}
+	}
 
 	// What the column says right now — the value apply will overwrite and the
 	// history will record, which is not necessarily what the proposal queued.
@@ -859,6 +921,10 @@ func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, st
 }
 
 func (h *Handler) RejectCockpitChange(w http.ResponseWriter, r *http.Request) {
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "plan change decisions require a human actor")
+		return
+	}
 	h.decideCockpitChange(w, r, "rejected")
 }
 

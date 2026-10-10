@@ -584,6 +584,17 @@ type Cockpit struct {
 	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
 }
 
+type CockpitCreationIntent struct {
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	ResourceKind string             `json:"resource_kind"`
+	CreationKey  pgtype.UUID        `json:"creation_key"`
+	RequestHash  string             `json:"request_hash"`
+	ActorID      pgtype.UUID        `json:"actor_id"`
+	ResourceID   pgtype.UUID        `json:"resource_id"`
+	Receipt      []byte             `json:"receipt"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type CockpitDirectory struct {
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	CockpitID   pgtype.UUID        `json:"cockpit_id"`
@@ -721,32 +732,59 @@ type CockpitMilestone struct {
 }
 
 type CockpitMinutesExport struct {
-	ID             pgtype.UUID        `json:"id"`
-	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
-	MeetingID      pgtype.UUID        `json:"meeting_id"`
-	VersionID      pgtype.UUID        `json:"version_id"`
-	VersionNumber  int32              `json:"version_number"`
-	SourceIssueID  pgtype.UUID        `json:"source_issue_id"`
-	RootID         string             `json:"root_id"`
-	RootPath       string             `json:"root_path"`
-	Directory      string             `json:"directory"`
-	RelativePath   string             `json:"relative_path"`
-	TargetPath     string             `json:"target_path"`
-	ContentHash    string             `json:"content_hash"`
-	Status         string             `json:"status"`
-	Attempts       int32              `json:"attempts"`
-	CycleAttempts  int32              `json:"cycle_attempts"`
-	Revision       int64              `json:"revision"`
-	NextRetryAt    pgtype.Timestamptz `json:"next_retry_at"`
-	LeaseToken     pgtype.UUID        `json:"lease_token"`
-	LeaseExpiresAt pgtype.Timestamptz `json:"lease_expires_at"`
-	LastErrorCode  string             `json:"last_error_code"`
-	LastError      string             `json:"last_error"`
-	CreatedBy      pgtype.UUID        `json:"created_by"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
-	SizeBytes      pgtype.Int8        `json:"size_bytes"`
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	VersionNumber     int32              `json:"version_number"`
+	SourceIssueID     pgtype.UUID        `json:"source_issue_id"`
+	RootID            string             `json:"root_id"`
+	RootPath          string             `json:"root_path"`
+	Directory         string             `json:"directory"`
+	RelativePath      string             `json:"relative_path"`
+	TargetPath        string             `json:"target_path"`
+	ContentHash       string             `json:"content_hash"`
+	Status            string             `json:"status"`
+	Attempts          int32              `json:"attempts"`
+	CycleAttempts     int32              `json:"cycle_attempts"`
+	Revision          int64              `json:"revision"`
+	NextRetryAt       pgtype.Timestamptz `json:"next_retry_at"`
+	LeaseToken        pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt    pgtype.Timestamptz `json:"lease_expires_at"`
+	LastErrorCode     string             `json:"last_error_code"`
+	LastError         string             `json:"last_error"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	SizeBytes         pgtype.Int8        `json:"size_bytes"`
+	WriteMode         string             `json:"write_mode"`
+	VerifiedPath      pgtype.Text        `json:"verified_path"`
+	ReceiptPath       pgtype.Text        `json:"receipt_path"`
+	VerifiedAttemptID pgtype.UUID        `json:"verified_attempt_id"`
+	ReceiptHash       pgtype.Text        `json:"receipt_hash"`
+}
+
+type CockpitMinutesExportAttempt struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	MeetingID           pgtype.UUID        `json:"meeting_id"`
+	ExportID            pgtype.UUID        `json:"export_id"`
+	AttemptNumber       int32              `json:"attempt_number"`
+	TargetPath          string             `json:"target_path"`
+	ReceiptPath         string             `json:"receipt_path"`
+	ContentHash         string             `json:"content_hash"`
+	Status              string             `json:"status"`
+	VerifiedPath        pgtype.Text        `json:"verified_path"`
+	VerifiedReceiptPath pgtype.Text        `json:"verified_receipt_path"`
+	VerifiedAttemptID   pgtype.UUID        `json:"verified_attempt_id"`
+	ReceiptHash         pgtype.Text        `json:"receipt_hash"`
+	SizeBytes           pgtype.Int8        `json:"size_bytes"`
+	LastErrorCode       string             `json:"last_error_code"`
+	LastError           string             `json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	VerifiedAt          pgtype.Timestamptz `json:"verified_at"`
 }
 
 type CockpitMinutesVersion struct {

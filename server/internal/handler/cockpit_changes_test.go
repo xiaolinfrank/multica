@@ -99,6 +99,11 @@ func TestCockpitNormalizeChangeValue(t *testing.T) {
 		{"budget_amount", "", "", true},
 		{"budget_amount", "1295.0", "1295", true},
 		{"budget_amount", "1e14", "", false},
+		{"budget_amount", "1e10", "", false},
+		{"budget_amount", "0.00001", "", false},
+		{"budget_amount", "1.23456", "", false},
+		{"budget_amount", "-12.3456", "-12.3456", true},
+		{"budget_amount", "0.0001", "0.0001", true},
 		// Not proposable at all.
 		{"parent_id", "some-uuid", "", false},
 		{"code", "L9-99", "", false},

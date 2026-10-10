@@ -141,6 +141,10 @@ var pgBigmOperatorClass = extensionOperatorClass{
 // interrupted build would otherwise leave a permanently unusable index.
 var concurrentIndexCleanups = map[string]string{
 	"988_cockpit_action_issue_index":                            "cockpit_action_issue_idx",
+	"990_cockpit_minutes_export_attempt_id_index":               "cockpit_minutes_export_attempt_id_idx",
+	"991_cockpit_minutes_export_attempt_scope_index":            "cockpit_minutes_export_attempt_scope_idx",
+	"993_cockpit_creation_intent_key_index":                     "cockpit_creation_intent_key_idx",
+	"994_cockpit_creation_intent_resource_index":                "cockpit_creation_intent_resource_idx",
 	"980_cockpit_primary_issue_index":                           "cockpit_primary_issue_idx",
 	"981_cockpit_primary_node_index":                            "cockpit_primary_node_idx",
 	"982_cockpit_primary_creation_index":                        "cockpit_primary_creation_idx",

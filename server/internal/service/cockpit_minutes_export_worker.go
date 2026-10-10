@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -92,19 +93,44 @@ func (w *CockpitMinutesExportWorker) ProcessNext(ctx context.Context) (bool, err
 		// Leave the lease for recovery; never start a write during shutdown.
 		return true, ctx.Err()
 	}
-	result, err := w.exporter.Write(ctx, cockpitnas.Request{
+	request := cockpitnas.Request{
 		WorkspaceID: util.UUIDToString(row.WorkspaceID), VersionID: util.UUIDToString(row.VersionID),
 		OperationID: util.UUIDToString(row.ID), LeaseToken: util.UUIDToString(row.LeaseToken),
-		Content: version.Content, ContentHash: row.ContentHash, Destination: dest,
-	})
+		MeetingID: util.UUIDToString(row.MeetingID),
+		Content:   version.Content, ContentHash: row.ContentHash, Destination: dest,
+	}
+	var result cockpitnas.Result
+	if row.WriteMode == cockpitnas.ModeCreateOnly {
+		request.AttemptID = request.LeaseToken
+		result, err = w.createOnlyAttempt(ctx, row, request)
+	} else {
+		result, err = w.exporter.Write(ctx, request)
+	}
 	if err != nil {
 		return true, w.failExport(ctx, row, err)
 	}
-	if result.Path != row.TargetPath || result.ContentHash != row.ContentHash || result.Size != int64(len([]byte(version.Content))) {
+	if (row.WriteMode == cockpitnas.ModeAtomic && result.Path != row.TargetPath) || result.ContentHash != row.ContentHash || result.Size != int64(len([]byte(version.Content))) {
 		return true, w.fail(ctx, row, "result_conflict", "The written result did not match the requested destination and content.", false)
+	}
+	var verifiedAttemptID pgtype.UUID
+	if row.WriteMode == cockpitnas.ModeCreateOnly {
+		verifiedAttemptID, err = util.ParseUUID(result.AttemptID)
+		if err != nil || !verifiedAttemptID.Valid {
+			return true, w.fail(ctx, row, "result_conflict", "The verified attempt identity was invalid.", false)
+		}
+		if err := w.queries.RecordCockpitMinutesExportAttemptResult(ctx, db.RecordCockpitMinutesExportAttemptResultParams{
+			ID: row.LeaseToken, WorkspaceID: row.WorkspaceID, ExportID: row.ID, ContentHash: row.ContentHash,
+			VerifiedAttemptID: verifiedAttemptID, VerifiedPath: result.Path, VerifiedReceiptPath: result.ReceiptPath,
+			ReceiptHash: result.ReceiptHash, SizeBytes: result.Size,
+		}); err != nil {
+			return true, err
+		}
 	}
 	completed, err := w.queries.CompleteCockpitMinutesExport(ctx, db.CompleteCockpitMinutesExportParams{
 		ID: row.ID, WorkspaceID: row.WorkspaceID, LeaseToken: row.LeaseToken, SizeBytes: result.Size,
+		VerifiedPath: pgtype.Text{String: result.Path, Valid: true}, VerifiedAttemptID: verifiedAttemptID,
+		ReceiptPath: pgtype.Text{String: result.ReceiptPath, Valid: result.ReceiptPath != ""},
+		ReceiptHash: pgtype.Text{String: result.ReceiptHash, Valid: result.ReceiptHash != ""},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Expired/replaced lease or workspace deletion. A completed external
@@ -128,6 +154,13 @@ func (w *CockpitMinutesExportWorker) failExport(ctx context.Context, row db.Cock
 }
 
 func (w *CockpitMinutesExportWorker) fail(ctx context.Context, row db.CockpitMinutesExport, code, message string, retryable bool) error {
+	if row.WriteMode == cockpitnas.ModeCreateOnly && row.LeaseToken.Valid {
+		if err := w.queries.FailCockpitMinutesExportAttempt(ctx, db.FailCockpitMinutesExportAttemptParams{
+			ID: row.LeaseToken, WorkspaceID: row.WorkspaceID, ExportID: row.ID, ErrorCode: code, ErrorMessage: message,
+		}); err != nil {
+			return err
+		}
+	}
 	backoff := 5 * time.Second
 	for i := int32(1); i < row.CycleAttempts && backoff < 5*time.Minute; i++ {
 		backoff *= 2

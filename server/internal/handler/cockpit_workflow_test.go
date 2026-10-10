@@ -19,6 +19,7 @@ func newCockpitWorkflowHTTPFixture(t *testing.T) (string, CockpitMeetingResponse
 	dbfx.Cleanup(t, "DELETE FROM cockpit_minutes_version WHERE workspace_id=$1", ws)
 	dbfx.Cleanup(t, "DELETE FROM cockpit_reviewer_handoff WHERE workspace_id=$1", ws)
 	dbfx.Cleanup(t, "DELETE FROM cockpit_minutes_export WHERE workspace_id=$1", ws)
+	dbfx.Cleanup(t, "DELETE FROM cockpit_minutes_export_attempt WHERE workspace_id=$1", ws)
 	return ws, createMeeting(t, ws, map[string]any{"title": "Scope and delivery review", "meet_date": "2026-10-09"})
 }
 

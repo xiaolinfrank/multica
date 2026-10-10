@@ -242,7 +242,7 @@ func confirmCockpitCompactReceipt(action string, args []string, body, result map
 		job, _ := receipt["nas_export"].(map[string]any)
 		source, _ := job["source_version"].(map[string]any)
 		status, _ := job["status"].(string)
-		valid = valid && cockpitNASReceiptUUID(job["id"]) != "" && cockpitVersionMetadata(source) && status != "" && job["version_id"] == source["id"] && job["content_hash"] == source["content_hash"] && job["source_issue_id"] == source["source_issue_id"] && job["version_number"] == source["version_number"]
+		valid = valid && cockpitNASReceiptUUID(job["id"]) != "" && cockpitVersionMetadata(source) && status != "" && job["version_id"] == source["id"] && job["content_hash"] == source["content_hash"] && job["source_issue_id"] == source["source_issue_id"] && job["version_number"] == source["version_number"] && validCockpitNASCopyEvidence(job)
 		if action == "retry-nas" {
 			expected, _ := body["expected_revision"].(int64)
 			valid = valid && job["id"] == cockpitNASReceiptUUID(args[1]) && cockpitReceiptNumber(job["revision"], float64(expected)) &&
@@ -252,7 +252,7 @@ func confirmCockpitCompactReceipt(action string, args []string, body, result map
 			if action == "publish" {
 				target, _ = body["nas_export"].(map[string]any)
 			}
-			valid = valid && job["version_id"] == cockpitNASReceiptUUID(args[1]) && job["root_id"] == target["root_id"] && job["directory"] == target["directory"]
+			valid = valid && job["version_id"] == cockpitNASReceiptUUID(args[1]) && job["root_id"] == target["root_id"] && job["directory"] == target["directory"] && cockpitNASWriteMode(job) == cockpitNASWriteMode(target)
 		}
 	}
 	if !valid {

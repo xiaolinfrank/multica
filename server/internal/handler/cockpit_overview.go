@@ -28,6 +28,13 @@ func (h *Handler) cockpitOverviewQuery(w http.ResponseWriter, r *http.Request, s
 			return out, false
 		}
 	}
+	var module pgtype.UUID
+	if ref := values.Get("module_id"); ref != "" {
+		module, ok = parseUUIDOrBadRequest(w, ref, "module_id")
+		if !ok {
+			return out, false
+		}
+	}
 	size, ok := cockpitActionPageSize(w, r)
 	if !ok {
 		return out, false
@@ -50,7 +57,7 @@ func (h *Handler) cockpitOverviewQuery(w http.ResponseWriter, r *http.Request, s
 		view = "mine"
 		kind = ""
 	}
-	out = service.CockpitOverviewQuery{WorkspaceID: id, ProjectID: project, ActorID: member.UserID, Human: !isMachineCredentialActor(r), AsOf: values.Get("as_of"), View: view, Kind: kind, Cursor: values.Get("cursor"), PageSize: size, Days: days}
+	out = service.CockpitOverviewQuery{WorkspaceID: id, ProjectID: project, ModuleID: module, ActorID: member.UserID, Human: !isMachineCredentialActor(r), AsOf: values.Get("as_of"), View: view, Kind: kind, Cursor: values.Get("cursor"), PageSize: size, Days: days}
 	return out, true
 }
 func (h *Handler) GetCockpitOverview(w http.ResponseWriter, r *http.Request) {

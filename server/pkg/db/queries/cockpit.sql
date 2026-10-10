@@ -686,7 +686,7 @@ UPDATE cockpit_pending_change SET
     new_value = sqlc.arg('new_value')::text,
     reason     = sqlc.arg('reason')::text,
     updated_at = now()
-WHERE id = sqlc.arg('id')::uuid
+WHERE id = sqlc.arg('id')::uuid AND status = 'pending'
 RETURNING *;
 
 -- name: DecideCockpitPendingChange :one

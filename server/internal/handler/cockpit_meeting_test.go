@@ -230,16 +230,30 @@ func TestCockpitMeetingSubdirCreation(t *testing.T) {
 	})
 
 	t.Run("names every drawer it could not create", func(t *testing.T) {
-		missing := filepath.Join(t.TempDir(), "20260922-03 周例会")
-
-		err := createMeetingSubdirs(missing)
+		dir := t.TempDir()
+		for _, name := range meetingSubdirs {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("existing file"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		err := createMeetingSubdirs(dir)
 		if err == nil {
-			t.Fatal("drawers were reported created inside a folder that is not there")
+			t.Fatal("drawers were reported created over existing files")
 		}
 		for _, name := range []string{"会议纪要与录音转写", "会议材料", "照片"} {
 			if !strings.Contains(err.Error(), name) {
 				t.Errorf("error = %q, want it to name %q", err, name)
 			}
+		}
+	})
+
+	t.Run("rejects a missing meeting root before creating drawers", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "20260922-03 周例会")
+		if err := createMeetingSubdirs(missing); err == nil || !strings.Contains(err.Error(), "root is unavailable") {
+			t.Fatalf("missing root error = %v", err)
+		}
+		if _, err := os.Stat(missing); !os.IsNotExist(err) {
+			t.Fatalf("missing root was created: %v", err)
 		}
 	})
 }

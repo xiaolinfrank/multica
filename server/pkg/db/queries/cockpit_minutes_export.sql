@@ -13,8 +13,8 @@ SELECT * FROM cockpit_minutes_export WHERE workspace_id=$1 AND version_id=$2 AND
 -- name: CreateCockpitMinutesExport :one
 INSERT INTO cockpit_minutes_export (
  id,workspace_id,meeting_id,version_id,version_number,source_issue_id,
- root_id,root_path,directory,relative_path,target_path,content_hash,created_by
-) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+ root_id,root_path,directory,relative_path,target_path,content_hash,created_by,write_mode
+) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 RETURNING *;
 
 -- name: RetryCockpitMinutesExport :one
@@ -51,6 +51,8 @@ FROM candidate WHERE op.id=candidate.id RETURNING op.*;
 -- name: CompleteCockpitMinutesExport :one
 UPDATE cockpit_minutes_export SET status='succeeded',revision=revision+1,
  completed_at=now(),updated_at=now(),size_bytes=sqlc.arg('size_bytes')::bigint,
+ verified_path=sqlc.narg('verified_path')::text,receipt_path=sqlc.narg('receipt_path')::text,
+ verified_attempt_id=sqlc.narg('verified_attempt_id')::uuid,receipt_hash=sqlc.narg('receipt_hash')::text,
  last_error_code='',last_error='',next_retry_at=NULL,lease_token=NULL,lease_expires_at=NULL
 WHERE id=sqlc.arg('id')::uuid AND workspace_id=sqlc.arg('workspace_id')::uuid
  AND status='running' AND lease_token=sqlc.arg('lease_token')::uuid AND lease_expires_at > now()
@@ -67,4 +69,49 @@ WHERE id=sqlc.arg('id')::uuid AND workspace_id=sqlc.arg('workspace_id')::uuid
 RETURNING *;
 
 -- name: DeleteCockpitMinutesExportsByWorkspace :exec
-DELETE FROM cockpit_minutes_export WHERE workspace_id=$1;
+WITH attempts AS (DELETE FROM cockpit_minutes_export_attempt WHERE cockpit_minutes_export_attempt.workspace_id=$1)
+DELETE FROM cockpit_minutes_export WHERE cockpit_minutes_export.workspace_id=$1;
+
+-- name: CreateCockpitMinutesExportAttempt :one
+INSERT INTO cockpit_minutes_export_attempt (
+ id,workspace_id,meeting_id,export_id,attempt_number,target_path,receipt_path,content_hash
+)
+SELECT op.lease_token,op.workspace_id,op.meeting_id,op.id,op.attempts,
+ sqlc.arg('target_path')::text,sqlc.arg('receipt_path')::text,op.content_hash
+FROM cockpit_minutes_export op
+WHERE op.workspace_id=sqlc.arg('workspace_id')::uuid AND op.id=sqlc.arg('export_id')::uuid
+ AND op.status='running' AND op.write_mode='create_only'
+ AND op.lease_token=sqlc.arg('lease_token')::uuid AND op.lease_expires_at>now()
+ON CONFLICT (id) DO NOTHING
+RETURNING *;
+
+-- name: RecordCockpitMinutesExportAttemptResult :exec
+UPDATE cockpit_minutes_export_attempt SET
+ status=CASE WHEN id=sqlc.arg('verified_attempt_id')::uuid THEN 'verified' ELSE 'recovered' END,
+ verified_path=sqlc.arg('verified_path')::text,verified_receipt_path=sqlc.arg('verified_receipt_path')::text,
+ verified_attempt_id=sqlc.arg('verified_attempt_id')::uuid,receipt_hash=sqlc.arg('receipt_hash')::text,
+ size_bytes=sqlc.arg('size_bytes')::bigint,verified_at=now(),updated_at=now(),last_error_code='',last_error=''
+WHERE id=sqlc.arg('id')::uuid AND workspace_id=sqlc.arg('workspace_id')::uuid
+ AND export_id=sqlc.arg('export_id')::uuid AND content_hash=sqlc.arg('content_hash')::text;
+
+-- name: FailCockpitMinutesExportAttempt :exec
+UPDATE cockpit_minutes_export_attempt SET status='failed',updated_at=now(),
+ last_error_code=sqlc.arg('error_code')::text,last_error=sqlc.arg('error_message')::text
+WHERE id=sqlc.arg('id')::uuid AND workspace_id=sqlc.arg('workspace_id')::uuid
+ AND export_id=sqlc.arg('export_id')::uuid AND status='planned';
+
+-- name: GetCockpitMinutesExportAttempt :one
+SELECT * FROM cockpit_minutes_export_attempt
+WHERE workspace_id=$1 AND meeting_id=$2 AND export_id=$3 AND id=$4;
+
+-- name: CountCockpitMinutesExportAttempts :one
+SELECT count(*) FROM cockpit_minutes_export_attempt
+WHERE workspace_id=$1 AND meeting_id=$2 AND export_id=$3;
+
+-- name: ListCockpitMinutesExportAttemptsPage :many
+SELECT * FROM cockpit_minutes_export_attempt
+WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND meeting_id=sqlc.arg('meeting_id')::uuid
+ AND export_id=sqlc.arg('export_id')::uuid
+ AND (sqlc.arg('before_attempt')::integer=0 OR attempt_number<sqlc.arg('before_attempt')::integer)
+ORDER BY attempt_number DESC
+LIMIT sqlc.arg('page_limit')::integer;

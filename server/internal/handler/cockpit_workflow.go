@@ -75,25 +75,30 @@ type CockpitMeetingWorkflowResponse struct {
 }
 
 type CockpitMinutesExportResponse struct {
-	ID            string  `json:"id"`
-	VersionID     string  `json:"version_id"`
-	VersionNumber int32   `json:"version_number"`
-	SourceIssueID string  `json:"source_issue_id"`
-	ContentHash   string  `json:"content_hash"`
-	RootID        string  `json:"root_id"`
-	Directory     string  `json:"directory"`
-	TargetPath    string  `json:"target_path"`
-	Status        string  `json:"status"`
-	Attempts      int32   `json:"attempts"`
-	Revision      int64   `json:"revision"`
-	NextRetryAt   *string `json:"next_retry_at"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
-	CompletedAt   *string `json:"completed_at"`
-	LastErrorCode string  `json:"last_error_code"`
-	LastError     string  `json:"last_error"`
-	SizeBytes     *int64  `json:"size_bytes"`
-	CanRetry      bool    `json:"can_retry"`
+	ID                string  `json:"id"`
+	VersionID         string  `json:"version_id"`
+	VersionNumber     int32   `json:"version_number"`
+	SourceIssueID     string  `json:"source_issue_id"`
+	ContentHash       string  `json:"content_hash"`
+	RootID            string  `json:"root_id"`
+	Directory         string  `json:"directory"`
+	TargetPath        string  `json:"target_path"`
+	WriteMode         string  `json:"write_mode"`
+	VerifiedPath      *string `json:"verified_path"`
+	ReceiptPath       *string `json:"receipt_path"`
+	VerifiedAttemptID *string `json:"verified_attempt_id"`
+	ReceiptHash       *string `json:"receipt_hash"`
+	Status            string  `json:"status"`
+	Attempts          int32   `json:"attempts"`
+	Revision          int64   `json:"revision"`
+	NextRetryAt       *string `json:"next_retry_at"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+	CompletedAt       *string `json:"completed_at"`
+	LastErrorCode     string  `json:"last_error_code"`
+	LastError         string  `json:"last_error"`
+	SizeBytes         *int64  `json:"size_bytes"`
+	CanRetry          bool    `json:"can_retry"`
 }
 
 type CockpitReviewerHandoffResponse struct {
@@ -621,6 +626,7 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 type cockpitNASExportRequest struct {
 	RootID    string `json:"root_id"`
 	Directory string `json:"directory"`
+	WriteMode string `json:"write_mode"`
 }
 
 func (req cockpitNASExportRequest) parse(w http.ResponseWriter) (service.CockpitMinutesExportTarget, bool) {
@@ -632,7 +638,11 @@ func (req cockpitNASExportRequest) parse(w http.ResponseWriter) (service.Cockpit
 		writeError(w, http.StatusBadRequest, "directory is required")
 		return service.CockpitMinutesExportTarget{}, false
 	}
-	return service.CockpitMinutesExportTarget{RootID: uuidToString(id), Directory: strings.TrimSpace(req.Directory)}, true
+	if req.WriteMode != "" && req.WriteMode != cockpitnas.ModeAtomic && req.WriteMode != cockpitnas.ModeCreateOnly {
+		writeError(w, http.StatusBadRequest, "write_mode must be atomic or create_only")
+		return service.CockpitMinutesExportTarget{}, false
+	}
+	return service.CockpitMinutesExportTarget{RootID: uuidToString(id), Directory: strings.TrimSpace(req.Directory), WriteMode: req.WriteMode}, true
 }
 
 func (h *Handler) ExportCockpitMeetingMinutes(w http.ResponseWriter, r *http.Request) {

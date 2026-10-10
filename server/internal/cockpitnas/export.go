@@ -18,24 +18,32 @@ import (
 const MarkerName = ".multica-root-id"
 const PublishedDirectory = "已发布纪要"
 const MaxContentBytes = 128 * 1024
+const ModeAtomic = "atomic"
+const ModeCreateOnly = "create_only"
+const CreateOnlyDirectory = "创建式副本"
+const CompletionName = ".multica-complete.json"
 
 type Directory struct {
 	RootID    string `json:"root_id"`
 	Directory string `json:"directory"`
+	WriteMode string `json:"write_mode"`
 }
 
 type Destination struct {
 	RootID, RootPath, Directory, RelativePath, TargetPath string
+	WriteMode                                             string
 }
 
 type Request struct {
 	WorkspaceID, VersionID, OperationID, LeaseToken, Content, ContentHash string
+	MeetingID, AttemptID                                                  string
 	Destination                                                           Destination
 }
 
 type Result struct {
-	Path, ContentHash string
-	Size              int64
+	Path, ContentHash                   string
+	Size                                int64
+	AttemptID, ReceiptPath, ReceiptHash string
 }
 
 type Exporter interface {
@@ -43,6 +51,7 @@ type Exporter interface {
 	Preview(workspaceID, directory string) (Directory, error)
 	Resolve(workspaceID, directory, versionID string, versionNumber int32) (Destination, error)
 	Write(context.Context, Request) (Result, error)
+	VerifyAttempt(context.Context, Request) (Result, error)
 }
 
 type Error struct {
@@ -63,14 +72,17 @@ type Root struct {
 	RootID      string `json:"root_id"`
 	Path        string `json:"path"`
 	AllowLocal  bool   `json:"allow_local,omitempty"`
+	WriteMode   string `json:"write_mode,omitempty"`
 }
 
 type Files struct {
 	roots map[string]Root
 	// Package-private fault injection; never configured by an API or runtime.
-	beforeCommit  func()
-	beforeAck     func()
-	syncDirectory func(*os.File) error
+	beforeCommit           func()
+	beforeAck              func()
+	syncDirectory          func(*os.File) error
+	writeCreateOnlyFile    func(*os.File, []byte) error
+	writeCreateOnlyReceipt func(*os.File, []byte) error
 }
 
 func New(raw string) (*Files, error) {
@@ -89,6 +101,12 @@ func New(raw string) (*Files, error) {
 	}
 	seen := make(map[string]bool)
 	for _, root := range roots {
+		if root.WriteMode == "" {
+			root.WriteMode = ModeAtomic
+		}
+		if root.WriteMode != ModeAtomic && root.WriteMode != ModeCreateOnly {
+			return nil, fmt.Errorf("NAS root write_mode must be atomic or create_only")
+		}
 		ws, err := uuid.Parse(root.WorkspaceID)
 		if err != nil || ws == uuid.Nil {
 			return nil, fmt.Errorf("NAS root workspace_id must be a UUID")
@@ -161,7 +179,7 @@ func (f *Files) Preview(workspaceID, directory string) (Directory, error) {
 	if !validAbsolutePath(directory) || !contains(root.Path, directory) {
 		return Directory{}, fail("outside_root", "The meeting directory is outside its authorized NAS root.", false)
 	}
-	return Directory{RootID: root.RootID, Directory: filepath.Clean(directory)}, nil
+	return Directory{RootID: root.RootID, Directory: filepath.Clean(directory), WriteMode: root.WriteMode}, nil
 }
 
 func (f *Files) Resolve(workspaceID, directory, versionID string, versionNumber int32) (Destination, error) {
@@ -176,27 +194,58 @@ func (f *Files) Resolve(workspaceID, directory, versionID string, versionNumber 
 	root := f.roots[workspaceID]
 	name := fmt.Sprintf("minutes-v%04d-%s.md", versionNumber, id.String())
 	target := filepath.Join(preview.Directory, PublishedDirectory, name)
+	if root.WriteMode == ModeCreateOnly {
+		target = filepath.Join(preview.Directory, PublishedDirectory, CreateOnlyDirectory, name)
+	}
 	rel, _ := filepath.Rel(root.Path, target)
-	return Destination{RootID: root.RootID, RootPath: root.Path, Directory: preview.Directory, RelativePath: rel, TargetPath: target}, nil
+	return Destination{RootID: root.RootID, RootPath: root.Path, Directory: preview.Directory, RelativePath: rel, TargetPath: target, WriteMode: root.WriteMode}, nil
+}
+
+// AttemptPaths describes a new create-only attempt without touching storage.
+// The operation's logical target remains fixed; its verified copy is separate.
+func AttemptPaths(destination Destination, operationID, attemptID string) (string, string, error) {
+	if destination.WriteMode != ModeCreateOnly {
+		return "", "", fail("invalid_destination", "This destination is not configured for create-only export.", false)
+	}
+	for _, raw := range []string{operationID, attemptID} {
+		id, err := uuid.Parse(raw)
+		if err != nil || id == uuid.Nil || id.String() != raw {
+			return "", "", fail("invalid_identity", "The export attempt identity is invalid.", false)
+		}
+	}
+	directory := filepath.Join(filepath.Dir(destination.TargetPath), operationID, attemptID)
+	return filepath.Join(directory, filepath.Base(destination.TargetPath)), filepath.Join(directory, CompletionName), nil
 }
 
 func (f *Files) validate(request Request) (Root, error) {
 	root, exists := f.roots[request.WorkspaceID]
 	d := request.Destination
-	if !exists || root.RootID != d.RootID || root.Path != d.RootPath {
+	if !exists || root.RootID != d.RootID || root.Path != d.RootPath || root.WriteMode != d.WriteMode {
 		return Root{}, fail("root_changed", "The configured export root changed; the original destination is retained.", false)
 	}
 	if _, err := f.Preview(request.WorkspaceID, d.Directory); err != nil {
 		return Root{}, err
 	}
+	expectedDirectory := filepath.Join(d.Directory, PublishedDirectory)
+	if d.WriteMode == ModeCreateOnly {
+		expectedDirectory = filepath.Join(expectedDirectory, CreateOnlyDirectory)
+	}
 	if !contains(root.Path, d.TargetPath) || filepath.Join(root.Path, d.RelativePath) != d.TargetPath ||
-		filepath.Dir(d.TargetPath) != filepath.Join(d.Directory, PublishedDirectory) {
+		filepath.Dir(d.TargetPath) != expectedDirectory {
 		return Root{}, fail("invalid_destination", "The export destination does not match its fixed directory.", false)
 	}
 	for _, id := range []string{request.VersionID, request.OperationID, request.LeaseToken} {
 		value, err := uuid.Parse(id)
 		if err != nil || value == uuid.Nil || value.String() != id {
 			return Root{}, fail("invalid_identity", "The export identity is invalid.", false)
+		}
+	}
+	if d.WriteMode == ModeCreateOnly {
+		for _, raw := range []string{request.MeetingID, request.AttemptID} {
+			id, err := uuid.Parse(raw)
+			if err != nil || id == uuid.Nil || id.String() != raw {
+				return Root{}, fail("invalid_identity", "The create-only export identity is invalid.", false)
+			}
 		}
 	}
 	name := filepath.Base(d.TargetPath)

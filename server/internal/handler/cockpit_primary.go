@@ -75,7 +75,7 @@ func (h *Handler) CreateCockpitNodeTask(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) GetCockpitIssuePrimaryNode(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
+	p, ok := h.cockpitSurfaceQuery(w, r)
 	if !ok {
 		return
 	}
@@ -83,14 +83,14 @@ func (h *Handler) GetCockpitIssuePrimaryNode(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	out, err := h.IssueService.GetCockpitIssuePrimaryNode(r.Context(), cc.workspaceID, issue.ID)
+	out, err := h.IssueService.GetCockpitIssuePrimaryNode(r.Context(), p.WorkspaceID, issue.ID)
 	if !writeCockpitActionError(w, r, err) {
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
 func (h *Handler) ListCockpitIssueActionSources(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
+	p, ok := h.cockpitSurfaceQuery(w, r)
 	if !ok {
 		return
 	}
@@ -102,7 +102,7 @@ func (h *Handler) ListCockpitIssueActionSources(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
-	out, err := h.IssueService.ListCockpitIssueActionSources(r.Context(), cc.workspaceID, issue.ID, r.URL.Query().Get("cursor"), size)
+	out, err := h.IssueService.ListCockpitIssueActionSources(r.Context(), p.WorkspaceID, issue.ID, r.URL.Query().Get("cursor"), size)
 	if !writeCockpitActionError(w, r, err) {
 		writeJSON(w, http.StatusOK, out)
 	}

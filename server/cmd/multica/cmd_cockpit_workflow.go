@@ -29,6 +29,7 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 			"An authorized minutes-issue agent may submit a text version. Completing its review issue does not approve or publish it.",
 	}
 	addCockpitHistoryCommands(workflow)
+	addCockpitNASAttemptCommand(workflow)
 	for _, action := range []string{"show", "enable", "ready", "release", "submit", "review", "publish", "reassign-reviewer", "export-nas", "retry-nas"} {
 		count := 1
 		use := action + " <meeting-id>"
@@ -74,9 +75,11 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 		case "publish":
 			cmd.Flags().String("nas-root-id", "", "Optional configured NAS root UUID; requires --nas-directory")
 			cmd.Flags().String("nas-directory", "", "Optional confirmed absolute meeting directory on the server; requires --nas-root-id")
+			cmd.Flags().String("nas-write-mode", "", "Explicit configured mode: atomic or create_only; create_only retains visible incomplete attempts")
 		case "export-nas":
 			cmd.Flags().String("root-id", "", "Required configured NAS root UUID from workflow summary")
 			cmd.Flags().String("directory", "", "Required confirmed absolute meeting directory on the server from workflow summary")
+			cmd.Flags().String("write-mode", "", "Explicit configured mode: atomic or create_only; create_only never overwrites, removes or renames files")
 		case "reassign-reviewer":
 			cmd.Flags().String("handoff-key", "", "Required UUID for this handover; reuse it with the same inputs on retry")
 			cmd.Flags().String("reviewer-id", "", "Required new human reviewer user UUID in this workspace")
@@ -97,9 +100,10 @@ func cockpitWorkflowUUID(value, field string) (string, error) {
 
 // NAS paths name the server's macOS/Linux filesystem, not the CLI host's disk.
 // Validation is lexical so a disconnected share can still be queued safely.
-func cockpitWorkflowNASTarget(cmd *cobra.Command, rootFlag, directoryFlag string, required bool) (map[string]any, error) {
+func cockpitWorkflowNASTarget(cmd *cobra.Command, rootFlag, directoryFlag, modeFlag string, required bool) (map[string]any, error) {
 	hasRoot, hasDirectory := cmd.Flags().Changed(rootFlag), cmd.Flags().Changed(directoryFlag)
-	if !required && !hasRoot && !hasDirectory {
+	hasMode := cmd.Flags().Changed(modeFlag)
+	if !required && !hasRoot && !hasDirectory && !hasMode {
 		return nil, nil
 	}
 	if !hasRoot || !hasDirectory {
@@ -121,7 +125,15 @@ func cockpitWorkflowNASTarget(cmd *cobra.Command, rootFlag, directoryFlag string
 	if !valid {
 		return nil, fmt.Errorf("--%s must be an absolute server path without dot segments or control characters", directoryFlag)
 	}
-	return map[string]any{"root_id": id, "directory": path.Clean(directory)}, nil
+	target := map[string]any{"root_id": id, "directory": path.Clean(directory)}
+	if hasMode {
+		mode, _ := cmd.Flags().GetString(modeFlag)
+		if mode != "atomic" && mode != "create_only" {
+			return nil, fmt.Errorf("--%s must be atomic or create_only", modeFlag)
+		}
+		target["write_mode"] = mode
+	}
+	return target, nil
 }
 
 func cockpitNASReceiptUUID(value any) string {
@@ -164,7 +176,7 @@ func confirmCockpitNASReceipt(action string, args []string, body, result map[str
 			}
 			revision, ok := row["revision"].(float64)
 			status, _ := row["status"].(string)
-			if ok && revision >= float64(expected) && revision <= 1<<53-1 && revision == float64(int64(revision)) &&
+			if ok && revision >= float64(expected) && revision <= 1<<53-1 && revision == float64(int64(revision)) && validCockpitNASCopyEvidence(row) &&
 				(status == "queued" || status == "running" || status == "succeeded") {
 				return nil
 			}
@@ -187,7 +199,7 @@ func confirmCockpitNASReceipt(action string, args []string, body, result map[str
 			status, _ := row["status"].(string)
 			if cockpitNASReceiptUUID(row["id"]) != "" && cockpitNASReceiptUUID(row["version_id"]) == resourceID &&
 				cockpitNASReceiptUUID(row["root_id"]) == target["root_id"] && row["directory"] == target["directory"] &&
-				row["content_hash"] == versionHash && strings.TrimSpace(status) != "" {
+				row["content_hash"] == versionHash && strings.TrimSpace(status) != "" && cockpitNASWriteMode(row) == cockpitNASWriteMode(target) && validCockpitNASCopyEvidence(row) {
 				return nil
 			}
 		}
@@ -212,7 +224,7 @@ func cockpitWorkflowBody(cmd *cobra.Command, action string) (map[string]any, err
 	}
 	switch action {
 	case "publish":
-		target, err := cockpitWorkflowNASTarget(cmd, "nas-root-id", "nas-directory", false)
+		target, err := cockpitWorkflowNASTarget(cmd, "nas-root-id", "nas-directory", "nas-write-mode", false)
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +232,7 @@ func cockpitWorkflowBody(cmd *cobra.Command, action string) (map[string]any, err
 			body["nas_export"] = target
 		}
 	case "export-nas":
-		return cockpitWorkflowNASTarget(cmd, "root-id", "directory", true)
+		return cockpitWorkflowNASTarget(cmd, "root-id", "directory", "write-mode", true)
 	case "enable":
 		reviewer, _ := cmd.Flags().GetString("reviewer-id")
 		id, err := cockpitWorkflowUUID(reviewer, "--reviewer-id")

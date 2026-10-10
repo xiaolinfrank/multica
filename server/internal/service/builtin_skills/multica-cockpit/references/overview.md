@@ -6,19 +6,25 @@ meeting, or L3 node. The existing full board command remains for plan editing.
 ```bash
 multica cockpit overview --as-of 2026-10-10 --view mine
 multica cockpit overview --as-of 2026-10-10 --project-id <uuid> --view team
+multica cockpit overview --as-of 2026-10-10 --project-id <uuid> --module-id <uuid> --view team
 multica cockpit overview attention --as-of 2026-10-10 --view team --kind action --page-size 25
 multica cockpit overview execution --as-of 2026-10-10 --page-size 25
 multica cockpit overview meetings --as-of 2026-10-10 --days 30 --page-size 25
 ```
 
 `--as-of` is required: pass the viewer's calendar date, not a guessed server date.
+`--module-id` requires the actual `--project-id`; the CLI verifies module scope
+on the overview and each nested preview, rather than accepting project-wide data.
 It defines overdue/window calculations, not a historical snapshot. All calls are
 read-only and issue one GET. They do not create a board, dispatch work, approve
 minutes, confirm an action, retry NAS, or change issue status.
 
 ## HTTP and paging
 
-Every endpoint requires workspace membership and `X-Workspace-ID`.
+Every endpoint requires workspace membership and `X-Workspace-ID`. All four
+endpoints also accept `module_id` with its actual `project_id`; responses echo
+both IDs and titles. Invalid module/project pairs fail rather than broadening the
+scope. Changing a module invalidates an earlier cursor.
 
 | GET endpoint | Query |
 | --- | --- |

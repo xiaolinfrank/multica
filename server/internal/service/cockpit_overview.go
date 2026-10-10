@@ -24,12 +24,12 @@ func overviewCursorScope(p CockpitOverviewQuery, section string, size int32) str
 		p.View, p.Kind = "mine", ""
 	}
 	return planningHash(struct {
-		Workspace, Project, Actor pgtype.UUID
-		Human                     bool
-		AsOf, View, Kind, Section string
-		Size, Days                int32
+		Workspace, Project, Module, Actor pgtype.UUID
+		Human                             bool
+		AsOf, View, Kind, Section         string
+		Size, Days                        int32
 	}{
-		p.WorkspaceID, p.ProjectID, p.ActorID, p.Human, p.AsOf, p.View, p.Kind, section, size, p.Days})
+		p.WorkspaceID, p.ProjectID, p.ModuleID, p.ActorID, p.Human, p.AsOf, p.View, p.Kind, section, size, p.Days})
 }
 func readOverviewCursor(value, scope string) (string, error) {
 	if value == "" {
@@ -51,6 +51,9 @@ func makeOverviewCursor(scope, key string) *string {
 	return &value
 }
 func normalizeOverviewQuery(p CockpitOverviewQuery) (CockpitOverviewQuery, time.Time, error) {
+	if p.ModuleID.Valid && !p.ProjectID.Valid {
+		return p, time.Time{}, fmt.Errorf("%w: module_id requires project_id", ErrCockpitWorkflowInput)
+	}
 	date, err := time.Parse("2006-01-02", p.AsOf)
 	if err != nil {
 		return p, date, fmt.Errorf("%w: as_of must be a calendar date (YYYY-MM-DD)", ErrCockpitWorkflowInput)
@@ -103,13 +106,23 @@ func (s *IssueService) readCockpitOverview(ctx context.Context, p CockpitOvervie
 	if err != nil {
 		return out, err
 	}
-	out.CockpitOverviewScope = CockpitOverviewScope{WorkspaceID: util.UUIDToString(p.WorkspaceID), ProjectID: planningUUID(p.ProjectID), AsOf: p.AsOf, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	out.CockpitOverviewScope = CockpitOverviewScope{WorkspaceID: util.UUIDToString(p.WorkspaceID), ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID), AsOf: p.AsOf, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	if p.ProjectID.Valid {
 		project, err := q.GetCockpitOverviewProject(ctx, db.GetCockpitOverviewProjectParams{WorkspaceID: p.WorkspaceID, ID: p.ProjectID})
 		if err != nil {
 			return out, planningError(err)
 		}
 		out.ProjectTitle = project.Title
+	}
+	if p.ModuleID.Valid {
+		module, err := q.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{WorkspaceID: p.WorkspaceID, ID: p.ModuleID})
+		if err != nil {
+			return out, planningError(err)
+		}
+		if module.ProjectID != p.ProjectID {
+			return out, fmt.Errorf("%w: module_id does not belong to project_id", ErrCockpitWorkflowInput)
+		}
+		out.ModuleTitle = module.Title
 	}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(member.UserID), Role: member.Role, IsHuman: p.Human}
 	if section == "overview" {
@@ -127,7 +140,7 @@ func (s *IssueService) readCockpitOverview(ctx context.Context, p CockpitOvervie
 		}
 	}
 	payload, err := q.GetCockpitOverviewReadModel(ctx, db.GetCockpitOverviewReadModelParams{
-		WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ActorID: p.ActorID, Human: p.Human, ActorRole: member.Role,
+		WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, ActorID: p.ActorID, Human: p.Human, ActorRole: member.Role,
 		AsOf: pgtype.Date{Time: date, Valid: true}, View: p.View, Kind: p.Kind, Section: section, CursorKey: key, PageSize: p.PageSize, Days: p.Days,
 	})
 	if err != nil {

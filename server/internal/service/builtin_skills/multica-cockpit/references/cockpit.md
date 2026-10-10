@@ -1,15 +1,14 @@
 # Cockpit reference
 
-The board's HTTP surface, the field rules every write obeys, what a write
-broadcasts, and the shape of an import document.
+The board's HTTP surface, write rules and broadcasts, and import document shape.
 
 ## API
 
 Every route is workspace-scoped through the `X-Workspace-ID` header.
+For scoped plans, paginated meeting/object reads and visible-row markers, see [surfaces.md](surfaces.md).
 For bounded minutes metadata/body reads and compact command receipts, see [history.md](history.md).
 For bounded work overview, personal/team attention and recent meetings, see [overview.md](overview.md).
-For paginated L3 tasks, primary ownership and meeting-action commands, see
-[actions.md](actions.md); new primary tasks are not added to the full board's link array.
+For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](actions.md); primary tasks are not added to the board's reference array.
 
 | Method | Path | What it does |
 | --- | --- | --- |
@@ -21,6 +20,7 @@ For paginated L3 tasks, primary ownership and meeting-action commands, see
 | PATCH | `/api/cockpit/nodes/{id}` | edit a node |
 | DELETE | `/api/cockpit/nodes/{id}` | delete a leaf node |
 | PUT | `/api/cockpit/nodes/{id}/issues` | replace a node's issue links |
+| POST | `/api/cockpit/nodes/{id}/issues` | append `{issue_id}`; returns `{workspace_id,node_id,link}` without replacing unloaded references |
 | DELETE | `/api/cockpit/nodes/{id}/issues/{issueId}` | unlink one issue |
 | POST | `/api/cockpit/nodes/{id}/payments` | add an instalment |
 | PATCH | `/api/cockpit/payments/{paymentId}` | edit an instalment |
@@ -42,9 +42,11 @@ For paginated L3 tasks, primary ownership and meeting-action commands, see
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/review` | approve, request changes or reject (designated human reviewer) |
 | POST | `/api/cockpit/meetings/{meetingId}/workflow/versions/{versionId}/publish` | publish the approved current version (human manager/reviewer) |
 | PUT | `/api/cockpit/meetings/{meetingId}/issues` | add issue links, or replace them with `replace: true` |
-| PUT | `/api/cockpit/meetings/{meetingId}/issues/{issueId}/roles` | set the workflow purposes of an existing issue link |
+| POST | `/api/cockpit/meetings/{meetingId}/issues` | append `{issue_id}`; returns `{workspace_id,meeting_id,link}`, preserves existing purposes and position |
+| PUT | `/api/cockpit/meetings/{meetingId}/issues/{issueId}/roles` | set purposes; `?response=compact` returns `{workspace_id,meeting_id,link}`, omitted keeps the whole relation response |
 | DELETE | `/api/cockpit/meetings/{meetingId}/issues/{issueId}` | unlink one issue |
 | PUT | `/api/cockpit/meetings/{meetingId}/nodes` | replace a meeting's work-item links |
+| POST | `/api/cockpit/meetings/{meetingId}/nodes` | append `{node_id}`; returns `{workspace_id,meeting_id,link}`, preserves existing position |
 | DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
 | GET | `/api/cockpit/directory` | the contact book: every `party`/`name`/`position` the workspace knows |
 | PUT | `/api/cockpit/directory` | upsert contacts as a batch (`{entries}`); an empty `position` never erases a known one |
@@ -316,6 +318,7 @@ folder is always the board's own; the endpoint takes no path. `POST
 resolves outside the archive folder is reported in `skipped` rather than
 failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
+Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md).
 
 ## Stable project/module bindings
 
@@ -423,7 +426,7 @@ Batch ingest answers one result per proposal, machine-readable:
 `skipped`, `rejected`. The `source` a queued change carries (`manual` or
 `agent`) is derived from the authenticated caller, never from the body.
 
-Decisions are one-way: apply, reject and withdraw all answer 409 on a change
+Apply/reject require a human actor. Decisions are one-way: all decisions answer 409 on a change
 that is no longer open. Apply re-reads the live column it overwrites and
 records that as `old_value`, so the history stays true even when the board
 moved between filing and deciding. Deleting a node clears its change rows;
@@ -431,9 +434,8 @@ an import clears the whole queue with the board it replaces.
 
 ## Realtime
 
-Every write broadcasts a `cockpit:changed` event carrying
-`{scope, action, entity}`. A client patches the changed row into its cached
-board; a `board` scope (`imported`, `restored`) means the board changed
+Every write broadcasts a `cockpit:changed` event carrying `{scope, action, entity}`.
+A client patches the changed row into its cached board; a `board` scope (`imported`, `restored`) means the board changed
 wholesale and has to be re-read; a `snapshots` scope means only the version
 history moved — an edit past the auto-checkpoint interval also lands here
 with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
@@ -441,6 +443,7 @@ with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
 carries its own `node` scope frame with the row it wrote; a `directory` scope
 (`upserted`, `deleted`) means the contact book moved, and it lives outside the board
 read, so the frame just has clients re-fetch it.
+Single reference changes use one `board/reference_changed` frame with `{relation_kind,reference}`. New clients merge its scoped single-link receipt; older clients safely refresh the board. It never sends a one-element `links` array as a complete relation set.
 
 ## Import document
 

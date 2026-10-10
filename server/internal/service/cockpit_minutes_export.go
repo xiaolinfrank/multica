@@ -18,7 +18,7 @@ import (
 )
 
 type CockpitMinutesExportTarget struct {
-	RootID, Directory string
+	RootID, Directory, WriteMode string
 }
 
 type CockpitMinutesExportCommand struct {
@@ -50,6 +50,13 @@ func (s *IssueService) enqueueCockpitMinutesExport(ctx context.Context, q *db.Qu
 	if dest.RootID != target.RootID {
 		return db.CockpitMinutesExport{}, fmt.Errorf("%w: NAS root does not match the configured destination", ErrCockpitWorkflowInput)
 	}
+	mode := target.WriteMode
+	if mode == "" {
+		mode = cockpitnas.ModeAtomic
+	}
+	if mode != dest.WriteMode {
+		return db.CockpitMinutesExport{}, fmt.Errorf("%w: explicitly confirm the configured NAS write_mode before exporting", ErrCockpitWorkflowInput)
+	}
 	if version.Decision != "approved" || minutesContentHash(version.Content) != version.ContentHash {
 		return db.CockpitMinutesExport{}, fmt.Errorf("%w: approved minutes content is inconsistent", ErrCockpitWorkflowConflict)
 	}
@@ -80,7 +87,7 @@ func (s *IssueService) enqueueCockpitMinutesExport(ctx context.Context, q *db.Qu
 		ID: dbid.NewV7(), WorkspaceID: version.WorkspaceID, MeetingID: version.MeetingID,
 		VersionID: version.ID, VersionNumber: version.VersionNumber, SourceIssueID: version.SourceIssueID,
 		RootID: dest.RootID, RootPath: dest.RootPath, Directory: dest.Directory,
-		RelativePath: dest.RelativePath, TargetPath: dest.TargetPath, ContentHash: version.ContentHash, CreatedBy: actor,
+		RelativePath: dest.RelativePath, TargetPath: dest.TargetPath, ContentHash: version.ContentHash, CreatedBy: actor, WriteMode: dest.WriteMode,
 	})
 }
 
@@ -167,7 +174,7 @@ func minutesContentHash(content string) string {
 }
 
 func cockpitMinutesExportDestination(row db.CockpitMinutesExport) cockpitnas.Destination {
-	return cockpitnas.Destination{RootID: row.RootID, RootPath: row.RootPath, Directory: row.Directory, RelativePath: row.RelativePath, TargetPath: row.TargetPath}
+	return cockpitnas.Destination{RootID: row.RootID, RootPath: row.RootPath, Directory: row.Directory, RelativePath: row.RelativePath, TargetPath: row.TargetPath, WriteMode: row.WriteMode}
 }
 
 func publishCockpitMinutesExportChanged(bus *events.Bus, row db.CockpitMinutesExport, action string) {

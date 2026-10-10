@@ -9,8 +9,8 @@ SELECT id,title FROM project WHERE workspace_id=$1 AND id=$2;
 -- A date scopes overdue/recent facts; unresolved governance is never date-limited.
 -- Gate entire section payloads: filtering an inactive page alone can still
 -- evaluate its candidate CTE before the planner applies the section predicate.
-WITH RECURSIVE args AS (
- SELECT sqlc.arg('workspace_id')::uuid AS ws,sqlc.narg('project_id')::uuid AS project,
+WITH RECURSIVE args AS NOT MATERIALIZED (
+ SELECT sqlc.arg('workspace_id')::uuid AS ws,sqlc.narg('project_id')::uuid AS project,sqlc.narg('module_id')::uuid AS module,
  sqlc.arg('actor_id')::uuid AS actor,sqlc.arg('human')::bool AS human,sqlc.arg('actor_role')::text AS actor_role,
  sqlc.arg('as_of')::date AS as_of,sqlc.arg('view')::text AS view,sqlc.arg('kind')::text AS kind,
  sqlc.arg('section')::text AS section,sqlc.arg('cursor_key')::text AS cursor_key,
@@ -33,7 +33,7 @@ WITH RECURSIVE args AS (
  JOIN project p ON p.workspace_id=x.ws AND p.id=t.resolved_project
  WHERE t.valid AND t.project_id IS NULL AND t.module_id IS NULL
  AND NOT EXISTS(SELECT 1 FROM cockpit_node child WHERE child.workspace_id=x.ws AND child.parent_id=t.id)
- AND (x.project IS NULL OR p.id=x.project)
+ AND (x.project IS NULL OR p.id=x.project) AND (x.module IS NULL OR m.id=x.module)
 ), primary_facts AS (
  SELECT i.id,i.title,i.status,cockpit_issue_category(i.status,st.category) AS category,
  i.assignee_type,i.assignee_id,i.due_date,i.created_at,p.node_id,
@@ -41,7 +41,7 @@ WITH RECURSIVE args AS (
  (cockpit_issue_category(i.status,st.category) NOT IN ('done','closed') AND (i.status='blocked' OR st.category='blocked'))::bool AS blocked
  FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id CROSS JOIN args x
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
- WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project)
+ WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
  SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at
  FROM cockpit_meeting m CROSS JOIN args x
@@ -50,6 +50,11 @@ WITH RECURSIVE args AS (
  OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.project_id=x.project))
+ AND (x.module IS NULL
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_module=x.module)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.module_id=x.module)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.module_id=x.module)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.module_id=x.module))
 ), workflow AS (
  SELECT m.*,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.ended_at,w.materials_ready,w.released_at,
  w.current_version_id,w.published_version_id,v.version_number,v.reviewer_id,v.review_issue_id,v.decision,v.published_at,
@@ -141,13 +146,16 @@ WITH RECURSIVE args AS (
  LEFT JOIN "user" u ON p.assignee_type='member' AND u.id=p.assignee_id
  LEFT JOIN agent ag ON p.assignee_type='agent' AND ag.workspace_id=x.ws AND ag.id=p.assignee_id
  LEFT JOIN squad sq ON p.assignee_type='squad' AND sq.workspace_id=x.ws AND sq.id=p.assignee_id
+), execution_counts AS MATERIALIZED (
+ SELECT node_id,count(*) FILTER(WHERE category NOT IN ('done','closed')) AS active_total,
+ jsonb_build_object('total',count(*) FILTER (WHERE (TRUE) AND (TRUE)),'active',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed'))),'unstarted',count(*) FILTER (WHERE (TRUE) AND (category='unstarted')),'started',count(*) FILTER (WHERE (TRUE) AND (category='started')),'done',count(*) FILTER (WHERE (TRUE) AND (category='done')),'closed',count(*) FILTER (WHERE (TRUE) AND (category='closed')),'unknown',count(*) FILTER (WHERE (TRUE) AND (category='unknown')),'overdue',count(*) FILTER (WHERE (TRUE) AND (overdue)),'blocked',count(*) FILTER (WHERE (TRUE) AND (blocked)),'unassigned',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed') AND assignee_id IS NULL))) AS counts FROM primary_facts GROUP BY node_id
 ), execution_page AS (
  SELECT e.* FROM execution e CROSS JOIN args x WHERE x.section IN ('overview','execution') AND (x.cursor_key='' OR e.id::text>x.cursor_key)
  ORDER BY e.id LIMIT (SELECT CASE WHEN section='overview' THEN 7 ELSE page_size+1 END FROM args)
 ), execution_cards AS (
  SELECT e.id,jsonb_build_object('id',e.id,'code',e.code,'name',e.name,'project_id',e.project_id,'project_title',e.project_title,
  'module_id',e.module_id,'module_title',e.module_title,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
- 'issue_counts',(SELECT jsonb_build_object('total',count(*) FILTER (WHERE (TRUE) AND (TRUE)),'active',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed'))),'unstarted',count(*) FILTER (WHERE (TRUE) AND (category='unstarted')),'started',count(*) FILTER (WHERE (TRUE) AND (category='started')),'done',count(*) FILTER (WHERE (TRUE) AND (category='done')),'closed',count(*) FILTER (WHERE (TRUE) AND (category='closed')),'unknown',count(*) FILTER (WHERE (TRUE) AND (category='unknown')),'overdue',count(*) FILTER (WHERE (TRUE) AND (overdue)),'blocked',count(*) FILTER (WHERE (TRUE) AND (blocked)),'unassigned',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed') AND assignee_id IS NULL))) FROM primary_facts f WHERE f.node_id=e.id)) AS card FROM execution_page e
+ 'issue_counts',COALESCE(c.counts,jsonb_build_object('total',0,'active',0,'unstarted',0,'started',0,'done',0,'closed',0,'unknown',0,'overdue',0,'blocked',0,'unassigned',0))) AS card FROM execution_page e LEFT JOIN execution_counts c ON c.node_id=e.id
 ), recent AS (
  SELECT m.*,w.ended_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
  CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN w.released_at IS NULL THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
@@ -166,7 +174,7 @@ SELECT jsonb_build_object(
  'summary',CASE WHEN x.section='overview' THEN jsonb_build_object(
   'primary_issues',(SELECT jsonb_build_object('total',count(*) FILTER (WHERE (TRUE) AND (TRUE)),'active',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed'))),'unstarted',count(*) FILTER (WHERE (TRUE) AND (category='unstarted')),'started',count(*) FILTER (WHERE (TRUE) AND (category='started')),'done',count(*) FILTER (WHERE (TRUE) AND (category='done')),'closed',count(*) FILTER (WHERE (TRUE) AND (category='closed')),'unknown',count(*) FILTER (WHERE (TRUE) AND (category='unknown')),'overdue',count(*) FILTER (WHERE (TRUE) AND (overdue)),'blocked',count(*) FILTER (WHERE (TRUE) AND (blocked)),'unassigned',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed') AND assignee_id IS NULL))) FROM primary_facts),
   'my_primary_issues',(SELECT jsonb_build_object('total',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (TRUE)),'active',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category NOT IN ('done','closed'))),'unstarted',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category='unstarted')),'started',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category='started')),'done',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category='done')),'closed',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category='closed')),'unknown',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category='unknown')),'overdue',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (overdue)),'blocked',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (blocked)),'unassigned',count(*) FILTER (WHERE (assignee_type='member' AND assignee_id=x.actor) AND (category NOT IN ('done','closed') AND assignee_id IS NULL))) FROM primary_facts),
-  'execution_nodes',jsonb_build_object('total',(SELECT count(*) FROM execution),'with_active_issues',(SELECT count(*) FROM execution e WHERE EXISTS(SELECT 1 FROM primary_facts p WHERE p.node_id=e.id AND p.category NOT IN ('done','closed')))),
+  'execution_nodes',jsonb_build_object('total',(SELECT count(*) FROM execution),'with_active_issues',(SELECT count(*) FROM execution e JOIN execution_counts c ON c.node_id=e.id WHERE c.active_total>0)),
   'attention',jsonb_build_object('team_total',(SELECT count(*) FROM attention),'mine_total',(SELECT count(*) FROM attention WHERE mine),
   'team_by_kind',jsonb_build_object('workflow',(SELECT count(*) FROM attention WHERE kind='workflow'),'action',(SELECT count(*) FROM attention WHERE kind='action'),'nas',(SELECT count(*) FROM attention WHERE kind='nas'),'issue',(SELECT count(*) FROM attention WHERE kind='issue')),
   'mine_by_kind',jsonb_build_object('workflow',(SELECT count(*) FROM attention WHERE mine AND kind='workflow'),'action',(SELECT count(*) FROM attention WHERE mine AND kind='action'),'nas',(SELECT count(*) FROM attention WHERE mine AND kind='nas'),'issue',(SELECT count(*) FROM attention WHERE mine AND kind='issue')))) ELSE NULL END,

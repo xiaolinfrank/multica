@@ -14,7 +14,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
-func nasHTTPFixture(t *testing.T) (string, CockpitMeetingResponse, *cockpitnas.Files, string, string, CockpitMeetingWorkflowResponse) {
+func nasHTTPFixture(t *testing.T, modes ...string) (string, CockpitMeetingResponse, *cockpitnas.Files, string, string, CockpitMeetingWorkflowResponse) {
 	t.Helper()
 	ws, meeting := newCockpitWorkflowHTTPFixture(t)
 	root, rootID := t.TempDir(), uuid.NewString()
@@ -25,7 +25,11 @@ func nasHTTPFixture(t *testing.T) (string, CockpitMeetingResponse, *cockpitnas.F
 	if err := os.WriteFile(filepath.Join(root, cockpitnas.MarkerName), []byte(rootID), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config, _ := json.Marshal([]cockpitnas.Root{{WorkspaceID: ws, RootID: rootID, Path: root, AllowLocal: true}})
+	mode := ""
+	if len(modes) > 0 {
+		mode = modes[0]
+	}
+	config, _ := json.Marshal([]cockpitnas.Root{{WorkspaceID: ws, RootID: rootID, Path: root, AllowLocal: true, WriteMode: mode}})
 	files, err := cockpitnas.New(string(config))
 	if err != nil {
 		t.Fatal(err)

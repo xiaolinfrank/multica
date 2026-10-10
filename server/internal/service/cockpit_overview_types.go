@@ -4,16 +4,18 @@ import "github.com/jackc/pgx/v5/pgtype"
 
 // AsOf is a caller-local calendar date, not a historical snapshot timestamp.
 type CockpitOverviewQuery struct {
-	WorkspaceID, ProjectID, ActorID pgtype.UUID
-	Human                           bool
-	AsOf, View, Kind, Cursor        string
-	Days, PageSize                  int32
+	WorkspaceID, ProjectID, ModuleID, ActorID pgtype.UUID
+	Human                                     bool
+	AsOf, View, Kind, Cursor                  string
+	Days, PageSize                            int32
 }
 
 type CockpitOverviewScope struct {
 	WorkspaceID  string  `json:"workspace_id"`
 	ProjectID    *string `json:"project_id"`
 	ProjectTitle string  `json:"project_title"`
+	ModuleID     *string `json:"module_id"`
+	ModuleTitle  string  `json:"module_title"`
 	AsOf         string  `json:"as_of"`
 	GeneratedAt  string  `json:"generated_at"`
 }

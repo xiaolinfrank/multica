@@ -155,7 +155,7 @@ func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpit
 }
 
 const listCockpitExportHistoryRows = `-- name: ListCockpitExportHistoryRows :many
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes FROM cockpit_minutes_export
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_issue_id, root_id, root_path, directory, relative_path, target_path, content_hash, status, attempts, cycle_attempts, revision, next_retry_at, lease_token, lease_expires_at, last_error_code, last_error, created_by, created_at, updated_at, completed_at, size_bytes, write_mode, verified_path, receipt_path, verified_attempt_id, receipt_hash FROM cockpit_minutes_export
 WHERE workspace_id=$1::uuid AND meeting_id=$2::uuid AND id=ANY($3::uuid[])
 `
 
@@ -201,6 +201,11 @@ func (q *Queries) ListCockpitExportHistoryRows(ctx context.Context, arg ListCock
 			&i.UpdatedAt,
 			&i.CompletedAt,
 			&i.SizeBytes,
+			&i.WriteMode,
+			&i.VerifiedPath,
+			&i.ReceiptPath,
+			&i.VerifiedAttemptID,
+			&i.ReceiptHash,
 		); err != nil {
 			return nil, err
 		}

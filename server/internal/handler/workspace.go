@@ -1322,6 +1322,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		{
+			name: "delete cockpit creation intents",
+			run:  func() error { return qtx.DeleteCockpitCreationIntentsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete meeting actions",
 			run:  func() error { return qtx.DeleteCockpitMeetingActionsByWorkspace(ctx, requester.WorkspaceID) },
 		},

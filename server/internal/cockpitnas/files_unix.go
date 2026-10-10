@@ -164,6 +164,9 @@ func (f *Files) syncExportDirectory(directory *os.File) error {
 // Filesystem calls remain synchronous in the bounded worker. Context cannot
 // interrupt a blocked kernel NAS operation; no detached I/O goroutines are used.
 func (f *Files) Write(ctx context.Context, request Request) (Result, error) {
+	if request.Destination.WriteMode == ModeCreateOnly {
+		return f.writeCreateOnly(ctx, request)
+	}
 	root, err := f.validate(request)
 	if err != nil {
 		return Result{}, err

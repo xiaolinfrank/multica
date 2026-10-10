@@ -2682,7 +2682,7 @@ UPDATE cockpit_pending_change SET
     new_value = $2::text,
     reason     = $3::text,
     updated_at = now()
-WHERE id = $4::uuid
+WHERE id = $4::uuid AND status = 'pending'
 RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
 `
 
