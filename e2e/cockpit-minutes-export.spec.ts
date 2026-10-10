@@ -167,7 +167,7 @@ test("preserves publication and files when real SMB cannot commit without replac
     await writeFile(testInfo.outputPath("real-smb-unsupported-commit.json"), JSON.stringify({ root: filesystem.root, operation, published_version_id: workflow.published_version_id }, null, 2));
     await page.screenshot({ path: testInfo.outputPath("real-smb-published-needs-attention.png"), animations: "disabled" });
 
-    await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+    await page.getByRole("button", { name: "Retry after storage support is fixed", exact: true }).click();
     await expect.poll(async () => {
       const next = (await api.getMeetingWorkflow(meeting.id)).nas_exports[0];
       return next?.status === "needs_attention" && next.attempts > operation.attempts;
@@ -182,7 +182,7 @@ test("preserves publication and files when real SMB cannot commit without replac
     const foreign = "This validation-owned foreign file must not be replaced.\n";
     await writeFile(operation.target_path, foreign, { flag: "wx" });
     await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
-    await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+    await page.getByRole("button", { name: "Retry after storage support is fixed", exact: true }).click();
     await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.last_error_code, { timeout: 30_000 }).toBe("file_conflict");
     expect(await readFile(operation.target_path, "utf8")).toBe(foreign);
     workflow = await api.getMeetingWorkflow(meeting.id);

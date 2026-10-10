@@ -17,7 +17,7 @@ import type {
   MemberWithUser,
 } from "@multica/core/types";
 import {
-  cockpitMeetingWorkflowOptions,
+  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitObjectPath,
   cockpitWorkflowSummaryPollInterval,
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
@@ -31,7 +31,7 @@ import {
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
-import { Check, ExternalLink, FolderPlus, ScanSearch, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
   CockpitField,
@@ -45,7 +45,9 @@ import { CockpitAttendeeField } from "./cockpit-attendees";
 import { CockpitPersonLabel, useCockpitPeople } from "./cockpit-people";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 import { CockpitNodePicker } from "./cockpit-node-picker";
-import { CockpitPathField } from "./cockpit-path-field";
+import { CockpitMeetingMaterials } from "./cockpit-meeting-materials";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { useNavigation } from "../../navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
 
@@ -85,9 +87,8 @@ export interface CockpitMeetingPanelProps {
   onSaveIssueRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
   onToggleNode: (nodeId: string) => void;
   onOpenNode: (nodeId: string) => void;
-  /** Re-runs the parts of provisioning that have not happened yet. */
-  onProvision: (parts: { task?: boolean; dir?: boolean }) => void;
-  provisioning?: boolean;
+  onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
+  onPrepareDirectory: () => Promise<void>;
   readOnly?: boolean;
 }
 
@@ -114,11 +115,17 @@ export function CockpitMeetingPanel({
   onSaveIssueRoles,
   onToggleNode,
   onOpenNode,
-  onProvision,
-  provisioning,
+  onSaveMaterialPatch,
+  onPrepareDirectory,
   readOnly,
 }: CockpitMeetingPanelProps) {
   const { t } = useT("cockpit");
+  const paths = useWorkspacePaths();
+  const navigation = useNavigation();
+  const destination = cockpitDestination(navigation.searchParams);
+  const section = destination.meetingId === meeting.id ? destination.meetingView ?? "workflow" : "workflow";
+  const resourcesHref = cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: "resources" });
+  const workflowHref = cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: "workflow" });
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
   const unset = t(($) => $.common.unset);
@@ -240,7 +247,9 @@ export function CockpitMeetingPanel({
         </div>
       )}
 
-      <Tabs defaultValue="workflow" className="min-h-0 flex-1 gap-0">
+      <Tabs value={section} onValueChange={(value) => {
+        if (value === "workflow" || value === "resources" || value === "details") navigation.push(cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.id, view: value }));
+      }} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
           <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
           <TabsTrigger value="resources">{t(($) => $.workflow.tab_resources)}</TabsTrigger>
@@ -251,10 +260,12 @@ export function CockpitMeetingPanel({
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} membersLoaded={membersLoaded} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
-              onReload={reloadWorkflow} defaultPlacement={defaultPlacement}
+              onReload={reloadWorkflow} resourcesHref={resourcesHref} defaultPlacement={defaultPlacement}
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>
+            <CockpitMeetingMaterials wsId={wsId} meeting={meeting} workflow={workflowQuery.data} workflowHref={workflowHref} readOnly={readOnly}
+              onSaveMaterialPatch={onSaveMaterialPatch} onPrepareDirectory={onPrepareDirectory} />
         <Separator className="my-3" />
 
         {/* The tasks the meeting is carried out through. The one the platform
@@ -316,32 +327,6 @@ export function CockpitMeetingPanel({
               codes={nodePickerCodes}
             />
           )}
-        </CockpitField>
-
-        <CockpitField label={t(($) => $.meeting.folder)} className="mt-3">
-          {/* Provisioning names the folder this board would have used; typing
-              binds one that already exists. Both sit on the empty row, because
-              which of the two applies depends on where the meeting's material
-              was put, and only the reader knows that. */}
-          <CockpitPathField
-            value={meeting.nas_dir}
-            label={t(($) => $.meeting.folder)}
-            empty={t(($) => $.meeting.no_folder)}
-            readOnly={readOnly}
-            onCommit={(nas_dir) => onPatch({ nas_dir })}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
-              disabled={provisioning}
-              aria-busy={provisioning}
-              onClick={() => onProvision({ dir: true })}
-            >
-              <FolderPlus className="size-3" />
-              {t(($) => $.meeting.provision_dir)}
-            </Button>
-          </CockpitPathField>
         </CockpitField>
 
         <Separator className="my-3" />
@@ -519,16 +504,6 @@ export function CockpitMeetingPanel({
             <section className="mt-4 space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
               <h3 className="text-title-sm font-medium">{t(($) => $.workflow.legacy_records)}</h3>
               <p className="text-caption text-muted-foreground">{t(($) => $.workflow.legacy_records_hint)}</p>
-        <CockpitField label={t(($) => $.meeting.agenda)}>
-          <EditableTextArea
-            value={meeting.note}
-            onCommit={(note) => onPatch({ note })}
-            label={t(($) => $.meeting.agenda)}
-            placeholder={t(($) => $.meeting.no_agenda)}
-            disabled={readOnly}
-            rows={3}
-          />
-        </CockpitField>
         <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
           <EditableTextArea
             value={meeting.minutes}

@@ -7,7 +7,7 @@ import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { StatusIcon } from "../../issues/components/status-icon";
 
-export function WorkflowIssueLink({ issue }: { issue: CockpitWorkflowIssue }) {
+export function WorkflowIssueLink({ issue, newTab = false }: { issue: CockpitWorkflowIssue; newTab?: boolean }) {
   const paths = useWorkspacePaths();
   const { t } = useT("cockpit");
   const { t: issueT } = useT("issues");
@@ -16,6 +16,7 @@ export function WorkflowIssueLink({ issue }: { issue: CockpitWorkflowIssue }) {
   const status = isBuiltInIssueStatus(statusKey) ? issueT(($) => $.status[statusKey]) : statusKey;
   const assignee = issue.assignee_id ? getActorName(issue.assignee_type, issue.assignee_id) : t(($) => $.workflow.unassigned);
   return <div className="space-y-1"><AppLink href={paths.issueDetail(issue.identifier || issue.id)} newTabTitle={issue.title}
+    target={newTab ? "_blank" : undefined} rel={newTab ? "noreferrer" : undefined}
     className="inline-flex max-w-full items-start gap-2 text-caption hover:underline">
     <StatusIcon status={issue.status} className="mt-0.5 size-3.5 shrink-0" />
     <span className="min-w-0 break-words"><span className="mr-1.5 font-mono text-muted-foreground">{issue.identifier || issue.id}</span>{" "}{issue.title}</span>

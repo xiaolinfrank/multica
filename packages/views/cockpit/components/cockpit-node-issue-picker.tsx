@@ -45,13 +45,15 @@ export interface CockpitNodeIssueOption {
   module_id: string;
 }
 
-/** The rows on the board that an issue can be filed against, by display code. */
-export function useCockpitNodeIssueOptions(leafOnly = false): CockpitNodeIssueOption[] {
+/** Eligible rows plus query health, so a failed load cannot masquerade as an empty plan. */
+export function useCockpitNodeIssueOptions(leafOnly = false) {
   const wsId = useWorkspaceId();
-  const { data: board } = useQuery(cockpitBoardOptions(wsId));
-  const { data: modules } = useQuery(moduleListOptions(wsId));
+  const boardQuery = useQuery(cockpitBoardOptions(wsId));
+  const moduleQuery = useQuery(moduleListOptions(wsId));
+  const board = boardQuery.data;
+  const modules = moduleQuery.data;
 
-  return useMemo(() => {
+  const options = useMemo(() => {
     const nodes = board?.nodes ?? [];
     if (nodes.length === 0 || !modules) return [];
     // Display codes label options only; ancestry and explicit UUIDs determine filing.
@@ -83,6 +85,10 @@ export function useCockpitNodeIssueOptions(leafOnly = false): CockpitNodeIssueOp
     options.sort((a, b) => a.code.localeCompare(b.code));
     return options;
   }, [board?.nodes, modules, leafOnly]);
+  return { options, isPending: boardQuery.isPending || moduleQuery.isPending,
+    isFetching: boardQuery.isFetching || moduleQuery.isFetching,
+    isError: boardQuery.isError || moduleQuery.isError,
+    refetch: () => Promise.all([boardQuery.refetch(), moduleQuery.refetch()]) };
 }
 
 export function CockpitNodeIssuePicker({
@@ -108,7 +114,8 @@ export function CockpitNodeIssuePicker({
   maxResults?: number;
 }) {
   const { t } = useT("cockpit");
-  const options = useCockpitNodeIssueOptions(leafOnly);
+  const queryState = useCockpitNodeIssueOptions(leafOnly);
+  const { options } = queryState;
   const [filter, setFilter] = useState("");
   const [internalOpen, setInternalOpen] = useState(false);
   const open = disabled ? false : controlledOpen ?? internalOpen;
@@ -157,7 +164,7 @@ export function CockpitNodeIssuePicker({
           <span className="text-muted-foreground">{t(($) => $.node_picker.none)}</span>
         </PickerItem>
 
-        {filtered.slice(0, maxResults).map((option) => (
+        {!queryState.isError && !queryState.isPending && filtered.slice(0, maxResults).map((option) => (
           <PickerItem
             key={option.node_id}
             selected={option.node_id === value?.node_id}
@@ -172,12 +179,15 @@ export function CockpitNodeIssuePicker({
         ))}
         {maxResults && filtered.length > maxResults && <p className="p-2 text-caption text-muted-foreground">{t(($) => $.task_flow.narrow_nodes, { count: filtered.length, shown: maxResults })}</p>}
 
-        {options.length === 0 && (
+        {queryState.isError ? <div role="alert" className="space-y-1 px-2 py-1.5 text-caption">
+          <p>{t(($) => $.action_flow.nodes_failed)}</p>
+          <button type="button" className="text-primary hover:underline" onClick={() => void queryState.refetch()}>{t(($) => $.binding.retry)}</button>
+        </div> : queryState.isPending ? <p role="status" className="px-2 py-1.5 text-caption text-muted-foreground">{t(($) => $.workflow.loading)}</p> : options.length === 0 && (
           <div className="px-2 py-1.5 text-caption text-muted-foreground">
             {t(($) => $.node_picker.empty)}
           </div>
         )}
-        {options.length > 0 && filtered.length === 0 && query && <PickerEmpty />}
+        {!queryState.isError && !queryState.isPending && options.length > 0 && filtered.length === 0 && query && <PickerEmpty />}
       </PropertyPicker>
     </div>
   );

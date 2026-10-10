@@ -81,8 +81,10 @@ function CockpitReferenceMeetings({ issueId }: { issueId: string }) {
   if (!board || (board.meetings.length === 0 && rows.length === 0)) return null;
 
   const busy = linkMeeting.isPending || unlinkMeeting.isPending;
+  const lockedIds = new Set(rows.filter((row) => Boolean(row.link.required_roles?.length)).map((row) => row.id));
   const toggleMeeting = (meetingId: string) => {
     if (linkedIds.has(meetingId)) {
+      if (lockedIds.has(meetingId)) return;
       unlinkMeeting.mutate({ meetingId, issueId }, { onError: fail });
       return;
     }
@@ -146,13 +148,14 @@ function CockpitReferenceMeetings({ issueId }: { issueId: string }) {
                         <span className="block text-caption text-muted-foreground">{label}</span>
                       )}
                       <CockpitMeetingRoleLabels link={link} />
+                      {lockedIds.has(id) && <p className="text-micro text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
                     </div>
                     <button
                       type="button"
                       onClick={() =>
-                        unlinkMeeting.mutate({ meetingId: id, issueId }, { onError: fail })
+                        toggleMeeting(id)
                       }
-                      disabled={busy}
+                      disabled={busy || lockedIds.has(id)}
                       aria-label={t(($) => $.issue_meetings.unlink, { label })}
                       title={t(($) => $.issue_meetings.unlink, { label })}
                       className="shrink-0 rounded-xs p-1 text-muted-foreground opacity-0 pointer-events-none transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover/meeting:pointer-events-auto group-hover/meeting:opacity-100 disabled:opacity-40"
@@ -171,6 +174,8 @@ function CockpitReferenceMeetings({ issueId }: { issueId: string }) {
               onToggle={toggleMeeting}
               label={t(($) => $.issue_meetings.link)}
               disabled={busy}
+              lockedIds={lockedIds}
+              lockedLabel={t(($) => $.workflow.managed_link)}
             />
           )}
         </div>

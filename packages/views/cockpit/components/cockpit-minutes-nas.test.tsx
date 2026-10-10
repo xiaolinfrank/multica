@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
+import { copyText } from "@multica/ui/lib/clipboard";
 import { api } from "@multica/core/api";
 import { cockpitKeys, cockpitMeetingWorkflowOptions, cockpitHistoryViewKey, useCockpitHistoryViewStore } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflow, CockpitNasExport } from "@multica/core/types";
@@ -15,8 +16,11 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
   getCockpitMeetingWorkflowSummary: vi.fn(), commandCockpitMeetingWorkflow: vi.fn(), getCockpitNasExports: vi.fn(), getCockpitMinutesVersions: vi.fn(), getCockpitReviewerHandoffs: vi.fn(),
   getCockpitMeetingWorkflow: vi.fn(), exportCockpitMinutesToNas: vi.fn(), retryCockpitNasExport: vi.fn(),
 } }));
-vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path }: { path: string }) => <button type="button">{path}</button> }));
+vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path, children }: { path: string; children?: React.ReactNode }) => <button type="button" data-path={path}>{children ?? path}</button> }));
+vi.mock("../../navigation", () => ({ AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock("@multica/ui/lib/clipboard", () => ({ copyText: vi.fn() }));
 
+const resourcesHref = `/ws/cockpit?meeting=${WORKFLOW_MEETING_ID}&meeting_view=resources`;
 const destination = { root_id: "root-1", directory: "/Volumes/team/Meeting" };
 function job(overrides: Partial<CockpitNasExport> = {}): CockpitNasExport {
   return { id: "export-1", version_id: "version-1", version_number: 1, source_issue_id: "minutes-1", content_hash: "hash-of-fixed-text",
@@ -36,7 +40,7 @@ function setupCopies(readOnly = false) {
   function Harness() {
     const query = useQuery(cockpitMeetingWorkflowOptions("ws-1", WORKFLOW_MEETING_ID));
     const [history, setHistory] = useState(false);
-    return query.data ? <><CockpitMinutesNasCopies wsId="ws-1" workflow={query.data} userId="reviewer-1" readOnly={readOnly}
+    return query.data ? <><CockpitMinutesNasCopies resourcesHref={resourcesHref} wsId="ws-1" workflow={query.data} userId="reviewer-1" readOnly={readOnly}
       disabled={false} onReload={() => void query.refetch()} onOpenHistory={() => { useCockpitHistoryViewStore.getState().update(cockpitHistoryViewKey("ws-1", WORKFLOW_MEETING_ID), { section: "exports" }); setHistory(true); }} />
       <CockpitMeetingHistory wsId="ws-1" workflow={query.data} members={[]} userId="reviewer-1" readOnly={readOnly} disabled={false} open={history} onOpenChange={setHistory} onRead={vi.fn()} /></> : null;
   }
@@ -46,6 +50,7 @@ function setupCopies(readOnly = false) {
 beforeEach(() => {
   vi.clearAllMocks(); useCockpitHistoryViewStore.getState().reset();
   server = published();
+  vi.mocked(copyText).mockResolvedValue(true);
   vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async () => structuredClone(server));
   vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async () => workflowSummary(await api.getCockpitMeetingWorkflow(WORKFLOW_MEETING_ID)));
   vi.mocked(api.getCockpitNasExports).mockImplementation(async () => ({ workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision,
@@ -73,11 +78,61 @@ describe("minutes NAS publishing and recovery", () => {
     setupCopies();
     expect(await screen.findByText(/No permitted NAS destination is configured/)).toBeVisible();
     expect(screen.queryByText("not_configured")).toBeNull();
+    fireEvent.click(screen.getByText("Deployment administrator instructions"));
+    expect(screen.getByText(/COCKPIT_NAS_EXPORT_ROOTS=\[/)).toBeVisible();
+    expect(screen.getByText(/\.multica-root-id/)).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Configure meeting materials" })).toBeNull();
+  });
+
+  it.each(["directory_missing", "outside_root"])("provides a real material configuration link for %s without pretending deployment is configured", async (reason) => {
+    server = { ...server, nas_destination: null, nas_unavailable_reason: reason };
+    setupCopies();
+    const link = await screen.findByRole("link", { name: "Configure meeting materials" });
+    expect(link).toHaveAttribute("href", resourcesHref);
+    expect(screen.queryByText(reason)).toBeNull();
+    expect(api.exportCockpitMinutesToNas).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unfamiliar destination reason visible beside the material entry point", async () => {
+    server = { ...server, nas_destination: null, nas_unavailable_reason: "Future storage policy requires attention" };
+    setupCopies();
+    expect(await screen.findByText("Future storage policy requires attention")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Configure meeting materials" })).toHaveAttribute("href", resourcesHref);
+  });
+
+  it("exposes the frozen failed destination and full error while unsupported storage is awaiting an administrator", async () => {
+    const original = job({ status: "needs_attention", can_retry: true, last_error_code: "unsupported_commit", last_error: "The network filesystem rejected the exclusive file commit." });
+    server = { ...server, nas_destination: { ...destination, directory: "/Volumes/team/New destination" }, nas_exports: [original] };
+    setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: "View NAS history (1)" }));
+    await screen.findByText("Needs attention");
+    expect(screen.getByText(enCockpit.nas.unsupported_storage)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Open original export folder" })).toHaveAttribute("data-path", original.directory);
+    expect(screen.queryByRole("button", { name: "Retry NAS export" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry after storage support is fixed" })).toBeVisible();
+    fireEvent.click(screen.getByText("Full error details"));
+    expect(screen.getByText(original.last_error)).toBeVisible();
+    expect(screen.getByText("unsupported_commit")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Copy target path" }));
+    expect(await screen.findByText("Target path copied.")).toBeVisible();
+    expect(copyText).toHaveBeenCalledWith(original.target_path);
+    expect(api.retryCockpitNasExport).not.toHaveBeenCalled();
+    expect(api.exportCockpitMinutesToNas).not.toHaveBeenCalled();
+  });
+
+  it("keeps the full target available when clipboard access fails", async () => {
+    vi.mocked(copyText).mockResolvedValue(false);
+    server.nas_exports = [job({ status: "needs_attention", last_error_code: "permission_denied", last_error: "Permission denied" })];
+    setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy target path" }));
+    expect(await screen.findByText(enCockpit.nas.copy_failed)).toBeVisible();
+    expect(screen.getByText(job().target_path)).toBeVisible();
+    expect(screen.getByText(enCockpit.nas.permission_recovery)).toBeVisible();
   });
 
   it("defaults sync on for a configured destination, while publishing without NAS remains explicit", () => {
     const onPublish = vi.fn();
-    render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
+    render(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     const checkbox = screen.getByRole("checkbox", { name: "Sync published minutes to NAS" });
     expect(checkbox).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
@@ -90,12 +145,12 @@ describe("minutes NAS publishing and recovery", () => {
   it("allows unconfigured publication and does not auto-select a destination that appears later", () => {
     const onPublish = vi.fn();
     const first = { ...server, nas_destination: null, nas_unavailable_reason: "not_configured" };
-    const view = render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(first)} disabled={false} pending={false} onPublish={onPublish} />));
+    const view = render(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(first)} disabled={false} pending={false} onPublish={onPublish} />));
     expect(screen.getByText(/No permitted NAS destination is configured/)).toBeVisible();
     expect(screen.queryByText("not_configured")).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Sync published minutes to NAS" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Publish version" })).toBeEnabled();
-    view.rerender(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
+    view.rerender(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     expect(screen.getByRole("checkbox", { name: "Sync published minutes to NAS" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
     expect(onPublish).toHaveBeenCalledWith(undefined);
@@ -103,9 +158,9 @@ describe("minutes NAS publishing and recovery", () => {
 
   it("does not silently redirect an already selected publication target", () => {
     const onPublish = vi.fn();
-    const view = render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
+    const view = render(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     const changed = { ...server, nas_destination: { ...destination, directory: "/Volumes/team/Changed" } };
-    view.rerender(shell(<CockpitMinutesPublishControl workflow={workflowSummary(changed)} disabled={false} pending={false} onPublish={onPublish} />));
+    view.rerender(shell(<CockpitMinutesPublishControl resourcesHref={resourcesHref} workflow={workflowSummary(changed)} disabled={false} pending={false} onPublish={onPublish} />));
     expect(screen.getByRole("alert")).toHaveTextContent("The NAS destination changed");
     expect(screen.getByRole("button", { name: "Publish version" })).toBeDisabled();
     expect(screen.getByText(destination.directory)).toBeTruthy();

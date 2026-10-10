@@ -3,6 +3,7 @@
 import { useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { useWorkspacePaths } from "@multica/core/paths";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { CockpitUnconfirmedWriteError, resolveCockpitNodeBinding } from "@multica/core/cockpit";
 import type { CockpitNode, Module } from "@multica/core/types";
@@ -10,6 +11,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { LoaderCircle } from "lucide-react";
 import { useT } from "../../i18n";
+import { AppLink } from "../../navigation";
 
 const NONE = "__unbound__";
 
@@ -26,6 +28,7 @@ export function CockpitNodeBindingField({ node, nodes, modules, modulesLoading, 
 }) {
   const { t } = useT("cockpit");
   const wsId = useWorkspaceId();
+  const paths = useWorkspacePaths();
   const id = useId();
   const [editing, setEditing] = useState(false);
   const [projectId, setProjectId] = useState<string>(NONE);
@@ -113,6 +116,11 @@ export function CockpitNodeBindingField({ node, nodes, modules, modulesLoading, 
             </SelectContent>
           </Select>
         </div>
+        {projects.isSuccess && projects.data.length === 0 && <div className="space-y-1 text-caption">
+          <p className="text-muted-foreground">{t(($) => $.task_recovery.no_projects)}</p>
+          <AppLink href={paths.projects()} target="_blank" rel="noopener noreferrer" className="rounded-sm underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
+            {t(($) => $.task_recovery.open_projects)}</AppLink>
+        </div>}
         <div className="space-y-1">
           <label htmlFor={`${id}-module`} className="text-caption">{t(($) => $.binding.module)}</label>
           <Select value={moduleId} disabled={saving || projectId === NONE}
@@ -125,6 +133,11 @@ export function CockpitNodeBindingField({ node, nodes, modules, modulesLoading, 
             </SelectContent>
           </Select>
         </div>
+        {projectId !== NONE && !modulesLoading && !modulesError && filteredModules.length === 0 && <div className="space-y-1 text-caption">
+          <p className="text-muted-foreground">{t(($) => $.task_recovery.no_modules)}</p>
+          <AppLink href={paths.projectDetail(projectId)} target="_blank" rel="noopener noreferrer" className="rounded-sm underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
+            {t(($) => $.task_recovery.open_project)}</AppLink>
+        </div>}
       </>}
       <p className="text-caption text-muted-foreground">{t(($) => $.binding.hint)}</p>
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}

@@ -1,4 +1,5 @@
 "use client";
+import { useId } from "react";
 import type { IssueAssigneeType } from "@multica/core/types";
 import { Input } from "@multica/ui/components/ui/input";
 import { Button } from "@multica/ui/components/ui/button";
@@ -17,12 +18,15 @@ export function cockpitTaskFieldsBody(value: CockpitTaskFieldsValue) {
 export function CockpitTaskFields({ value, onChange, disabled }: { value: CockpitTaskFieldsValue; onChange: (next: CockpitTaskFieldsValue) => void; disabled: boolean }) {
   const { t } = useT("cockpit");
   const { t: issueT } = useT("issues");
+  const assigneeHintId = useId();
   const priorities = ["none", "low", "medium", "high", "urgent"] as const;
   return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <div className="space-y-1"><p className="text-caption">{t(($) => $.task_flow.assignee)}</p>
       <AssigneePicker assigneeType={value.assigneeType} assigneeId={value.assigneeId || null} open={disabled ? false : undefined}
-        triggerRender={<Button type="button" variant="outline" size="sm" disabled={disabled} />}
+        triggerRender={<Button type="button" variant="outline" size="sm" disabled={disabled}
+          aria-label={t(($) => $.task_flow.assignee)} aria-describedby={!value.assigneeId ? assigneeHintId : undefined} />}
         onUpdate={(update) => { if (!disabled) onChange({ ...value, assigneeType: update.assignee_type ?? "member", assigneeId: update.assignee_id ?? "" }); }} />
+      {!value.assigneeId && <p id={assigneeHintId} className="text-caption text-muted-foreground">{t(($) => $.task_flow.assignee_required)}</p>}
     </div>
     <label className="space-y-1 text-caption">{t(($) => $.task_flow.due_date)}<Input type="date" value={value.dueDate} disabled={disabled}
       onChange={(event) => onChange({ ...value, dueDate: event.target.value })} /></label>

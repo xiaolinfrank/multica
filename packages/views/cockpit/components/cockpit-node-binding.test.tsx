@@ -9,6 +9,8 @@ import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitNodeBindingField } from "./cockpit-node-binding";
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}` }) }));
+vi.mock("../../navigation", () => ({ AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@multica/core/api", () => ({ api: { listProjects: vi.fn() } }));
 import { api } from "@multica/core/api";
 
@@ -32,6 +34,22 @@ function setup(node: CockpitNode, onSave = vi.fn().mockResolvedValue(undefined),
 describe("node binding configuration", () => {
   beforeEach(() => {
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [{ id: "p1", title: "Existing project" }], total: 1 } as Awaited<ReturnType<typeof api.listProjects>>);
+  });
+
+  it("offers project creation and module setup destinations without discarding the binding form", async () => {
+    setup(moduleNode, undefined, { modules: [] });
+    await userEvent.click(screen.getByRole("button", { name: "Configure binding" }));
+    const link = await screen.findByRole("link", { name: "Open project in a new tab" });
+    expect(link).toHaveAttribute("href", "/ws/projects/p1");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("button", { name: "Save binding" })).toBeInTheDocument();
+  });
+
+  it("distinguishes an empty project catalog from a loading failure and provides a real next step", async () => {
+    vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
+    setup({ ...projectNode, project_id: null });
+    await userEvent.click(screen.getByRole("button", { name: "Configure binding" }));
+    expect(await screen.findByRole("link", { name: "Open projects in a new tab" })).toHaveAttribute("href", "/ws/projects");
   });
 
   it("makes an unbound execution item's missing module actionable without guessing from its code", async () => {

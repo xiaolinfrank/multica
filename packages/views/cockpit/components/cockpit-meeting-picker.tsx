@@ -36,6 +36,8 @@ export function CockpitMeetingPicker({
   onToggle,
   label,
   disabled,
+  lockedIds,
+  lockedLabel,
 }: {
   meetings: CockpitMeeting[];
   /** Already-linked meeting ids, ticked so a second click reads as a toggle. */
@@ -43,6 +45,8 @@ export function CockpitMeetingPicker({
   onToggle: (meetingId: string) => void;
   label: string;
   disabled?: boolean;
+  lockedIds?: ReadonlySet<string>;
+  lockedLabel?: string;
 }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
@@ -92,17 +96,20 @@ export function CockpitMeetingPicker({
               <CommandGroup>
                 {rows.map((meeting) => {
                   const linked = selectedIds.has(meeting.id);
+                  const locked = lockedIds?.has(meeting.id) === true;
                   return (
                     <CommandItem
                       key={meeting.id}
                       value={meeting.id}
-                      onSelect={() => onToggle(meeting.id)}
+                      disabled={locked}
+                      onSelect={() => { if (!locked) onToggle(meeting.id); }}
                       className="gap-2"
                     >
                       <span className="shrink-0 font-mono text-caption text-muted-foreground">
                         {meeting.code || meeting.meet_date || "—"}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-body">{meeting.title}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-body">{meeting.title}</span>
+                        {locked && lockedLabel && <span className="block whitespace-normal text-micro text-muted-foreground">{lockedLabel}</span>}</span>
                       {linked && <Check className="size-3.5 shrink-0 text-brand" />}
                     </CommandItem>
                   );

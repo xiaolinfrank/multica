@@ -109,7 +109,11 @@ test("pages meeting suggestions and reusable issues, then confirms each action o
 
     const openAction = async (title: string) => {
       await actions.getByRole("textbox", { name: "Search meeting actions", exact: true }).fill(title);
-      await actions.getByRole("button", { name: `Review action ${title}`, exact: true }).click();
+      const link = actions.getByRole("link", { name: `Review action ${title}`, exact: true });
+      const href = await link.getAttribute("href");
+      if (!href) throw new Error("Action review has no destination");
+      await link.click();
+      await expect(page).toHaveURL(href);
       const dialog = page.getByRole("dialog", { name: "Confirm action", exact: true });
       await expect(dialog).toBeVisible();
       return dialog;
@@ -153,7 +157,7 @@ test("pages meeting suggestions and reusable issues, then confirms each action o
       expect((await api.getCockpitTasks(l3.id)).total).toBe(1);
       const sourcePath = `/api/cockpit/issues/${origin.issue!.id}/actions`;
       const first = page.waitForResponse((response) => new URL(response.url()).pathname === sourcePath && !new URL(response.url()).searchParams.get("cursor"));
-      await actions.getByRole("link", { name: new RegExp(`${createdTitle}$`) }).click();
+      await actions.getByRole("link", { name: `${origin.issue!.identifier} ${createdTitle}`, exact: true }).click();
       const firstResponse = await first;
       const initialSources = await firstResponse.json() as { total: number; items: Array<{ id: string }>; next_cursor: string };
       expect(new URL(firstResponse.url()).searchParams.get("page_size")).toBe("25");
@@ -218,9 +222,32 @@ test("pages meeting suggestions and reusable issues, then confirms each action o
       await picker.getByRole("button").filter({ hasText: selected.title }).click();
       await expect(dialog.getByText(new RegExp(`Selected issue:.*${selected.title}`))).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Confirm action", exact: true })).toBeEnabled();
-      await page.screenshot({ path: testInfo.outputPath("meeting-action-reuse-confirmation.png"), animations: "disabled" });
-      await dialog.getByRole("button", { name: "Confirm action", exact: true }).click();
+      const configure = dialog.getByRole("link", { name: "Configure selected work item (new tab)", exact: true });
+      const repairPath = `/${workspace.slug}/cockpit?node=${l3.id}&node_view=details`;
+      await expect(configure).toHaveAttribute("href", repairPath);
+      const popupReady = page.waitForEvent("popup");
+      await configure.click();
+      const repairPage = await popupReady;
+      await expect(repairPage).toHaveURL(repairPath);
+      await expect(repairPage.getByRole("tab", { name: "Plan details", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(repairPage.getByRole("region", { name: "Project and module binding", exact: true })).toContainText(module.title);
+      await repairPage.close();
+      await expect(dialog.getByText(new RegExp(`Selected issue:.*${selected.title}`))).toBeVisible();
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(dialog).toBeHidden();
+      await expect(page).toHaveURL((url) => url.searchParams.get("meeting") === meeting.id && !url.searchParams.has("action"));
+      await page.reload({ waitUntil: "domcontentloaded" });
+      const restored = await openAction(pending.title);
+      await expect(restored.getByLabel("Action outcome", { exact: true })).toContainText("Reuse issue");
+      await expect(restored.getByRole("button", { name: "Primary work item", exact: true })).toContainText(l3.name);
+      await expect(restored.getByText(new RegExp(`Selected issue:.*${selected.title}`))).toBeVisible();
+      await expect(restored.getByRole("button", { name: "Confirm action", exact: true })).toBeEnabled();
+      expect((await api.getMeetingActions(meeting.id, { q: pending.title })).items[0]).toMatchObject({ status: "draft", issue: null });
+      expect((await api.getCockpitTasks(l3.id)).total).toBe(1);
+      expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+      await page.screenshot({ path: testInfo.outputPath("meeting-action-reuse-confirmation.png"), animations: "disabled" });
+      await restored.getByRole("button", { name: "Confirm action", exact: true }).click();
+      await expect(restored).toBeHidden();
       const reused = (await api.getMeetingActions(meeting.id, { q: pending.title })).items[0]!;
       expect(reused).toMatchObject({ status: "accepted", resolution: "reuse", node_id: l3.id, issue: { id: selected.id, primary_node_id: l3.id } });
       const afterReuse = await api.getIssue(selected.id);
@@ -245,6 +272,10 @@ test("pages meeting suggestions and reusable issues, then confirms each action o
       await actions.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath("meeting-actions-narrow.png"), animations: "disabled" });
     });
+  } catch (error) {
+    await page.screenshot({ path: testInfo.outputPath("failure-before-cleanup.png"), animations: "disabled" }).catch(() => {});
+    await testInfo.attach("failure-before-cleanup", { body: await page.locator("body").innerText(), contentType: "text/plain" }).catch(() => {});
+    throw error;
   } finally {
     if (ownsWorkspace) await api.cleanupCreatedWorkspace();
   }

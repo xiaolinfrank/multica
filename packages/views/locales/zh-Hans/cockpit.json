@@ -588,6 +588,21 @@
     "save_failed": "无法保存用途",
     "unconfirmed_save": "服务器未确认这次修改。请刷新并检查服务端版本后重试。"
   },
+  "import_recovery": {
+    "scan_failed": "无法读取会议目录，请检查连接后重新扫描。"
+  },
+  "task_recovery": {
+    "eligibility_module_required": "先在上级计划行绑定项目和模块，再在这里新建或归入任务。",
+    "eligibility_binding_conflict": "上级绑定与项目或模块不一致，请检查计划详情。",
+    "eligibility_structural": "这是项目或模块行，请进入下级执行任务管理其任务。",
+    "eligibility_not_leaf": "此行包含下级执行任务，请在末级执行任务中管理任务。",
+    "eligibility_ancestry": "此执行任务的上级关系不完整，请检查它在执行计划中的位置。",
+    "open_plan_details": "查看计划详情与绑定",
+    "no_projects": "先创建项目，再配置对应的计划绑定。",
+    "open_projects": "在新标签中打开项目列表",
+    "no_modules": "当前项目还没有模块，请先在项目中添加模块。",
+    "open_project": "在新标签中打开项目"
+  },
   "binding": {
     "title": "项目与模块绑定",
     "inherited": "继承自 {{label}}",
@@ -708,13 +723,43 @@
     "handoff_history_future": "已变更后续提交的默认评审人",
     "handoff_previous_issue": "原评审任务",
     "handoff_replacement_issue": "新评审任务",
-    "handoff_stale": "此对话框打开期间，工作包已发生变更。请关闭后重新打开，核对最新责任范围再确认。"
+    "handoff_stale": "此对话框打开期间，工作包已发生变更。请关闭后重新打开，核对最新责任范围再确认。",
+    "executor_required": "纪要任务尚未分派执行者，不能启动。",
+    "assign_executor": "去任务分派执行者（新标签）",
+    "fix_issue_status": "去任务调整状态（新标签）",
+    "manager_required": "仅工作包管理人可确认就绪并启动任务；你仍可准备材料。",
+    "read_and_review": "阅读并评审纪要",
+    "revise_issue": "到纪要任务返修（新标签）",
+    "publisher_required": "此版本已通过，需工作包管理人或本版本评审人发布。",
+    "members_loading": "工作区成员尚不可用，请等待成员加载后选择评审人。",
+    "no_reviewers": "暂无可作为评审人的工作区成员。",
+    "open_members": "打开工作区设置（新标签）"
   },
   "nas": {
+    "not_configured": "此工作区尚未配置允许的 NAS 导出位置。需要部署管理员配置导出根目录，仅创建会议文件夹无法解决。",
+    "directory_missing": "请先选择或准备会议资料目录，再导出到 NAS。",
+    "outside_root": "会议资料目录超出此工作区允许的 NAS 范围。请到材料配置中核对位置。",
+    "configure_materials": "配置会议材料",
+    "deployment_help": "部署管理员配置说明",
+    "deployment_roots": "在执行导出的服务器上配置 COCKPIT_NAS_EXPORT_ROOTS，每个工作区指定一个允许的根目录。填写实际工作区 UUID、稳定的根目录 UUID，以及服务器上的绝对路径。",
+    "deployment_identity": "现有根目录中必须预置 .multica-root-id 文件，文本内容与 root_id 一致。平台不会创建根目录或身份标记。",
+    "deployment_access": "后端服务账号必须能访问网络挂载及已存在的会议目录。身份标记不授予文件系统权限。目前仅支持 macOS 和 Linux 导出服务器。示例保留 allow_local=false；不要通过允许本地目录绕过 NAS 挂载检查。",
+    "open_frozen_directory": "打开原导出目录",
+    "copy_target": "复制目标路径",
+    "target_copied": "已复制目标路径。",
+    "copy_failed": "复制失败，请选中上方完整路径后复制。",
+    "error_details": "完整错误详情",
+    "unsupported_storage": "当前服务器或存储不支持所需的安全文件操作。重复重试不能解决，请部署管理员核对存储支持情况。",
+    "permission_recovery": "请目录管理员检查后端服务账号对原目录的访问权限。你能打开目录，并不代表服务器具备相同权限。",
+    "conflict_recovery": "打开原目录，请文件所有者核对现有目标文件。导出不会覆盖或删除它。",
+    "identity_recovery": "请部署管理员核对原根目录、身份标记和目录位置。已移动或替换的目录不会被当作原目标。",
+    "mount_recovery": "请部署管理员先恢复导出服务器上的原网络挂载，再重试。在你的电脑上打开目录不会恢复服务器的挂载。",
+    "frozen_retry": "重试保留这条记录的原目标。修改会议目录只影响另行发起的导出。",
+    "retry_after_storage_fix": "确认存储支持已修复后重试",
     "title": "NAS 副本",
     "sync_on_publish": "将已发布纪要同步到 NAS",
     "publish_queue_hint": "发布时将此固定版本加入 NAS 导出队列。共享盘离线不会撤销发布。",
-    "no_destination": "尚未配置允许使用的 NAS 位置。可以先发布，再到“关联与资料”配置资料目录并补导出。",
+    "no_destination": "NAS 导出位置不可用。仍可先发布平台版本。",
     "destination_changed": "NAS 目标位置已变更。请核对新位置，或取消同步后再发布。",
     "use_updated_destination": "使用更新后的位置",
     "official_version": "正式纪要 · 第 {{number}} 版",
@@ -736,6 +781,7 @@
     "attention_hint": "请先处理显示的连接、权限或文件冲突问题。重试仍使用此位置，保留已有文件。"
   },
   "task_flow": {
+    "assignee_required": "请在上方选择负责人、智能体或团队，再创建任务。",
     "region": "执行任务下的任务",
     "tasks_tab": "任务",
     "details_tab": "计划详情",
@@ -790,6 +836,19 @@
     "request_confirmed": "请求已确认：{{name}}",
     "narrow_nodes": "匹配 {{count}} 项执行任务，显示前 {{shown}} 项。请缩小搜索范围以选择其他项。",
     "primary_changed": "主归属已变更，请重新选择该任务，核对最新范围后再确认。"
+  },
+  "action_flow": {
+    "discard_edits": "放弃本次编辑",
+    "new_tab": "（新标签页）",
+    "nodes_failed": "无法加载可用的执行任务。",
+    "no_nodes": "没有可用的 L3 执行任务。请到执行计划配置项目和模块映射，并选择最末级执行任务。",
+    "node_unavailable": "所选执行任务已不可用。请检查映射与子节点，或重新选择。",
+    "open_plan": "打开执行计划",
+    "configure_node": "配置所选执行任务",
+    "open_issue_materials": "查看所选任务及材料",
+    "open_primary": "查看原主归属",
+    "use_current_source": "改用当前正式纪要",
+    "discard_stale": "放弃草稿并查看最新建议"
   },
   "meeting_actions": {
     "region": "会议行动事项",
@@ -954,5 +1013,25 @@
     "review_draft": "评审草稿（只读）",
     "review_draft_scope": "此草稿属于先前打开的评审安排，未转移到当前评审。",
     "previously_published": "曾发布"
+  },
+  "meeting_materials": {
+    "bind_directory": "填写目录路径",
+    "title": "会议材料",
+    "prepare": "准备会议材料",
+    "return_workflow": "返回工作流",
+    "issue_inputs": "纪要任务的输入",
+    "open_issue": "打开纪要任务补充说明或附件（新标签）",
+    "issue_hint": "在任务描述中补充执行说明，上传所需附件；准备完成后返回这里核对。",
+    "no_minutes_issue": "尚无可用的纪要任务，请先启用工作包或明确选择已有任务。",
+    "setup_issue": "设置纪要任务",
+    "notes": "会议说明",
+    "notes_hint": "记录供团队查看的议程、材料清单与缺口；给执行者的操作说明和附件请放在纪要任务中。",
+    "notes_changed": "编辑期间会议说明已被更新，请先核对最新内容再保存你的草稿。",
+    "latest_notes": "查看最新会议说明",
+    "keep_draft": "已核对，保留我的草稿",
+    "save_notes": "保存会议说明",
+    "directory_hint": "可绑定服务端可访问的既有目录，或创建会议目录。建目录不会上传文件、挂载共享盘或确认材料齐备。",
+    "related_hint": "下方任务可标记为会前准备、资料支持或参考。系统不会自动汇总所有关联任务的文件；需使用的输入请放入纪要任务的说明、附件或会议目录。",
+    "confirm_hint": "请人工核对纪要任务说明、附件和会议目录后再确认齐备；关联任务完成或目录建好不会自动确认。"
   }
 }

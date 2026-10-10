@@ -28,6 +28,7 @@ const node: CockpitNode = {
 function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
     node, parent: undefined, depth: 2, payments: [], links: [], meetings: [], isBranch: false,
+    section: "tasks", onSectionChange: vi.fn(),
     statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [],
     vendorSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
@@ -49,6 +50,14 @@ async function openConfirmation(branch = false) {
 }
 
 describe("CockpitNodePanel", () => {
+  it("opens the URL-selected repair section and exposes a return to the task list", () => {
+    const { props } = setup({ section: "details", taskWorkspace: <p>Task workspace</p>, binding: <p>Repair binding here</p> });
+    expect(screen.getByText("Repair binding here")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Plan details" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+    expect(props.onSectionChange).toHaveBeenCalledWith("tasks");
+    expect(props.onPatch).not.toHaveBeenCalled();
+  });
   it("asks for confirmation and awaits server success before closing", async () => {
     let resolve!: () => void;
     const { props } = setup({ onDelete: vi.fn(() => new Promise<void>((done) => { resolve = done; })) });

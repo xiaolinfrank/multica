@@ -13,7 +13,7 @@ import enIssues from "../../locales/en/issues.json";
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitNodeTasks: vi.fn(), listIssueStatuses: vi.fn(), createCockpitNodeTask: vi.fn(), getCockpitPrimaryNode: vi.fn(), setCockpitPrimaryNode: vi.fn(), searchIssues: vi.fn(),
 } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
 vi.mock("../../issues/components/pickers/assignee-picker", () => ({ AssigneePicker: () => <button type="button">Assignee picker</button> }));
 
@@ -36,6 +36,18 @@ beforeEach(() => {
 });
 
 describe("bounded L3 task workbench", () => {
+  it("explains a missing binding and links directly to its repair without enabling issue creation", async () => {
+    vi.mocked(api.getCockpitNodeTasks).mockResolvedValue(compactPage({
+      eligibility: { eligible: false, reason: "module_binding_required", project_id: null, module_id: null },
+    }));
+    setup();
+    expect(await screen.findByText("Bind a project and module on parent rows before creating or assigning issues here.")).toBeInTheDocument();
+    expect(screen.queryByText("module_binding_required")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open plan details and binding" }))
+      .toHaveAttribute("href", "/ws/cockpit?node=node-1&node_view=details");
+    expect(screen.getByRole("button", { name: "Create issue" })).toBeDisabled();
+    expect(api.createCockpitNodeTask).not.toHaveBeenCalled();
+  });
   it("clears the default open category and cursor when a specific completed status is selected", async () => {
     setup();
     const user = userEvent.setup();

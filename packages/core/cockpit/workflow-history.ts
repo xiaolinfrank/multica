@@ -20,10 +20,11 @@ export function cockpitWorkflowSummaryActions(workflow: CockpitMeetingWorkflowSu
   const valid = workflow.enabled && validCockpitWorkflowSummary(workflow);
   const validVersion = cockpitWorkflowVersionMatches(workflow, current);
   const canManage = Boolean(valid && userId && workflow.can_manage);
+  const hasExecutor = Boolean(workflow.minutes_issue?.assignee_id && ["member", "agent", "squad"].includes(workflow.minutes_issue.assignee_type));
   const isWriter = workflow.minutes_issue?.assignee_type === "member" && workflow.minutes_issue.assignee_id === userId;
-  return { current, valid, canManage,
+  return { current, valid, canManage, hasExecutor,
     canReassignReviewer: Boolean(canManage && workflow.can_reassign_reviewer && (!current || (validVersion && ["pending", "approved", "changes_requested", "rejected"].includes(current.decision)))),
-    canRelease: Boolean(canManage && workflow.ended_at && workflow.materials_ready && !workflow.released_at && workflow.minutes_issue?.status === "backlog"),
+    canRelease: Boolean(canManage && hasExecutor && workflow.ended_at && workflow.materials_ready && !workflow.released_at && workflow.minutes_issue?.status === "backlog"),
     canSubmit: Boolean(valid && userId && workflow.can_submit && (canManage || isWriter) && workflow.released_at
       && (!current || (validVersion && ["approved", "changes_requested", "rejected"].includes(current.decision)))),
     canReview: Boolean(valid && validVersion && userId && workflow.can_review && current?.reviewer_id === userId && current.decision === "pending"),

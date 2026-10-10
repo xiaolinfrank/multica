@@ -588,6 +588,21 @@
     "save_failed": "Could not save purposes",
     "unconfirmed_save": "The server did not confirm this change. Refresh and check the server version before retrying."
   },
+  "import_recovery": {
+    "scan_failed": "Could not read the meeting folders. Check the connection, then scan again."
+  },
+  "task_recovery": {
+    "eligibility_module_required": "Bind a project and module on parent rows before creating or assigning issues here.",
+    "eligibility_binding_conflict": "The parent binding conflicts with its project or module. Review the plan details.",
+    "eligibility_structural": "This row represents a project or module. Open a child execution work item to manage its issues.",
+    "eligibility_not_leaf": "This row contains child work items. Manage issues on a leaf execution item.",
+    "eligibility_ancestry": "This item's parent chain is incomplete. Review its position in the execution plan.",
+    "open_plan_details": "Open plan details and binding",
+    "no_projects": "Create a project before configuring its plan binding.",
+    "open_projects": "Open projects in a new tab",
+    "no_modules": "This project has no modules. Add a module in the project before binding this row.",
+    "open_project": "Open project in a new tab"
+  },
   "binding": {
     "title": "Project and module binding",
     "inherited": "Inherited from {{label}}",
@@ -708,13 +723,43 @@
     "handoff_history_future": "Default reviewer for future submissions changed",
     "handoff_previous_issue": "Previous review issue",
     "handoff_replacement_issue": "Replacement review issue",
-    "handoff_stale": "The workflow changed while this dialog was open. Close and reopen it to review the latest responsibility before confirming."
+    "handoff_stale": "The workflow changed while this dialog was open. Close and reopen it to review the latest responsibility before confirming.",
+    "executor_required": "The minutes issue needs an assignee before it can start.",
+    "assign_executor": "Assign the minutes issue (new tab)",
+    "fix_issue_status": "Update the issue status (new tab)",
+    "manager_required": "Only a work-package manager can confirm readiness and start the issue. You can still prepare materials.",
+    "read_and_review": "Read and review minutes",
+    "revise_issue": "Revise the minutes issue (new tab)",
+    "publisher_required": "A work-package manager or this version’s reviewer must publish the approved version.",
+    "members_loading": "Workspace members are not available yet. Wait for them to load before choosing a reviewer.",
+    "no_reviewers": "No workspace member is available as a reviewer.",
+    "open_members": "Open workspace settings (new tab)"
   },
   "nas": {
+    "not_configured": "No permitted NAS destination is configured. A deployment administrator must configure this workspace’s export root; creating a meeting folder alone is not enough.",
+    "directory_missing": "Choose or prepare the meeting material folder before exporting to NAS.",
+    "outside_root": "The meeting folder is outside this workspace’s permitted NAS root. Check its location in materials.",
+    "configure_materials": "Configure meeting materials",
+    "deployment_help": "Deployment administrator instructions",
+    "deployment_roots": "Configure COCKPIT_NAS_EXPORT_ROOTS on the export server with one authorized root per workspace. Use the actual workspace UUID, a stable root UUID and an absolute path on that server.",
+    "deployment_identity": "The existing root must contain a .multica-root-id file whose text matches root_id. The application does not create the root or this identity marker.",
+    "deployment_access": "The backend service account needs access to the network mount and the existing meeting directory. The marker does not grant filesystem permissions. Only macOS and Linux export servers are supported. Keep allow_local=false for NAS; do not bypass the network mount check to address an unavailable share.",
+    "open_frozen_directory": "Open original export folder",
+    "copy_target": "Copy target path",
+    "target_copied": "Target path copied.",
+    "copy_failed": "Could not copy the path. Select and copy the full path above.",
+    "error_details": "Full error details",
+    "unsupported_storage": "The server or storage does not support a required safe file operation. Retrying alone will not fix it; ask the deployment administrator to check storage support.",
+    "permission_recovery": "Ask the directory administrator to check the backend service account’s access to the original folder. Your own ability to open it does not verify the server’s permissions.",
+    "conflict_recovery": "Open the original folder and ask its owner to inspect the existing target file. The export will not overwrite or delete it.",
+    "identity_recovery": "Ask the deployment administrator to verify the original root, identity marker and directory location. Moved or replaced directories are not accepted as the original destination.",
+    "mount_recovery": "Ask the deployment administrator to restore the original network mount on the export server before retrying. Opening it on your computer does not restore the server’s mount.",
+    "frozen_retry": "Retry keeps this operation’s original destination. Changing the meeting folder only affects a separately requested export.",
+    "retry_after_storage_fix": "Retry after storage support is fixed",
     "title": "NAS copies",
     "sync_on_publish": "Sync published minutes to NAS",
     "publish_queue_hint": "Publishing also queues this fixed version for NAS export. An offline share does not undo publication.",
-    "no_destination": "No permitted NAS destination is configured. You can publish now, then set the material folder in Links & materials and export later.",
+    "no_destination": "The NAS destination is unavailable. You can publish the platform version without a NAS copy.",
     "destination_changed": "The NAS destination changed. Review the updated destination or uncheck sync before publishing.",
     "use_updated_destination": "Use updated destination",
     "official_version": "Official minutes · version {{number}}",
@@ -736,6 +781,7 @@
     "attention_hint": "Check the reported connection, access or file conflict before retrying. The retry keeps this destination and preserves existing files."
   },
   "task_flow": {
+    "assignee_required": "Choose a person, agent or squad above before creating the issue.",
     "region": "L3 issues",
     "tasks_tab": "Tasks",
     "details_tab": "Plan details",
@@ -790,6 +836,19 @@
     "request_confirmed": "Request confirmed: {{name}}",
     "narrow_nodes": "{{count}} matching work items; showing {{shown}}. Refine your search to choose another.",
     "primary_changed": "Primary ownership changed. Select the issue again to review the latest scope before confirming."
+  },
+  "action_flow": {
+    "discard_edits": "Discard edits",
+    "new_tab": "(new tab)",
+    "nodes_failed": "Could not load eligible work items.",
+    "no_nodes": "No eligible L3 work item is available. Open the execution plan to configure project/module bindings and select an execution leaf.",
+    "node_unavailable": "The selected work item is no longer eligible. Check its bindings and child rows, or select another.",
+    "open_plan": "Open execution plan",
+    "configure_node": "Configure selected work item",
+    "open_issue_materials": "View selected issue and materials",
+    "open_primary": "View existing primary work item",
+    "use_current_source": "Use current published minutes",
+    "discard_stale": "Discard draft and review latest suggestion"
   },
   "meeting_actions": {
     "region": "Meeting actions",
@@ -954,5 +1013,25 @@
     "review_draft": "Review draft (read-only)",
     "review_draft_scope": "This draft belongs to the review assignment opened earlier. It has not been transferred to the current review.",
     "previously_published": "Previously published"
+  },
+  "meeting_materials": {
+    "bind_directory": "Enter folder path",
+    "title": "Meeting materials",
+    "prepare": "Prepare meeting materials",
+    "return_workflow": "Return to workflow",
+    "issue_inputs": "Inputs for the minutes issue",
+    "open_issue": "Open minutes issue to add notes or attachments (new tab)",
+    "issue_hint": "Add the required instructions and files to the issue description or its attachments. Return here after preparing them.",
+    "no_minutes_issue": "No minutes issue is available yet. Enable the work package or explicitly choose an existing issue first.",
+    "setup_issue": "Set up the minutes issue",
+    "notes": "Meeting notes",
+    "notes_hint": "Record the agenda, material list and gaps for the team. Put execution instructions and attachments in the minutes issue.",
+    "notes_changed": "These notes changed while you were editing. Compare the latest text before saving your draft.",
+    "latest_notes": "Read latest notes",
+    "keep_draft": "I reviewed the latest notes; keep my draft",
+    "save_notes": "Save meeting notes",
+    "directory_hint": "Bind an existing server-accessible directory or create the meeting directory. Directory creation does not upload files, mount a share or confirm that materials are ready.",
+    "related_hint": "Use the linked issues below for preparation, support and references. The minutes issue does not automatically collect every linked issue’s files; place required inputs in its description, attachments or the meeting directory.",
+    "confirm_hint": "Check the minutes issue’s instructions, attachments and meeting directory before confirming readiness. Linked issue completion and directory creation do not confirm it automatically."
   }
 }

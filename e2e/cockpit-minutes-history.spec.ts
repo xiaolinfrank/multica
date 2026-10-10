@@ -183,7 +183,7 @@ test("bounds long minutes history and keeps historical reading separate from cur
     assertMetadataOnly(summary);
     expect(summary.history_counts.versions).toBe(35);
 
-    await expect(page.getByRole("button", { name: "Read current minutes", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Read and review minutes", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Read published minutes", exact: true })).toBeVisible();
     expect(detailReads.size).toBe(0);
     expect(listReads).toEqual([]);
@@ -191,7 +191,7 @@ test("bounds long minutes history and keeps historical reading separate from cur
     const reviewDraft = "Compare the scope with the earlier evidence before confirming this review.";
     await test.step("load only a requested current or official document", async () => {
       const currentRead = workflowRead(page, meeting.id, `/versions/${versions.get(35)}`);
-      await page.getByRole("button", { name: "Read current minutes", exact: true }).click();
+      await page.getByRole("button", { name: "Read and review minutes", exact: true }).click();
       expect((await currentRead).status()).toBe(200);
       const current = page.getByRole("dialog", { name: "Minutes version 35", exact: true });
       await expect(current.getByText("HISTORY_BODY_0035", { exact: true })).toBeVisible();
@@ -251,7 +251,7 @@ test("bounds long minutes history and keeps historical reading separate from cur
       await expect(history.getByRole("button", { name: "Read version 1", exact: true })).toBeVisible();
       expect(detailReads.has(versions.get(36)!)).toBe(false);
       const newRead = workflowRead(page, meeting.id, `/versions/${versions.get(36)}`);
-      await page.getByRole("button", { name: "Read current minutes", exact: true }).click();
+      await page.getByRole("button", { name: "Read and review minutes", exact: true }).click();
       expect((await newRead).status()).toBe(200);
       const current = page.getByRole("dialog", { name: "Minutes version 36", exact: true });
       await expect(current.getByText("HISTORY_BODY_0036", { exact: true })).toBeVisible();

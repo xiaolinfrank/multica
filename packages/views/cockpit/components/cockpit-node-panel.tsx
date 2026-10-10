@@ -11,7 +11,7 @@ import type {
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import { useEffect, useRef, useState } from "react";
-import { cockpitMeetingSpan } from "@multica/core/cockpit";
+import { cockpitMeetingSpan, type CockpitNodeView } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -59,6 +59,8 @@ export interface CockpitNodePanelProps {
   onPatch: (patch: CockpitNodePatch) => void;
   binding?: React.ReactNode;
   taskWorkspace?: React.ReactNode;
+  section: CockpitNodeView;
+  onSectionChange: (section: CockpitNodeView) => void;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
   /** Localized destructive consequences, including descendants for a branch. */
@@ -95,6 +97,8 @@ export function CockpitNodePanel({
   onPatch,
   binding,
   taskWorkspace,
+  section,
+  onSectionChange,
   onDelete,
   deleteConfirmationDescription,
   depth,
@@ -115,7 +119,6 @@ export function CockpitNodePanel({
   const [deleteFailed, setDeleteFailed] = useState(false);
   const deletingRef = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const [section, setSection] = useState("tasks");
   const taskDetails = depth >= 2;
 
   useEffect(() => { closeButton.current?.focus(); }, [node.id]);
@@ -208,7 +211,7 @@ export function CockpitNodePanel({
         </button>
       </header>
 
-      <Tabs value={taskWorkspace ? section : "details"} onValueChange={(value) => { if (typeof value === "string") setSection(value); }} className="min-h-0 flex-1 gap-0">
+      <Tabs value={taskWorkspace ? section : "details"} onValueChange={(value) => { if (value === "tasks" || value === "details") onSectionChange(value); }} className="min-h-0 flex-1 gap-0">
         {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1">
           <TabsTrigger value="tasks">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger><TabsTrigger value="details">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
         </TabsList>}

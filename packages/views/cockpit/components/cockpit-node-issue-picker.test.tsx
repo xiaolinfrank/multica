@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -21,11 +21,15 @@ vi.mock("@multica/core/modules/queries", () => ({
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 
+const queryState = vi.hoisted(() => ({ isPending: false, isError: false, refetch: vi.fn() }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[0] === "board" ? board : modules,
+    isPending: queryState.isPending, isError: queryState.isError, isFetching: false, refetch: queryState.refetch,
   }),
 }));
+
+beforeEach(() => { queryState.isPending = false; queryState.isError = false; queryState.refetch.mockClear(); });
 
 function node(over: Partial<CockpitNode> & { id: string; code: string }): CockpitNode {
   return {
@@ -97,6 +101,27 @@ function renderPicker(props: Partial<React.ComponentProps<typeof CockpitNodeIssu
 }
 
 describe("CockpitNodeIssuePicker", () => {
+  it("keeps loading distinct from an empty eligible list", async () => {
+    queryState.isPending = true;
+    const user = userEvent.setup();
+    renderPicker();
+    await user.click(screen.getByRole("button", { name: /01\.01\.01 Ethics filing/ }));
+    expect(screen.getByRole("status")).toHaveTextContent(enCockpit.workflow.loading);
+    expect(screen.queryByText(enCockpit.node_picker.empty)).toBeNull();
+    expect(screen.queryByRole("button", { name: /01\.01\.02 Sample intake/ })).toBeNull();
+  });
+
+  it("offers retry instead of selecting stale candidates after a query failure", async () => {
+    queryState.isError = true;
+    const user = userEvent.setup();
+    renderPicker();
+    await user.click(screen.getByRole("button", { name: /01\.01\.01 Ethics filing/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent(enCockpit.action_flow.nodes_failed);
+    expect(screen.queryByRole("button", { name: /01\.01\.02 Sample intake/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: enCockpit.binding.retry }));
+    expect(queryState.refetch).toHaveBeenCalledTimes(2);
+  });
+
   it("offers only the rows the board can file an issue into", async () => {
     const user = userEvent.setup();
     renderPicker();

@@ -84,7 +84,7 @@ test("transfers a departed reviewer's pending responsibility without replacing t
     const reviewRead = reviewerPage.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/summary` && response.request().method() === "GET");
     await reviewerPage.goto(new URL(destination, page.url()).href, { waitUntil: "domcontentloaded" });
     expect((await reviewRead).status()).toBe(200);
-    await reviewerPage.getByRole("button", { name: "Read current minutes", exact: true }).click();
+    await reviewerPage.getByRole("button", { name: "Read and review minutes", exact: true }).click();
     await expect(reviewerPage.getByLabel("Review decision", { exact: true })).toBeVisible();
     await expect(reviewerPage.getByRole("button", { name: "Transfer review responsibility", exact: true })).toHaveCount(0);
     await reviewerPage.getByLabel("Review feedback", { exact: true }).fill("I reviewed the fixed evidence after handover.");

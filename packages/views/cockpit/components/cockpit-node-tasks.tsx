@@ -7,6 +7,7 @@ import {
   cockpitNodeTasksOptions, cockpitPrimaryNodeOptions, useCreateCockpitNodeTask, useSetCockpitPrimaryNode,
   clearCockpitActionCommand, rememberCockpitActionCommand, useCockpitActionCommandStore, CockpitUnconfirmedWriteError,
   cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore, useSetCockpitNodeIssues, useDeleteCockpitNodeIssue,
+  cockpitObjectPath,
 } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -107,6 +108,17 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
 
 export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: string; node: CockpitNode; userId: string; readOnly?: boolean }) {
   const { t } = useT("cockpit");
+  const paths = useWorkspacePaths();
+  const eligibilityReason = (reason: string) => {
+    switch (reason) {
+      case "module_binding_required": return t(($) => $.task_recovery.eligibility_module_required);
+      case "binding_conflict": return t(($) => $.task_recovery.eligibility_binding_conflict);
+      case "structural_node": return t(($) => $.task_recovery.eligibility_structural);
+      case "not_leaf": return t(($) => $.task_recovery.eligibility_not_leaf);
+      case "invalid_ancestry": return t(($) => $.task_recovery.eligibility_ancestry);
+      default: return t(($) => $.task_flow.ineligible);
+    }
+  };
   const label = useStatusLabel(wsId);
   const viewKey = cockpitTaskViewKey(wsId, "node", node.id);
   const view = useCockpitTaskViewStore((state) => state.views[viewKey] ?? EMPTY_COCKPIT_TASK_VIEW);
@@ -148,7 +160,12 @@ export function CockpitNodeTasks({ wsId, node, userId, readOnly }: { wsId: strin
     {query.isPending ? <div role="status" className="flex items-center gap-2 text-caption"><Spinner />{t(($) => $.workflow.loading)}</div>
       : query.isError || !data ? <div className="space-y-2"><CockpitFlowError onRetry={() => void query.refetch()} />
         {cursors.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => setPagination({ key: filterKey, cursors: [""] })}>{t(($) => $.task_flow.first_page)}</Button>}</div> : <>
-        {!data.eligibility.eligible && <p role="status" className="text-caption text-muted-foreground">{data.eligibility.reason || t(($) => $.task_flow.ineligible)}</p>}
+        {!data.eligibility.eligible && <div role="status" className="space-y-2 rounded-md bg-muted p-3 text-caption">
+          <p>{eligibilityReason(data.eligibility.reason)}</p>
+          <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, view: "details" })}
+            className="inline-flex rounded-sm font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
+            {t(($) => $.task_recovery.open_plan_details)}</AppLink>
+        </div>}
         <p className="text-caption text-muted-foreground">{relation === "primary" ? t(($) => $.task_flow.primary_hint, { total: data.total }) : t(($) => $.task_flow.reference_hint, { total: data.total })}</p>
         <div className="flex flex-wrap gap-1.5"><Button type="button" variant={category === "active" ? "secondary" : "outline"} size="sm" aria-pressed={category === "active"} onClick={() => { setCategory("active"); setStatus(""); }}>{t(($) => $.task_flow.active)} ({data.summary.total - data.summary.done - data.summary.closed})</Button>
           <Button type="button" variant={!category ? "secondary" : "outline"} size="sm" aria-pressed={!category} onClick={() => { setCategory(""); setStatus(""); }}>{t(($) => $.task_flow.all)} ({data.summary.total})</Button>

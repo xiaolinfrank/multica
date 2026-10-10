@@ -54,12 +54,14 @@ vi.mock("../../cockpit/components/cockpit-meeting-picker", async () => {
       onToggle,
       label,
       disabled,
+      lockedIds,
     }: {
       meetings: CockpitMeeting[];
       selectedIds: Set<string>;
       onToggle: (meetingId: string) => void;
       label: string;
       disabled?: boolean;
+      lockedIds?: ReadonlySet<string>;
     }) => (
       <div>
         <span data-testid="picker-label">{label}</span>
@@ -68,7 +70,7 @@ vi.mock("../../cockpit/components/cockpit-meeting-picker", async () => {
         <button
           type="button"
           data-testid="picker-toggle"
-          disabled={disabled}
+          disabled={disabled || lockedIds?.has("m3")}
           onClick={() => onToggle("m3")}
         >
           toggle m3
@@ -190,6 +192,23 @@ beforeEach(() => {
 });
 
 describe("CockpitMeetingsSection", () => {
+  it("protects required workflow associations at both unlink entries while manually assigned purposes remain removable", () => {
+    queryRef.current = { isLoading: false, data: makeBoard({ meeting_issues: [
+      { ...link("m3", "issue-1"), roles: ["review"], required_roles: ["review"] },
+      { ...link("m2", "issue-1"), roles: ["review"], required_roles: [] },
+    ] }) };
+    renderSection(<CockpitMeetingsSection issueId="issue-1" />);
+    const protectedRow = screen.getByRole("link", { name: "20260915-01 启动会" }).closest("li")!;
+    expect(protectedRow).toHaveTextContent("Managed by the meeting workflow");
+    expect(within(protectedRow).getByRole("button", { name: "Unlink 20260915-01 启动会" })).toBeDisabled();
+    expect(screen.getByTestId("picker-toggle")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("picker-toggle"));
+    expect(mutRef.unlink.mutate).not.toHaveBeenCalled();
+    expect(within(protectedRow).getByRole("link")).toHaveAttribute("href", "/acme/cockpit?meeting=m3");
+    fireEvent.click(screen.getByRole("button", { name: "Unlink 20260918-01 数据治理对接" }));
+    expect(mutRef.unlink.mutate).toHaveBeenCalledWith({ meetingId: "m2", issueId: "issue-1" }, expect.objectContaining({ onError: expect.any(Function) }));
+  });
+
   it("shows an accepted action source independently of editable reference meetings", () => {
     queryRef.sources = { issue_id: "issue-1", total: 1, next_cursor: null, items: [{ id: "action-1", meeting_id: "meeting-1", meeting_code: "M-01", meeting_title: "Delivery review", version_id: "v1", version_number: 1, title: "Verify interface" }] };
     renderSection(<CockpitMeetingsSection issueId="issue-1" />);

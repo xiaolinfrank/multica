@@ -13,6 +13,14 @@ function publishedSummary() {
 }
 
 describe("bounded workflow state", () => {
+  it("keeps a ready backlog minutes issue waiting until an executor is explicitly assigned", () => {
+    const summary = workflowSummaryFixture(workflowFixture({ ended_at: "2026-10-10T10:00:00Z", materials_ready: true }));
+    expect(cockpitWorkflowSummaryActions(summary, "reviewer-1").canRelease).toBe(true);
+    expect(cockpitWorkflowSummaryActions({ ...summary, minutes_issue: { ...summary.minutes_issue!, assignee_id: null } }, "reviewer-1"))
+      .toMatchObject({ hasExecutor: false, canRelease: false });
+    expect(cockpitWorkflowSummaryActions({ ...summary, minutes_issue: { ...summary.minutes_issue!, assignee_type: "future-kind" } }, "reviewer-1").canRelease).toBe(false);
+  });
+
   it("acknowledges same-revision retry no-ops only for already accepted execution states with the same frozen operation", () => {
     const summary = publishedSummary();
     const operation = { ...summary.published_nas_export, revision: 3, status: "retry_wait", can_retry: true };

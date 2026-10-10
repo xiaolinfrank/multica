@@ -85,6 +85,7 @@ export function CockpitMeetingImport({
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [withTask, setWithTask] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   // A fresh scan replaces what is on screen: the folders it found are the
   // folders that are there now, and a leftover edit against a folder that has
@@ -109,22 +110,25 @@ export function CockpitMeetingImport({
     setDrafts((current) => ({ ...current, [name]: { ...current[name], ...patch } }));
 
   const selected = fresh.filter((entry) => chosen[entry.name]);
+  const scanError = scan.isError || (!scan.isPending && !scan.data)
+    ? t(($) => $.import_recovery.scan_failed) : scan.data?.error ?? "";
 
   const submit = async () => {
-    if (submitting || selected.length === 0) return;
+    if (submitting || selected.length === 0 || scan.isFetching || scanError) return;
     setSubmitting(true);
+    setSubmitError("");
     try {
       await onSubmit(
         selected.map((entry) => ({ name: entry.name, ...drafts[entry.name] })),
         withTask,
       );
       onOpenChange(false);
+    } catch (cause) {
+      setSubmitError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
     } finally {
       setSubmitting(false);
     }
   };
-
-  const error = scan.data?.error ?? "";
 
   return (
     <Dialog open={open} onOpenChange={(next) => (submitting ? undefined : onOpenChange(next))}>
@@ -154,8 +158,8 @@ export function CockpitMeetingImport({
 
           {scan.isLoading ? (
             <p className="text-caption text-muted-foreground">{common(($) => $.loading)}</p>
-          ) : error ? (
-            <p className="text-caption text-destructive">{error}</p>
+          ) : scanError ? (
+            <p role="alert" className="text-caption text-destructive">{scanError}</p>
           ) : fresh.length === 0 ? (
             <p className="text-caption text-muted-foreground">
               {t(($) => $.meetings.scan_empty, { matched: scan.data?.matched ?? 0 })}
@@ -266,12 +270,14 @@ export function CockpitMeetingImport({
           )}
         </div>
 
+        {submitError && <p role="alert" className="text-caption text-destructive">{submitError}</p>}
+
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
             {common(($) => $.cancel)}
           </Button>
           <Button
-            disabled={submitting || selected.length === 0}
+            disabled={submitting || selected.length === 0 || scan.isFetching || Boolean(scanError)}
             aria-busy={submitting}
             onClick={() => void submit()}
           >

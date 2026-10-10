@@ -22,6 +22,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     const workspace = await api.createWorkspace(`Meeting Workflow E2E ${run}`, `e2e-meeting-workflow-${run}`);
     ownsWorkspace = true;
     await api.markUserOnboarded();
+    await api.updateCockpitBoard({ title: "Programme delivery cockpit" });
     const project = await api.createProject("Meeting workflow project");
     const module = await api.createModule(project.id, "Minutes and review");
     const meeting = await api.createCockpitMeeting({
@@ -77,6 +78,71 @@ test("requires readiness and a human decision before publishing a fixed minutes 
         versions: [],
       });
       await page.screenshot({ path: testInfo.outputPath("work-package-waiting.png"), animations: "disabled" });
+    });
+
+    await test.step("prepare materials through their real destinations before confirming readiness", async () => {
+      const prepare = page.getByRole("link", { name: "Prepare meeting materials", exact: true });
+      const resourcesPath = `${destination}&meeting_view=resources`;
+      const workflowPath = `${destination}&meeting_view=workflow`;
+      const writes: string[] = [];
+      const watchWrites = (request: import("@playwright/test").Request) => {
+        if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith(`/api/cockpit/meetings/${meeting.id}/workflow`)) {
+          writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+        }
+      };
+      page.on("request", watchWrites);
+      await expect(prepare).toHaveAttribute("href", resourcesPath);
+      await prepare.click();
+      await expect(page).toHaveURL(resourcesPath);
+      const materials = page.getByRole("region", { name: "Meeting materials", exact: true });
+      const notes = materials.getByRole("textbox", { name: "Meeting notes", exact: true });
+      await expect(materials).toBeVisible();
+      const note = "Evidence prepared: delivery checklist and boundary questions for the human review.";
+      await notes.fill(note);
+      await materials.getByRole("link", { name: "Return to workflow", exact: true }).click();
+      await expect(page).toHaveURL(workflowPath);
+      await expect(page.getByRole("checkbox", { name: "Materials ready", exact: true })).not.toBeChecked();
+      await prepare.click();
+      await expect(notes).toHaveValue(note);
+
+      const workflow = await api.getMeetingWorkflow(meeting.id);
+      const issue = workflow.minutes_issue!;
+      const issueLink = materials.getByRole("link", { name: "Open minutes issue to add notes or attachments (new tab)", exact: true });
+      await expect(issueLink).toHaveAttribute("href", `/${workspace.slug}/issues/${issue.id}`);
+      await expect(issueLink).toHaveAttribute("target", "_blank");
+      const popupReady = page.waitForEvent("popup");
+      await issueLink.click();
+      const issuePage = await popupReady;
+      await expect(issuePage).toHaveURL(`/${workspace.slug}/issues/${encodeURIComponent(issue.identifier)}`);
+      await expect(issuePage.getByText(issue.title, { exact: true }).first()).toBeVisible();
+      await expect(issuePage.getByText("Properties", { exact: true })).toBeVisible();
+      await issuePage.close();
+      await expect(notes).toHaveValue(note);
+      expect(writes).toEqual([]);
+
+      const saved = page.waitForResponse((response) => response.request().method() === "PATCH"
+        && new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}`
+        && response.request().postDataJSON()?.note === note);
+      await materials.getByRole("button", { name: "Save meeting notes", exact: true }).click();
+      expect((await saved).status()).toBe(200);
+      await expect(materials.getByRole("button", { name: "Save meeting notes", exact: true })).toBeDisabled();
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page).toHaveURL(resourcesPath);
+      await expect(notes).toHaveValue(note);
+      await page.screenshot({ path: testInfo.outputPath("meeting-materials-prepared.png"), animations: "disabled" });
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await expect(issueLink).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath("meeting-materials-narrow.png"), animations: "disabled" });
+      await page.setViewportSize({ width: 1600, height: 1050 });
+      await materials.getByRole("link", { name: "Return to workflow", exact: true }).click();
+      await expect(page).toHaveURL(workflowPath);
+      await expect(page.getByRole("checkbox", { name: "Materials ready", exact: true })).not.toBeChecked();
+      expect(await api.getMeetingWorkflow(meeting.id)).toMatchObject({ materials_ready: false, released_at: null,
+        minutes_issue: { status: "backlog" } });
+      expect(writes).toEqual([]);
+      expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+      page.off("request", watchWrites);
     });
 
     await test.step("record both facts, then explicitly release the member task", async () => {
@@ -146,7 +212,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     });
 
     await test.step("approve as the bound reviewer, then explicitly publish and retain the version", async () => {
-      await page.getByRole("button", { name: "Read current minutes", exact: true }).click();
+      await page.getByRole("button", { name: "Read and review minutes", exact: true }).click();
       await page.getByLabel("Review decision", { exact: true }).click();
       await page.getByRole("option", { name: "Approve", exact: true }).click();
       await page.getByLabel("Review feedback", { exact: true }).fill("Checked the recorded decision against the meeting evidence.");
@@ -184,6 +250,10 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath("minutes-workbench-narrow.png"), animations: "disabled" });
     });
+  } catch (error) {
+    await page.screenshot({ path: testInfo.outputPath("failure-before-cleanup.png"), animations: "disabled" }).catch(() => {});
+    await testInfo.attach("failure-before-cleanup", { body: await page.locator("body").innerText(), contentType: "text/plain" }).catch(() => {});
+    throw error;
   } finally {
     if (ownsWorkspace) await api.cleanupCreatedWorkspace();
   }

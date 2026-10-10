@@ -382,6 +382,32 @@ export function useDeleteCockpitDirectoryEntry(wsId: string) {
   });
 }
 
+/** Material editors keep their own drafts until a confirmed response; never publish an optimistic acknowledgement. */
+export function useSaveCockpitMeetingMaterials(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Pick<CockpitMeetingPatch, "note" | "nas_dir"> }) => {
+      const fields = { ...(patch.note !== undefined ? { note: patch.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: patch.nas_dir } : {}) };
+      if (fields.note === undefined && fields.nas_dir === undefined) throw new CockpitUnconfirmedWriteError();
+      const meeting = await api.updateCockpitMeeting(id, fields);
+      if (meeting.id !== id || (fields.note !== undefined && meeting.note !== fields.note)
+        || (fields.nas_dir !== undefined && meeting.nas_dir !== fields.nas_dir)) throw new CockpitUnconfirmedWriteError();
+      return meeting;
+    },
+    onSuccess: (meeting, { id, patch }) => {
+      // A parallel field edit or deletion must survive this response's older, otherwise unrelated fields.
+      patchCockpitBoard(queryClient, wsId, (board) => ({ ...board, meetings: board.meetings.map((current) => current.id === id
+        ? { ...current, ...(patch.note !== undefined ? { note: meeting.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: meeting.nas_dir } : {}) }
+        : current) }));
+    },
+    onSettled: (_meeting, _error, { id, patch }) => {
+      // A later response to an earlier same-field save must converge on current server state.
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId), exact: true });
+      if (patch.nas_dir !== undefined) void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+    },
+  });
+}
+
 export function useUpdateCockpitMeeting(wsId: string) {
   const queryClient = useQueryClient();
   return useCockpitRowMutation(

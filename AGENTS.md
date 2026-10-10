@@ -115,6 +115,7 @@ Workspace-scoped queries filter by `workspace_id`; membership gates access and `
 - For `pnpm ui:add @reui/<name>`, decline overwrite prompts. Keep `REUI_LICENSE_KEY` in the environment, never in repo files. Adapt vendored primitives into `packages/ui/components/ui/` and compositions into `packages/views/`.
 - Use shared semantic tokens in `packages/ui/styles/`. Typography uses the role-named `--text-*` scale in `packages/ui/styles/tokens.css`, not Tailwind's default size ramp.
 - Selected states remain identifiable on hover. Handle overflow, long text, and scrolling deliberately; avoid unnecessary local state and dividers.
+- Readiness requirements and blocked actions must expose their reason and an adjacent way to inspect or satisfy the prerequisite. For work outside the UI, identify the responsible role and location. Preserve drafts and return context when opening a repair destination; label human confirmation separately from system verification.
 - For new or expanded views of growing business collections (issues, actions, artifacts, history, and resource pickers), bound server reads and provide search, filters, and pagination or incremental loading. CSS clipping and client-side slicing alone are not data bounds. Keep full-scope counts separate from page counts, preserve return context, and keep navigation controls reachable with long titles and narrow layouts.
 
 ## Testing

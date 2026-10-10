@@ -8,6 +8,7 @@ import {
   setCockpitReviewerHandoffDraft, useCockpitReviewerHandoffDraftStore, useReassignCockpitMeetingReviewer,
 } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflowSummary, MemberWithUser } from "@multica/core/types";
+import { useWorkspacePaths } from "@multica/core/paths";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -16,6 +17,8 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useT } from "../../i18n";
+import { AppLink } from "../../navigation";
+import { settingsHref } from "../../settings/components/settings-navigation";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 
 export function CockpitReviewerHandoffControl({ wsId, workflow, members, membersLoaded, canTransfer, disabled, onReload }: {
@@ -28,6 +31,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
   onReload: () => void;
 }) {
   const { t } = useT("cockpit");
+  const paths = useWorkspacePaths();
   const id = useId();
   const [open, setOpen] = useState(false);
   const [observedRevision, setObservedRevision] = useState<number | null>(null);
@@ -91,7 +95,8 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
         })}</p> : <CockpitReviewerSelect members={candidates} value={draft.reviewer_id}
           label={t(($) => $.workflow.handoff_new_reviewer)} disabled={busy || !canTransfer || !membersLoaded}
           onChange={(reviewer_id) => setCockpitReviewerHandoffDraft(meetingId, { reviewer_id })} />}
-        {!draft.pending && membersLoaded && candidates.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_no_candidates)}</p>}
+        {!draft.pending && membersLoaded && candidates.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_no_candidates)}{" "}
+          <AppLink href={settingsHref(paths.settings(), new URLSearchParams(), "members")} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.open_members)}</AppLink></p>}
         <div className="space-y-1"><label htmlFor={`${id}-reason`} className="text-caption">{t(($) => $.workflow.handoff_reason)}</label>
           <Textarea id={`${id}-reason`} value={draft.reason} required rows={3} disabled={busy || Boolean(draft.pending) || !canTransfer}
             onChange={(event) => setCockpitReviewerHandoffDraft(meetingId, { reason: event.target.value })} />

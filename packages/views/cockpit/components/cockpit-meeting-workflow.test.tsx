@@ -22,8 +22,8 @@ vi.mock("@multica/core/api", async (importOriginal) => ({
     listCockpitMeetingActions: vi.fn(), listIssueStatuses: vi.fn(),
   },
 }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
-vi.mock("../../navigation", () => ({ useNavigation: () => ({ searchParams: new URLSearchParams() }), AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}`, projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
+vi.mock("../../navigation", () => ({ useNavigation: () => ({ searchParams: new URLSearchParams() }), AppLink: ({ href, target, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} target={target}>{children}</a> }));
 vi.mock("../../issues/components/status-icon", () => ({ StatusIcon: () => <span /> }));
 vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id === "reviewer-1" ? "Human Reviewer" : "Minutes Writer" }) }));
 vi.mock("../../issues/components/pickers/assignee-picker", () => ({ AssigneePicker: () => <button type="button">Minutes assignee picker</button> }));
@@ -41,7 +41,7 @@ function Harness() {
   const query = useQuery(cockpitMeetingWorkflowOptions("ws-1", WORKFLOW_MEETING_ID));
   return <CockpitMeetingWorkflowPanel wsId="ws-1" meetingId={WORKFLOW_MEETING_ID} currentUserId={currentUserId} readOnly={readOnly}
     members={knownMembers} membersLoaded={membersLoaded} issueLinks={links} workflow={query.data} loading={query.isPending} loadError={query.isError}
-    onReload={() => void query.refetch()} defaultPlacement={placement}
+    onReload={() => void query.refetch()} resourcesHref="/ws/cockpit?meeting=10000000-0000-4000-8000-000000000001&meeting_view=resources" defaultPlacement={placement}
     defaultAssigneeType="member" defaultAssigneeId="reviewer-1" />;
 }
 function setup() {
@@ -51,7 +51,7 @@ function setup() {
 }
 
 async function openCurrentMinutes() {
-  fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Read (current|and review) minutes/ }));
   const dialog = await screen.findByRole("dialog", { name: /Minutes version/ });
   await within(dialog).findByText(server.versions.find((version) => version.id === server.current_version_id)?.content || "Fixed minutes text", { exact: false });
   return dialog;
@@ -157,6 +157,17 @@ beforeEach(() => {
 });
 
 describe("meeting work package workflow", () => {
+  it("makes readiness prerequisites actionable without dispatching an unassigned minutes issue", async () => {
+    const ready = workflowFixture({ ended_at: "2026-10-10T10:00:00Z", materials_ready: true });
+    server = { ...ready, minutes_issue: { ...ready.minutes_issue!, assignee_type: "", assignee_id: null } };
+    setup();
+    expect(await screen.findByRole("button", { name: "Start minutes issue" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Assign the minutes issue (new tab)" })).toHaveAttribute("href", "/ws/issues/minutes-1");
+    expect(screen.getByRole("link", { name: "Assign the minutes issue (new tab)" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Prepare meeting materials" })).toHaveAttribute("href", expect.stringContaining("meeting_view=resources"));
+    expect(api.releaseCockpitMeetingWorkflow).not.toHaveBeenCalled();
+  });
+
   it("keeps a document with an unfamiliar formal outcome read-only even if its capability flag is true", async () => {
     const version = versionFixture();
     server = workflowFixture({ current_version_id: version.id, versions: [version] });
@@ -191,7 +202,7 @@ describe("meeting work package workflow", () => {
       published_at: index < 34 ? "2026-10-10T10:00:00Z" : null }));
     server = workflowFixture({ current_version_id: "v35", published_version_id: "v34", versions });
     const { client } = setup();
-    await screen.findByRole("button", { name: "Read current minutes" });
+    await screen.findByRole("button", { name: /Read (current|and review) minutes/ });
     expect(api.getCockpitMinutesVersion).not.toHaveBeenCalled();
     expect(api.getCockpitMinutesVersions).not.toHaveBeenCalled();
     expect(api.getCockpitReviewerHandoffs).not.toHaveBeenCalled();
@@ -226,7 +237,7 @@ describe("meeting work package workflow", () => {
     let finish!: (value: Awaited<ReturnType<typeof api.getCockpitMinutesVersion>>) => void;
     vi.mocked(api.getCockpitMinutesVersion).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     const { client } = setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Read (current|and review) minutes/ }));
     const reader = await screen.findByRole("dialog", { name: "Minutes version 1" });
     expect(within(reader).queryByRole("button", { name: "Submit review" })).toBeNull();
     await act(async () => finish({ workspace_id: "ws-1", meeting_id: WORKFLOW_MEETING_ID, workflow_revision: 1, version,
@@ -432,7 +443,7 @@ describe("meeting work package workflow", () => {
     server = workflowFixture({ current_version_id: current.id, versions: [current, previous] });
     setup();
     expect(api.getCockpitMinutesVersion).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Read (current|and review) minutes/ }));
     expect(await screen.findByRole("heading", { name: "Current meeting minutes" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Version history (2)" }));

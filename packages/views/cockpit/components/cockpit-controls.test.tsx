@@ -1,3 +1,4 @@
+import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import userEvent from "@testing-library/user-event";
@@ -19,22 +20,14 @@ vi.mock("@multica/core/hooks", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
+    cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings", issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
   }),
 }));
 
-vi.mock("../../navigation", () => ({
-  useNavigation: () => ({
-    push: vi.fn(),
-    replace: vi.fn(),
-    back: vi.fn(),
-    pathname: "/ws/cockpit",
-    searchParams: new URLSearchParams(),
-  }),
-  AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("../../navigation", async () => {
+  const fixture = await import("./cockpit-navigation-test-fixture");
+  return { useNavigation: fixture.useCockpitTestNavigation, AppLink: fixture.CockpitTestLink };
+});
 
 vi.mock("@multica/core/api", () => ({
   api: {
@@ -225,6 +218,7 @@ function renderPage() {
 
 describe("Cockpit controls regressions", () => {
   beforeEach(() => {
+    resetCockpitTestNavigation();
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));

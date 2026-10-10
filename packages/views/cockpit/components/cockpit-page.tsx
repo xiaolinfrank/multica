@@ -74,6 +74,7 @@ import {
   useSetCockpitNodeBinding,
   useUpdateCockpit,
   useUpdateCockpitMeeting,
+  useSaveCockpitMeetingMaterials,
   cockpitDirectoryOptions,
   useDeleteCockpitDirectoryEntry,
   useUpsertCockpitDirectory,
@@ -338,6 +339,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const deleteMilestone = useDeleteCockpitMilestone(wsId);
   const createMeeting = useCreateCockpitMeeting(wsId);
   const updateMeeting = useUpdateCockpitMeeting(wsId);
+  const saveMeetingMaterials = useSaveCockpitMeetingMaterials(wsId);
   const deleteMeeting = useDeleteCockpitMeeting(wsId);
   const provisionMeeting = useProvisionCockpitMeeting(wsId);
   const enableMeetingWorkflow = useEnableCockpitMeetingWorkflow(wsId);
@@ -753,17 +755,18 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     [t],
   );
 
-  const provisionSelectedMeeting = useCallback(
-    (meetingId: string, parts: { task?: boolean; dir?: boolean }) => {
-      provisionMeeting.mutate(
-        {
-          id: meetingId,
-          body: { create_task: false, create_dir: parts.dir === true, remember: true },
-        },
-        { onSuccess: reportProvision, onError: fail },
-      );
+  const prepareMeetingDirectory = useCallback(
+    async (meetingId: string) => {
+      const result = await provisionMeeting.mutateAsync({
+        id: meetingId,
+        body: { create_task: false, create_dir: true, remember: true },
+      });
+      if (result.dir_error) throw new Error(result.dir_error);
+      if (result.meeting?.id !== meetingId || !result.meeting.nas_dir?.trim()) {
+        throw new Error(t(($) => $.workflow.unconfirmed));
+      }
     },
-    [provisionMeeting, reportProvision, fail],
+    [provisionMeeting, t],
   );
 
   /** Files a meeting: the row first, then whatever the form asked for on top
@@ -938,6 +941,9 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
       module_id: filing.module_id,
     };
   }, [selected, displayCodes, nodeLabels, modules, nodeById]);
+  const showTaskWorkspace = Boolean(selected && !selected.project_id && !selected.module_id
+    && (selectedFiling || (selectedEntry?.depth ?? 0) >= 2)
+    && !nodes.some((node) => node.parent_id === selected.id));
 
   if (boardError && !board) {
     return <div className="cockpit-skin flex flex-col items-start gap-3 p-4" role="alert">
@@ -1225,7 +1231,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         {/* Keyed on the tab so each switch replays the short entrance on the
             fresh body — the chrome stays put, the content arrives. */}
         <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeeting && "max-xl:hidden",
-          tab !== "meetings" && selected && selectedFiling && !nodes.some((node) => node.parent_id === selected.id) && "max-xl:hidden")}>
+          tab !== "meetings" && showTaskWorkspace && "max-xl:hidden")}>
           {tab === "overview" && (
             <div className="min-h-0 flex-1 overflow-y-auto">
               {onWorkOverview && <div className="flex flex-wrap gap-1 border-b border-border px-4 py-2">
@@ -1357,8 +1363,10 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             }
             onToggleNode={(nodeId) => toggleMeetingNode(selectedMeeting.id, nodeId)}
             onOpenNode={openTask}
-            onProvision={(parts) => provisionSelectedMeeting(selectedMeeting.id, parts)}
-            provisioning={provisionMeeting.isPending}
+            onSaveMaterialPatch={async (patch) => {
+              await saveMeetingMaterials.mutateAsync({ id: selectedMeeting.id, patch });
+            }}
+            onPrepareDirectory={() => prepareMeetingDirectory(selectedMeeting.id)}
           />
         )}
 
@@ -1366,7 +1374,9 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           <CockpitNodePanel
             key={selected.id}
             node={selected}
-            taskWorkspace={selectedFiling && !nodes.some((node) => node.parent_id === selected.id)
+            section={destination.nodeId === selected.id ? destination.nodeView ?? "tasks" : "tasks"}
+            onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: selected.id, view }))}
+            taskWorkspace={showTaskWorkspace
               ? <CockpitNodeTasks wsId={wsId} node={selected} userId={currentUserId} /> : undefined}
             binding={<CockpitNodeBindingField node={selected} nodes={nodeById} modules={modules ?? []}
               modulesLoading={modulesLoading} modulesError={modulesError} onRetryModules={() => void reloadModules()}

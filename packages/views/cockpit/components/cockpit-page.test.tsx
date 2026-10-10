@@ -1,3 +1,4 @@
+import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -21,25 +22,18 @@ vi.mock("@multica/core/hooks", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
-    issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
+    cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings", issueDetail: (id: string) => `/ws/issues/${id}`, memberDetail: (id: string) => `/ws/members/${id}`, agentDetail: (id: string) => `/ws/agents/${id}`, squadDetail: (id: string) => `/ws/squads/${id}`,
   }),
 }));
 
 // Mutable so a test can arm a `?meeting=` deep link before rendering.
 const navSearch = vi.hoisted(() => ({ params: new URLSearchParams(), push: vi.fn() }));
 
-vi.mock("../../navigation", () => ({
-  useNavigation: () => ({
-    push: navSearch.push,
-    replace: vi.fn(),
-    back: vi.fn(),
-    pathname: "/ws/cockpit",
-    searchParams: navSearch.params,
-  }),
-  AppLink: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("../../navigation", async () => {
+  const fixture = await import("./cockpit-navigation-test-fixture");
+  return { useNavigation: () => { const navigation = fixture.useCockpitTestNavigation();
+    return { ...navigation, push: (href: string) => { navSearch.push(href); navigation.push(href); } }; }, AppLink: fixture.CockpitTestLink };
+});
 
 vi.mock("@multica/core/api", () => ({
   api: {
@@ -237,11 +231,12 @@ const board: CockpitBoard = {
   meeting_nodes: [],
 };
 
-// Detailed fields belong to a genuine depth-two task; keep its fixture index.
-function useDetailedBoard() {
+// Keep the selected fixture index; legacy reference controls belong to grouping rows.
+function useDetailedBoard(legacyGroup = false) {
   const detailed = structuredClone(board);
   detailed.nodes[1]!.parent_id = "module";
   detailed.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", name: "Governance" }));
+  if (legacyGroup) detailed.nodes.push(node({ id: "agreement-detail", code: "detail", parent_id: "task", name: "Agreement detail" }));
   vi.mocked(api.getCockpit).mockResolvedValue(detailed);
 }
 
@@ -260,6 +255,7 @@ describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
@@ -296,6 +292,7 @@ describe("CockpitPage", () => {
     // The graph's meeting nodes and the issue sidebar's linked-meetings rows
     // land here: meetings tab + this meeting's panel, once per URL value.
     navSearch.params = new URLSearchParams("meeting=meet-1");
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     const { findAllByText, findByRole } = renderPage();
     // The title shows in the register row AND the opened panel.
     await waitFor(async () => expect((await findAllByText("Working group weekly")).length).toBeGreaterThan(1));
@@ -304,6 +301,7 @@ describe("CockpitPage", () => {
 
   it("keeps a meeting destination in the URL when leaving the routed business view", async () => {
     navSearch.params = new URLSearchParams("view=operations");
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     renderPage({ onSelectTab: vi.fn(), onWorkOverview: vi.fn() });
     fireEvent.click(await screen.findByRole("button", { name: "Open the meeting register" }));
     expect(navSearch.push).toHaveBeenLastCalledWith("/ws/cockpit?tab=meetings");
@@ -319,6 +317,7 @@ describe("CockpitPage", () => {
     // revealed — first paint folds every branch with children, so selecting
     // without unfolding never shows the row (the pre-fix behavior).
     navSearch.params = new URLSearchParams("node=task");
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     renderPage();
     await waitFor(() =>
       expect(document.querySelector('[data-cockpit-node="task"]')).not.toBeNull(),
@@ -539,8 +538,8 @@ describe("CockpitPage", () => {
     await waitFor(() => expect(api.updateCockpitNode).toHaveBeenCalledWith("task", { owner: "Li" }));
   });
 
-  it("opens the node panel from the gantt and shows the fields the row has no room for", async () => {
-    useDetailedBoard();
+  it("opens a grouping panel and preserves its detailed fields and legacy reference chips", async () => {
+    useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
@@ -553,7 +552,7 @@ describe("CockpitPage", () => {
     expect(screen.getAllByText("BIO-314").length).toBeGreaterThan(0);
   });
 
-  it("searches issues and links the picked one alongside the existing links", async () => {
+  it("searches and appends a legacy reference on a grouping without replacing its existing links", async () => {
     vi.mocked(api.searchIssues).mockResolvedValue({
       issues: [
         {
@@ -566,7 +565,7 @@ describe("CockpitPage", () => {
     });
     vi.mocked(api.setCockpitNodeIssues).mockResolvedValue({ node_id: "task", links: [] });
 
-    useDetailedBoard();
+    useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Gantt" }));
     fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
@@ -842,6 +841,7 @@ describe("CockpitPage detail tables", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
@@ -910,6 +910,7 @@ describe("CockpitPage versions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
