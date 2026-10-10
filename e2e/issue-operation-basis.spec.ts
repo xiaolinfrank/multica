@@ -34,9 +34,10 @@ test("repairs primary scope and keeps formal review actions in their workbench, 
     const cleared = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/issues/${ordinary.id}/primary-node` && response.request().method() === "PUT");
     await clearing.getByRole("button", { name: "Confirm clearing", exact: true }).click();
     expect((await cleared).status()).toBe(200); await expect(clearing).not.toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: project.title, exact: true }).click();
-    await page.getByRole("button", { name: otherProject.title, exact: true }).click();
+    await expect(page.getByText("Manage the primary work-item relationship before changing this scope.", { exact: true })).not.toBeVisible();
+    const nextProject = page.getByRole("button", { name: otherProject.title, exact: true });
+    if (!await nextProject.isVisible()) await page.getByRole("button", { name: project.title, exact: true }).click();
+    await nextProject.click();
     await expect.poll(async () => (await api.getIssue(ordinary.id)).project_id).toBe(otherProject.id);
     await page.getByRole("button", { name: "No module", exact: true }).click();
     await page.getByRole("button", { name: otherModule.title, exact: true }).click();
@@ -58,7 +59,7 @@ test("repairs primary scope and keeps formal review actions in their workbench, 
     await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Issue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Relations", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Mark as duplicate", exact: true })).toBeDisabled();
+    await expect(page.getByRole("menuitem", { name: "Mark as duplicate...", exact: true })).toBeDisabled();
     await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Issue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Assignee", exact: true }).click();
@@ -121,7 +122,7 @@ test("reports a real per-item revision conflict without clearing the remaining s
     expect(receipt.results.map((item: { outcome: string }) => item.outcome)).toEqual(["applied", "rejected", "not_attempted"]);
     const result = page.getByRole("region", { name: "Operation results", exact: true });
     await expect(result).toContainText("1 applied · 2 not applied · 0 unconfirmed");
-    await expect(result).toContainText("The issue or comment changed.");
+    await expect(result).toContainText("This issue has changed.");
     await expect(page.getByRole("dialog", { name: "Operation results", exact: true })).toContainText("Status · Done");
     expect((await api.getIssue(submittedIds[0]!)).status).toBe("done"); expect((await api.getIssue(submittedIds[1]!)).status).toBe("todo"); expect((await api.getIssue(submittedIds[2]!)).status).toBe("todo");
     await page.screenshot({ path: testInfo.outputPath("issue-batch-real-conflict.png"), animations: "disabled" });

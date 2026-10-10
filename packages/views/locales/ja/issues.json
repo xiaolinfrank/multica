@@ -1,5 +1,6 @@
 {
   "operation_basis": {
+    "revision_conflict": "このタスクは変更されています。タスクを開いて最新の内容を確認してから、新しい操作を選択してください。",
     "open_formal": "正式なレビューを開く",
     "retained_history": "このタスクは保持が必要な履歴記録に含まれています。",
     "formal_required": "この変更は正式なレビュー画面で行ってください。",

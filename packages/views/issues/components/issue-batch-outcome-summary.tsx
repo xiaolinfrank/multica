@@ -28,7 +28,7 @@ export function IssueBatchOutcomeSummary({ wsId, submittedIds, receipt, issues =
   };
   const receiptReason = (code: string) => {
     switch (code) {
-      case "revision_conflict": return t(($) => $.revision.conflict);
+      case "revision_conflict": return t(($) => $.operation_basis.revision_conflict);
       case "not_found": case "issue_not_found": case "issue_unavailable": return t(($) => $.operation_basis.unavailable);
       case "formal_review_required": return t(($) => $.operation_basis.formal_required);
       case "retained_artifact_scope": return t(($) => $.operation_basis.retained_scope);

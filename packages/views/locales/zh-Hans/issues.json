@@ -1,5 +1,6 @@
 {
   "operation_basis": {
+    "revision_conflict": "此任务已发生变化。打开任务核对最新内容后，再决定新的操作。",
     "open_formal": "打开正式评审",
     "retained_history": "此任务已纳入需要保留的历史记录。",
     "formal_required": "请在正式评审工作台中处理此项修改。",

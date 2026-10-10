@@ -61,7 +61,7 @@ describe("batch operation acknowledgement", () => {
     await userEvent.click(screen.getByRole("button", { name: "Choose Done" }));
     expect(await screen.findByRole("region", { name: "Operation results" })).toHaveTextContent("1 applied · 2 not applied · 0 unconfirmed");
     expect(screen.getByText("Rejected")).toBeVisible(); expect(screen.getByText("Not attempted")).toBeVisible();
-    expect(screen.getByText(enIssues.revision.conflict)).toBeVisible();
+    expect(screen.getByText(enIssues.operation_basis.revision_conflict)).toBeVisible();
     expect(selected.deselect).toHaveBeenCalledExactlyOnceWith(["a"]); expect(selected.clear).not.toHaveBeenCalled();
     expect(screen.getByText("Status · Done")).toBeVisible(); expect(api.batchUpdateIssues).toHaveBeenCalledTimes(1);
   });

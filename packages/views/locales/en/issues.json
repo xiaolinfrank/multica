@@ -1,5 +1,6 @@
 {
   "operation_basis": {
+    "revision_conflict": "This issue has changed. Open it to check the latest content before choosing a new action.",
     "open_formal": "Open formal review",
     "retained_history": "This issue is part of historical records that must be retained.",
     "formal_required": "Make this change in the formal review workbench.",
