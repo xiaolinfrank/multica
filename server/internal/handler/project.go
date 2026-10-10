@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/service"
 	"io"
 	"log/slog"
 	"net/http"
@@ -648,6 +649,11 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err := service.LockIssueHierarchyMutation(r.Context(), qtx, project.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock issue hierarchy")
+		return
+	}
+
 	if err := lockCockpitBindings(r.Context(), qtx, project.WorkspaceID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
 		return

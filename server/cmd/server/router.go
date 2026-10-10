@@ -2039,6 +2039,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateIssue)
 				r.Post("/quick-create", h.QuickCreateIssue)
 				r.Post("/preview-trigger", h.PreviewIssueTrigger)
+				r.Post("/operation-basis", h.ReadIssueOperationBasis)
 				r.Post("/batch-update", h.BatchUpdateIssues)
 				r.Post("/batch-delete", h.BatchDeleteIssues)
 				r.Route("/{id}", func(r chi.Router) {
@@ -2238,6 +2239,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/payments", h.ListCockpitNodePayments)
 					r.Get("/meetings", h.ListCockpitNodeMeetings)
 					r.Patch("/", h.UpdateCockpitNode)
+					r.Get("/operation-basis", h.GetNodeOperationBasis)
 					r.Delete("/", h.DeleteCockpitNode)
 					r.Put("/issues", h.SetCockpitNodeIssues)
 					r.Post("/issues", h.AppendCockpitNodeIssue)
@@ -2317,6 +2319,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.ListProjects)
 				r.Post("/", h.CreateProject)
 				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/operation-basis", h.GetProjectOperationBasis)
 					r.Get("/", h.GetProject)
 					r.Put("/", h.UpdateProject)
 					r.Delete("/", h.DeleteProject)
@@ -2335,6 +2338,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateModule)
 				r.Put("/reorder", h.ReorderModules)
 				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/operation-basis", h.GetModuleOperationBasis)
 					r.Get("/", h.GetModule)
 					r.Put("/", h.UpdateModule)
 					r.Delete("/", h.DeleteModule)

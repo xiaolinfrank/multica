@@ -194,22 +194,11 @@ func concurrentWriteAfterPointerCleared(t *testing.T, deleteOriginal bool) {
 		done <- testutil.Call(t, testHandler.UpdateIssue, updateIssueRequest(duplicate, body))
 	}()
 
-	waited := false
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-		var blocked bool
-		if err := testPool.QueryRow(ctx, `SELECT EXISTS (
-			SELECT 1 FROM pg_stat_activity
-			WHERE datname = current_database()
-			  AND wait_event_type = 'Lock'
-			  AND query LIKE '-- name: UpdateIssue :one%')`).Scan(&blocked); err != nil {
-			t.Fatal(err)
-		}
-		if blocked {
-			waited = true
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	// The canonical update now waits at LockIssueForDescriptionUpdate before
+	// the final UPDATE. Attribute the actual row-lock wait to our exact holder,
+	// rather than coupling this concurrency assertion to one SQL query name.
+	waited := waitForWaiterBlockedBy(t, holderBackendPID(t, ctx, tx), 5*time.Second)
+
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}

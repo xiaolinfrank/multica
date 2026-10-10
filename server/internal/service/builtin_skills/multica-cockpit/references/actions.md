@@ -121,3 +121,18 @@ Actions expose `draft/accepted/dismissed`, their fixed source version/hash,
 optional original quote, resolution, linked issue facts and per-action capabilities.
 Check `source_superseded`, `can_edit`, `can_resolve` and list-level `can_add` before
 offering actions. Unknown server values remain read-only until understood.
+
+## Inspect operation constraints before editing
+
+`POST /api/issues/operation-basis` is a read-only batch with `issue_ids` (1–100
+unique UUIDs) and the selected workspace header. Read the current page's IDs
+once; unavailable or unknown rows never mean unrestricted. The response separates
+status categories, reassignment, scope, parent, primary ownership, deletion and
+execution. Its bounded structured targets point to the real formal decision or
+retained context; ordinary Issue completion never approves an artifact.
+
+Node, project and module `GET .../{id}/operation-basis` reads explain deletion
+constraints. A retained L3 also restricts structural changes and adding children;
+ordinary labels and planning status remain editable. A normal primary Issue may
+be deleted, while a retained production source cannot be moved by merely clearing
+primary ownership. These reads do not replace the actual transaction guards.

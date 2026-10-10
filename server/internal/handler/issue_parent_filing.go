@@ -3,11 +3,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
+	"errors"
 	"net/http"
 
-	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/jackc/pgx/v5"
+
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 // errCodeChildModuleMismatch marks the refusal to leave a sub-issue filed
@@ -43,6 +45,12 @@ func (h *Handler) applyIssueParentFiling(
 	prev db.Issue,
 	rawFields map[string]json.RawMessage,
 ) (int, string, string) {
+	return applyIssueParentFilingWithQueries(ctx, h.Queries, params, prev, rawFields)
+}
+
+// The locked mutation reuses this resolver after refreshing unchanged fields.
+// Otherwise an implicit new-parent scope would be replaced by the old scope.
+func applyIssueParentFilingWithQueries(ctx context.Context, q *db.Queries, params *db.UpdateIssueParams, prev db.Issue, rawFields map[string]json.RawMessage) (int, string, string) {
 	if !params.ParentIssueID.Valid {
 		return 0, "", ""
 	}
@@ -51,14 +59,18 @@ func (h *Handler) applyIssueParentFiling(
 	if !adopting && !moving {
 		return 0, "", ""
 	}
-	parent, err := h.Queries.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
+	parent, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
 		ID:          params.ParentIssueID,
 		WorkspaceID: prev.WorkspaceID,
 	})
-	if err != nil || !parent.ID.Valid {
-		// The caller validated a parent it is setting; reaching here means the
-		// parent this issue already had has since been deleted, and there is
-		// nothing left to keep the child aligned with.
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return http.StatusInternalServerError, "parent_validation_failed", "failed to validate the parent issue"
+	}
+	if errors.Is(err, pgx.ErrNoRows) || !parent.ID.Valid {
+		if adopting {
+			return http.StatusBadRequest, "parent_unavailable", "the selected parent issue is no longer available in this workspace"
+		}
+		// An already missing legacy parent does not prevent unrelated edits.
 		return 0, "", ""
 	}
 	_, namedModule := rawFields["module_id"]
@@ -74,45 +86,25 @@ func (h *Handler) applyIssueParentFiling(
 	return 0, "", ""
 }
 
-// refileIssueSubtree moves every descendant of a just-updated issue into the
-// project and module that issue now sits in, and broadcasts each row it
-// changed. Without it a parent moving to another module would leave its
-// children behind in a module their parent no longer belongs to.
-//
-// Per-row `issue:updated` mirrors the batch endpoint, so clients patch their
-// caches through the path they already have. The two "changed" flags are
-// reported together because the query returns only rows that differed in one
-// of them and does not carry which — the cost of the wider flag is a refetch
-// the client would have made anyway on the other.
-func (h *Handler) refileIssueSubtree(
-	ctx context.Context,
-	issue db.Issue,
-	workspaceID, actorType, actorID string,
-) {
-	moved, err := h.Queries.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{
-		ParentIssueID: issue.ID,
-		WorkspaceID:   issue.WorkspaceID,
-		ProjectID:     issue.ProjectID,
-		ModuleID:      issue.ModuleID,
-	})
-	if err != nil {
-		slog.Error("refile issue subtree",
-			"issue_id", uuidToString(issue.ID), "workspace_id", workspaceID, "error", err)
-		return
-	}
-	if len(moved) == 0 {
-		return
-	}
-	prefix := h.getIssuePrefix(ctx, issue.WorkspaceID)
-	for _, child := range moved {
-		resp := issueToResponse(child, prefix)
-		h.fillStatusCategory(ctx, child.WorkspaceID, &resp)
+// publishIssueFilingChanges emits only the fields changed by the committed
+// subtree write. Issue events already support partial, versioned field patches;
+// no description or other unchanged body is loaded for this notification.
+func (h *Handler) publishIssueFilingChanges(rows []db.RefileIssueSubtreeRow, workspaceID, actorType, actorID string) {
+	for _, child := range rows {
 		h.publish(protocol.EventIssueUpdated, workspaceID, actorType, actorID, map[string]any{
-			"issue":           resp,
-			"project_changed": true,
-			"module_changed":  true,
+			"issue":           map[string]any{"id": uuidToString(child.ID), "workspace_id": uuidToString(child.WorkspaceID), "project_id": uuidToPtr(child.ProjectID), "module_id": uuidToPtr(child.ModuleID), "revision": child.Revision, "updated_at": child.UpdatedAt.Time},
+			"project_changed": true, "module_changed": true,
 		})
 	}
+}
+
+func issueHierarchyFieldsTouched(fields map[string]json.RawMessage) bool {
+	for _, name := range []string{"parent_issue_id", "project_id", "module_id"} {
+		if _, ok := fields[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // issueFilingChanged reports whether an update moved the issue between
@@ -120,3 +112,11 @@ func (h *Handler) refileIssueSubtree(
 func issueFilingChanged(prev, next db.Issue) bool {
 	return prev.ProjectID != next.ProjectID || prev.ModuleID != next.ModuleID
 }
+
+// Carries the same boundary error when the authoritative check is inside a tx.
+type issueParentFilingError struct {
+	status        int
+	code, message string
+}
+
+func (e *issueParentFilingError) Error() string { return e.message }

@@ -751,9 +751,19 @@ func TestBatchDeleteParentAndChildPublishesOnlySurvivingDetach(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("batch delete = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	var response map[string]int
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response["deleted"] != 2 {
+	var response testIssueBatchReply
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Deleted != 2 {
 		t.Fatalf("batch delete response = %#v, err=%v", response, err)
+	}
+	if len(response.RequestedIDs) != 2 || len(response.Results) != 2 || len(response.UnconfirmedIDs) != 0 || response.TransactionMode != "atomic" || response.TransactionOutcome != "committed" {
+		t.Fatalf("incomplete atomic receipt: %+v", response)
+	}
+	seen := map[string]bool{}
+	for _, result := range response.Results {
+		if result.Outcome != "applied" || (result.IssueID != parentID && result.IssueID != childID) || seen[result.IssueID] {
+			t.Fatalf("wrong deletion result: %+v", response)
+		}
+		seen[result.IssueID] = true
 	}
 	grandchild, err := testHandler.Queries.GetIssue(ctx, util.MustParseUUID(grandchildID))
 	if err != nil {

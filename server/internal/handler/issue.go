@@ -258,52 +258,6 @@ func assertIssueStatusStillActive(ctx context.Context, qtx *db.Queries, workspac
 	return nil
 }
 
-// runWithIssueStatusGuard runs an issue write that lands on a custom status
-// inside a transaction that re-verifies the status under the shared catalog
-// lock (see assertIssueStatusStillActive). Request writes also carry trusted
-// wakeup actor identity in transaction-local settings, including built-in targets.
-func (h *Handler) runWithIssueStatusGuard(ctx context.Context, workspaceID pgtype.UUID, statusKey string, fn func(q *db.Queries) error) error {
-	_, hasActor := ctx.Value(wakeupActorKey{}).(wakeupActor)
-	if !hasActor && (statusKey == "" || issuestatus.IsBuiltIn(statusKey)) {
-		return fn(h.Queries)
-	}
-	tx, err := h.beginWakeupWrite(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	qtx := h.Queries.WithTx(tx)
-	if err := assertIssueStatusStillActive(ctx, qtx, workspaceID, statusKey); err != nil {
-		return err
-	}
-	if err := fn(qtx); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-// updateIssueWithStatusGuard writes params under the status-archive guard.
-func (h *Handler) updateIssueWithStatusGuard(ctx context.Context, workspaceID pgtype.UUID, statusKey string, params db.UpdateIssueParams) (db.Issue, error) {
-	var issue db.Issue
-	var cancelledWakeups []db.AgentTaskQueue
-	err := h.runWithIssueStatusGuard(ctx, workspaceID, statusKey, func(q *db.Queries) error {
-		if params.DuplicateOfIssueID.Valid {
-			if err := lockAndCheckDuplicateMark(ctx, q, workspaceID, params.ID, params.DuplicateOfIssueID); err != nil {
-				return err
-			}
-		}
-		var innerErr error
-		issue, cancelledWakeups, innerErr = updateIssueStoppingWakeups(ctx, q, params)
-		return innerErr
-	})
-	if err != nil {
-		return issue, err
-	}
-	h.broadcastCancelledWakeups(ctx, workspaceID, cancelledWakeups)
-	return issue, nil
-}
-
 // updateIssueStoppingWakeups writes params and, when the write moves the issue
 // into a done/closed status, ends its wakeups with the same queries. Callers
 // run it inside the status write's transaction and broadcast the returned runs
@@ -329,6 +283,19 @@ func (h *Handler) broadcastCancelledWakeups(ctx context.Context, workspaceID pgt
 // writeIssueStatusRaceError renders errIssueStatusArchivedRace as a 409 and
 // reports whether it handled the error.
 func writeIssueStatusRaceError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, service.ErrIssueParentCycle) {
+		writeErrorCode(w, http.StatusBadRequest, "circular_parent", err.Error())
+		return true
+	}
+	if errors.Is(err, service.ErrIssueParentHierarchyIncomplete) {
+		writeErrorCode(w, http.StatusConflict, "parent_hierarchy_invalid", err.Error())
+		return true
+	}
+	var filing *issueParentFilingError
+	if errors.As(err, &filing) {
+		writeErrorCode(w, filing.status, filing.code, filing.message)
+		return true
+	}
 	if service.IsCockpitArtifactIntegrityError(err) {
 		writeErrorCode(w, http.StatusConflict, "formal_review_required", "Open this Issue’s artifact or acceptance context to record a formal decision or hand over responsibility; its retained source and L3 scope cannot be changed here")
 		return true
@@ -3574,6 +3541,10 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
+	if writeIssueStatusRaceError(w, err) {
+		return
+	}
+
 	if errors.Is(err, service.ErrActiveDuplicate) {
 		dup := *res.DuplicateIssue
 		existing := issueToResponse(dup, h.getIssuePrefix(r.Context(), dup.WorkspaceID))
@@ -3778,29 +3749,40 @@ func refreshUntouchedNullableIssueParams(params *db.UpdateIssueParams, current d
 
 var errIssueFieldConflict = errors.New("issue text field conflict")
 
-func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.UUID, params db.UpdateIssueParams, rawFields map[string]json.RawMessage, titleBase, descriptionBase *string, attachmentIDs []pgtype.UUID, statusKey string) (db.Issue, db.Issue, bool, error) {
+func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.UUID, params db.UpdateIssueParams, rawFields map[string]json.RawMessage, titleBase, descriptionBase *string, attachmentIDs []pgtype.UUID, statusKey string) (db.Issue, db.Issue, bool, []db.RefileIssueSubtreeRow, error) {
 	if h.TxStarter == nil {
-		return db.Issue{}, db.Issue{}, false, errors.New("atomic issue update requires transaction starter")
+		return db.Issue{}, db.Issue{}, false, nil, errors.New("atomic issue update requires transaction starter")
 	}
 	tx, err := h.beginWakeupWrite(ctx)
 	if err != nil {
-		return db.Issue{}, db.Issue{}, false, fmt.Errorf("begin atomic issue update: %w", err)
+		return db.Issue{}, db.Issue{}, false, nil, fmt.Errorf("begin atomic issue update: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	qtx := h.Queries.WithTx(tx)
+	hierarchyWrite := issueHierarchyFieldsTouched(rawFields)
+	if hierarchyWrite || params.DuplicateOfIssueID.Valid {
+		if err := service.LockIssueHierarchyMutation(ctx, qtx, workspaceID); err != nil {
+			return db.Issue{}, db.Issue{}, false, nil, err
+		}
+	}
 	// This path opens its own transaction, so it carries the archive-race guard
-	// itself rather than going through runWithIssueStatusGuard. The catalog lock
+	// itself. The catalog lock
 	// must precede both attachment and issue row locks everywhere. (MUL-6243)
 	if err := assertIssueStatusStillActive(ctx, qtx, workspaceID, statusKey); err != nil {
-		return db.Issue{}, db.Issue{}, false, err
+		return db.Issue{}, db.Issue{}, false, nil, err
+	}
+	if params.DuplicateOfIssueID.Valid {
+		if err := lockAndCheckDuplicateMark(ctx, qtx, workspaceID, params.ID, params.DuplicateOfIssueID); err != nil {
+			return db.Issue{}, db.Issue{}, false, nil, err
+		}
 	}
 	if len(attachmentIDs) > 0 {
 		if _, err := qtx.LockAttachmentsForIssueLink(ctx, db.LockAttachmentsForIssueLinkParams{
 			WorkspaceID:   workspaceID,
 			AttachmentIds: attachmentIDs,
 		}); err != nil {
-			return db.Issue{}, db.Issue{}, false, fmt.Errorf("lock issue attachments: %w", err)
+			return db.Issue{}, db.Issue{}, false, nil, fmt.Errorf("lock issue attachments: %w", err)
 		}
 	}
 	current, err := qtx.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{
@@ -3808,11 +3790,11 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 		WorkspaceID: workspaceID,
 	})
 	if err != nil {
-		return db.Issue{}, db.Issue{}, false, fmt.Errorf("lock issue for update: %w", err)
+		return db.Issue{}, db.Issue{}, false, nil, fmt.Errorf("lock issue for update: %w", err)
 	}
 
 	if params.Title.Valid && titleBase != nil && current.Title != *titleBase && current.Title != params.Title.String {
-		return db.Issue{}, current, false, errIssueFieldConflict
+		return db.Issue{}, current, false, nil, errIssueFieldConflict
 	}
 
 	if params.Description.Valid {
@@ -3821,7 +3803,7 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 			WorkspaceID: current.WorkspaceID,
 		})
 		if listErr != nil {
-			return db.Issue{}, current, false, fmt.Errorf("list issue attachments for description merge: %w", listErr)
+			return db.Issue{}, current, false, nil, fmt.Errorf("list issue attachments for description merge: %w", listErr)
 		}
 		currentDescription := ""
 		if current.Description.Valid {
@@ -3848,11 +3830,25 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 			Valid:  true,
 		}
 	}
+	if params.ExpectedRevision.Valid && params.ExpectedRevision.Int64 != current.Revision {
+		return db.Issue{}, current, false, nil, pgx.ErrNoRows
+	}
 	refreshUntouchedNullableIssueParams(&params, current, rawFields)
+	if hierarchyWrite {
+		if current.TriageState.Valid && triageLockedField(rawFields) != "" {
+			return db.Issue{}, current, false, nil, &issueParentFilingError{status: http.StatusBadRequest, code: "issue_in_triage", message: "accept the issue out of Triage before setting its parent"}
+		}
+		if err := service.ValidateIssueParentChain(ctx, qtx, workspaceID, current.ID, params.ParentIssueID); err != nil {
+			return db.Issue{}, current, false, nil, err
+		}
+	}
+	if status, code, message := applyIssueParentFilingWithQueries(ctx, qtx, &params, current, rawFields); status != 0 {
+		return db.Issue{}, current, false, nil, &issueParentFilingError{status: status, code: code, message: message}
+	}
 
 	issue, cancelledWakeups, err := updateIssueStoppingWakeups(ctx, qtx, params)
 	if err != nil {
-		return db.Issue{}, current, false, fmt.Errorf("update locked issue: %w", err)
+		return db.Issue{}, current, false, nil, fmt.Errorf("update locked issue: %w", err)
 	}
 
 	attachmentsChanged := false
@@ -3864,7 +3860,7 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 			BumpRevision:  issue.Revision == current.Revision,
 		})
 		if linkErr != nil {
-			return db.Issue{}, current, false, fmt.Errorf("link issue attachments: %w", linkErr)
+			return db.Issue{}, current, false, nil, fmt.Errorf("link issue attachments: %w", linkErr)
 		}
 		attachmentsChanged = linked.LinkedCount > 0
 		if linked.IssueRevision > 0 {
@@ -3873,15 +3869,22 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 				WorkspaceID: issue.WorkspaceID,
 			})
 			if err != nil {
-				return db.Issue{}, current, false, fmt.Errorf("reload issue after attachment link: %w", err)
+				return db.Issue{}, current, false, nil, fmt.Errorf("reload issue after attachment link: %w", err)
 			}
 		}
 	}
+	var refiled []db.RefileIssueSubtreeRow
+	if issueFilingChanged(current, issue) {
+		refiled, err = qtx.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{ParentIssueID: issue.ID, WorkspaceID: workspaceID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID})
+		if err != nil {
+			return db.Issue{}, current, false, nil, fmt.Errorf("refile issue subtree: %w", err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
-		return db.Issue{}, current, false, fmt.Errorf("commit atomic issue update: %w", err)
+		return db.Issue{}, current, false, nil, fmt.Errorf("commit atomic issue update: %w", &issueCommitError{err: err})
 	}
 	h.broadcastCancelledWakeups(ctx, workspaceID, cancelledWakeups)
-	return issue, current, attachmentsChanged, nil
+	return issue, current, attachmentsChanged, refiled, nil
 }
 
 func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
@@ -3935,7 +3938,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		ProjectID:     prevIssue.ProjectID,
 		ModuleID:      prevIssue.ModuleID,
 		Stage:         prevIssue.Stage,
-		// Checked against the locked rows in updateIssueWithStatusGuard.
+		// Checked against the locked rows in updateIssueAtomically.
 		DuplicateOfIssueID: duplicateOfID,
 	}
 	if req.ExpectedRevision != nil {
@@ -4041,19 +4044,6 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			}); err != nil {
 				writeError(w, http.StatusBadRequest, "parent issue not found in this workspace")
 				return
-			}
-			// Cycle detection: walk up from the new parent to ensure we don't reach this issue.
-			cursor := newParentID
-			for depth := 0; depth < 10; depth++ {
-				ancestor, err := h.Queries.GetIssue(r.Context(), cursor)
-				if err != nil || !ancestor.ParentIssueID.Valid {
-					break
-				}
-				if ancestor.ParentIssueID == prevIssue.ID {
-					writeError(w, http.StatusBadRequest, "circular parent relationship detected")
-					return
-				}
-				cursor = ancestor.ParentIssueID
 			}
 			params.ParentIssueID = newParentID
 		} else {
@@ -4166,19 +4156,13 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var issue db.Issue
-	attachmentsChanged := false
-	if req.Description != nil || req.TitleBase != nil || req.DescriptionBase != nil || len(attachmentIDs) > 0 {
-		var lockedPrev db.Issue
-		issue, lockedPrev, attachmentsChanged, err = h.updateIssueAtomically(
-			r.Context(), prevIssue.WorkspaceID, params, rawFields, req.TitleBase, req.DescriptionBase, attachmentIDs, statusKeyForGuard,
-		)
-		if lockedPrev.ID.Valid {
-			prevIssue = lockedPrev
-		}
-	} else {
-		issue, err = h.updateIssueWithStatusGuard(r.Context(), prevIssue.WorkspaceID, statusKeyForGuard, params)
+	issue, lockedPrev, attachmentsChanged, refiled, err := h.updateIssueAtomically(
+		r.Context(), prevIssue.WorkspaceID, params, rawFields, req.TitleBase, req.DescriptionBase, attachmentIDs, statusKeyForGuard,
+	)
+	if lockedPrev.ID.Valid {
+		prevIssue = lockedPrev
 	}
+
 	if err != nil {
 		if writeIssueStatusRaceError(w, err) {
 			return
@@ -4271,7 +4255,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// After the issue's own event, which is the snapshot clients reconcile the
 	// children against.
 	if issueFilingChanged(prevIssue, issue) {
-		h.refileIssueSubtree(r.Context(), issue, workspaceID, actorType, actorID)
+		h.publishIssueFilingChanges(refiled, workspaceID, actorType, actorID)
 	}
 
 	// Reconcile the task queue. Whether this write starts an agent run — and
@@ -4571,10 +4555,18 @@ type clearedDuplicate struct {
 }
 
 func (h *Handler) deleteIssueAndCollectAttachmentURLs(ctx context.Context, issue db.Issue, excludedIssueIDs []pgtype.UUID) (issueDeleteResult, error) {
-	return h.deleteIssuesAndCollectAttachmentURLs(ctx, []db.Issue{issue}, excludedIssueIDs)
+	return h.deleteIssuesAndCollectAttachmentURLs(ctx, []db.Issue{issue}, excludedIssueIDs, nil)
 }
 
-func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issues []db.Issue, excludedIssueIDs []pgtype.UUID) (issueDeleteResult, error) {
+func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issues []db.Issue, excludedIssueIDs []pgtype.UUID, expected map[pgtype.UUID]int64) (_ issueDeleteResult, returnedErr error) {
+	failure := &issueDeleteFailure{}
+	defer func() {
+		if returnedErr != nil {
+			failure.Err = returnedErr
+			returnedErr = failure
+		}
+	}()
+
 	sort.Slice(issues, func(i, j int) bool {
 		return uuidToString(issues[i].ID) < uuidToString(issues[j].ID)
 	})
@@ -4584,21 +4576,40 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 	}
 	defer tx.Rollback(ctx)
 	qtx := h.Queries.WithTx(tx)
+	workspaces := map[pgtype.UUID]bool{}
+	workspaceIDs := []pgtype.UUID{}
+	for _, issue := range issues {
+		if !workspaces[issue.WorkspaceID] {
+			workspaces[issue.WorkspaceID] = true
+			workspaceIDs = append(workspaceIDs, issue.WorkspaceID)
+		}
+	}
+	sort.Slice(workspaceIDs, func(i, j int) bool { return uuidToString(workspaceIDs[i]) < uuidToString(workspaceIDs[j]) })
+	for _, ws := range workspaceIDs {
+		if err := service.LockIssueHierarchyMutation(ctx, qtx, ws); err != nil {
+			return issueDeleteResult{}, err
+		}
+	}
 
 	result := issueDeleteResult{}
 	cancelledByWorkspace := make(map[pgtype.UUID][]db.AgentTaskQueue)
 	// Lock and validate the complete batch before cancelling or deleting any member.
 	for _, issue := range issues {
-		if _, err := qtx.LockIssueForDelete(ctx, db.LockIssueForDeleteParams{
-			ID: issue.ID, WorkspaceID: issue.WorkspaceID,
-		}); err != nil {
+		failure.IssueID = issue.ID
+		locked, err := qtx.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{ID: issue.ID, WorkspaceID: issue.WorkspaceID})
+		if err != nil {
 			return issueDeleteResult{}, fmt.Errorf("lock issue for delete: %w", err)
 		}
-		if err := cockpitWorkflowProtectsIssue(ctx, qtx, issue); err != nil {
+		if revision, ok := expected[issue.ID]; ok && locked.Revision != revision {
+			return issueDeleteResult{}, errBatchIssueRevisionConflict
+		}
+		if err := cockpitWorkflowProtectsIssue(ctx, qtx, locked); err != nil {
 			return issueDeleteResult{}, err
 		}
 	}
 	for _, issue := range issues {
+		failure.IssueID = issue.ID
+		failure.AttemptedIDs = append(failure.AttemptedIDs, issue.ID)
 		cancelled, err := h.TaskService.CancelIssueTasksInTx(ctx, qtx, issue.ID)
 		if err != nil {
 			return issueDeleteResult{}, fmt.Errorf("cancel issue tasks: %w", err)
@@ -4611,6 +4622,7 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 		}
 	}
 	for _, issue := range issues {
+		failure.IssueID = issue.ID
 		detached, err := qtx.DetachDirectChildIssues(ctx, db.DetachDirectChildIssuesParams{
 			WorkspaceID: issue.WorkspaceID, ParentIssueID: issue.ID, ExcludedIssueIds: excludedIssueIDs,
 		})
@@ -4678,6 +4690,7 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 			return issueDeleteResult{}, fmt.Errorf("delete issue: %w", err)
 		}
 	}
+	failure.CommitAttempted = true
 	if err := tx.Commit(ctx); err != nil {
 		return issueDeleteResult{}, fmt.Errorf("commit issue delete: %w", err)
 	}
@@ -4720,8 +4733,9 @@ func (h *Handler) publishClearedDuplicates(ctx context.Context, cleared []cleare
 // ---------------------------------------------------------------------------
 
 type BatchUpdateIssuesRequest struct {
-	IssueIDs []string           `json:"issue_ids"`
-	Updates  UpdateIssueRequest `json:"updates"`
+	ExpectedRevisions map[string]int64   `json:"expected_revisions,omitempty"`
+	IssueIDs          []string           `json:"issue_ids"`
+	Updates           UpdateIssueRequest `json:"updates"`
 }
 
 func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
@@ -4744,6 +4758,20 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	workspaceID := h.resolveWorkspaceID(r)
+	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
+	if !ok {
+		return
+	}
+	receipt := newIssueBatchResponder(w, workspaceID, req.IssueIDs, "per_item")
+	defer receipt.finish()
+	w = receipt
+	req.IssueIDs = receipt.receipt.RequestedIDs
+	expected, ok := validateBatchExpectedRevisions(w, req.IssueIDs, req.ExpectedRevisions)
 	if !ok {
 		return
 	}
@@ -4791,11 +4819,6 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	workspaceID := h.resolveWorkspaceID(r)
-	wsUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace_id")
-	if !ok {
-		return
-	}
 	// Status is validated against this workspace's catalog, so it has to wait
 	// for wsUUID above. One check for the whole batch — every issue in it
 	// shares the workspace — and a rejection rather than a silent skip, so a
@@ -4879,8 +4902,10 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	// against a mid-batch snapshot.
 	var changedParents []pgtype.UUID
 	for _, issueID := range req.IssueIDs {
+		receipt.current = issueID
 		issueUUID, err := util.ParseUUID(issueID)
 		if err != nil {
+			receipt.reject("invalid_issue_id")
 			continue
 		}
 		prevIssue, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{
@@ -4888,6 +4913,11 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			WorkspaceID: wsUUID,
 		})
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				receipt.reject("issue_unavailable")
+			} else {
+				receipt.reject("read_failed")
+			}
 			continue
 		}
 
@@ -4904,6 +4934,9 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			Stage:         prevIssue.Stage,
 		}
 
+		if revision, exists := expected[issueUUID]; exists {
+			params.ExpectedRevision = pgtype.Int8{Int64: revision, Valid: true}
+		}
 		if req.Updates.Title != nil {
 			params.Title = pgtype.Text{String: *req.Updates.Title, Valid: true}
 		}
@@ -4930,6 +4963,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			if req.Updates.AssigneeID != nil {
 				assigneeUUID, err := util.ParseUUID(*req.Updates.AssigneeID)
 				if err != nil {
+					receipt.reject("invalid_update")
 					continue
 				}
 				params.AssigneeID = assigneeUUID
@@ -4941,6 +4975,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			if req.Updates.StartDate != nil && *req.Updates.StartDate != "" {
 				d, err := util.ParseCalendarDate(*req.Updates.StartDate)
 				if err != nil {
+					receipt.reject("invalid_update")
 					continue
 				}
 				params.StartDate = d
@@ -4952,6 +4987,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			if req.Updates.DueDate != nil && *req.Updates.DueDate != "" {
 				d, err := util.ParseCalendarDate(*req.Updates.DueDate)
 				if err != nil {
+					receipt.reject("invalid_update")
 					continue
 				}
 				params.DueDate = d
@@ -4964,10 +5000,12 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			if req.Updates.ParentIssueID != nil {
 				newParentID, err := util.ParseUUID(*req.Updates.ParentIssueID)
 				if err != nil {
+					receipt.reject("invalid_update")
 					continue
 				}
 				// Cannot set self as parent.
 				if newParentID == prevIssue.ID {
+					receipt.reject("invalid_update")
 					continue
 				}
 				// Validate parent exists in the same workspace.
@@ -4975,23 +5013,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 					ID:          newParentID,
 					WorkspaceID: prevIssue.WorkspaceID,
 				}); err != nil {
-					continue
-				}
-				// Cycle detection: walk up from the new parent to ensure we don't reach this issue.
-				cycleDetected := false
-				cursor := newParentID
-				for depth := 0; depth < 10; depth++ {
-					ancestor, err := h.Queries.GetIssue(r.Context(), cursor)
-					if err != nil || !ancestor.ParentIssueID.Valid {
-						break
-					}
-					if ancestor.ParentIssueID == prevIssue.ID {
-						cycleDetected = true
-						break
-					}
-					cursor = ancestor.ParentIssueID
-				}
-				if cycleDetected {
+					receipt.reject("invalid_update")
 					continue
 				}
 				params.ParentIssueID = newParentID
@@ -5034,6 +5056,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		if _, ok := rawUpdates["stage"]; ok {
 			if req.Updates.Stage != nil {
 				if *req.Updates.Stage < 1 {
+					receipt.reject("invalid_update")
 					continue
 				}
 				params.Stage = pgtype.Int4{Int32: *req.Updates.Stage, Valid: true}
@@ -5055,26 +5078,37 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		_, batchTouchedID := rawUpdates["assignee_id"]
 		if batchTouchedType || batchTouchedID {
 			if status, _ := h.validateAssigneePair(r.Context(), r, workspaceID, params.AssigneeType, params.AssigneeID); status != 0 {
+				receipt.reject("invalid_update")
 				continue
 			}
 		}
 
-		var issue db.Issue
-		if req.Updates.Description != nil {
-			// One batch-level base cannot describe multiple issue documents.
-			// Preserve every marked channel-media block conservatively, matching
-			// legacy single-update clients that omit description_base.
-			var lockedPrev db.Issue
-			issue, lockedPrev, _, err = h.updateIssueAtomically(
-				r.Context(), prevIssue.WorkspaceID, params, rawUpdates, nil, nil, nil, batchStatusKey,
-			)
-			if err == nil {
-				prevIssue = lockedPrev
-			}
-		} else {
-			issue, err = h.updateIssueWithStatusGuard(r.Context(), wsUUID, batchStatusKey, params)
+		// Use the canonical locked mutation so the receipt's revision and changed
+		// flag describe this commit, including when another writer edited a
+		// nullable field after the initial per-item validation.
+		issue, lockedPrev, _, refiled, writeErr := h.updateIssueAtomically(
+			r.Context(), prevIssue.WorkspaceID, params, rawUpdates, nil, nil, nil, batchStatusKey,
+		)
+		err = writeErr
+		if err == nil {
+			prevIssue = lockedPrev
 		}
+
 		if err != nil {
+			if errors.Is(err, service.ErrIssueParentCycle) {
+				receipt.reject("circular_parent")
+				continue
+			}
+			if issueCommitUnknown(err) {
+				receipt.unconfirmed(issueID)
+				writeErrorCode(w, http.StatusInternalServerError, "commit_unconfirmed", "the issue update could not be confirmed; reload before deciding whether to retry")
+				return
+			}
+			if errors.Is(err, pgx.ErrNoRows) && params.ExpectedRevision.Valid {
+				receipt.reject("revision_conflict")
+				writeErrorCode(w, http.StatusConflict, "revision_conflict", "an issue changed since it was read; reload before applying this batch")
+				return
+			}
 			// The archive race is a property of the batch's shared target
 			// status, not of one issue, so every remaining item would fail the
 			// same way. Abort with 409 instead of reporting a partial update.
@@ -5082,9 +5116,12 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			slog.Warn("batch update issue failed", "issue_id", issueID, "error", err)
+			receipt.reject("invalid_update")
 			continue
 		}
 
+		changed := issue.Revision != prevIssue.Revision
+		receipt.applied(issueID, &issue.Revision, &changed)
 		prefix := h.getIssuePrefix(r.Context(), issue.WorkspaceID)
 		resp := issueToResponse(issue, prefix)
 		actorType, actorID := h.resolveActor(r, userID, workspaceID)
@@ -5111,7 +5148,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		// and one of its children in the same request settles on the same
 		// destination either way, since both are filed where the batch says.
 		if issueFilingChanged(prevIssue, issue) {
-			h.refileIssueSubtree(r.Context(), issue, workspaceID, actorType, actorID)
+			h.publishIssueFilingChanges(refiled, workspaceID, actorType, actorID)
 		}
 
 		// Reassignment does not cancel existing tasks (#4963 / MUL-4113) —
@@ -5148,12 +5185,14 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	// by the sweep.
 	h.processChildEvents(r.Context(), changedParents...)
 
+	receipt.current = ""
 	slog.Info("batch update issues", append(logger.RequestAttrs(r), "count", updated)...)
 	writeJSON(w, http.StatusOK, map[string]any{"updated": updated})
 }
 
 type BatchDeleteIssuesRequest struct {
-	IssueIDs []string `json:"issue_ids"`
+	ExpectedRevisions map[string]int64 `json:"expected_revisions,omitempty"`
+	IssueIDs          []string         `json:"issue_ids"`
 }
 
 func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
@@ -5179,12 +5218,22 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	receipt := newIssueBatchResponder(w, workspaceID, req.IssueIDs, "atomic")
+	defer receipt.finish()
+	w = receipt
+	req.IssueIDs = receipt.receipt.RequestedIDs
+	expected, ok := validateBatchExpectedRevisions(w, req.IssueIDs, req.ExpectedRevisions)
+	if !ok {
+		return
+	}
 	issues := make([]db.Issue, 0, len(req.IssueIDs))
 	excludedIDs := make([]pgtype.UUID, 0, len(req.IssueIDs))
 	seenIssueIDs := make(map[pgtype.UUID]struct{}, len(req.IssueIDs))
 	for _, issueID := range req.IssueIDs {
+		receipt.current = issueID
 		issueUUID, err := util.ParseUUID(issueID)
 		if err != nil {
+			receipt.reject("invalid_issue_id")
 			continue
 		}
 		if _, duplicate := seenIssueIDs[issueUUID]; duplicate {
@@ -5195,6 +5244,11 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 			WorkspaceID: wsUUID,
 		})
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				receipt.reject("issue_unavailable")
+			} else {
+				receipt.reject("read_failed")
+			}
 			continue
 		}
 
@@ -5203,8 +5257,14 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 		excludedIDs = append(excludedIDs, issue.ID)
 
 	}
-	deleteResult, err := h.deleteIssuesAndCollectAttachmentURLs(r.Context(), issues, excludedIDs)
+	receipt.current = ""
+	deleteResult, err := h.deleteIssuesAndCollectAttachmentURLs(r.Context(), issues, excludedIDs, expected)
 	if err != nil {
+		receipt.deletionFailed(err, excludedIDs)
+		if errors.Is(err, errBatchIssueRevisionConflict) {
+			writeErrorCode(w, http.StatusConflict, "revision_conflict", "an issue changed since it was read; reload before deleting")
+			return
+		}
 		if errors.Is(err, service.ErrCockpitWorkflowConflict) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
@@ -5212,6 +5272,10 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("batch delete issues failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to delete issues")
 		return
+	}
+	changed := true
+	for _, issue := range issues {
+		receipt.applied(uuidToString(issue.ID), nil, &changed)
 	}
 	h.deleteS3Objects(r.Context(), deleteResult.AttachmentURLs)
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)

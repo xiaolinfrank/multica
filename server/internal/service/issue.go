@@ -286,6 +286,17 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if err := LockIssueHierarchyMutation(ctx, qtx, p.WorkspaceID); err != nil {
+		return IssueCreateResult{}, err
+	}
+	// A caller-supplied custom status is fenced before source/domain row locks.
+	// Typed hooks create builtin human/planning tasks and retain the check below.
+	if p.Status != "" && !issuestatus.IsBuiltIn(p.Status) {
+		if err := qtx.LockIssueStatusCatalogShared(ctx, p.WorkspaceID); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+
 	if p.CockpitArtifact != nil {
 		existing, err := prepareCockpitArtifactIssue(ctx, qtx, &p)
 		if err != nil {
@@ -385,6 +396,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	parentModuleID := pgtype.UUID{}
 	hasParent := false
 	if p.ParentIssueID.Valid {
+		if err := ValidateIssueParentChain(ctx, qtx, p.WorkspaceID, pgtype.UUID{}, p.ParentIssueID); err != nil {
+			return IssueCreateResult{}, err
+		}
 		parent, err := qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
 			ID:          p.ParentIssueID,
 			WorkspaceID: p.WorkspaceID,
