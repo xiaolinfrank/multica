@@ -47,7 +47,7 @@ export function useCreateCockpitNodeTask(wsId: string) {
 export function useSetCockpitPrimaryNode(wsId: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: ({ issueId, nodeId, revision }: { issueId: string; nodeId: string | null; revision: number }) =>
-    api.setCockpitPrimaryNode(issueId, { node_id: nodeId, expected_revision: revision }),
+    api.setCockpitPrimaryNode(wsId, issueId, { node_id: nodeId, expected_revision: revision }),
     onSuccess: (primary) => {
       client.setQueryData<CockpitPrimaryNode | null>(cockpitKeys.primaryNode(wsId, primary.issue_id), (current) =>
         current && current.revision > primary.revision ? current : primary);

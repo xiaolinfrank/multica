@@ -8,6 +8,20 @@ const respond = (body: unknown) => new Response(JSON.stringify(body), { status: 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("action and primary task boundaries", () => {
+  it("reads and clears the exact primary owner in the initiating workspace", async () => {
+    const primary = { issue_id: "issue-1", node_id: "node-1", revision: 2, project_id: "p1", module_id: "m1", node_code: "L3", node_name: "Delivery" };
+    const cleared = { ...primary, node_id: null, revision: 3, node_code: "", node_name: "" };
+    const fetchMock = vi.fn().mockResolvedValueOnce(respond(primary)).mockResolvedValueOnce(respond(cleared))
+      .mockResolvedValueOnce(respond({ ...primary, issue_id: "other" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://example.test");
+    await expect(client.getCockpitPrimaryNode("ws-1", "issue-1")).resolves.toEqual(primary);
+    await expect(client.setCockpitPrimaryNode("ws-1", "issue-1", { node_id: null, expected_revision: 2 })).resolves.toEqual(cleared);
+    await expect(client.getCockpitPrimaryNode("ws-1", "issue-1")).resolves.toBeNull();
+    for (const call of fetchMock.mock.calls) expect(call[1].headers["X-Workspace-ID"]).toBe("ws-1");
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ node_id: null, expected_revision: 2 });
+  });
+
   it("sends server pagination/filter scope and rejects malformed, wrong-scope or unbounded pages", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(respond(taskPageFixture()))
       .mockResolvedValueOnce(respond({ node_id: "node-1", items: [] }))
@@ -77,7 +91,7 @@ describe("action and primary task boundaries", () => {
       .mockResolvedValueOnce(respond({ issue_id: "other-issue", items: [], total: 0, next_cursor: null }))
       .mockResolvedValueOnce(respond({ issue_id: "issue-1", items: [], total: 0, next_cursor: null })));
     const client = new ApiClient("https://example.test");
-    await expect(client.setCockpitPrimaryNode("issue-1", { node_id: "node-1", expected_revision: 0 })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
+    await expect(client.setCockpitPrimaryNode("ws-1", "issue-1", { node_id: "node-1", expected_revision: 0 })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
     await expect(client.getCockpitIssueActionSources("issue-1")).resolves.toBeNull();
     await expect(client.getCockpitIssueActionSources("issue-1")).resolves.toEqual({ issue_id: "issue-1", items: [], total: 0, next_cursor: null });
   });

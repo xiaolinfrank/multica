@@ -1,5 +1,6 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import { invalidateCockpitArtifactIssueFacts } from "./artifact-queries";
 import type {
   CockpitBoard,
@@ -71,6 +72,7 @@ export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: st
 
 /** Invalidating inactive pages marks them stale; only currently observed scopes refetch. */
 export function invalidateCockpitTaskFlow(client: QueryClient, wsId: string) {
+  invalidateIssueOperationBasis(client, wsId);
   void client.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });

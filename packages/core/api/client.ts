@@ -1,4 +1,8 @@
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
+import type { IssueOperationBasisPage, ContainerOperationBasis, ContainerOperationKind } from "../types/issue-operation-basis";
+import { IssueOperationBasisPageSchema, ContainerOperationBasisSchema } from "./issue-operation-basis-schemas";
+import type { IssueBatchReceipt, IssueBatchWriteOptions } from "../types/issue-batch";
+import { parseIssueBatchReceipt, IssueBatchUnconfirmedError } from "./issue-batch-schemas";
 import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-artifacts";
 import type { CockpitMeetingArtifactReferencePage } from "../types/cockpit-artifact-responsibility";
 import { CockpitMeetingArtifactReferencePageSchema } from "./cockpit-artifact-responsibility-schemas";
@@ -2237,13 +2241,16 @@ export class ApiClient {
     return result;
   }
 
-  async getCockpitPrimaryNode(issueId: string, signal?: AbortSignal): Promise<CockpitPrimaryNode | null> {
-    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { signal });
-    return parseWithFallback<CockpitPrimaryNode | null>(raw, CockpitPrimaryNodeSchema, null, { endpoint: "GET /api/cockpit/issues/:id/primary-node" });
+  async getCockpitPrimaryNode(wsId: string, issueId: string, signal?: AbortSignal): Promise<CockpitPrimaryNode | null> {
+    if (!wsId || !issueId) throw new RangeError("Primary ownership requires its initiating workspace and issue");
+    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { signal, headers: { "X-Workspace-ID": wsId } });
+    const result = parseWithFallback<CockpitPrimaryNode | null>(raw, CockpitPrimaryNodeSchema, null, { endpoint: "GET /api/cockpit/issues/:id/primary-node" });
+    return result?.issue_id === issueId ? result : null;
   }
 
-  async setCockpitPrimaryNode(issueId: string, body: { node_id: string | null; expected_revision: number }): Promise<CockpitPrimaryNode> {
-    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { method: "PUT", body: JSON.stringify(body) });
+  async setCockpitPrimaryNode(wsId: string, issueId: string, body: { node_id: string | null; expected_revision: number }): Promise<CockpitPrimaryNode> {
+    if (!wsId || !issueId) throw new RangeError("Primary ownership requires its initiating workspace and issue");
+    const raw = await this.fetch<unknown>(`/api/cockpit/issues/${encodeURIComponent(issueId)}/primary-node`, { method: "PUT", body: JSON.stringify(body), headers: { "X-Workspace-ID": wsId } });
     const result = parseWithFallback<CockpitPrimaryNode | null>(raw, CockpitPrimaryNodeSchema, null, { endpoint: "PUT /api/cockpit/issues/:id/primary-node" });
     if (!result || result.issue_id !== issueId || result.node_id !== body.node_id || result.revision < body.expected_revision) throw new CockpitUnconfirmedWriteError();
     return result;
@@ -3088,22 +3095,52 @@ export class ApiClient {
     );
   }
 
-  async deleteIssue(id: string): Promise<void> {
-    await this.fetch(`/api/issues/${id}`, { method: "DELETE" });
+  async deleteIssue(wsId: string, id: string): Promise<void> {
+    if (!wsId || !id) throw new RangeError("Deletion requires its initiating workspace and issue");
+    await this.fetch(`/api/issues/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-Workspace-ID": wsId } });
   }
 
-  async batchUpdateIssues(issueIds: string[], updates: UpdateIssueRequest): Promise<{ updated: number }> {
-    return this.fetch("/api/issues/batch-update", {
-      method: "POST",
-      body: JSON.stringify({ issue_ids: issueIds, updates }),
+  async getIssueOperationBasis(wsId: string, issueIds: string[], signal?: AbortSignal): Promise<IssueOperationBasisPage | null> {
+    const ids = [...new Set(issueIds)];
+    if (!wsId || ids.length === 0 || ids.length > 100 || ids.some((id) => !id)) throw new RangeError("Operation basis requires one workspace and 1–100 issue IDs");
+    const raw = await this.fetch<unknown>("/api/issues/operation-basis", {
+      method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify({ issue_ids: ids }), signal,
     });
+    const result = parseWithFallback<IssueOperationBasisPage | null>(raw, IssueOperationBasisPageSchema, null, { endpoint: "POST /api/issues/operation-basis" });
+    return result?.workspace_id === wsId && result.items.length === ids.length
+      && result.items.every((item, index) => item.issue_id === ids[index]) ? result : null;
   }
 
-  async batchDeleteIssues(issueIds: string[]): Promise<{ deleted: number }> {
-    return this.fetch("/api/issues/batch-delete", {
-      method: "POST",
-      body: JSON.stringify({ issue_ids: issueIds }),
+  async getContainerOperationBasis(wsId: string, kind: ContainerOperationKind, resourceId: string, signal?: AbortSignal): Promise<ContainerOperationBasis | null> {
+    if (!wsId || !resourceId) throw new RangeError("Operation basis requires an explicit workspace and resource");
+    const prefix = kind === "node" ? "/api/cockpit/nodes" : kind === "project" ? "/api/projects" : "/api/modules";
+    const path = prefix + "/" + encodeURIComponent(resourceId) + "/operation-basis";
+    const raw = await this.fetch<unknown>(path, { headers: { "X-Workspace-ID": wsId }, signal });
+    const result = parseWithFallback<ContainerOperationBasis | null>(raw, ContainerOperationBasisSchema, null, { endpoint: "GET " + prefix + "/:id/operation-basis" });
+    return result?.workspace_id === wsId && result.resource_id === resourceId && result.resource_kind === kind ? result : null;
+  }
+
+  private async writeIssueBatch(wsId: string, issueIds: string[], operation: "update" | "delete",
+    body: IssueBatchWriteOptions & { updates?: UpdateIssueRequest }): Promise<IssueBatchReceipt> {
+    const ids = [...new Set(issueIds)];
+    if (!wsId || ids.length === 0 || ids.some((id) => !id)) throw new RangeError("A batch requires its initiating workspace and issue IDs");
+    for (const [id, revision] of Object.entries(body.expected_revisions ?? {})) {
+      if (!ids.includes(id) || !Number.isSafeInteger(revision) || revision < 1) throw new RangeError("Invalid expected issue revision");
+    }
+    const raw = await this.fetch<unknown>("/api/issues/batch-" + operation, {
+      method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify({ issue_ids: ids, ...body }),
     });
+    const receipt = parseIssueBatchReceipt(raw, wsId, ids, operation);
+    if (!receipt) throw new IssueBatchUnconfirmedError();
+    return receipt;
+  }
+
+  async batchUpdateIssues(wsId: string, issueIds: string[], updates: UpdateIssueRequest, options: IssueBatchWriteOptions = {}): Promise<IssueBatchReceipt> {
+    return this.writeIssueBatch(wsId, issueIds, "update", { ...options, updates });
+  }
+
+  async batchDeleteIssues(wsId: string, issueIds: string[], options: IssueBatchWriteOptions = {}): Promise<IssueBatchReceipt> {
+    return this.writeIssueBatch(wsId, issueIds, "delete", options);
   }
 
   // Comments
@@ -5715,8 +5752,9 @@ export class ApiClient {
     });
   }
 
-  async deleteProject(id: string): Promise<void> {
-    await this.fetch(`/api/projects/${id}`, { method: "DELETE" });
+  async deleteProject(wsId: string, id: string): Promise<void> {
+    if (!wsId || !id) throw new RangeError("Deletion requires its initiating workspace and project");
+    await this.fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-Workspace-ID": wsId } });
   }
 
   // Project resources
@@ -5807,8 +5845,9 @@ export class ApiClient {
     });
   }
 
-  async deleteModule(id: string): Promise<void> {
-    await this.fetch(`/api/modules/${id}`, { method: "DELETE" });
+  async deleteModule(wsId: string, id: string): Promise<void> {
+    if (!wsId || !id) throw new RangeError("Deletion requires its initiating workspace and module");
+    await this.fetch(`/api/modules/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-Workspace-ID": wsId } });
   }
 
   // Labels

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import { moduleKeys } from "./queries";
 import { issueKeys } from "../issues/queries";
 import { cockpitKeys } from "../cockpit/queries";
@@ -62,7 +63,7 @@ export function useDeleteModule() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
-    mutationFn: (id: string) => api.deleteModule(id),
+    mutationFn: (id: string) => api.deleteModule(wsId, id),
     // Deliberately NOT optimistic: the server detaches the module's issues
     // (module_id → NULL) and deletes the row in one transaction, and a row
     // vanishing before a rejected delete lands would read as success. Cache
@@ -88,6 +89,7 @@ export function useDeleteModule() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
       qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+      invalidateIssueOperationBasis(qc, wsId);
     },
   });
 }

@@ -29,7 +29,7 @@ export function cockpitMeetingActionOptions(wsId: string, meetingId: string, act
 
 export function cockpitPrimaryNodeOptions(wsId: string, issueId: string) {
   return queryOptions({ queryKey: cockpitKeys.primaryNode(wsId, issueId),
-    queryFn: ({ signal }) => api.getCockpitPrimaryNode(issueId, signal), enabled: Boolean(wsId && issueId) });
+    queryFn: ({ signal }) => api.getCockpitPrimaryNode(wsId, issueId, signal), enabled: Boolean(wsId && issueId) });
 }
 
 export function cockpitActionIssueSearchOptions(wsId: string, q: string, offset: number) {

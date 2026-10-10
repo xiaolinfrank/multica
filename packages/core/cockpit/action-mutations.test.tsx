@@ -25,6 +25,7 @@ describe("action projection cache ordering", () => {
     vi.mocked(api.setCockpitPrimaryNode).mockResolvedValue({ ...newer, node_id: "node-1", revision: 2 });
     const { result } = renderHook(() => useSetCockpitPrimaryNode("ws-1"), { wrapper });
     await act(async () => { await result.current.mutateAsync({ issueId: "issue-1", nodeId: "node-1", revision: 1 }); });
+    expect(api.setCockpitPrimaryNode).toHaveBeenCalledWith("ws-1", "issue-1", { node_id: "node-1", expected_revision: 1 });
     expect(client.getQueryData(cockpitKeys.primaryNode("ws-1", "issue-1"))).toEqual(newer);
   });
 

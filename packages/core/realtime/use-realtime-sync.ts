@@ -23,6 +23,7 @@ import { runtimeKeys } from "../runtimes/queries";
 import { labelKeys } from "../labels/queries";
 import { propertyKeys } from "../properties/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import {
   agentTaskSnapshotKeys,
   workspaceWorkingAgentsKeys,
@@ -822,6 +823,7 @@ export function useRealtimeSync(
       member: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
           qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
           // Membership affects picker recovery and all formal human capabilities.
           qc.invalidateQueries({ queryKey: cockpitKeys.all(wsId) });
@@ -842,6 +844,7 @@ export function useRealtimeSync(
       project: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
@@ -860,6 +863,7 @@ export function useRealtimeSync(
       module: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
           qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
@@ -1130,6 +1134,7 @@ export function useRealtimeSync(
       const wsId = getCurrentWsId();
       if (wsId) {
         invalidateCockpitWorkflowsForIssue(qc, wsId, issue.id);
+        invalidateIssueOperationBasis(qc, wsId);
         onIssueUpdated(qc, wsId, issue, {
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,
@@ -1154,14 +1159,14 @@ export function useRealtimeSync(
     // and no flicker on the editor who is mid-keystroke elsewhere on the board.
     const unsubCockpitChanged = ws.on("cockpit:changed", (p) => {
       const wsId = getCurrentWsId();
-      if (wsId) onCockpitChanged(qc, wsId, p as CockpitChangedPayload);
+      if (wsId) { onCockpitChanged(qc, wsId, p as CockpitChangedPayload); invalidateIssueOperationBasis(qc, wsId); }
     });
 
     const unsubIssueCreated = ws.on("issue:created", (p) => {
       const { issue } = p as IssueCreatedPayload;
       if (!issue) return;
       const wsId = getCurrentWsId();
-      if (wsId) { onIssueCreated(qc, wsId, issue); invalidateCockpitTaskFlow(qc, wsId); }
+      if (wsId) { onIssueCreated(qc, wsId, issue); invalidateCockpitTaskFlow(qc, wsId); invalidateIssueOperationBasis(qc, wsId); }
     });
 
     const unsubIssueDeleted = ws.on("issue:deleted", (p) => {
@@ -1170,6 +1175,7 @@ export function useRealtimeSync(
       const wsId = getCurrentWsId();
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
+        invalidateIssueOperationBasis(qc, wsId);
         invalidateCockpitTaskFlow(qc, wsId);
         void onInboxIssueDeleted(qc, wsId, issue_id);
       }
@@ -1184,6 +1190,7 @@ export function useRealtimeSync(
     const unsubModuleDeleted = ws.on("module:deleted", () => {
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateIssueOperationBasis(qc, wsId);
         qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });

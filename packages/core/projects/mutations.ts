@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { projectKeys } from "./queries";
 import { issueKeys } from "../issues/queries";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import { cockpitKeys } from "../cockpit/queries";
 import { useWorkspaceId } from "../hooks";
 import { useRecentContextStore } from "../chat/recent-context-store";
@@ -69,20 +70,13 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
-    mutationFn: (id: string) => api.deleteProject(id),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: projectKeys.list(wsId) });
-      const prevList = qc.getQueryData<ListProjectsResponse>(projectKeys.list(wsId));
+    mutationFn: (id: string) => api.deleteProject(wsId, id),
+    onSuccess: (_data, id) => {
       qc.setQueryData<ListProjectsResponse>(projectKeys.list(wsId), (old) =>
-        old ? { ...old, projects: old.projects.filter((p) => p.id !== id), total: old.total - 1 } : old,
+        old && old.projects.some((project) => project.id === id)
+          ? { ...old, projects: old.projects.filter((p) => p.id !== id), total: Math.max(0, old.total - 1) } : old,
       );
       qc.removeQueries({ queryKey: projectKeys.detail(wsId, id) });
-      return { prevList };
-    },
-    onError: (_err, _id, ctx) => {
-      if (ctx?.prevList) qc.setQueryData(projectKeys.list(wsId), ctx.prevList);
-    },
-    onSuccess: (_data, id) => {
       useRecentContextStore.getState().forgetContext(wsId, { type: "project", id });
       clearIssueSurfaceViewState(issueScopeKey({ type: "project", projectId: id }));
       qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
@@ -90,6 +84,7 @@ export function useDeleteProject() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: projectKeys.list(wsId) });
       qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+      invalidateIssueOperationBasis(qc, wsId);
       // Deleting a project removes its status from the workspace, so a table
       // window filtered on that status still holds its issues. The realtime
       // event invalidates too, but a delivery gap must not leave the window

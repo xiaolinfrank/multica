@@ -619,184 +619,72 @@ describe("useUpdateIssue — detaching a sub-issue prunes the old parent's child
   });
 });
 
-describe("useBatchUpdateIssues — optimistic patch covers filtered boards too", () => {
+describe("useBatchUpdateIssues — confirmed writes across filtered boards", () => {
   const sort: IssueSortParam = { sort_by: "position", sort_direction: undefined };
-  const myScope = "assigned";
-  const myFilter = { assignee_id: "user-1" };
   const wsKey = issueKeys.listSorted(WS_ID, sort);
-  const myKey = issueKeys.myListSorted(WS_ID, myScope, myFilter, sort);
-
+  const myKey = issueKeys.myListSorted(WS_ID, "assigned", { assignee_id: "user-1" }, sort);
   let qc: QueryClient;
-  let batchUpdateIssues: ReturnType<
-    typeof vi.fn<(ids: string[], updates: unknown) => Promise<{ updated: number }>>
-  >;
-
+  let batchUpdateIssues: ReturnType<typeof vi.fn>;
   function makeBucketed(): ListIssuesCache {
-    return {
-      byStatus: {
-        unstarted: { issues: [makeIssue(1)], total: 1 },
-        started: { issues: [], total: 0 },
-      },
-    };
+    return { byStatus: { unstarted: { issues: [makeIssue(1)], total: 1 }, started: { issues: [], total: 0 } } };
   }
-
-  function bucketIds(key: readonly unknown[], status: "unstarted" | "started"): string[] {
-    const c = qc.getQueryData<ListIssuesCache>(key);
-    return (c?.byStatus[status]?.issues ?? []).map((i) => i.id);
-  }
-
+  const receipt = { workspace_id: WS_ID, requested_ids: ["issue-1"], transaction_mode: "per_item", transaction_outcome: "committed",
+    updated: 1, results: [{ issue_id: "issue-1", outcome: "applied", revision: 3, changed: true }], unconfirmed_ids: [] };
   beforeEach(() => {
     qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    batchUpdateIssues = vi.fn();
-    setApiInstance({ batchUpdateIssues } as unknown as ApiClient);
-    qc.setQueryData<ListIssuesCache>(wsKey, makeBucketed());
-    qc.setQueryData<ListIssuesCache>(myKey, makeBucketed());
+    batchUpdateIssues = vi.fn(); setApiInstance({ batchUpdateIssues } as unknown as ApiClient);
+    qc.setQueryData(wsKey, makeBucketed()); qc.setQueryData(myKey, makeBucketed());
   });
+  afterEach(() => { qc.clear(); vi.restoreAllMocks(); });
 
-  afterEach(() => {
-    qc.clear();
-    vi.restoreAllMocks();
-  });
-
-  it("optimistically patches BOTH the workspace and myList caches (not just ws)", async () => {
-    let resolve!: (r: { updated: number }) => void;
-    batchUpdateIssues.mockReturnValue(
-      new Promise<{ updated: number }>((r) => {
-        resolve = r;
-      }),
-    );
-
-    const { result } = renderHook(() => useBatchUpdateIssues(), {
-      wrapper: createWrapper(qc),
-    });
-
-    act(() => {
-      result.current.mutate({ ids: ["issue-1"], updates: { status: "in_progress" } });
-    });
-
-    // The regression Howard flagged: batch must move the card on the myList
-    // board too, not only the workspace board. onMutate awaits cancelQueries,
-    // so the optimistic patch lands a microtask later — wait for it.
-    await waitFor(() => {
-      for (const key of [wsKey, myKey]) {
-        expect(bucketIds(key, "unstarted")).toEqual([]);
-        expect(bucketIds(key, "started")).toEqual(["issue-1"]);
-      }
-    });
-
-    await act(async () => {
-      resolve({ updated: 1 });
-    });
-
+  it("keeps both boards unchanged while pending and refreshes them from the server after acknowledgement", async () => {
+    let resolve!: (value: typeof receipt) => void;
+    batchUpdateIssues.mockReturnValue(new Promise((answer) => { resolve = answer; }));
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+    let promise!: Promise<unknown>;
+    await act(async () => { promise = result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } }); await Promise.resolve(); });
     for (const key of [wsKey, myKey]) {
-      expect(bucketIds(key, "started")).toEqual(["issue-1"]);
+      expect(qc.getQueryData(key)).toEqual(makeBucketed());
+      expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    }
+    await act(async () => { resolve(receipt); await promise; });
+    for (const key of [wsKey, myKey]) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(batchUpdateIssues).toHaveBeenCalledWith(WS_ID, ["issue-1"], { status: "in_progress" }, { expected_revisions: undefined });
+  });
+
+  it("preserves description merge bases and passes explicit revision guards", async () => {
+    batchUpdateIssues.mockResolvedValue(receipt);
+    const detail = makeIssue(1, { description: "base with marker" });
+    qc.setQueryData(issueKeys.detail(WS_ID, "issue-1"), detail);
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+    await act(async () => { await result.current.mutateAsync({ ids: ["issue-1"], updates: { description: "local edit", description_base: "base with marker" }, expected_revisions: { "issue-1": 2 } }); });
+    expect(batchUpdateIssues).toHaveBeenCalledWith(WS_ID, ["issue-1"], { description: "local edit", description_base: "base with marker" }, { expected_revisions: { "issue-1": 2 } });
+    expect(qc.getQueryData(issueKeys.detail(WS_ID, "issue-1"))).toEqual(detail);
+    expect(qc.getQueryState(issueKeys.detail(WS_ID, "issue-1"))?.isInvalidated).toBe(true);
+  });
+
+  it("does not restore old snapshots over newer facts after partial or unknown failure", async () => {
+    let reject!: (error: Error) => void;
+    batchUpdateIssues.mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+    let promise!: Promise<unknown>;
+    await act(async () => { promise = result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } }).catch((error) => error); await Promise.resolve(); });
+    const newer: ListIssuesCache = { byStatus: { started: { issues: [makeIssue(1, { status: "in_progress", title: "Already saved by another confirmed write" })], total: 1 } } };
+    qc.setQueryData(wsKey, newer); qc.setQueryData(myKey, newer);
+    await act(async () => { reject(new Error("response lost after partial commit")); await promise; });
+    for (const key of [wsKey, myKey]) {
+      expect(qc.getQueryData(key)).toEqual(newer);
+      expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
     }
   });
 
-  it("does not optimistically replace description merge bases", async () => {
-    let resolve!: (r: { updated: number }) => void;
-    batchUpdateIssues.mockReturnValue(
-      new Promise<{ updated: number }>((r) => {
-        resolve = r;
-      }),
-    );
-    const detailKey = issueKeys.detail(WS_ID, "issue-1");
-    qc.setQueryData<Issue>(
-      detailKey,
-      makeIssue(1, { description: "base with marker" }),
-    );
-
-    const { result } = renderHook(() => useBatchUpdateIssues(), {
-      wrapper: createWrapper(qc),
-    });
-
-    act(() => {
-      result.current.mutate({
-        ids: ["issue-1"],
-        updates: {
-          description: "local edit",
-          description_base: "base with marker",
-        },
-      });
-    });
-
-    await waitFor(() => {
-      expect(batchUpdateIssues).toHaveBeenCalledWith(["issue-1"], {
-        description: "local edit",
-        description_base: "base with marker",
-      });
-    });
-    expect(qc.getQueryData<Issue>(detailKey)?.description).toBe(
-      "base with marker",
-    );
-
-    await act(async () => {
-      resolve({ updated: 1 });
-    });
-  });
-
-  it("rolls both caches back when the request fails", async () => {
-    batchUpdateIssues.mockRejectedValue(new Error("boom"));
-
-    const { result } = renderHook(() => useBatchUpdateIssues(), {
-      wrapper: createWrapper(qc),
-    });
-
-    await act(async () => {
-      await result.current
-        .mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } })
-        .catch(() => {});
-    });
-
-    for (const key of [wsKey, myKey]) {
-      expect(bucketIds(key, "unstarted")).toEqual(["issue-1"]);
-      expect(bucketIds(key, "started")).toEqual([]);
-    }
-  });
-
-  it("does not invalidate the board list on settle (no refetch flicker)", async () => {
-    batchUpdateIssues.mockResolvedValue({ updated: 1 });
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
-
-    const { result } = renderHook(() => useBatchUpdateIssues(), {
-      wrapper: createWrapper(qc),
-    });
-
-    await act(async () => {
-      await result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } });
-    });
-
-    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
-    expect(invalidatedKeys).not.toContainEqual(issueKeys.list(WS_ID));
-  });
-
-  it("surgically removes moved issues from the old project's list (no blanket myAll refetch)", async () => {
-    // Mirrors useUpdateIssue: a batch project move drops the cards from the
-    // old project's loaded list via the membership-aware coordinator instead
-    // of refetching every filtered list (MUL-3669 / #4548).
-    const projectScope = "project:p1";
-    const projectFilter = { project_id: "p1" };
-    const projectKey = issueKeys.myListSorted(WS_ID, projectScope, projectFilter, sort);
-    qc.setQueryData<ListIssuesCache>(projectKey, makeBucketed());
-    batchUpdateIssues.mockResolvedValue({ updated: 1 });
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
-
-    const { result } = renderHook(() => useBatchUpdateIssues(), {
-      wrapper: createWrapper(qc),
-    });
-
-    await act(async () => {
-      await result.current.mutateAsync({
-        ids: ["issue-1"],
-        updates: { project_id: "project-9" },
-      });
-    });
-
-    expect(bucketIds(projectKey, "unstarted")).toEqual([]);
-    // The assignee-filtered list is untouched by a project move.
-    expect(bucketIds(myKey, "unstarted")).toEqual(["issue-1"]);
-    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
-    expect(invalidatedKeys).not.toContainEqual(issueKeys.myAll(WS_ID));
+  it("refreshes a filtered project window after a batch move instead of inventing membership from a count", async () => {
+    const projectKey = issueKeys.myListSorted(WS_ID, "project:p1", { project_id: "p1" }, sort);
+    qc.setQueryData(projectKey, makeBucketed()); batchUpdateIssues.mockResolvedValue(receipt);
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+    await act(async () => { await result.current.mutateAsync({ ids: ["issue-1"], updates: { project_id: "project-9" } }); });
+    expect(qc.getQueryState(projectKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(myKey)?.isInvalidated).toBe(true);
   });
 });
 
@@ -915,11 +803,12 @@ describe("status / priority writes re-read an Inbox list they left behind", () =
   );
 
   it.each(writes)(
-    "$name adds no Inbox request when it interrupts none",
-    async ({ write }) => {
+    "$name reconciles the Inbox after an otherwise uninterrupted write",
+    async ({ name, write }) => {
       const listInbox = vi
         .fn<() => Promise<InboxItem[]>>()
-        .mockResolvedValue([readItem]);
+        .mockResolvedValueOnce([readItem])
+        .mockResolvedValue([{ ...readItem, issue_priority: "high" }]);
       mockApi(listInbox);
       const hooks = renderWriteHooks();
       const inbox = mountInbox();
@@ -932,7 +821,7 @@ describe("status / priority writes re-read an Inbox list they left behind", () =
       await waitFor(() =>
         expect(inbox.current.data?.[0]?.issue_priority).toBe("high"),
       );
-      expect(listInbox).toHaveBeenCalledTimes(1);
+      expect(listInbox).toHaveBeenCalledTimes(name === "useBatchUpdateIssues" ? 2 : 1);
     },
   );
 
@@ -996,7 +885,7 @@ describe("status / priority writes re-read an Inbox list they left behind", () =
         listInbox,
         updateIssue: (id: string, data: UpdateIssueRequest) =>
           save(id, data.priority).then(() => ({ ...makeIssue(1), ...data, id })),
-        batchUpdateIssues: (ids: string[], updates: UpdateIssueRequest) =>
+        batchUpdateIssues: (_wsId: string, ids: string[], updates: UpdateIssueRequest) =>
           save(ids[0]!, updates.priority).then(() => ({ updated: ids.length })),
       } as unknown as ApiClient);
       return {
@@ -1053,7 +942,11 @@ describe("status / priority writes re-read an Inbox list they left behind", () =
         writeB = write(hooks.current, second, "issue-2");
       });
       await waitFor(() => expect(server.saving("issue-2")).toBe(true));
-      expect(qc.getQueryState(inboxKeys.list(WS_ID))?.fetchStatus).toBe("idle");
+      // Batch writes keep current server facts until acknowledgement; they do
+      // not need to interrupt this read to protect an optimistic Inbox patch.
+      expect(qc.getQueryState(inboxKeys.list(WS_ID))?.fetchStatus).toBe(
+        first === "useBatchUpdateIssues" && second === "useBatchUpdateIssues" ? "fetching" : "idle",
+      );
       return { server, rendered, writeA, writeB };
     }
 

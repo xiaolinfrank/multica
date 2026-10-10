@@ -101,7 +101,7 @@ describe("module mutations", () => {
 
     const { result } = renderHook(() => useDeleteModule(), { wrapper: wrapper(qc) });
     act(() => result.current.mutate("m-1"));
-    await waitFor(() => expect(deleteModule).toHaveBeenCalledWith("m-1"));
+    await waitFor(() => expect(deleteModule).toHaveBeenCalledWith("ws-1", "m-1"));
     // While the request is in flight the row stays: delete is never optimistic.
     expect(cached(qc)?.modules.map((m) => m.id)).toEqual(["m-1"]);
 
