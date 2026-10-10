@@ -1,0 +1,239 @@
+{
+  "host": "fosun-agent-3deMac-mini.local",
+  "status": "isolated QA passed; not deployed to resident or production",
+  "candidate_commit": "092fcf059",
+  "archive_sha256": "bbf7bc78f3897e5713fababfc88d636cfa9d9dd36dfb69a175a0a4cc91aadce2",
+  "api_sha256": "aad2125ac707409422be41378467b3eee439fa4694c63ede7c011ae10f499dc7",
+  "api_health_commit": "unknown; compiled development binary is identified by the SHA above",
+  "web_build_id": "LmZqLorxEjCT409I3QGOP",
+  "schema": 9065,
+  "source_match": {
+    "tracked_frontend_files": 2649,
+    "all_match": true,
+    "extra_generated_file": "apps/web/next-env.d.ts",
+    "manifest_sha256": "f6b87b530fa8fc0a862c79af8c00fa34f8081aefe0b37411d57b2443c0390016"
+  },
+  "checks": {
+    "service": {
+      "full_run": {
+        "passed": 567,
+        "failed": 1,
+        "skipped": 0
+      },
+      "failed_case": "Builtin cockpit SKILL body152>150; reduced to149 without removing reference detail and targeted rerun passed",
+      "final_full_suite_unique_passed": 568,
+      "later_additional_unique_parents": 3,
+      "later_cases": [
+        "retention guard/current and retired roles",
+        "SourceContext cleanup claim exactly one row",
+        "artifact cleanup claim exactly one attempt"
+      ],
+      "overlap_note": "Existing bounded-attempt-budget parent rerun after the claim fix is not added again."
+    },
+    "handler": {
+      "full_run": {
+        "passed": 2619,
+        "failed": 7,
+        "skipped": 1
+      },
+      "targeted_fixes_passed": 7,
+      "final_unique_passed": 2626,
+      "skip": "Explicit opt-in live skills.sh/GitHub integration was not enabled.",
+      "initial_failures": [
+        "Two UTC-window fixtures used database-local CURRENT_DATE; fixed fixture dates only.",
+        "Four plugin example fixtures used the coordinator compile-time path; fixed package-relative lookup and synced actual examples.",
+        "SourceContext lifecycle exposed a real multirow claim/rescan; MATERIALIZED candidate and exact-key update fixed it. Artifact cleanup claim received the same protection, with dedicated regressions."
+      ]
+    },
+    "migration": {
+      "batch_test_parents": 1,
+      "data_guard_subcases": 3,
+      "owned_schema_cleanup": true,
+      "covered": "Actual9000–9063 up/re-up unchanged ledger;50 usable indexes; artifact, acceptance and minimal object tombstone each block destructive down; empty down/up succeeds. Public schema unchanged by this test.",
+      "public_forward_migrations": "9000–9064:685→750;9065:750→751; all previously applied stems and timestamps preserved.",
+      "numeric_ordering": "Previously tested numeric runner reused; actual new forward run verified numeric ordering. No full public downgrade executed."
+    },
+    "runtime_di_parents": 2,
+    "storage_parents": 50,
+    "capture_parents": 11,
+    "capability_parents": 3,
+    "timeout_parents": 5,
+    "cli_unique_parents": 7,
+    "core_focused": {
+      "first_run_cases": 95,
+      "second_run_cases": 18,
+      "third_run_cases": 154,
+      "third_run_initial_failed": 1,
+      "third_run_targeted_fix_passed": 1,
+      "overlap_note": "The95/18/154 groups overlap; do not sum them. Latest WS failure was a strict cache invalidation expectation, expanded to assert metadata invalidation and fixed-body preservation."
+    },
+    "views": {
+      "artifact_component_unique_cases": 24,
+      "generic_issue_picker_and_detail_unique_cases": 113,
+      "locale_parity_cases": 203,
+      "overlap_note": "Repeated locale203 and four early generic formal-review cases are included once. Two legacy meeting-context fixtures were migrated to bounded reverse-page API mocks; targeted rerun preserved their assertions."
+    },
+    "e2e": {
+      "unique_flows": 2,
+      "final_same_bundle_result": "2 passed19.7s",
+      "flows": [
+        "Fixed text v1 formal return→v2 approval→fixed L3 criteria/evidence acceptance→formal Review Issue terminal protection→meeting and Issue references.",
+        "Owned attachment capture by actual worker→two UI downloads with exact bytes/SHA→human approval→source attachment404→retained fixed copy→fresh browser context with no cookies/token downloads the short capability."
+      ],
+      "visual_checks": [
+        "390px Chinese dark mode",
+        "Header title/actions rectangles do not overlap",
+        "Long title explicitly expands/collapses",
+        "Document and reader horizontal overflow bounded"
+      ],
+      "instrumentation_failures": "Three initial file runs passed capture/download bytes but failed an event-listener assertion: Chromium native downloads did not emit page/context request or route events. Replaced that assertion with an actual fresh credential-free browser download. No business response was mocked and no download/hash/source-deletion assertion was removed."
+    }
+  },
+  "scale_evidence": [
+    "agent3-artifact-scale-baseline.json",
+    "agent3-artifact-scale-9065.json"
+  ],
+  "storage_evidence": "agent3-artifact-file-storage-validation.json",
+  "cleanup": {
+    "database": "multica_test",
+    "schema": 9065,
+    "business_counts": {
+      "cockpit_acceptance_criterion": 0,
+      "cockpit_acceptance_definition": 0,
+      "cockpit_acceptance_evidence": 0,
+      "cockpit_acceptance_request": 0,
+      "cockpit_acceptance_request_criterion": 0,
+      "cockpit_acceptance_reviewer_handoff": 0,
+      "cockpit_artifact": 0,
+      "cockpit_artifact_capture": 0,
+      "cockpit_artifact_meeting_reference": 0,
+      "cockpit_artifact_node_reference": 0,
+      "cockpit_artifact_producer_assignment": 0,
+      "cockpit_artifact_reviewer_handoff": 0,
+      "cockpit_artifact_version": 0,
+      "workspace": 0,
+      "issue": 0,
+      "agent": 0,
+      "agent_task_queue": 0
+    },
+    "retained_cleanup_tombstones": [
+      {
+        "id": "01a1274b-2477-79bc-89fc-bb43150f3fcd",
+        "workspace_id": "55cb8a99-17d5-46bc-8fdb-65215f53031c",
+        "storage_key": "workspaces/55cb8a99-17d5-46bc-8fdb-65215f53031c/artifact-versions/01a1274b-1972-74e2-9f02-dce9e07adba6/01a1274b-2477-79bc-89fc-bb43150f3fcd.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:30:01.462542+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a1274f-67b9-7b17-8f60-294451713a85",
+        "workspace_id": "d5ee538f-ec3c-4e4b-83c8-402a415c9c27",
+        "storage_key": "workspaces/d5ee538f-ec3c-4e4b-83c8-402a415c9c27/artifact-versions/01a1274f-6386-77b8-908e-397b418c5de4/01a1274f-67b9-7b17-8f60-294451713a85.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:34:40.826308+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a12757-ee30-7e19-8990-c61435f292f1",
+        "workspace_id": "c943acc5-0bd6-4945-a8e8-d658a90fd068",
+        "storage_key": "workspaces/c943acc5-0bd6-4945-a8e8-d658a90fd068/artifact-versions/01a12757-eb8f-7eb9-8fbd-da00255f96eb/01a12757-ee30-7e19-8990-c61435f292f1.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:43:59.530485+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a12750-bc40-7668-9ce1-f08c0d8862da",
+        "workspace_id": "88131eaa-8ba2-4e12-a5b1-e40471ee4527",
+        "storage_key": "workspaces/88131eaa-8ba2-4e12-a5b1-e40471ee4527/artifact-versions/01a12750-b9f6-792f-80fa-5a1314cd32fc/01a12750-bc40-7668-9ce1-f08c0d8862da.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:36:08.000138+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a1275e-934c-75df-a8d6-6fe4a1616dc9",
+        "workspace_id": "46beb5b8-5fe6-4666-ba92-c47c17d6b455",
+        "storage_key": "workspaces/46beb5b8-5fe6-4666-ba92-c47c17d6b455/artifact-versions/01a1275e-8ac1-78ae-b15b-d0663046abb6/01a1275e-934c-75df-a8d6-6fe4a1616dc9.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:51:15.019091+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      }
+    ],
+    "tombstone_policy": "Intentional permanent minimal records; IO finished, object deletion confirmed, rechecked after24h. No tombstones removed to manufacture a zero count.",
+    "stopped_owned_processes": [
+      {
+        "name": "web",
+        "pid": 54988,
+        "port": 13800
+      },
+      {
+        "name": "api",
+        "pid": 52363,
+        "port": 18880
+      }
+    ],
+    "runtime_profile_sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0",
+    "nas_roots_for_qa": "empty child override; original profile preserved",
+    "real_agent_runs": 0
+  },
+  "resident": {
+    "api_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+    "api_pid": 33181,
+    "frontend_commit": "e4c8845a847b84dc800da65ef7b7a3e405d90843",
+    "frontend_pid": 41313,
+    "schema": 994,
+    "health": "API and Web200 after QA cleanup",
+    "modified": false
+  },
+  "release_pending": "The next operation-policy/recovery UI batch must close known ordinary Issue/node menu dead ends before resident deployment; this artifact candidate was not presented as the entire platform being complete.",
+  "rollback_boundary": "After fixed private files exist, never restore an API lacking storage namespace protection. Keep d1b8f0e86 protection plus data guards, or stop file service and use a reviewed backup/forward recovery.",
+  "screenshots": [
+    "artifact-fixed-revisions.png",
+    "l3-fixed-evidence-accepted.png",
+    "artifact-390-zh-dark.png",
+    "artifact-reader-390-zh-dark.png",
+    "acceptance-390-zh-dark.png",
+    "acceptance-top-390-zh-dark.png",
+    "artifact-private-file-retained.png"
+  ],
+  "remote_log_directory": "/Users/fosun_agent_3/var/multica-dev-test/logs",
+  "local_execution": "Builds/static only; all runtime,DB,Redis,unit and browser checks ran on agent3.",
+  "compiled_test_binary_sha256": {
+    "multica-artifact-final-service-all.test": "f6e120cdaa95d1945184bc908eddc4a47b92bc25dd80b906e61503c028e6c587",
+    "multica-artifact-final-builtin-fixed.test": "5f9127eda2f85deae7766ff626de918abff4d41173b3f78106bcb87eb340bad3",
+    "multica-artifact-handler-final.test": "42779f5c623dbcb209919d43ac22de1c9ecb9a9a8324d76e8b0ade71a54a4a57",
+    "multica-artifact-handler-window-diagnostic.test": "331852fdd6130a383121072991ef18b3f1659287394cbc14f6afc5e7bb8adbc2",
+    "multica-artifact-sourcefix-handler.test": "09912d8371999a09dc136fe18f27c16af358ec97582e75a9c69f01c37bd3fd03",
+    "multica-artifact-claims-service.test": "c28ade0e90e403790e8eef773423578fc8b33922cbad571501092f1f36feef39",
+    "multica-artifact-service-retention.test": "5f9127eda2f85deae7766ff626de918abff4d41173b3f78106bcb87eb340bad3",
+    "multica-artifact-runtime-init.test": "ba6a5aee9c102711551aa1a2d153082a2695473b0612612df252fd141007260c",
+    "multica-artifact-migrate.test": "c2d8d8a3fe59c94d60902ede69b62989df30bf05253b22373e46bcf9da0dc883",
+    "multica-artifact-private-storage.test": "04aafdb91b3c9a4cb7979abf2be532995484662454801c275eee034c6a833611",
+    "multica-artifact-private-capture.test": "73361a4448a82efeca512c8ebfe70c29ff7906e193e2f7dcfda071c5595d787c",
+    "multica-artifact-download-capability.test": "7d6874de1edc289efcd370b8c910914e659caa4c29bf986e546677e715603da5",
+    "multica-artifact-timeout.test": "3f50f09862f2e94f45d0281e09dbeb3e8c96040729494a2c4f62928d82e3103f",
+    "multica-cockpit-artifact-cli-final.test": "0e253105e05569f3ddd3acb285a799f46a856eaf0d84f6715a2b08255fa027ce",
+    "multica-artifact-scale-guard.test": "098273df95dec49ffe8c6535f871ebea1a164ddb4d1deba6768c6148c806cb33"
+  },
+  "command_contracts": {
+    "go_runtime": "On agent3, source the protected redis.env; DATABASE_URL=TEST_DATABASE_URL; unset application REDIS_URL and SMTP settings; use suite/scripts/go-test-with-agent-cli-guard.sh; -test.v -test.parallel=1 -test.count=1. Full service and handler used no -test.run filter; opt-in scale tests were excluded from those binaries.",
+    "frontend_runtime": "On agent3 frontend/packages/core or views, node node_modules/vitest/vitest.mjs run <recorded suite paths> --maxWorkers=2; NODE_OPTIONS=--no-experimental-webstorage.",
+    "browser": "On agent3 frontend, node node_modules/@playwright/test/cli.js test e2e/cockpit-artifacts.spec.ts e2e/cockpit-artifact-files.spec.ts --workers=1 --reporter=line; private profile selects multica_test and13800/18880.",
+    "build": "On agent3 frontend/apps/web, node node_modules/next/dist/bin/next build --webpack; blank public API/WS and REMOTE_API_URL=http://127.0.0.1:18880.",
+    "migration_guard": "From isolated suite/server/cmd/migrate, only TestCockpitArtifactBatchPreservesFactsAndCleanupOnRollback; actual public forward migration operations are separately recorded in migration logs."
+  }
+}
