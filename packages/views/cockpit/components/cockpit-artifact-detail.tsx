@@ -27,6 +27,7 @@ import { CockpitArtifactSubmitForm } from "./cockpit-artifact-submit";
 import { CockpitArtifactResponsibilities } from "./cockpit-artifact-responsibilities";
 import { CockpitArtifactReferences } from "./cockpit-artifact-references";
 import { CockpitArtifactAvailabilityReason } from "./cockpit-artifact-availability";
+import { CockpitDetailTitle } from "./cockpit-detail-title";
 
 const EMPTY_REVIEW: { decision: CockpitArtifactReview["decision"]; feedback: string } = { decision: "approved", feedback: "" };
 
@@ -50,7 +51,7 @@ export function CockpitArtifactDetail({ wsId, artifactId, versionId, scope, curr
         {query.isError && <div className="space-y-2 rounded-lg bg-warning-subtle p-3 text-caption"><p>{t(($) => $.work_overview.refresh_failed)}</p><CockpitFlowError onRetry={() => void query.refetch()} /></div>}
         {outside && <div role="status" className="space-y-2 rounded-xl border border-border bg-muted/40 p-4 text-caption"><p>{t(($) => $.shell.scope_outside)}</p>
           <AppLink href={cockpitArtifactPath(paths.cockpit(), artifact.id, { projectId: artifact.project_id, moduleId: artifact.module_id }, versionId ?? undefined, back)} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>}
-        <header className="space-y-3"><div className="flex flex-wrap items-start gap-3"><FileCheck2 className="mt-1 size-6 text-brand" aria-hidden /><h1 className="min-w-0 flex-1 break-words text-title-lg font-semibold">{artifact.title}</h1><ArtifactStatus status={artifact.status} /></div>
+        <header className="space-y-3"><div className="flex flex-wrap items-start gap-3"><FileCheck2 className="mt-1 size-6 shrink-0 text-brand" aria-hidden /><CockpitDetailTitle key={artifact.title}>{artifact.title}</CockpitDetailTitle><ArtifactStatus status={artifact.status} /></div>
           {artifact.description && <p className="whitespace-pre-wrap break-words text-body text-muted-foreground">{artifact.description}</p>}
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-caption"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: artifact.node_id }, scope)} className="max-w-full break-words text-primary hover:underline">{artifact.node_label}<ArrowUpRight className="ml-1 inline size-3" /></AppLink>
             <AppLink href={paths.issueDetail(artifact.source_issue.id)} target="_blank" rel="noopener noreferrer" className="max-w-full break-words text-muted-foreground hover:underline">{t(($) => $.artifact_runtime.original_source)}: {artifact.source_issue.identifier} · {artifact.source_issue.title} {t(($) => $.action_flow.new_tab)}</AppLink></div>

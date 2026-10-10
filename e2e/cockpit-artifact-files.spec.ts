@@ -11,7 +11,7 @@ async function downloadedBytes(download: Download): Promise<Buffer> {
   return readFile(path);
 }
 
-test("captures an owned attachment into a private fixed version and downloads it after the source is deleted", async ({ page }, testInfo) => {
+test("captures an owned attachment into a private fixed version and downloads it after the source is deleted", async ({ page, browser }, testInfo) => {
   test.setTimeout(180_000);
   const api = new TestApiClient(), run = `${Date.now().toString(36)}-${process.pid}`;
   const reviewerName = `File reviewer ${run}`;
@@ -58,12 +58,11 @@ test("captures an owned attachment into a private fixed version and downloads it
     const reader = page.getByRole("region", { name: "Fixed version content", exact: true });
     const reviewed = reader.getByRole("checkbox", { name: "I have checked this fixed file.", exact: true });
     await expect(reviewed).toBeDisabled();
-    let linkRequests = 0; const signedRequestAuthorization: Array<string | undefined> = [];
-    page.on("request", (request) => {
+    let linkRequests = 0;
+    page.context().on("request", (request) => {
       if (request.method() !== "GET") return;
       const path = new URL(request.url()).pathname;
       if (path === `/api/cockpit/artifacts/${artifactId}/versions/${versionId}/download-link`) linkRequests += 1;
-      if (path === `/api/cockpit/artifact-files/${versionId}/download`) signedRequestAuthorization.push(request.headers()["authorization"]);
     });
     const firstDownload = page.waitForEvent("download");
     await reader.getByRole("button", { name: "Download fixed file", exact: true }).click();
@@ -82,7 +81,25 @@ test("captures an owned attachment into a private fixed version and downloads it
     await reader.getByRole("button", { name: "Download fixed file", exact: true }).click();
     const retained = await secondDownload; const retainedBytes = await downloadedBytes(retained);
     expect(retainedBytes.equals(expected)).toBe(true); expect(new URL(retained.url()).pathname).toBe(`/api/cockpit/artifact-files/${versionId}/download`);
-    expect(linkRequests).toBe(2); expect(signedRequestAuthorization.length).toBeGreaterThanOrEqual(2); expect(signedRequestAuthorization.every((value) => value === undefined)).toBe(true);
+    expect(linkRequests).toBe(2);
+    // Chromium's native download channel is not consistently emitted as a
+    // Playwright request event. Redeem the real capability in a fresh browser
+    // context without application state or credentials instead.
+    const anonymous = await browser.newContext({ acceptDownloads: true, extraHTTPHeaders: {}, storageState: { cookies: [], origins: [] } });
+    try {
+      const anonymousPage = await anonymous.newPage();
+      const health = await anonymousPage.goto(new URL("/health", retained.url()).toString());
+      expect(health?.status()).toBe(200);
+      expect(await anonymous.cookies()).toEqual([]);
+      expect(await anonymousPage.evaluate(() => localStorage.getItem("multica_token"))).toBeNull();
+      await anonymousPage.setContent('<a id="download-proof">Download the fixed capability</a>');
+      await anonymousPage.locator("#download-proof").evaluate((node, url) => node.setAttribute("href", url), retained.url());
+      const anonymousDownload = anonymousPage.waitForEvent("download");
+      await anonymousPage.getByRole("link", { name: "Download the fixed capability", exact: true }).click();
+      const anonymousBytes = await downloadedBytes(await anonymousDownload);
+      expect(anonymousBytes.equals(expected)).toBe(true);
+      expect(createHash("sha256").update(anonymousBytes).digest("hex")).toBe(expectedHash);
+    } finally { await anonymous.close(); }
     await page.screenshot({ path: testInfo.outputPath("artifact-private-file-retained.png"), fullPage: true });
     expect(await api.getWorkspaceAgentRunCount()).toBe(0);
   } finally { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }

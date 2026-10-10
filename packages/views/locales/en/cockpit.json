@@ -1070,6 +1070,8 @@
     "confirm_hint": "Check the minutes issue’s instructions, attachments and meeting directory before confirming readiness. Linked issue completion and directory creation do not confirm it automatically."
   },
   "shell": {
+    "expand_title": "Show full title",
+    "collapse_title": "Collapse title",
     "overview": "Overview",
     "plan": "Execution plan",
     "meetings": "Meetings",

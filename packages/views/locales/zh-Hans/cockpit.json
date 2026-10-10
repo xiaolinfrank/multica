@@ -1070,6 +1070,8 @@
     "confirm_hint": "请人工核对纪要任务说明、附件和会议目录后再确认齐备；关联任务完成或目录建好不会自动确认。"
   },
   "shell": {
+    "expand_title": "展开完整标题",
+    "collapse_title": "收起标题",
     "overview": "总览",
     "plan": "执行计划",
     "meetings": "会议",

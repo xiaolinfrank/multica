@@ -1,7 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { TestApiClient } from "./fixtures";
 
 test.use({ viewport: { width: 1600, height: 1100 }, locale: "en-US", timezoneId: "Asia/Shanghai", trace: "retain-on-failure" });
+
+async function expectSeparatedNarrowHeader(page: Page) {
+  const title = await page.getByRole("button", { name: "项目驾驶舱", exact: true }).boundingBox();
+  const saved = await page.getByRole("button", { name: "已保存视图", exact: true }).boundingBox();
+  const report = await page.getByRole("link", { name: "项目汇报", exact: true }).boundingBox();
+  expect(title).not.toBeNull(); expect(saved).not.toBeNull(); expect(report).not.toBeNull();
+  if (!title || !saved || !report) throw new Error("Cockpit header controls are not visible");
+  expect(title.y + title.height).toBeLessThanOrEqual(Math.min(saved.y, report.y));
+  expect(saved.x + saved.width).toBeLessThanOrEqual(report.x);
+}
 
 test("reviews fixed artifact revisions, accepts exact L3 evidence and follows meeting and issue references", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
@@ -122,8 +132,18 @@ test("reviews fixed artifact revisions, accepts exact L3 evidence and follows me
     await page.evaluate(() => { localStorage.setItem("e2e-artifact-locale", "zh-Hans"); document.cookie = "multica-locale=zh-Hans; path=/"; });
     await page.goto(`${base}?artifact=${artifactId}&artifact_version=${approved.id}&${scope}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("html")).toHaveClass(/dark/);
-    await expect(page.getByRole("heading", { name: longTitle, exact: true })).toBeVisible();
+    const title = page.getByRole("heading", { name: longTitle, exact: true });
+    await expect(title).toBeVisible();
     await expect(page.getByRole("region", { name: "固定版本内容", exact: true })).toBeVisible();
+    await expectSeparatedNarrowHeader(page);
+    const titleSize = await title.evaluate((element) => ({ height: element.getBoundingClientRect().height, line: Number.parseFloat(getComputedStyle(element).lineHeight) }));
+    expect(titleSize.height).toBeLessThanOrEqual(titleSize.line * 3 + 1);
+    await page.getByRole("button", { name: "展开完整标题", exact: true }).click();
+    await expect(page.getByRole("button", { name: "收起标题", exact: true })).toHaveAttribute("aria-expanded", "true");
+    expect(await title.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(titleSize.height);
+    await page.getByRole("button", { name: "收起标题", exact: true }).click();
+    await expect(page.getByRole("button", { name: "展开完整标题", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await title.evaluate((element) => element.closest("section")?.scrollTo(0, 0));
     const artifactWidth = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(artifactWidth.scroll).toBeLessThanOrEqual(artifactWidth.width + 1);
     await page.screenshot({ path: testInfo.outputPath("artifact-390-zh-dark.png"), animations: "disabled" });
@@ -133,7 +153,13 @@ test("reviews fixed artifact revisions, accepts exact L3 evidence and follows me
     expect(await narrowReader.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("artifact-reader-390-zh-dark.png"), animations: "disabled" });
     await page.goto(`${base}?node=${leaf.id}&node_view=acceptance&acceptance=${acceptance.current_request.id}&${scope}`, { waitUntil: "domcontentloaded" });
-    const narrowPacket = page.getByRole("region", { name: "固定验收材料", exact: true }); await expect(narrowPacket).toBeVisible(); await narrowPacket.scrollIntoViewIfNeeded();
+    const narrowPacket = page.getByRole("region", { name: "固定验收材料", exact: true }); await expect(narrowPacket).toBeVisible();
+    await expectSeparatedNarrowHeader(page);
+    await page.getByRole("tabpanel", { name: "验收", exact: true }).evaluate((element) => element.scrollTo(0, 0));
+    await expect(page.getByRole("button", { name: "任务名称", exact: true })).toHaveText(leaf.name);
+    await expect(page.getByRole("region", { name: "当前验收请求", exact: true }).getByText(/定义修订/)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("acceptance-top-390-zh-dark.png"), animations: "disabled" });
+    await narrowPacket.scrollIntoViewIfNeeded();
     await expect(narrowPacket.getByRole("link", { name: "阅读证据版本 2", exact: true })).toHaveAttribute("href", new RegExp(`artifact_version=${approved.id}`));
     const acceptanceWidth = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     expect(acceptanceWidth.scroll).toBeLessThanOrEqual(acceptanceWidth.width + 1);

@@ -31,11 +31,11 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   ];
   return <section className="cockpit-skin flex h-full min-h-0 min-w-0 flex-col" aria-label={t(($) => $.work_overview.cockpit)}>
     <header className="shrink-0 border-b border-border bg-card/90 px-4 pt-4 lg:px-6">
-      <div className="flex min-w-0 flex-wrap items-center gap-3 pb-4">
+      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 pb-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand"><Layers3 className="size-4" aria-hidden /></span>
         <div className="min-w-0 flex-1"><p className="text-micro text-muted-foreground">{t(($) => $.work_overview.cockpit)}</p>
-          <div className="min-w-0 break-words text-title-sm font-semibold">{title ?? t(($) => $.shell.workspace_view)}</div></div>
-        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
+          <div className="min-w-0 break-words text-title-sm font-semibold [&>button]:max-w-full [&>input]:max-w-full">{title ?? t(($) => $.shell.workspace_view)}</div></div>
+        {actions && <div className="col-span-2 flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:col-span-1 sm:justify-end">{actions}</div>}
       </div>
       <nav aria-label={t(($) => $.shell.navigation)} className="flex min-w-0 flex-wrap gap-1 pb-3">
         {navigation.map(({ value, label, Icon }) => <AppLink key={value} href={cockpitSurfacePath(paths.cockpit(), value, scope)}

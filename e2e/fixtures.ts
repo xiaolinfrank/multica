@@ -296,7 +296,7 @@ export class TestApiClient {
   private createdCockpitMeetingIds: string[] = [];
   private createdWorkspaceIds: string[] = [];
   private seededIssueIds: string[] = [];
-  private ownedAttachmentIssues = new Map<string, string>();
+  private ownedAttachmentIssues = new Map<string, { issueId: string; workspaceId: string }>();
 
   async login(email: string, name: string) {
     const client = new pg.Client(DATABASE_URL);
@@ -921,6 +921,8 @@ export class TestApiClient {
     if (!filename || /[\\/]/.test(filename) || Buffer.byteLength(content, "utf8") > 64 * 1024 || content.length === 0) {
       throw new Error("Attachment fixture must be a named, nonempty UTF-8 file of at most 64 KiB");
     }
+    const issue = await this.getIssue(issueId);
+    if (issue.id !== issueId || issue.workspace_id !== this.workspaceId) throw new Error("Attachment fixture issue is outside the current fixture workspace");
     const form = new FormData();
     form.append("file", new Blob([content], { type: "text/plain" }), filename);
     form.append("issue_id", issueId);
@@ -931,13 +933,13 @@ export class TestApiClient {
     if (!attachment.id || attachment.workspace_id !== this.workspaceId || attachment.issue_id !== issueId || attachment.filename !== filename) {
       throw new Error("Uploaded attachment did not identify the exact fixture owner and filename");
     }
-    this.ownedAttachmentIssues.set(attachment.id, issueId);
+    this.ownedAttachmentIssues.set(attachment.id, { issueId, workspaceId: this.workspaceId });
     return attachment;
   }
 
   async deleteOwnedIssueAttachment(attachmentId: string): Promise<void> {
-    const issueId = this.ownedAttachmentIssues.get(attachmentId);
-    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !issueId || !this.createdIssueIds.includes(issueId)) {
+    const owner = this.ownedAttachmentIssues.get(attachmentId);
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || owner?.workspaceId !== this.workspaceId || !this.createdIssueIds.includes(owner.issueId)) {
       throw new Error("Can only delete an attachment uploaded by this fixture client");
     }
     const response = await this.authedFetch(`/api/attachments/${encodeURIComponent(attachmentId)}`, { method: "DELETE" });
@@ -945,8 +947,8 @@ export class TestApiClient {
   }
 
   async getOwnedAttachmentStatus(attachmentId: string): Promise<number> {
-    const issueId = this.ownedAttachmentIssues.get(attachmentId);
-    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !issueId || !this.createdIssueIds.includes(issueId)) {
+    const owner = this.ownedAttachmentIssues.get(attachmentId);
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || owner?.workspaceId !== this.workspaceId || !this.createdIssueIds.includes(owner.issueId)) {
       throw new Error("Can only inspect an attachment uploaded by this fixture client");
     }
     return (await this.authedFetch(`/api/attachments/${encodeURIComponent(attachmentId)}`)).status;
