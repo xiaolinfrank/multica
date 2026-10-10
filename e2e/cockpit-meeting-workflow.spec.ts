@@ -12,6 +12,7 @@ test.use({
 
 test("requires readiness and a human decision before publishing a fixed minutes version", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
+  page.setDefaultTimeout(15_000);
   const api = new TestApiClient();
   const run = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
   const ownerName = "Meeting Workflow Reviewer";
@@ -41,6 +42,8 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     const destination = `/${workspace.slug}/cockpit?meeting=${meeting.id}`;
     const expectMaterialsUnconfirmed = () => expect(page.getByRole("region", { name: "Readiness & execution", exact: true })
       .getByText("Confirm the required input materials are ready. A folder alone does not indicate readiness.", { exact: true })).toBeVisible();
+    const publishedBadge = () => page.getByRole("region", { name: "Current minutes version", exact: true })
+      .getByText("Published", { exact: true }).first();
     const reloadWithWorkflowRead = async () => {
       // Wait for the new document's workflow read, not merely its HTML.
       // The visual assertions still use their normal timeout after hydration.
@@ -62,7 +65,8 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       await page.getByLabel("Module", { exact: true }).click();
       await page.getByRole("button", { name: module.title, exact: true }).click();
       await page.getByLabel("Reviewer", { exact: true }).click();
-      await page.getByRole("button", { name: ownerName, exact: true }).click();
+      const reviewerPicker = page.getByRole("dialog").filter({ has: page.getByRole("textbox", { name: "Search workspace members", exact: true }) });
+      await reviewerPicker.getByRole("button", { name: ownerName, exact: true }).click();
       await page.getByRole("button", { name: "Enable work package", exact: true }).click();
       await expect(page.getByRole("link", { name: "Agenda & preparation", exact: true })).toBeVisible();
       await expectMaterialsUnconfirmed();
@@ -241,9 +245,9 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       expect(approved.published_version_id).toBeNull();
 
       await page.getByRole("button", { name: "Publish version", exact: true }).click();
-      await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+      await expect(publishedBadge()).toBeVisible();
       await reloadWithWorkflowRead();
-      await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+      await expect(publishedBadge()).toBeVisible();
       const published = await api.getMeetingWorkflow(meeting.id);
       expect(published.current_version_id).toBe(version.id);
       expect(published.published_version_id).toBe(version.id);
@@ -261,14 +265,15 @@ test("requires readiness and a human decision before publishing a fixed minutes 
 
     await test.step("keep the published workbench usable on a narrower window", async () => {
       await page.setViewportSize({ width: 1100, height: 900 });
-      await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
+      await expect(publishedBadge()).toBeVisible();
       await expect(page.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath("minutes-workbench-narrow.png"), animations: "disabled" });
     });
   } catch (error) {
-    await page.screenshot({ path: testInfo.outputPath("failure-before-cleanup.png"), animations: "disabled" }).catch(() => {});
-    await testInfo.attach("failure-before-cleanup", { body: await page.locator("body").innerText(), contentType: "text/plain" }).catch(() => {});
+    await page.screenshot({ path: testInfo.outputPath("failure-before-cleanup.png"), animations: "disabled", timeout: 2_000 }).catch(() => {});
+    const body = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => null);
+    if (body !== null) await testInfo.attach("failure-before-cleanup", { body, contentType: "text/plain" }).catch(() => {});
     throw error;
   } finally {
     if (ownsWorkspace) await api.cleanupCreatedWorkspace();
