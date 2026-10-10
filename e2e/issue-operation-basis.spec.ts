@@ -9,6 +9,17 @@ async function authenticate(page: Page, api: TestApiClient) {
   await page.addInitScript((value) => { localStorage.setItem("multica_token", value); localStorage.setItem("multica:chat:isOpen", "false"); document.cookie = "multica-locale=en; path=/"; }, token);
 }
 
+async function expectReachablePlanViews(page: Page) {
+  const navigation = page.getByRole("navigation", { name: "Execution plan views", exact: true });
+  await expect(navigation.getByRole("link")).toHaveCount(6);
+  await expect.poll(() => navigation.getByRole("link").evaluateAll((links) => links.every((link) => {
+    const box = link.getBoundingClientRect();
+    return box.width > 0 && box.height > 0 && box.left >= -1 && box.right <= document.documentElement.clientWidth + 1;
+  }))).toBe(true);
+  const business = navigation.getByRole("link", { name: "Business overview", exact: true });
+  await business.focus(); await expect(business).toBeFocused();
+}
+
 test("repairs primary scope and keeps formal review actions in their workbench, with a focused narrow L3 return", async ({ page }, testInfo) => {
   test.setTimeout(150_000); page.setDefaultTimeout(15_000);
   const api = new TestApiClient(), run = `${Date.now().toString(36)}-${process.pid}`;
@@ -20,6 +31,7 @@ test("repairs primary scope and keeps formal review actions in their workbench, 
     const root = await api.createCockpitNode({ code: "01", name: "Delivery programme", project_id: project.id });
     const group = await api.createCockpitNode({ code: "01.01", name: "Evidence module", module_id: module.id, parent_id: root.id });
     const leaf = await api.createCockpitNode({ code: "01.01.01", name: "Verify acceptance boundary", parent_id: group.id });
+    await api.updateCockpitBoard({ title: "Delivery review workspace" });
     const ordinary = await api.createIssue("Move ordinary preparation work", { project_id: project.id, module_id: module.id, status: "backlog", assignee_type: "member", assignee_id: auth.user.id });
     await api.setCockpitPrimaryNode(ordinary.id, leaf.id);
     const source = await api.createIssue("Produce formal evidence", { project_id: project.id, module_id: module.id, status: "backlog", assignee_type: "member", assignee_id: auth.user.id });
@@ -78,10 +90,13 @@ test("repairs primary scope and keeps formal review actions in their workbench, 
     const showControls = page.getByRole("button", { name: "Show timeline controls", exact: true });
     if (await showControls.isVisible()) await showControls.click();
     await page.getByRole("combobox", { name: "Timeline density", exact: true }).click(); await page.getByRole("option", { name: "Week", exact: true }).click();
+    await page.getByRole("button", { name: "Expand", exact: true }).click(); await page.getByRole("menuitem", { name: "Expand all", exact: true }).click();
     await page.setViewportSize({ width: 390, height: 844 });
+    await expectReachablePlanViews(page);
     await page.getByRole("button", { name: "Open 01.01.01", exact: true }).click();
     await expect(page.getByRole("region", { name: "L3 issues", exact: true })).toBeVisible(); await expect(search).not.toBeVisible();
     await expect(page.getByRole("button", { name: "Close panel", exact: true })).toBeVisible();
+    await expectReachablePlanViews(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("operation-l3-narrow-focus.png"), animations: "disabled" });
     await page.getByRole("button", { name: "Close panel", exact: true }).click();

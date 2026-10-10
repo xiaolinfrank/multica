@@ -47,7 +47,7 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
       </nav>
       <div className="flex min-w-0 flex-wrap items-center gap-3 border-t border-border/70 py-3">
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{scopeControl}</div>
-        {secondaryNavigation && <div className="flex min-w-0 max-w-full flex-1 flex-wrap justify-end gap-1">{secondaryNavigation}</div>}
+        {secondaryNavigation && <div className="flex min-w-0 max-w-full basis-full flex-wrap gap-1 sm:flex-1 sm:basis-0 sm:justify-end">{secondaryNavigation}</div>}
       </div>
     </header>
     {notice && <div className="shrink-0 border-b border-border bg-muted/40 px-4 py-3 lg:px-6">{notice}</div>}
