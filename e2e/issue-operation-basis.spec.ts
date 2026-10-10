@@ -101,7 +101,7 @@ test("repairs primary scope and keeps formal review actions in their workbench, 
     await page.screenshot({ path: testInfo.outputPath("operation-l3-narrow-focus.png"), animations: "disabled" });
     await page.getByRole("button", { name: "Close panel", exact: true }).click();
     await expect(search).toBeVisible(); await expect(search).toHaveValue(leaf.name);
-    await expect(page.getByRole("combobox", { name: "Timeline density", exact: true })).toHaveText("Week");
+    await expect(page.getByRole("combobox", { name: "Timeline density", exact: true }).locator('[data-slot="select-value"]')).toHaveText("Week");
     expect(await api.getWorkspaceAgentRunCount()).toBe(0);
   } finally { if (owned) await api.cleanupCreatedWorkspace(); }
 });
