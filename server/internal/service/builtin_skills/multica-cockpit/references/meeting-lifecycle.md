@@ -26,6 +26,8 @@ Continue with `--cursor` while preserving the meeting, filters and size; a stale
 cursor requires an explicit restart from page one. Agenda list and references
 accept `--include-removed`. Read one agenda body or one historical command only
 when needed. Metadata must not be treated as the full discussion record.
+Command history lists the newest operations first; its cursor continues toward
+older records. Return to the first page to see operations recorded since that read.
 
 `meeting show` reads the exact meeting's current description and NAS directory,
 with at most 25 direct/derived Issue and node relationships per first page. It

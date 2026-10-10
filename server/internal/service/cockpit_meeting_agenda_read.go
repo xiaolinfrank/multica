@@ -250,7 +250,7 @@ func (s *IssueService) ListCockpitMeetingLifecycleCommands(ctx context.Context, 
 		return out, e
 	}
 	defer tx.Rollback(ctx)
-	scope := lifecycleCursorScope(p, "commands")
+	scope := lifecycleCursorScope(p, "commands-newest")
 	c, id, e := decodeLifecycleCursor(p.Cursor, scope, 0)
 	if e != nil {
 		return out, e

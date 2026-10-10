@@ -30,8 +30,8 @@ VALUES(sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(command_key),sqlc.ar
 SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
 FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
 WHERE c.workspace_id=sqlc.arg(workspace_id) AND c.meeting_id=sqlc.arg(meeting_id)
- AND (sqlc.narg(after_key)::uuid IS NULL OR (c.created_at,c.command_key)>(sqlc.arg(after_time)::timestamptz,sqlc.narg(after_key)))
-ORDER BY c.created_at,c.command_key LIMIT sqlc.arg(page_limit);
+ AND (sqlc.narg(after_key)::uuid IS NULL OR (c.created_at,c.command_key)<(sqlc.arg(after_time)::timestamptz,sqlc.narg(after_key)))
+ORDER BY c.created_at DESC,c.command_key DESC LIMIT sqlc.arg(page_limit);
 
 -- name: CountCockpitLifecycleCommands :one
 SELECT count(*) FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2;

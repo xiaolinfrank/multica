@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -405,5 +406,71 @@ func TestCockpitLifecycleAgendaL3AndFixedArtifactReferences(t *testing.T) {
 	}
 	if _, e = f.issues.GetCockpitSurfaceMeeting(ctx, CockpitSurfaceQuery{WorkspaceID: f.ws, ActorID: f.owner, ProjectID: f.project, ModuleID: f.module, Human: true}, f.meeting); e != nil {
 		t.Fatalf("agenda exact scope cannot open meeting: %v", e)
+	}
+}
+
+func TestCockpitLifecycleCommandHistoryNewestFirstWithTimestampTies(t *testing.T) {
+	f := lifecycleFixture(t)
+	ctx := context.Background()
+	p := lifecycleRead(f)
+	keys := make([]string, 0, 31)
+	for i := 0; i < 31; i++ {
+		_, in := lifecycleAgenda(t, f, fmt.Sprintf("History tie %02d", i), "")
+		keys = append(keys, in.CommandKey)
+	}
+	// Coarse timestamp precision must still give a deterministic UUID tie-break.
+	if _, e := f.Pool.Exec(ctx, "UPDATE cockpit_meeting_lifecycle_command SET created_at='2020-01-01T00:00:00Z' WHERE workspace_id=$1 AND meeting_id=$2 AND kind='agenda_create'", f.ws, f.meeting); e != nil {
+		t.Fatal(e)
+	}
+	ended := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(1), Transition: "end"}
+	first, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, ended)
+	if e != nil {
+		t.Fatal(e)
+	}
+	actual, _ := json.Marshal(time.Now().UTC().Add(-3 * time.Hour).Format(time.RFC3339Nano))
+	corrected := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(first.Current.LifecycleRevision), Transition: "correct_times", ActualEndedAt: actual, Reason: "Record the actual end after checking the offline notes."}
+	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, corrected); e != nil {
+		t.Fatal(e)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	expected := append([]string{corrected.CommandKey, ended.CommandKey}, keys...)
+	query := CockpitLifecycleList{CockpitLifecycleRead: p, PageSize: 25}
+	page, e := f.issues.ListCockpitMeetingLifecycleCommands(ctx, query)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if page.Total != 33 || len(page.Items) != 25 || page.NextCursor == nil {
+		t.Fatalf("history first page shape: total=%d items=%d next=%v", page.Total, len(page.Items), page.NextCursor)
+	}
+	if page.Items[0].CommandKey != corrected.CommandKey || page.Items[0].Action != "correct_times" {
+		t.Fatalf("newest confirmed correction is buried behind old commands: first=%s/%s want=%s/correct_times", page.Items[0].CommandKey, page.Items[0].Action, corrected.CommandKey)
+	}
+	got := make([]string, 0, 33)
+	for _, r := range page.Items {
+		got = append(got, r.CommandKey)
+	}
+	legacyQuery := query
+	last := page.Items[len(page.Items)-1]
+	legacyQuery.Cursor = *encodeLifecycleCursor(lifecycleCursor{Scope: lifecycleCursorScope(query, "commands"), ID: last.CommandKey, Time: last.CreatedAt})
+	if _, e = f.issues.ListCockpitMeetingLifecycleCommands(ctx, legacyQuery); !errors.Is(e, ErrCockpitWorkflowInput) {
+		t.Fatalf("old ascending cursor was silently reused: %v", e)
+	}
+	query.Cursor = *page.NextCursor
+	page, e = f.issues.ListCockpitMeetingLifecycleCommands(ctx, query)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if page.Total != 33 || len(page.Items) != 8 || page.NextCursor != nil {
+		t.Fatalf("history continuation: total=%d items=%d next=%v", page.Total, len(page.Items), page.NextCursor)
+	}
+	for _, r := range page.Items {
+		got = append(got, r.CommandKey)
+	}
+	seen := map[string]bool{}
+	for i, key := range got {
+		if seen[key] || key != expected[i] {
+			t.Fatalf("history tie order or pagination at %d: got=%s want=%s duplicate=%v", i, key, expected[i], seen[key])
+		}
+		seen[key] = true
 	}
 }

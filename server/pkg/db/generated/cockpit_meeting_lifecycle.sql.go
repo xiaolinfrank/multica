@@ -767,8 +767,8 @@ const listCockpitLifecycleCommands = `-- name: ListCockpitLifecycleCommands :man
 SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
 FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
 WHERE c.workspace_id=$1 AND c.meeting_id=$2
- AND ($3::uuid IS NULL OR (c.created_at,c.command_key)>($4::timestamptz,$3))
-ORDER BY c.created_at,c.command_key LIMIT $5
+ AND ($3::uuid IS NULL OR (c.created_at,c.command_key)<($4::timestamptz,$3))
+ORDER BY c.created_at DESC,c.command_key DESC LIMIT $5
 `
 
 type ListCockpitLifecycleCommandsParams struct {

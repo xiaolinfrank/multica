@@ -103,7 +103,7 @@
 | `POST /agenda/{agendaId}/references/{referenceId}/remove` | key + 该题 revision；移除准确关联，不改目标对象；同 key 原记录后来 removed 时仍只回原结果，不恢复关联 |
 | `POST /agenda/{agendaId}/preparation-issues` | key + 该题 revision + 明确 new_issue（title/description/assignee pair/priority/due_date）；原子创建 backlog 任务、准备关联和回执；有 L3 时请求明确 `primary_node_id` 并校验等于该题 L3，未选 L3 则显式项目/模块，不猜归属 |
 | `GET /lifecycle/commands/{commandKey}` | 单命令 metadata + receipt，按需查看时间修正原因及 previous_occurrence/occurrence 前后事实；成员 gate，不扫历史 |
-| `GET /lifecycle/commands?cursor&page_size` | 有界命令元数据历史：key、种类、actor/name、time、相关对象、结果 revision；完整 notes 不在历史页重复返回 |
+| `GET /lifecycle/commands?cursor&page_size` | 有界命令元数据历史，按 created_at、command_key 降序；最新操作优先，游标按同元组向更早记录续页并绑定 commands-newest 版本（旧升序游标拒绝，需回首页）。字段含 key、种类、actor/name、time、相关对象、结果 revision；完整 notes 不在历史页重复返回 |
 
 `occurrence` 固定字段：`state`、`started_confirmed_at/by`、`ended_at/by`、`ended_source`、`actual_started_at`、`actual_ended_at`。空值显式 null，未知 enum 在客户端只读。`can_schedule/can_start/can_end/can_correct_times/can_edit_agenda/can_confirm_materials` 分别计算，不从全能 `can_edit` 推导。
 
