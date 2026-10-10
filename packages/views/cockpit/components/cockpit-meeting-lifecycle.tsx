@@ -10,7 +10,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Spinner } from "@multica/ui/components/ui/spinner";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
@@ -22,17 +22,19 @@ const localInput = (value: string | null | undefined) => {
   if (!value) return ""; const date = new Date(value); if (!Number.isFinite(date.getTime())) return "";
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 };
-const displayTime = (value: string) => new Date(value).toLocaleString();
+const displayTime = (value: string, locale: string) => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString(locale) : value;
 
 export function CockpitOccurrenceTimes({ value }: { value: CockpitOccurrenceView }) {
+  const locale = useLocale();
   const { t } = useT("cockpit");
   return <dl className="grid gap-2 text-caption sm:grid-cols-2">
-    <div><dt className="text-muted-foreground">{t(($) => $.meeting_lifecycle.actual_started)}</dt><dd>{value.actual_started_at ? displayTime(value.actual_started_at) : t(($) => $.common.unset)}</dd></div>
-    <div><dt className="text-muted-foreground">{t(($) => $.meeting_lifecycle.actual_ended)}</dt><dd>{value.actual_ended_at ? displayTime(value.actual_ended_at) : t(($) => $.common.unset)}</dd></div>
+    <div><dt className="text-muted-foreground">{t(($) => $.meeting_lifecycle.actual_started)}</dt><dd>{value.actual_started_at ? displayTime(value.actual_started_at, locale) : t(($) => $.common.unset)}</dd></div>
+    <div><dt className="text-muted-foreground">{t(($) => $.meeting_lifecycle.actual_ended)}</dt><dd>{value.actual_ended_at ? displayTime(value.actual_ended_at, locale) : t(($) => $.common.unset)}</dd></div>
   </dl>;
 }
 
 export function CockpitMeetingOccurrence({ wsId, header, refresh, readOnly }: { wsId: string; header: CockpitMeetingLifecycleHeader; refresh: () => void; readOnly?: boolean }) {
+  const locale = useLocale();
   const { t } = useT("cockpit"); const [open, setOpen] = useState(false); const [history, setHistory] = useState(false);
   const [transition, setTransition] = useState<CockpitOccurrenceTransition>("schedule"); const dialogBusy = useRef(false);
   const value = header.occurrence;
@@ -49,8 +51,8 @@ export function CockpitMeetingOccurrence({ wsId, header, refresh, readOnly }: { 
         </div>
         {open && <CockpitOccurrenceForm key={`${header.meeting_id}:${transition}`} wsId={wsId} header={header} transition={transition} onDone={() => setOpen(false)} refresh={refresh} readOnly={readOnly} onBusyChange={(value) => { dialogBusy.current = value; }} />}
     </div>
-    {value.ended_at ? <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(value.ended_at) })}</p>
-      : value.started_confirmed_at && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(value.started_confirmed_at) })}</p>}
+    {value.ended_at ? <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(value.ended_at, locale) })}</p>
+      : value.started_confirmed_at && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(value.started_confirmed_at, locale) })}</p>}
     {header.blocked_reasons.some((entry) => entry.action === "occurrence" && entry.code === "workflow_manager_required") && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.manager_required)}</p>}
     {header.blocked_reasons.some((entry) => entry.code === "human_required") && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.human_required)}</p>}
     <details className="space-y-3"><summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.time_details)}</summary>
@@ -132,18 +134,19 @@ function useMeetingCommandLabel() {
 }
 
 function CockpitMeetingCommandHistory({ wsId, meetingId }: { wsId: string; meetingId: string }) {
+  const locale = useLocale();
   const label = useMeetingCommandLabel();
   const { t } = useT("cockpit"); const client = useQueryClient(); const [cursors, setCursors] = useState([""]); const [selected, setSelected] = useState("");
   const options = cockpitLifecycleCommandsOptions(wsId, meetingId, { cursor: cursors.at(-1) || undefined, page_size: 25 }); const query = useQuery(options); const page = query.data;
   const detail = useQuery({ ...cockpitLifecycleCommandOptions(wsId, meetingId, selected), enabled: Boolean(selected) });
   const refresh = async () => { await client.invalidateQueries({ queryKey: cockpitLifecycleCommandsOptions(wsId, meetingId, { page_size: 25 }).queryKey }); setCursors([""]); };
   return <div className="space-y-3">{query.isPending ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
-    <ul className="max-h-72 divide-y divide-border overflow-y-auto">{page.items.map((item) => <li key={item.command_key} className="space-y-1 py-2 text-caption"><Button variant="ghost" size="sm" className="h-auto max-w-full whitespace-normal text-left" onClick={() => setSelected(item.command_key)}>{label(item.action)}</Button><p className="break-words text-muted-foreground">{item.actor_name || item.actor_id} · {displayTime(item.created_at)}</p></li>)}</ul>
+    <ul className="max-h-72 divide-y divide-border overflow-y-auto">{page.items.map((item) => <li key={item.command_key} className="space-y-1 py-2 text-caption"><Button variant="ghost" size="sm" className="h-auto max-w-full whitespace-normal text-left" onClick={() => setSelected(item.command_key)}>{label(item.action)}</Button><p className="break-words text-muted-foreground">{item.actor_name || item.actor_id} · {displayTime(item.created_at, locale)}</p></li>)}</ul>
     {page.items.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.history_empty)}</p>}
     <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
   </>}{cursors.length > 1 && <Button size="sm" variant="outline" onClick={() => void refresh()}>{t(($) => $.task_flow.first_page)}</Button>}
     <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(""); }}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.history_detail)}</DialogTitle></DialogHeader>
-      {detail.isPending ? <Spinner /> : detail.isError || !detail.data ? <CockpitFlowError onRetry={() => void detail.refetch()} /> : <div className="space-y-4"><h4 className="text-body font-medium">{label(detail.data.action)}</h4><p className="text-caption text-muted-foreground">{detail.data.actor_name || detail.data.actor_id} · {displayTime(detail.data.created_at)}</p>
+      {detail.isPending ? <Spinner /> : detail.isError || !detail.data ? <CockpitFlowError onRetry={() => void detail.refetch()} /> : <div className="space-y-4"><h4 className="text-body font-medium">{label(detail.data.action)}</h4><p className="text-caption text-muted-foreground">{detail.data.actor_name || detail.data.actor_id} · {displayTime(detail.data.created_at, locale)}</p>
         <MeetingCommandResult detail={detail.data} />
         {detail.data.receipt.previous_occurrence && <section className="space-y-2"><h4 className="text-caption font-medium">{t(($) => $.meeting_lifecycle.before)}</h4><CockpitOccurrenceTimes value={detail.data.receipt.previous_occurrence} /></section>}
         {detail.data.receipt.occurrence && <section className="space-y-2"><h4 className="text-caption font-medium">{t(($) => $.meeting_lifecycle.after)}</h4><CockpitOccurrenceTimes value={detail.data.receipt.occurrence} /></section>}
@@ -154,6 +157,7 @@ function CockpitMeetingCommandHistory({ wsId, meetingId }: { wsId: string; meeti
 }
 
 function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetail }) {
+  const locale = useLocale();
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const occurrenceLabel = useMeetingOccurrenceLabel();
   const receipt = detail.receipt, reference = receipt.reference;
   const agendaHref = receipt.agenda_id ? cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: detail.meeting_id, view: "agenda", agendaId: receipt.agenda_id }) : null;
@@ -162,7 +166,7 @@ function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetai
     : issue ? paths.issueDetail(issue.identifier || issue.id) : receipt.issue_id ? paths.issueDetail(receipt.issue_id) : reference?.kind === "issue" ? paths.issueDetail(reference.target_id) : null;
   const targetLabel = issue ? `${issue.identifier} ${issue.title}` : reference?.label || receipt.issue_id || reference?.target_id;
   return <div className="space-y-3 text-caption">
-    {receipt.occurrence && <div className="space-y-1"><p>{occurrenceLabel(receipt.occurrence.state)}</p>{receipt.occurrence.ended_at ? <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(receipt.occurrence.ended_at) })}</p> : receipt.occurrence.started_confirmed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(receipt.occurrence.started_confirmed_at) })}</p>}</div>}
+    {receipt.occurrence && <div className="space-y-1"><p>{occurrenceLabel(receipt.occurrence.state)}</p>{receipt.occurrence.ended_at ? <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(receipt.occurrence.ended_at, locale) })}</p> : receipt.occurrence.started_confirmed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(receipt.occurrence.started_confirmed_at, locale) })}</p>}</div>}
     {receipt.materials && <p>{receipt.materials.ready ? t(($) => $.meeting_lifecycle.materials_confirmed) : t(($) => $.meeting_lifecycle.materials_cleared)}</p>}
     {receipt.agenda && <div className="space-y-1"><p className="break-words font-medium">{receipt.agenda.title}</p>{receipt.agenda.removed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.removed)}</p>}</div>}
     {targetLabel && <div className="space-y-1">{targetHref ? <AppLink href={targetHref} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline">{targetLabel} {t(($) => $.action_flow.new_tab)}</AppLink> : <p className="break-words">{targetLabel}</p>}

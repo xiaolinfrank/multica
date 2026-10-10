@@ -59,11 +59,16 @@ export function CockpitPage() {
   const reportHref = `${navigation.pathname}?${reportParams}`;
   const pendingChanges = useQuery({ ...cockpitChangePageOptions(wsId, scope, { status: "pending", page_size: 1 }), enabled: Boolean(metadata && !isReport) });
   const artifactId = navigation.searchParams.get("artifact");
+  const focusedMeeting = surface === "meetings" && Boolean(navigation.searchParams.get("meeting") && metadata);
+  const projectLabel = scope.projectId ? metadata?.scope.project_title || scope.projectId : t(($) => $.shell.all_projects);
+  const moduleLabel = scope.moduleId ? metadata?.scope.module_title || scope.moduleId : "";
+  const scopeLabel = [projectLabel, moduleLabel].filter(Boolean).join(" / ");
   const title = metadata?.cockpit ? <EditableText value={metadata.cockpit.title} disabled={!metadata.actor.is_human}
     onCommit={(value) => update.mutate({ title: value }, { onError: () => toast.error(t(($) => $.errors.save_failed)) })}
     label={t(($) => $.header.title)} placeholder={t(($) => $.header.title_placeholder)} displayClassName="text-title-sm font-semibold" /> : undefined;
   if (isReport && metadata && today) return <CockpitReport wsId={wsId} scope={scope} asOf={today} returnHref={returnHref} />;
-  return <CockpitShell surface={surface} scope={scope} title={title} pendingChangeCount={pendingChanges.data?.counts.pending} artifactsAvailable={metadata?.capabilities?.artifacts === true}
+  return <CockpitShell surface={surface} scope={scope} title={title} focusedMeeting={focusedMeeting}
+    scopeSummary={<span className="block truncate" title={scopeLabel}>{scopeLabel}</span>} pendingChangeCount={pendingChanges.data?.counts.pending} artifactsAvailable={metadata?.capabilities?.artifacts === true}
     actions={metadata && <>{metadata.actor.is_human && <CockpitSavedViewsControl wsId={wsId} userId={metadata.actor.user_id} capture={() => captureCockpitSavedView(wsId, navigation.searchParams)}
       onApply={(definition) => { applyCockpitSavedView(wsId, definition); navigation.push(cockpitSavedViewPath(navigation.pathname, definition)); }} />}
       <AppLink href={reportHref} className={buttonVariants({ variant: "outline", size: "sm" })}><Presentation className="size-4" />{t(($) => $.report.title)}</AppLink></>}

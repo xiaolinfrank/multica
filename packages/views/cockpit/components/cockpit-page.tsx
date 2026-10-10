@@ -549,7 +549,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
-      <header className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2", tab !== "meetings" && showTaskWorkspace && "max-xl:hidden")}>
+      <header className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2", (tab === "meetings" ? Boolean(selectedMeetingId) : showTaskWorkspace) && "max-xl:hidden")}>
         <span className="flex-1" />
 
         {isBoardView && (
