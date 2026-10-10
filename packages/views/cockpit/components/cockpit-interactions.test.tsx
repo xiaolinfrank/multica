@@ -1,5 +1,5 @@
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
-import { workflowFixture } from "./workflow-test-fixtures";
+import { workflowFixture, workflowSummary } from "./workflow-test-fixtures";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -45,8 +45,8 @@ vi.mock("@multica/core/api", () => ({
   api: {
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
-    getCockpitMeetingWorkflow: vi.fn(),
-    enableCockpitMeetingWorkflow: vi.fn(),
+    getCockpitMeetingWorkflowSummary: vi.fn(),
+    commandCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -235,7 +235,7 @@ describe("Cockpit secondary interactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -272,7 +272,7 @@ describe("Cockpit secondary interactions", () => {
   });
 
   it("checks workflow protection before offering deletion from an overview meeting card", async () => {
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => workflowFixture({ meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary(workflowFixture({ meeting_id: meetingId })));
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Meeting details: Working group weekly" }));
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));

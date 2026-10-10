@@ -8,6 +8,11 @@ import { configStore } from "../config";
 import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import { acknowledgedCockpitReviewerHandoff } from "../cockpit/reviewer-handoff";
 import { acknowledgedCockpitNasExport } from "../cockpit/nas-export";
+import { acknowledgedCockpitWorkflowCommand, validCockpitWorkflowSummary, cockpitWorkflowNasExportValid } from "../cockpit/workflow-history";
+import type { CockpitMeetingWorkflowSummary, CockpitMinutesVersionMetadata, CockpitWorkflowReviewerHandoff, CockpitWorkflowHistoryPage,
+  CockpitWorkflowHistoryQuery, CockpitWorkflowExportQuery, CockpitWorkflowExportPage, CockpitMinutesVersionDetail, CockpitWorkflowCommandResponse, CockpitWorkflowCommand } from "../types/cockpit-workflow-history";
+import { CockpitMeetingWorkflowSummarySchema, CockpitMinutesVersionPageSchema, CockpitReviewerHandoffPageSchema, CockpitNasExportPageSchema,
+  CockpitMinutesVersionDetailSchema, CockpitWorkflowCommandResponseSchema } from "./schemas";
 import type {
   CockpitOverviewScope, CockpitOverviewData, CockpitOverviewQuery, CockpitOverviewPageQuery, CockpitAttentionQuery,
   CockpitAttentionPage, CockpitExecutionOverviewPage, CockpitRecentMeetingPage,
@@ -2167,6 +2172,61 @@ export class ApiClient {
   async getCockpitOverviewMeetings(wsId: string, query: CockpitOverviewPageQuery & { days?: number }, signal?: AbortSignal): Promise<CockpitRecentMeetingPage | null> {
     const result = await this.readCockpitOverview(wsId, "/meetings", query, CockpitRecentMeetingPageSchema, signal);
     return result && result.items.length <= (query.page_size ?? 25) && this.cockpitOverviewMeetingWindowMatches(result, query.days ?? 30) ? result : null;
+  }
+
+  async getCockpitMeetingWorkflowSummary(wsId: string, meetingId: string, signal?: AbortSignal): Promise<CockpitMeetingWorkflowSummary | null> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/summary`, { signal });
+    const result = parseWithFallback<CockpitMeetingWorkflowSummary | null>(raw, CockpitMeetingWorkflowSummarySchema, null, { endpoint: "GET /api/cockpit/meetings/:id/workflow/summary" });
+    return result?.workspace_id === wsId && result.meeting_id === meetingId && validCockpitWorkflowSummary(result)
+      && (!result.published_nas_export || (result.published_nas_export.version_id === result.published_version_id && result.nas_destination
+        && result.published_nas_export.root_id === result.nas_destination.root_id && result.published_nas_export.directory === result.nas_destination.directory
+        && cockpitWorkflowNasExportValid(result, result.published_nas_export))) ? result : null;
+  }
+
+  private async readCockpitWorkflowHistory<T extends { workspace_id: string; meeting_id: string; items: unknown[] }>(wsId: string, meetingId: string,
+    suffix: string, query: CockpitWorkflowExportQuery, schema: ZodType<T>, signal?: AbortSignal): Promise<T | null> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/${suffix}?${params}`, { signal });
+    const result = parseWithFallback<T | null>(raw, schema, null, { endpoint: `GET /api/cockpit/meetings/:id/workflow/${suffix}` });
+    return result?.workspace_id === wsId && result.meeting_id === meetingId && result.items.length <= (query.page_size ?? 25) ? result : null;
+  }
+
+  async getCockpitMinutesVersions(wsId: string, meetingId: string, query: CockpitWorkflowHistoryQuery = {}, signal?: AbortSignal): Promise<CockpitWorkflowHistoryPage<CockpitMinutesVersionMetadata> | null> {
+    return this.readCockpitWorkflowHistory(wsId, meetingId, "versions", query, CockpitMinutesVersionPageSchema, signal);
+  }
+
+  async getCockpitReviewerHandoffs(wsId: string, meetingId: string, query: CockpitWorkflowHistoryQuery = {}, signal?: AbortSignal): Promise<CockpitWorkflowHistoryPage<CockpitWorkflowReviewerHandoff> | null> {
+    return this.readCockpitWorkflowHistory(wsId, meetingId, "reviewer-handoffs", query, CockpitReviewerHandoffPageSchema, signal);
+  }
+
+  async getCockpitNasExports(wsId: string, meetingId: string, query: CockpitWorkflowExportQuery = {}, signal?: AbortSignal): Promise<CockpitWorkflowExportPage | null> {
+    const result = await this.readCockpitWorkflowHistory(wsId, meetingId, "exports", query, CockpitNasExportPageSchema, signal);
+    return result?.version_id === (query.version_id || null) && result.status === (query.status || "") ? result : null;
+  }
+
+  async getCockpitMinutesVersion(wsId: string, meetingId: string, versionId: string, signal?: AbortSignal): Promise<CockpitMinutesVersionDetail | null> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions/${encodeURIComponent(versionId)}`, { signal });
+    const result = parseWithFallback<CockpitMinutesVersionDetail | null>(raw, CockpitMinutesVersionDetailSchema, null, { endpoint: "GET /api/cockpit/meetings/:id/workflow/versions/:versionId" });
+    return result?.workspace_id === wsId && result.meeting_id === meetingId && result.version.id === versionId ? result : null;
+  }
+
+  async commandCockpitMeetingWorkflow(wsId: string, meetingId: string, command: CockpitWorkflowCommand): Promise<CockpitWorkflowCommandResponse> {
+    const versionPath = "version_id" in command ? `/versions/${encodeURIComponent(command.version_id)}` : "";
+    const suffix = command.action === "released" ? "/release" : command.action === "submitted" ? "/versions"
+      : command.action === "reviewed" ? `${versionPath}/review` : command.action === "published" ? `${versionPath}/publish`
+        : command.action === "reviewer_reassigned" ? "/reviewer" : command.action === "nas_export_queued" ? `${versionPath}/nas-export`
+          : command.action === "nas_export_retried" ? `/exports/${encodeURIComponent(command.operation.id)}/retry` : "";
+    const body = command.action === "nas_export_retried" ? { expected_revision: command.operation.revision }
+      : command.action === "submitted" ? { ...command.body, content: command.body.content.trim() }
+        : command.action === "reviewer_reassigned" ? { ...command.body, reason: command.body.reason.trim() } : command.body;
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}?response=compact`, {
+      method: command.action === "readiness" ? "PATCH" : "POST", body: JSON.stringify(body),
+    });
+    const result = parseWithFallback<CockpitWorkflowCommandResponse | null>(raw, CockpitWorkflowCommandResponseSchema, null, { endpoint: "Cockpit compact workflow command" });
+    if (!result || result.workspace_id !== wsId || result.meeting_id !== meetingId || result.workflow.workspace_id !== wsId || result.workflow.meeting_id !== meetingId
+      || !acknowledgedCockpitWorkflowCommand(result, command)) throw new CockpitUnconfirmedWriteError();
+    return result;
   }
 
   private async writeCockpitMeetingAction(meetingId: string, path: string, method: "POST" | "PATCH", body: object): Promise<CockpitMeetingAction> {

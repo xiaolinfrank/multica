@@ -5,7 +5,7 @@ export function sameCockpitNasDestination(a: CockpitNasDestination | null, b: Co
   return Boolean(a && b && a.root_id === b.root_id && a.directory === b.directory);
 }
 
-export function cockpitNasDestination(workflow: CockpitMeetingWorkflow): CockpitNasDestination | null {
+export function cockpitNasDestination(workflow: Pick<CockpitMeetingWorkflow, "nas_destination">): CockpitNasDestination | null {
   const destination = workflow.nas_destination;
   return destination?.root_id.trim() && isAbsoluteCollabPath(destination.directory) ? destination : null;
 }

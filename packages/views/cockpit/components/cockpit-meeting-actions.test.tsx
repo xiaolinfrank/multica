@@ -8,12 +8,12 @@ import { cockpitKeys, useCockpitActionCommandStore, useCockpitTaskViewStore } fr
 import type { CockpitMeetingAction, CockpitMeetingWorkflow } from "@multica/core/types";
 import { CockpitMeetingActions } from "./cockpit-meeting-actions";
 import { compactTask, meetingAction, choiceIssue } from "./action-test-fixtures";
-import { versionFixture, workflowFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
+import { versionFixture, workflowFixture, workflowSummary, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 import enIssues from "../../locales/en/issues.json";
 
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
-  listCockpitMeetingActions: vi.fn(), getCockpitMeetingAction: vi.fn(), resolveCockpitMeetingAction: vi.fn(), updateCockpitMeetingAction: vi.fn(), createCockpitMeetingAction: vi.fn(),
+  getCockpitMinutesVersion: vi.fn(), listCockpitMeetingActions: vi.fn(), getCockpitMeetingAction: vi.fn(), resolveCockpitMeetingAction: vi.fn(), updateCockpitMeetingAction: vi.fn(), createCockpitMeetingAction: vi.fn(),
   searchIssues: vi.fn(), getCockpitPrimaryNode: vi.fn(), listIssueStatuses: vi.fn(),
 } }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
@@ -30,7 +30,7 @@ let workflow: CockpitMeetingWorkflow;
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return { ...render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}>
-    <CockpitMeetingActions wsId="ws-1" workflow={workflow} userId="reviewer-1" />
+    <CockpitMeetingActions wsId="ws-1" workflow={workflowSummary(workflow)} userId="reviewer-1" />
   </I18nProvider></QueryClientProvider>), client };
 }
 beforeEach(() => {
@@ -38,6 +38,10 @@ beforeEach(() => {
   actions = [meetingAction()];
   const published = versionFixture({ decision: "approved", published_at: "2026-10-10T10:00:00Z" });
   workflow = workflowFixture({ current_version_id: published.id, published_version_id: published.id, versions: [published] });
+  vi.mocked(api.getCockpitMinutesVersion).mockImplementation(async (_ws, _meeting, id) => {
+    const version = workflow.versions.find((entry) => entry.id === id);
+    return version ? { workspace_id: "ws-1", meeting_id: workflow.meeting_id, workflow_revision: workflow.revision, version, can_review: false, can_publish: false, can_export_nas: false } : null;
+  });
   vi.mocked(api.listIssueStatuses).mockResolvedValue({ statuses: [], categories: [], total: 0 });
   vi.mocked(api.listCockpitMeetingActions).mockImplementation(async (_meetingId, query) => ({ meeting_id: WORKFLOW_MEETING_ID,
     items: query?.q === "needle" ? [meetingAction({ id: "action-51", title: "Needle outside page" })]
@@ -61,6 +65,7 @@ async function openAction() {
   fireEvent.click(await screen.findByRole("button", { name: "Review action Verify interface" }));
   const dialog = await screen.findByRole("dialog", { name: "Confirm action" });
   await within(dialog).findByText("Verify interface");
+  await waitFor(() => expect(api.getCockpitMinutesVersion).toHaveBeenCalled());
   return dialog;
 }
 

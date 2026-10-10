@@ -928,5 +928,31 @@
     "resolve_action": "Review action",
     "inspect_nas": "Check NAS copy",
     "open_issue": "Open issue"
+  },
+  "minutes_history": {
+    "title": "Minutes history",
+    "open": "Version history ({{count}})",
+    "sections": "History sections",
+    "versions": "Versions",
+    "handoffs": "Reviewer changes",
+    "reader_title": "Minutes version {{number}}",
+    "read_current": "Read current minutes",
+    "read_published": "Read published minutes",
+    "read_version": "Read version {{number}}",
+    "current": "Current working version",
+    "official": "Official minutes",
+    "immutable": "The submitted text is fixed. Revisions require a new submission.",
+    "historical_notice": "You are reading an earlier version. The current working version is v{{number}}.",
+    "has_feedback": "Review feedback available",
+    "empty": "No records in this view.",
+    "close": "Close",
+    "export_history": "View NAS history ({{count}})",
+    "export_status": "NAS operation status",
+    "active_exports": "In progress and waiting",
+    "handoff_details": "Reason and linked review issues",
+    "no_current_copy": "No copy requested for this version and destination.",
+    "review_draft": "Review draft (read-only)",
+    "review_draft_scope": "This draft belongs to the review assignment opened earlier. It has not been transferred to the current review.",
+    "previously_published": "Previously published"
   }
 }

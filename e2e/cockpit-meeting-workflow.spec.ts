@@ -43,7 +43,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       // The visual assertions still use their normal timeout after hydration.
       const loaded = page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame())
         .then(() => page.waitForResponse((response) =>
-          new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow`
+          new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/summary`
           && response.request().method() === "GET",
         ));
       await page.reload({ waitUntil: "domcontentloaded" });
@@ -146,6 +146,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     });
 
     await test.step("approve as the bound reviewer, then explicitly publish and retain the version", async () => {
+      await page.getByRole("button", { name: "Read current minutes", exact: true }).click();
       await page.getByLabel("Review decision", { exact: true }).click();
       await page.getByRole("option", { name: "Approve", exact: true }).click();
       await page.getByLabel("Review feedback", { exact: true }).fill("Checked the recorded decision against the meeting evidence.");

@@ -355,6 +355,8 @@ export interface CockpitMeetingIssueLink {
   role: string;
   /** Explicit purposes. Legacy `role` is provenance, never inferred into these. */
   roles: string[];
+  /** Purposes owned by the workflow, including historical review tasks. */
+  required_roles?: string[];
   issue_number: number;
   /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
   issue_identifier: string;

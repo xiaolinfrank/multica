@@ -5,7 +5,7 @@ import type {
   CockpitIssueLink,
   CockpitMeeting,
   CockpitMeetingIssueLink,
-  CockpitMeetingWorkflow,
+  CockpitMeetingWorkflowSummary,
   CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
@@ -30,6 +30,8 @@ export const cockpitKeys = {
     [...cockpitKeys.all(wsId), "next-code", parentId] as const,
   workflows: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-workflow"] as const,
   workflow: (wsId: string, meetingId: string) => [...cockpitKeys.workflows(wsId), meetingId] as const,
+  workflowHistories: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-history"] as const,
+  workflowHistory: (wsId: string, meetingId: string) => [...cockpitKeys.workflowHistories(wsId), meetingId] as const,
   tasks: (wsId: string) => [...cockpitKeys.all(wsId), "node-tasks"] as const,
   nodeTasks: (wsId: string, nodeId: string) => [...cockpitKeys.tasks(wsId), nodeId] as const,
   actions: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-actions"] as const,
@@ -46,7 +48,7 @@ export const cockpitKeys = {
 export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
   return queryOptions({
     queryKey: cockpitKeys.workflow(wsId, meetingId),
-    queryFn: () => api.getCockpitMeetingWorkflow(meetingId),
+    queryFn: ({ signal }) => api.getCockpitMeetingWorkflowSummary(wsId, meetingId, signal),
     enabled: Boolean(wsId && meetingId),
   });
 }
@@ -54,9 +56,11 @@ export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
 /** Issue status/assignee changes affect the read model, but never its formal review decision. */
 export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
   invalidateCockpitTaskFlow(client, wsId);
-  for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflow>({ queryKey: cockpitKeys.workflows(wsId) })) {
-    if (workflow?.minutes_issue?.id === issueId || workflow?.versions.some((version) => version.review_issue.id === issueId)
-      || workflow?.reviewer_handoffs.some((handoff) => handoff.from_review_issue?.id === issueId || handoff.to_review_issue?.id === issueId)) {
+  // An old review task may be outside the loaded page; only observed history queries will refetch.
+  void client.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
+  for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflowSummary | null>({ queryKey: cockpitKeys.workflows(wsId) })) {
+    if (workflow?.minutes_issue?.id === issueId || workflow?.current_version?.review_issue.id === issueId
+      || workflow?.published_version?.review_issue.id === issueId) {
       void client.invalidateQueries({ queryKey, exact: true });
     }
   }

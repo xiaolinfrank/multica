@@ -42,7 +42,7 @@ test("transfers a departed reviewer's pending responsibility without replacing t
     };
     await page.addInitScript(setSession, token);
     const destination = `/${workspace.slug}/cockpit?meeting=${meeting.id}`;
-    const initialRead = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow` && response.request().method() === "GET");
+    const initialRead = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/summary` && response.request().method() === "GET");
     await page.goto(destination, { waitUntil: "domcontentloaded" });
     const initialResponse = await initialRead;
     expect(initialResponse.status()).toBe(200);
@@ -60,7 +60,12 @@ test("transfers a departed reviewer's pending responsibility without replacing t
     await dialog.getByRole("button", { name: "Confirm transfer", exact: true }).click();
     expect((await transferred).status()).toBe(200);
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByText("Review responsibility history", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Version history (1)", exact: true }).click();
+    const history = page.getByRole("region", { name: "Minutes history", exact: true });
+    const historyRead = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/reviewer-handoffs` && response.request().method() === "GET");
+    await history.getByRole("tab", { name: "Reviewer changes", exact: true }).click();
+    expect((await historyRead).status()).toBe(200);
+    await expect(history.getByText(reason, { exact: true }).first()).toBeVisible();
     const handed = await owner.getMeetingWorkflow(meeting.id);
     expect(handed.versions).toHaveLength(1);
     expect(handed.reviewer_handoffs).toHaveLength(1);
@@ -71,14 +76,15 @@ test("transfers a departed reviewer's pending responsibility without replacing t
       from_reviewer_name: "Former Reviewer", to_reviewer_name: "New Reviewer", created_by_name: "Handover Manager",
       from_review_issue: { id: original.review_issue.id, status: "cancelled" }, to_review_issue: { id: handed.versions[0]!.review_issue.id, assignee_id: nextAuth.user.id } });
     expect(handed.versions[0]!.review_issue.id).not.toBe(original.review_issue.id);
-    await page.getByText("Review responsibility history", { exact: true }).scrollIntoViewIfNeeded();
+    await history.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("reviewer-transfer-history.png"), animations: "disabled" });
 
     await reviewerContext.addInitScript(setSession, reviewerToken);
     const reviewerPage = await reviewerContext.newPage();
-    const reviewRead = reviewerPage.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow` && response.request().method() === "GET");
+    const reviewRead = reviewerPage.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/summary` && response.request().method() === "GET");
     await reviewerPage.goto(new URL(destination, page.url()).href, { waitUntil: "domcontentloaded" });
     expect((await reviewRead).status()).toBe(200);
+    await reviewerPage.getByRole("button", { name: "Read current minutes", exact: true }).click();
     await expect(reviewerPage.getByLabel("Review decision", { exact: true })).toBeVisible();
     await expect(reviewerPage.getByRole("button", { name: "Transfer review responsibility", exact: true })).toHaveCount(0);
     await reviewerPage.getByLabel("Review feedback", { exact: true }).fill("I reviewed the fixed evidence after handover.");
@@ -90,7 +96,7 @@ test("transfers a departed reviewer's pending responsibility without replacing t
     await page.getByRole("button", { name: "Publish version", exact: true }).click();
     await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();
     const loaded = page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame())
-      .then(() => page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow` && response.request().method() === "GET"));
+      .then(() => page.waitForResponse((response) => new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow/summary` && response.request().method() === "GET"));
     await page.reload({ waitUntil: "domcontentloaded" });
     expect((await loaded).status()).toBe(200);
     await expect(page.getByText("Published", { exact: true }).first()).toBeVisible();

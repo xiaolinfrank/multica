@@ -21,7 +21,7 @@ import type {
   CockpitMeetingImportItem,
   CockpitMeetingProvision,
   CockpitMeetingWorkflowSetup,
-  CockpitMeetingWorkflow,
+  CockpitMeetingWorkflowSummary,
   MemberWithUser,
   CockpitMilestonePatch,
   CockpitNode,
@@ -850,10 +850,10 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     deletionOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (kind === "meeting") {
       try {
-        const cached = queryClient.getQueryData<CockpitMeetingWorkflow>(cockpitKeys.workflow(wsId, id));
+        const cached = queryClient.getQueryData<CockpitMeetingWorkflowSummary>(cockpitKeys.workflow(wsId, id));
         const workflow = cached?.enabled ? cached
           : await queryClient.fetchQuery({ ...cockpitMeetingWorkflowOptions(wsId, id), staleTime: 0 });
-        if (workflow.meeting_id !== id) throw new Error(t(($) => $.workflow.load_failed));
+        if (!workflow || workflow.meeting_id !== id) throw new Error(t(($) => $.workflow.load_failed));
         if (workflow.enabled) {
           toast.info(t(($) => $.workflow.delete_protected));
           openMeeting(id);

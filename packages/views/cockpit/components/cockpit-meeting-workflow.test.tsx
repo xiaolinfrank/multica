@@ -4,10 +4,10 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
-import { cockpitKeys, cockpitMeetingWorkflowOptions, useCockpitMinutesDraftStore, useCockpitReviewerHandoffDraftStore } from "@multica/core/cockpit";
+import { cockpitKeys, cockpitMeetingWorkflowOptions, useCockpitMinutesDraftStore, useCockpitReviewerHandoffDraftStore, useCockpitHistoryViewStore } from "@multica/core/cockpit";
 import { CockpitNasExportSchema, EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import type { CockpitMeetingIssueLink, CockpitMeetingWorkflow, MemberWithUser } from "@multica/core/types";
-import { workflowFixture, versionFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
+import { workflowFixture, versionFixture, workflowSummary, compactWorkflow, versionMetadata, historyNasJobs, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 import enIssues from "../../locales/en/issues.json";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
@@ -15,6 +15,7 @@ import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
 vi.mock("@multica/core/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@multica/core/api")>()),
   api: {
+    getCockpitMeetingWorkflowSummary: vi.fn(), commandCockpitMeetingWorkflow: vi.fn(), getCockpitMinutesVersion: vi.fn(), getCockpitMinutesVersions: vi.fn(), getCockpitReviewerHandoffs: vi.fn(), getCockpitNasExports: vi.fn(),
     getCockpitMeetingWorkflow: vi.fn(), enableCockpitMeetingWorkflow: vi.fn(), updateCockpitMeetingReadiness: vi.fn(),
     releaseCockpitMeetingWorkflow: vi.fn(), submitCockpitMinutesVersion: vi.fn(), reviewCockpitMinutesVersion: vi.fn(),
     publishCockpitMinutesVersion: vi.fn(), reassignCockpitMeetingReviewer: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(),
@@ -49,9 +50,25 @@ function setup() {
   return { ...rendered, client };
 }
 
+async function openCurrentMinutes() {
+  fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
+  const dialog = await screen.findByRole("dialog", { name: /Minutes version/ });
+  await within(dialog).findByText(server.versions.find((version) => version.id === server.current_version_id)?.content || "Fixed minutes text", { exact: false });
+  return dialog;
+}
+async function openHandoffHistory() {
+  fireEvent.click(await screen.findByRole("button", { name: /Version history/ }));
+  fireEvent.click(await screen.findByRole("tab", { name: "Reviewer changes" }));
+  const region = screen.getByRole("region", { name: "Minutes history" });
+  await waitFor(() => expect(within(region).getAllByRole("article").length).toBeGreaterThan(0));
+  for (const details of within(region).getAllByText("Reason and linked review issues")) fireEvent.click(details);
+  return region;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   useCockpitMinutesDraftStore.getState().clearDraft();
+  useCockpitHistoryViewStore.getState().reset();
   useCockpitReviewerHandoffDraftStore.getState().clearDraft();
   currentUserId = "reviewer-1";
   readOnly = false;
@@ -61,6 +78,34 @@ beforeEach(() => {
   membersLoaded = true;
   placement = { project_id: "p1", module_id: "m1", node_id: null };
   vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async () => structuredClone(server));
+  vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async () => workflowSummary(await api.getCockpitMeetingWorkflow(WORKFLOW_MEETING_ID)));
+  vi.mocked(api.getCockpitMinutesVersion).mockImplementation(async (_ws, _meeting, versionId) => {
+    const version = server.versions.find((entry) => entry.id === versionId);
+    return version ? { workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision, version,
+      can_review: server.can_review, can_publish: server.can_publish, can_export_nas: server.can_export_nas } : null;
+  });
+  vi.mocked(api.getCockpitMinutesVersions).mockImplementation(async (_ws, _meeting, query) => {
+    const offset = Number(query?.cursor || 0); const items = [...server.versions].sort((a, b) => b.version_number - a.version_number).slice(offset, offset + 25).map(versionMetadata);
+    return { workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision, items, total: server.versions.length, next_cursor: offset + 25 < server.versions.length ? String(offset + 25) : null };
+  });
+  vi.mocked(api.getCockpitReviewerHandoffs).mockImplementation(async () => ({ workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision,
+    items: server.reviewer_handoffs.map((entry) => ({ ...entry, version_number: server.versions.find((version) => version.id === entry.version_id)?.version_number ?? null })), total: server.reviewer_handoffs.length, next_cursor: null }));
+  vi.mocked(api.getCockpitNasExports).mockImplementation(async () => ({ workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision,
+    version_id: null, status: "", items: historyNasJobs(server), total: server.nas_exports.length, next_cursor: null }));
+  vi.mocked(api.commandCockpitMeetingWorkflow).mockImplementation(async (_ws, meetingId, command) => {
+    let result: CockpitMeetingWorkflow;
+    switch (command.action) {
+      case "enabled": result = await api.enableCockpitMeetingWorkflow(meetingId, command.body); break;
+      case "readiness": result = await api.updateCockpitMeetingReadiness(meetingId, command.body); break;
+      case "released": result = await api.releaseCockpitMeetingWorkflow(meetingId, command.body.expected_revision); break;
+      case "submitted": result = await api.submitCockpitMinutesVersion(meetingId, command.body); break;
+      case "reviewed": result = await api.reviewCockpitMinutesVersion(meetingId, command.version_id, command.body); break;
+      case "published": result = await api.publishCockpitMinutesVersion(meetingId, command.version_id, command.body.expected_revision, command.body.nas_export); break;
+      case "reviewer_reassigned": result = await api.reassignCockpitMeetingReviewer(meetingId, command.body); break;
+      default: throw new Error("Unexpected workflow command");
+    }
+    return compactWorkflow(result, command);
+  });
   vi.mocked(api.listCockpitMeetingActions).mockResolvedValue({ meeting_id: WORKFLOW_MEETING_ID, items: [], total: 0, filtered_total: 0, next_cursor: null, can_add: false });
   vi.mocked(api.listIssueStatuses).mockResolvedValue({ statuses: [], categories: [], total: 0 });
   vi.mocked(api.listProjects).mockResolvedValue({ projects: [{ id: "p1", title: "Project" }], total: 1 } as Awaited<ReturnType<typeof api.listProjects>>);
@@ -112,6 +157,95 @@ beforeEach(() => {
 });
 
 describe("meeting work package workflow", () => {
+  it("keeps a document with an unfamiliar formal outcome read-only even if its capability flag is true", async () => {
+    const version = versionFixture();
+    server = workflowFixture({ current_version_id: version.id, versions: [version] });
+    vi.mocked(api.getCockpitMinutesVersion).mockResolvedValue({ workspace_id: "ws-1", meeting_id: WORKFLOW_MEETING_ID, workflow_revision: 1,
+      version: { ...version, decision: "future-outcome" }, can_review: true, can_publish: false, can_export_nas: false });
+    setup();
+    const reader = await openCurrentMinutes();
+    expect(reader).toHaveTextContent("future-outcome");
+    expect(within(reader).queryByRole("button", { name: "Submit review" })).toBeNull();
+    expect(api.reviewCockpitMinutesVersion).not.toHaveBeenCalled();
+  });
+
+  it("can leave an invalid historical page without losing the first-page recovery control", async () => {
+    const versions = Array.from({ length: 30 }, (_, index) => versionFixture({ id: `v${index + 1}`, version_number: index + 1 }));
+    server = workflowFixture({ current_version_id: "v30", versions });
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Version history (30)" }));
+    const history = screen.getByRole("region", { name: "Minutes history" });
+    await within(history).findByRole("button", { name: "Read version 30" });
+    vi.mocked(api.getCockpitMinutesVersions).mockRejectedValueOnce(new Error("Invalid cursor"));
+    fireEvent.click(within(history).getByRole("button", { name: "Next page" }));
+    await within(history).findByRole("alert");
+    expect(within(history).queryByText("No records in this view.")).toBeNull();
+    fireEvent.click(within(history).getByRole("button", { name: "Return to first page" }));
+    await within(history).findByRole("button", { name: "Read version 30" });
+    expect(within(history).getByRole("button", { name: "Previous page" })).toBeDisabled();
+  });
+
+  it("loads bounded metadata and only the selected body, preserving a historical reader when current work advances", async () => {
+    const versions = Array.from({ length: 35 }, (_, index) => versionFixture({ id: `v${index + 1}`, version_number: index + 1,
+      content: `# Minutes ${index + 1}\n\n${"Fixed content. ".repeat(200)}`, decision: index === 34 ? "pending" : "approved",
+      published_at: index < 34 ? "2026-10-10T10:00:00Z" : null }));
+    server = workflowFixture({ current_version_id: "v35", published_version_id: "v34", versions });
+    const { client } = setup();
+    await screen.findByRole("button", { name: "Read current minutes" });
+    expect(api.getCockpitMinutesVersion).not.toHaveBeenCalled();
+    expect(api.getCockpitMinutesVersions).not.toHaveBeenCalled();
+    expect(api.getCockpitReviewerHandoffs).not.toHaveBeenCalled();
+    expect(api.getCockpitNasExports).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Version history (35)" }));
+    const history = screen.getByRole("region", { name: "Minutes history" });
+    await within(history).findByRole("button", { name: "Read version 35" });
+    expect(within(history).getAllByRole("article")).toHaveLength(25);
+    expect(api.getCockpitMinutesVersion).not.toHaveBeenCalled();
+    fireEvent.click(within(history).getByRole("button", { name: "Next page" }));
+    fireEvent.click(await within(history).findByRole("button", { name: "Read version 1" }));
+    expect(vi.mocked(api.getCockpitMinutesVersions).mock.lastCall?.[2]).toMatchObject({ page_size: 25, cursor: "25" });
+    const reader = await screen.findByRole("dialog", { name: "Minutes version 1" });
+    await within(reader).findByRole("heading", { name: "Minutes 1" });
+    expect(reader).toHaveTextContent("Previously published");
+    expect(within(reader).queryByRole("button", { name: "Submit review" })).toBeNull();
+    expect(within(reader).queryByRole("button", { name: "Publish version" })).toBeNull();
+    server = { ...server, revision: 2, current_version_id: "v36", versions: [...versions, versionFixture({ id: "v36", version_number: 36, content: "New current text" })] };
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
+    expect(within(reader).getByRole("heading", { name: "Minutes 1" })).toBeVisible();
+    await waitFor(() => expect(reader).toHaveTextContent("current working version is v36"));
+    expect(api.getCockpitMinutesVersion).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(reader).getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("region", { name: "Current minutes version" })).toHaveTextContent("Version 36");
+    expect(screen.getByRole("region", { name: "Official minutes" })).toHaveTextContent("Version 34");
+  });
+
+  it("withholds formal review until the exact current document is loaded and never carries the form into a new version", async () => {
+    const version = versionFixture();
+    server = workflowFixture({ current_version_id: version.id, versions: [version] });
+    let finish!: (value: Awaited<ReturnType<typeof api.getCockpitMinutesVersion>>) => void;
+    vi.mocked(api.getCockpitMinutesVersion).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const { client } = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
+    const reader = await screen.findByRole("dialog", { name: "Minutes version 1" });
+    expect(within(reader).queryByRole("button", { name: "Submit review" })).toBeNull();
+    await act(async () => finish({ workspace_id: "ws-1", meeting_id: WORKFLOW_MEETING_ID, workflow_revision: 1, version,
+      can_review: true, can_publish: false, can_export_nas: false }));
+    await within(reader).findByRole("button", { name: "Submit review" });
+    fireEvent.change(within(reader).getByRole("textbox", { name: "Review feedback" }), { target: { value: "Feedback for version 1" } });
+    const next = versionFixture({ id: "v2", version_number: 2, content: "A new fixed document" });
+    server = { ...server, revision: 2, current_version_id: next.id, versions: [next, version] };
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
+    await waitFor(() => expect(within(reader).queryByRole("button", { name: "Submit review" })).toBeNull());
+    expect(reader).toHaveTextContent("Fixed minutes text");
+    expect(within(reader).getByRole("textbox", { name: "Review draft (read-only)" })).toHaveValue("Feedback for version 1");
+    expect(within(reader).getByRole("textbox", { name: "Review draft (read-only)" })).toHaveAttribute("readonly");
+    expect(api.reviewCockpitMinutesVersion).not.toHaveBeenCalled();
+    fireEvent.click(within(reader).getByRole("button", { name: "Close" }));
+    await openCurrentMinutes();
+    expect(await screen.findByRole("textbox", { name: "Review feedback" })).toHaveValue("");
+  });
+
   it("publishes with the selected NAS destination while an offline export remains a separate pending result", async () => {
     const version = versionFixture({ decision: "approved" });
     const destination = { root_id: "root-1", directory: "/Volumes/team/Meeting" };
@@ -144,7 +278,7 @@ describe("meeting work package workflow", () => {
       version_id: null, from_review_issue: null, to_review_issue: null,
     }] });
     setup();
-    const history = await screen.findByRole("region", { name: "Review responsibility history" });
+    const history = await openHandoffHistory();
     expect(history).toHaveTextContent("Former Reviewer → Updated Reviewer Name");
     expect(history).toHaveTextContent("Transferred by Original Manager");
     expect(history).not.toHaveTextContent("departed-user");
@@ -178,7 +312,7 @@ describe("meeting work package workflow", () => {
       expected_revision: 1, handoff_key: expect.stringMatching(/^[0-9a-f-]{36}$/), reviewer_id: "reviewer-2", reason: "Reviewer left the team",
     });
     expect(server.versions[0]).toMatchObject({ id: version.id, content: version.content, content_hash: version.content_hash, decision: "pending", review_issue: { id: "review-2" } });
-    const history = screen.getByRole("region", { name: "Review responsibility history" });
+    const history = await openHandoffHistory();
     expect(history).toHaveTextContent("reviewer-1 → New Reviewer");
     expect(history).toHaveTextContent("Transferred by Package Manager");
     expect(history).toHaveTextContent("Reviewer left the team");
@@ -205,7 +339,7 @@ describe("meeting work package workflow", () => {
     await user.click(await screen.findByRole("button", { name: "Retry transfer" }));
     expect(screen.queryByRole("combobox", { name: "New reviewer" })).toBeNull();
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Retry transfer" }));
-    await screen.findByRole("region", { name: "Review responsibility history" });
+    await openHandoffHistory();
     const calls = vi.mocked(api.reassignCockpitMeetingReviewer).mock.calls;
     expect(calls[1]?.[1]).toEqual(calls[0]?.[1]);
     expect(useCockpitReviewerHandoffDraftStore.getState().draft.byMeeting[WORKFLOW_MEETING_ID]).toBeUndefined();
@@ -222,7 +356,7 @@ describe("meeting work package workflow", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Reason for transfer" }), { target: { value: "Requested coverage" } });
     expect(screen.getByRole("button", { name: "Confirm transfer" })).toBeEnabled();
     server = { ...server, revision: 2, reviewer_id: "reviewer-3" };
-    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), server); });
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
     expect(await screen.findByRole("alert")).toHaveTextContent("The workflow changed while this dialog was open");
     expect(screen.getByRole("button", { name: "Confirm transfer" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
@@ -248,7 +382,7 @@ describe("meeting work package workflow", () => {
     await user.click(await screen.findByRole("option", { name: "New Reviewer" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Reason for transfer" }), { target: { value: "Next round coverage" } });
     await user.click(screen.getByRole("button", { name: "Confirm transfer" }));
-    await screen.findByRole("region", { name: "Review responsibility history" });
+    await openHandoffHistory();
     expect(server.versions[0]).toEqual(version);
     expect(server.reviewer_handoffs[0]).toMatchObject({ version_id: null, from_review_issue: null, to_review_issue: null });
     expect(screen.getByRole("button", { name: "Publish version" })).toBeEnabled();
@@ -269,13 +403,19 @@ describe("meeting work package workflow", () => {
     expect(screen.queryByRole("button", { name: "Transfer review responsibility" })).toBeNull();
   });
 
-  it("resets local review feedback when the same fixed version gains a replacement review issue", async () => {
+  it("keeps the previous assignment's feedback readable and requires a new form after a replacement review issue", async () => {
     const version = versionFixture();
     server = workflowFixture({ current_version_id: version.id, versions: [version] });
     const { client } = setup();
+    await openCurrentMinutes();
     fireEvent.change(await screen.findByRole("textbox", { name: "Review feedback" }), { target: { value: "Draft for old responsibility" } });
     server = { ...server, revision: 3, versions: [{ ...version, review_issue: { ...version.review_issue, id: "replacement-review" } }] };
-    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), server); });
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
+    await act(async () => { await client.invalidateQueries({ queryKey: cockpitKeys.workflowHistory("ws-1", WORKFLOW_MEETING_ID) }); });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Review draft (read-only)" })).toHaveValue("Draft for old responsibility"));
+    expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await openCurrentMinutes();
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Review feedback" })).toHaveValue(""));
   });
 
@@ -291,9 +431,13 @@ describe("meeting work package workflow", () => {
     const previous = versionFixture({ id: "v1", version_number: 1, content: "## Earlier minutes\n\nOriginal text.", decision: "changes_requested" });
     server = workflowFixture({ current_version_id: current.id, versions: [current, previous] });
     setup();
+    expect(api.getCockpitMinutesVersion).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Read current minutes" }));
     expect(await screen.findByRole("heading", { name: "Current meeting minutes" })).toBeTruthy();
-    fireEvent.click(screen.getByText("Version 1 · Changes requested"));
-    expect(screen.getByRole("heading", { name: "Earlier minutes" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Version history (2)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read version 1" }));
+    expect(await screen.findByRole("heading", { name: "Earlier minutes" })).toBeTruthy();
     expect(server.versions[0]?.content).toBe("# Current meeting minutes\n\nA **clear** boundary.");
   });
 
@@ -349,7 +493,8 @@ describe("meeting work package workflow", () => {
     expect(await screen.findByText("Pending review")).toBeTruthy();
     expect(screen.getByText("Unpublished")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publish version" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Submit review" }));
+    await openCurrentMinutes();
+    await user.click(await screen.findByRole("button", { name: "Submit review" }));
     expect(await screen.findByText("Approved")).toBeTruthy();
     expect(screen.getByText("Unpublished")).toBeTruthy();
     expect(api.publishCockpitMinutesVersion).not.toHaveBeenCalled();
@@ -378,6 +523,7 @@ describe("meeting work package workflow", () => {
     server = workflowFixture({ released_at: "2026-10-09T10:00:00Z", current_version_id: version.id, versions: [version] });
     setup();
     const user = userEvent.setup();
+    await openCurrentMinutes();
     await user.click(await screen.findByRole("combobox", { name: "Review decision" }));
     await user.click(await screen.findByRole("option", { name: "Request changes" }));
     expect(screen.getByRole("button", { name: "Submit review" })).toBeDisabled();

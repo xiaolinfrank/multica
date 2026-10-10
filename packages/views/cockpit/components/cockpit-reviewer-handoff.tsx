@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ApiError } from "@multica/core/api";
 import {
-  acknowledgeCockpitReviewerHandoff, CockpitUnconfirmedWriteError,
+  acknowledgeCockpitCompactReviewerHandoff, CockpitUnconfirmedWriteError,
   EMPTY_COCKPIT_REVIEWER_HANDOFF_DRAFT, prepareCockpitReviewerHandoff, rejectCockpitReviewerHandoff,
   setCockpitReviewerHandoffDraft, useCockpitReviewerHandoffDraftStore, useReassignCockpitMeetingReviewer,
 } from "@multica/core/cockpit";
-import type { CockpitMeetingWorkflow, MemberWithUser } from "@multica/core/types";
+import type { CockpitMeetingWorkflowSummary, MemberWithUser } from "@multica/core/types";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -20,7 +20,7 @@ import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 
 export function CockpitReviewerHandoffControl({ wsId, workflow, members, membersLoaded, canTransfer, disabled, onReload }: {
   wsId: string;
-  workflow: CockpitMeetingWorkflow;
+  workflow: CockpitMeetingWorkflowSummary;
   members: MemberWithUser[];
   membersLoaded: boolean;
   canTransfer: boolean;
@@ -37,7 +37,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
   const transfer = useReassignCockpitMeetingReviewer(wsId);
   const meetingId = workflow.meeting_id;
   const draft = useCockpitReviewerHandoffDraftStore((state) => state.draft.byMeeting[meetingId] ?? EMPTY_COCKPIT_REVIEWER_HANDOFF_DRAFT);
-  const current = workflow.versions.find((version) => version.id === workflow.current_version_id);
+  const current = workflow.current_version;
   const candidates = members.filter((member) => member.user_id !== workflow.reviewer_id);
   const currentName = members.find((member) => member.user_id === workflow.reviewer_id)?.name || workflow.reviewer_id;
   const staleObservation = open && !draft.pending && observedRevision !== workflow.revision;
@@ -45,12 +45,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
     || (!staleObservation && observedRevision !== null && membersLoaded
       && candidates.some((member) => member.user_id === draft.reviewer_id) && Boolean(draft.reason.trim())));
 
-  useEffect(() => {
-    if (acknowledgeCockpitReviewerHandoff(meetingId, workflow)) {
-      setOpen(false);
-      setError("");
-    }
-  }, [meetingId, workflow]);
+
 
   async function confirm() {
     const revision = draft.pending?.expected_revision ?? observedRevision;
@@ -61,7 +56,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, members
     const body = prepareCockpitReviewerHandoff(meetingId, revision, draft.handoff_key || crypto.randomUUID());
     try {
       const result = await transfer.mutateAsync({ meetingId, body });
-      acknowledgeCockpitReviewerHandoff(meetingId, result);
+      acknowledgeCockpitCompactReviewerHandoff(meetingId, result);
       setOpen(false);
     } catch (cause) {
       if (cause instanceof ApiError && [400, 403, 404, 409, 422].includes(cause.status)) rejectCockpitReviewerHandoff(meetingId);

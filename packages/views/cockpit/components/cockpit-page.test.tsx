@@ -1,3 +1,4 @@
+import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -44,8 +45,8 @@ vi.mock("@multica/core/api", () => ({
   api: {
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
-    getCockpitMeetingWorkflow: vi.fn(),
-    enableCockpitMeetingWorkflow: vi.fn(),
+    getCockpitMeetingWorkflowSummary: vi.fn(),
+    commandCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     getCockpitNextNodeCode: vi.fn(),
@@ -260,7 +261,7 @@ describe("CockpitPage", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
@@ -842,7 +843,7 @@ describe("CockpitPage detail tables", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -910,7 +911,7 @@ describe("CockpitPage versions", () => {
     vi.clearAllMocks();
     navSearch.params = new URLSearchParams();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([
@@ -963,7 +964,7 @@ describe("CockpitPage versions", () => {
     expect(screen.getByText("Meeting work packages protect this board from full restore. Edit the plan directly.")).toBeTruthy();
     expect(within(row.closest("li")!).getByRole("button", { name: "Restore" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save current" })).toBeEnabled();
-    expect(api.getCockpitMeetingWorkflow).not.toHaveBeenCalled();
+    expect(api.getCockpitMeetingWorkflowSummary).not.toHaveBeenCalled();
   });
 
   it("lists the version history and restores on a confirmed second click", async () => {

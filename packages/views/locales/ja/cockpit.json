@@ -928,5 +928,31 @@
     "resolve_action": "アクションを確認",
     "inspect_nas": "NAS のコピーを確認",
     "open_issue": "タスクを開く"
+  },
+  "minutes_history": {
+    "title": "議事録の履歴",
+    "open": "バージョン履歴（{{count}}）",
+    "sections": "履歴の種類",
+    "versions": "バージョン",
+    "handoffs": "レビュー担当の変更",
+    "reader_title": "議事録バージョン {{number}}",
+    "read_current": "現在の議事録を読む",
+    "read_published": "正式な議事録を読む",
+    "read_version": "バージョン {{number}} を読む",
+    "current": "現在の作業バージョン",
+    "official": "正式な議事録",
+    "immutable": "提出済みの本文は固定されています。修正は新しいバージョンとして提出してください。",
+    "historical_notice": "過去のバージョンを表示しています。現在の作業バージョンは v{{number}} です。",
+    "has_feedback": "レビューの意見あり",
+    "empty": "このビューには記録がありません。",
+    "close": "閉じる",
+    "export_history": "NAS 履歴を表示（{{count}}）",
+    "export_status": "NAS 操作の状態",
+    "active_exports": "処理中・待機中",
+    "handoff_details": "変更理由とレビュータスク",
+    "no_current_copy": "このバージョンと保存先へのコピーはまだ申請されていません。",
+    "review_draft": "レビュー草稿（読み取り専用）",
+    "review_draft_scope": "この草稿は以前に開いたレビュー担当に属します。現在のレビューには引き継がれていません。",
+    "previously_published": "公開済みの旧版"
   }
 }

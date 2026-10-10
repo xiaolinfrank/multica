@@ -106,8 +106,10 @@ describe("meeting workflow realtime updates", () => {
     const invalidate = vi.spyOn(qc, "invalidateQueries");
     onCockpitChanged(qc, WS, { scope: "meeting_workflow", action: "reviewed", entity: { meeting_id: "m1" } });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflowHistory(WS, "m1") });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board(WS) });
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m2") });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflowHistory(WS, "m2") });
   });
 });
 

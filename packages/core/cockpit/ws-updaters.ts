@@ -130,8 +130,10 @@ export function onCockpitChanged(
     const meetingId = asRecord(entity)?.["meeting_id"];
     if (typeof meetingId === "string" && meetingId) {
       void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId) });
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistory(wsId, meetingId) });
     } else {
       void qc.invalidateQueries({ queryKey: cockpitKeys.workflows(wsId) });
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
     }
     void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
@@ -148,6 +150,7 @@ export function onCockpitChanged(
   // An import or restore rewrote the board; nothing here can reconstruct it
   // from a count. Both freeze a version on the way in, so history moves too.
   if (scope === "board") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
     qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     qc.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
     qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });

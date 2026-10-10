@@ -190,6 +190,51 @@ export interface TestMeetingWorkflow {
   }>;
 }
 
+export interface TestMinutesMetadata extends Omit<TestMeetingMinutesVersion, "content" | "feedback"> {
+  has_feedback: boolean;
+}
+
+export interface TestWorkflowSummary extends Omit<TestMeetingWorkflow, "versions" | "reviewer_handoffs" | "nas_exports"> {
+  representation: "summary";
+  workspace_id: string;
+  current_version: TestMinutesMetadata | null;
+  published_version: TestMinutesMetadata | null;
+  published_nas_export: (TestMeetingWorkflow["nas_exports"][number] & { source_version: TestMinutesMetadata }) | null;
+  history_counts: { versions: number; reviewer_handoffs: number; nas_exports: number; nas_active: number };
+}
+
+export interface TestWorkflowHistoryPage<T> {
+  workspace_id: string;
+  meeting_id: string;
+  workflow_revision: number;
+  items: T[];
+  total: number;
+  next_cursor: string | null;
+}
+
+export interface TestMinutesDetail {
+  workspace_id: string;
+  meeting_id: string;
+  workflow_revision: number;
+  version: TestMeetingMinutesVersion;
+  can_review: boolean;
+  can_publish: boolean;
+  can_export_nas: boolean;
+}
+
+export interface TestWorkflowCompactCommand {
+  representation: "compact";
+  workspace_id: string;
+  meeting_id: string;
+  workflow: TestWorkflowSummary;
+  receipt: {
+    action: string;
+    version: TestMeetingMinutesVersion | null;
+    handoff: (TestMeetingWorkflow["reviewer_handoffs"][number] & { version_number: number | null }) | null;
+    nas_export: (TestMeetingWorkflow["nas_exports"][number] & { source_version: TestMinutesMetadata }) | null;
+  };
+}
+
 export type TestIssueStatus =
   | "backlog"
   | "todo"
@@ -635,6 +680,64 @@ export class TestApiClient {
     });
     if (!response.ok) throw new Error(`enable workflow failed: ${response.status} ${await response.text()}`);
     return this.getMeetingWorkflow(meetingId);
+  }
+
+  async getMeetingWorkflowSummary(meetingId: string): Promise<TestWorkflowSummary> {
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/summary`);
+    if (!response.ok) throw new Error(`get workflow summary failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  async getMeetingMinutesHistory(meetingId: string, query: Record<string, string | number> = {}): Promise<TestWorkflowHistoryPage<TestMinutesMetadata>> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions?${params}`);
+    if (!response.ok) throw new Error(`get minutes history failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  async getMeetingMinutesDetail(meetingId: string, versionId: string): Promise<TestMinutesDetail> {
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/versions/${encodeURIComponent(versionId)}`);
+    if (!response.ok) throw new Error(`get minutes detail failed: ${response.status} ${await response.text()}`);
+    return response.json();
+  }
+
+  /** Send the real workflow command while retaining its exact response size for E2E assertions. */
+  async compactMeetingWorkflowCommand(meetingId: string, suffix: string, body: Record<string, unknown>, method: "POST" | "PATCH" = "POST"):
+    Promise<{ data: TestWorkflowCompactCommand; bytes: number; text: string }> {
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}?response=compact`, {
+      method, body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`compact workflow command failed: ${response.status} ${text}`);
+    return { data: JSON.parse(text) as TestWorkflowCompactCommand, bytes: Buffer.byteLength(text, "utf8"), text };
+  }
+
+  /** Exercise a test-built Multica CLI using only this fixture's token and private config root. */
+  async replayMinutesWithCompactCLI(meetingId: string, submissionKey: string, content: string): Promise<TestWorkflowCompactCommand> {
+    const binary = process.env.MULTICA_E2E_CLI_BINARY;
+    if (!binary || !binary.startsWith("/") || !this.token || !this.workspaceId
+      || this.createdWorkspaceIds.length !== 1 || this.createdWorkspaceIds[0] !== this.workspaceId
+      || !decodeURIComponent(new URL(DATABASE_URL).pathname).endsWith("_test")
+      || !["127.0.0.1", "localhost"].includes(new URL(API_BASE).hostname)) {
+      throw new Error("CLI smoke requires a configured test-built executable and this client's isolated local test workspace");
+    }
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = await mkdtemp(join(tmpdir(), "multica-history-cli-"));
+    try {
+      const filename = join(root, "minutes.md");
+      await writeFile(filename, `${content}\n`, { mode: 0o600 });
+      const env: NodeJS.ProcessEnv = {};
+      for (const key of ["HOME", "PATH", "TMPDIR"]) if (process.env[key]) env[key] = process.env[key];
+      Object.assign(env, { MULTICA_TASK_CONFIG_ROOT: join(root, "config"), MULTICA_TOKEN: this.token,
+        MULTICA_SERVER_URL: API_BASE, MULTICA_WORKSPACE_ID: this.workspaceId });
+      const result = await promisify(execFile)(binary, ["cockpit", "meeting", "workflow", "submit", meetingId, "--revision", "1",
+        "--submission-key", submissionKey, "--content-file", filename, "--compact"], { env, cwd: root, maxBuffer: 256 * 1024, timeout: 30_000 });
+      return JSON.parse(result.stdout) as TestWorkflowCompactCommand;
+    } finally { await rm(root, { recursive: true, force: true }); }
   }
 
   /** Establish a real pending review through the API for handover scenarios. */

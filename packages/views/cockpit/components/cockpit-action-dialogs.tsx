@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
 import {
-  clearCockpitActionCommand, cockpitMeetingActionOptions, cockpitPrimaryNodeOptions, rememberCockpitActionCommand,
+  clearCockpitActionCommand, cockpitMeetingActionOptions, cockpitPrimaryNodeOptions, cockpitMinutesVersionOptions, rememberCockpitActionCommand,
   useCockpitActionCommandStore, useCreateCockpitMeetingAction, useResolveCockpitMeetingAction, useUpdateCockpitMeetingAction, CockpitUnconfirmedWriteError,
 } from "@multica/core/cockpit";
-import type { CockpitActionResolution, CockpitMeetingAction, CockpitMeetingWorkflow, CockpitMinutesVersion, Issue } from "@multica/core/types";
+import type { CockpitActionResolution, CockpitMeetingAction, CockpitMeetingWorkflowSummary, CockpitMinutesVersion, Issue } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
@@ -30,7 +30,7 @@ function SourceMinutes({ version, quote }: { version: CockpitMinutesVersion | un
   </section>;
 }
 
-export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string; workflow: CockpitMeetingWorkflow; disabled: boolean }) {
+export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string; workflow: CockpitMeetingWorkflowSummary; disabled: boolean }) {
   const { t } = useT("cockpit");
   const scope = `meeting:${workflow.meeting_id}:proposal`;
   const stored = useCockpitActionCommandStore((state) => state.draft.commands[scope]);
@@ -43,12 +43,13 @@ export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string
   const [quote, setQuote] = useState("");
   const [error, setError] = useState("");
   const lock = useRef(false);
-  const version = workflow.versions.find((entry) => entry.id === (pending?.version_id ?? versionId));
+  const source = useQuery({ ...cockpitMinutesVersionOptions(wsId, workflow.meeting_id, pending?.version_id ?? versionId), enabled: open && Boolean(pending?.version_id ?? versionId) });
+  const version = source.data?.version;
   const sourceQuote = quote.trim() ? quote : "";
   const quoteInvalid = Boolean(sourceQuote && !version?.content.includes(sourceQuote));
   const stale = !pending && versionId !== workflow.published_version_id;
   async function save() {
-    if (lock.current || disabled || stale || quoteInvalid) return;
+    if (lock.current || disabled || stale || quoteInvalid || !version || source.isFetching || source.isError) return;
     lock.current = true; setError("");
     const command = pending ?? { kind: "proposal" as const, meeting_id: workflow.meeting_id, version_id: versionId,
       body: { proposal_key: crypto.randomUUID(), title: title.trim(), description: description.trim(), source_quote: sourceQuote } };
@@ -66,7 +67,7 @@ export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string
     <DialogTrigger render={<Button type="button" size="sm" disabled={disabled} />}>{pending ? t(($) => $.meeting_actions.retry_suggestion) : t(($) => $.meeting_actions.add)}</DialogTrigger>
     <DialogContent className="sm:max-w-xl" showCloseButton={!create.isPending}><DialogHeader><DialogTitle>{t(($) => $.meeting_actions.add)}</DialogTitle>
       <DialogDescription>{t(($) => $.meeting_actions.add_hint)}</DialogDescription></DialogHeader>
-      <SourceMinutes version={version} quote="" />
+      {source.isPending ? <Spinner /> : source.isError || !version ? <CockpitFlowError onRetry={() => void source.refetch()} /> : <SourceMinutes version={version} quote="" />}
       <label className="space-y-1 text-caption">{t(($) => $.meeting_actions.title)}<Input value={title} disabled={create.isPending || Boolean(pending)} onChange={(event) => setTitle(event.target.value)} /></label>
       <label className="space-y-1 text-caption">{t(($) => $.meeting_actions.description)}<Textarea value={description} rows={3} disabled={create.isPending || Boolean(pending)} onChange={(event) => setDescription(event.target.value)} /></label>
       <label className="space-y-1 text-caption">{t(($) => $.meeting_actions.quote)}<Textarea value={quote} rows={3} disabled={create.isPending || Boolean(pending)} onChange={(event) => setQuote(event.target.value)} /></label>
@@ -75,14 +76,14 @@ export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string
       {pending && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.pending_request)}</p>}
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={create.isPending} />}>{t(($) => $.binding.cancel)}</DialogClose>
-        <Button type="button" disabled={disabled || create.isPending || !title.trim() || stale || quoteInvalid} aria-busy={create.isPending} onClick={() => void save()}>
+        <Button type="button" disabled={disabled || create.isPending || !title.trim() || stale || quoteInvalid || !version || source.isFetching || source.isError} aria-busy={create.isPending} onClick={() => void save()}>
           {create.isPending && <Spinner />}{pending ? t(($) => $.meeting_actions.retry_suggestion) : t(($) => $.meeting_actions.save)}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }
 
 export function CockpitActionDetail({ wsId, workflow, actionId, userId, readOnly, onDone, onBusyChange }: {
-  wsId: string; workflow: CockpitMeetingWorkflow; actionId: string; userId: string; readOnly?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void;
+  wsId: string; workflow: CockpitMeetingWorkflowSummary; actionId: string; userId: string; readOnly?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void;
 }) {
   const { t } = useT("cockpit");
   const query = useQuery(cockpitMeetingActionOptions(wsId, workflow.meeting_id, actionId));
@@ -97,13 +98,14 @@ export function CockpitActionDetail({ wsId, workflow, actionId, userId, readOnly
 }
 
 function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyChange, refreshing }: {
-  wsId: string; workflow: CockpitMeetingWorkflow; action: CockpitMeetingAction; userId: string; readOnly?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void; refreshing: boolean;
+  wsId: string; workflow: CockpitMeetingWorkflowSummary; action: CockpitMeetingAction; userId: string; readOnly?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void; refreshing: boolean;
 }) {
   const { t } = useT("cockpit");
   const scope = `action:${action.id}`;
   const saved = useCockpitActionCommandStore((state) => state.draft.commands[scope]);
   const pending = saved?.kind === "decision" ? saved : undefined;
-  const version = workflow.versions.find((entry) => entry.id === action.version_id);
+  const source = useQuery(cockpitMinutesVersionOptions(wsId, workflow.meeting_id, action.version_id));
+  const version = source.data?.version;
   const [observedRevision] = useState(action.revision);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(action.title);
@@ -154,7 +156,7 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
     } finally { lock.current = false; onBusyChange(false); }
   }
   return <div className="space-y-4">
-    <SourceMinutes version={version} quote={action.source_quote} />
+    {source.isPending ? <Spinner /> : source.isError || !version ? <CockpitFlowError onRetry={() => void source.refetch()} /> : <SourceMinutes version={version} quote={action.source_quote} />}
     {!editing ? <div className="space-y-2"><h3 className="break-words text-title-sm font-medium">{action.title}</h3><p className="whitespace-pre-wrap break-words text-body">{action.description}</p>
       {canEdit && !pending && !stale && <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>{t(($) => $.meeting_actions.edit)}</Button>}</div>
       : <div className="space-y-3">

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { createDraftStore } from "../drafts/create-draft-store";
-import type { CockpitMeetingWorkflow, CockpitReviewerHandoffCommand } from "../types";
+import type { CockpitMeetingWorkflow, CockpitReviewerHandoffCommand, CockpitWorkflowCommandResponse } from "../types";
 import { acknowledgedCockpitReviewerHandoff } from "./reviewer-handoff";
+import { acknowledgedCockpitWorkflowCommand } from "./workflow-history";
 
 export interface CockpitReviewerHandoffDraft {
   reviewer_id: string;
@@ -61,6 +62,16 @@ export function acknowledgeCockpitReviewerHandoff(meetingId: string, workflow: C
   const store = useCockpitReviewerHandoffDraftStore.getState();
   const pending = store.draft.byMeeting[meetingId]?.pending;
   if (workflow.meeting_id !== meetingId || !pending || !acknowledgedCockpitReviewerHandoff(workflow, pending)) return false;
+  const byMeeting = { ...store.draft.byMeeting };
+  delete byMeeting[meetingId];
+  store.setDraft({ byMeeting });
+  return true;
+}
+
+export function acknowledgeCockpitCompactReviewerHandoff(meetingId: string, result: CockpitWorkflowCommandResponse): boolean {
+  const store = useCockpitReviewerHandoffDraftStore.getState();
+  const pending = store.draft.byMeeting[meetingId]?.pending;
+  if (result.meeting_id !== meetingId || !pending || !acknowledgedCockpitWorkflowCommand(result, { action: "reviewer_reassigned", body: pending })) return false;
   const byMeeting = { ...store.draft.byMeeting };
   delete byMeeting[meetingId];
   store.setDraft({ byMeeting });

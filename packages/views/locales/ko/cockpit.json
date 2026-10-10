@@ -928,5 +928,31 @@
     "resolve_action": "실행 항목 검토",
     "inspect_nas": "NAS 사본 확인",
     "open_issue": "태스크 열기"
+  },
+  "minutes_history": {
+    "title": "회의록 이력",
+    "open": "버전 이력 ({{count}})",
+    "sections": "이력 분류",
+    "versions": "버전",
+    "handoffs": "검토 담당자 변경",
+    "reader_title": "회의록 버전 {{number}}",
+    "read_current": "현재 회의록 읽기",
+    "read_published": "공식 회의록 읽기",
+    "read_version": "버전 {{number}} 읽기",
+    "current": "현재 작업 버전",
+    "official": "공식 회의록",
+    "immutable": "제출된 본문은 고정됩니다. 수정하려면 새 버전으로 제출하세요.",
+    "historical_notice": "이전 버전을 읽고 있습니다. 현재 작업 버전은 v{{number}}입니다.",
+    "has_feedback": "검토 의견 있음",
+    "empty": "이 보기에 기록이 없습니다.",
+    "close": "닫기",
+    "export_history": "NAS 이력 보기 ({{count}})",
+    "export_status": "NAS 작업 상태",
+    "active_exports": "진행 중 및 대기 중",
+    "handoff_details": "변경 사유와 검토 태스크",
+    "no_current_copy": "이 버전과 대상 위치에 대한 복사본이 아직 요청되지 않았습니다.",
+    "review_draft": "검토 초안 (읽기 전용)",
+    "review_draft_scope": "이 초안은 이전에 연 검토 배정에 속합니다. 현재 검토로 이전되지 않았습니다.",
+    "previously_published": "이전에 게시됨"
   }
 }

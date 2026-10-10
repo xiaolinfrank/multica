@@ -1,15 +1,18 @@
+import { useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
-import { cockpitKeys, cockpitMeetingWorkflowOptions } from "@multica/core/cockpit";
+import { cockpitKeys, cockpitMeetingWorkflowOptions, cockpitHistoryViewKey, useCockpitHistoryViewStore } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflow, CockpitNasExport } from "@multica/core/types";
-import { workflowFixture, versionFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
+import { workflowFixture, versionFixture, workflowSummary, compactWorkflow, historyNasJobs, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
+import { CockpitMeetingHistory } from "./cockpit-meeting-history";
 import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit-minutes-nas";
 
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
+  getCockpitMeetingWorkflowSummary: vi.fn(), commandCockpitMeetingWorkflow: vi.fn(), getCockpitNasExports: vi.fn(), getCockpitMinutesVersions: vi.fn(), getCockpitReviewerHandoffs: vi.fn(),
   getCockpitMeetingWorkflow: vi.fn(), exportCockpitMinutesToNas: vi.fn(), retryCockpitNasExport: vi.fn(),
 } }));
 vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path }: { path: string }) => <button type="button">{path}</button> }));
@@ -32,16 +35,27 @@ function setupCopies(readOnly = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   function Harness() {
     const query = useQuery(cockpitMeetingWorkflowOptions("ws-1", WORKFLOW_MEETING_ID));
-    return query.data ? <CockpitMinutesNasCopies wsId="ws-1" workflow={query.data} userId="reviewer-1" readOnly={readOnly}
-      disabled={false} onReload={() => void query.refetch()} /> : null;
+    const [history, setHistory] = useState(false);
+    return query.data ? <><CockpitMinutesNasCopies wsId="ws-1" workflow={query.data} userId="reviewer-1" readOnly={readOnly}
+      disabled={false} onReload={() => void query.refetch()} onOpenHistory={() => { useCockpitHistoryViewStore.getState().update(cockpitHistoryViewKey("ws-1", WORKFLOW_MEETING_ID), { section: "exports" }); setHistory(true); }} />
+      <CockpitMeetingHistory wsId="ws-1" workflow={query.data} members={[]} userId="reviewer-1" readOnly={readOnly} disabled={false} open={history} onOpenChange={setHistory} onRead={vi.fn()} /></> : null;
   }
   return { ...render(<QueryClientProvider client={client}>{shell(<Harness />)}</QueryClientProvider>), client };
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.clearAllMocks(); useCockpitHistoryViewStore.getState().reset();
   server = published();
   vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async () => structuredClone(server));
+  vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async () => workflowSummary(await api.getCockpitMeetingWorkflow(WORKFLOW_MEETING_ID)));
+  vi.mocked(api.getCockpitNasExports).mockImplementation(async () => ({ workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision,
+    version_id: null, status: "", items: historyNasJobs(server), total: server.nas_exports.length, next_cursor: null }));
+  vi.mocked(api.commandCockpitMeetingWorkflow).mockImplementation(async (_ws, meetingId, command) => {
+    const result = command.action === "nas_export_queued" ? await api.exportCockpitMinutesToNas(meetingId, command.version_id, command.body)
+      : command.action === "nas_export_retried" ? await api.retryCockpitNasExport(meetingId, command.operation) : null;
+    if (!result) throw new Error("Unexpected command");
+    return compactWorkflow(result, command);
+  });
   vi.mocked(api.exportCockpitMinutesToNas).mockImplementation(async (_meetingId, versionId, target) => {
     server = { ...server, nas_exports: [...server.nas_exports, job({ ...target, version_id: versionId })] };
     return structuredClone(server);
@@ -54,9 +68,16 @@ beforeEach(() => {
 });
 
 describe("minutes NAS publishing and recovery", () => {
+  it("shows the configured-destination recovery message instead of the server's internal reason code", async () => {
+    server = { ...server, nas_destination: null, nas_unavailable_reason: "not_configured" };
+    setupCopies();
+    expect(await screen.findByText(/No permitted NAS destination is configured/)).toBeVisible();
+    expect(screen.queryByText("not_configured")).toBeNull();
+  });
+
   it("defaults sync on for a configured destination, while publishing without NAS remains explicit", () => {
     const onPublish = vi.fn();
-    render(shell(<CockpitMinutesPublishControl workflow={server} disabled={false} pending={false} onPublish={onPublish} />));
+    render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     const checkbox = screen.getByRole("checkbox", { name: "Sync published minutes to NAS" });
     expect(checkbox).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
@@ -68,11 +89,13 @@ describe("minutes NAS publishing and recovery", () => {
 
   it("allows unconfigured publication and does not auto-select a destination that appears later", () => {
     const onPublish = vi.fn();
-    const first = { ...server, nas_destination: null };
-    const view = render(shell(<CockpitMinutesPublishControl workflow={first} disabled={false} pending={false} onPublish={onPublish} />));
+    const first = { ...server, nas_destination: null, nas_unavailable_reason: "not_configured" };
+    const view = render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(first)} disabled={false} pending={false} onPublish={onPublish} />));
+    expect(screen.getByText(/No permitted NAS destination is configured/)).toBeVisible();
+    expect(screen.queryByText("not_configured")).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Sync published minutes to NAS" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Publish version" })).toBeEnabled();
-    view.rerender(shell(<CockpitMinutesPublishControl workflow={server} disabled={false} pending={false} onPublish={onPublish} />));
+    view.rerender(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     expect(screen.getByRole("checkbox", { name: "Sync published minutes to NAS" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
     expect(onPublish).toHaveBeenCalledWith(undefined);
@@ -80,9 +103,9 @@ describe("minutes NAS publishing and recovery", () => {
 
   it("does not silently redirect an already selected publication target", () => {
     const onPublish = vi.fn();
-    const view = render(shell(<CockpitMinutesPublishControl workflow={server} disabled={false} pending={false} onPublish={onPublish} />));
+    const view = render(shell(<CockpitMinutesPublishControl workflow={workflowSummary(server)} disabled={false} pending={false} onPublish={onPublish} />));
     const changed = { ...server, nas_destination: { ...destination, directory: "/Volumes/team/Changed" } };
-    view.rerender(shell(<CockpitMinutesPublishControl workflow={changed} disabled={false} pending={false} onPublish={onPublish} />));
+    view.rerender(shell(<CockpitMinutesPublishControl workflow={workflowSummary(changed)} disabled={false} pending={false} onPublish={onPublish} />));
     expect(screen.getByRole("alert")).toHaveTextContent("The NAS destination changed");
     expect(screen.getByRole("button", { name: "Publish version" })).toBeDisabled();
     expect(screen.getByText(destination.directory)).toBeTruthy();
@@ -108,6 +131,7 @@ describe("minutes NAS publishing and recovery", () => {
     server = { ...server, nas_destination: { ...destination, directory: "/Volumes/team/New destination" }, nas_exports: [original] };
     vi.mocked(api.retryCockpitNasExport).mockRejectedValueOnce(new Error("Connection lost"));
     setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: "View NAS history (1)" }));
     await screen.findByText("Waiting to retry");
     expect(screen.getByText(original.target_path)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Export published minutes to NAS" })).toBeEnabled();
@@ -115,8 +139,8 @@ describe("minutes NAS publishing and recovery", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Connection lost");
     fireEvent.click(screen.getByRole("button", { name: "Retry NAS export" }));
     await screen.findByText("Queued for NAS");
-    expect(vi.mocked(api.retryCockpitNasExport).mock.calls[0]?.[1]).toEqual(original);
-    expect(vi.mocked(api.retryCockpitNasExport).mock.calls[1]?.[1]).toEqual(original);
+    expect(vi.mocked(api.retryCockpitNasExport).mock.calls[0]?.[1]).toMatchObject(original);
+    expect(vi.mocked(api.retryCockpitNasExport).mock.calls[1]?.[1]).toMatchObject(original);
     expect(api.exportCockpitMinutesToNas).not.toHaveBeenCalled();
   });
 
@@ -128,7 +152,7 @@ describe("minutes NAS publishing and recovery", () => {
     expect(screen.getByText(/Existing file has different content/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: job().target_path })).toBeNull();
     server = { ...server, nas_exports: [job({ status: "succeeded", revision: 5, size_bytes: 42, completed_at: "2026-10-09T12:10:00Z" })] };
-    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), server); });
+    await act(async () => { client.setQueryData(cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID), workflowSummary(server)); });
     await waitFor(() => expect(screen.getByRole("button", { name: job().target_path })).toBeTruthy());
     expect(screen.getByText("Exported to NAS")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry NAS export" })).toBeNull();

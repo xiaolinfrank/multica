@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
 import {
-  acknowledgeCockpitMinutesSubmission, CockpitUnconfirmedWriteError, cockpitWorkflowActions,
+  acknowledgeCockpitMinutesSubmission, CockpitUnconfirmedWriteError, cockpitWorkflowSummaryActions, cockpitHistoryViewKey, useCockpitHistoryViewStore,
   EMPTY_COCKPIT_MINUTES_DRAFT, prepareCockpitMinutesSubmission, rejectCockpitMinutesSubmission,
   setCockpitMinutesDraftContent, useCockpitMinutesDraftStore,
   useEnableCockpitMeetingWorkflow, useUpdateCockpitMeetingReadiness,
@@ -12,45 +12,29 @@ import {
   useReviewCockpitMinutesVersion, usePublishCockpitMinutesVersion,
 } from "@multica/core/cockpit";
 import type {
-  CockpitMeetingWorkflow, CockpitMeetingWorkflowSetup, CockpitMeetingIssueLink,
-  CockpitMinutesDecision, CockpitWorkflowIssue, MemberWithUser, IssueAssigneeType,
+  CockpitMeetingWorkflowSummary, CockpitMeetingWorkflowSetup, CockpitMeetingIssueLink,
+  CockpitMinutesDecision, MemberWithUser, IssueAssigneeType,
 } from "@multica/core/types";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
-import { useWorkspacePaths } from "@multica/core/paths";
-import { useActorName } from "@multica/core/workspace/hooks";
-import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { Spinner } from "@multica/ui/components/ui/spinner";
-import { Markdown } from "@multica/ui/markdown";
-import { AppLink } from "../../navigation";
-import { useLocale, useT } from "../../i18n";
+import { Dialog, DialogTrigger } from "@multica/ui/components/ui/dialog";
+import { useT } from "../../i18n";
 import { AssigneePicker } from "../../issues/components/pickers/assignee-picker";
-import { StatusIcon } from "../../issues/components/status-icon";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { CockpitReviewerHandoffControl } from "./cockpit-reviewer-handoff";
 import { CockpitMinutesNasCopies, CockpitMinutesPublishControl } from "./cockpit-minutes-nas";
+import { CockpitMinutesReader, useMinutesDecisionLabel } from "./cockpit-minutes-reader";
+import { CockpitMeetingHistory } from "./cockpit-meeting-history";
+import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitMeetingActions } from "./cockpit-meeting-actions";
 
 const NEW_ISSUE = "__new_minutes_issue__";
 
-function WorkflowIssueLink({ issue }: { issue: CockpitWorkflowIssue }) {
-  const paths = useWorkspacePaths();
-  const { t } = useT("cockpit");
-  const { t: issueT } = useT("issues");
-  const { getActorName } = useActorName();
-  const statusKey = issue.status;
-  const status = isBuiltInIssueStatus(statusKey) ? issueT(($) => $.status[statusKey]) : statusKey;
-  const assignee = issue.assignee_id ? getActorName(issue.assignee_type, issue.assignee_id) : t(($) => $.workflow.unassigned);
-  return <div className="space-y-1"><AppLink href={paths.issueDetail(issue.identifier || issue.id)} newTabTitle={issue.title}
-    className="inline-flex max-w-full items-start gap-2 text-caption hover:underline">
-    <StatusIcon status={issue.status} className="mt-0.5 size-3.5 shrink-0" />
-    <span className="min-w-0 break-words"><span className="mr-1.5 font-mono text-muted-foreground">{issue.identifier || issue.id}</span>{" "}{issue.title}</span>
-  </AppLink><p className="text-caption text-muted-foreground">{t(($) => $.workflow.issue_meta, { assignee, status })}</p></div>;
-}
 
 export function CockpitMeetingWorkflowPanel({
   wsId, meetingId, currentUserId, members, membersLoaded, issueLinks, workflow,
@@ -62,7 +46,7 @@ export function CockpitMeetingWorkflowPanel({
   members: MemberWithUser[];
   membersLoaded: boolean;
   issueLinks: CockpitMeetingIssueLink[];
-  workflow: CockpitMeetingWorkflow | undefined;
+  workflow: CockpitMeetingWorkflowSummary | null | undefined;
   loading: boolean;
   loadError: boolean;
   onReload: () => void;
@@ -73,15 +57,22 @@ export function CockpitMeetingWorkflowPanel({
 }) {
   const { t } = useT("cockpit");
   const id = useId();
-  const locale = useLocale();
+  const decisionLabel = useMinutesDecisionLabel();
+  const [reader, setReader] = useState<{ id: string; number: number; reviewIssueId: string; reviewerId: string } | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { decision: CockpitMinutesDecision; feedback: string }>>({});
+  const reviewKey = reader ? JSON.stringify([reader.id, reader.reviewIssueId, reader.reviewerId]) : "";
+  const reviewDraft = reviewDrafts[reviewKey] ?? { decision: "approved", feedback: "" };
+  const { decision, feedback } = reviewDraft;
+  const setDecision = (decision: CockpitMinutesDecision) => setReviewDrafts((drafts) => ({ ...drafts, [reviewKey]: { ...(drafts[reviewKey] ?? { decision: "approved", feedback: "" }), decision } }));
+  const setFeedback = (feedback: string) => setReviewDrafts((drafts) => ({ ...drafts, [reviewKey]: { ...(drafts[reviewKey] ?? { decision: "approved", feedback: "" }), feedback } }));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyElement = useRef<HTMLDivElement>(null);
   const [reviewerId, setReviewerId] = useState(currentUserId);
   const [projectId, setProjectId] = useState(defaultPlacement.project_id || "");
   const [moduleId, setModuleId] = useState(defaultPlacement.module_id || "");
   const [existingIssueId, setExistingIssueId] = useState(NEW_ISSUE);
   const [assigneeType, setAssigneeType] = useState<IssueAssigneeType | null>((defaultAssigneeType || "member") as IssueAssigneeType);
   const [assigneeId, setAssigneeId] = useState(defaultAssigneeId || currentUserId);
-  const [decision, setDecision] = useState<CockpitMinutesDecision>("approved");
-  const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const commandLock = useRef(false);
   const [commandBusy, setCommandBusy] = useState(false);
@@ -94,16 +85,6 @@ export function CockpitMeetingWorkflowPanel({
   const review = useReviewCockpitMinutesVersion(wsId);
   const publish = usePublishCockpitMinutesVersion(wsId);
   const draft = useCockpitMinutesDraftStore((state) => state.draft.byMeeting[meetingId] ?? EMPTY_COCKPIT_MINUTES_DRAFT);
-  const fixedReview = workflow?.versions.find((version) => version.id === workflow.current_version_id);
-
-  useEffect(() => {
-    if (workflow?.meeting_id === meetingId) acknowledgeCockpitMinutesSubmission(meetingId, workflow.versions);
-  }, [meetingId, workflow]);
-
-  useEffect(() => {
-    setDecision("approved");
-    setFeedback("");
-  }, [workflow?.current_version_id, fixedReview?.review_issue.id, fixedReview?.reviewer_id]);
 
   async function runCommand(command: () => Promise<unknown>, submission = false) {
     if (commandLock.current) return;
@@ -207,7 +188,7 @@ export function CockpitMeetingWorkflowPanel({
     </section>;
   }
 
-  const actions = cockpitWorkflowActions(workflow, currentUserId);
+  const actions = cockpitWorkflowSummaryActions(workflow, currentUserId);
   const current = actions.current;
   if (!actions.valid) return <div role="alert" className="space-y-3">
     <p className="text-caption text-destructive">{t(($) => $.workflow.incomplete)}</p>
@@ -221,21 +202,12 @@ export function CockpitMeetingWorkflowPanel({
   const currentReviewerMissing = membersLoaded && Boolean(current)
     && !members.some((member) => member.user_id === current?.reviewer_id);
   const pendingReviewerMissing = current?.decision === "pending" && currentReviewerMissing;
-  const decisionLabel = (value: string) => {
-    switch (value) {
-      case "pending": return t(($) => $.workflow.pending_review);
-      case "approved": return t(($) => $.workflow.approved);
-      case "changes_requested": return t(($) => $.workflow.changes_requested);
-      case "rejected": return t(($) => $.workflow.rejected);
-      default: return t(($) => $.workflow.unknown_decision, { decision: value });
-    }
-  };
   const submitVersion = async () => {
     const body = prepareCockpitMinutesSubmission(meetingId, workflow.revision, draft.submission_key || crypto.randomUUID());
     const result = await submit.mutateAsync({ meetingId, body });
-    acknowledgeCockpitMinutesSubmission(meetingId, result.versions);
+    if (result.receipt.version) acknowledgeCockpitMinutesSubmission(meetingId, [result.receipt.version]);
   };
-  return <div className="space-y-5">
+  return <Dialog open={Boolean(reader)} onOpenChange={(open) => { if (!open && !commandBusy) setReader(null); }}><div className="space-y-5">
     {(pendingReviewerMissing || reviewerMissing) && <div role="status" className="space-y-1 rounded-md bg-warning-subtle p-3 text-caption text-foreground">
       <p>{pendingReviewerMissing ? t(($) => $.workflow.current_reviewer_unavailable) : t(($) => $.workflow.reviewer_unavailable)}</p>
       <p>{actions.canReassignReviewer && !readOnly ? t(($) => $.workflow.handoff_recovery) : t(($) => $.workflow.handoff_manager_only)}</p>
@@ -275,7 +247,7 @@ export function CockpitMeetingWorkflowPanel({
     </section>
     {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
     {current && <section className="space-y-3 rounded-lg border border-border p-4" aria-label={t(($) => $.workflow.current_version)}>
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.workflow.version, { number: current.version_number })}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.minutes_history.current)} · {t(($) => $.workflow.version, { number: current.version_number })}</h3>
         <div className="flex flex-wrap gap-2 text-caption"><span>{decisionLabel(current.decision)}</span>
           <span className="text-muted-foreground">{current.published_at ? t(($) => $.workflow.published) : t(($) => $.workflow.unpublished)}</span></div></div>
       <p className="text-caption text-muted-foreground">{t(($) => $.workflow.review_issue)}</p>
@@ -283,11 +255,46 @@ export function CockpitMeetingWorkflowPanel({
         name: members.find((member) => member.user_id === current.reviewer_id)?.name || current.reviewer_id,
       })}</p>
       <WorkflowIssueLink issue={current.review_issue} />
-      <div className="min-w-0 max-w-full overflow-x-auto break-words">
-        <Markdown mode="full">{current.content}</Markdown>
+      <DialogTrigger render={<Button type="button" size="sm" variant={actions.canReview && !readOnly ? "default" : "outline"} onClick={() => setReader({ id: current.id, number: current.version_number, reviewIssueId: current.review_issue.id, reviewerId: current.reviewer_id })} />}>
+        {t(($) => $.minutes_history.read_current)}</DialogTrigger>
+      {current.has_feedback && <p className="text-caption text-muted-foreground">{t(($) => $.minutes_history.has_feedback)}</p>}
+      {current.decision === "pending" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.formal_review_hint)}</p>}
+      {current.decision === "changes_requested" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.revision_hint)}</p>}
+      {current.decision === "approved" && !current.published_at && <CockpitMinutesPublishControl key={current.id} workflow={workflow}
+        disabled={Boolean(readOnly || !actions.canPublish || commandBusy)} pending={publish.isPending}
+        onPublish={(nasExport) => void runCommand(() => publish.mutateAsync({ meetingId, versionId: current.id, revision: workflow.revision, nasExport }))} />}
+    </section>}
+    {workflow.published_version && workflow.published_version.id !== current?.id && <section className="space-y-3 rounded-lg border border-brand/20 bg-brand/5 p-4" aria-label={t(($) => $.minutes_history.official)}>
+      <h3 className="text-title-sm font-medium">{t(($) => $.minutes_history.official)} · {t(($) => $.workflow.version, { number: workflow.published_version.version_number })}</h3>
+      <DialogTrigger render={<Button type="button" size="sm" variant="outline" onClick={() => { if (workflow.published_version) setReader({ id: workflow.published_version.id, number: workflow.published_version.version_number, reviewIssueId: workflow.published_version.review_issue.id, reviewerId: workflow.published_version.reviewer_id }); }} />}>
+        {t(($) => $.minutes_history.read_published)}</DialogTrigger>
+    </section>}
+    <CockpitMinutesNasCopies wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly}
+      disabled={commandBusy || loadError} onReload={onReload} onOpenHistory={() => {
+        useCockpitHistoryViewStore.getState().update(cockpitHistoryViewKey(wsId, meetingId), { section: "exports" }); setHistoryOpen(true);
+        requestAnimationFrame(() => historyElement.current?.scrollIntoView?.({ block: "start" }));
+      }} />
+    {workflow.published_version_id && <CockpitMeetingActions wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly} />}
+    {workflow.released_at && !readOnly && (actions.canSubmit || draft.pending) && <section className="space-y-3 rounded-lg border border-border p-4">
+      <label htmlFor={`${id}-draft`} className="block text-title-sm font-medium">{t(($) => $.workflow.draft)}</label>
+      <Textarea id={`${id}-draft`} value={draft.content} rows={8} disabled={commandBusy || Boolean(draft.pending)}
+        onChange={(event) => setCockpitMinutesDraftContent(meetingId, event.target.value)} />
+      <p className="text-caption text-muted-foreground">{draft.pending ? t(($) => $.workflow.submission_pending) : t(($) => $.workflow.draft_hint)}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" disabled={commandBusy || !draft.content.trim() || (!actions.canSubmit && !draft.pending) || (reviewerMissing && !draft.pending)} aria-busy={submit.isPending}
+          onClick={() => void runCommand(submitVersion, true)}>{submit.isPending && <Spinner />}{draft.pending ? t(($) => $.workflow.retry_submission) : t(($) => $.workflow.submit_version)}</Button>
+        {draft.pending && <Button type="button" size="sm" variant="outline" disabled={commandBusy} onClick={onReload}>{t(($) => $.workflow.refresh_status)}</Button>}
       </div>
-      {current.feedback && <div className="space-y-1 border-t pt-3"><h4 className="text-caption font-medium">{t(($) => $.workflow.feedback)}</h4><p className="whitespace-pre-wrap break-words text-body">{current.feedback}</p></div>}
-      {actions.canReview && !readOnly && !currentReviewerMissing && <div className="space-y-3 border-t pt-3">
+    </section>}
+    <div ref={historyElement}><CockpitMeetingHistory wsId={wsId} workflow={workflow} members={members} userId={currentUserId} readOnly={readOnly}
+      disabled={commandBusy || loadError} open={historyOpen} onOpenChange={setHistoryOpen} onRead={(version) => setReader({ id: version.id, number: version.version_number, reviewIssueId: version.review_issue.id, reviewerId: version.reviewer_id })} /></div>
+    {reader && <CockpitMinutesReader wsId={wsId} workflow={workflow} versionId={reader.id} versionNumber={reader.number} busy={commandBusy}>
+      {(detail) => current && reader.id === current.id && reader.reviewIssueId === current.review_issue.id && reader.reviewerId === current.reviewer_id && detail.version.id === current.id && detail.version.content_hash === current.content_hash
+        && detail.version.review_issue.id === current.review_issue.id && detail.version.reviewer_id === current.reviewer_id
+        && detail.version.decision === current.decision
+        && detail.can_review && actions.canReview && !readOnly && !currentReviewerMissing && !loadError
+        ? <>{error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+      <div className="space-y-3 border-t pt-3">
         <div className="space-y-1"><label htmlFor={`${id}-decision`} className="text-caption">{t(($) => $.workflow.decision)}</label>
           <Select value={decision} disabled={commandBusy} onValueChange={(value) => {
             if (value === "approved" || value === "changes_requested" || value === "rejected") setDecision(value);
@@ -306,56 +313,16 @@ export function CockpitMeetingWorkflowPanel({
         <Textarea id={`${id}-feedback`} value={feedback} disabled={commandBusy} onChange={(event) => setFeedback(event.target.value)} rows={3} />
         {decision !== "approved" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.feedback_required)}</p>}
         <Button type="button" size="sm" disabled={commandBusy || (decision !== "approved" && !feedback.trim())} aria-busy={review.isPending}
-          onClick={() => void runCommand(() => review.mutateAsync({ meetingId, versionId: current.id,
-            body: { expected_revision: workflow.revision, decision, feedback: feedback.trim() } }))}>
+          onClick={() => void runCommand(async () => { await review.mutateAsync({ meetingId, versionId: current.id,
+            body: { expected_revision: workflow.revision, decision, feedback: feedback.trim() } }); setReviewDrafts((drafts) => { const next = { ...drafts }; delete next[reviewKey]; return next; }); setReader(null); })}>
           {review.isPending && <Spinner />}{t(($) => $.workflow.submit_review)}</Button>
-      </div>}
-      {current.decision === "pending" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.formal_review_hint)}</p>}
-      {current.decision === "changes_requested" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.revision_hint)}</p>}
-      {current.decision === "approved" && !current.published_at && <CockpitMinutesPublishControl key={current.id} workflow={workflow}
-        disabled={Boolean(readOnly || !actions.canPublish || commandBusy)} pending={publish.isPending}
-        onPublish={(nasExport) => void runCommand(() => publish.mutateAsync({ meetingId, versionId: current.id, revision: workflow.revision, nasExport }))} />}
-    </section>}
-    <CockpitMinutesNasCopies wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly}
-      disabled={commandBusy || loadError} onReload={onReload} />
-    {workflow.published_version_id && <CockpitMeetingActions wsId={wsId} workflow={workflow} userId={currentUserId} readOnly={readOnly} />}
-    {workflow.released_at && !readOnly && (actions.canSubmit || draft.pending) && <section className="space-y-3 rounded-lg border border-border p-4">
-      <label htmlFor={`${id}-draft`} className="block text-title-sm font-medium">{t(($) => $.workflow.draft)}</label>
-      <Textarea id={`${id}-draft`} value={draft.content} rows={8} disabled={commandBusy || Boolean(draft.pending)}
-        onChange={(event) => setCockpitMinutesDraftContent(meetingId, event.target.value)} />
-      <p className="text-caption text-muted-foreground">{draft.pending ? t(($) => $.workflow.submission_pending) : t(($) => $.workflow.draft_hint)}</p>
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={commandBusy || !draft.content.trim() || (!actions.canSubmit && !draft.pending) || (reviewerMissing && !draft.pending)} aria-busy={submit.isPending}
-          onClick={() => void runCommand(submitVersion, true)}>{submit.isPending && <Spinner />}{draft.pending ? t(($) => $.workflow.retry_submission) : t(($) => $.workflow.submit_version)}</Button>
-        {draft.pending && <Button type="button" size="sm" variant="outline" disabled={commandBusy} onClick={onReload}>{t(($) => $.workflow.refresh_status)}</Button>}
       </div>
-    </section>}
-    {workflow.versions.length > 1 && <section className="space-y-2"><h3 className="text-title-sm font-medium">{t(($) => $.workflow.version_history)}</h3>
-      {workflow.versions.filter((version) => version.id !== current?.id).map((version) => <details key={version.id} className="rounded-md border border-border p-3">
-        <summary className="text-caption">{t(($) => $.workflow.version, { number: version.version_number })} · {decisionLabel(version.decision)}{version.published_at ? ` · ${t(($) => $.workflow.published)}` : ""}</summary>
-        <div className="mt-3 space-y-2"><WorkflowIssueLink issue={version.review_issue} />
-          <div className="min-w-0 max-w-full overflow-x-auto break-words"><Markdown mode="full">{version.content}</Markdown></div>
-          {version.feedback && <p className="whitespace-pre-wrap break-words text-caption text-muted-foreground">{version.feedback}</p>}</div>
-      </details>)}
-    </section>}
-    {workflow.reviewer_handoffs.length > 0 && <section className="space-y-3" aria-label={t(($) => $.workflow.handoff_history)}>
-      <h3 className="text-title-sm font-medium">{t(($) => $.workflow.handoff_history)}</h3>
-      {[...workflow.reviewer_handoffs].sort((a, b) => b.revision - a.revision).map((handoff) => {
-        const version = workflow.versions.find((entry) => entry.id === handoff.version_id);
-        const date = new Date(handoff.created_at);
-        return <article key={handoff.id} className="space-y-2 rounded-md border border-border p-3">
-          <p className="break-words text-caption font-medium">{t(($) => $.workflow.handoff_people, {
-            from: handoff.from_reviewer_name?.trim() || memberName(handoff.from_reviewer_id),
-            to: handoff.to_reviewer_name?.trim() || memberName(handoff.to_reviewer_id),
-          })}</p>
-          <p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_by, { name: handoff.created_by_name?.trim() || memberName(handoff.created_by) })}{" · "}
-            <time dateTime={handoff.created_at}>{Number.isNaN(date.getTime()) ? handoff.created_at : date.toLocaleString(locale)}</time></p>
-          <p className="text-caption text-muted-foreground">{version ? t(($) => $.workflow.handoff_history_version, { number: version.version_number }) : t(($) => $.workflow.handoff_history_future)}</p>
-          <p className="whitespace-pre-wrap break-words text-body">{handoff.reason}</p>
-          {handoff.from_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_previous_issue)}</p><WorkflowIssueLink issue={handoff.from_review_issue} /></div>}
-          {handoff.to_review_issue && <div className="space-y-1"><p className="text-caption text-muted-foreground">{t(($) => $.workflow.handoff_replacement_issue)}</p><WorkflowIssueLink issue={handoff.to_review_issue} /></div>}
-        </article>;
-      })}
-    </section>}
-  </div>;
+          </> : feedback || decision !== "approved" ? <section className="space-y-2 rounded-md bg-muted p-3" aria-label={t(($) => $.minutes_history.review_draft)}>
+            <h3 className="text-caption font-medium">{t(($) => $.minutes_history.review_draft)}</h3>
+            <p className="text-caption text-muted-foreground">{t(($) => $.minutes_history.review_draft_scope)}</p>
+            <p className="text-caption">{t(($) => $.workflow.decision)} · {decision === "approved" ? t(($) => $.workflow.approve) : decision === "changes_requested" ? t(($) => $.workflow.request_changes) : t(($) => $.workflow.reject)}</p>
+            <Textarea aria-label={t(($) => $.minutes_history.review_draft)} value={feedback} readOnly rows={4} />
+          </section> : null}
+    </CockpitMinutesReader>}
+  </div></Dialog>;
 }

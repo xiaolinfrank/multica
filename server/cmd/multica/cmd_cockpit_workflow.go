@@ -23,10 +23,12 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 	workflow := &cobra.Command{
 		Use:   "workflow",
 		Short: "Manage a meeting's minutes work package and fixed review versions",
-		Long: "Read or advance a meeting's minutes workflow. Commands return the JSON workflow read model. " +
+		Long: "Read a bounded meeting summary, history page or fixed version, or advance its minutes workflow. " +
+			"Use --compact on writes for the summary and exact command receipt; show and default writes retain their full JSON output. " +
 			"Enable, readiness, release, reviewer handover, review, publication and NAS export/retry require a human credential; the server enforces permissions. " +
 			"An authorized minutes-issue agent may submit a text version. Completing its review issue does not approve or publish it.",
 	}
+	addCockpitHistoryCommands(workflow)
 	for _, action := range []string{"show", "enable", "ready", "release", "submit", "review", "publish", "reassign-reviewer", "export-nas", "retry-nas"} {
 		count := 1
 		use := action + " <meeting-id>"
@@ -41,10 +43,13 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 			Use: use, Args: exactArgs(count), Short: action + " meeting workflow",
 			RunE: func(cmd *cobra.Command, args []string) error { return runCockpitMeetingWorkflow(cmd, args, action) },
 		}
+		if action != "show" {
+			cmd.Flags().Bool("compact", false, "Return bounded summary and the exact command receipt, without complete history")
+		}
 		if action != "show" && action != "enable" && action != "export-nas" {
-			help := "Required positive workflow revision observed with workflow show"
+			help := "Required positive workflow revision observed with workflow summary"
 			if action == "retry-nas" {
-				help = "Required positive export operation revision from nas_exports[].revision, not the workflow revision"
+				help = "Required positive revision of the export operation, not the workflow revision"
 			}
 			cmd.Flags().Int64("revision", 0, help)
 		}
@@ -70,8 +75,8 @@ func newCockpitMeetingWorkflowCommand() *cobra.Command {
 			cmd.Flags().String("nas-root-id", "", "Optional configured NAS root UUID; requires --nas-directory")
 			cmd.Flags().String("nas-directory", "", "Optional confirmed absolute meeting directory on the server; requires --nas-root-id")
 		case "export-nas":
-			cmd.Flags().String("root-id", "", "Required configured NAS root UUID from workflow show")
-			cmd.Flags().String("directory", "", "Required confirmed absolute meeting directory on the server from workflow show")
+			cmd.Flags().String("root-id", "", "Required configured NAS root UUID from workflow summary")
+			cmd.Flags().String("directory", "", "Required confirmed absolute meeting directory on the server from workflow summary")
 		case "reassign-reviewer":
 			cmd.Flags().String("handoff-key", "", "Required UUID for this handover; reuse it with the same inputs on retry")
 			cmd.Flags().String("reviewer-id", "", "Required new human reviewer user UUID in this workspace")
@@ -379,6 +384,10 @@ func runCockpitMeetingWorkflow(cmd *cobra.Command, args []string, action string)
 	if err != nil {
 		return err
 	}
+	compact, _ := cmd.Flags().GetBool("compact")
+	if compact {
+		path += "?response=compact"
+	}
 	ctx, cancel := cli.APIContext(context.Background())
 	defer cancel()
 	var result map[string]any
@@ -393,7 +402,12 @@ func runCockpitMeetingWorkflow(cmd *cobra.Command, args []string, action string)
 	if err != nil {
 		return err
 	}
-	if err := confirmCockpitNASReceipt(action, args, body, result); err != nil {
+	if compact {
+		err = confirmCockpitCompactReceipt(action, args, body, result, client.WorkspaceID)
+	} else {
+		err = confirmCockpitNASReceipt(action, args, body, result)
+	}
+	if err != nil {
 		return err
 	}
 	return cli.PrintJSON(os.Stdout, result)

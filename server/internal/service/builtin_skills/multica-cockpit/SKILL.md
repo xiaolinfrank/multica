@@ -94,8 +94,8 @@ a meeting's folder and links use the HTTP API — see `references/cockpit.md`.
 ## Meeting minutes workflow
 
 ```bash
-multica cockpit meeting workflow show <meeting-id>
-multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md
+multica cockpit meeting workflow summary <meeting-id>
+multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md --compact
 ```
 
 Read current meeting materials and workflow state before drafting evidence-grounded minutes.
@@ -105,7 +105,7 @@ Submitting creates a fixed version and human Review Issue; completing/reassignin
 Enable, readiness, release, review and publication require authorized humans.
 A human manager may `workflow reassign-reviewer` with a reason and idempotency key:
 it preserves fixed evidence and records responsibility. Machine credentials cannot transfer it.
-See `references/cockpit.md` for exact flags, permissions, retries and limitations.
+See [history](references/history.md) for bounded reads/receipts and `references/cockpit.md` for command permissions.
 Authorized humans can `workflow export-nas` or `retry-nas`; export needs a configured root.
 See `references/nas-export.md` for fixed copies, receipts and operation retries; failures never undo approval.
 

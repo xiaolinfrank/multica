@@ -1,3 +1,4 @@
+import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -39,8 +40,8 @@ vi.mock("@multica/core/api", () => ({
   api: {
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
-    getCockpitMeetingWorkflow: vi.fn(),
-    enableCockpitMeetingWorkflow: vi.fn(),
+    getCockpitMeetingWorkflowSummary: vi.fn(),
+    commandCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -226,7 +227,7 @@ describe("Cockpit controls regressions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);

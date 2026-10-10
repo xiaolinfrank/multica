@@ -18,8 +18,7 @@ import type {
 } from "@multica/core/types";
 import {
   cockpitMeetingWorkflowOptions,
-  cockpitWorkflowRequiredIssueRoles,
-  cockpitNasPollInterval,
+  cockpitWorkflowSummaryPollInterval,
   buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
@@ -157,10 +156,10 @@ export function CockpitMeetingPanel({
     refetchInterval: (query) => {
       const now = Date.now();
       if (nasPoll.current.meetingId !== meeting.id) nasPoll.current = { meetingId: meeting.id, active: false, deadline: 0 };
-      const active = cockpitNasPollInterval(query.state.data, Infinity, now) !== false;
+      const active = cockpitWorkflowSummaryPollInterval(query.state.data, Infinity, now) !== false;
       if (active && !nasPoll.current.active) nasPoll.current.deadline = now + 5 * 60_000;
       nasPoll.current.active = active;
-      return cockpitNasPollInterval(query.state.data, nasPoll.current.deadline, now);
+      return cockpitWorkflowSummaryPollInterval(query.state.data, nasPoll.current.deadline, now);
     },
     refetchIntervalInBackground: false,
   });
@@ -173,8 +172,15 @@ export function CockpitMeetingPanel({
   const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
   const requiredRolesByIssue = useMemo(() => {
     const workflow = workflowQuery.data;
-    return workflow?.meeting_id === meeting.id ? cockpitWorkflowRequiredIssueRoles(workflow) : new Map<string, string[]>();
-  }, [workflowQuery.data, meeting.id]);
+    const required = new Map(issueLinks.filter((link) => link.required_roles?.length).map((link) => [link.issue_id, link.required_roles ?? []]));
+    if (workflow?.meeting_id === meeting.id && workflow.enabled) {
+      if (workflow.minutes_issue) required.set(workflow.minutes_issue.id, ["minutes"]);
+      for (const version of [workflow.current_version, workflow.published_version]) {
+        if (version) required.set(version.review_issue.id, [...new Set([...(required.get(version.review_issue.id) ?? []), "review"])]);
+      }
+    }
+    return required;
+  }, [workflowQuery.data, meeting.id, issueLinks]);
 
   return (
     <aside className="cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0">

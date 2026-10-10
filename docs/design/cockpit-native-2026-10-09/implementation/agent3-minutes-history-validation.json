@@ -1,0 +1,277 @@
+{
+  "phase": "G — Bounded minutes history and on-demand fixed documents",
+  "generated_at": "2026-10-10T01:58:56.865477+00:00",
+  "runtime_host": "fosun_agent_3 (fosun-agent-3deMac-mini.local; designated IPv4 10.35.182.2)",
+  "ssh_note": "IPv4 port22 began refusing new connections during this run. IPv6 mDNS access was used after verifying the original 10.35.182.2 trusted host key with StrictHostKeyChecking=yes and matching hostname/account. No network or SSH service configuration was changed.",
+  "source_worktree": "/Users/fosun_main_agent/var/multica-cockpit-native",
+  "base_commit": "7913c3f88012bf62de2b1ed19815e6cc30e6f599",
+  "execution_boundary": {
+    "runtime_tests": "All executed on agent3",
+    "coordinator": "Edits, Go compilation only, static E2E TypeScript and diff checks",
+    "database": "multica_test, schema988",
+    "redis": "127.0.0.1:16379, distinct from application6379",
+    "nas_export_roots": [],
+    "real_nas_accessed": false,
+    "real_agent_provider_cli_executed": false,
+    "production_or_existing_app_deployed": false
+  },
+  "go": {
+    "unique_final_parent_tests": 25,
+    "http_unique_parents": 13,
+    "service_unique_parents": 4,
+    "cli_unique_parents": 8,
+    "http_first": {
+      "passed_parents": 3,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-handler-first.log",
+      "failed_parents": 1
+    },
+    "http_fixture_and_compat_retry": {
+      "passed_parents": 10,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-handler-compat.log",
+      "failed_parents": 0
+    },
+    "http_expanded_nas_history": {
+      "passed_parents": 1,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-handler-nas-final.log",
+      "failed_parents": 0
+    },
+    "service_and_builtin": {
+      "passed_parents": 4,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-service-first.log",
+      "failed_parents": 0
+    },
+    "cli_final_before_trim_fix": {
+      "passed_parents": 8,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-cli-final.log",
+      "failed_parents": 0
+    },
+    "cli_trim_fix_increment": {
+      "passed_parents": 4,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-cli-trimmed.log",
+      "failed_parents": 0
+    },
+    "deduplication": "HTTP: four new history parents plus nine legacy workflow/roles/handoff/NAS parents. The v3 NAS parent replaces its earlier run. Service: release handoff plus three builtin parents. CLI: four new history/compact parents plus four legacy workflow parents; trimmed rerun replaces the four new parents.",
+    "initial_failure": "One HTTP fixture compared untrimmed repeated text with the existing server-trimmed immutable document. Fixture canonicalization was corrected; product trimming remained unchanged.",
+    "real_agent_note": "The agent/squad release-handoff subcases use test fixtures and do not launch provider CLIs. All Go test execution used go-test-with-agent-cli-guard.sh.",
+    "artifacts_sha256": {
+      "api_v2": "86a048d775d50c97c81a979b0146d1d30877ab57aa7f9d2861c5cb0c3e78181c",
+      "handler_v3": "dd8249c2fea5168caaac81dfdf8dc2892aa5a358b243598c510f75f858d4d7bb",
+      "service_v1": "cc992cc2dbc2e7cbf5b9a821d3488e9c900bd784fcd513ae495c48cbba1d0131",
+      "cli_trimmed_test": "54c60d91c7203169eb8c144f04cc7cfdf1070409462865206e3342db5b3a2add",
+      "actual_product_cli": "7291ac969bbddd05e8ccc4f9f893a2f28a5327f3b07b20224891f8fbbdc50e2a"
+    }
+  },
+  "frontend": {
+    "core_broad": {
+      "files": 27,
+      "tests": 332,
+      "passed": 329,
+      "known_baseline_failed": 3
+    },
+    "core_final_increment": {
+      "file": "cockpit/workflow-history.test.ts",
+      "passed": 5,
+      "new_tests_beyond_broad": 1
+    },
+    "core_final_unique": {
+      "tests": 333,
+      "passed": 330,
+      "known_baseline_failed": 3
+    },
+    "views_broad": {
+      "files": 28,
+      "tests": 453,
+      "passed": 453,
+      "includes_locale_parity": 203
+    },
+    "views_final_increment": {
+      "file": "cockpit/components/cockpit-minutes-nas.test.tsx",
+      "passed": 9,
+      "new_tests_beyond_broad": 1
+    },
+    "views_final_unique": {
+      "tests": 454,
+      "passed": 454
+    },
+    "total_unique": {
+      "files": 55,
+      "tests": 787,
+      "passed": 784,
+      "known_baseline_failed": 3
+    },
+    "baseline": "The same three existing cockpit/directory.test.ts Chinese-collation expectations fail under the default en-US runtime locale. Product and tests were unchanged. The cause and zh_CN passing retry were documented in PhaseF; this phase does not count that prior retry as a new pass.",
+    "deduplication": "API8, history helper/store6, cache25, workflow22 and other narrow runs are already included in the broad counts. Only one added retry-ACK case and one added friendly-NAS-copy case increase the final totals. Prior phases are not added.",
+    "iteration_notes": [
+      "API fixture latest submission_key was corrected to a valid UUID; strict response schema remained.",
+      "Two component assertions now wait for TanStack batched notifications while retaining exact current-version and no-review-form expectations.",
+      "Scoped review draft recovery, historical publication labels and invalid-cursor first-page recovery passed."
+    ],
+    "warnings": "Existing React act warnings in legacy interaction tests remain; these tests passed.",
+    "build": {
+      "host": "agent3",
+      "production_next_build": "passed",
+      "build_id": "lGrPEj92mwXnYeLikkTQW",
+      "log": "/tmp/multica-agent3-history-evidence/logs/history-next-reviewed-build.log"
+    },
+    "coordinator_static": {
+      "changed_e2e_typescript": "passed",
+      "git_diff_check": "passed",
+      "root_typecheck": "10 tasks passed",
+      "root_lint": "7 tasks passed; 0 errors, pre-existing warnings retained",
+      "final_incremental_typecheck": "core and views passed after final review-draft and NAS-ACK changes",
+      "final_targeted_lint": "changed history, Reader, workflow and NAS components/helpers/tests passed",
+      "go_vet": "handler, service, server and CLI passed; final service/CLI changes rechecked",
+      "sqlc": "generated for bounded queries and required_roles; no DDL",
+      "local_runtime": "none"
+    }
+  },
+  "browser": {
+    "passed_scenarios": 7,
+    "old_six_log": "/tmp/multica-agent3-history-evidence/logs/history-e2e-first.log",
+    "final_history_log": "/tmp/multica-agent3-history-evidence/logs/history-e2e-final.log",
+    "final_history_seconds": 5.6,
+    "scenarios": [
+      "foundation bindings/purposes/destinations",
+      "meeting action pagination/reuse/idempotency",
+      "readiness/human review/publication using the document reader",
+      "reviewer handoff and paged reviewer history",
+      "125-Issue L3 workbench",
+      "Work overview dashboard",
+      "long minutes history/current/official documents"
+    ],
+    "old_six_note": "The old six passed in the initial seven-scenario batch. Final narrow retry-ACK/copy changes were tested separately and the new history scenario was rerun with the final production bundle; the old six were not repeated.",
+    "history_assertions": [
+      "35 real API-created versions; initial current35 pending and official34 remain distinct",
+      "Each fixed body is34619 UTF-8 bytes; old approved versions carry about8KiB feedback",
+      "Initial workbench loads summary, zero historical collections and zero document bodies",
+      "Version metadata pages are25 and10, newest first, with honest full count",
+      "Only selected versions1,34,35,36 requested as bodies",
+      "Historical v1 reader remains fixed while another HTTP client approves35 and submits36; notice updates tocurrent36",
+      "Current36 starts with an empty review form; reopening35 retains the previous local draft read-only and offers no Submit review",
+      "Historical content/hash/decision remain unchanged",
+      "Zero browser workflow writes during reading/draft editing; zero legacy full-workflow reads",
+      "Workspace agent task queue remains empty"
+    ],
+    "fixture_preparation_ms": 1581,
+    "initial_version_count": 35,
+    "final_version_count": 36,
+    "single_fixed_body_bytes": 34619,
+    "payload_observations": {
+      "compact_commands": 109,
+      "commands_by_action": {
+        "enabled": 1,
+        "readiness": 1,
+        "released": 1,
+        "submitted": 37,
+        "reviewed": 35,
+        "published": 34
+      },
+      "max_compact_response_bytes": 47666,
+      "completed_read_responses_audited": 13,
+      "cancelled_reads_recorded": 8,
+      "cancellation_reasons": {
+        "net::ERR_ABORTED": 8
+      },
+      "max_summary_response_bytes": 2771,
+      "max_25_item_metadata_response_bytes": 23321,
+      "max_single_version_response_bytes": 44758,
+      "unique_body_ids_requested": 4,
+      "asserted_fixture_limits": "Summary<16KiB; metadata/detail/compact<80KiB for these fixed fixture documents. Metadata and summary have no content/feedback fields; each compact response has at most one body and feedback. These are fixture assertions, not universal product byte-size limits.",
+      "cancellation_policy": "Audit attaches to requestfinished and records requestfailed separately. No response-body bound is claimed for the eight Query-aborted refetches; unknown completed-response errors remain failures."
+    },
+    "actual_product_cli": {
+      "executed": true,
+      "command": "cockpit meeting workflow submit <meeting-id> --revision 1 --submission-key <v1-key> --content-file <fixture.md> --compact",
+      "input": "Canonical version1 text plus a trailing newline",
+      "result": "Exit 0; exact v1 ID, canonical content and hash; current v35, official v34, workflow revision and history count unchanged.",
+      "isolation": "Test-built absolute executable; synthetic fixture JWT only in environment; private mkdtemp MULTICA_TASK_CONFIG_ROOT; no HOME override or stored-account access; temporary input/config removed."
+    },
+    "initial_e2e_adjustments": [
+      "Historical approved and previously published v1 legitimately retains can_export_nas=true for its reviewer/manager, independent of configured destination. Incorrect test expectation was corrected, no NAS command was issued.",
+      "CLI smoke helper was corrected to the actual cockpit meeting workflow command hierarchy and content-file flag.",
+      "Completed-response auditing replaced response-header-time auditing after cancelled refetches correctly had no CDP body."
+    ],
+    "raw_fixture_metrics": "/tmp/multica-agent3-history-evidence/e2e-final/cockpit-minutes-history-bo-3237b-rent-review-and-publication-chromium/minutes-history-validation.json"
+  },
+  "cleanup": {
+    "processes": {
+      "stopped_owned_processes": [
+        {
+          "name": "api",
+          "pid": 52415
+        },
+        {
+          "name": "web",
+          "pid": 53719
+        }
+      ],
+      "test_ports_closed": [
+        18880,
+        13800
+      ],
+      "original_pids": [
+        "30604",
+        "30607"
+      ]
+    },
+    "database_and_app_health": {
+      "host": "fosun-agent-3deMac-mini.local",
+      "counts": {
+        "database": "multica_test",
+        "workspaces": "0",
+        "issues": "0",
+        "meetings": "0",
+        "actions": "0",
+        "primary_nodes": "0",
+        "queued_agent_tasks": "0",
+        "nas_exports": "0"
+      },
+      "migration": [
+        {
+          "version": "988_cockpit_action_issue_index"
+        }
+      ],
+      "original_app": {
+        "status": "ok",
+        "pid": 30604,
+        "commit": "unknown",
+        "started_at": "2026-10-08T04:39:41Z"
+      },
+      "original_web_status": 200,
+      "runtime_profile_mode": "600"
+    },
+    "redis": "PONG",
+    "retained": "Isolated build artifacts and evidence only; no running temp instance or review workspace."
+  },
+  "screenshots": [
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/minutes-current-and-published.png",
+      "sha256": "c759e9df9860e391241e8c7a32ccaec4a50d1f456ab50622b732bfad619f8aa7"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/minutes-historical-reader.png",
+      "sha256": "43bb5bf47c184942d9cdd588401ffa4b65ac17bd134cc361636467e81c7ca431"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/minutes-history-page-two.png",
+      "sha256": "56a61a9840a0e8073f1c13303408cba1f9cd3bef8f6c35c1d88fc6d525394ce4"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/minutes-review-draft-preserved.png",
+      "sha256": "2da5130e27abd7c649696eb0c3e02acec8018ff86eaec7622142ba566f58692c"
+    }
+  ],
+  "limitations": [
+    "Legacy default full workflow responses remain intentionally available for installed-client compatibility; the upgraded UI did not request them.",
+    "This validates bounded workflow/history reads and command payloads, not arbitrary-scale latency or every legacy board collection.",
+    "NAS history used synthetic metadata and temporary local test roots; no actual NAS export, SMB compatibility check, or provider Agent run occurred.",
+    "No migration was needed; schema remains988."
+  ],
+  "sensitive_data": "No database/Redis credentials, auth tokens, production configuration or real business content are included; screenshots and metrics use synthetic fixtures."
+}

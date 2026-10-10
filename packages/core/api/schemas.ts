@@ -2007,6 +2007,7 @@ export const CockpitMeetingIssueLinkSchema = z.object({
   issue_id: z.string(),
   role: z.string().default(""),
   roles: z.array(z.string()).catch([]).default([]),
+  required_roles: z.array(z.string()).catch([]).default([]),
   issue_number: z.number().default(0),
   issue_identifier: z.string().default(""),
   issue_title: z.string().default(""),
@@ -2191,6 +2192,57 @@ export const CockpitMeetingNasWriteSchema = CockpitMeetingWorkflowWriteSchema.ex
 });
 
 export const EMPTY_COCKPIT_MEETING_WORKFLOW = CockpitMeetingWorkflowSchema.parse({ meeting_id: "" });
+
+export const CockpitMinutesVersionMetadataSchema = MinutesVersionAcknowledgmentSchema.omit({ content: true, feedback: true }).extend({
+  has_feedback: z.boolean(),
+}).strip();
+
+export const CockpitWorkflowReviewerHandoffSchema = CockpitReviewerHandoffSchema.extend({
+  version_number: z.number().int().positive().nullable(),
+});
+
+export const CockpitWorkflowNasExportSchema = CockpitMeetingNasWriteSchema.shape.nas_exports.element.extend({
+  source_version: CockpitMinutesVersionMetadataSchema,
+});
+
+/** Bounded working state: document bodies and historical collections live in separate queries. */
+export const CockpitMeetingWorkflowSummarySchema = CockpitMeetingWorkflowSchema.omit({
+  versions: true, reviewer_handoffs: true, nas_exports: true,
+}).extend({
+  representation: z.literal("summary"), workspace_id: z.string().min(1), meeting_id: z.string().min(1),
+  enabled: z.boolean(), revision: z.number().int().nonnegative(),
+  current_version_id: z.string().nullable(), published_version_id: z.string().nullable(),
+  current_version: CockpitMinutesVersionMetadataSchema.nullable(),
+  published_version: CockpitMinutesVersionMetadataSchema.nullable(),
+  published_nas_export: CockpitWorkflowNasExportSchema.nullable(),
+  history_counts: z.object({ versions: z.number().int().nonnegative(), reviewer_handoffs: z.number().int().nonnegative(),
+    nas_exports: z.number().int().nonnegative(), nas_active: z.number().int().nonnegative() }),
+}).strip();
+
+function cockpitWorkflowHistoryPageSchema<T extends z.ZodType>(item: T) {
+  return z.object({ workspace_id: z.string().min(1), meeting_id: z.string().min(1), workflow_revision: z.number().int().nonnegative(),
+    items: z.array(item), total: z.number().int().nonnegative(), next_cursor: z.string().nullable(),
+  }).refine((page) => page.total >= page.items.length, "Page count is smaller than its contents");
+}
+
+export const CockpitMinutesVersionPageSchema = cockpitWorkflowHistoryPageSchema(CockpitMinutesVersionMetadataSchema);
+export const CockpitReviewerHandoffPageSchema = cockpitWorkflowHistoryPageSchema(CockpitWorkflowReviewerHandoffSchema);
+export const CockpitNasExportPageSchema = cockpitWorkflowHistoryPageSchema(CockpitWorkflowNasExportSchema).safeExtend({
+  version_id: z.string().nullable(), status: z.string(),
+});
+
+export const CockpitMinutesVersionDetailSchema = z.object({
+  workspace_id: z.string().min(1), meeting_id: z.string().min(1), workflow_revision: z.number().int().nonnegative(),
+  version: MinutesVersionAcknowledgmentSchema,
+  can_review: z.boolean().catch(false).default(false), can_publish: z.boolean().catch(false).default(false), can_export_nas: z.boolean().catch(false).default(false),
+});
+
+export const CockpitWorkflowCommandResponseSchema = z.object({
+  representation: z.literal("compact"), workspace_id: z.string().min(1), meeting_id: z.string().min(1),
+  workflow: CockpitMeetingWorkflowSummarySchema,
+  receipt: z.object({ action: z.string().min(1), version: MinutesVersionAcknowledgmentSchema.nullable(),
+    handoff: CockpitWorkflowReviewerHandoffSchema.nullable(), nas_export: CockpitWorkflowNasExportSchema.nullable() }),
+});
 
 export const CockpitMeetingDestinationSchema = z.object({
   project_id: z.string().default(""),

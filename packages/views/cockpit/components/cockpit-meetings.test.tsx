@@ -1,4 +1,4 @@
-import { workflowFixture } from "./workflow-test-fixtures";
+import { workflowFixture, workflowSummary, compactWorkflow } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -44,8 +44,8 @@ vi.mock("@multica/core/api", () => ({
   api: {
     getBaseUrl: () => "https://example.test",
     getCockpit: vi.fn(),
-    getCockpitMeetingWorkflow: vi.fn(),
-    enableCockpitMeetingWorkflow: vi.fn(),
+    getCockpitMeetingWorkflowSummary: vi.fn(),
+    commandCockpitMeetingWorkflow: vi.fn(),
     updateCockpit: vi.fn(),
     createCockpitNode: vi.fn(),
     updateCockpitNode: vi.fn(),
@@ -189,7 +189,7 @@ const board: CockpitBoard = {
   ],
   meeting_issues: [
     {
-      meeting_id: "meet-1", issue_id: "issue-1", role: "task", roles: [], issue_number: 42,
+      meeting_id: "meet-1", issue_id: "issue-1", role: "task", roles: [], required_roles: [], issue_number: 42,
       issue_identifier: "BIO-42", issue_title: "Working group weekly", issue_status: "todo",
       position: -1,
     },
@@ -216,7 +216,7 @@ async function openRegister() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getCockpit).mockResolvedValue(structuredClone(board));
-  vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (meetingId) => ({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
+  vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
   vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
   vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
@@ -230,10 +230,11 @@ beforeEach(() => {
   vi.mocked(api.listModules).mockResolvedValue({ modules: [
     { id: "module-0606", project_id: "project-06", title: "06.06 Joint working and meetings" },
   ], total: 1 } as unknown as Awaited<ReturnType<typeof api.listModules>>);
-  vi.mocked(api.enableCockpitMeetingWorkflow).mockImplementation(async (meetingId, body) => {
-    const result = workflowFixture({ meeting_id: meetingId, reviewer_id: body.reviewer_id });
-    vi.mocked(api.getCockpitMeetingWorkflow).mockImplementation(async (id) => id === meetingId ? result : { ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: id });
-    return result;
+  vi.mocked(api.commandCockpitMeetingWorkflow).mockImplementation(async (_wsId, meetingId, command) => {
+    if (command.action !== "enabled") throw new Error("Unexpected workflow command in meeting setup fixture");
+    const result = workflowFixture({ meeting_id: meetingId, reviewer_id: command.body.reviewer_id });
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_scope, id) => workflowSummary(id === meetingId ? result : { ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: id }));
+    return compactWorkflow(result, command);
   });
   vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({
     project_id: "project-06",
@@ -355,6 +356,29 @@ describe("the meeting register", () => {
     expect(screen.queryByRole("menuitem", { name: /02\.05 Ship/ })).not.toBeInTheDocument();
   });
 
+  it("retains a retired review relation from required roles without loading version history", async () => {
+    const linked = structuredClone(board);
+    linked.meeting_issues.push({ ...linked.meeting_issues[0]!, issue_id: "retired-review", issue_number: 99,
+      issue_identifier: "BIO-99", issue_title: "Review from a previous round", role: "", roles: ["review"], required_roles: ["review"] });
+    vi.mocked(api.getCockpit).mockResolvedValue(linked);
+    const summary = workflowSummary(workflowFixture({ meeting_id: "meet-1" }));
+    expect(summary.current_version).toBeNull();
+    expect(summary.published_version).toBeNull();
+    vi.mocked(api.getCockpitMeetingWorkflowSummary).mockResolvedValue(summary);
+    await openRegister();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
+    expect(await screen.findByRole("button", { name: "Unlink BIO-42" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Unlink BIO-99" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit purposes for BIO-99" }));
+    const review = screen.getByRole("checkbox", { name: "Review" });
+    expect(review).toBeChecked();
+    expect(review).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(review);
+    expect(review).toBeChecked();
+    expect(api.deleteCockpitMeetingIssue).not.toHaveBeenCalled();
+  });
+
   it("writes a field edit from the panel as a patch of just that field", async () => {
     await openRegister();
     fireEvent.click(await screen.findByRole("button", { name: "Open Working group weekly" }));
@@ -470,7 +494,7 @@ describe("the meeting register", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
 
     await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
-    await waitFor(() => expect(api.enableCockpitMeetingWorkflow).toHaveBeenCalledWith("meet-new", expect.objectContaining({ reviewer_id: "user-1" })));
+    await waitFor(() => expect(api.commandCockpitMeetingWorkflow).toHaveBeenCalledWith("ws-1", "meet-new", { action: "enabled", body: expect.objectContaining({ reviewer_id: "user-1" }) }));
     // The row is written on its own, then the side effects are asked for —
     // an unmounted share must never cost the record of a meeting.
     expect(vi.mocked(api.createCockpitMeeting).mock.calls[0]![0]).toMatchObject({
@@ -482,14 +506,14 @@ describe("the meeting register", () => {
         expect.objectContaining({ project_id: "project-06", module_id: "module-0606", create_task: false }),
       ),
     );
-    expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.enableCockpitMeetingWorkflow).mock.invocationCallOrder[0]!);
-    expect(vi.mocked(api.enableCockpitMeetingWorkflow).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
   });
 
   it("retries failed workflow setup on the same saved meeting without falling back to immediate tasks", async () => {
     const created = meeting({ id: "meet-retry", code: `${codeDay()}-02`, title: "Retry setup" });
     vi.mocked(api.createCockpitMeeting).mockResolvedValue(created);
-    vi.mocked(api.enableCockpitMeetingWorkflow).mockRejectedValueOnce(new Error("Reviewer temporarily unavailable"));
+    vi.mocked(api.commandCockpitMeetingWorkflow).mockRejectedValueOnce(new Error("Reviewer temporarily unavailable"));
     vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
       meeting: { ...created, nas_dir: "/Volumes/share/retry" }, issues: [], task: null, task_error: "",
       dir: "/Volumes/share/retry", dir_created: true, dir_error: "",
@@ -504,7 +528,7 @@ describe("the meeting register", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Retry remaining setup" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.createCockpitMeeting).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.enableCockpitMeetingWorkflow).mock.calls.map(([meetingId]) => meetingId)).toEqual(["meet-retry", "meet-retry"]);
+    expect(vi.mocked(api.commandCockpitMeetingWorkflow).mock.calls.map(([, meetingId]) => meetingId)).toEqual(["meet-retry", "meet-retry"]);
     expect(api.provisionCockpitMeeting).toHaveBeenCalledWith("meet-retry", expect.objectContaining({ create_task: false }));
   });
 

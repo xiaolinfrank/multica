@@ -928,5 +928,31 @@
     "resolve_action": "处置行动",
     "inspect_nas": "检查 NAS 副本",
     "open_issue": "打开任务"
+  },
+  "minutes_history": {
+    "title": "纪要历史",
+    "open": "版本历史（{{count}}）",
+    "sections": "历史记录分类",
+    "versions": "纪要版本",
+    "handoffs": "评审交接",
+    "reader_title": "纪要版本 {{number}}",
+    "read_current": "阅读当前纪要",
+    "read_published": "阅读正式纪要",
+    "read_version": "阅读版本 {{number}}",
+    "current": "当前工作版本",
+    "official": "正式纪要",
+    "immutable": "提交后的正文已固定；修订需重新提交新版本。",
+    "historical_notice": "正在阅读历史版本。当前工作版本为 v{{number}}。",
+    "has_feedback": "有评审意见",
+    "empty": "此视图暂无记录。",
+    "close": "关闭",
+    "export_history": "查看 NAS 历史（{{count}}）",
+    "export_status": "NAS 操作状态",
+    "active_exports": "执行中与等待中",
+    "handoff_details": "交接原因与评审任务",
+    "no_current_copy": "尚未为此版本和目标位置申请副本。",
+    "review_draft": "评审草稿（只读）",
+    "review_draft_scope": "此草稿属于先前打开的评审安排，未转移到当前评审。",
+    "previously_published": "曾发布"
   }
 }

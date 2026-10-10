@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitMeetingActionsOptions, useCockpitActionCommandStore, cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore } from "@multica/core/cockpit";
-import type { CockpitMeetingWorkflow } from "@multica/core/types";
+import type { CockpitMeetingWorkflowSummary } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
@@ -16,7 +16,7 @@ import { useT } from "../../i18n";
 import { CockpitActionCreate, CockpitActionDetail } from "./cockpit-action-dialogs";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
-export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { wsId: string; workflow: CockpitMeetingWorkflow; userId: string; readOnly?: boolean }) {
+export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { wsId: string; workflow: CockpitMeetingWorkflowSummary; userId: string; readOnly?: boolean }) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
@@ -40,7 +40,7 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
   const query = useQuery(cockpitMeetingActionsOptions(wsId, workflow.meeting_id, { q, status, version_id: versionId, cursor: cursors.at(-1) || undefined }));
   const commands = useCockpitActionCommandStore((state) => state.draft.commands);
   const pending = Object.values(commands).filter((command) => command.kind === "decision" && command.meeting_id === workflow.meeting_id);
-  const published = workflow.versions.find((version) => version.id === workflow.published_version_id);
+  const published = workflow.published_version;
   const human = Boolean(userId && !readOnly);
   const canAdd = human && query.data?.can_add === true && published?.decision === "approved" && Boolean(published.published_at)
     && (workflow.can_manage || published.reviewer_id === userId);
@@ -50,7 +50,7 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
   ];
   const versions = [{ value: "__all__", label: t(($) => $.meeting_actions.all_versions) },
     ...(published ? [{ value: published.id, label: t(($) => $.meeting_actions.source_version, { number: published.version_number }) }] : []),
-    ...(versionId && versionId !== published?.id ? [{ value: versionId, label: t(($) => $.meeting_actions.source_version, { number: workflow.versions.find((entry) => entry.id === versionId)?.version_number ?? versionId }) }] : [])];
+    ...(versionId && versionId !== published?.id ? [{ value: versionId, label: t(($) => $.meeting_actions.source_version, { number: query.data?.items.find((entry) => entry.version_id === versionId)?.version_number ?? versionId }) }] : [])];
   return <Dialog open={Boolean(selectedId)} onOpenChange={(next) => { if (!next && !busy.current) setSelectedId(null); }}>
     <section className="space-y-4 rounded-lg border border-border p-4" aria-label={t(($) => $.meeting_actions.region)}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_actions.region)}</h3>

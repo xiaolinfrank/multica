@@ -127,6 +127,9 @@ func cockpitWorkflowManagedBy(work db.CockpitMeetingWorkPackage, member db.Membe
 
 // Human-only operations keep a handler backstop as well as the router guard.
 func (h *Handler) cockpitWorkflowContext(w http.ResponseWriter, r *http.Request, humanOnly bool) (cockpitContext, db.CockpitMeeting, bool) {
+	if !validateCockpitWorkflowRepresentation(w, r) {
+		return cockpitContext{}, db.CockpitMeeting{}, false
+	}
 	if humanOnly && isMachineCredentialActor(r) {
 		writeError(w, http.StatusForbidden, "this meeting operation requires a human actor")
 		return cockpitContext{}, db.CockpitMeeting{}, false
@@ -269,14 +272,7 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 		})
 	}
 	for _, version := range versions {
-		out.Versions = append(out.Versions, CockpitMinutesVersionResponse{
-			ID: uuidToString(version.ID), VersionNumber: version.VersionNumber, SubmissionKey: uuidToString(version.SubmissionKey),
-			Content: version.Content, ContentHash: version.ContentHash, SourceIssueID: uuidToString(version.SourceIssueID),
-			ReviewIssue: cards[version.ReviewIssueID], ReviewerID: uuidToString(version.ReviewerID), Decision: version.Decision, Feedback: version.Feedback,
-			SubmittedByType: version.SubmittedByType, SubmittedByID: uuidToString(version.SubmittedByID), CreatedAt: version.CreatedAt.Time.UTC().Format(time.RFC3339Nano),
-			ReviewedBy: uuidToPtr(version.ReviewedBy), ReviewedAt: cockpitWorkflowTime(version.ReviewedAt),
-			PublishedBy: uuidToPtr(version.PublishedBy), PublishedAt: cockpitWorkflowTime(version.PublishedAt),
-		})
+		out.Versions = append(out.Versions, cockpitMinutesVersionToResponse(version, cards[version.ReviewIssueID]))
 		if version.ID == work.CurrentVersionID && !isMachineCredentialActor(r) {
 			out.CanReview = version.ReviewerID == cc.member.UserID && version.Decision == "pending"
 			out.CanPublish = (version.ReviewerID == cc.member.UserID || out.CanManage) && version.Decision == "approved"
@@ -297,28 +293,12 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 				break
 			}
 		}
-		var size *int64
-		if export.SizeBytes.Valid {
-			value := export.SizeBytes.Int64
-			size = &value
-		}
-		var next *string
-		if export.Status == "retry_wait" || export.Status == "queued" {
-			next = cockpitWorkflowTime(export.NextRetryAt)
-		}
-		out.NASExports = append(out.NASExports, CockpitMinutesExportResponse{
-			ID: uuidToString(export.ID), VersionID: uuidToString(export.VersionID), VersionNumber: export.VersionNumber,
-			SourceIssueID: uuidToString(export.SourceIssueID), ContentHash: export.ContentHash, RootID: export.RootID,
-			Directory: export.Directory, TargetPath: export.TargetPath, Status: export.Status, Attempts: export.Attempts, Revision: export.Revision,
-			NextRetryAt: next, CreatedAt: export.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: export.UpdatedAt.Time.UTC().Format(time.RFC3339Nano),
-			CompletedAt: cockpitWorkflowTime(export.CompletedAt), LastErrorCode: export.LastErrorCode, LastError: export.LastError, SizeBytes: size,
-			CanRetry: mayExport && (export.Status == "retry_wait" || export.Status == "needs_attention"),
-		})
+		out.NASExports = append(out.NASExports, cockpitNASExportToResponse(export, mayExport))
 	}
 	return out, nil
 }
 
-func (h *Handler) writeCockpitWorkflowResult(w http.ResponseWriter, r *http.Request, cc cockpitContext, meetingID pgtype.UUID, action string, err error) {
+func (h *Handler) writeCockpitWorkflowResult(w http.ResponseWriter, r *http.Request, cc cockpitContext, meetingID pgtype.UUID, action string, err error, references ...cockpitWorkflowReceiptRef) {
 	if err != nil {
 		if writeIssueLimitReached(w, err) {
 			return
@@ -342,7 +322,16 @@ func (h *Handler) writeCockpitWorkflowResult(w http.ResponseWriter, r *http.Requ
 		}
 		return
 	}
-	out, err := h.cockpitWorkflowResponse(r, cc, meetingID)
+	var out any
+	if r.URL.Query().Get("response") == "compact" {
+		var ref cockpitWorkflowReceiptRef
+		if len(references) > 0 {
+			ref = references[0]
+		}
+		out, err = h.cockpitCompactResult(r, cc, meetingID, action, ref)
+	} else {
+		out, err = h.cockpitWorkflowResponse(r, cc, meetingID)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "meeting workflow was updated; reload to read the result")
 		return
@@ -568,7 +557,7 @@ func (h *Handler) SubmitCockpitMeetingMinutes(w http.ResponseWriter, r *http.Req
 	}
 	err = h.IssueService.SubmitCockpitMeetingMinutes(r.Context(), service.CockpitMinutesSubmission{CockpitWorkPackageCommand: command,
 		SubmissionKey: key, Content: strings.TrimSpace(req.Content), ActorType: actorType, AuthorID: author}, service.IssueCreateOpts{ActorID: actorID})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "submitted", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "submitted", err, cockpitWorkflowReceiptRef{SubmissionKey: key})
 }
 
 func (h *Handler) ReviewCockpitMeetingMinutes(w http.ResponseWriter, r *http.Request) {
@@ -594,7 +583,7 @@ func (h *Handler) ReviewCockpitMeetingMinutes(w http.ResponseWriter, r *http.Req
 	}
 	err := h.IssueService.ReviewCockpitMeetingMinutes(r.Context(), service.CockpitMinutesReview{
 		CockpitMinutesVersionCommand: service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID}, Decision: req.Decision, Feedback: strings.TrimSpace(req.Feedback)})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "reviewed", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "reviewed", err, cockpitWorkflowReceiptRef{VersionID: versionID})
 }
 
 func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Request) {
@@ -626,7 +615,7 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 		target = &parsed
 	}
 	err := h.IssueService.PublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID, NASExport: target})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "published", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "published", err, cockpitWorkflowReceiptRef{VersionID: versionID, ExportTarget: target})
 }
 
 type cockpitNASExportRequest struct {
@@ -663,11 +652,11 @@ func (h *Handler) ExportCockpitMeetingMinutes(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	_, err := h.IssueService.ExportCockpitMeetingMinutes(r.Context(), service.CockpitMinutesExportCommand{
+	export, err := h.IssueService.ExportCockpitMeetingMinutes(r.Context(), service.CockpitMinutesExportCommand{
 		CockpitMinutesVersionCommand: service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: service.CockpitWorkPackageCommand{
 			WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, ActorID: cc.member.UserID}, VersionID: version}, Target: target,
 	})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_queued", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_queued", err, cockpitWorkflowReceiptRef{ExportID: export.ID})
 }
 
 func (h *Handler) RetryCockpitMinutesExport(w http.ResponseWriter, r *http.Request) {
@@ -687,10 +676,10 @@ func (h *Handler) RetryCockpitMinutesExport(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	_, err := h.IssueService.RetryCockpitMinutesExport(r.Context(), service.CockpitMinutesExportRetry{
+	export, err := h.IssueService.RetryCockpitMinutesExport(r.Context(), service.CockpitMinutesExportRetry{
 		WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, ActorID: cc.member.UserID, ExportID: id, ExpectedRevision: *req.ExpectedRevision,
 	})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_retried", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "nas_export_retried", err, cockpitWorkflowReceiptRef{ExportID: export.ID})
 }
 
 func (h *Handler) ChangeCockpitMeetingReviewer(w http.ResponseWriter, r *http.Request) {
@@ -722,7 +711,7 @@ func (h *Handler) ChangeCockpitMeetingReviewer(w http.ResponseWriter, r *http.Re
 	err := h.IssueService.ChangeCockpitMeetingReviewer(r.Context(), service.CockpitReviewerHandoff{
 		CockpitWorkPackageCommand: command, HandoffKey: key, ReviewerID: reviewer, Reason: strings.TrimSpace(req.Reason),
 	}, service.IssueCreateOpts{ActorID: uuidToString(cc.member.UserID)})
-	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "reviewer_reassigned", err)
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "reviewer_reassigned", err, cockpitWorkflowReceiptRef{HandoffKey: key})
 }
 
 // Kept here so destructive operations can recheck in their own transaction.

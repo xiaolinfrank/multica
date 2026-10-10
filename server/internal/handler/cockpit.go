@@ -184,6 +184,7 @@ type CockpitMeetingIssueResponse struct {
 	// link someone made by hand.
 	Role            string   `json:"role"`
 	Roles           []string `json:"roles"`
+	RequiredRoles   []string `json:"required_roles"`
 	IssueNumber     int32    `json:"issue_number"`
 	IssueIdentifier string   `json:"issue_identifier"`
 	IssueTitle      string   `json:"issue_title"`
@@ -382,6 +383,7 @@ func cockpitMeetingIssueToResponse(l db.ListCockpitMeetingIssuesRow, prefix stri
 		IssueID:         uuidToString(l.IssueID),
 		Role:            l.Role,
 		Roles:           append([]string{}, l.Roles...),
+		RequiredRoles:   append([]string{}, l.RequiredRoles...),
 		IssueNumber:     l.IssueNumber,
 		IssueIdentifier: fmt.Sprintf("%s-%d", prefix, l.IssueNumber),
 		IssueTitle:      l.IssueTitle,
