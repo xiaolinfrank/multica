@@ -1,0 +1,453 @@
+{
+  "status": "Isolated QA passed; resident deployment is recorded separately.",
+  "host": "fosun_agent_3",
+  "database": "multica_test",
+  "schema": 9065,
+  "candidate": {
+    "frontend_commit": "48b5f3460",
+    "archive_sha256": "93d606c2900a5b84c5dfd9e6516adef49134e9b08e1030c1fe898cf6e32b5f48",
+    "frontend_build_id": "-MLrV_otKmlKMLX7cdgXu",
+    "product_source_manifest_sha256": "b4aeea7cdafe9da46a7d0bcceccd82e88d6ffd62542840d200cf985f0d29fc49",
+    "test_only_selected_value_fix_commit": "8c11db9ea",
+    "backend_source_commit": "b2f191fc0453bde424f70e1fb549310c3b352f7c",
+    "api_sha256": "05a8c6ae05380854ac2c67aa2c52e5c0f069b9fb4dbbb80182ea0a18b7b6ef60",
+    "migrator_sha256": "e1ef45e8efab5c47ee84cd345adb4638848438ff3b710d18df413239be406fb3"
+  },
+  "go": {
+    "final_handler_parents_passed": 2640,
+    "final_handler_failed": 0,
+    "final_handler_opt_in_skipped": 1,
+    "handler_sha256": "f08ce863ea551231b6c00f14cd02f3c9f89ae00cf62a648bbc2dadd9fa3d9ae6",
+    "canonical_service_parents_passed": 57,
+    "final_basis_and_builtin_parents_passed": 6,
+    "service_note": "Subset evidence overlaps earlier artifact full service and is not added to full handler or prior counts.",
+    "red_baselines": [
+      "Deep hierarchy cycle and concurrent A↔B both reproduced before fix.",
+      "RunConfirm A→B→A late completion reproduced before monotonic identity fix.",
+      "Primary old workspace ACK polluted new workspace cache before mutationKey fix."
+    ],
+    "full_handler_first_run": {
+      "pass": 2636,
+      "fail": 4,
+      "skip": 1,
+      "all_four_retested_then_final_full_package_passed": true
+    }
+  },
+  "frontend": {
+    "per_file_final_case_counts": {
+      "core": {
+        "api/cockpit-actions.test.ts": 7,
+        "api/issue-batch.test.ts": 5,
+        "api/issue-operation-basis.test.ts": 5,
+        "cockpit/action-mutations.test.tsx": 3,
+        "cockpit/ws-updaters.test.ts": 25,
+        "issues/delete-mutations.test.tsx": 5,
+        "issues/mutations.test.tsx": 48,
+        "issues/operation-basis.test.ts": 6,
+        "modules/mutations.test.tsx": 6,
+        "projects/mutations.test.tsx": 5,
+        "realtime/use-realtime-sync-ws-instance.test.tsx": 31
+      },
+      "views": {
+        "cockpit/components/cockpit-node-binding.test.tsx": 9,
+        "cockpit/components/cockpit-node-panel.test.tsx": 17,
+        "cockpit/components/cockpit-plan-structure-create.test.tsx": 11,
+        "cockpit/components/use-cockpit-command-context.test.tsx": 3,
+        "issues/actions/__tests__/issue-actions-menu.test.tsx": 10,
+        "issues/actions/__tests__/use-issue-actions.test.tsx": 16,
+        "issues/components/batch-action-toolbar.confirm.test.tsx": 4,
+        "issues/components/batch-action-toolbar.test.tsx": 5,
+        "issues/components/cockpit-nodes-section.test.tsx": 10,
+        "issues/components/issue-assignee-control.test.tsx": 2,
+        "issues/components/issue-batch-operation.test.tsx": 4,
+        "issues/components/issue-detail.test.tsx": 104,
+        "issues/components/issue-operation-restriction.test.tsx": 3,
+        "issues/components/pickers/assignee-picker.keyboard.test.tsx": 4,
+        "issues/components/table-view-editing.test.tsx": 10,
+        "issues/components/table-view-module-grouping.test.tsx": 12,
+        "issues/components/table-view-project-grouping.test.tsx": 5,
+        "issues/components/table-view-virtualized-hierarchy.test.tsx": 1,
+        "locales/parity.test.ts": 203,
+        "modals/delete-issue-confirm.test.tsx": 6,
+        "modals/issue-parent-modals.test.tsx": 6,
+        "modals/issue-picker-modal.test.tsx": 5,
+        "modals/module-detach-confirm.test.tsx": 3,
+        "modals/run-confirm.test.tsx": 25,
+        "projects/components/modules-manage-dialog.test.tsx": 2,
+        "projects/components/project-detail.test.tsx": 24,
+        "projects/components/projects-page.test.tsx": 7
+      }
+    },
+    "core_total": 146,
+    "views_excluding_locale": 308,
+    "locale_parity": 203,
+    "note": "Per-file final case counts deduplicate narrow reruns. This is not one monolithic frontend run. Prior artifact-phase totals are not added."
+  },
+  "browser": {
+    "unique_scenarios_passed": 4,
+    "same_final_bundle": true,
+    "runs": [
+      {
+        "log": "operation-e2e-final.log",
+        "passed": 3,
+        "failed": 1,
+        "duration_seconds": 33.0,
+        "failure": "Last selected-value assertion included the rendered dropdown arrow; all navigation/geometry/business checks passed."
+      },
+      {
+        "log": "operation-e2e-final-recovery.log",
+        "passed": 1,
+        "failed": 0,
+        "duration_seconds": 6.0,
+        "test_only_change": "Read SelectValue exact Week; product unchanged."
+      }
+    ],
+    "scenarios": [
+      "Owned attachment actual worker capture, exact signed bytes/hash, source attachment deletion, fixed copy retention and fresh credential-free browser download.",
+      "Fixed artifact text revisions, human review, L3 fixed evidence acceptance and source links.",
+      "Primary clear acknowledgement, actual project/module change, protected formal operations and real workbench popup, 390px navigation/focus/return/search/Week preservation.",
+      "Real per-item POST CAS conflict from peer change: applied/rejected/not_attempted, original target/labels and remaining selection preserved."
+    ],
+    "earlier_instrument_failures": [
+      "Project trigger and open picker shared accessible name.",
+      "Menu Mark as duplicate label contains ellipsis.",
+      "L3 leaf must be explicitly expanded."
+    ],
+    "actual_visual_fixes": [
+      "390px secondary plan navigation placed on its own wrapping row.",
+      "Revision-conflict copy no longer promises a refresh or mentions comments."
+    ]
+  },
+  "cleanup": {
+    "database": "multica_test",
+    "schema": 9065,
+    "business_counts": {
+      "cockpit_acceptance_criterion": 0,
+      "cockpit_acceptance_definition": 0,
+      "cockpit_acceptance_evidence": 0,
+      "cockpit_acceptance_request": 0,
+      "cockpit_acceptance_request_criterion": 0,
+      "cockpit_acceptance_reviewer_handoff": 0,
+      "cockpit_artifact": 0,
+      "cockpit_artifact_capture": 0,
+      "cockpit_artifact_meeting_reference": 0,
+      "cockpit_artifact_node_reference": 0,
+      "cockpit_artifact_producer_assignment": 0,
+      "cockpit_artifact_reviewer_handoff": 0,
+      "cockpit_artifact_version": 0,
+      "workspace": 0,
+      "project": 0,
+      "module": 0,
+      "issue": 0,
+      "agent": 0,
+      "agent_task_queue": 0,
+      "cockpit": 0,
+      "cockpit_node": 0,
+      "cockpit_meeting": 0,
+      "cockpit_issue_primary": 0,
+      "cockpit_creation_intent": 0
+    },
+    "retained_cleanup_tombstones": [
+      {
+        "id": "01a127a8-2711-714f-adfc-c7af75f097a0",
+        "workspace_id": "e4f5b160-48ac-4e9f-923b-c4034f977b6b",
+        "storage_key": "workspaces/e4f5b160-48ac-4e9f-923b-c4034f977b6b/artifact-versions/01a127a8-2341-72de-ab2a-2eb18dd11085/01a127a8-2711-714f-adfc-c7af75f097a0.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T05:11:36.975543+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a127b3-034f-7e73-9051-e451d31f2d43",
+        "workspace_id": "ee58fdfa-eb8a-4c80-b691-fd3f9894bc15",
+        "storage_key": "workspaces/ee58fdfa-eb8a-4c80-b691-fd3f9894bc15/artifact-versions/01a127b3-001c-79e7-8c88-023faeb78f08/01a127b3-034f-7e73-9051-e451d31f2d43.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T05:23:28.711531+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a1274b-2477-79bc-89fc-bb43150f3fcd",
+        "workspace_id": "55cb8a99-17d5-46bc-8fdb-65215f53031c",
+        "storage_key": "workspaces/55cb8a99-17d5-46bc-8fdb-65215f53031c/artifact-versions/01a1274b-1972-74e2-9f02-dce9e07adba6/01a1274b-2477-79bc-89fc-bb43150f3fcd.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:30:01.462542+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a1274f-67b9-7b17-8f60-294451713a85",
+        "workspace_id": "d5ee538f-ec3c-4e4b-83c8-402a415c9c27",
+        "storage_key": "workspaces/d5ee538f-ec3c-4e4b-83c8-402a415c9c27/artifact-versions/01a1274f-6386-77b8-908e-397b418c5de4/01a1274f-67b9-7b17-8f60-294451713a85.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:34:40.826308+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a12757-ee30-7e19-8990-c61435f292f1",
+        "workspace_id": "c943acc5-0bd6-4945-a8e8-d658a90fd068",
+        "storage_key": "workspaces/c943acc5-0bd6-4945-a8e8-d658a90fd068/artifact-versions/01a12757-eb8f-7eb9-8fbd-da00255f96eb/01a12757-ee30-7e19-8990-c61435f292f1.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:43:59.530485+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a12750-bc40-7668-9ce1-f08c0d8862da",
+        "workspace_id": "88131eaa-8ba2-4e12-a5b1-e40471ee4527",
+        "storage_key": "workspaces/88131eaa-8ba2-4e12-a5b1-e40471ee4527/artifact-versions/01a12750-b9f6-792f-80fa-5a1314cd32fc/01a12750-bc40-7668-9ce1-f08c0d8862da.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:36:08.000138+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      },
+      {
+        "id": "01a1275e-934c-75df-a8d6-6fe4a1616dc9",
+        "workspace_id": "46beb5b8-5fe6-4666-ba92-c47c17d6b455",
+        "storage_key": "workspaces/46beb5b8-5fe6-4666-ba92-c47c17d6b455/artifact-versions/01a1275e-8ac1-78ae-b15b-d0663046abb6/01a1275e-934c-75df-a8d6-6fe4a1616dc9.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T03:51:15.019091+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      }
+    ],
+    "tombstone_policy": "Intentional permanent minimal records; IO finished, object deletion confirmed, rechecked after24h. No tombstones removed to manufacture a zero count.",
+    "stopped_owned_processes": [
+      {
+        "name": "web",
+        "pid": 64363,
+        "port": 13800
+      },
+      {
+        "name": "api",
+        "pid": 63051,
+        "port": 18880
+      }
+    ],
+    "runtime_profile_sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0",
+    "nas_roots_for_qa": "empty child override; original profile preserved",
+    "real_agent_runs": 0
+  },
+  "screenshots": [
+    "docs/design/cockpit-native-2026-10-09/implementation/operation-l3-narrow-focus.png",
+    "docs/design/cockpit-native-2026-10-09/implementation/issue-batch-real-conflict.png"
+  ],
+  "no_real_agent": true,
+  "no_real_nas_this_batch": true,
+  "no_production": true,
+  "raw_logs_private_directory": "/tmp/multica-operation-logs",
+  "log_records": [
+    {
+      "file": "operation-basis-handler.log",
+      "sha256": "7b20f7bab7ead72222b74c5fb0313002a48ed5be6198af3991112633b04b3e7a"
+    },
+    {
+      "file": "operation-basis-scale.log",
+      "sha256": "e031295e6464b6882642c0cd04ce9fb5c06d148645790ae92cd5c20e39418bae"
+    },
+    {
+      "file": "operation-basis-service.log",
+      "sha256": "d7df867e907431763aef97a2bb86e471817e1e10b17078372547b23b61c2f91f"
+    },
+    {
+      "file": "operation-canonical-service.log",
+      "sha256": "dfede9260721b50ef8e8ea0dd58dbc3ac2beca18b4581839e7653c20801078e8"
+    },
+    {
+      "file": "operation-command-context.log",
+      "sha256": "27c08311ae9cea194eb2cbc57fbda5314e3b82647a1d2642ca0ea16b994f8563"
+    },
+    {
+      "file": "operation-container-aba.log",
+      "sha256": "801dddf0abb0e403d6d1aa4ea444dd5ae9dd915b9af7fa4df18e9766b55698d2"
+    },
+    {
+      "file": "operation-core-final-sync.log",
+      "sha256": "9dabd8f6e7a8477184331c0eab0dcc74537b1b0b77da63779822091d3b29c5bb"
+    },
+    {
+      "file": "operation-core-v1.log",
+      "sha256": "add847303e201ebf455a7225dbc33c6743ac7ed8015683b22d3eccf5d1906db7"
+    },
+    {
+      "file": "operation-core-v2.log",
+      "sha256": "736598727eaec1ec887fb954c39945a7326277b22773dec121791f36329ed9b3"
+    },
+    {
+      "file": "operation-core-v4-v5.log",
+      "sha256": "21fe61e7124a555f02f6a05adcb945f71c03d78bfdb4480d713b379bbb8f77fc"
+    },
+    {
+      "file": "operation-e2e-final-recovery.log",
+      "sha256": "6078b23f48fe0f19f8cce15f9cb155768100912e73525ea428228605c22d8274"
+    },
+    {
+      "file": "operation-e2e-final.log",
+      "sha256": "a00172ca7a1a6853c423f28705edf633efd0e29c5d295f1f57cba1991d8590cb"
+    },
+    {
+      "file": "operation-e2e-first.log",
+      "sha256": "353195bd1e5572a12e81b393c3059fed6ea30ea04d94af16fdb1afacfa3fe5b9"
+    },
+    {
+      "file": "operation-e2e-recovery-final.log",
+      "sha256": "34b82f73c30b0914f31e4fe4cef9b2a1af01e36be48d40a6d2b77a0200ccc761"
+    },
+    {
+      "file": "operation-e2e-recovery.log",
+      "sha256": "6be50187429f3b2ab2d9415ccf39bdfb63e3f4281d837743495fc83804b7b855"
+    },
+    {
+      "file": "operation-final-copy-tests-48.log",
+      "sha256": "7a69de6a08ce310cfafcba456cdd200f3be99b9d32486af2a9493f1fac0bd4ea"
+    },
+    {
+      "file": "operation-final-copy-tests.log",
+      "sha256": "e43b9919fdc26edd940298baddbcad48e49cfa9b89a0e7df5e2c02bf3a45da95"
+    },
+    {
+      "file": "operation-final-web-build.log",
+      "sha256": "931758ee2efed9d8f20be58170fcf0fd736b67b1fa5e53e80c6f5de4d5fcef1d"
+    },
+    {
+      "file": "operation-handler-fix4.log",
+      "sha256": "5e2d083b20aee50fa6b10e24141a8c2d3561b3921bafc7012639d9deb3eb973e"
+    },
+    {
+      "file": "operation-handler-full-final.log",
+      "sha256": "97a8290e6e671f75b2d142dc41bde97e622c283a31525ecb4d6c1b6766fbc9a2"
+    },
+    {
+      "file": "operation-handler-full.log",
+      "sha256": "2cef825691ac62757b09c405fb7a9e56145f2e361881e36f5d8fee2776e3c8b5"
+    },
+    {
+      "file": "operation-hierarchy-after.log",
+      "sha256": "84db87aea4ccba8c447648f0e70a77e4b728e95565f27ff12e96bca93ed3e727"
+    },
+    {
+      "file": "operation-hierarchy-before.log",
+      "sha256": "22968a8076fb29c05497a6ed8f09a137e4f9c0df981b18c77372f49d93b7855b"
+    },
+    {
+      "file": "operation-primary-v3.log",
+      "sha256": "3106ddc2efc9c7b314c4a6a2415d70579386f3b7f32fa0f73e4dfd2b62b4c864"
+    },
+    {
+      "file": "operation-project-selection.log",
+      "sha256": "44e75d5e441cc12b3e5a6a6183ea3a2a413f0809eb276762bf736c4aad2dd77c"
+    },
+    {
+      "file": "operation-qa-api.log",
+      "sha256": "f9e5f9a2348136700f665b5d794c03cefded97a40a7a6c4a710ba2d0b12dea49"
+    },
+    {
+      "file": "operation-qa-final-web.log",
+      "sha256": "d5b09fb57d8281d34d3d4877ecae17bc4be7de91479e1371ee48295d88f6ecf6"
+    },
+    {
+      "file": "operation-qa-web.log",
+      "sha256": "b352cc9fe04cbbe041291c485da19a55e936eb632ea3464f0f490627fcf255c5"
+    },
+    {
+      "file": "operation-relations-handler.log",
+      "sha256": "aebcf5cdc6e7c8ba40bdf66daed1dd3cebe20c94717701e96241c0f6f44f2c89"
+    },
+    {
+      "file": "operation-relations-views.log",
+      "sha256": "9e19d0ccd21ebc7fab59d7e22af4d0a1c8556b2ae5d3979b61c082a3644ed80c"
+    },
+    {
+      "file": "operation-run-confirm-final.log",
+      "sha256": "a442e0faf2fbf878da3db312a1f0ba40363429a828be290c8eeefbc380f343a3"
+    },
+    {
+      "file": "operation-run-confirm-first.log",
+      "sha256": "1d0d6822bbee2e595479f264d33f839880e182a2185fa0dba23c1b081f5ee9ea"
+    },
+    {
+      "file": "operation-scope-fix.log",
+      "sha256": "195dbac9000cbd4769912ba4ce494ff7ef4610f622589a768ec9643abe06c057"
+    },
+    {
+      "file": "operation-scope-red.log",
+      "sha256": "4b883414b875a2bc639002aa2509b8579817825100155a411b94edea2ec1e8d2"
+    },
+    {
+      "file": "operation-service-final.log",
+      "sha256": "0e26d68f50fc15cf233035357563a9e7801eb938394aabde9669c02152f9d42f"
+    },
+    {
+      "file": "operation-shared-views.log",
+      "sha256": "d934cccb89bfeb66775e3f61a374b9af0797c34d7660f68c124656ef532c6ad0"
+    },
+    {
+      "file": "operation-tables.log",
+      "sha256": "d4076633bab1749a94d81cef80984d27d6163c701863d92c7e1eb2d1293ed985"
+    },
+    {
+      "file": "operation-toolbar-confirm-final.log",
+      "sha256": "8e8afbc52071e91774b8e95851484a3a8c8df704b6e0add2e7e9e34632e68263"
+    },
+    {
+      "file": "operation-toolbar-confirm.log",
+      "sha256": "2da67b6937760338b59ad81ae659b15d49e809ac77d3232798205e4d708d1a86"
+    },
+    {
+      "file": "operation-views-first.log",
+      "sha256": "89004391d5357de02d1e22d586973ac042477d9830c763070b42bad69daf64d0"
+    },
+    {
+      "file": "operation-views-retarget.log",
+      "sha256": "a63ca8c95fc91e618238db8e382600f6b7763e78c4255e827fe525752d22ecaf"
+    },
+    {
+      "file": "operation-web-build.log",
+      "sha256": "66bff3742cf691ae7425bd932818fc6c439ff91774b4b5da8767999fbb252abb"
+    }
+  ],
+  "local_static_checks": {
+    "host": "coordinating development Mac; no runtime tests",
+    "full_typecheck_tasks_passed": 10,
+    "full_lint_tasks_passed": 7,
+    "lint_note": "Existing warnings retained; zero errors.",
+    "final_copy_views_typecheck_passed": true,
+    "final_copy_views_lint_passed": true,
+    "final_navigation_lint_and_e2e_types": "Passed by UX agent; no runtime test on the coordinating Mac.",
+    "logs": [
+      {
+        "file": "cockpit-operation-full-typecheck-5.log",
+        "sha256": "aa8cfe57567d7146c705dd9591d79009cffd4cf31927d3556ed2fe6c75c79bf7"
+      },
+      {
+        "file": "cockpit-operation-full-lint-3.log",
+        "sha256": "b5b7adc8e0da86160a07e592d40db812bb9b1e05ddf2a144343412ab80497133"
+      },
+      {
+        "file": "cockpit-operation-views-copy-typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "cockpit-operation-views-copy-lint.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "scale_report": "agent3-operation-basis-scale.json",
+  "release_boundary": "Only frozen product48b5f3460 and backendb2f191fc0; meeting lifecycle work begun later is excluded."
+}
