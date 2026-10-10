@@ -8,7 +8,7 @@ import (
 )
 
 func writeCockpitPrimaryIntegrityError(w http.ResponseWriter, err error) bool {
-	if !service.IsCockpitPrimaryIntegrityError(err) {
+	if !service.IsCockpitPrimaryIntegrityError(err) && !service.IsCockpitArtifactIntegrityError(err) {
 		return false
 	}
 	var pgerr *pgconn.PgError

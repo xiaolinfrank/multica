@@ -729,8 +729,14 @@ func main() {
 		slog.Error("maintenance listener disabled", "error", maintenanceErr)
 	}
 
+	// Capabilities are advertised only after every domain service is wired.
+	enableCockpitArtifactRuntime(h)
 	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	if h.IssueService.CockpitArtifactBackendReady {
+		go h.IssueService.RunCockpitArtifactCaptureWorker(sweepCtx)
+		slog.Info("cockpit artifact capture and retained object cleanup enabled")
+	}
 	nasFiles, nasConfigErr := cockpitnas.New(os.Getenv("COCKPIT_NAS_EXPORT_ROOTS"))
 	if nasConfigErr != nil {
 		slog.Error("cockpit NAS export disabled: invalid root configuration", "error", nasConfigErr)

@@ -141,6 +141,7 @@ are reported on stderr and skipped. See the reference for the import shape.
 
 ## Boundaries
 
+- Fixed deliverables, handoffs and L3 acceptance use [artifacts and acceptance](references/artifacts.md); Issue completion alone does not approve them.
 - The cockpit is programme planning. Day-to-day execution lives on issues —
   use the issue commands for those, and link the issue to the node.
 - Do not mirror an issue's whole description into a node's `note`. The link is

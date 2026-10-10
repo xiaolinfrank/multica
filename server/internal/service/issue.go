@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
+	"github.com/multica-ai/multica/server/internal/artifactcapture"
 	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/events"
@@ -21,6 +22,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/issueproperty"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
+	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
@@ -50,6 +52,13 @@ type IssueService struct {
 	// CockpitNASExporter resolves deployment-approved destinations without I/O.
 	// The export worker uses the same adapter for external filesystem effects.
 	CockpitNASExporter cockpitnas.Exporter
+	// Enabled only after the full artifact runtime is wired; client declaration
+	// controls entry visibility, never business authorization.
+	CockpitArtifactBackendReady bool
+	CockpitArtifactCapturer     *artifactcapture.Capturer
+	CockpitArtifactStorage      storage.Storage
+	// Tests can shorten the total probe budget without changing production limits.
+	artifactProbeTimeout time.Duration
 }
 
 func NewIssueService(q *db.Queries, tx TxStarter, bus *events.Bus, ac analytics.Client, ts *TaskService) *IssueService {
@@ -91,6 +100,7 @@ type IssueCreateParams struct {
 	// Internal typed hook: action resolution / L3 create and primary ownership
 	// share the canonical Issue transaction, quota and post-commit effects.
 	CockpitPlanning *cockpitPlanningIssue
+	CockpitArtifact *cockpitArtifactIssue
 	StartDate       pgtype.Date
 	DueDate         pgtype.Date
 	OriginType      pgtype.Text
@@ -276,6 +286,15 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if p.CockpitArtifact != nil {
+		existing, err := prepareCockpitArtifactIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 	if p.CockpitPlanning != nil {
 		existing, err := prepareCockpitPlanningIssue(ctx, qtx, &p)
 		if err != nil {
@@ -605,6 +624,11 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 
 	if p.CockpitWorkflow != nil {
 		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.CockpitArtifact != nil {
+		if err := linkCockpitArtifactIssue(ctx, qtx, p, issue); err != nil {
 			return IssueCreateResult{}, err
 		}
 	}

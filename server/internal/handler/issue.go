@@ -329,6 +329,10 @@ func (h *Handler) broadcastCancelledWakeups(ctx context.Context, workspaceID pgt
 // writeIssueStatusRaceError renders errIssueStatusArchivedRace as a 409 and
 // reports whether it handled the error.
 func writeIssueStatusRaceError(w http.ResponseWriter, err error) bool {
+	if service.IsCockpitArtifactIntegrityError(err) {
+		writeErrorCode(w, http.StatusConflict, "formal_review_required", "Open this Issue’s artifact or acceptance context to record a formal decision or hand over responsibility; its retained source and L3 scope cannot be changed here")
+		return true
+	}
 	if service.IsCockpitPrimaryIntegrityError(err) {
 		writeError(w, http.StatusConflict, "clear L3 primary ownership before changing this issue's project or module")
 		return true

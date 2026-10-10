@@ -18,6 +18,7 @@ var ErrCockpitScopeLimit = errors.New("cockpit scope exceeds the complete plan l
 type CockpitSurfaceQuery struct {
 	WorkspaceID, ProjectID, ModuleID, ActorID pgtype.UUID
 	Human                                     bool
+	ArtifactsAvailable                        bool `json:"-"`
 }
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
@@ -81,6 +82,7 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	out.WorkspaceID = util.UUIDToString(p.WorkspaceID)
 	out.Scope = CockpitSurfaceScope{ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID)}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(p.ActorID), Role: member.Role, IsHuman: p.Human}
+	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable}
 	if p.ProjectID.Valid {
 		project, err := q.GetCockpitOverviewProject(ctx, db.GetCockpitOverviewProjectParams{WorkspaceID: p.WorkspaceID, ID: p.ProjectID})
 		if err != nil {

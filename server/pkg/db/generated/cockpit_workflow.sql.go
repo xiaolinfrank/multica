@@ -47,7 +47,7 @@ func (q *Queries) AdvanceCockpitWorkflowRevision(ctx context.Context, arg Advanc
 const cockpitIssueExecutionBlocked = `-- name: CockpitIssueExecutionBlocked :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=$1::uuid AND w.released_at IS NULL
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=$1::uuid
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid)::bool AS blocked
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue($1::uuid))::bool AS blocked
 `
 
 func (q *Queries) CockpitIssueExecutionBlocked(ctx context.Context, issueID pgtype.UUID) (bool, error) {
@@ -60,7 +60,7 @@ func (q *Queries) CockpitIssueExecutionBlocked(ctx context.Context, issueID pgty
 const cockpitIssueHasWorkflow = `-- name: CockpitIssueHasWorkflow :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=$1::uuid
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=$1::uuid
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid)::bool AS linked
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue($1::uuid))::bool AS linked
 `
 
 func (q *Queries) CockpitIssueHasWorkflow(ctx context.Context, issueID pgtype.UUID) (bool, error) {
@@ -85,7 +85,7 @@ const cockpitWorkflowReferencesIssue = `-- name: CockpitWorkflowReferencesIssue 
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1::uuid AND w.minutes_issue_id=$2::uuid
  UNION ALL SELECT 1 FROM cockpit_meeting_action a WHERE a.workspace_id=$1::uuid AND a.issue_id=$2::uuid
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=$1::uuid AND (v.review_issue_id=$2::uuid OR v.source_issue_id=$2::uuid)
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$1::uuid AND (h.from_review_issue_id=$2::uuid OR h.to_review_issue_id=$2::uuid))::bool AS linked
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$1::uuid AND (h.from_review_issue_id=$2::uuid OR h.to_review_issue_id=$2::uuid) UNION ALL SELECT 1 WHERE cockpit_artifact_references_issue($1::uuid,$2::uuid))::bool AS linked
 `
 
 type CockpitWorkflowReferencesIssueParams struct {

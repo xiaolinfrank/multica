@@ -1498,6 +1498,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// The authenticated /api/attachments/{id}/download route below is
 	// unchanged — this one is purely additive.
 	r.Get("/api/attachments/{id}/signed-download", h.DownloadAttachmentWithCapability)
+	r.Get("/api/cockpit/artifact-files/{versionId}/download", h.DownloadCockpitArtifactSignedFile)
 
 	// Avatar serving. Public for the same reason as the capability download
 	// above: the auth cookie is SameSite=Strict, so an auth-gated URL cannot
@@ -2148,6 +2149,32 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// correct is a board that goes stale. Import replaces the whole
 			// board and is gated to owner/admin inside the handler.
 			r.Route("/api/cockpit", func(r chi.Router) {
+				r.Get("/artifacts", h.ListCockpitArtifacts)
+				r.With(handler.RequireHumanActor).Post("/artifacts", h.CreateCockpitArtifact)
+				r.Route("/artifacts/{artifactId}", func(r chi.Router) {
+					r.Get("/", h.GetCockpitArtifact)
+					r.With(handler.RequireHumanActor).Patch("/", h.EditCockpitArtifact)
+					r.Get("/versions", h.ListCockpitArtifactVersions)
+					r.Post("/versions", h.SubmitCockpitArtifactVersion)
+					r.Get("/versions/{versionId}", h.GetCockpitArtifactVersion)
+					r.With(handler.RequireHumanActor).Post("/versions/{versionId}/review", h.ReviewCockpitArtifactVersion)
+					r.With(handler.RequireHumanActor).Post("/versions/{versionId}/capture/retry", h.RetryCockpitArtifactCapture)
+					r.Get("/versions/{versionId}/download-link", h.GetCockpitArtifactDownloadLink)
+					r.Get("/versions/{versionId}/download", h.DownloadCockpitArtifactFile)
+					r.Get("/source-attachments", h.ListCockpitArtifactSourceAttachments)
+					r.With(handler.RequireHumanActor).Post("/producer", h.AssignCockpitArtifactProducer)
+					r.Get("/producer-history", h.ListCockpitArtifactProducerHistory)
+					r.With(handler.RequireHumanActor).Post("/reviewer", h.ReassignCockpitArtifactReviewer)
+					r.Get("/reviewer-handoffs", h.ListCockpitArtifactReviewerHandoffs)
+					r.With(handler.RequireHumanActor).Post("/archive", h.ArchiveCockpitArtifact)
+					r.With(handler.RequireHumanActor).Post("/unarchive", h.UnarchiveCockpitArtifact)
+					r.Get("/node-references", h.ListCockpitArtifactNodeReferences)
+					r.With(handler.RequireHumanActor).Post("/node-references", h.CreateCockpitArtifactNodeReference)
+					r.With(handler.RequireHumanActor).Delete("/node-references/{referenceId}", h.RemoveCockpitArtifactNodeReference)
+					r.Get("/meeting-references", h.ListCockpitArtifactMeetingReferences)
+					r.With(handler.RequireHumanActor).Post("/meeting-references", h.CreateCockpitArtifactMeetingReference)
+					r.With(handler.RequireHumanActor).Delete("/meeting-references/{referenceId}", h.RemoveCockpitArtifactMeetingReference)
+				})
 				r.Get("/context", h.GetCockpitSurfaceContext)
 				r.Get("/plan", h.GetCockpitPlanSurface)
 				r.Get("/plan/node-index", h.GetCockpitNodeIndex)
@@ -2191,12 +2218,22 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/nodes", h.CreateCockpitNode)
 				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
 				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
+				r.Get("/issues/{issueId}/artifacts", h.ListCockpitIssueArtifactContexts)
 				r.Get("/issues/{issueId}/nodes", h.ListCockpitIssueNodeReferences)
 				r.Get("/issues/{issueId}/meetings", h.ListCockpitIssueMeetingReferences)
 				r.Delete("/issues/{issueId}/nodes/{nodeId}", h.RemoveCockpitIssueNodeReference)
 				r.Delete("/issues/{issueId}/meetings/{meetingId}", h.RemoveCockpitIssueMeetingReference)
 				r.With(handler.RequireHumanActor).Put("/issues/{issueId}/primary-node", h.SetCockpitIssuePrimaryNode)
 				r.Route("/nodes/{id}", func(r chi.Router) {
+					r.Get("/acceptance", h.GetCockpitAcceptance)
+					r.Get("/acceptance/criteria", h.GetCockpitAcceptanceCriteria)
+					r.With(handler.RequireHumanActor).Put("/acceptance/criteria", h.SaveCockpitAcceptanceCriteria)
+					r.Get("/acceptance/requests", h.ListCockpitAcceptanceRequests)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests", h.CreateCockpitAcceptanceRequest)
+					r.Get("/acceptance/requests/{requestId}", h.GetCockpitAcceptanceRequest)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/review", h.ReviewCockpitAcceptanceRequest)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/reviewer", h.ReassignCockpitAcceptanceReviewer)
+					r.Get("/acceptance/reviewer-handoffs", h.ListCockpitAcceptanceReviewerHandoffs)
 					r.Get("/", h.GetCockpitSurfaceNode)
 					r.Get("/payments", h.ListCockpitNodePayments)
 					r.Get("/meetings", h.ListCockpitNodeMeetings)
@@ -2234,6 +2271,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/meetings", h.CreateCockpitMeeting)
 				r.Get("/meetings", h.ListCockpitMeetingRegister)
 				r.Route("/meetings/{meetingId}", func(r chi.Router) {
+					r.Get("/artifact-references", h.ListCockpitMeetingArtifactReferences)
 					r.Get("/", h.GetCockpitSurfaceMeeting)
 					r.Get("/issues", h.ListCockpitMeetingIssuePage)
 					r.Get("/nodes", h.ListCockpitMeetingNodePage)

@@ -560,6 +560,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		LLM: llmClient,
 		cfg: cfg,
 	}
+	h.IssueService.ConfigureCockpitArtifactStorage(store)
 	h.WebhookDeliveryWorker = NewWebhookDeliveryWorker(h)
 	// The default passthrough scheduler reports sweeper-race recoveries so the
 	// daemon:register refresh fires even without the production batched wiring.
@@ -671,8 +672,8 @@ func writeEditConflict(w http.ResponseWriter, resourceType string, resourceID pg
 // For unvalidated user input at request boundaries, use parseUUIDOrBadRequest
 // (writes 400) — never feed raw chi.URLParam / request-body strings into
 // parseUUID directly when the call writes to the database.
-func parseUUID(s string) pgtype.UUID                { return util.MustParseUUID(s) }
-func uuidToString(u pgtype.UUID) string             { return util.UUIDToString(u) }
+func parseUUID(s string) pgtype.UUID    { return util.MustParseUUID(s) }
+func uuidToString(u pgtype.UUID) string { return util.UUIDToString(u) }
 func uuidToStringPtr(u pgtype.UUID) *string {
 	if !u.Valid {
 		return nil

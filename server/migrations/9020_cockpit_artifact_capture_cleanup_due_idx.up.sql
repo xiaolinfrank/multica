@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS cockpit_artifact_capture_cleanup_due_idx ON cockpit_artifact_capture_attempt (cleanup_next_attempt_at, id) WHERE cleanup_status IN ('pending','deleting','deleted');

@@ -25,6 +25,9 @@ func IsCockpitPrimaryIntegrityError(err error) bool {
 	return errors.As(err, &pgerr) && pgerr.ConstraintName == "cockpit_primary_integrity"
 }
 func planningError(err error) error {
+	if IsCockpitArtifactIntegrityError(err) {
+		return fmt.Errorf("%w: formal review retains its L3 context; use the artifact or acceptance workflow", ErrCockpitWorkflowConflict)
+	}
 	if IsCockpitPrimaryIntegrityError(err) {
 		var pgerr *pgconn.PgError
 		_ = errors.As(err, &pgerr)

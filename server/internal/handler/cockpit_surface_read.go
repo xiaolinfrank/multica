@@ -34,7 +34,8 @@ func (h *Handler) cockpitSurfaceQuery(w http.ResponseWriter, r *http.Request) (s
 			return out, false
 		}
 	}
-	return service.CockpitSurfaceQuery{WorkspaceID: id, ProjectID: project, ModuleID: module, ActorID: member.UserID, Human: !isMachineCredentialActor(r)}, true
+	return service.CockpitSurfaceQuery{WorkspaceID: id, ProjectID: project, ModuleID: module, ActorID: member.UserID, Human: !isMachineCredentialActor(r),
+		ArtifactsAvailable: h.IssueService != nil && h.IssueService.CockpitArtifactBackendReady && r.URL.Query().Get("client_contract") == "artifacts-v1"}, true
 }
 func writeCockpitSurfaceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	if errors.Is(err, service.ErrCockpitIndexLimit) {

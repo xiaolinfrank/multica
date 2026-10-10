@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS cockpit_artifact_capture_attempt_key_idx ON cockpit_artifact_capture_attempt (storage_key);

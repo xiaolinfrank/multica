@@ -652,6 +652,13 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
 		return
 	}
+	if retained, err := qtx.HasCockpitArtifactScope(r.Context(), db.HasCockpitArtifactScopeParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact scope")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This project is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
+		return
+	}
 	if owned, err := qtx.HasCockpitPrimaryForProject(r.Context(), db.HasCockpitPrimaryForProjectParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
 		return

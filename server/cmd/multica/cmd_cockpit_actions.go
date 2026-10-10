@@ -424,6 +424,7 @@ func newCockpitNodeCreateTaskCommand() *cobra.Command {
 
 func newCockpitIssueCommand() *cobra.Command {
 	root := &cobra.Command{Use: "issue", Short: "Manage an issue's explicit cockpit ownership"}
+	root.AddCommand(newCockpitIssueArtifactsCommand())
 	cmd := &cobra.Command{Use: "primary <issue>", Args: exactArgs(1), Short: "Read primary ownership, or set/clear it with an observed revision",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			set, clear := cmd.Flags().Changed("node-id"), cmd.Flags().Changed("clear")

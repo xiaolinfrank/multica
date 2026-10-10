@@ -162,7 +162,7 @@ func TestCockpitReadScale(t *testing.T) {
 	}{map[string]int{"projects": 30, "modules": 300, "l3": 3000, "issues": 100000, "meetings": 20000}, float64(time.Since(seedStart).Microseconds()) / 1000,
 		"First read is the first call in this test, not an OS/PostgreSQL cache flush. Latency covers service reads and JSON encoding; excludes HTTP, browser and transport.",
 		"Fixture tables are explicitly ANALYZEd after bulk insertion, before primary integrity checks and before measurements. No JIT/work_mem/plan-cache configuration changes.",
-		[]string{"200000 artifact versions: artifact tables not yet implemented", "concurrent users", "large populations of enabled meeting work packages"}, nil}
+		[]string{"200000 artifact versions: measured separately by TestCockpitArtifactReadScale, not part of this fixture", "concurrent users", "large populations of enabled meeting work packages"}, nil}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
 			m := measurement{Name: check.name}

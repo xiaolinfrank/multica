@@ -1322,6 +1322,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		{
+			name: "delete artifact and acceptance facts and retain object cleanup",
+			run:  func() error { return qtx.DeleteCockpitArtifactsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete cockpit creation intents",
 			run:  func() error { return qtx.DeleteCockpitCreationIntentsByWorkspace(ctx, requester.WorkspaceID) },
 		},

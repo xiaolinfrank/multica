@@ -201,7 +201,9 @@ const hasCockpitPlanningForBoard = `-- name: HasCockpitPlanningForBoard :one
 SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN cockpit_node n ON n.id=p.node_id AND n.workspace_id=p.workspace_id
  WHERE p.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid
  UNION ALL SELECT 1 FROM cockpit_meeting_action a JOIN cockpit_meeting m ON m.id=a.meeting_id AND m.workspace_id=a.workspace_id
- WHERE a.workspace_id=$1::uuid AND m.cockpit_id=$2::uuid)::bool
+ WHERE a.workspace_id=$1::uuid AND m.cockpit_id=$2::uuid
+ UNION ALL SELECT 1 FROM cockpit_artifact a JOIN cockpit_node n ON n.workspace_id=a.workspace_id AND n.id=a.owner_node_id WHERE a.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid
+ UNION ALL SELECT 1 FROM cockpit_acceptance_definition d JOIN cockpit_node n ON n.workspace_id=d.workspace_id AND n.id=d.node_id WHERE d.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid)::bool
 `
 
 type HasCockpitPlanningForBoardParams struct {

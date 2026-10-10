@@ -68,6 +68,9 @@ type CockpitWorkflowIssue struct {
 }
 
 func cockpitWorkflowError(err error) error {
+	if IsCockpitArtifactIntegrityError(err) {
+		return fmt.Errorf("%w: formal artifact or acceptance facts retain this object; use its formal workflow entry", ErrCockpitWorkflowConflict)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrCockpitWorkflowNotFound
 	}

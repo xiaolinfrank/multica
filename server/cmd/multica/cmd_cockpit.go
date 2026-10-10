@@ -222,7 +222,7 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
-		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"))
+		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitArtifactCommand(), newCockpitAcceptanceCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
 		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd, newCockpitVersionCompareCommand())
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
@@ -232,7 +232,7 @@ func init() {
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand())
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingArtifactReferencesCommand())
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 

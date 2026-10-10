@@ -86,7 +86,9 @@ WHERE p.workspace_id=$1 AND p.node_id IS NOT NULL AND i.project_id=$2)::bool;
 SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN cockpit_node n ON n.id=p.node_id AND n.workspace_id=p.workspace_id
  WHERE p.workspace_id=sqlc.arg('workspace_id')::uuid AND n.cockpit_id=sqlc.arg('cockpit_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_meeting_action a JOIN cockpit_meeting m ON m.id=a.meeting_id AND m.workspace_id=a.workspace_id
- WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND m.cockpit_id=sqlc.arg('cockpit_id')::uuid)::bool;
+ WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND m.cockpit_id=sqlc.arg('cockpit_id')::uuid
+ UNION ALL SELECT 1 FROM cockpit_artifact a JOIN cockpit_node n ON n.workspace_id=a.workspace_id AND n.id=a.owner_node_id WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND n.cockpit_id=sqlc.arg('cockpit_id')::uuid
+ UNION ALL SELECT 1 FROM cockpit_acceptance_definition d JOIN cockpit_node n ON n.workspace_id=d.workspace_id AND n.id=d.node_id WHERE d.workspace_id=sqlc.arg('workspace_id')::uuid AND n.cockpit_id=sqlc.arg('cockpit_id')::uuid)::bool;
 
 -- name: HasCockpitPrimaryForModule :one
 SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id

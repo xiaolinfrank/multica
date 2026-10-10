@@ -2221,6 +2221,13 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
 		return
 	}
+	if retained, err := q.HasCockpitArtifactMeeting(ctx, db.HasCockpitArtifactMeetingParams{WorkspaceID: cc.workspaceID, SourceMeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact provenance")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This meeting is retained by fixed artifact provenance or references; preserve its history")
+		return
+	}
 	if err := q.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
 		MeetingID:   id,
 		WorkspaceID: cc.workspaceID,

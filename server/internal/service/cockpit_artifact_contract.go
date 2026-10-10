@@ -134,62 +134,81 @@ func NormalizeCockpitAcceptanceEvidence(input []CockpitAcceptanceEvidenceInput) 
 }
 
 type CockpitArtifactScope struct {
-	ProjectID     *string `json:"project_id"`
-	ModuleID      *string `json:"module_id"`
-	NodeID        *string `json:"node_id"`
-	SourceIssueID *string `json:"source_issue_id"`
-	Query         string  `json:"q"`
-	Status        string  `json:"status"`
+	IDs           []string `json:"ids"`
+	ProjectID     *string  `json:"project_id"`
+	ModuleID      *string  `json:"module_id"`
+	NodeID        *string  `json:"node_id"`
+	SourceIssueID *string  `json:"source_issue_id"`
+	Query         string   `json:"q"`
+	Status        string   `json:"status"`
+	Relation      string   `json:"relation"`
 }
 
 type CockpitArtifactVersionMetadata struct {
-	ID                 string               `json:"id"`
-	ArtifactID         string               `json:"artifact_id"`
-	VersionNumber      int32                `json:"version_number"`
-	SubmissionKey      string               `json:"submission_key"`
-	Revision           int64                `json:"revision"`
-	PayloadKind        string               `json:"payload_kind"`
-	SourceAttachmentID *string              `json:"source_attachment_id"`
-	Filename           string               `json:"filename"`
-	ContentType        string               `json:"content_type"`
-	SizeBytes          *int64               `json:"size_bytes"`
-	ContentHash        *string              `json:"content_hash"`
-	CaptureStatus      string               `json:"capture_status"`
-	CaptureErrorCode   string               `json:"capture_error_code"`
-	CaptureError       string               `json:"capture_error"`
-	Decision           string               `json:"decision"`
-	ReviewerID         string               `json:"reviewer_id"`
-	ReviewIssue        *CockpitIssueSummary `json:"review_issue"`
-	SubmittedByType    string               `json:"submitted_by_type"`
-	SubmittedByID      string               `json:"submitted_by_id"`
-	CreatedAt          string               `json:"created_at"`
-	ReviewedAt         *string              `json:"reviewed_at"`
-	HasFeedback        bool                 `json:"has_feedback"`
-	CanReview          bool                 `json:"can_review"`
-	CanRetryCapture    bool                 `json:"can_retry_capture"`
+	ID                         string               `json:"id"`
+	ArtifactID                 string               `json:"artifact_id"`
+	VersionNumber              int32                `json:"version_number"`
+	SubmissionKey              string               `json:"submission_key"`
+	ProducerIssueID            string               `json:"producer_issue_id"`
+	ProducerIssueIdentifier    string               `json:"producer_issue_identifier"`
+	ProducerIssueTitle         string               `json:"producer_issue_title"`
+	ProducerRunID              *string              `json:"producer_run_id"`
+	SourceMeetingID            *string              `json:"source_meeting_id"`
+	SourceMeetingTitle         string               `json:"source_meeting_title"`
+	SourceMinutesVersionID     *string              `json:"source_minutes_version_id"`
+	SourceMinutesVersionNumber *int32               `json:"source_minutes_version_number"`
+	Revision                   int64                `json:"revision"`
+	PayloadKind                string               `json:"payload_kind"`
+	SourceAttachmentID         *string              `json:"source_attachment_id"`
+	Filename                   string               `json:"filename"`
+	ContentType                string               `json:"content_type"`
+	SizeBytes                  *int64               `json:"size_bytes"`
+	ContentHash                *string              `json:"content_hash"`
+	CaptureStatus              string               `json:"capture_status"`
+	CaptureErrorCode           string               `json:"capture_error_code"`
+	CaptureError               string               `json:"capture_error"`
+	Decision                   string               `json:"decision"`
+	ReviewerID                 string               `json:"reviewer_id"`
+	ReviewIssue                *CockpitIssueSummary `json:"review_issue"`
+	SubmittedByType            string               `json:"submitted_by_type"`
+	SubmittedByID              string               `json:"submitted_by_id"`
+	CreatedAt                  string               `json:"created_at"`
+	ReviewedAt                 *string              `json:"reviewed_at"`
+	HasFeedback                bool                 `json:"has_feedback"`
+	CanReview                  bool                 `json:"can_review"`
+	CanRetryCapture            bool                 `json:"can_retry_capture"`
 }
 
 type CockpitArtifactHeader struct {
-	ID              string                          `json:"id"`
-	WorkspaceID     string                          `json:"workspace_id"`
-	CreationKey     string                          `json:"creation_key"`
-	NodeID          string                          `json:"node_id"`
-	NodeLabel       string                          `json:"node_label"`
-	ProjectID       string                          `json:"project_id"`
-	ModuleID        string                          `json:"module_id"`
-	SourceIssue     CockpitIssueSummary             `json:"source_issue"`
-	Title           string                          `json:"title"`
-	Description     string                          `json:"description"`
-	Status          string                          `json:"status"`
-	Revision        int64                           `json:"revision"`
-	ReviewerID      string                          `json:"reviewer_id"`
-	ArchivedAt      *string                         `json:"archived_at"`
-	CurrentVersion  *CockpitArtifactVersionMetadata `json:"current_version"`
-	ApprovedVersion *CockpitArtifactVersionMetadata `json:"approved_version"`
-	VersionCount    int64                           `json:"version_count"`
-	CanEdit         bool                            `json:"can_edit"`
-	CanSubmit       bool                            `json:"can_submit"`
-	CanArchive      bool                            `json:"can_archive"`
+	FileCaptureAvailable         bool                            `json:"file_capture_available"`
+	FileCaptureUnavailableReason string                          `json:"file_capture_unavailable_reason"`
+	ID                           string                          `json:"id"`
+	WorkspaceID                  string                          `json:"workspace_id"`
+	CreationKey                  string                          `json:"creation_key"`
+	NodeID                       string                          `json:"node_id"`
+	NodeLabel                    string                          `json:"node_label"`
+	ProjectID                    string                          `json:"project_id"`
+	ModuleID                     string                          `json:"module_id"`
+	SourceIssue                  CockpitIssueSummary             `json:"source_issue"`
+	ProducerIssue                CockpitIssueSummary             `json:"producer_issue"`
+	CreatedBy                    string                          `json:"created_by"`
+	Title                        string                          `json:"title"`
+	Description                  string                          `json:"description"`
+	Status                       string                          `json:"status"`
+	Revision                     int64                           `json:"revision"`
+	ReviewerID                   string                          `json:"reviewer_id"`
+	ArchivedAt                   *string                         `json:"archived_at"`
+	CurrentVersion               *CockpitArtifactVersionMetadata `json:"current_version"`
+	ApprovedVersion              *CockpitArtifactVersionMetadata `json:"approved_version"`
+	EvidenceVersion              *CockpitArtifactVersionMetadata `json:"evidence_version"`
+	VersionCount                 int64                           `json:"version_count"`
+	CanEdit                      bool                            `json:"can_edit"`
+	CanSubmit                    bool                            `json:"can_submit"`
+	CanArchive                   bool                            `json:"can_archive"`
+	CanRestore                   bool                            `json:"can_restore"`
+	CanAssignProducer            bool                            `json:"can_assign_producer"`
+	CanReassignReviewer          bool                            `json:"can_reassign_reviewer"`
+	CanReference                 bool                            `json:"can_reference"`
 }
 
 type CockpitArtifactPage struct {
@@ -212,12 +231,14 @@ type CockpitArtifactVersionPage struct {
 }
 
 type CockpitArtifactVersionDetail struct {
-	WorkspaceID string                         `json:"workspace_id"`
-	ArtifactID  string                         `json:"artifact_id"`
-	Version     CockpitArtifactVersionMetadata `json:"version"`
-	Content     *string                        `json:"content"`
-	Feedback    string                         `json:"feedback"`
-	DownloadURL *string                        `json:"download_url"`
+	WorkspaceID              string                         `json:"workspace_id"`
+	ArtifactID               string                         `json:"artifact_id"`
+	Version                  CockpitArtifactVersionMetadata `json:"version"`
+	Content                  *string                        `json:"content"`
+	Feedback                 string                         `json:"feedback"`
+	ContentAvailable         bool                           `json:"content_available"`
+	ContentUnavailableReason string                         `json:"content_unavailable_reason"`
+	DownloadURL              *string                        `json:"download_url"`
 }
 
 type CockpitArtifactVersionCommandResponse struct {
@@ -235,14 +256,14 @@ type CockpitArtifactSourceAttachment struct {
 	CreatedAt     string `json:"created_at"`
 }
 type CockpitArtifactSourceAttachmentPage struct {
-	WorkspaceID   string                            `json:"workspace_id"`
-	ArtifactID    string                            `json:"artifact_id"`
-	SourceIssueID string                            `json:"source_issue_id"`
-	Query         string                            `json:"q"`
-	Items         []CockpitArtifactSourceAttachment `json:"items"`
-	Total         int64                             `json:"total"`
-	FilteredTotal int64                             `json:"filtered_total"`
-	NextCursor    *string                           `json:"next_cursor"`
+	WorkspaceID     string                            `json:"workspace_id"`
+	ArtifactID      string                            `json:"artifact_id"`
+	ProducerIssueID string                            `json:"producer_issue_id"`
+	Query           string                            `json:"q"`
+	Items           []CockpitArtifactSourceAttachment `json:"items"`
+	Total           int64                             `json:"total"`
+	FilteredTotal   int64                             `json:"filtered_total"`
+	NextCursor      *string                           `json:"next_cursor"`
 }
 type CockpitArtifactDownloadLink struct {
 	WorkspaceID string `json:"workspace_id"`
@@ -298,6 +319,7 @@ type CockpitAcceptanceHeader struct {
 	CanEditCriteria     bool                              `json:"can_edit_criteria"`
 	CanRequest          bool                              `json:"can_request"`
 	NeedsReacceptance   bool                              `json:"needs_reacceptance"`
+	CanReassignReviewer bool                              `json:"can_reassign_reviewer"`
 }
 
 type CockpitAcceptanceRequestPage struct {
@@ -314,14 +336,16 @@ type CockpitAcceptanceEvidenceView struct {
 }
 
 type CockpitAcceptanceRequestDetail struct {
-	WorkspaceID       string                           `json:"workspace_id"`
-	NodeID            string                           `json:"node_id"`
-	Request           CockpitAcceptanceRequestMetadata `json:"request"`
-	Evidence          []CockpitAcceptanceEvidenceView  `json:"evidence"`
-	Note              string                           `json:"note"`
-	Feedback          string                           `json:"feedback"`
-	DefinitionChanged bool                             `json:"definition_changed"`
-	EvidenceOutdated  bool                             `json:"evidence_outdated"`
+	WorkspaceID               string                           `json:"workspace_id"`
+	NodeID                    string                           `json:"node_id"`
+	Request                   CockpitAcceptanceRequestMetadata `json:"request"`
+	Evidence                  []CockpitAcceptanceEvidenceView  `json:"evidence"`
+	Note                      string                           `json:"note"`
+	Feedback                  string                           `json:"feedback"`
+	DefinitionChanged         bool                             `json:"definition_changed"`
+	EvidenceOutdated          bool                             `json:"evidence_outdated"`
+	EvidenceAvailable         bool                             `json:"evidence_available"`
+	EvidenceUnavailableReason string                           `json:"evidence_unavailable_reason"`
 }
 
 // Fingerprints operate on normalized, fixed projections, never mutable Issue status.

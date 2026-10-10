@@ -19,6 +19,21 @@ const (
 // teardown. Adding a table requires an explicit ownership decision here; the
 // handler deletion graph must then implement that decision before CI passes.
 var workspaceDeletionManifest = map[string]workspaceDeleteAction{
+	"cockpit_artifact":                     workspaceDelete,
+	"cockpit_artifact_version":             workspaceDelete,
+	"cockpit_artifact_capture":             workspaceDelete,
+	"cockpit_artifact_reviewer_handoff":    workspaceDelete,
+	"cockpit_artifact_producer_assignment": workspaceDelete,
+	"cockpit_artifact_node_reference":      workspaceDelete,
+	"cockpit_artifact_meeting_reference":   workspaceDelete,
+	"cockpit_acceptance_definition":        workspaceDelete,
+	"cockpit_acceptance_criterion":         workspaceDelete,
+	"cockpit_acceptance_request":           workspaceDelete,
+	"cockpit_acceptance_request_criterion": workspaceDelete,
+	"cockpit_acceptance_evidence":          workspaceDelete,
+	"cockpit_acceptance_reviewer_handoff":  workspaceDelete,
+	"cockpit_artifact_capture_attempt":     workspaceDeleteSettle,
+
 	"activity_log":                       workspaceDelete,
 	"agent":                              workspaceDelete,
 	"agent_builder_draft":                workspaceDelete,

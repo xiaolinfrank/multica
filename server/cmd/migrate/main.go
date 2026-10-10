@@ -140,6 +140,57 @@ var pgBigmOperatorClass = extensionOperatorClass{
 // they are still pending: a fresh self-hosted install, which is exactly where an
 // interrupted build would otherwise leave a permanently unusable index.
 var concurrentIndexCleanups = map[string]string{
+	"9001_cockpit_artifact_id_idx":                          "cockpit_artifact_id_idx",
+	"9002_cockpit_artifact_creation_key_idx":                "cockpit_artifact_creation_key_idx",
+	"9003_cockpit_artifact_owner_idx":                       "cockpit_artifact_owner_idx",
+	"9004_cockpit_artifact_source_issue_idx":                "cockpit_artifact_source_issue_idx",
+	"9005_cockpit_artifact_producer_issue_idx":              "cockpit_artifact_producer_issue_idx",
+	"9007_cockpit_artifact_version_id_idx":                  "cockpit_artifact_version_id_idx",
+	"9008_cockpit_artifact_version_number_idx":              "cockpit_artifact_version_number_idx",
+	"9009_cockpit_artifact_version_submission_idx":          "cockpit_artifact_version_submission_idx",
+	"9010_cockpit_artifact_version_review_idx":              "cockpit_artifact_version_review_idx",
+	"9011_cockpit_artifact_version_producer_idx":            "cockpit_artifact_version_producer_idx",
+	"9012_cockpit_artifact_version_meeting_idx":             "cockpit_artifact_version_meeting_idx",
+	"9014_cockpit_artifact_capture_version_idx":             "cockpit_artifact_capture_version_idx",
+	"9015_cockpit_artifact_capture_due_idx":                 "cockpit_artifact_capture_due_idx",
+	"9017_cockpit_artifact_capture_attempt_id_idx":          "cockpit_artifact_capture_attempt_id_idx",
+	"9018_cockpit_artifact_capture_attempt_number_idx":      "cockpit_artifact_capture_attempt_number_idx",
+	"9019_cockpit_artifact_capture_attempt_key_idx":         "cockpit_artifact_capture_attempt_key_idx",
+	"9020_cockpit_artifact_capture_cleanup_due_idx":         "cockpit_artifact_capture_cleanup_due_idx",
+	"9022_cockpit_artifact_handoff_id_idx":                  "cockpit_artifact_handoff_id_idx",
+	"9023_cockpit_artifact_handoff_command_idx":             "cockpit_artifact_handoff_command_idx",
+	"9024_cockpit_artifact_handoff_page_idx":                "cockpit_artifact_handoff_page_idx",
+	"9025_cockpit_artifact_handoff_retired_issue_idx":       "cockpit_artifact_handoff_retired_issue_idx",
+	"9027_cockpit_artifact_producer_assignment_id_idx":      "cockpit_artifact_producer_assignment_id_idx",
+	"9028_cockpit_artifact_producer_assignment_command_idx": "cockpit_artifact_producer_assignment_command_idx",
+	"9029_cockpit_artifact_producer_assignment_page_idx":    "cockpit_artifact_producer_assignment_page_idx",
+	"9030_cockpit_artifact_producer_assignment_from_idx":    "cockpit_artifact_producer_assignment_from_idx",
+	"9031_cockpit_artifact_producer_assignment_to_idx":      "cockpit_artifact_producer_assignment_to_idx",
+	"9033_cockpit_artifact_node_reference_id_idx":           "cockpit_artifact_node_reference_id_idx",
+	"9034_cockpit_artifact_node_reference_key_idx":          "cockpit_artifact_node_reference_key_idx",
+	"9035_cockpit_artifact_node_reference_active_idx":       "cockpit_artifact_node_reference_active_idx",
+	"9036_cockpit_artifact_node_reference_target_idx":       "cockpit_artifact_node_reference_target_idx",
+	"9037_cockpit_artifact_node_reference_artifact_idx":     "cockpit_artifact_node_reference_artifact_idx",
+	"9039_cockpit_artifact_meeting_reference_id_idx":        "cockpit_artifact_meeting_reference_id_idx",
+	"9040_cockpit_artifact_meeting_reference_key_idx":       "cockpit_artifact_meeting_reference_key_idx",
+	"9041_cockpit_artifact_meeting_reference_active_idx":    "cockpit_artifact_meeting_reference_active_idx",
+	"9042_cockpit_artifact_meeting_reference_target_idx":    "cockpit_artifact_meeting_reference_target_idx",
+	"9043_cockpit_artifact_meeting_reference_artifact_idx":  "cockpit_artifact_meeting_reference_artifact_idx",
+	"9045_cockpit_acceptance_definition_node_idx":           "cockpit_acceptance_definition_node_idx",
+	"9047_cockpit_acceptance_criterion_id_idx":              "cockpit_acceptance_criterion_id_idx",
+	"9048_cockpit_acceptance_criterion_node_idx":            "cockpit_acceptance_criterion_node_idx",
+	"9050_cockpit_acceptance_request_id_idx":                "cockpit_acceptance_request_id_idx",
+	"9051_cockpit_acceptance_request_key_idx":               "cockpit_acceptance_request_key_idx",
+	"9052_cockpit_acceptance_request_page_idx":              "cockpit_acceptance_request_page_idx",
+	"9053_cockpit_acceptance_request_review_idx":            "cockpit_acceptance_request_review_idx",
+	"9055_cockpit_acceptance_request_criterion_key_idx":     "cockpit_acceptance_request_criterion_key_idx",
+	"9057_cockpit_acceptance_evidence_key_idx":              "cockpit_acceptance_evidence_key_idx",
+	"9058_cockpit_acceptance_evidence_version_idx":          "cockpit_acceptance_evidence_version_idx",
+	"9060_cockpit_acceptance_handoff_id_idx":                "cockpit_acceptance_handoff_id_idx",
+	"9061_cockpit_acceptance_handoff_command_idx":           "cockpit_acceptance_handoff_command_idx",
+	"9062_cockpit_acceptance_handoff_page_idx":              "cockpit_acceptance_handoff_page_idx",
+	"9063_cockpit_acceptance_handoff_retired_issue_idx":     "cockpit_acceptance_handoff_retired_issue_idx",
+
 	"988_cockpit_action_issue_index":                            "cockpit_action_issue_idx",
 	"990_cockpit_minutes_export_attempt_id_index":               "cockpit_minutes_export_attempt_id_idx",
 	"991_cockpit_minutes_export_attempt_scope_index":            "cockpit_minutes_export_attempt_scope_idx",
@@ -451,6 +502,9 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	// partially applied version fails before dropping its first live index.
 	for _, version := range sourceContextMigrationVersions {
 		hooks[version] = ensureSourceContextRollbackSafe
+	}
+	for _, version := range cockpitArtifactMigrationVersions {
+		hooks[version] = ensureCockpitArtifactRollbackSafe
 	}
 	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
 	return hooks

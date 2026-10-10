@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS cockpit_acceptance_handoff_retired_issue_idx ON cockpit_acceptance_reviewer_handoff (workspace_id, from_review_issue_id);

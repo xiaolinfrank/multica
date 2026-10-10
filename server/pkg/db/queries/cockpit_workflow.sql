@@ -59,12 +59,12 @@ WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='pending' RETURNI
 -- name: CockpitIssueExecutionBlocked :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=sqlc.arg('issue_id')::uuid AND w.released_at IS NULL
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=sqlc.arg('issue_id')::uuid
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid)::bool AS blocked;
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue(sqlc.arg('issue_id')::uuid))::bool AS blocked;
 
 -- name: CockpitIssueHasWorkflow :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=sqlc.arg('issue_id')::uuid
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid)::bool AS linked;
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue(sqlc.arg('issue_id')::uuid))::bool AS linked;
 
 -- name: DeleteCockpitMinutesVersionsByWorkspace :exec
 DELETE FROM cockpit_minutes_version WHERE workspace_id=$1;
@@ -79,7 +79,7 @@ SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN cockpit_meeting 
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg('workspace_id')::uuid AND w.minutes_issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_meeting_action a WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND a.issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=sqlc.arg('workspace_id')::uuid AND (v.review_issue_id=sqlc.arg('issue_id')::uuid OR v.source_issue_id=sqlc.arg('issue_id')::uuid)
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg('workspace_id')::uuid AND (h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid))::bool AS linked;
+ UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg('workspace_id')::uuid AND (h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid) UNION ALL SELECT 1 WHERE cockpit_artifact_references_issue(sqlc.arg('workspace_id')::uuid,sqlc.arg('issue_id')::uuid))::bool AS linked;
 
 -- name: CockpitWorkflowIssueHasActiveTask :one
 SELECT EXISTS(SELECT 1 FROM agent_task_queue WHERE issue_id=$1 AND status IN ('queued','deferred','dispatched','running','waiting_local_directory'))::bool;
