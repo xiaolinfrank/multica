@@ -2,7 +2,7 @@
 
 2026-10-10，阶段 H。起点是用户在实际页面发现：“资料已齐备”要求人作出确认，却没有告诉人在哪里准备和核对材料。本批按“状态依据 → 可执行动作 → 明确结果 → 返回原工作”审查驾驶舱，不能只增加提示语或另设一个没有实际功能的按钮。
 
-本批实现与 agent 3 隔离验收已完成，常驻 Web 发布准备中。实际验证及部署状态见本文末尾。
+本批实现、agent 3 隔离验收和常驻 Web 发布均已完成。实际验证及部署状态见本文末尾。
 
 ## 交互合同
 
@@ -65,4 +65,19 @@
 
 ![刷新后恢复行动草稿与原选择](./implementation/interaction-action-restored.png)
 
-常驻 Web 发布待完成后记录。
+常驻发布于 2026-10-10 完成：
+
+| 项目 | 核验结果 |
+| --- | --- |
+| 前端源码 | `0010a68cf12f1775d24b1398bf3de6692592eb29` |
+| 常驻构建 / Web PID | `Mk9vXStKm8jGaV-pTTHw5` / `71322` |
+| 后端 | 保持 PID `62181`、提交 `7cdb91662` 及原启动时间；本次没有重启后端或修改数据库 |
+| 访问方式 | [agent 3 驾驶舱](http://localhost:23000/fosun-bio/cockpit)，协调机端口是 SSH 转发，服务运行在 agent 3 |
+| 常驻页面探针 | 独立合成工作区，2.5 秒通过：准备材料、目录填写、真实说明保存、1600/1100 布局；未自动确认就绪或派工 |
+| 前端回退副本 | `~/var/multica-dev-backups/before-web-interaction-0010a68cf-20261010T050500Z/web-next` |
+| 隔离环境 | 已恢复通过的 `jSn0jeWS1_lbA-n3VE-ZW` 完整构建及 `18880` 代理；临时服务关闭 |
+| 构建通道 | 字体 DNS 失败时使用只允许两个 Google Fonts 域名的临时构建代理；TLS 验证保留，没有修改系统 DNS、hosts 或源码。代理和 SSH 反向转发均已关闭 |
+
+保留常驻环境配置、文件和用户新增业务；合成验证工作区经 API 清理。常驻构建的 API/WS 仍同源转发至 `18080`，已合并保留旧静态资源供原标签页使用。重新加载页面后可看到新交互。
+
+完整[验证及部署报告](./implementation/agent3-interaction-recovery-validation.json)保留测试去重口径、各构建的增量关系、当前业务基数与清理结果。另见常驻页面的[就绪入口实图](./implementation/interaction-resident-readiness.png)和[材料工作区实图](./implementation/interaction-resident-materials.png)。合成登录身份保留但无工作区成员关系，不将此描述为整个数据库零新增记录。
