@@ -7,7 +7,7 @@ import { CockpitUnconfirmedWriteError } from "./errors";
 
 function useArtifactCommand<V, R>(wsId: string, mutationFn: (variables: V) => Promise<R>) {
   const client = useQueryClient();
-  return useMutation({ mutationFn, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
+  return useMutation({ mutationKey: ["cockpit-artifact-command", wsId], mutationFn, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
 export function useAssignCockpitArtifactProducer(wsId: string) {
   return useArtifactCommand(wsId, async ({ artifactId, body }: { artifactId: string; body: CockpitArtifactProducerCommand }) => {

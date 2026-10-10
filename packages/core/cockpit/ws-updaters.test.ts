@@ -5,6 +5,7 @@ import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
 import { cockpitReadKeys } from "./read-queries";
 import { cockpitArtifactKeys } from "./artifact-queries";
+import { cockpitLifecycleKeys } from "./meeting-lifecycle-queries";
 import { onCockpitChanged } from "./ws-updaters";
 
 const WS = "ws-1";
@@ -27,7 +28,8 @@ it("refreshes artifact responsibility and acceptance facts without applying a la
 describe("meeting destination refresh", () => {
   it("merges a single-reference event without replacing unmentioned relationships", () => {
     const { qc, board } = seedBoard();
-    const link = { meeting_id: "meeting-append", issue_id: "issue-append", issue_number: 900, issue_identifier: "BIO-900", issue_title: "Appended", issue_status: "backlog", role: "", roles: ["preparation"], required_roles: [], position: 44 };
+    const link = { meeting_id: "meeting-append", issue_id: "issue-append", issue_number: 900, issue_identifier: "BIO-900", issue_title: "Appended", issue_status: "backlog", role: "", roles: ["preparation"], required_roles: [], position: 44,
+      has_agenda_reference: false, agenda_id: null, agenda_total: 0 };
     const original = [...board.meeting_issues];
     onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
     onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
@@ -141,18 +143,21 @@ describe("meeting workflow realtime updates", () => {
 });
 
 describe("onCockpitChanged", () => {
-  it("patches a changed node in place instead of refetching the board", () => {
+  it("patches a changed node in place instead of refetching the board", async () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
     const metadata = [
       cockpitArtifactKeys.artifact(WS, "artifact-1"),
       cockpitArtifactKeys.references(WS, "artifact-1", "node"),
       [...cockpitArtifactKeys.issueContexts(WS), "issue-1"],
+      cockpitLifecycleKeys.header(WS, "meeting-1"),
     ];
     const stableContent = [
       cockpitArtifactKeys.version(WS, "artifact-1", "version-1"),
       cockpitArtifactKeys.request(WS, "n1", "request-1"),
       cockpitArtifactKeys.artifact("other", "artifact-1"),
+      cockpitLifecycleKeys.command(WS, "meeting-1", "command-1"),
+      cockpitLifecycleKeys.header("other", "meeting-1"),
     ];
     for (const key of [...metadata, ...stableContent]) qc.setQueryData(key, { id: "cached" });
 
@@ -164,14 +169,10 @@ describe("onCockpitChanged", () => {
 
     expect(read(qc).nodes[0]!.name).toBe("Renamed");
     expect(read(qc).nodes[0]!.progress).toBe(60);
-    expect(invalidate.mock.calls).toEqual([
-      [{ queryKey: cockpitReadKeys.all(WS) }],
-      [{ queryKey: cockpitKeys.dashboard(WS) }],
-      [{ queryKey: cockpitArtifactKeys.all(WS), predicate: expect.any(Function) }],
-      [{ queryKey: cockpitArtifactKeys.issueContexts(WS) }],
-      [{ queryKey: cockpitKeys.tasks(WS) }],
-    ]);
-    for (const key of metadata) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    for (const key of [cockpitReadKeys.all(WS), cockpitKeys.dashboard(WS), cockpitArtifactKeys.issueContexts(WS), cockpitKeys.tasks(WS)]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
+    }
+    await vi.waitFor(() => { for (const key of metadata) expect(qc.getQueryState(key)?.isInvalidated).toBe(true); });
     for (const key of stableContent) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
     expect(qc.getQueryState(cockpitKeys.board(WS))?.isInvalidated).toBe(false);
     qc.clear();

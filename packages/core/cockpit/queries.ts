@@ -2,6 +2,7 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import { invalidateCockpitArtifactIssueFacts } from "./artifact-queries";
+import { invalidateCockpitMeetingIssueFacts } from "./meeting-lifecycle-queries";
 import type {
   CockpitBoard,
   CockpitIssueLink,
@@ -60,6 +61,7 @@ export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
 export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
   invalidateCockpitTaskFlow(client, wsId);
   invalidateCockpitArtifactIssueFacts(client, wsId, issueId);
+  invalidateCockpitMeetingIssueFacts(client, wsId, issueId);
   // An old review task may be outside the loaded page; only observed history queries will refetch.
   void client.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
   for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflowSummary | null>({ queryKey: cockpitKeys.workflows(wsId) })) {

@@ -8,12 +8,13 @@ export const CockpitReadScopeSchema = z.object({ project_id: z.string().nullable
 export const CockpitContextDataSchema = z.object({
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, cockpit: CockpitSchema.nullable(),
   actor: z.object({ user_id: z.string().min(1), role: z.string(), is_human: z.boolean() }), has_meeting_workflows: z.boolean(), has_stable_bindings: z.boolean(),
-  capabilities: z.object({ artifacts: z.boolean().catch(false).default(false), acceptance: z.boolean().catch(false).default(false) }).optional().catch(undefined),
-});
+  has_meeting_lifecycle: z.boolean().optional(),
+  capabilities: z.object({ artifacts: z.boolean().catch(false).default(false), acceptance: z.boolean().catch(false).default(false), meeting_lifecycle: z.boolean().catch(false).default(false) }).optional().catch(undefined),
+}).refine((value) => !value.capabilities?.meeting_lifecycle || typeof value.has_meeting_lifecycle === "boolean", "Lifecycle-enabled contexts must report their retained meeting facts");
 const nodeIndex = z.array(z.object({ id: z.string(), parent_id: z.string().nullable(), code: z.string(), position: z.number().finite() }));
 export const CockpitNodeIndexPageSchema = z.object({ workspace_id: z.string().min(1), items: nodeIndex.max(20_000), total: count })
   .refine((value) => value.items.length === value.total && new Set(value.items.map((item) => item.id)).size === value.total);
-export const CockpitPlanDataSchema = CockpitContextDataSchema.extend({
+export const CockpitPlanDataSchema = CockpitContextDataSchema.safeExtend({
   complete: z.literal(true), nodes: z.array(CockpitNodeSchema), payments: z.array(CockpitPaymentSchema), milestones: z.array(CockpitMilestoneSchema), node_index: nodeIndex, context_node_ids: z.array(z.string()),
   task_counts: z.array(z.object({ node_id: z.string(), primary_total: count, reference_total: count, active: count, done: count, closed: count })),
   counts: z.object({ nodes: count, payments: count, milestones: count, index_nodes: count }),
@@ -36,12 +37,12 @@ export const CockpitMeetingRegisterPageSchema = page(CockpitMeetingCardSchema).s
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, node_id: z.string().nullable(), node_ids: z.array(z.string()).max(200),
   day_counts: z.array(z.object({ date: z.string(), total: count })).max(93), date_from: z.string().nullable(), date_to: z.string().nullable(),
 });
-export const CockpitNodeDetailDataSchema = CockpitContextDataSchema.extend({
+export const CockpitNodeDetailDataSchema = CockpitContextDataSchema.safeExtend({
   node: CockpitNodeSchema, ancestors: z.array(CockpitNodeSchema), children_count: count, scope_match: z.boolean(), node_index: nodeIndex,
   binding: z.object({ project_id: z.string().nullable(), module_id: z.string().nullable(), project_title: z.string(), module_title: z.string(), source_node_id: z.string().nullable(), eligible: z.boolean(), reason: z.string() }),
   payments: page(CockpitPaymentSchema), payment_total: z.number().finite(), meetings: page(CockpitMeetingCardSchema),
 });
-export const CockpitMeetingDetailDataSchema = CockpitContextDataSchema.extend({
+export const CockpitMeetingDetailDataSchema = CockpitContextDataSchema.safeExtend({
   meeting: CockpitMeetingSchema, scope_match: z.boolean(), node_index: nodeIndex,
   linked_issues: page(CockpitMeetingIssueLinkSchema), linked_nodes: page(CockpitMeetingNodeLinkSchema.extend({ code: z.string(), name: z.string() })),
 });

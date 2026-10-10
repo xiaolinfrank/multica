@@ -4,6 +4,7 @@ import { graphKeys } from "../graph/queries";
 import { issueKeys } from "../issues/queries";
 import { cockpitReadKeys } from "./read-queries";
 import { invalidateCockpitArtifactEvent, invalidateCockpitArtifactLabels } from "./artifact-queries";
+import { invalidateCockpitMeetingLifecycle } from "./meeting-lifecycle-queries";
 import { CockpitNodeIssueLinkReceiptSchema, CockpitMeetingIssueLinkReceiptSchema, CockpitMeetingNodeLinkReceiptSchema } from "../api/cockpit-reference-schemas";
 import type {
   CockpitBoard,
@@ -114,8 +115,19 @@ export function onCockpitChanged(
   void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
   void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   if (scope === "node" || scope === "meeting") invalidateCockpitArtifactLabels(qc, wsId);
+  if (scope === "meeting_lifecycle" || scope === "meeting" || scope === "meeting_workflow") {
+    const meetingId = asRecord(entity)?.["meeting_id"] ?? (scope === "meeting" ? asRecord(entity)?.["id"] : undefined);
+    invalidateCockpitMeetingLifecycle(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+  }
+  if (scope === "node" || scope === "primary_node") invalidateCockpitMeetingLifecycle(qc, wsId);
+  if (scope === "meeting_lifecycle") {
+    invalidateCockpitTaskFlow(qc, wsId);
+    void qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+    return;
+  }
 
   if (scope === "artifacts" || scope === "acceptance") {
+    invalidateCockpitMeetingLifecycle(qc, wsId);
     // Fixed-version receipts are not current headers. Refetch affected facts
     // instead of letting a late event replace a newer responsibility or pin.
     invalidateCockpitArtifactEvent(qc, wsId, scope, entity);

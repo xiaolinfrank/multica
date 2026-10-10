@@ -8,7 +8,7 @@ import { issueKeys } from "../issues/queries";
 
 function useReferenceMutation<T, R>(wsId: string, mutationFn: (variables: T) => Promise<R>) {
   const client = useQueryClient();
-  return useMutation({ mutationFn, onSettled: () => {
+  return useMutation({ mutationKey: ["cockpit-reference", wsId], mutationFn, onSettled: () => {
     // An absent response cannot prove that an idempotent append did not commit.
     for (const queryKey of [cockpitKeys.surfaces(wsId), cockpitKeys.board(wsId), cockpitKeys.tasks(wsId),
       cockpitKeys.dashboard(wsId), graphKeys.all(wsId), issueKeys.all(wsId)]) void client.invalidateQueries({ queryKey });

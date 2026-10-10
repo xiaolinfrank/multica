@@ -287,6 +287,11 @@ export interface CockpitMeeting {
    *  stands. */
   kind: string;
   status: string;
+  /** Explicit occurrence facts; absent on older servers, never derived from status. */
+  occurrence_state?: string;
+  ended_at?: string | null;
+  actual_started_at?: string | null;
+  actual_ended_at?: string | null;
   /** Which line of the programme this meeting advances ("高质量数据集" …),
    *  in the board's own words. The timeline lanes are these values; empty
    *  lands the meeting in the unfiled lane. */
@@ -357,6 +362,10 @@ export interface CockpitMeetingIssueLink {
   roles: string[];
   /** Purposes owned by the workflow, including historical review tasks. */
   required_roles?: string[];
+  has_direct_reference?: boolean;
+  has_agenda_reference?: boolean;
+  agenda_id?: string | null;
+  agenda_total?: number;
   issue_number: number;
   /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
   issue_identifier: string;
@@ -376,6 +385,7 @@ export interface CockpitBoard {
   cockpit: Cockpit;
   /** Aggregate protection signal; older backends omit it. */
   has_meeting_workflows?: boolean;
+  has_meeting_lifecycle?: boolean;
   nodes: CockpitNode[];
   payments: CockpitPayment[];
   issue_links: CockpitIssueLink[];
@@ -402,6 +412,7 @@ export type CockpitEventScope =
   | "meeting_issues"
   | "meeting_nodes"
   | "meeting_workflow"
+  | "meeting_lifecycle"
   | "meeting_actions"
   | "primary_node"
   | "directory"

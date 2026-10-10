@@ -452,3 +452,4 @@ export type * from "./cockpit-artifact-responsibility";
 export * from "./cockpit-issue-artifacts";
 export type * from "./issue-operation-basis";
 export type * from "./issue-batch";
+export type * from "./cockpit-meeting-lifecycle";

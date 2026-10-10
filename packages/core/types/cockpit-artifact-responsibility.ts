@@ -39,7 +39,7 @@ export interface CockpitArtifactReferencePage { workspace_id: string; artifact_i
 export interface CockpitArtifactReferenceResponse { workspace_id: string; reference: CockpitArtifactReference }
 export interface CockpitMeetingArtifactReferencePage {
   workspace_id: string; meeting_id: string; include_removed: boolean;
-  items: (CockpitArtifactReference & { artifact_title: string })[]; total: number; next_cursor: string | null;
+  items: (CockpitArtifactReference & { artifact_title: string; version_decision?: string | null })[]; total: number; next_cursor: string | null;
 }
 
 export interface CockpitAcceptanceReviewerHandoff {

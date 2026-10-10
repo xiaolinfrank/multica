@@ -11,8 +11,10 @@ import { issueKeys } from "../issues/queries";
 import { cockpitKeys, invalidateCockpitTaskFlow } from "./queries";
 import { cockpitArtifactKeys } from "./artifact-queries";
 import { CockpitUnconfirmedWriteError } from "./errors";
+import { invalidateCockpitMeetingLifecycle } from "./meeting-lifecycle-queries";
 
 export function invalidateCockpitArtifactFacts(client: QueryClient, wsId: string) {
+  invalidateCockpitMeetingLifecycle(client, wsId);
   void client.invalidateQueries({ queryKey: cockpitArtifactKeys.all(wsId) });
   void client.invalidateQueries({ queryKey: cockpitArtifactKeys.acceptances(wsId) });
   void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });

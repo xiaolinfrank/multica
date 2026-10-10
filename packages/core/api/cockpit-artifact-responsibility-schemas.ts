@@ -45,7 +45,7 @@ export const CockpitArtifactReferencePageSchema = artifactPage(CockpitArtifactRe
 export const CockpitArtifactReferenceResponseSchema = z.object({ workspace_id: id, reference: CockpitArtifactReferenceSchema });
 export const CockpitMeetingArtifactReferencePageSchema = z.object({
   workspace_id: id, meeting_id: id, include_removed: z.boolean(),
-  items: z.array(CockpitArtifactReferenceSchema.and(z.object({ artifact_title: z.string() }))).max(100),
+  items: z.array(CockpitArtifactReferenceSchema.and(z.object({ artifact_title: z.string(), version_decision: z.string().nullable().default(null) }))).max(100),
   total: z.number().int().nonnegative(), next_cursor: id.nullable(),
 }).refine((page) => page.total >= page.items.length && new Set(page.items.map((entry) => entry.id)).size === page.items.length
   && page.items.every((entry) => entry.meeting_id === page.meeting_id && (page.include_removed || entry.removed_at === null)));

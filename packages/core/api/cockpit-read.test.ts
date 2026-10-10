@@ -13,6 +13,16 @@ function reply(body: unknown) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("cockpit scoped read contracts", () => {
+  it("requires the retained-meeting protection fact when lifecycle support is advertised", async () => {
+    const capabilities = { artifacts: true, acceptance: true, meeting_lifecycle: true };
+    await expect(reply({ ...header, capabilities }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();
+    await expect(reply({ ...header, capabilities, has_meeting_lifecycle: "false" }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();
+    for (const has_meeting_lifecycle of [false, true]) {
+      await expect(reply({ ...header, capabilities, has_meeting_lifecycle }).client.getCockpitContext("ws-1", scope))
+        .resolves.toMatchObject({ has_meeting_lifecycle });
+    }
+    await expect(reply(header).client.getCockpitContext("ws-1", scope)).resolves.toEqual(header);
+  });
   it("does not enable unavailable services from missing or malformed capability flags", async () => {
     for (const capabilities of [{}, { artifacts: "true", acceptance: 1 }, { artifacts: false, acceptance: false }]) {
       await expect(reply({ ...header, capabilities }).client.getCockpitContext("ws-1", scope)).resolves.toMatchObject({ capabilities: { artifacts: false, acceptance: false } });
@@ -46,6 +56,17 @@ describe("cockpit scoped read contracts", () => {
     for (const invalid of [{ ...page, node_id: "other" }, { ...page, date_to: "2026-09-30" }, { ...page, day_counts: undefined }]) {
       await expect(reply(invalid).client.getCockpitMeetingRegister("ws-1", scope, query)).resolves.toBeNull();
     }
+  });
+  it("preserves explicit occurrence metadata without deriving it from legacy status", async () => {
+    const page = { workspace_id: "ws-1", scope: header.scope, node_id: null, node_ids: [], total: 1, next_cursor: null, day_counts: [], date_from: null, date_to: null };
+    const meeting = { id: "meeting-1", status: "已结束", issue_count: 0, node_count: 0, workflow_enabled: false, workflow_stage: "", display_excerpt: "" };
+    const facts = { occurrence_state: "ended", ended_at: "2026-10-11T06:00:00Z", actual_started_at: null, actual_ended_at: null };
+    const read = (item: unknown) => reply({ ...page, items: [item] }).client.getCockpitMeetingRegister("ws-1", scope, {});
+    await expect(read({ ...meeting, ...facts })).resolves.toMatchObject({ items: [{ ...meeting, ...facts }] });
+    const legacy = await read(meeting);
+    expect(legacy?.items[0]).not.toHaveProperty("occurrence_state");
+    await expect(read({ ...meeting, ...facts, occurrence_state: "future_state" })).resolves.toMatchObject({ items: [{ occurrence_state: "future_state" }] });
+    await expect(read({ ...meeting, ...facts, ended_at: "yesterday" })).resolves.toBeNull();
   });
   it("validates object identity and bounded pages on relation continuation", async () => {
     const page = { workspace_id: "ws-1", object_id: "node-1", kind: "payments", items: [], total: 32, payment_total: 528, next_cursor: "more" };

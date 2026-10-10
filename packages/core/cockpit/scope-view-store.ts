@@ -44,11 +44,15 @@ export const EMPTY_COCKPIT_GOVERNANCE_CONTEXT: CockpitGovernanceContext = { quer
 export interface CockpitArtifactContext { query: string; status: string; relation: "owned" | "referenced" | "all"; cursorKey: string; cursors: string[]; scrollTop: number }
 export const EMPTY_COCKPIT_ARTIFACT_CONTEXT: CockpitArtifactContext = { query: "", status: "", relation: "owned", cursorKey: "", cursors: [""], scrollTop: 0 };
 
+export interface CockpitAgendaContext { query: string; includeRemoved: boolean; cursorKey: string; cursors: string[]; scrollTop: number }
+export const EMPTY_COCKPIT_AGENDA_CONTEXT: CockpitAgendaContext = { query: "", includeRemoved: false, cursorKey: "", cursors: [""], scrollTop: 0 };
+
 /** Session navigation state only. Scope belongs to the URL; read models and document bodies stay in Query. */
 export const useCockpitScopeViewStore = create<{
   plans: Record<string, CockpitPlanContext>;
   meetings: Record<string, CockpitMeetingContext>;
   artifacts: Record<string, CockpitArtifactContext>;
+  agendas: Record<string, CockpitAgendaContext>;
   governance: Record<string, CockpitGovernanceContext>;
   relations: Record<string, string[]>;
   sessionGeneration: number;
@@ -56,10 +60,11 @@ export const useCockpitScopeViewStore = create<{
   updateMeeting: (key: string, patch: Partial<CockpitMeetingContext>) => void;
   updateGovernance: (key: string, patch: Partial<CockpitGovernanceContext>) => void;
   updateArtifact: (key: string, patch: Partial<CockpitArtifactContext>) => void;
+  updateAgenda: (key: string, patch: Partial<CockpitAgendaContext>) => void;
   setRelationPage: (key: string, cursors: string[]) => void;
   reset: () => void;
 }>((set) => ({
-  plans: {}, meetings: {}, artifacts: {}, governance: {}, relations: {}, sessionGeneration: 0,
+  plans: {}, meetings: {}, artifacts: {}, agendas: {}, governance: {}, relations: {}, sessionGeneration: 0,
   updatePlan: (key, patch) => set((state) => ({ plans: { ...state.plans, [key]: { ...(state.plans[key] ?? EMPTY_COCKPIT_PLAN_CONTEXT), ...patch } } })),
   updateMeeting: (key, patch) => set((state) => {
     const current = state.meetings[key] ?? EMPTY_COCKPIT_MEETING_CONTEXT;
@@ -77,7 +82,13 @@ export const useCockpitScopeViewStore = create<{
     return { artifacts: { ...state.artifacts, [key]: { ...current, ...patch, ...(changed ? { cursors: [""], cursorKey: "", scrollTop: 0 } : {}) } } };
   }),
   setRelationPage: (key, cursors) => set((state) => ({ relations: { ...state.relations, [key]: cursors } })),
-  reset: () => set((state) => ({ plans: {}, meetings: {}, artifacts: {}, governance: {}, relations: {}, sessionGeneration: state.sessionGeneration + 1 })),
+  updateAgenda: (key, patch) => set((state) => {
+    const current = state.agendas[key] ?? EMPTY_COCKPIT_AGENDA_CONTEXT;
+    const changed = (patch.query !== undefined && patch.query !== current.query)
+      || (patch.includeRemoved !== undefined && patch.includeRemoved !== current.includeRemoved);
+    return { agendas: { ...state.agendas, [key]: { ...current, ...patch, ...(changed ? { cursors: [""], cursorKey: "", scrollTop: 0 } : {}) } } };
+  }),
+  reset: () => set((state) => ({ plans: {}, meetings: {}, artifacts: {}, agendas: {}, governance: {}, relations: {}, sessionGeneration: state.sessionGeneration + 1 })),
 }));
 registerDraftCleanup({ storageKey: "multica_cockpit_scope_navigation", workspaceScoped: false,
   resetInMemory: () => useCockpitScopeViewStore.getState().reset() });

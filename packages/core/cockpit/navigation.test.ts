@@ -1,8 +1,24 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingAgendaPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
+  it("opens and closes an agenda topic without losing filters or recreating the meeting workspace", () => {
+    const source = new URLSearchParams("meeting=m1&action=a1&project=p1&meeting_nodes=n1,n2&from=2026-10-01&custom_filter=kept&artifact=old&node=old");
+    const opened = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "agenda-1", source), "https://example.test");
+    const destination = cockpitDestination(opened.searchParams);
+    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "agenda-1", meetingView: "agenda", actionId: "a1", nodeId: null });
+    expect(destination.key).toBe(cockpitDestination(new URLSearchParams("meeting=m1")).key);
+    expect(opened.searchParams.get("custom_filter")).toBe("kept");
+    expect(opened.searchParams.has("artifact")).toBe(false);
+    const closed = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", null, opened.searchParams), "https://example.test");
+    expect(closed.searchParams.has("agenda")).toBe(false);
+    expect(closed.searchParams.get("meeting")).toBe("m1");
+    expect(closed.searchParams.get("from")).toBe("2026-10-01");
+    const other = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m2", "agenda-2", opened.searchParams), "https://example.test");
+    expect(other.searchParams.has("action")).toBe(false);
+    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", agendaId: "agenda-1" })).toBe("/acme/cockpit?meeting=m1&agenda=agenda-1&meeting_view=agenda");
+  });
   it("returns to the original acceptance scope after opening an externally owned artifact", () => {
     const origin = { projectId: "target-project", moduleId: "target-module" };
     const first = cockpitArtifactPath("/acme/cockpit", "artifact-1", origin, "version-1", { nodeId: "target-node", view: "acceptance", requestId: "request-1" });

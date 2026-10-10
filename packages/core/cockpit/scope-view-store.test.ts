@@ -1,11 +1,27 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetAllRegisteredDrafts } from "../drafts/cleanup-registry";
-import { cockpitScopeViewKey, EMPTY_COCKPIT_MEETING_CONTEXT, useCockpitScopeViewStore } from "./scope-view-store";
+import { cockpitScopeViewKey, cockpitRelationViewKey, EMPTY_COCKPIT_MEETING_CONTEXT, useCockpitScopeViewStore } from "./scope-view-store";
 
 beforeEach(() => useCockpitScopeViewStore.getState().reset());
 
 describe("cockpit scope navigation", () => {
+  it("restores agenda navigation per workspace and meeting, resets changed filters, and clears it on account cleanup", () => {
+    const first = cockpitRelationViewKey("ws-1", "agenda", "meeting-1");
+    const other = cockpitRelationViewKey("ws-2", "agenda", "meeting-1");
+    const store = useCockpitScopeViewStore.getState();
+    store.updateAgenda(first, { query: "review" });
+    store.updateAgenda(first, { cursorKey: "rev-4", cursors: ["", "page-2"], scrollTop: 440 });
+    store.updateAgenda(other, { query: "another context" });
+    store.updateAgenda(first, { query: "review" });
+    expect(useCockpitScopeViewStore.getState().agendas[first]).toMatchObject({ cursors: ["", "page-2"], scrollTop: 440 });
+    store.updateAgenda(first, { includeRemoved: true });
+    expect(useCockpitScopeViewStore.getState().agendas[first]).toMatchObject({ query: "review", cursors: [""], cursorKey: "", scrollTop: 0 });
+    expect(useCockpitScopeViewStore.getState().agendas[other]?.query).toBe("another context");
+    const generation = useCockpitScopeViewStore.getState().sessionGeneration;
+    resetAllRegisteredDrafts();
+    expect(useCockpitScopeViewStore.getState()).toMatchObject({ agendas: {}, sessionGeneration: generation + 1 });
+  });
   it("keeps project and module navigation separate without changing the requested scope", () => {
     const project = cockpitScopeViewKey("workspace", { projectId: "project", moduleId: null });
     const module = cockpitScopeViewKey("workspace", { projectId: "project", moduleId: "module" });

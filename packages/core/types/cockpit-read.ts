@@ -4,7 +4,8 @@ export interface CockpitReadScope { project_id: string | null; module_id: string
 export interface CockpitContextData {
   workspace_id: string; scope: CockpitReadScope; cockpit: Cockpit | null;
   actor: { user_id: string; role: string; is_human: boolean }; has_meeting_workflows: boolean; has_stable_bindings: boolean;
-  capabilities?: { artifacts: boolean; acceptance: boolean };
+  has_meeting_lifecycle?: boolean;
+  capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean };
 }
 export interface CockpitNodeIndexEntry { id: string; parent_id: string | null; code: string; position: number }
 export interface CockpitNodeIndexPage { workspace_id: string; items: CockpitNodeIndexEntry[]; total: number }

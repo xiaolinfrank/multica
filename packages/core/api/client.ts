@@ -1,4 +1,17 @@
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
+import type {
+  CockpitMeetingLifecycleHeader, CockpitAgendaPage, CockpitAgendaDetail, CockpitAgendaReferencePage,
+  CockpitLifecycleCommandPage, CockpitLifecycleCommandDetail, CockpitLifecycleCommandResult, CockpitLifecycleAction,
+  CockpitLifecyclePageQuery, CockpitAgendaQuery, CockpitAgendaReferenceQuery, CockpitLifecycleCommandInput,
+  CockpitOccurrenceInput, CockpitMaterialsInput, CockpitAgendaInput, CockpitAgendaRemoveInput,
+  CockpitAgendaReferenceInput, CockpitPreparationIssueInput,
+} from "../types/cockpit-meeting-lifecycle";
+import {
+  CockpitMeetingLifecycleHeaderSchema, CockpitAgendaPageSchema, CockpitAgendaDetailSchema,
+  CockpitAgendaReferencePageSchema, CockpitLifecycleCommandPageSchema, CockpitLifecycleCommandDetailSchema,
+  CockpitLifecycleCommandResultSchema,
+} from "./cockpit-meeting-lifecycle-schemas";
+import { cockpitLifecycleAcknowledged } from "../cockpit/meeting-lifecycle";
 import type { IssueOperationBasisPage, ContainerOperationBasis, ContainerOperationKind } from "../types/issue-operation-basis";
 import { IssueOperationBasisPageSchema, ContainerOperationBasisSchema } from "./issue-operation-basis-schemas";
 import type { IssueBatchReceipt, IssueBatchWriteOptions } from "../types/issue-batch";
@@ -7,7 +20,7 @@ import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-art
 import type { CockpitMeetingArtifactReferencePage } from "../types/cockpit-artifact-responsibility";
 import { CockpitMeetingArtifactReferencePageSchema } from "./cockpit-artifact-responsibility-schemas";
 import { CockpitIssueArtifactContextPageSchema } from "./cockpit-issue-artifact-schemas";
-import { CockpitUnconfirmedReadError } from "../cockpit/errors";
+import { CockpitUnconfirmedReadError, CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import type { CockpitNodeCreate, CockpitNodeCreated } from "../types/cockpit";
 import type { CockpitDirectoryPage, CockpitDirectoryPageQuery, CockpitDirectoryReceipt, CockpitDirectoryWrite, CockpitDirectoryNaturalKey } from "../types/cockpit-directory";
 import { CockpitDirectoryPageSchema, CockpitDirectoryReceiptSchema } from "./cockpit-directory-schemas";
@@ -51,7 +64,6 @@ import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSche
 import type { InboxFilters } from "../inbox/filter-store";
 import type { ArchivedInboxPage, ArchivedInboxFacets } from "../types/inbox";
 import { configStore } from "../config";
-import { CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import { acknowledgedCockpitReviewerHandoff } from "../cockpit/reviewer-handoff";
 import { acknowledgedCockpitNasExport, cockpitNasAttemptBelongsToExport, sameCockpitNasDestination } from "../cockpit/nas-export";
 import type { CockpitNasAttemptPage } from "../types/cockpit-nas-attempts";
@@ -2670,6 +2682,95 @@ export class ApiClient {
   async getCockpitOverviewMeetings(wsId: string, query: CockpitOverviewPageQuery & { days?: number }, signal?: AbortSignal): Promise<CockpitRecentMeetingPage | null> {
     const result = await this.readCockpitOverview(wsId, "/meetings", query, CockpitRecentMeetingPageSchema, signal);
     return result && result.items.length <= (query.page_size ?? 25) && this.cockpitOverviewMeetingWindowMatches(result, query.days ?? 30) ? result : null;
+  }
+
+  private cockpitLifecyclePath(wsId: string, meetingId: string, suffix: string): string {
+    if (!wsId || !meetingId) throw new RangeError("Meeting operations require an explicit workspace and meeting");
+    return "/api/cockpit/meetings/" + encodeURIComponent(meetingId) + "/" + suffix;
+  }
+
+  private cockpitAgendaPath(agendaId: string, suffix = ""): string {
+    if (!agendaId) throw new RangeError("Agenda operations require an explicit agenda identity");
+    return "agenda/" + encodeURIComponent(agendaId) + suffix;
+  }
+
+  private async readCockpitLifecycle<T extends { workspace_id: string; meeting_id: string }>(wsId: string, meetingId: string,
+    suffix: string, schema: ZodType<T>, query: Record<string, string | number | boolean | undefined> = {}, signal?: AbortSignal): Promise<T | null> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix) + (params.size ? "?" + params : "");
+    const raw = await this.fetch<unknown>(endpoint, { signal, headers: { "X-Workspace-ID": wsId } });
+    const parsed = parseWithFallback<T | null>(raw, schema, null, { endpoint: "GET " + suffix });
+    return parsed?.workspace_id === wsId && parsed.meeting_id === meetingId ? parsed : null;
+  }
+
+  private async writeCockpitLifecycle(wsId: string, meetingId: string, suffix: string, action: CockpitLifecycleAction,
+    body: CockpitLifecycleCommandInput, agendaId?: string, referenceId?: string, method = "POST"): Promise<CockpitLifecycleCommandResult> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix);
+    const raw = await this.fetch<unknown>(endpoint, { method, headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const parsed = parseWithFallback<CockpitLifecycleCommandResult | null>(raw, CockpitLifecycleCommandResultSchema, null, { endpoint: method + " " + suffix });
+    if (!parsed || parsed.workspace_id !== wsId || parsed.meeting_id !== meetingId
+      || !cockpitLifecycleAcknowledged(parsed, action, body, agendaId, referenceId)) throw new CockpitUnconfirmedWriteError();
+    return parsed;
+  }
+
+  async getCockpitMeetingLifecycle(wsId: string, meetingId: string, signal?: AbortSignal): Promise<CockpitMeetingLifecycleHeader | null> {
+    return this.readCockpitLifecycle(wsId, meetingId, "lifecycle", CockpitMeetingLifecycleHeaderSchema, {}, signal);
+  }
+
+  async getCockpitMeetingAgenda(wsId: string, meetingId: string, query: CockpitAgendaQuery = {}, signal?: AbortSignal): Promise<CockpitAgendaPage | null> {
+    const params = { ...query, q: query.q?.trim() ?? "", include_removed: query.include_removed ?? false, page_size: query.page_size ?? 25 };
+    const page = await this.readCockpitLifecycle(wsId, meetingId, "agenda", CockpitAgendaPageSchema, params, signal);
+    return page && page.q === params.q && page.include_removed === params.include_removed && page.page_size === params.page_size ? page : null;
+  }
+
+  async getCockpitAgendaDetail(wsId: string, meetingId: string, agendaId: string, signal?: AbortSignal): Promise<CockpitAgendaDetail | null> {
+    const detail = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId), CockpitAgendaDetailSchema, {}, signal);
+    return detail?.id === agendaId ? detail : null;
+  }
+
+  async getCockpitAgendaReferences(wsId: string, meetingId: string, agendaId: string, query: CockpitAgendaReferenceQuery = {}, signal?: AbortSignal): Promise<CockpitAgendaReferencePage | null> {
+    const params = { ...query, include_removed: query.include_removed ?? false, page_size: query.page_size ?? 25 };
+    const page = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references"), CockpitAgendaReferencePageSchema, params, signal);
+    return page && page.agenda_id === agendaId && page.include_removed === params.include_removed && page.page_size === params.page_size ? page : null;
+  }
+
+  async getCockpitLifecycleCommands(wsId: string, meetingId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<CockpitLifecycleCommandPage | null> {
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const page = await this.readCockpitLifecycle(wsId, meetingId, "lifecycle/commands", CockpitLifecycleCommandPageSchema, params, signal);
+    return page?.page_size === params.page_size ? page : null;
+  }
+
+  async getCockpitLifecycleCommand(wsId: string, meetingId: string, commandKey: string, signal?: AbortSignal): Promise<CockpitLifecycleCommandDetail | null> {
+    if (!commandKey) throw new RangeError("A retained command requires its identity");
+    const detail = await this.readCockpitLifecycle(wsId, meetingId, "lifecycle/commands/" + encodeURIComponent(commandKey), CockpitLifecycleCommandDetailSchema, {}, signal);
+    return detail?.command_key === commandKey ? detail : null;
+  }
+
+  async recordCockpitOccurrence(wsId: string, meetingId: string, body: CockpitOccurrenceInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, "lifecycle/occurrence", body.transition, body);
+  }
+  async confirmCockpitMaterials(wsId: string, meetingId: string, body: CockpitMaterialsInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, "lifecycle/materials", "materials", body);
+  }
+  async createCockpitAgenda(wsId: string, meetingId: string, body: CockpitAgendaInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, "agenda", "agenda_create", body);
+  }
+  async updateCockpitAgenda(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId), "agenda_update", body, agendaId, undefined, "PATCH");
+  }
+  async removeCockpitAgenda(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaRemoveInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/remove"), "agenda_remove", body, agendaId);
+  }
+  async attachCockpitAgendaReference(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaReferenceInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references"), "reference_attach", body, agendaId);
+  }
+  async removeCockpitAgendaReference(wsId: string, meetingId: string, agendaId: string, referenceId: string, body: CockpitLifecycleCommandInput): Promise<CockpitLifecycleCommandResult> {
+    if (!referenceId) throw new RangeError("Removing a reference requires its identity");
+    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references/" + encodeURIComponent(referenceId) + "/remove"), "reference_remove", body, agendaId, referenceId);
+  }
+  async createCockpitPreparationIssue(wsId: string, meetingId: string, agendaId: string, body: CockpitPreparationIssueInput): Promise<CockpitLifecycleCommandResult> {
+    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/preparation-issues"), "preparation_issue_create", body, agendaId);
   }
 
   async getCockpitMeetingWorkflowSummary(wsId: string, meetingId: string, signal?: AbortSignal): Promise<CockpitMeetingWorkflowSummary | null> {

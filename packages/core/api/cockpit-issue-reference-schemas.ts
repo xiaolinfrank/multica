@@ -1,11 +1,19 @@
 import { z } from "zod";
+import { cockpitMeetingHasDirectReference } from "../cockpit/meeting-roles";
 const common = { code: z.string(), title: z.string(), available: z.boolean(), can_unlink: z.boolean() };
 export const CockpitIssueNodeReferenceSchema = z.object({ ...common, node_id: z.string().min(1),
   relation: z.string().transform((value): "reference" | "unknown" => value === "reference" ? value : "unknown"),
 }).transform((value) => ({ ...value, can_unlink: value.relation === "reference" && value.can_unlink }));
 export const CockpitIssueMeetingReferenceSchema = z.object({ ...common, meeting_id: z.string().min(1), meet_date: z.string(),
   role: z.string(), roles: z.array(z.string()), required_roles: z.array(z.string()),
-}).transform((value) => ({ ...value, can_unlink: value.can_unlink && value.required_roles.length === 0 }));
+  has_direct_reference: z.boolean().optional(), has_agenda_reference: z.boolean().default(false),
+  agenda_id: z.string().min(1).nullable().default(null), agenda_total: z.number().int().nonnegative().default(0),
+}).transform((value) => {
+  const hasAgenda = value.has_agenda_reference || value.agenda_id !== null || value.agenda_total > 0;
+  const hasDirect = cockpitMeetingHasDirectReference(value);
+  return { ...value, has_agenda_reference: hasAgenda, has_direct_reference: hasDirect,
+    can_unlink: hasDirect && value.can_unlink && value.required_roles.length === 0 };
+});
 function page<T extends z.ZodType>(item: T, id: (value: z.output<T>) => string) {
   return z.object({ workspace_id: z.string().min(1), issue_id: z.string().min(1), items: z.array(item).max(100),
     total: z.number().int().nonnegative(), next_cursor: z.string().min(1).nullable(),
