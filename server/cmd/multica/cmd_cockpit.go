@@ -232,7 +232,7 @@ func init() {
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingArtifactReferencesCommand())
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingShowCommand(), newCockpitMeetingArtifactReferencesCommand(), newCockpitMeetingLifecycleCommand(false), newCockpitMeetingLifecycleCommand(true))
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 

@@ -1,5 +1,5 @@
 -- name: GetCockpitWorkflowMeetingIdentity :one
-SELECT id,cockpit_id,nas_dir FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2;
+SELECT id,cockpit_id,nas_dir,ended_at FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2;
 
 -- name: GetCockpitWorkflowSnapshot :one
 SELECT * FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2;

@@ -54,20 +54,22 @@ type IssueService struct {
 	CockpitNASExporter cockpitnas.Exporter
 	// Enabled only after the full artifact runtime is wired; client declaration
 	// controls entry visibility, never business authorization.
-	CockpitArtifactBackendReady bool
-	CockpitArtifactCapturer     *artifactcapture.Capturer
-	CockpitArtifactStorage      storage.Storage
+	CockpitArtifactBackendReady         bool
+	CockpitMeetingLifecycleBackendReady bool
+	CockpitArtifactCapturer             *artifactcapture.Capturer
+	CockpitArtifactStorage              storage.Storage
 	// Tests can shorten the total probe budget without changing production limits.
 	artifactProbeTimeout time.Duration
 }
 
 func NewIssueService(q *db.Queries, tx TxStarter, bus *events.Bus, ac analytics.Client, ts *TaskService) *IssueService {
 	return &IssueService{
-		Queries:     q,
-		TxStarter:   tx,
-		Bus:         bus,
-		Analytics:   ac,
-		TaskService: ts,
+		Queries:                             q,
+		TxStarter:                           tx,
+		Bus:                                 bus,
+		Analytics:                           ac,
+		TaskService:                         ts,
+		CockpitMeetingLifecycleBackendReady: q != nil && tx != nil,
 	}
 }
 
@@ -99,13 +101,14 @@ type IssueCreateParams struct {
 	CockpitWorkflow *CockpitWorkflowIssue
 	// Internal typed hook: action resolution / L3 create and primary ownership
 	// share the canonical Issue transaction, quota and post-commit effects.
-	CockpitPlanning *cockpitPlanningIssue
-	CockpitArtifact *cockpitArtifactIssue
-	StartDate       pgtype.Date
-	DueDate         pgtype.Date
-	OriginType      pgtype.Text
-	OriginID        pgtype.UUID
-	AttachmentIDs   []pgtype.UUID
+	CockpitPlanning    *cockpitPlanningIssue
+	CockpitArtifact    *cockpitArtifactIssue
+	CockpitPreparation *cockpitPreparationIssue
+	StartDate          pgtype.Date
+	DueDate            pgtype.Date
+	OriginType         pgtype.Text
+	OriginID           pgtype.UUID
+	AttachmentIDs      []pgtype.UUID
 	// LabelIDs are the issue-scoped labels to attach to the new issue. They
 	// are validated and written inside the create transaction (see Create),
 	// so the issue is never committed with a partial or wrong label set. An
@@ -297,6 +300,15 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
+	if p.CockpitPreparation != nil {
+		existing, err := prepareCockpitPreparationIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 	if p.CockpitArtifact != nil {
 		existing, err := prepareCockpitArtifactIssue(ctx, qtx, &p)
 		if err != nil {
@@ -638,6 +650,11 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 
 	if p.CockpitWorkflow != nil {
 		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.CockpitPreparation != nil {
+		if err := linkCockpitPreparationIssue(ctx, qtx, p, issue); err != nil {
 			return IssueCreateResult{}, err
 		}
 	}

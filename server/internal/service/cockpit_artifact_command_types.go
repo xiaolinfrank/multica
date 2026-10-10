@@ -60,6 +60,7 @@ type CockpitMeetingArtifactReferencesRead struct {
 	PageSize                        int32
 }
 type CockpitMeetingArtifactReference struct {
+	VersionDecision *string `json:"version_decision"`
 	CockpitArtifactReference
 	ArtifactTitle string `json:"artifact_title"`
 }

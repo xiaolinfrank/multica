@@ -13,7 +13,7 @@ import (
 
 const advanceCockpitWorkflowRevision = `-- name: AdvanceCockpitWorkflowRevision :one
 UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type AdvanceCockpitWorkflowRevisionParams struct {
@@ -31,7 +31,6 @@ func (q *Queries) AdvanceCockpitWorkflowRevision(ctx context.Context, arg Advanc
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -40,6 +39,8 @@ func (q *Queries) AdvanceCockpitWorkflowRevision(ctx context.Context, arg Advanc
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -102,7 +103,7 @@ func (q *Queries) CockpitWorkflowReferencesIssue(ctx context.Context, arg Cockpi
 
 const createCockpitMeetingWorkPackage = `-- name: CreateCockpitMeetingWorkPackage :one
 INSERT INTO cockpit_meeting_work_package(workspace_id,meeting_id,minutes_issue_id,reviewer_id,created_by)
-VALUES($1,$2,$3,$4,$5) RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+VALUES($1,$2,$3,$4,$5) RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type CreateCockpitMeetingWorkPackageParams struct {
@@ -128,7 +129,6 @@ func (q *Queries) CreateCockpitMeetingWorkPackage(ctx context.Context, arg Creat
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -137,6 +137,8 @@ func (q *Queries) CreateCockpitMeetingWorkPackage(ctx context.Context, arg Creat
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -218,7 +220,7 @@ func (q *Queries) DeleteCockpitWorkPackagesByWorkspace(ctx context.Context, work
 }
 
 const getCockpitMeetingWorkPackage = `-- name: GetCockpitMeetingWorkPackage :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
+SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
 `
 
 type GetCockpitMeetingWorkPackageParams struct {
@@ -235,7 +237,6 @@ func (q *Queries) GetCockpitMeetingWorkPackage(ctx context.Context, arg GetCockp
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -244,6 +245,8 @@ func (q *Queries) GetCockpitMeetingWorkPackage(ctx context.Context, arg GetCockp
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -388,7 +391,7 @@ func (q *Queries) ListCockpitMinutesVersions(ctx context.Context, arg ListCockpi
 }
 
 const lockCockpitMeetingWorkPackage = `-- name: LockCockpitMeetingWorkPackage :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2 FOR UPDATE
+SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2 FOR UPDATE
 `
 
 type LockCockpitMeetingWorkPackageParams struct {
@@ -405,7 +408,6 @@ func (q *Queries) LockCockpitMeetingWorkPackage(ctx context.Context, arg LockCoc
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -414,6 +416,8 @@ func (q *Queries) LockCockpitMeetingWorkPackage(ctx context.Context, arg LockCoc
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -464,8 +468,8 @@ func (q *Queries) PublishCockpitMinutesVersion(ctx context.Context, arg PublishC
 
 const releaseCockpitMeetingWorkPackage = `-- name: ReleaseCockpitMeetingWorkPackage :one
 UPDATE cockpit_meeting_work_package SET released_at=now(),revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 AND released_at IS NULL
- AND ended_at IS NOT NULL AND materials_ready RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE cockpit_meeting_work_package.workspace_id=$1 AND cockpit_meeting_work_package.meeting_id=$2 AND cockpit_meeting_work_package.revision=$3 AND cockpit_meeting_work_package.released_at IS NULL
+ AND EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=cockpit_meeting_work_package.workspace_id AND m.id=cockpit_meeting_work_package.meeting_id AND m.ended_at IS NOT NULL) AND materials_ready RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type ReleaseCockpitMeetingWorkPackageParams struct {
@@ -483,7 +487,6 @@ func (q *Queries) ReleaseCockpitMeetingWorkPackage(ctx context.Context, arg Rele
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -492,6 +495,8 @@ func (q *Queries) ReleaseCockpitMeetingWorkPackage(ctx context.Context, arg Rele
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -546,7 +551,7 @@ func (q *Queries) ReviewCockpitMinutesVersion(ctx context.Context, arg ReviewCoc
 
 const setCockpitCurrentMinutesVersion = `-- name: SetCockpitCurrentMinutesVersion :one
 UPDATE cockpit_meeting_work_package SET current_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type SetCockpitCurrentMinutesVersionParams struct {
@@ -570,7 +575,6 @@ func (q *Queries) SetCockpitCurrentMinutesVersion(ctx context.Context, arg SetCo
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -579,23 +583,26 @@ func (q *Queries) SetCockpitCurrentMinutesVersion(ctx context.Context, arg SetCo
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
 
 const setCockpitMeetingReadiness = `-- name: SetCockpitMeetingReadiness :one
 UPDATE cockpit_meeting_work_package SET
- ended_at=CASE WHEN $3::bool THEN COALESCE(ended_at,now()) ELSE ended_at END,
- materials_ready=COALESCE($4::bool,materials_ready),
+ materials_confirmed_at=CASE WHEN $3::bool IS NOT NULL THEN now() ELSE materials_confirmed_at END,
+ materials_confirmed_by=CASE WHEN $3::bool IS NOT NULL THEN $4::uuid ELSE materials_confirmed_by END,
+ materials_ready=COALESCE($3::bool,materials_ready),
  revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$5::bigint RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$5::bigint RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type SetCockpitMeetingReadinessParams struct {
 	WorkspaceID      pgtype.UUID `json:"workspace_id"`
 	MeetingID        pgtype.UUID `json:"meeting_id"`
-	Ended            bool        `json:"ended"`
 	MaterialsReady   pgtype.Bool `json:"materials_ready"`
+	ActorID          pgtype.UUID `json:"actor_id"`
 	ExpectedRevision int64       `json:"expected_revision"`
 }
 
@@ -603,8 +610,8 @@ func (q *Queries) SetCockpitMeetingReadiness(ctx context.Context, arg SetCockpit
 	row := q.db.QueryRow(ctx, setCockpitMeetingReadiness,
 		arg.WorkspaceID,
 		arg.MeetingID,
-		arg.Ended,
 		arg.MaterialsReady,
+		arg.ActorID,
 		arg.ExpectedRevision,
 	)
 	var i CockpitMeetingWorkPackage
@@ -614,7 +621,6 @@ func (q *Queries) SetCockpitMeetingReadiness(ctx context.Context, arg SetCockpit
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -623,6 +629,8 @@ func (q *Queries) SetCockpitMeetingReadiness(ctx context.Context, arg SetCockpit
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -644,7 +652,7 @@ func (q *Queries) SetCockpitMeetingReleaseTask(ctx context.Context, arg SetCockp
 
 const setCockpitPublishedMinutesVersion = `-- name: SetCockpitPublishedMinutesVersion :one
 UPDATE cockpit_meeting_work_package SET published_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 AND current_version_id=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 AND current_version_id=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type SetCockpitPublishedMinutesVersionParams struct {
@@ -668,7 +676,6 @@ func (q *Queries) SetCockpitPublishedMinutesVersion(ctx context.Context, arg Set
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -677,6 +684,8 @@ func (q *Queries) SetCockpitPublishedMinutesVersion(ctx context.Context, arg Set
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }

@@ -300,7 +300,8 @@ func (s *IssueService) ListCockpitMeetingArtifactReferences(ctx context.Context,
 		ref := referenceView(r.ID, r.ArtifactID, r.VersionID, r.ReferenceKey, pgtype.UUID{}, r.MeetingID, r.CreatedBy, r.RemovedBy, r.TargetLabel, r.Purpose, r.CreatedAt, r.RemovedAt)
 		ref.VersionNumber = r.VersionNumber
 		ref.ContentHash = r.ContentHash.String
-		out.Items = append(out.Items, CockpitMeetingArtifactReference{CockpitArtifactReference: ref, ArtifactTitle: r.ArtifactTitle})
+		decision := r.VersionDecision
+		out.Items = append(out.Items, CockpitMeetingArtifactReference{CockpitArtifactReference: ref, ArtifactTitle: r.ArtifactTitle, VersionDecision: &decision})
 	}
 	return out, tx.Commit(ctx)
 }

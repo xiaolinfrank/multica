@@ -93,6 +93,7 @@ func TestCockpitSurfaceCLIRejectsInvalidInputBeforeHTTP(t *testing.T) {
 		{newCockpitMeetingPageCommand, []string{"--page-size", "101"}},
 		{newCockpitMeetingPageCommand, []string{"--only", "links,folder"}},
 		{newCockpitMeetingPageCommand, []string{"--q", strings.Repeat("a", 513)}},
+		{newCockpitMeetingShowCommand, []string{"not-a-UUID"}},
 		{newCockpitVersionCompareCommand, []string{"not-a-UUID"}},
 		{newCockpitVersionCompareCommand, []string{workflowCLIVersion, "--project-id", workflowCLIProject}},
 	} {
@@ -108,6 +109,48 @@ func TestCockpitSurfaceCLIRejectsInvalidInputBeforeHTTP(t *testing.T) {
 		})
 	}
 }
+func TestCockpitMeetingShowUsesExactMeetingAndBoundedRelationships(t *testing.T) {
+	for _, defect := range []string{"none", "workspace", "meeting", "relationship", "missing-page", "overfull-page"} {
+		t.Run(defect, func(t *testing.T) {
+			reply := surfaceCLIContext(nil, nil)
+			meeting := map[string]any{"id": workflowCLIMeeting, "workspace_id": "ws-1", "title": "Current meeting", "note": "Use these materials", "nas_dir": "/approved/current"}
+			link := map[string]any{"meeting_id": workflowCLIMeeting, "issue_id": actionCLIIssue}
+			page := map[string]any{"items": []any{link}, "total": 101, "next_cursor": "more"}
+			reply["meeting"], reply["scope_match"], reply["node_index"] = meeting, true, []any{}
+			reply["linked_issues"], reply["linked_nodes"] = page, map[string]any{"items": []any{}, "total": 0, "next_cursor": nil}
+			switch defect {
+			case "workspace":
+				reply["workspace_id"] = "other"
+			case "meeting":
+				meeting["id"] = workflowCLIProject
+			case "relationship":
+				link["meeting_id"] = workflowCLIProject
+			case "missing-page":
+				delete(reply, "linked_nodes")
+			case "overfull-page":
+				page["items"] = make([]any, 26)
+			}
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if r.Method != "GET" || r.URL.Path != "/api/cockpit/meetings/"+workflowCLIMeeting || r.Header.Get("X-Workspace-ID") != "ws-1" {
+					t.Errorf("unexpected read: %s %s", r.Method, r.URL.String())
+				}
+				_ = json.NewEncoder(w).Encode(reply)
+			}))
+			defer srv.Close()
+			configureWorkflowCLIEnv(t, srv.URL)
+			out, err := executeActionCLI(t, newCockpitMeetingShowCommand(), workflowCLIMeeting, "--json")
+			if calls.Load() != 1 || (err == nil) != (defect == "none") {
+				t.Fatalf("exact read %s: calls=%d err=%v", defect, calls.Load(), err)
+			}
+			if defect == "none" && !json.Valid([]byte(out)) || defect != "none" && out != "" {
+				t.Fatalf("unexpected confirmed output: %q", out)
+			}
+		})
+	}
+}
+
 func TestCockpitSurfaceCLIRefusesUnconfirmedReadReceipts(t *testing.T) {
 	for _, defect := range []string{"wrong workspace", "wrong module", "partial plan", "wrong count", "meeting body", "missing cursor", "wrong date", "wrong snapshot", "false empty diff", "wrong digest"} {
 		t.Run(defect, func(t *testing.T) {

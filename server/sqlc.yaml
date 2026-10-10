@@ -2,7 +2,11 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "pkg/db/queries/"
-    schema: "migrations/"
+    # Preserve numeric migration order across the three/four-digit boundary.
+    # sqlc expands each glob in order; directory traversal is lexicographic.
+    schema:
+      - "migrations/[0-9][0-9][0-9]_*.up.sql"
+      - "migrations/[0-9][0-9][0-9][0-9]_*.up.sql"
     gen:
       go:
         package: "db"

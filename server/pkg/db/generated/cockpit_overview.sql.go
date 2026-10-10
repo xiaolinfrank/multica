@@ -90,28 +90,32 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
  WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
- SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at
+ SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at
  FROM cockpit_meeting m CROSS JOIN args x
  WHERE m.workspace_id=x.ws AND (x.project IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_project=x.project)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_project=x.project)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.project_id=x.project))
  AND (x.module IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_module=x.module)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_module=x.module)
+ OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.module_id=x.module))
 ), workflow AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.ended_at,w.materials_ready,w.released_at,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.materials_ready,w.released_at,
  w.current_version_id,w.published_version_id,v.version_number,v.reviewer_id,v.review_issue_id,v.decision,v.published_at,
  i.status AS minutes_status,i.assignee_type,i.assignee_id,
  (x.actor_role IN ('owner','admin') OR w.created_by=x.actor)::bool AS manager,
  CASE
  WHEN w.released_at IS NULL THEN CASE
-  WHEN w.ended_at IS NOT NULL AND w.materials_ready AND i.status='backlog' THEN 'release_ready'
-  WHEN w.ended_at IS NOT NULL AND w.materials_ready THEN 'restore_backlog'
-  WHEN w.ended_at IS NOT NULL THEN 'materials_needed'
+  WHEN m.ended_at IS NOT NULL AND w.materials_ready AND i.status='backlog' THEN 'release_ready'
+  WHEN m.ended_at IS NOT NULL AND w.materials_ready THEN 'restore_backlog'
+  WHEN m.ended_at IS NOT NULL THEN 'materials_needed'
   WHEN m.meet_date<x.as_of THEN 'readiness_needed' ELSE '' END
  WHEN v.decision='pending' AND NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=x.ws AND u.user_id=v.reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision='pending' THEN 'review_pending'
@@ -204,7 +208,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  'module_id',e.module_id,'module_title',e.module_title,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
  'issue_counts',COALESCE(c.counts,jsonb_build_object('total',0,'active',0,'unstarted',0,'started',0,'done',0,'closed',0,'unknown',0,'overdue',0,'blocked',0,'unassigned',0))) AS card FROM execution_page e LEFT JOIN execution_counts c ON c.node_id=e.id
 ), recent AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at,w.ended_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
  CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN w.released_at IS NULL THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
  m.meet_date::text||':'||m.id::text AS sort_key
  FROM meetings m CROSS JOIN args x LEFT JOIN workflow w ON w.id=m.id

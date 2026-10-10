@@ -21,6 +21,7 @@ type cockpitHistoryRead struct {
 	cc        cockpitContext
 	meetingID pgtype.UUID
 	nasDir    string
+	endedAt   pgtype.Timestamptz
 	work      *db.CockpitMeetingWorkPackage
 	human     bool
 }
@@ -52,6 +53,7 @@ func (h *Handler) beginCockpitHistory(r *http.Request, cc cockpitContext, meetin
 		return fail(err)
 	}
 	read.nasDir = meeting.NasDir
+	read.endedAt = meeting.EndedAt
 	work, err := read.q.GetCockpitWorkflowSnapshot(ctx, db.GetCockpitWorkflowSnapshotParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
 	if err == nil {
 		read.work = &work
@@ -261,7 +263,7 @@ func (h *Handler) cockpitHistorySummary(r *http.Request, x *cockpitHistoryRead) 
 	}
 	out.Enabled = true
 	out.Revision = w.Revision
-	out.EndedAt = cockpitWorkflowTime(w.EndedAt)
+	out.EndedAt = cockpitWorkflowTime(x.endedAt)
 	out.MaterialsReady = w.MaterialsReady
 	out.ReleasedAt = cockpitWorkflowTime(w.ReleasedAt)
 	out.ReleaseTaskID = uuidToPtr(w.ReleaseTaskID)

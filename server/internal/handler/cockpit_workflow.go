@@ -256,7 +256,7 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	}
 	out.Enabled = true
 	out.Revision = work.Revision
-	out.EndedAt = cockpitWorkflowTime(work.EndedAt)
+	out.EndedAt = cockpitWorkflowTime(meeting.EndedAt)
 	out.MaterialsReady = work.MaterialsReady
 	out.ReleasedAt = cockpitWorkflowTime(work.ReleasedAt)
 	out.ReleaseTaskID = uuidToPtr(work.ReleaseTaskID)

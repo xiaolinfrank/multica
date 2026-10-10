@@ -33,7 +33,7 @@ func (q *Queries) CockpitMeetingWorkflowRequiredRole(ctx context.Context, arg Co
 }
 
 const getCockpitMeetingWorkPackageForRead = `-- name: GetCockpitMeetingWorkPackageForRead :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at FROM cockpit_meeting_work_package
+SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package
 WHERE workspace_id = $1 AND meeting_id = $2
 FOR SHARE
 `
@@ -52,7 +52,6 @@ func (q *Queries) GetCockpitMeetingWorkPackageForRead(ctx context.Context, arg G
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -61,6 +60,8 @@ func (q *Queries) GetCockpitMeetingWorkPackageForRead(ctx context.Context, arg G
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }

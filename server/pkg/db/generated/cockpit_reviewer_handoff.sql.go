@@ -156,7 +156,7 @@ func (q *Queries) ListCockpitReviewerHandoffs(ctx context.Context, arg ListCockp
 
 const setCockpitDefaultReviewer = `-- name: SetCockpitDefaultReviewer :one
 UPDATE cockpit_meeting_work_package SET reviewer_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
 `
 
 type SetCockpitDefaultReviewerParams struct {
@@ -180,7 +180,6 @@ func (q *Queries) SetCockpitDefaultReviewer(ctx context.Context, arg SetCockpitD
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -189,6 +188,8 @@ func (q *Queries) SetCockpitDefaultReviewer(ctx context.Context, arg SetCockpitD
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }

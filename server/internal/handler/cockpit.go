@@ -2228,6 +2228,10 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This meeting is retained by fixed artifact provenance or references; preserve its history")
 		return
 	}
+	if err := q.DeleteCockpitAgendaByMeeting(ctx, db.DeleteCockpitAgendaByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear meeting agenda")
+		return
+	}
 	if err := q.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
 		MeetingID:   id,
 		WorkspaceID: cc.workspaceID,
@@ -2531,6 +2535,11 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 
 	if err := lockCockpitBindings(ctx, qtx, cc.workspaceID); err != nil {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to lock cockpit bindings"}
+	}
+	if protected, err := qtx.HasCockpitLifecycleForBoard(ctx, db.HasCockpitLifecycleForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect meeting lifecycle"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting agendas or occurrence facts protect this board; open the meeting instead of replacing its identities"}
 	}
 	if protected, err := qtx.HasCockpitPlanningForBoard(ctx, db.HasCockpitPlanningForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect primary ownership and meeting actions"}

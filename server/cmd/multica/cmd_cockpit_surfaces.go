@@ -45,6 +45,11 @@ func newCockpitMeetingPageCommand() *cobra.Command {
 	}
 	return cmd
 }
+func newCockpitMeetingShowCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "show <meeting-id>", Args: exactArgs(1), Short: "Read one meeting and the first bounded pages of its relationships", RunE: func(cmd *cobra.Command, args []string) error { return runCockpitSurface(cmd, args, "meeting") }}
+	addCockpitSurfaceFlags(cmd, true, false)
+	return cmd
+}
 func newCockpitVersionCompareCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "compare <snapshot-id>", Args: exactArgs(1), Short: "Read one page of stable-UUID plan differences; does not restore or approve", RunE: func(cmd *cobra.Command, args []string) error { return runCockpitSurface(cmd, args, "diff") }}
 	addCockpitSurfaceFlags(cmd, false, true)
@@ -180,6 +185,43 @@ func cockpitSurfacePage(value map[string]any, limit int) bool {
 	cursor, present := value["next_cursor"]
 	text, isText := cursor.(string)
 	return ok && cockpitReceiptNumber(value["total"], float64(len(items))) && present && (cursor == nil || (isText && text != "" && len(text) <= 4096))
+}
+func confirmCockpitMeetingDetail(value map[string]any, ws, id string, q url.Values) bool {
+	if !confirmCockpitSurfaceContext(value, ws, q) {
+		return false
+	}
+	meeting, ok := value["meeting"].(map[string]any)
+	if !ok || cockpitNASReceiptUUID(meeting["id"]) != id || meeting["workspace_id"] != ws {
+		return false
+	}
+	if _, ok = value["scope_match"].(bool); !ok {
+		return false
+	}
+	for _, field := range []string{"title", "note", "nas_dir"} {
+		if _, ok = meeting[field].(string); !ok {
+			return false
+		}
+	}
+	if _, ok = cockpitSurfaceItems(value, "node_index", 20000); !ok {
+		return false
+	}
+	for _, kind := range []string{"linked_issues", "linked_nodes"} {
+		page, yes := value[kind].(map[string]any)
+		if !yes || !cockpitSurfacePage(page, 25) {
+			return false
+		}
+		key := "issue_id"
+		if kind == "linked_nodes" {
+			key = "node_id"
+		}
+		for _, item := range page["items"].([]any) {
+			row, yes := item.(map[string]any)
+			if !yes || row["meeting_id"] != id || cockpitNASReceiptUUID(row[key]) == "" {
+				return false
+			}
+		}
+	}
+	return true
 }
 func confirmCockpitPlanReceipt(value map[string]any, ws string, q url.Values) bool {
 	if !confirmCockpitSurfaceContext(value, ws, q) || value["complete"] != true {
@@ -343,6 +385,13 @@ func runCockpitSurface(cmd *cobra.Command, args []string, kind string) error {
 		}
 		endpoint = "/api/cockpit/snapshots/" + id + "/diff"
 	}
+	if kind == "meeting" {
+		id, err = cockpitWorkflowUUID(args[0], "meeting-id")
+		if err != nil {
+			return err
+		}
+		endpoint = "/api/cockpit/meetings/" + id
+	}
 	client, err := newAPIClient(cmd)
 	if err != nil {
 		return err
@@ -368,6 +417,8 @@ func runCockpitSurface(cmd *cobra.Command, args []string, kind string) error {
 		valid = confirmCockpitPlanReceipt(result, client.WorkspaceID, query)
 	case "meetings":
 		valid = confirmCockpitMeetingPage(result, client.WorkspaceID, query, size)
+	case "meeting":
+		valid = confirmCockpitMeetingDetail(result, client.WorkspaceID, id, query)
 	case "diff":
 		valid = confirmCockpitDiffReceipt(result, client.WorkspaceID, id, size)
 	}
@@ -383,6 +434,16 @@ func runCockpitSurface(cmd *cobra.Command, args []string, kind string) error {
 }
 func printCockpitSurfaceResult(kind string, value map[string]any, q url.Values) {
 	fmt.Fprintf(os.Stdout, "Workspace: %s\nScope: project=%s module=%s\n", strVal(value, "workspace_id"), scopeCLIValue(q.Get("project_id")), scopeCLIValue(q.Get("module_id")))
+	if kind == "meeting" {
+		meeting := value["meeting"].(map[string]any)
+		fmt.Fprintf(os.Stdout, "Meeting: %s (%s)\nNAS directory: %s\n", strVal(meeting, "title"), strVal(meeting, "id"), strVal(meeting, "nas_dir"))
+		fmt.Fprintln(os.Stdout, strVal(meeting, "note"))
+		for _, field := range []string{"linked_issues", "linked_nodes"} {
+			page := value[field].(map[string]any)
+			fmt.Fprintf(os.Stdout, "%s: %d of %.0f loaded\n", field, len(page["items"].([]any)), page["total"])
+		}
+		return
+	}
 	if kind == "context" {
 		if value["cockpit"] == nil {
 			fmt.Fprintln(os.Stdout, "No cockpit has been created.")

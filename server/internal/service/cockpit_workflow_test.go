@@ -711,10 +711,13 @@ func TestCockpitWorkflowReleaseHandoffConnectsAdoptedMinutesToSubmission(t *test
 				t.Fatal(err)
 			}
 			meetingID := util.UUIDToString(f.meeting)
-			for _, fragment := range []string{meetingID, "multica cockpit show --output json", "multica cockpit meeting workflow summary " + meetingID, "multica cockpit meeting workflow version " + meetingID, "multica cockpit meeting workflow submit " + meetingID, "--revision", "--submission-key", "--content-file", "--compact"} {
+			for _, fragment := range []string{meetingID, "multica cockpit meeting show " + meetingID + " --json", "multica cockpit meeting lifecycle show " + meetingID, "multica cockpit meeting agenda list " + meetingID, "multica cockpit meeting agenda show " + meetingID, "multica cockpit meeting agenda references " + meetingID, "multica cockpit meeting workflow summary " + meetingID, "multica cockpit meeting workflow version " + meetingID, "multica cockpit meeting workflow submit " + meetingID, "--revision", "--submission-key", "--content-file", "--compact"} {
 				if !task.HandoffNote.Valid || !strings.Contains(task.HandoffNote.String, fragment) {
 					t.Errorf("handoff does not provide %q: %q", fragment, task.HandoffNote.String)
 				}
+			}
+			if strings.Contains(task.HandoffNote.String, "multica cockpit show") {
+				t.Fatal("handoff still requests the unbounded board")
 			}
 			if strings.Contains(task.HandoffNote.String, "multica cockpit meeting workflow show ") {
 				t.Fatal("new handoff still requests unbounded version history")

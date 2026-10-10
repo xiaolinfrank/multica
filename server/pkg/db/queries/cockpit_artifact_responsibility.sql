@@ -71,7 +71,7 @@ SELECT * FROM cockpit_artifact_meeting_reference WHERE workspace_id=sqlc.arg(wor
 SELECT count(*) FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND artifact_id=$2;
 
 -- name: ListCockpitMeetingArtifactReferences :many
-SELECT r.*,a.title AS artifact_title,v.version_number,v.content_hash FROM cockpit_artifact_meeting_reference r
+SELECT r.*,a.title AS artifact_title,v.version_number,v.content_hash,v.decision AS version_decision FROM cockpit_artifact_meeting_reference r
 JOIN cockpit_artifact a ON a.workspace_id=r.workspace_id AND a.id=r.artifact_id
 JOIN cockpit_artifact_version v ON v.workspace_id=r.workspace_id AND v.artifact_id=r.artifact_id AND v.id=r.version_id
 WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id)

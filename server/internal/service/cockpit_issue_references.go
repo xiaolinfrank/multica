@@ -23,15 +23,19 @@ type CockpitIssueNodeReference struct {
 	CanUnlink bool   `json:"can_unlink"`
 }
 type CockpitIssueMeetingReference struct {
-	MeetingID     string   `json:"meeting_id"`
-	Code          string   `json:"code"`
-	Title         string   `json:"title"`
-	MeetDate      string   `json:"meet_date"`
-	Available     bool     `json:"available"`
-	Role          string   `json:"role"`
-	Roles         []string `json:"roles"`
-	RequiredRoles []string `json:"required_roles"`
-	CanUnlink     bool     `json:"can_unlink"`
+	HasDirectReference bool     `json:"has_direct_reference"`
+	HasAgendaReference bool     `json:"has_agenda_reference"`
+	AgendaID           *string  `json:"agenda_id"`
+	AgendaTotal        int64    `json:"agenda_total"`
+	MeetingID          string   `json:"meeting_id"`
+	Code               string   `json:"code"`
+	Title              string   `json:"title"`
+	MeetDate           string   `json:"meet_date"`
+	Available          bool     `json:"available"`
+	Role               string   `json:"role"`
+	Roles              []string `json:"roles"`
+	RequiredRoles      []string `json:"required_roles"`
+	CanUnlink          bool     `json:"can_unlink"`
 }
 type CockpitIssueReferencePage[T any] struct {
 	WorkspaceID string  `json:"workspace_id"`

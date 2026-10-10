@@ -10,15 +10,16 @@ VALUES($1,$2,$3,$4,$5) RETURNING *;
 
 -- name: SetCockpitMeetingReadiness :one
 UPDATE cockpit_meeting_work_package SET
- ended_at=CASE WHEN sqlc.arg('ended')::bool THEN COALESCE(ended_at,now()) ELSE ended_at END,
+ materials_confirmed_at=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN now() ELSE materials_confirmed_at END,
+ materials_confirmed_by=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN sqlc.arg('actor_id')::uuid ELSE materials_confirmed_by END,
  materials_ready=COALESCE(sqlc.narg('materials_ready')::bool,materials_ready),
  revision=revision+1,updated_at=now()
 WHERE workspace_id=$1 AND meeting_id=$2 AND revision=sqlc.arg('expected_revision')::bigint RETURNING *;
 
 -- name: ReleaseCockpitMeetingWorkPackage :one
 UPDATE cockpit_meeting_work_package SET released_at=now(),revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 AND released_at IS NULL
- AND ended_at IS NOT NULL AND materials_ready RETURNING *;
+WHERE cockpit_meeting_work_package.workspace_id=$1 AND cockpit_meeting_work_package.meeting_id=$2 AND cockpit_meeting_work_package.revision=$3 AND cockpit_meeting_work_package.released_at IS NULL
+ AND EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=cockpit_meeting_work_package.workspace_id AND m.id=cockpit_meeting_work_package.meeting_id AND m.ended_at IS NOT NULL) AND materials_ready RETURNING *;
 
 -- name: SetCockpitMeetingReleaseTask :exec
 UPDATE cockpit_meeting_work_package SET release_task_id=$3 WHERE workspace_id=$1 AND meeting_id=$2;

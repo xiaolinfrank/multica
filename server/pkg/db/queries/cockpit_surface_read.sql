@@ -94,15 +94,22 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  t.valid AND (n.project_id IS NULL OR t.project IS NULL OR n.project_id=t.project)
  AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
  FROM cockpit_node n JOIN tree t ON n.parent_id=t.id CROSS JOIN args x WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
+), meeting_node_links AS NOT MATERIALIZED (
+ SELECT l.workspace_id,l.meeting_id,l.node_id FROM cockpit_meeting_node l,args x WHERE l.workspace_id=x.ws
+ UNION SELECT a.workspace_id,a.meeting_id,a.node_id FROM cockpit_meeting_agenda a,args x WHERE a.workspace_id=x.ws AND a.removed_at IS NULL AND a.node_id IS NOT NULL
+), meeting_issue_links AS NOT MATERIALIZED (
+ SELECT l.workspace_id,l.meeting_id,l.issue_id FROM cockpit_meeting_issue l,args x WHERE l.workspace_id=x.ws
+ UNION SELECT r.workspace_id,r.meeting_id,r.target_id FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id CROSS JOIN args x
+ WHERE r.workspace_id=x.ws AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL
 ), node_meetings AS MATERIALIZED (
- SELECT DISTINCT l.meeting_id FROM cockpit_meeting_node l CROSS JOIN args x LEFT JOIN tree t ON t.id=l.node_id
+ SELECT DISTINCT l.meeting_id FROM meeting_node_links l CROSS JOIN args x LEFT JOIN tree t ON t.id=l.node_id
  WHERE cardinality(x.node_ids)>0 AND l.workspace_id=x.ws AND (l.node_id=ANY(x.node_ids) OR t.path && x.node_ids)
 ), scope_meetings AS MATERIALIZED (
- SELECT l.meeting_id FROM cockpit_meeting_node l CROSS JOIN args x JOIN tree t ON t.id=l.node_id
+ SELECT l.meeting_id FROM meeting_node_links l CROSS JOIN args x JOIN tree t ON t.id=l.node_id
  WHERE (x.project IS NOT NULL OR x.module IS NOT NULL) AND l.workspace_id=x.ws AND t.valid
  AND (x.project IS NULL OR t.project=x.project) AND (x.module IS NULL OR t.module=x.module)
  UNION
- SELECT l.meeting_id FROM cockpit_meeting_issue l CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=l.issue_id
+ SELECT l.meeting_id FROM meeting_issue_links l CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=l.issue_id
  WHERE (x.project IS NOT NULL OR x.module IS NOT NULL) AND l.workspace_id=x.ws
  AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
  UNION
@@ -127,13 +134,14 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT id,btrim(string_agg(ch,'' ORDER BY pos)) AS value FROM party_chars GROUP BY id,segment
 ), workflow_facts AS MATERIALIZED (
  SELECT w.meeting_id,
- CASE WHEN w.released_at IS NULL THEN CASE WHEN w.ended_at IS NULL THEN 'waiting_meeting' WHEN w.materials_ready AND i.status='backlog' THEN 'release_ready' WHEN w.materials_ready THEN 'restore_backlog' ELSE 'materials_needed' END
+ CASE WHEN w.released_at IS NULL THEN CASE WHEN m.ended_at IS NULL THEN 'waiting_meeting' WHEN w.materials_ready AND i.status='backlog' THEN 'release_ready' WHEN w.materials_ready THEN 'restore_backlog' ELSE 'materials_needed' END
  WHEN v.decision='pending' THEN CASE WHEN EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=w.workspace_id AND u.user_id=v.reviewer_id) THEN 'review_pending' ELSE 'reviewer_missing' END
  WHEN v.decision='approved' AND v.published_at IS NULL THEN 'publish_ready'
  WHEN v.published_at IS NOT NULL AND w.published_version_id=v.id THEN 'published'
  WHEN NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=w.workspace_id AND u.user_id=w.reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision IN ('changes_requested','rejected') THEN 'minutes_rework' ELSE 'minutes_needed' END AS workflow_stage
  FROM cockpit_meeting_work_package w CROSS JOIN args x
+ JOIN cockpit_meeting m ON m.workspace_id=w.workspace_id AND m.id=w.meeting_id
  LEFT JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id
  LEFT JOIN cockpit_minutes_version v ON v.workspace_id=w.workspace_id AND v.meeting_id=w.meeting_id AND v.id=w.current_version_id
  WHERE w.workspace_id=x.ws
@@ -155,8 +163,8 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  -- Match the UI's bracket-aware party tokenizer, including legacy separators.
  AND (cardinality(x.parties)=0 OR m.id IN (SELECT token.id FROM party_tokens token WHERE token.value=ANY(x.parties)))
  AND (NOT 'links'=ANY(x.only_flags)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue linked ON linked.workspace_id=l.workspace_id AND linked.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN cockpit_node linked ON linked.workspace_id=l.workspace_id AND linked.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id))
+ OR EXISTS(SELECT 1 FROM meeting_issue_links l JOIN issue linked ON linked.workspace_id=l.workspace_id AND linked.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id)
+ OR EXISTS(SELECT 1 FROM meeting_node_links l JOIN cockpit_node linked ON linked.workspace_id=l.workspace_id AND linked.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id))
 ), filtered AS MATERIALIZED (
  SELECT c.*,(COALESCE(c.meet_date::text,'0001-01-01')||'|'||c.id::text) AS sort_key
  FROM candidates c,args x WHERE (x.stage='' OR c.workflow_stage=x.stage)
@@ -164,9 +172,9 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT f.* FROM filtered f,args x WHERE x.cursor_key='' OR f.sort_key<x.cursor_key ORDER BY f.sort_key DESC LIMIT (SELECT page_size+1 FROM args)
 ), cards AS (
  SELECT m.id,m.meet_date,m.time_range,to_char(m.start_time,'HH24:MI') AS start_time,to_char(m.end_time,'HH24:MI') AS end_time,
- m.title,m.code,m.kind,m.status,m.track,m.parties,m.organizer,m.location,m.attendees,m.meet_no,m.link,m.nas_dir,m.detected,
- (SELECT count(*) FROM cockpit_meeting_issue l JOIN issue linked ON linked.workspace_id=l.workspace_id AND linked.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS issue_count,
- (SELECT count(*) FROM cockpit_meeting_node l JOIN cockpit_node linked ON linked.workspace_id=l.workspace_id AND linked.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS node_count,
+ m.title,m.code,m.kind,m.status,m.occurrence_state,m.ended_at,m.actual_started_at,m.actual_ended_at,m.track,m.parties,m.organizer,m.location,m.attendees,m.meet_no,m.link,m.nas_dir,m.detected,
+ (SELECT count(*) FROM meeting_issue_links l JOIN issue linked ON linked.workspace_id=l.workspace_id AND linked.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS issue_count,
+ (SELECT count(*) FROM meeting_node_links l JOIN cockpit_node linked ON linked.workspace_id=l.workspace_id AND linked.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS node_count,
  p.workflow_enabled,p.workflow_stage,p.sort_key,
  left(COALESCE(NULLIF(btrim(m.decisions),''),NULLIF(btrim(m.actions),''),NULLIF(btrim(m.minutes),''),NULLIF(btrim(m.note),''),''),200) AS display_excerpt
  FROM page p CROSS JOIN args x JOIN cockpit_meeting m ON m.id=p.id AND m.workspace_id=x.ws
@@ -198,19 +206,28 @@ SELECT count(*) FROM cockpit_node WHERE workspace_id=sqlc.arg('workspace_id')::u
 WITH args AS (
  SELECT sqlc.arg('workspace_id')::uuid AS ws,sqlc.arg('object_id')::uuid AS object_id,sqlc.arg('kind')::text AS kind,
  sqlc.narg('cursor_id')::uuid AS cursor_id,sqlc.arg('cursor_position')::double precision AS cursor_position,sqlc.arg('page_size')::int AS page_size
+), agenda_refs AS MATERIALIZED (
+ SELECT r.target_id AS issue_id,min(r.agenda_id::text)::uuid AS agenda_id,count(DISTINCT r.agenda_id)::bigint AS agenda_total
+ FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id CROSS JOIN args x
+ WHERE x.kind='meeting_issues' AND r.workspace_id=x.ws AND r.meeting_id=x.object_id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL GROUP BY r.target_id
+), meeting_issue_ids AS (
+ SELECT l.issue_id FROM cockpit_meeting_issue l,args x WHERE x.kind='meeting_issues' AND l.workspace_id=x.ws AND l.meeting_id=x.object_id
+ UNION SELECT issue_id FROM agenda_refs
 ), source AS (
  SELECT p.id,p.position,p.amount AS amount,to_jsonb(p) AS item FROM cockpit_payment p,args x
  WHERE x.kind='payments' AND p.workspace_id=x.ws AND p.node_id=x.object_id
  UNION ALL
- SELECT l.issue_id,l.position,0::numeric,jsonb_build_object('meeting_id',l.meeting_id,'issue_id',l.issue_id,'position',l.position,
- 'role',l.role,'roles',l.roles,'issue_number',i.number,'issue_identifier',ws.issue_prefix||'-'||i.number::text,'issue_title',i.title,'issue_status',i.status,
+ SELECT mi.issue_id,COALESCE(l.position,0)::double precision,0::numeric,jsonb_build_object('meeting_id',x.object_id,'issue_id',mi.issue_id,'position',COALESCE(l.position,0),
+ 'role',COALESCE(l.role,''),'roles',COALESCE(l.roles,ARRAY['preparation']::text[]),'has_direct_reference',l.issue_id IS NOT NULL,'has_agenda_reference',ar.issue_id IS NOT NULL,'agenda_id',ar.agenda_id,'agenda_total',COALESCE(ar.agenda_total,0),'issue_number',i.number,'issue_identifier',ws.issue_prefix||'-'||i.number::text,'issue_title',i.title,'issue_status',i.status,
  'required_roles',array_remove(ARRAY[
- CASE WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=x.ws AND w.meeting_id=x.object_id AND w.minutes_issue_id=l.issue_id) THEN 'minutes' END,
- CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=x.ws AND v.meeting_id=x.object_id AND v.review_issue_id=l.issue_id)
- OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=x.ws AND h.meeting_id=x.object_id AND (h.from_review_issue_id=l.issue_id OR h.to_review_issue_id=l.issue_id)) THEN 'review' END
+ CASE WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=x.ws AND w.meeting_id=x.object_id AND w.minutes_issue_id=mi.issue_id) THEN 'minutes' END,
+ CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=x.ws AND v.meeting_id=x.object_id AND v.review_issue_id=mi.issue_id)
+ OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=x.ws AND h.meeting_id=x.object_id AND (h.from_review_issue_id=mi.issue_id OR h.to_review_issue_id=mi.issue_id)) THEN 'review' END
  ]::text[],NULL)::text[])
- FROM cockpit_meeting_issue l CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=l.issue_id JOIN workspace ws ON ws.id=x.ws
- WHERE x.kind='meeting_issues' AND l.workspace_id=x.ws AND l.meeting_id=x.object_id
+ FROM meeting_issue_ids mi CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=mi.issue_id JOIN workspace ws ON ws.id=x.ws
+ LEFT JOIN cockpit_meeting_issue l ON l.workspace_id=x.ws AND l.meeting_id=x.object_id AND l.issue_id=mi.issue_id
+ LEFT JOIN agenda_refs ar ON ar.issue_id=mi.issue_id
+ WHERE x.kind='meeting_issues'
  UNION ALL
  SELECT l.node_id,l.position,0::numeric,jsonb_build_object('meeting_id',l.meeting_id,'node_id',l.node_id,'position',l.position,'code',n.code,'name',n.name)
  FROM cockpit_meeting_node l CROSS JOIN args x JOIN cockpit_node n ON n.workspace_id=x.ws AND n.id=l.node_id
@@ -224,14 +241,19 @@ SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(p.item ORDER BY p.p
  'cursor_items',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.id,'position',p.position) ORDER BY p.position,p.id) FROM page p),'[]'::jsonb))::jsonb AS payload;
 
 -- name: CockpitMeetingMatchesSurfaceScope :one
-WITH RECURSIVE ancestors AS (
+WITH RECURSIVE meeting_nodes AS (
+ SELECT l.node_id FROM cockpit_meeting_node l WHERE l.workspace_id=sqlc.arg('workspace_id')::uuid AND l.meeting_id=sqlc.arg('meeting_id')::uuid
+ UNION SELECT a.node_id FROM cockpit_meeting_agenda a WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND a.meeting_id=sqlc.arg('meeting_id')::uuid AND a.removed_at IS NULL AND a.node_id IS NOT NULL
+), ancestors AS (
  SELECT n.id,n.parent_id,n.project_id,n.module_id,ARRAY[n.id] AS path
- FROM cockpit_meeting_node l JOIN cockpit_node n ON n.id=l.node_id AND n.workspace_id=l.workspace_id
- WHERE l.workspace_id=sqlc.arg('workspace_id')::uuid AND l.meeting_id=sqlc.arg('meeting_id')::uuid
+ FROM meeting_nodes l JOIN cockpit_node n ON n.id=l.node_id AND n.workspace_id=sqlc.arg('workspace_id')::uuid
  UNION ALL
  SELECT n.id,n.parent_id,n.project_id,n.module_id,a.path||n.id FROM cockpit_node n JOIN ancestors a ON a.parent_id=n.id
  WHERE n.workspace_id=sqlc.arg('workspace_id')::uuid AND NOT n.id=ANY(a.path)
 ), related_issues AS (
+ SELECT i.project_id,i.module_id FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id
+ WHERE r.workspace_id=sqlc.arg('workspace_id')::uuid AND r.meeting_id=sqlc.arg('meeting_id')::uuid AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL
+ UNION ALL
  SELECT i.project_id,i.module_id FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
  WHERE l.workspace_id=sqlc.arg('workspace_id')::uuid AND l.meeting_id=sqlc.arg('meeting_id')::uuid
  UNION ALL

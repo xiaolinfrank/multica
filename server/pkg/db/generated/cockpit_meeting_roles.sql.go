@@ -112,7 +112,7 @@ func (q *Queries) GetCockpitMeetingTaskIssue(ctx context.Context, arg GetCockpit
 }
 
 const lockCockpitMeetingForWork = `-- name: LockCockpitMeetingForWork :one
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by FROM cockpit_meeting
 WHERE id = $1::uuid AND workspace_id = $2::uuid
 FOR UPDATE
 `
@@ -152,6 +152,18 @@ func (q *Queries) LockCockpitMeetingForWork(ctx context.Context, arg LockCockpit
 		&i.NasDir,
 		&i.Detected,
 		&i.Track,
+		&i.LifecycleRevision,
+		&i.AgendaRevision,
+		&i.OccurrenceState,
+		&i.StartedConfirmedAt,
+		&i.StartedConfirmedBy,
+		&i.EndedAt,
+		&i.EndedBy,
+		&i.EndedSource,
+		&i.ActualStartedAt,
+		&i.ActualEndedAt,
+		&i.LifecycleUpdatedAt,
+		&i.LifecycleUpdatedBy,
 	)
 	return i, err
 }

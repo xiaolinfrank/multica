@@ -31,10 +31,36 @@ func TestCockpitReadScale(t *testing.T) {
 	}
 	testURL := os.Getenv("TEST_DATABASE_URL")
 	parsed, err := url.Parse(testURL)
-	if testURL == "" || testURL != os.Getenv("DATABASE_URL") || err != nil || !strings.HasSuffix(parsed.Path, "_test") {
+	if testURL == "" || testURL != os.Getenv("DATABASE_URL") || err != nil || !strings.HasSuffix(parsed.Path, "_test") || os.Getenv("USER") != "fosun_agent_3" {
 		t.Fatal("scale fixture requires DATABASE_URL to equal the dedicated TEST_DATABASE_URL and a database name ending in _test")
 	}
+	var finalFixture *principalFixture
+	var finalizeScale func()
+	var cleanupStarted time.Time
+	var cleanupComplete bool
+	t.Cleanup(func() {
+		cleanupComplete = finalFixture != nil
+		if finalFixture != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			if _, e := finalFixture.Pool.Exec(cleanupCtx, "DELETE FROM search_index_change WHERE workspace_id=$1", finalFixture.WorkspaceID); e != nil {
+				t.Errorf("final owned search log cleanup: %v", e)
+				cleanupComplete = false
+			}
+			for _, table := range []string{"issue", "cockpit_node", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference", "search_index_change"} {
+				var count int
+				if e := finalFixture.Pool.QueryRow(cleanupCtx, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", finalFixture.WorkspaceID).Scan(&count); e != nil || count != 0 {
+					t.Errorf("final cleanup %s=%d: %v", table, count, e)
+					cleanupComplete = false
+				}
+			}
+		}
+		if finalizeScale != nil {
+			finalizeScale()
+		}
+	})
 	f, owner := newPrincipalFixture(t)
+	finalFixture = &f
 	t.Logf("isolated scale fixture workspace_id=%s", f.WorkspaceID)
 	ctx := context.Background()
 	ws, actor := parseTestUUID(t, f.WorkspaceID), parseTestUUID(t, owner)
@@ -55,15 +81,16 @@ func TestCockpitReadScale(t *testing.T) {
 	}
 	// Register teardown before bulk insertion, including partially seeded tests.
 	t.Cleanup(func() {
-		for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node"} {
+		for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference"} {
 			if n := f.Count(t, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", ws); n != 0 {
 				t.Errorf("fixture cleanup left %d %s rows", n, table)
 			}
 		}
 	})
-	for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node"} {
+	for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference"} {
 		f.Cleanup(t, "DELETE FROM "+table+" WHERE workspace_id=$1", ws)
 	}
+	t.Cleanup(func() { cleanupStarted = time.Now() })
 	seedStart := time.Now()
 	rows := make([][]any, 0, 3330)
 	for i, id := range projectNodes {
@@ -96,8 +123,25 @@ func TestCockpitReadScale(t *testing.T) {
 	// Duplicate provenance via an ancestor must not duplicate displayed meetings.
 	f.Exec(t, `INSERT INTO cockpit_meeting_node(workspace_id,meeting_id,node_id)
  SELECT $1,l.meeting_id,n.parent_id FROM cockpit_meeting_node l JOIN cockpit_node n ON n.id=l.node_id AND n.workspace_id=$1 WHERE l.workspace_id=$1`, ws)
-	f.Exec(t, "ANALYZE cockpit_issue_primary, cockpit_meeting, cockpit_meeting_node")
-	for table, expected := range map[string]int{"project": 30, "module": 300, "cockpit_node": 3330, "issue": 100000, "cockpit_issue_primary": 100000, "cockpit_meeting": 20000, "cockpit_meeting_node": 40000} {
+	var agendaMeeting, agendaOnlyMeeting, agendaID pgtype.UUID
+	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting WHERE workspace_id=$1 AND code='SCALE-1'", ws).Scan(&agendaMeeting); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting WHERE workspace_id=$1 AND code='SCALE-2'", ws).Scan(&agendaOnlyMeeting); e != nil {
+		t.Fatal(e)
+	}
+	f.Exec(t, `INSERT INTO cockpit_meeting_agenda(id,workspace_id,meeting_id,title,purposes,notes,node_id,sort_order,created_by,updated_by)
+ SELECT gen_random_uuid(),$1,$2,'Scale agenda '||lpad(g::text,4,'0'),ARRAY['planning'],repeat('A',32768),$3,g,$4,$4 FROM generate_series(1,1000) g`, ws, agendaMeeting, leaves[0], actor)
+	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting_agenda WHERE workspace_id=$1 AND meeting_id=$2 AND sort_order=1", ws, agendaMeeting).Scan(&agendaID); e != nil {
+		t.Fatal(e)
+	}
+	f.Exec(t, `INSERT INTO cockpit_meeting_agenda(id,workspace_id,meeting_id,title,node_id,sort_order,created_by,updated_by)
+ VALUES(gen_random_uuid(),$1,$2,'Agenda-only meeting provenance',$3,1,$4,$4)`, ws, agendaOnlyMeeting, leaves[1], actor)
+	f.Exec(t, "DELETE FROM cockpit_meeting_node WHERE workspace_id=$1 AND meeting_id=$2", ws, agendaOnlyMeeting)
+	f.Exec(t, `INSERT INTO cockpit_meeting_agenda_reference(id,workspace_id,meeting_id,agenda_id,kind,target_id,purpose,created_by)
+ SELECT gen_random_uuid(),$1,$2,$3,'issue',i.id,'preparation',$4 FROM issue i WHERE i.workspace_id=$1 AND i.number<=1000`, ws, agendaMeeting, agendaID, actor)
+	f.Exec(t, "ANALYZE cockpit_issue_primary, cockpit_meeting, cockpit_meeting_node, cockpit_meeting_agenda, cockpit_meeting_agenda_reference")
+	for table, expected := range map[string]int{"project": 30, "module": 300, "cockpit_node": 3330, "issue": 100000, "cockpit_issue_primary": 100000, "cockpit_meeting": 20000, "cockpit_meeting_node": 39998, "cockpit_meeting_agenda": 1001, "cockpit_meeting_agenda_reference": 1000} {
 		if n := f.Count(t, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", ws); n != expected {
 			t.Fatalf("fixture %s=%d, want %d", table, n, expected)
 		}
@@ -114,10 +158,36 @@ func TestCockpitReadScale(t *testing.T) {
 	}
 	projectNodeID := util.UUIDToString(projectNodes[0])
 	markerRows[0] = CockpitPlanMarkerRow{RowKey: projectNodeID, NodeIDs: []string{projectNodeID}}
+	agendaRead := CockpitLifecycleRead{WorkspaceID: ws, MeetingID: agendaMeeting, ActorID: actor, Human: true}
+	var agendaCursor, referenceCursor *string
 	checks := []struct {
 		name string
 		read func(context.Context) (any, error)
 	}{
+		{"agenda_header", func(ctx context.Context) (any, error) { return svc.GetCockpitMeetingLifecycle(ctx, agendaRead) }},
+		{"agenda_metadata25", func(ctx context.Context) (any, error) {
+			out, e := svc.ListCockpitMeetingAgenda(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, PageSize: 25})
+			agendaCursor = out.NextCursor
+			return out, e
+		}},
+		{"agenda_metadata_next25", func(ctx context.Context) (any, error) {
+			if agendaCursor == nil {
+				return nil, fmt.Errorf("missing agenda continuation")
+			}
+			return svc.ListCockpitMeetingAgenda(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, PageSize: 25, Cursor: *agendaCursor})
+		}},
+		{"agenda_detail_32k", func(ctx context.Context) (any, error) { return svc.GetCockpitMeetingAgenda(ctx, agendaRead, agendaID) }},
+		{"agenda_references25", func(ctx context.Context) (any, error) {
+			out, e := svc.ListCockpitMeetingAgendaReferences(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, AgendaID: agendaID, PageSize: 25})
+			referenceCursor = out.NextCursor
+			return out, e
+		}},
+		{"agenda_references_next25", func(ctx context.Context) (any, error) {
+			if referenceCursor == nil {
+				return nil, fmt.Errorf("missing reference continuation")
+			}
+			return svc.ListCockpitMeetingAgendaReferences(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, AgendaID: agendaID, PageSize: 25, Cursor: *referenceCursor})
+		}},
 		{"context_workspace", func(ctx context.Context) (any, error) { return svc.GetCockpitSurfaceContext(ctx, p) }},
 		{"plan_workspace", func(ctx context.Context) (any, error) { return svc.GetCockpitPlanSurface(ctx, p) }},
 		{"plan_project", func(ctx context.Context) (any, error) { return svc.GetCockpitPlanSurface(ctx, projectScope) }},
@@ -153,16 +223,36 @@ func TestCockpitReadScale(t *testing.T) {
 		MaximumPayloadBytes int       `json:"maximum_payload_bytes,omitempty"`
 	}
 	report := struct {
-		Fixture        map[string]int `json:"fixture"`
-		SeedMS         float64        `json:"seed_ms"`
-		CacheNote      string         `json:"cache_note"`
-		StatisticsNote string         `json:"statistics_note"`
-		Unverified     []string       `json:"unverified"`
-		Measurements   []measurement  `json:"measurements"`
-	}{map[string]int{"projects": 30, "modules": 300, "l3": 3000, "issues": 100000, "meetings": 20000}, float64(time.Since(seedStart).Microseconds()) / 1000,
-		"First read is the first call in this test, not an OS/PostgreSQL cache flush. Latency covers service reads and JSON encoding; excludes HTTP, browser and transport.",
+		Fixture         map[string]int `json:"fixture"`
+		SeedMS          float64        `json:"seed_ms"`
+		CacheNote       string         `json:"cache_note"`
+		StatisticsNote  string         `json:"statistics_note"`
+		Unverified      []string       `json:"unverified"`
+		Measurements    []measurement  `json:"measurements"`
+		Failed          bool           `json:"failed"`
+		CleanupComplete bool           `json:"cleanup_complete"`
+		CleanupMS       float64        `json:"cleanup_ms"`
+	}{map[string]int{"projects": 30, "modules": 300, "l3": 3000, "issues": 100000, "meetings": 20000, "agenda_items": 1001, "largest_meeting_agenda": 1000, "agenda_note_bytes": 32768, "agenda_references": 1000, "agenda_only_meetings": 1, "direct_meeting_links": 39998}, float64(time.Since(seedStart).Microseconds()) / 1000,
+		"First observation is the first measured call of each scenario; earlier scenarios and seeding may warm shared pages. This is not an OS/PostgreSQL cache flush. Latency covers service reads and JSON encoding; excludes HTTP, browser and transport.",
 		"Fixture tables are explicitly ANALYZEd after bulk insertion, before primary integrity checks and before measurements. No JIT/work_mem/plan-cache configuration changes.",
-		[]string{"200000 artifact versions: measured separately by TestCockpitArtifactReadScale, not part of this fixture", "concurrent users", "large populations of enabled meeting work packages"}, nil}
+		[]string{"200000 artifact versions: measured separately by TestCockpitArtifactReadScale, not part of this fixture", "concurrent users", "large populations of enabled meeting work packages"}, nil, false, false, 0}
+	finalizeScale = func() {
+		report.Failed = t.Failed()
+		report.CleanupComplete = cleanupComplete
+		if !cleanupStarted.IsZero() {
+			report.CleanupMS = float64(time.Since(cleanupStarted).Microseconds()) / 1000
+		}
+		body, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("COCKPIT_SCALE_REPORT=%s", body)
+		if path := os.Getenv("MULTICA_COCKPIT_SCALE_REPORT"); path != "" {
+			if err := os.WriteFile(path, body, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
 			m := measurement{Name: check.name}
@@ -240,21 +330,47 @@ func TestCockpitReadScale(t *testing.T) {
 			captureCockpitMarkerPlans(t, f.Pool, dir, ws, markerRows)
 		})
 	}
-	body, err := json.MarshalIndent(report, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("COCKPIT_SCALE_REPORT=%s", body)
-	if path := os.Getenv("MULTICA_COCKPIT_SCALE_REPORT"); path != "" {
-		if err := os.WriteFile(path, body, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
+
 }
 
 func validateCockpitScaleRead(t *testing.T, name string, value any) {
 	t.Helper()
 	switch v := value.(type) {
+	case CockpitMeetingLifecycleHeader:
+		if v.AgendaTotal != 1000 || v.WorkflowEnabled {
+			t.Fatalf("agenda header total=%d workflow=%v", v.AgendaTotal, v.WorkflowEnabled)
+		}
+	case CockpitAgendaPage:
+		if v.Total != 1000 || len(v.Items) != 25 || v.NextCursor == nil {
+			t.Fatalf("agenda metadata not bounded: total%d items%d", v.Total, len(v.Items))
+		}
+		raw, _ := json.Marshal(v)
+		if strings.Contains(string(raw), strings.Repeat("A", 64)) {
+			t.Fatal("agenda metadata includes working notes")
+		}
+		ids := map[string]bool{}
+		for _, a := range v.Items {
+			if ids[a.ID] {
+				t.Fatal("duplicate agenda identity")
+			}
+			ids[a.ID] = true
+		}
+	case CockpitAgendaDetail:
+		if len(v.Notes) != 32768 {
+			t.Fatalf("single agenda body bytes=%d", len(v.Notes))
+		}
+	case CockpitAgendaReferencePage:
+		if v.Total != 1000 || len(v.Items) != 25 || v.NextCursor == nil {
+			t.Fatalf("agenda references not bounded: total%d items%d", v.Total, len(v.Items))
+		}
+		ids := map[string]bool{}
+		for _, r := range v.Items {
+			if ids[r.ID] || !r.Available || r.Issue == nil {
+				t.Fatal("invalid bounded preparation metadata")
+			}
+			ids[r.ID] = true
+		}
+
 	case CockpitSurfacePlan:
 		expected := map[string]int64{"plan_workspace": 3330, "plan_project": 111, "plan_module": 12}[name]
 		if !v.Complete || v.Counts.Nodes != expected || v.Counts.IndexNodes != 3330 {

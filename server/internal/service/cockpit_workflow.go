@@ -407,13 +407,17 @@ func (s *IssueService) SetCockpitMeetingReadiness(ctx context.Context, p Cockpit
 	if err := requireCockpitWorkflowManager(ctx, q, work, p.ActorID); err != nil {
 		return err
 	}
-	if p.Ended != nil && !*p.Ended && work.EndedAt.Valid {
+	meeting, err := q.GetCockpitMeetingLifecycle(ctx, db.GetCockpitMeetingLifecycleParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
+	if err != nil {
+		return cockpitWorkflowError(err)
+	}
+	if p.Ended != nil && !*p.Ended && meeting.EndedAt.Valid {
 		return fmt.Errorf("%w: an ended meeting cannot be reopened here", ErrCockpitWorkflowInput)
 	}
 	if p.Ended == nil && p.MaterialsReady == nil {
 		return ErrCockpitWorkflowInput
 	}
-	same := (p.Ended == nil || *p.Ended == work.EndedAt.Valid) && (p.MaterialsReady == nil || *p.MaterialsReady == work.MaterialsReady)
+	same := (p.Ended == nil || *p.Ended == meeting.EndedAt.Valid) && (p.MaterialsReady == nil || *p.MaterialsReady == work.MaterialsReady)
 	if same {
 		return nil
 	}
@@ -427,7 +431,13 @@ func (s *IssueService) SetCockpitMeetingReadiness(ctx context.Context, p Cockpit
 	if p.MaterialsReady != nil {
 		ready = pgtype.Bool{Bool: *p.MaterialsReady, Valid: true}
 	}
-	_, err = q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, Ended: p.Ended != nil && *p.Ended, MaterialsReady: ready, ExpectedRevision: p.ExpectedRevision})
+	if p.Ended != nil && *p.Ended && !meeting.EndedAt.Valid {
+		_, err = applyMeetingOccurrence(ctx, q, CockpitLifecycleRead{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ActorID: p.ActorID, Human: true}, meeting, CockpitOccurrenceInput{CockpitLifecycleCommandInput: CockpitLifecycleCommandInput{ExpectedRevision: meeting.LifecycleRevision}, Transition: "end"})
+		if err != nil {
+			return err
+		}
+	}
+	_, err = q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ActorID: p.ActorID, MaterialsReady: ready, ExpectedRevision: p.ExpectedRevision})
 	if err != nil {
 		return err
 	}

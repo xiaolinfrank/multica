@@ -863,7 +863,7 @@ func (q *Queries) ListCockpitArtifactReviewerHandoffs(ctx context.Context, arg L
 }
 
 const listCockpitMeetingArtifactReferences = `-- name: ListCockpitMeetingArtifactReferences :many
-SELECT r.id, r.workspace_id, r.artifact_id, r.version_id, r.meeting_id, r.target_label, r.purpose, r.reference_key, r.request_hash, r.created_by, r.created_at, r.removed_by, r.removed_at,a.title AS artifact_title,v.version_number,v.content_hash FROM cockpit_artifact_meeting_reference r
+SELECT r.id, r.workspace_id, r.artifact_id, r.version_id, r.meeting_id, r.target_label, r.purpose, r.reference_key, r.request_hash, r.created_by, r.created_at, r.removed_by, r.removed_at,a.title AS artifact_title,v.version_number,v.content_hash,v.decision AS version_decision FROM cockpit_artifact_meeting_reference r
 JOIN cockpit_artifact a ON a.workspace_id=r.workspace_id AND a.id=r.artifact_id
 JOIN cockpit_artifact_version v ON v.workspace_id=r.workspace_id AND v.artifact_id=r.artifact_id AND v.id=r.version_id
 WHERE r.workspace_id=$1 AND r.meeting_id=$2
@@ -881,22 +881,23 @@ type ListCockpitMeetingArtifactReferencesParams struct {
 }
 
 type ListCockpitMeetingArtifactReferencesRow struct {
-	ID            pgtype.UUID        `json:"id"`
-	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
-	ArtifactID    pgtype.UUID        `json:"artifact_id"`
-	VersionID     pgtype.UUID        `json:"version_id"`
-	MeetingID     pgtype.UUID        `json:"meeting_id"`
-	TargetLabel   string             `json:"target_label"`
-	Purpose       string             `json:"purpose"`
-	ReferenceKey  pgtype.UUID        `json:"reference_key"`
-	RequestHash   string             `json:"request_hash"`
-	CreatedBy     pgtype.UUID        `json:"created_by"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	RemovedBy     pgtype.UUID        `json:"removed_by"`
-	RemovedAt     pgtype.Timestamptz `json:"removed_at"`
-	ArtifactTitle string             `json:"artifact_title"`
-	VersionNumber int32              `json:"version_number"`
-	ContentHash   pgtype.Text        `json:"content_hash"`
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	ArtifactID      pgtype.UUID        `json:"artifact_id"`
+	VersionID       pgtype.UUID        `json:"version_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	TargetLabel     string             `json:"target_label"`
+	Purpose         string             `json:"purpose"`
+	ReferenceKey    pgtype.UUID        `json:"reference_key"`
+	RequestHash     string             `json:"request_hash"`
+	CreatedBy       pgtype.UUID        `json:"created_by"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	RemovedBy       pgtype.UUID        `json:"removed_by"`
+	RemovedAt       pgtype.Timestamptz `json:"removed_at"`
+	ArtifactTitle   string             `json:"artifact_title"`
+	VersionNumber   int32              `json:"version_number"`
+	ContentHash     pgtype.Text        `json:"content_hash"`
+	VersionDecision string             `json:"version_decision"`
 }
 
 func (q *Queries) ListCockpitMeetingArtifactReferences(ctx context.Context, arg ListCockpitMeetingArtifactReferencesParams) ([]ListCockpitMeetingArtifactReferencesRow, error) {
@@ -931,6 +932,7 @@ func (q *Queries) ListCockpitMeetingArtifactReferences(ctx context.Context, arg 
 			&i.ArtifactTitle,
 			&i.VersionNumber,
 			&i.ContentHash,
+			&i.VersionDecision,
 		); err != nil {
 			return nil, err
 		}

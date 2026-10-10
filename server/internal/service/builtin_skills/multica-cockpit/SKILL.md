@@ -98,7 +98,7 @@ multica cockpit meeting workflow summary <meeting-id>
 multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md --compact
 ```
 
-Read current meeting materials and workflow state before drafting evidence-grounded minutes.
+Read [agenda and occurrence](references/meeting-lifecycle.md), materials and workflow state before drafting evidence-grounded minutes.
 Submit using the minutes issue's task credential; retain the submission UUID/file for retries.
 Missing evidence is a blocker to report, not permission to invent outcomes.
 Submitting creates a fixed version and human Review Issue; completing/reassigning it is not approval.

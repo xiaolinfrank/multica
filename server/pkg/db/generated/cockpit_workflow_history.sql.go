@@ -102,7 +102,7 @@ func (q *Queries) CountCockpitWorkflowHistory(ctx context.Context, arg CountCock
 }
 
 const getCockpitWorkflowMeetingIdentity = `-- name: GetCockpitWorkflowMeetingIdentity :one
-SELECT id,cockpit_id,nas_dir FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2
+SELECT id,cockpit_id,nas_dir,ended_at FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2
 `
 
 type GetCockpitWorkflowMeetingIdentityParams struct {
@@ -111,20 +111,26 @@ type GetCockpitWorkflowMeetingIdentityParams struct {
 }
 
 type GetCockpitWorkflowMeetingIdentityRow struct {
-	ID        pgtype.UUID `json:"id"`
-	CockpitID pgtype.UUID `json:"cockpit_id"`
-	NasDir    string      `json:"nas_dir"`
+	ID        pgtype.UUID        `json:"id"`
+	CockpitID pgtype.UUID        `json:"cockpit_id"`
+	NasDir    string             `json:"nas_dir"`
+	EndedAt   pgtype.Timestamptz `json:"ended_at"`
 }
 
 func (q *Queries) GetCockpitWorkflowMeetingIdentity(ctx context.Context, arg GetCockpitWorkflowMeetingIdentityParams) (GetCockpitWorkflowMeetingIdentityRow, error) {
 	row := q.db.QueryRow(ctx, getCockpitWorkflowMeetingIdentity, arg.WorkspaceID, arg.ID)
 	var i GetCockpitWorkflowMeetingIdentityRow
-	err := row.Scan(&i.ID, &i.CockpitID, &i.NasDir)
+	err := row.Scan(
+		&i.ID,
+		&i.CockpitID,
+		&i.NasDir,
+		&i.EndedAt,
+	)
 	return i, err
 }
 
 const getCockpitWorkflowSnapshot = `-- name: GetCockpitWorkflowSnapshot :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, ended_at, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
+SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
 `
 
 type GetCockpitWorkflowSnapshotParams struct {
@@ -141,7 +147,6 @@ func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpit
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
-		&i.EndedAt,
 		&i.MaterialsReady,
 		&i.ReleasedAt,
 		&i.ReleaseTaskID,
@@ -150,6 +155,8 @@ func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpit
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
