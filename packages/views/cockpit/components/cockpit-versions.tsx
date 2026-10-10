@@ -27,6 +27,7 @@ import { ChevronDown, History, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { groupVersionHistory } from "../group-snapshots";
+import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
 import { CockpitSnapshotDiffDialog } from "./cockpit-snapshot-diff";
@@ -249,11 +250,13 @@ function SnapshotRunRow({
  * re-checks regardless. Stable bindings separately protect board identity,
  * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false }: {
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, meetingsHref }: {
   wsId: string;
   canRestore: boolean;
   hasStableBindings?: boolean;
   hasMeetingWorkflows?: boolean;
+  hasMeetingLifecycle?: boolean;
+  meetingsHref: string;
 }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
@@ -265,7 +268,7 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
   const { data: page, isLoading } = query;
   const create = useCreateCockpitSnapshot(wsId);
   const restoreBlockedReasonId = useId();
-  const restoreBlocked = hasStableBindings || hasMeetingWorkflows;
+  const restoreBlocked = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle;
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -309,9 +312,10 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
             : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
         </div>
         {restoreBlocked && (
-          <p id={restoreBlockedReasonId} className="border-b px-3 py-2 text-caption text-muted-foreground">
-            {hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}
-          </p>
+          <div id={restoreBlockedReasonId} className="space-y-2 border-b px-3 py-2 text-caption text-muted-foreground">
+            <p>{hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>
+            {hasMeetingLifecycle && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
+          </div>
         )}
         {!canRestore && (
           <p className="border-b px-3 py-2 text-caption text-muted-foreground">

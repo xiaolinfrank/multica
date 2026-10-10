@@ -721,6 +721,8 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         {board && tab !== "meetings" && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
         {cockpit && <CockpitVersions wsId={wsId} canRestore={canRestore}
           hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
+          hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
+          meetingsHref={cockpitSurfacePath(navigation.pathname, "meetings", { projectId: null, moduleId: null })}
           hasStableBindings={context.data?.has_stable_bindings !== false} />}
 
         {tab === "gantt" && planView === "gantt" && board && <DropdownMenu>

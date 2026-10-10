@@ -15,8 +15,8 @@ import { AppLink } from "../../navigation";
 import { settingsHref } from "../../settings/components/settings-navigation";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
-export function CockpitReviewerSelect({ wsId, value, onChange, disabled, label, excludeId }: {
-  wsId: string; value: string; onChange: (value: string) => void; disabled?: boolean; label?: string; excludeId?: string;
+export function CockpitReviewerSelect({ wsId, value, onChange, disabled, label, excludeId, emptyLabel, missingLabel }: {
+  wsId: string; value: string; onChange: (value: string) => void; disabled?: boolean; label?: string; excludeId?: string; emptyLabel?: string; missingLabel?: string;
 }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const id = useId();
   const [copyResult, setCopyResult] = useState<boolean | null>(null);
@@ -28,7 +28,7 @@ export function CockpitReviewerSelect({ wsId, value, onChange, disabled, label, 
   const title = label ?? t(($) => $.workflow.reviewer);
   return <div className="min-w-0 space-y-1"><label htmlFor={id} className="text-caption">{title}</label>
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setCopyResult(null); }}><PopoverTrigger render={<Button id={id} type="button" variant="outline" disabled={disabled} aria-label={title} className="w-full justify-between" />}>
-      <span className="min-w-0 truncate">{person?.title || (value ? selected.isPending ? t(($) => $.workflow.loading) : value : t(($) => $.workflow.choose_reviewer))}</span><ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 truncate">{person?.title || (value ? selected.isPending ? t(($) => $.workflow.loading) : value : emptyLabel ?? t(($) => $.workflow.choose_reviewer))}</span><ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
     </PopoverTrigger><PopoverContent align="start" className="w-[min(25rem,calc(100vw-2rem))] space-y-3 p-3">
       <Input autoFocus name="cockpit-reviewer-search" autoComplete="off" spellCheck={false} value={text} aria-label={t(($) => $.shell.search_members)} placeholder={t(($) => $.shell.search_members)}
         onChange={(event) => { if (event.target.value !== text) setCursors([""]); setText(event.target.value); }} />
@@ -47,6 +47,6 @@ export function CockpitReviewerSelect({ wsId, value, onChange, disabled, label, 
         : cursors.length > 1 && <Button type="button" variant="outline" size="sm" disabled={query.isFetching} onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
     </PopoverContent></Popover>
     {value && (selected.isError || (selected.isSuccess && !selected.data)) && <CockpitFlowError onRetry={() => void selected.refetch()} />}
-    {value && selected.isSuccess && selected.data && !person && <p role="alert" className="text-caption text-destructive">{t(($) => $.artifacts.reviewer_missing)}</p>}
+    {value && selected.isSuccess && selected.data && !person && <p role="alert" className="text-caption text-destructive">{missingLabel ?? t(($) => $.artifacts.reviewer_missing)}</p>}
   </div>;
 }

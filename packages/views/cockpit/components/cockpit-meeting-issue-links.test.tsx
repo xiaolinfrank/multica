@@ -6,7 +6,7 @@ import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 
 vi.mock("@multica/core/paths", () => ({
-  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }),
+  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }),
 }));
 vi.mock("../../navigation", () => ({
   AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -27,6 +27,13 @@ function setup(roles: string[] = [], save = vi.fn().mockResolvedValue(undefined)
 }
 
 describe("meeting issue purposes", () => {
+  it("routes agenda-only preparation links to their topic instead of exposing legacy role or unlink writes", () => {
+    const unlink = vi.fn(), save = vi.fn();
+    render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitMeetingIssueLinks wsId="ws-1" links={[{ ...link, has_direct_reference: false, has_agenda_reference: true, agenda_id: "agenda-1", agenda_total: 2 }]} onLink={vi.fn()} onUnlink={unlink} onSaveRoles={save} /></I18nProvider>);
+    expect(screen.getByRole("link", { name: "Open agenda & preparation" })).toHaveAttribute("href", "/ws/cockpit?meeting=m1&agenda=agenda-1&meeting_view=agenda");
+    expect(screen.getByText("Used by 2 agenda items")).toBeVisible(); expect(screen.queryByRole("button", { name: "Unlink BIO-1" })).toBeNull(); expect(screen.queryByRole("button", { name: "Edit purposes for BIO-1" })).toBeNull();
+  });
+
   it("retains the workflow-owned relation and required purpose while allowing additional purposes", async () => {
     const save = setup(["minutes"], undefined, false, new Map([["i1", ["minutes"]]]));
     expect(screen.queryByRole("button", { name: "Unlink BIO-1" })).toBeNull();

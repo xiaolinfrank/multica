@@ -6,6 +6,7 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { cn } from "@multica/ui/lib/utils";
 import { ArrowUpRight, CalendarDays, FolderOpen, Link2 } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
+import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
 import { useT } from "../../i18n";
 
 export function useMeetingStageLabel() {
@@ -26,11 +27,12 @@ export function CockpitMeetingCards({ items, scope, selectedId }: {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
-  const stageLabel = useMeetingStageLabel();
+  const stageLabel = useMeetingStageLabel(); const occurrenceLabel = useMeetingOccurrenceLabel();
   return <ul className="divide-y divide-border/65">{items.map((meeting) => <li key={meeting.id}>
+    <div className={cn("group grid min-w-0 gap-3 rounded-xl px-4 py-4 transition-colors hover:bg-accent/55 sm:grid-cols-[minmax(0,1fr)_auto]", selectedId === meeting.id && "bg-accent")}>
     <AppLink href={cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams)} newTabTitle={meeting.title}
       aria-current={selectedId === meeting.id ? "true" : undefined} aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-      className={cn("group grid min-w-0 gap-3 rounded-xl px-4 py-4 transition-colors hover:bg-accent/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[120px_minmax(0,1fr)_auto]", selectedId === meeting.id && "bg-accent") }>
+      className="grid min-w-0 gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[120px_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground sm:block sm:space-y-1">
         <p className="inline-flex items-center gap-1.5 font-medium text-foreground"><CalendarDays className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />{meeting.meet_date ?? t(($) => $.meetings.undated_section)}</p>
         <p className="min-w-0 break-words tabular-nums">{cockpitMeetingSpan(meeting) || t(($) => $.meeting.all_day)}</p>
@@ -47,11 +49,13 @@ export function CockpitMeetingCards({ items, scope, selectedId }: {
           {meeting.nas_dir && <span className="inline-flex items-center gap-1"><FolderOpen className="size-3" aria-hidden />{t(($) => $.meeting_center.has_directory)}</span>}
         </div>
       </div>
+    </AppLink>
       <div className="flex max-w-full flex-wrap items-start justify-between gap-2 sm:max-w-52 sm:flex-col sm:items-end">
+        {typeof meeting.occurrence_state === "string" && <AppLink href={cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, "agenda")} className="max-w-full break-words rounded-md bg-muted px-2 py-1 text-caption hover:underline" aria-label={`${t(($) => $.meeting_lifecycle.record_occurrence)} · ${occurrenceLabel(meeting.occurrence_state)}`}>{occurrenceLabel(meeting.occurrence_state)}</AppLink>}
         {meeting.workflow_enabled && <span className="rounded-md bg-brand/8 px-2 py-1 text-caption text-brand">{stageLabel(meeting.workflow_stage)}</span>}
-        {meeting.status && <span className="max-w-full break-words text-caption text-muted-foreground" title={meeting.status}>{meeting.status}</span>}
+        {meeting.status && <span className="line-clamp-2 max-w-full break-words text-caption text-muted-foreground" title={meeting.status}>{typeof meeting.occurrence_state === "string" ? t(($) => $.meeting_lifecycle.custom_status_value, { status: meeting.status }) : meeting.status}</span>}
         <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </div>
-    </AppLink>
+    </div>
   </li>)}</ul>;
 }

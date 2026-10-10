@@ -7,6 +7,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { useCockpitArtifactCommandStore } from "@multica/core/cockpit";
 import type { CockpitArtifactReference } from "@multica/core/types";
 import { CockpitArtifactReferences } from "./cockpit-artifact-references";
+import { CockpitMeetingAddArtifact } from "./cockpit-meeting-add-artifact";
 import { CockpitMeetingArtifactReferences } from "./cockpit-meeting-artifact-references";
 import { artifactFixture, artifactVersionDetailFixture, artifactVersionFixture } from "./artifact-test-fixtures";
 import { cockpitMeetingDetailFixture } from "./cockpit-read-test-fixture";
@@ -17,6 +18,7 @@ vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: (
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("./cockpit-meeting-picker", () => ({ CockpitMeetingPicker: ({ onSelect, label, disabled }: { onSelect: (id: string) => Promise<unknown>; label: string; disabled: boolean }) => <button disabled={disabled} onClick={() => void onSelect("meeting-1")}>{label}</button> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
+  getCockpitArtifacts: vi.fn(), getCockpitArtifact: vi.fn(),
   getCockpitArtifactReferences: vi.fn(), getCockpitArtifactVersions: vi.fn(), getCockpitArtifactVersion: vi.fn(), getCockpitMeetingDetail: vi.fn(),
   createCockpitArtifactReference: vi.fn(), removeCockpitArtifactReference: vi.fn(), getCockpitMeetingArtifactReferences: vi.fn(),
 } }));
@@ -35,6 +37,25 @@ beforeEach(() => {
 });
 
 describe("fixed artifact references", () => {
+  it("selects a bounded artifact source from meeting resources and fixes the current meeting target before explicit reference confirmation", async () => {
+    vi.mocked(api.getCockpitArtifacts).mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, node_id: null, source_issue_id: null, ids: [], q: "", status: "", relation: "owned" }, items: [artifact], total: 1, filtered_total: 1, next_cursor: null, can_create: true });
+    vi.mocked(api.getCockpitArtifact).mockResolvedValue(artifact);
+    vi.mocked(api.createCockpitArtifactReference).mockImplementationOnce(async (_ws, _artifact, _kind, body) => ({ workspace_id: "ws-1", reference: { ...ref, reference_key: body.reference_key } }));
+    setup(<CockpitMeetingAddArtifact wsId="ws-1" meetingId="meeting-1" />); expect(api.getCockpitArtifacts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Add a fixed artifact" }));
+    expect(screen.getByRole("link", { name: "Open artifact workspace (new tab)" })).toHaveAttribute("href", "/ws/cockpit?tab=artifacts");
+    expect(screen.getByRole("link", { name: "Open artifact workspace (new tab)" })).toHaveAttribute("target", "_blank");
+    fireEvent.click(await screen.findByRole("button", { name: artifact.title }));
+    expect(await screen.findByRole("link", { name: `${artifact.title} (new tab)` })).toHaveAttribute("href", "/ws/cockpit?tab=artifacts&artifact=artifact-1");
+    fireEvent.click(await screen.findByRole("button", { name: "Reference a version from a meeting" }));
+    expect(await screen.findByText("Planning review")).toBeVisible(); expect(screen.queryByRole("button", { name: "Choose source meeting" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Choose fixed version" })); fireEvent.click(await screen.findByRole("button", { name: "Version 1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: enCockpit.artifact_runtime.confirm_reference }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create reference" })).toBeEnabled()); fireEvent.click(screen.getByRole("button", { name: "Create reference" }));
+    await waitFor(() => expect(api.createCockpitArtifactReference).toHaveBeenCalledWith("ws-1", "artifact-1", "meeting", expect.objectContaining({ meeting_id: "meeting-1", version_id: "version-1" })));
+    expect(vi.mocked(api.getCockpitArtifacts).mock.calls[0]?.[1]).toMatchObject({ page_size: 25 }); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
   it("keeps the chosen version and original intent after throttling instead of replacing it with the current version", async () => {
     setup(<CockpitArtifactReferences wsId="ws-1" artifact={artifact} scope={{ projectId: "project-1", moduleId: "module-1" }} disabled={false} />);
     expect(api.getCockpitArtifactReferences).not.toHaveBeenCalled();
@@ -58,7 +79,7 @@ describe("fixed artifact references", () => {
   });
 
   it("reads meeting references lazily in pages and links the recorded historical version without replacing it", async () => {
-    const items = Array.from({ length: 26 }, (_, index) => ({ ...ref, id: `ref-${index}`, artifact_title: `Report ${index + 1}`, removed_at: index === 25 ? "2026-10-11T02:00:00Z" : null }));
+    const items = Array.from({ length: 26 }, (_, index) => ({ ...ref, id: `ref-${index}`, artifact_title: `Report ${index + 1}`, version_decision: "pending", removed_at: index === 25 ? "2026-10-11T02:00:00Z" : null }));
     vi.mocked(api.getCockpitMeetingArtifactReferences).mockImplementation(async (_ws, _meeting, query = {}) => ({ workspace_id: "ws-1", meeting_id: "meeting-1", include_removed: query.include_removed === true,
       items: query.cursor ? items.slice(25) : items.slice(0, 25), total: 26, next_cursor: query.cursor ? null : "page-2" }));
     setup(<CockpitMeetingArtifactReferences wsId="ws-1" meetingId="meeting-1" />); expect(api.getCockpitMeetingArtifactReferences).not.toHaveBeenCalled();

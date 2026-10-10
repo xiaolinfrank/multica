@@ -284,6 +284,19 @@ export interface TestTableIssue {
   number: number;
 }
 
+export interface TestMeetingLifecycle {
+  workspace_id: string; meeting_id: string; lifecycle_revision: number; agenda_revision: number; workflow_enabled: boolean;
+  occurrence: { state: string; ended_at: string | null; actual_started_at: string | null; actual_ended_at: string | null; ended_source: string | null };
+  materials: { ready: boolean; workflow_revision: number } | null;
+}
+export interface TestMeetingAgendaItem {
+  id: string; workspace_id: string; meeting_id: string; revision: number; title: string; purposes: string[]; desired_outcome?: string; notes?: string;
+}
+export interface TestMeetingLifecycleCommand {
+  workspace_id: string; meeting_id: string; command_key: string; action: string; replayed: boolean; current: TestMeetingLifecycle;
+  receipt: { agenda_id: string | null; reference_id: string | null; issue_id: string | null; agenda: TestMeetingAgendaItem | null };
+}
+
 export class TestApiClient {
   private token: string | null = null;
   private workspaceSlug: string | null = null;
@@ -550,6 +563,37 @@ export class TestApiClient {
     const meeting = (await res.json()) as TestCockpitMeeting;
     this.createdCockpitMeetingIds.push(meeting.id);
     return meeting;
+  }
+
+  private assertOwnedMeeting(meetingId: string) {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !this.createdCockpitMeetingIds.includes(meetingId)) throw new Error("Meeting lifecycle fixture requires an owned meeting and workspace");
+  }
+
+  async getOwnedMeetingLifecycle(meetingId: string): Promise<TestMeetingLifecycle> {
+    this.assertOwnedMeeting(meetingId);
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/lifecycle`);
+    if (!response.ok) throw new Error(`Meeting lifecycle read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json() as TestMeetingLifecycle;
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId) throw new Error("Meeting lifecycle scope mismatch");
+    return data;
+  }
+
+  async getOwnedMeetingAgenda(meetingId: string, query: Record<string, string | number> = {}): Promise<{ workspace_id: string; meeting_id: string; agenda_revision: number; items: TestMeetingAgendaItem[]; total: number; next_cursor: string | null }> {
+    this.assertOwnedMeeting(meetingId); const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/agenda?${params}`);
+    if (!response.ok) throw new Error(`Meeting agenda read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json(); if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId) throw new Error("Meeting agenda scope mismatch");
+    return data;
+  }
+
+  async ownedMeetingLifecycleCommand(meetingId: string, suffix: string, body: Record<string, unknown>, method: "POST" | "PATCH" = "POST"): Promise<TestMeetingLifecycleCommand> {
+    this.assertOwnedMeeting(meetingId);
+    if (!/^\/(?:lifecycle\/(?:occurrence|materials)|agenda(?:\/[0-9a-f-]{36})?)$/.test(suffix)) throw new Error("Unsupported owned lifecycle fixture command");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}${suffix}`, { method, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`Meeting lifecycle fixture command failed: ${response.status} ${await response.text()}`);
+    const data = await response.json() as TestMeetingLifecycleCommand;
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId || data.command_key !== body.command_key) throw new Error("Meeting lifecycle command acknowledgement mismatch");
+    return data;
   }
 
   async seedCockpitProposals(changes: Array<{ node: string; field: string; new_value: string; reason?: string }>) {

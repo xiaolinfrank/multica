@@ -5,7 +5,7 @@
 // the same reason — the register and the gantt are two views of one board, and
 // a reader should not have to learn a second layout to read a meeting.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   CockpitDirectoryEntry,
@@ -42,8 +42,9 @@ import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { CockpitMeetingMaterials } from "./cockpit-meeting-materials";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { useNavigation } from "../../navigation";
+import { AppLink, useNavigation } from "../../navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
+import { CockpitMeetingAgenda } from "./cockpit-meeting-agenda";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
 
 export interface CockpitMeetingPanelProps {
@@ -82,6 +83,7 @@ export interface CockpitMeetingPanelProps {
   nodePaging?: React.ReactNode;
   notice?: React.ReactNode;
   artifactReferences?: React.ReactNode;
+  lifecycleAvailable?: boolean;
   onOpenNode: (nodeId: string) => void;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
@@ -105,7 +107,7 @@ export function CockpitMeetingPanel({
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, lifecycleAvailable = false,
   onOpenNode,
   onSaveMaterialPatch,
   onPrepareDirectory,
@@ -116,6 +118,9 @@ export function CockpitMeetingPanel({
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
   const section = destination.meetingId === meeting.id ? destination.meetingView ?? "workflow" : "workflow";
+  const [agendaOpened, setAgendaOpened] = useState(section === "agenda");
+  useEffect(() => { if (section === "agenda") setAgendaOpened(true); }, [section]);
+  const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "agenda");
   const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
   const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "workflow");
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -231,19 +236,23 @@ export function CockpitMeetingPanel({
       )}
 
       <Tabs value={section} onValueChange={(value) => {
-        if (value === "workflow" || value === "resources" || value === "details") navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
+        if (value === "workflow" || value === "resources" || value === "details" || value === "agenda") navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
+        <TabsList variant="line" className="min-h-11 h-auto w-full shrink-0 flex-wrap border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
+          {lifecycleAvailable && <TabsTrigger value="agenda">{t(($) => $.meeting_lifecycle.title)}</TabsTrigger>}
           <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
           <TabsTrigger value="resources">{t(($) => $.workflow.tab_resources)}</TabsTrigger>
           <TabsTrigger value="details">{t(($) => $.workflow.tab_details)}</TabsTrigger>
         </TabsList>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <TabsContent value="agenda" keepMounted>
+            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} readOnly={readOnly} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
+          </TabsContent>
           <TabsContent value="workflow" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
-              onReload={reloadWorkflow} resourcesHref={resourcesHref} defaultPlacement={defaultPlacement}
+              onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>
@@ -326,15 +335,16 @@ export function CockpitMeetingPanel({
               disabled={readOnly}
             />
           </CockpitField>
-          <CockpitField label={t(($) => $.meeting.status)}>
+          <CockpitField label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}>
             <EditableSuggest
               value={meeting.status}
               onCommit={(status) => onPatch({ status })}
               suggestions={vocabulary.statuses}
-              label={t(($) => $.meeting.status)}
+              label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}
               placeholder={unset}
               disabled={readOnly}
             />
+            {lifecycleAvailable && <div className="mt-1 space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.meeting_lifecycle.custom_status_hint)}</p><AppLink href={agendaHref} className="text-primary underline">{t(($) => $.meeting_lifecycle.record_occurrence)}</AppLink></div>}
           </CockpitField>
           <CockpitField label={t(($) => $.meeting.start_time)}>
             <EditableText

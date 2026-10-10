@@ -58,11 +58,15 @@ function ReferencePage({ wsId, artifact, kind, scope, disabled }: { wsId: string
   </div>;
 }
 
-function ReferenceCreate({ wsId, artifact, kind, scope, disabled }: { wsId: string; artifact: CockpitArtifactHeader; kind: CockpitArtifactReferenceKind; scope: CockpitScope; disabled: boolean }) {
-  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const key = cockpitArtifactCommandDraftKey(wsId, kind === "node" ? "node_reference" : "meeting_reference", artifact.id);
+export function CockpitArtifactMeetingReferenceCreate({ wsId, meetingId, artifact, disabled, onCreated }: { wsId: string; meetingId: string; artifact: CockpitArtifactHeader; disabled: boolean; onCreated: () => void }) {
+  return <ReferenceCreate wsId={wsId} artifact={artifact} kind="meeting" scope={EMPTY_COCKPIT_SCOPE} disabled={disabled} fixedMeetingId={meetingId} onCreated={onCreated} />;
+}
+
+function ReferenceCreate({ wsId, artifact, kind, scope, disabled, fixedMeetingId, onCreated }: { wsId: string; artifact: CockpitArtifactHeader; kind: CockpitArtifactReferenceKind; scope: CockpitScope; disabled: boolean; fixedMeetingId?: string; onCreated?: () => void }) {
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const key = cockpitArtifactCommandDraftKey(wsId, kind === "node" ? "node_reference" : "meeting_reference", artifact.id, ...(fixedMeetingId ? [fixedMeetingId] : []));
   const stored = useCockpitArtifactCommandStore((state) => state.draft.pending[key]); const pending = stored?.kind === "node_reference" || stored?.kind === "meeting_reference" ? stored : null;
   const [open, setOpen] = useState(false); const [versionId, setVersionId] = useState(""); const [targetId, setTargetId] = useState(""); const [purpose, setPurpose] = useState<CockpitArtifactReferencePurpose>("reference"); const [confirmed, setConfirmed] = useState(false); const [error, setError] = useState(""); const lock = useRef(false);
-  const chosenVersion = pending?.body.version_id ?? versionId; const chosenTarget = pending ? "node_id" in pending.body ? pending.body.node_id : pending.body.meeting_id : targetId; const chosenPurpose = pending?.body.purpose ?? purpose;
+  const chosenVersion = pending?.body.version_id ?? versionId; const chosenTarget = pending ? "node_id" in pending.body ? pending.body.node_id : pending.body.meeting_id : fixedMeetingId ?? targetId; const chosenPurpose = pending?.body.purpose ?? purpose;
   const version = useQuery({ ...cockpitArtifactVersionOptions(wsId, artifact.id, chosenVersion), enabled: open && Boolean(chosenVersion) });
   const node = useQuery({ ...cockpitNodeDetailOptions(wsId, chosenTarget, EMPTY_COCKPIT_SCOPE), enabled: open && kind === "node" && Boolean(chosenTarget) });
   const meeting = useQuery({ ...cockpitMeetingDetailOptions(wsId, chosenTarget, EMPTY_COCKPIT_SCOPE), enabled: open && kind === "meeting" && Boolean(chosenTarget) });
@@ -78,7 +82,7 @@ function ReferenceCreate({ wsId, artifact, kind, scope, disabled }: { wsId: stri
       : { kind: "meeting_reference", artifactId: artifact.id, body: { ...common, meeting_id: chosenTarget } });
     const stillCurrent = capture(); lock.current = true; setError("");
     try { await mutation.mutateAsync({ artifactId: artifact.id, kind: command.kind === "node_reference" ? "node" : "meeting", body: command.body }); settleCockpitArtifactCommand(key, command.body.reference_key);
-      if (stillCurrent()) { setOpen(false); setConfirmed(false); setTargetId(""); }
+      if (stillCurrent()) { setOpen(false); setConfirmed(false); setTargetId(""); onCreated?.(); }
     } catch (cause) { if (isCockpitDefinitiveCommandRejection(cause)) {
         if (stillCurrent()) { setVersionId(command.body.version_id); setPurpose(command.body.purpose); setTargetId("node_id" in command.body ? command.body.node_id : command.body.meeting_id); setConfirmed(false); }
         settleCockpitArtifactCommand(key, command.body.reference_key);
@@ -94,7 +98,7 @@ function ReferenceCreate({ wsId, artifact, kind, scope, disabled }: { wsId: stri
         {version.data && <ArtifactStatus status={version.data.version.decision} />}
         <p className="text-caption text-muted-foreground">{t(($) => $.artifact_runtime.workspace_reference)}</p>
         {kind === "node" ? <CockpitNodeChoicePicker wsId={wsId} scope={EMPTY_COCKPIT_SCOPE} label={t(($) => $.artifact_runtime.choose_node)} value={node.data?.node.name || chosenTarget} disabled={locked} onSelect={(item) => { setTargetId(item.id); setConfirmed(false); }} />
-          : <><CockpitMeetingPicker wsId={wsId} label={t(($) => $.artifact_runtime.choose_meeting)} disabled={locked} onSelect={async (id) => { setTargetId(id); setConfirmed(false); }} />{chosenTarget && <p className="break-words text-caption">{meeting.data?.meeting.title || chosenTarget}</p>}</>}
+          : <>{!fixedMeetingId && <CockpitMeetingPicker wsId={wsId} label={t(($) => $.artifact_runtime.choose_meeting)} disabled={locked} onSelect={async (id) => { setTargetId(id); setConfirmed(false); }} />}{chosenTarget && <p className="break-words text-caption">{meeting.data?.meeting.title || chosenTarget}</p>}</>}
         {(kind === "node" ? node.isError : meeting.isError) && <CockpitFlowError onRetry={() => void (kind === "node" ? node.refetch() : meeting.refetch())} />}
         {kind === "node" && node.data && !node.data.binding.eligible && <div role="alert" className="space-y-2 text-caption"><p>{t(($) => $.artifact_runtime.node_unavailable)}</p>
           <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: chosenTarget, view: "details" })} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.task_flow.details_tab)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}

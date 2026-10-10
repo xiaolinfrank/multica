@@ -39,6 +39,8 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       document.cookie = "multica-locale=en; path=/";
     }, token);
     const destination = `/${workspace.slug}/cockpit?meeting=${meeting.id}`;
+    const expectMaterialsUnconfirmed = () => expect(page.getByRole("region", { name: "Readiness & execution", exact: true })
+      .getByText("Confirm the required input materials are ready. A folder alone does not indicate readiness.", { exact: true })).toBeVisible();
     const reloadWithWorkflowRead = async () => {
       // Wait for the new document's workflow read, not merely its HTML.
       // The visual assertions still use their normal timeout after hydration.
@@ -52,18 +54,18 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       expect(response.status()).toBe(200);
       expect((await response.json()).meeting_id).toBe(meeting.id);
     };
-    await page.goto(destination, { waitUntil: "domcontentloaded" });
+    await page.goto(`${destination}&meeting_view=workflow`, { waitUntil: "domcontentloaded" });
 
     await test.step("enable one member-owned work package and show its waiting conditions", async () => {
       await page.getByLabel("Project", { exact: true }).click();
-      await page.getByRole("option", { name: project.title, exact: true }).click();
+      await page.getByRole("button", { name: project.title, exact: true }).click();
       await page.getByLabel("Module", { exact: true }).click();
-      await page.getByRole("option", { name: module.title, exact: true }).click();
+      await page.getByRole("button", { name: module.title, exact: true }).click();
       await page.getByLabel("Reviewer", { exact: true }).click();
-      await page.getByRole("option", { name: ownerName, exact: true }).click();
+      await page.getByRole("button", { name: ownerName, exact: true }).click();
       await page.getByRole("button", { name: "Enable work package", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Mark meeting ended", exact: true })).toBeVisible();
-      await expect(page.getByRole("checkbox", { name: "Materials ready", exact: true })).not.toBeChecked();
+      await expect(page.getByRole("link", { name: "Agenda & preparation", exact: true })).toBeVisible();
+      await expectMaterialsUnconfirmed();
       await expect(page.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
 
       const workflow = await api.getMeetingWorkflow(meeting.id);
@@ -86,8 +88,10 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       const workflowPath = `${destination}&meeting_view=workflow`;
       const writes: string[] = [];
       const watchWrites = (request: import("@playwright/test").Request) => {
-        if (request.method() !== "GET" && new URL(request.url()).pathname.startsWith(`/api/cockpit/meetings/${meeting.id}/workflow`)) {
-          writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+        const path = new URL(request.url()).pathname;
+        if (request.method() !== "GET" && (path.startsWith(`/api/cockpit/meetings/${meeting.id}/workflow`)
+          || path.startsWith(`/api/cockpit/meetings/${meeting.id}/lifecycle`))) {
+          writes.push(`${request.method()} ${path}`);
         }
       };
       page.on("request", watchWrites);
@@ -101,7 +105,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       await notes.fill(note);
       await materials.getByRole("link", { name: "Return to workflow", exact: true }).click();
       await expect(page).toHaveURL(workflowPath);
-      await expect(page.getByRole("checkbox", { name: "Materials ready", exact: true })).not.toBeChecked();
+      await expectMaterialsUnconfirmed();
       await prepare.click();
       await expect(notes).toHaveValue(note);
 
@@ -137,7 +141,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       await page.setViewportSize({ width: 1600, height: 1050 });
       await materials.getByRole("link", { name: "Return to workflow", exact: true }).click();
       await expect(page).toHaveURL(workflowPath);
-      await expect(page.getByRole("checkbox", { name: "Materials ready", exact: true })).not.toBeChecked();
+      await expectMaterialsUnconfirmed();
       expect(await api.getMeetingWorkflow(meeting.id)).toMatchObject({ materials_ready: false, released_at: null,
         minutes_issue: { status: "backlog" } });
       expect(writes).toEqual([]);
@@ -146,14 +150,24 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     });
 
     await test.step("record both facts, then explicitly release the member task", async () => {
-      await page.getByRole("button", { name: "Mark meeting ended", exact: true }).click();
+      await page.getByRole("link", { name: "Agenda & preparation", exact: true }).click();
+      await expect(page).toHaveURL(`${destination}&meeting_view=agenda`);
+      await page.getByRole("button", { name: "Confirm meeting ended", exact: true }).click();
+      const ending = page.getByRole("dialog", { name: "Confirm meeting ended", exact: true });
+      const endSaved = page.waitForResponse((response) => response.request().method() === "POST"
+        && new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/lifecycle/occurrence`
+        && response.request().postDataJSON()?.transition === "end");
+      await ending.getByRole("button", { name: "Confirm", exact: true }).click();
+      expect((await endSaved).status()).toBe(200);
+      await expect(ending).not.toBeVisible();
       await expect.poll(async () => Boolean((await api.getMeetingWorkflow(meeting.id)).ended_at)).toBe(true);
       expect((await api.getMeetingWorkflow(meeting.id)).released_at).toBeNull();
 
-      const materials = page.getByRole("checkbox", { name: "Materials ready", exact: true });
+      const materials = page.getByRole("checkbox", { name: "I have checked the minutes inputs", exact: true });
+      await expect(materials).not.toBeChecked();
       const readinessSaved = page.waitForResponse((response) =>
-        new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/workflow`
-        && response.request().method() === "PATCH"
+        new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/lifecycle/materials`
+        && response.request().method() === "POST"
         && response.request().postDataJSON()?.materials_ready === true,
       );
       // Readiness is a server-confirmed fact, so the controlled checkbox
@@ -161,6 +175,8 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       await materials.click();
       expect((await readinessSaved).status()).toBe(200);
       await expect(materials).toBeChecked();
+      await page.getByRole("link", { name: "Open minutes workflow", exact: true }).click();
+      await expect(page).toHaveURL(`${destination}&meeting_view=workflow`);
       const start = page.getByRole("button", { name: "Start minutes issue", exact: true });
       await expect(start).toBeEnabled();
       const ready = await api.getMeetingWorkflow(meeting.id);

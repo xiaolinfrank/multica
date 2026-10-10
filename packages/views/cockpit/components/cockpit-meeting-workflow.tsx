@@ -44,7 +44,7 @@ const ADOPT_ISSUE = "__adopt_minutes_issue__";
 
 export function CockpitMeetingWorkflowPanel({
   wsId, meetingId, currentUserId, members, issueLinks, workflow,
-  loading, loadError, onReload, resourcesHref, defaultPlacement, defaultAssigneeType, defaultAssigneeId, readOnly,
+  loading, loadError, onReload, resourcesHref, agendaHref, defaultPlacement, defaultAssigneeType, defaultAssigneeId, readOnly,
 }: {
   wsId: string;
   meetingId: string;
@@ -56,6 +56,7 @@ export function CockpitMeetingWorkflowPanel({
   loadError: boolean;
   onReload: () => void;
   resourcesHref: string;
+  agendaHref?: string;
   defaultPlacement: { project_id: string | null; module_id: string | null; node_id: string | null };
   defaultAssigneeType: string | null;
   defaultAssigneeId: string | null;
@@ -252,6 +253,9 @@ export function CockpitMeetingWorkflowPanel({
         {workflow.minutes_issue && <div><AppLink href={paths.issueDetail(workflow.minutes_issue.id)} target="_blank" rel="noreferrer" className="text-caption text-primary underline">{t(($) => $.meeting_materials.open_issue)}</AppLink></div>}
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.confirm_hint)}</p>
       </div>
+      {agendaHref ? <div className="space-y-2"><p className="text-caption">{workflow.ended_at ? t(($) => $.workflow.ended) : t(($) => $.workflow.need_ended)} · {workflow.materials_ready ? t(($) => $.workflow.materials_ready) : t(($) => $.workflow.need_materials)}</p>
+        <AppLink href={agendaHref} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.meeting_lifecycle.title)}</AppLink>
+      </div> : <>
       <div className="flex flex-wrap items-center gap-3">
         {workflow.ended_at ? <span className="text-caption">{t(($) => $.workflow.ended)}</span>
           : <Button type="button" size="sm" variant="outline" disabled={readOnly || !actions.canManage || commandBusy}
@@ -262,6 +266,7 @@ export function CockpitMeetingWorkflowPanel({
           onCheckedChange={(checked) => void runCommand(() => readiness.mutateAsync({ meetingId, body: { expected_revision: workflow.revision, materials_ready: checked === true } }))} />
           {t(($) => $.workflow.materials_ready)}</label>
       </div>
+      </>}
       {!workflow.released_at && !actions.canManage && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.manager_required)}</p>}
       {!workflow.released_at && <>
         <ul className="space-y-1 text-caption text-muted-foreground">

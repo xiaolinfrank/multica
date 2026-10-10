@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { CockpitMeetingIssueLink, Issue } from "@multica/core/types";
-import { COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
+import { cockpitMeetingHasDirectReference, cockpitObjectPath, COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -147,17 +147,18 @@ export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSave
                 <StatusIcon status={link.issue_status} className="mt-0.5 size-3.5 shrink-0" />
                 <span className="line-clamp-2 min-w-0 break-words" title={link.issue_title}><span className="mr-1.5 font-mono text-muted-foreground">{link.issue_identifier || link.issue_id}</span>{" "}{link.issue_title}</span>
               </AppLink>
-              {!disabled && !requiredRolesByIssue?.has(link.issue_id) && (
+              {!disabled && cockpitMeetingHasDirectReference(link) && !requiredRolesByIssue?.has(link.issue_id) && (
                 <Button variant="ghost" size="icon-xs" onClick={() => onUnlink(link.issue_id)}
-                  aria-label={t(($) => $.issues.unlink_issue, { identifier: link.issue_identifier || link.issue_id })}>
+                  aria-label={link.has_agenda_reference ? t(($) => $.meeting_lifecycle.unlink_direct, { name: link.issue_identifier || link.issue_id }) : t(($) => $.issues.unlink_issue, { identifier: link.issue_identifier || link.issue_id })}>
                   <X className="size-3" />
                 </Button>
               )}
             </div>
             <div className="flex items-start justify-between gap-1">
-              <CockpitMeetingRoleLabels link={{ ...link, roles: [...new Set([...(link.roles ?? []), ...(requiredRolesByIssue?.get(link.issue_id) ?? [])])] }} />
-              {!disabled && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} />}
+              {cockpitMeetingHasDirectReference(link) && <CockpitMeetingRoleLabels link={{ ...link, roles: [...new Set([...(link.roles ?? []), ...(requiredRolesByIssue?.get(link.issue_id) ?? [])])] }} />}
+              {!disabled && cockpitMeetingHasDirectReference(link) && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} />}
             </div>
+            {link.has_agenda_reference && <div className="flex flex-wrap gap-2 text-caption text-muted-foreground"><span>{t(($) => $.meeting_lifecycle.agenda_source, { count: link.agenda_total ?? 1 })}</span>{link.agenda_id && <AppLink className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: link.meeting_id, view: "agenda", agendaId: link.agenda_id })}>{t(($) => $.meeting_lifecycle.open_agenda)}</AppLink>}</div>}
             {requiredRolesByIssue?.has(link.issue_id) && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
           </li>
         ))}
