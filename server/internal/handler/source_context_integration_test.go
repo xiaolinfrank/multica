@@ -694,8 +694,11 @@ func TestCommentSourceContextLifecycle(t *testing.T) {
 	cleaned, err := testHandler.TaskService.CleanupSourceContextObjectIntents(ctx, 10)
 	testHandler.TaskService.SourceContextStorage = originalObjectStore
 	testHandler.TaskService.Queries = originalQueries
-	if err != nil || cleaned < 3 {
-		t.Fatalf("cleanup target delete intents = %d, err=%v", cleaned, err)
+	var remaining int
+	var states string
+	inspectErr := cleanupTx.QueryRow(ctx, `SELECT count(*),COALESCE(jsonb_agg(jsonb_build_object('state',state,'lease_token',lease_token,'lease_expired',lease_expires_at<=now(),'due',next_attempt_at<=now(),'old_enough',created_at<=now()-interval '1 hour') ORDER BY storage_key),'[]'::jsonb)::text FROM issue_source_context_object_intent WHERE source_context_id=$1`, contextID).Scan(&remaining, &states)
+	if err != nil || cleaned < 3 || inspectErr != nil || remaining != 0 {
+		t.Fatalf("cleanup target delete intents = %d, remaining=%d, err=%v inspect=%v states=%s", cleaned, remaining, err, inspectErr, states)
 	}
 	if err := cleanupTx.Commit(ctx); err != nil {
 		t.Fatalf("commit isolated target intent cleanup: %v", err)
