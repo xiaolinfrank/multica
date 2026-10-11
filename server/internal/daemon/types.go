@@ -68,6 +68,13 @@ type IssueStatusData struct {
 // Task represents a claimed task from the server.
 // Agent data (name, skills) is populated by the claim endpoint.
 type Task struct {
+	InputManifestVersionID     string `json:"input_manifest_version_id"`
+	InputPreparationState      string `json:"input_preparation_state"`
+	InputManifestHash          string `json:"input_manifest_hash"`
+	InputManifestItemTotal     int64  `json:"input_manifest_item_total"`
+	InputManifestRequiredTotal int64  `json:"input_manifest_required_total"`
+	preparedInputs             *preparedFixedInputs
+
 	// StartClaimSupported gates retries when talking to older servers.
 	StartClaimSupported  bool                   `json:"start_claim_supported,omitempty"`
 	DispatchedAt         string                 `json:"dispatched_at,omitempty"`

@@ -72,6 +72,9 @@ const (
 	// unsupported so mixed server/daemon versions fail closed.
 	DaemonCapabilityTaskSupplementV1 = "task-supplement-v1"
 
+	// The runtime prepares an exact immutable input selection before StartTask.
+	DaemonCapabilityFixedInputManifestV1 = "fixed_input_manifest_v1"
+
 	TaskSupplementFailureTurnNotStarted   = "turn_not_started"
 	TaskSupplementFailureProviderRejected = "provider_rejected"
 	TaskSupplementFailureTimeout          = "timeout"
