@@ -15,7 +15,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { errorCode } from "@multica/core/api";
 import { useQuery } from "@tanstack/react-query";
-import type { CockpitMeetingImportItem, CockpitMeetingImportResult, CockpitMeetingScanEntry } from "@multica/core/types";
+import type { CockpitMeetingImportItem, CockpitMeetingImportResult, CockpitMeetingImportDirectoryResult, CockpitMeetingScanEntry } from "@multica/core/types";
 import { cockpitMeetingScanOptions, cockpitObjectPath } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -35,6 +35,7 @@ import { AppLink } from "../../navigation";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { useT } from "../../i18n";
+import { CockpitDirectoryReasons, useDirectoryLabel } from "./cockpit-directory-parts";
 
 export interface CockpitMeetingImportProps {
   open: boolean;
@@ -49,7 +50,7 @@ export interface CockpitMeetingImportProps {
 }
 
 /** The fields a human may correct before a folder becomes a row. */
-type ImportOutcome = { name: string; title: string; meetingId: string | null; error: string };
+type ImportOutcome = { name: string; title: string; meetingId: string | null; error: string; taskError?: string; directory?: CockpitMeetingImportDirectoryResult | null };
 type Draft = Pick<CockpitMeetingImportItem, "code" | "meet_date" | "title" | "parties">;
 
 function draftOf(entry: CockpitMeetingScanEntry): Draft {
@@ -75,6 +76,7 @@ function MeetingImportSession({
   onSubmit,
 }: CockpitMeetingImportProps) {
   const { t } = useT("cockpit");
+  const directoryLabel = useDirectoryLabel();
   const { t: common } = useT("common"); const paths = useWorkspacePaths();
   const sessionId = useId(); const [initialized, setInitialized] = useState(false);
   const captureContext = useCockpitCommandContext(JSON.stringify([wsId, projectId, moduleId, nodeId, open, sessionId]));
@@ -103,7 +105,7 @@ function MeetingImportSession({
     const nextOutcomes: Record<string, ImportOutcome> = Object.fromEntries(Object.entries(outcomes).filter(([, outcome]) => outcome.meetingId));
     for (const entry of entries) {
       if (!entry.meeting_id) { nextChosen[entry.name] = true; nextDrafts[entry.name] = draftOf(entry); }
-      else if (drafts[entry.name] || outcomes[entry.path]) { nextDrafts[entry.name] = drafts[entry.name] ?? draftOf(entry); nextOutcomes[entry.path] = { name: entry.name, title: drafts[entry.name]?.title || entry.name, meetingId: entry.meeting_id, error: outcomes[entry.path]?.error ?? "" }; }
+      else if (drafts[entry.name] || outcomes[entry.path]) { nextDrafts[entry.name] = drafts[entry.name] ?? draftOf(entry); nextOutcomes[entry.path] = { ...outcomes[entry.path], name: entry.name, title: drafts[entry.name]?.title || entry.name, meetingId: entry.meeting_id, error: outcomes[entry.path]?.error ?? "" }; }
     }
     setChosen(nextChosen); setDrafts(nextDrafts); setOutcomes(nextOutcomes); setInitialized(true);
   };
@@ -141,7 +143,9 @@ function MeetingImportSession({
       for (const entry of submitted) {
         const meeting = result.meetings.find((item) => item.nas_dir === entry.path && item.id);
         const reason = result.skipped.filter((item) => item.name === entry.name).map((item) => item.reason).join("; ");
-        next[entry.path] = { name: entry.name, title: drafts[entry.name]?.title || entry.name, meetingId: meeting?.id ?? null, error: reason || (meeting ? "" : t(($) => $.workflow.unconfirmed)) };
+        const directory = result.directory_results?.find((item) => item.meeting_id === meeting?.id && item.name === entry.name) ?? null;
+        const taskError = result.task_errors?.find((item) => item.meeting_id === meeting?.id && item.name === entry.name)?.error;
+        next[entry.path] = { name: entry.name, title: drafts[entry.name]?.title || entry.name, meetingId: meeting?.id ?? null, error: reason || (meeting ? "" : t(($) => $.workflow.unconfirmed)), directory, taskError };
       }
       setOutcomes((previous) => ({ ...previous, ...next }));
       setChosen((previous) => ({ ...previous, ...Object.fromEntries(Object.values(next).filter((outcome) => outcome.meetingId).map((outcome) => [outcome.name, false])) }));
@@ -299,7 +303,15 @@ function MeetingImportSession({
           )}
         </div>
 
-        {imported.length > 0 && <section aria-label={t(($) => $.import_recovery.imported)} className="space-y-2"><h3 className="text-caption font-medium">{t(($) => $.import_recovery.imported)}</h3><ul className="max-h-48 space-y-2 overflow-y-auto">{imported.map(([path, outcome]) => <li key={path} className="rounded-lg border p-3 text-caption"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: outcome.meetingId! }, { projectId, moduleId })} target="_blank" rel="noreferrer" className="break-words text-primary underline">{outcome.title} {t(($) => $.action_flow.new_tab)}</AppLink>{outcome.error && <p role="alert" className="mt-1 break-words text-destructive">{outcome.error}</p>}</li>)}</ul></section>}
+        {imported.length > 0 && <section aria-label={t(($) => $.import_recovery.imported)} className="space-y-2"><h3 className="text-caption font-medium">{t(($) => $.import_recovery.imported)}</h3><ul className="max-h-64 space-y-2 overflow-y-auto">{imported.map(([path, outcome]) => <li key={path} className="space-y-2 rounded-lg border p-3 text-caption">
+          <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: outcome.meetingId! }, { projectId, moduleId })} target="_blank" rel="noreferrer" className="break-words text-primary underline">{outcome.title} {t(($) => $.action_flow.new_tab)}</AppLink>
+          {outcome.error && <p role="alert" className="break-words text-destructive">{outcome.error}</p>}
+          {outcome.taskError && <div className="space-y-1"><p>{t(($) => $.meeting_directory.import_task_pending)}</p><p role="alert" className="break-words text-destructive">{outcome.taskError}</p><AppLink target="_blank" rel="noreferrer" className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: outcome.meetingId!, view: "workflow" }, { projectId, moduleId })}>{t(($) => $.meeting_directory.open_workflow)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}
+          {outcome.directory && <div className="space-y-2"><p>{t(($) => $.meeting_directory.title)} · {directoryLabel(outcome.directory.directory_state)}</p>
+            {outcome.directory.dir_error_code ? <CockpitDirectoryReasons codes={[outcome.directory.dir_error_code]} /> : outcome.directory.dir_error && <p className="break-words text-muted-foreground">{outcome.directory.dir_error}</p>}
+            <AppLink target="_blank" rel="noreferrer" className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: outcome.meetingId!, view: "resources", directoryOperationId: outcome.directory.directory_operation_id || undefined }, { projectId, moduleId })}>{outcome.directory.directory_operation_id ? t(($) => $.meeting_directory.open_operation) : t(($) => $.meeting_directory.return_materials)} {t(($) => $.action_flow.new_tab)}</AppLink>
+          </div>}
+        </li>)}</ul></section>}
         {submitError && <p role="alert" className="text-caption text-destructive">{submitError}</p>}
 
         {directoryChanged && <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.import_recovery.directory_changed)}</p><Button type="button" variant="outline" disabled={scan.isFetching} onClick={() => setConfirmRefresh(true)}>{t(($) => $.import_recovery.rescan_destination)}</Button></div>}

@@ -14,10 +14,11 @@ import { useT } from "../../i18n";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitPathField } from "./cockpit-path-field";
 
-export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref, readOnly, onSaveMaterialPatch, onPrepareDirectory }: {
+export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref, readOnly, directoryPreparationAvailable = false, onSaveMaterialPatch, onPrepareDirectory }: {
   wsId: string; meeting: CockpitMeeting; workflow: CockpitMeetingWorkflowSummary | null | undefined; workflowHref: string; readOnly?: boolean;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
+  directoryPreparationAvailable?: boolean;
 }) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
@@ -72,10 +73,10 @@ export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref,
       <h4 className="text-caption font-medium">{t(($) => $.meeting.folder)}</h4>
       <CockpitPathField value={meeting.nas_dir} label={t(($) => $.meeting.folder)} empty={t(($) => $.meeting.no_folder)} readOnly={readOnly}
         onCommit={(nas_dir) => onSaveMaterialPatch({ nas_dir })}>
-        <Button type="button" variant="outline" size="sm" disabled={preparing} aria-busy={preparing} onClick={() => void prepareDirectory()}>
-          {preparing ? <Spinner /> : <FolderPlus />}{t(($) => $.meeting.provision_dir)}</Button>
+        {!directoryPreparationAvailable && <Button type="button" variant="outline" size="sm" disabled={preparing} aria-busy={preparing} onClick={() => void prepareDirectory()}>
+          {preparing ? <Spinner /> : <FolderPlus />}{t(($) => $.meeting.provision_dir)}</Button>}
       </CockpitPathField>
-      <p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.directory_hint)}</p>
+      <p className="text-caption text-muted-foreground">{directoryPreparationAvailable ? t(($) => $.meeting_directory.binding_hint) : t(($) => $.meeting_materials.directory_hint)}</p>
       {directoryError && <p role="alert" className="text-caption text-destructive">{directoryError}</p>}
     </div>
     <p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.related_hint)}</p>

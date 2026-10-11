@@ -15,6 +15,7 @@ import { useT } from "../../i18n";
 import { CockpitCancellationItems } from "./cockpit-meeting-cancellation-items";
 import { CockpitPreparationPreview, CockpitPreparationReasons } from "./cockpit-preparation-preview";
 import { CockpitMeetingPendingResponsibilities } from "./cockpit-meeting-disposition";
+import { CockpitDirectoryCancellationPreview } from "./cockpit-directory-cancellation";
 import { useCockpitPreparationRequest, useCockpitPreparationConfirmation } from "./use-cockpit-preparation-request";
 
 export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCreated, append = false }: {
@@ -63,6 +64,7 @@ export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCr
     {stage === "choices" ? <><CockpitCancellationItems wsId={wsId} meetingId={meetingId} value={value} onChange={update} disabled={busy || Boolean(pending)} />
       <Button disabled={busy || Boolean(pending) || !permitted || !value.reason.trim() || value.issues.length + value.run_ids.length > 50} onClick={() => void makePreview()}>{append ? t(($) => $.meeting_disposition.append_preview) : t(($) => $.meeting_disposition.preview)}</Button></> : preview.data && <>
       <CockpitPreparationPreview effects={preview.data.effects} selectedTotal={preview.data.selected_total} blockedReasons={preview.data.blocked_reasons} />
+      {!append && preview.data.directory_impact && <CockpitDirectoryCancellationPreview meetingId={meetingId} value={preview.data.directory_impact} />}
       <div className="space-y-1 rounded-lg border border-border p-3 text-caption"><p>{t(($) => $.meeting_disposition.kept_issues, { count: preview.data.unselected_issue_total })}</p><p>{t(($) => $.meeting_disposition.kept_runs, { count: preview.data.unselected_run_total })}</p></div>
       <CockpitMeetingPendingResponsibilities basis={basis} />
       <label className="flex items-start gap-2 text-caption"><input type="checkbox" checked={confirmed} disabled={busy || Boolean(pending) || reviewRequired || !preview.data.can_confirm} onChange={(event) => setConfirmed(event.target.checked)} />{append ? t(($) => $.meeting_disposition.confirm_append) : t(($) => $.meeting_disposition.confirm_cancel)}</label>

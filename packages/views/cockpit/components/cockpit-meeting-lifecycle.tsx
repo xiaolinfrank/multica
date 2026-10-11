@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { cockpitObjectPath, cockpitArtifactPath, cockpitMeetingPreparationPath, EMPTY_COCKPIT_SCOPE, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
+import { cockpitObjectPath, cockpitArtifactPath, cockpitMeetingPreparationPath, cockpitMeetingDirectoryPath, EMPTY_COCKPIT_SCOPE, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
 import type { CockpitMeetingLifecycleHeader, CockpitOccurrenceTransition, CockpitOccurrenceView, CockpitLifecycleCommandDetail } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
@@ -15,6 +15,7 @@ import { AppLink, useNavigation } from "../../navigation";
 import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { CockpitMeetingCommandRecovery } from "./cockpit-meeting-command-recovery";
+import { CockpitDirectoryTargetView, CockpitDirectoryPrincipalView } from "./cockpit-directory-parts";
 import { CockpitPreparationImpactComparison } from "./cockpit-preparation-reauthorization";
 import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
 
@@ -127,6 +128,8 @@ export function CockpitMeetingMaterialsConfirmation({ wsId, header, resourcesHre
 function useMeetingCommandLabel() {
   const { t } = useT("cockpit");
   const labels: Record<string, string> = {
+    directory_prepare: t(($) => $.meeting_directory.prepare), directory_retry: t(($) => $.meeting_directory.retry),
+    directory_pause: t(($) => $.meeting_directory.pause), directory_resume: t(($) => $.meeting_directory.resume), directory_claim: t(($) => $.meeting_directory.claim), directory_abandon: t(($) => $.meeting_directory.abandon),
     schedule: t(($) => $.meeting_lifecycle.schedule), start: t(($) => $.meeting_lifecycle.start), end: t(($) => $.meeting_lifecycle.end), correct_times: t(($) => $.meeting_lifecycle.correct_times),
     materials: t(($) => $.meeting_lifecycle.materials), agenda_create: t(($) => $.meeting_lifecycle.add), agenda_update: t(($) => $.meeting_lifecycle.save), agenda_remove: t(($) => $.meeting_lifecycle.remove),
     reference_attach: t(($) => $.meeting_lifecycle.attach), reference_remove: t(($) => $.meeting_lifecycle.unlink), preparation_issue_create: t(($) => $.meeting_lifecycle.create_preparation),
@@ -180,6 +183,10 @@ function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetai
       previous={receipt.preparation.previous_authorization?.impact ?? null} current={receipt.preparation.authorization?.impact ?? null}
       previousRun={receipt.preparation.previous_authorization?.selected_run} currentRun={receipt.preparation.authorization?.selected_run}
       previousScope={receipt.preparation.previous_authorization?.scope} currentScope={receipt.preparation.authorization?.scope} />}
+    {receipt.directory && <div className="space-y-2"><CockpitDirectoryTargetView value={receipt.directory.target} openable={false} /><CockpitDirectoryPrincipalView value={receipt.directory.principal} />
+      {(detail.action === "directory_prepare" || detail.action === "directory_retry") && <p>{t(($) => $.meeting_directory.authorized_steps, { count: receipt.directory.directory_step_ids.length })}</p>}
+      <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={cockpitMeetingDirectoryPath(paths.cockpit(), detail.meeting_id, receipt.directory.directory_operation_id, navigation.searchParams)}>{t(($) => $.meeting_directory.open_operation)} {t(($) => $.action_flow.new_tab)}</AppLink>
+    </div>}
     {receipt.materials && <p>{receipt.materials.ready ? t(($) => $.meeting_lifecycle.materials_confirmed) : t(($) => $.meeting_lifecycle.materials_cleared)}</p>}
     {receipt.agenda && <div className="space-y-1"><p className="break-words font-medium">{receipt.agenda.title}</p>{receipt.agenda.removed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.removed)}</p>}</div>}
     {targetLabel && <div className="space-y-1">{targetHref ? <AppLink href={targetHref} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline">{targetLabel} {t(($) => $.action_flow.new_tab)}</AppLink> : <p className="break-words">{targetLabel}</p>}

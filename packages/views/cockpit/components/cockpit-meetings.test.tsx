@@ -1,4 +1,4 @@
-import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
+import { resetCockpitTestNavigation, useCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowFixture, workflowSummary, compactWorkflow } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -568,6 +568,24 @@ describe("the meeting register", () => {
     );
     expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]!);
     expect(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
+  });
+
+  it("hands an acknowledged background directory plan to its reader without waiting for completion or repeating provisioning", async () => {
+    const created = meeting({ id: "meet-background", code: `${codeDay()}-02`, title: "Background preparation" });
+    const operationId = "10000000-0000-4000-8000-000000000099";
+    vi.mocked(api.createCockpitMeeting).mockImplementation(async (body) => { fixtureBoard.meetings.push(created); return { ...created, creation_key: body.creation_key, replayed: false }; });
+    vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({ meeting: created, issues: [], task: null, task_error: "", dir: "/Volumes/share/preparing", dir_created: false,
+      dir_error: "Preparation continues in the background", directory_operation_id: operationId, directory_state: "active", dir_error_code: "" });
+    function Destination() { const navigation = useCockpitTestNavigation(); return <output data-testid="creation-destination">{navigation.searchParams.toString()}</output>; }
+    await openRegister(); render(<Destination />);
+    fireEvent.click(await within(await screen.findByRole("region", { name: "Meetings" })).findByRole("button", { name: "New meeting" }));
+    const dialog = await screen.findByRole("dialog"); await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeEnabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const destination = new URLSearchParams(screen.getByTestId("creation-destination").textContent ?? "");
+    expect(destination.get("meeting")).toBe(created.id); expect(destination.get("meeting_view")).toBe("resources"); expect(destination.get("directory_operation")).toBe(operationId);
+    expect(api.createCockpitMeeting).toHaveBeenCalledTimes(1); expect(api.provisionCockpitMeeting).toHaveBeenCalledTimes(1);
+    expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope).toEqual({});
   });
 
   it("replays the same meeting creation intent after a committed response is lost", async () => {

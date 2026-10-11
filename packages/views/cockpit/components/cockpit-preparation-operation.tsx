@@ -20,12 +20,13 @@ import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitPreparationControl } from "./cockpit-preparation-control";
 import { CockpitPreparationRun, usePreparationRunStatusLabel } from "./cockpit-preparation-run";
 import { CockpitPreparationReauthorization, CockpitPreparationAuthorizationRecord } from "./cockpit-preparation-reauthorization";
+import { CockpitDirectoryCancellationReceipt } from "./cockpit-directory-cancellation";
 
 const knownStates = new Set(["active", "paused", "needs_attention", "completed"]);
 const knownKinds = new Set(["agenda", "preparation_issue", "issue_reference", "material_reference", "cancel_issue", "change_due_date", "link_meeting", "stop_run"]);
 
-export function CockpitPreparationOperation({ wsId, meetingId, operationId, autoStart = false, onAutoStartConsumed, readOnly }: {
-  wsId: string; meetingId: string; operationId: string; autoStart?: boolean; onAutoStartConsumed?: () => void; readOnly?: boolean;
+export function CockpitPreparationOperation({ wsId, meetingId, operationId, autoStart = false, onAutoStartConsumed, readOnly, directoryPreparationAvailable = false }: {
+  wsId: string; meetingId: string; operationId: string; autoStart?: boolean; onAutoStartConsumed?: () => void; readOnly?: boolean; directoryPreparationAvailable?: boolean;
 }) {
   const { t } = useT("cockpit"); const locale = useLocale(); const client = useQueryClient(); const [cursors, setCursors] = useState([""]);
   const header = useQuery(cockpitPreparationOperationOptions(wsId, meetingId, operationId)); const current = header.data;
@@ -154,6 +155,7 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
         <PreparationCounts value={current} />
         {current.kind === "apply_template" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_preparation.registration_only)}</p>}
         {current.kind === "cancel_preparation" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_preparation.cancel_recorded)}</p>}
+        {directoryPreparationAvailable && current.kind === "cancel_preparation" && <CockpitDirectoryCancellationReceipt wsId={wsId} meetingId={meetingId} operationId={operationId} commandKey={current.command_key} />}
         {!knownStates.has(current.state) && <p className="text-caption text-muted-foreground">{t(($) => $.artifacts.unknown)}</p>}
         <CockpitPreparationReasons codes={current.blocked_reasons} />
         <div className="flex flex-wrap gap-2">{running ? <Button variant="outline" size="sm" onClick={() => { stop.current = true; setMessage(t(($) => $.meeting_preparation.stopping_here)); }}>{t(($) => $.meeting_preparation.stop_here)}</Button>
@@ -190,7 +192,7 @@ function PreparationEffectRow({ wsId, meetingId, effect, header, disabled }: { w
     {effect.kind === "link_meeting" && receipt?.target_meeting_id && <AppLink target="_blank" rel="noopener noreferrer" className="block text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: receipt.target_meeting_id, view: "agenda", agendaId: receipt.agenda_id ?? undefined }, EMPTY_COCKPIT_SCOPE)}>{t(($) => $.meeting_disposition.open_target)} {t(($) => $.action_flow.new_tab)}</AppLink>}
     {effect.kind === "stop_run" && receipt && <div className="space-y-2"><p>{runStatus(receipt.run_status ?? "unknown")}</p><p className="text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>{receipt.run_id && <CockpitPreparationRun wsId={wsId} runId={receipt.run_id} issueId={receipt.issue_id} />}</div>}
     {effect.kind === "cancel_issue" && receipt && <p className="text-muted-foreground">{t(($) => $.meeting_preparation.actual_cancellations, { wakeups: receipt.stopped_wakeup_total, queued: receipt.cancelled_queue_total })}</p>}
-    <CockpitPreparationReasons codes={effect.error_code ? [effect.error_code] : []} targets={effect.targets} />
+    <CockpitPreparationReasons codes={effect.error_code ? [effect.error_code] : []} targets={effect.targets.filter((target) => !(receipt?.issue && target.kind === "issue" && target.issue_id === receipt.issue.id))} />
     {effect.reason && <p className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-muted-foreground">{effect.reason}</p>}
     {receipt?.changed === false && <p className="text-muted-foreground">{t(($) => $.meeting_preparation.unchanged)}</p>}
     <div className="flex flex-wrap gap-2"><CockpitPreparationReauthorization wsId={wsId} meetingId={meetingId} effect={effect} disabled={disabled || !knownKinds.has(effect.kind)} /><CockpitPreparationControl wsId={wsId} header={header} effect={effect} disabled={disabled || !knownKinds.has(effect.kind)} /></div>

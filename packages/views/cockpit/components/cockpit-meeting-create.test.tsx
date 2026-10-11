@@ -7,7 +7,7 @@ import { api, ApiError } from "@multica/core/api";
 import { cockpitScopeViewKey, prepareCockpitMeetingCreation, useCockpitMeetingCreateDraftStore } from "@multica/core/cockpit";
 import enCockpit from "../../locales/en/cockpit.json";
 import enCommon from "../../locales/en/common.json";
-import { CockpitMeetingCreate, type CockpitMeetingCreateProps } from "./cockpit-meeting-create";
+import { CockpitMeetingCreate, type CockpitMeetingCreateProps, type CockpitMeetingCreationResult } from "./cockpit-meeting-create";
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitContext: vi.fn(), getCockpitMeetingNextCode: vi.fn(), getCockpitMeetingDestination: vi.fn(), searchCockpitScopeMembers: vi.fn(), searchCockpitAssignees: vi.fn() } }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("tab=meetings") }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
@@ -16,7 +16,7 @@ const key = cockpitScopeViewKey("ws-1", scope);
 function setup(overrides: Partial<CockpitMeetingCreateProps> = {}) {
   const props: CockpitMeetingCreateProps = { open: true, wsId: "ws-1", scope, today: "2026-10-10", members: [], currentUserName: "Owner", currentUserId: "person", savedMeetingId: null, workflowCreated: false,
     defaultProjectId: null, defaultModuleId: null, defaultNodeId: null, defaultAssigneeType: null, defaultAssigneeId: null,
-    onOpenChange: vi.fn(), onCreated: vi.fn(), onSaveDirectoryEntry: vi.fn().mockResolvedValue(true), onAutoSaveDirectory: vi.fn(), onSubmit: vi.fn().mockResolvedValue("meeting-created"), ...overrides };
+    onOpenChange: vi.fn(), onCreated: vi.fn(), onSaveDirectoryEntry: vi.fn().mockResolvedValue(true), onAutoSaveDirectory: vi.fn(), onSubmit: vi.fn().mockResolvedValue({ meetingId: "meeting-created" }), ...overrides };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>{children}</I18nProvider></QueryClientProvider>;
   const view = render(<CockpitMeetingCreate {...props} />, { wrapper }); return { ...view, props };
@@ -39,15 +39,15 @@ describe("meeting creation command recovery", () => {
     view.rerender(<CockpitMeetingCreate {...view.props} open={false} />); view.rerender(<CockpitMeetingCreate {...view.props} />);
     expect(await screen.findByDisplayValue("Quarterly decisions")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(view.props.onCreated).toHaveBeenCalledWith("meeting-created"));
+    await waitFor(() => expect(view.props.onCreated).toHaveBeenCalledWith({ meetingId: "meeting-created" }));
     expect(vi.mocked(view.props.onSubmit).mock.calls[1]).toEqual(first); expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope[key]).toBeUndefined();
   });
   it("settles the captured command without closing or navigating another form or learning contacts after leaving", async () => {
     prepareCockpitMeetingCreation(key, { meeting: { creation_key: "10000000-0000-4000-8000-000000000001", node_id: null, meet_date: "2026-10-10", start_time: "", end_time: "", kind: "", status: "", track: "", parties: "Unit", organizer: "Owner", attendees: "Guest", location: "", title: "Captured meeting" }, provision: { create_dir: false }, workflow: null, autoSaveEntries: [{ party: "Unit", name: "Guest", position: "" }] });
-    const view = setup(); let finish!: (value: string) => void; vi.mocked(view.props.onSubmit).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const view = setup(); let finish!: (value: CockpitMeetingCreationResult) => void; vi.mocked(view.props.onSubmit).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" })); await waitFor(() => expect(view.props.onSubmit).toHaveBeenCalledOnce());
     const nextClose = vi.fn(), nextCreated = vi.fn(); view.rerender(<CockpitMeetingCreate key="ws-2" {...view.props} wsId="ws-2" onOpenChange={nextClose} onCreated={nextCreated} />);
-    await act(async () => finish("meeting-created"));
+    await act(async () => finish({ meetingId: "meeting-created" }));
     expect(view.props.onAutoSaveDirectory).not.toHaveBeenCalled(); expect(view.props.onOpenChange).not.toHaveBeenCalled(); expect(view.props.onCreated).not.toHaveBeenCalled(); expect(nextClose).not.toHaveBeenCalled(); expect(nextCreated).not.toHaveBeenCalled();
     expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope[key]).toBeUndefined(); expect(screen.getByRole("textbox", { name: "Subject" })).toHaveValue("");
   });

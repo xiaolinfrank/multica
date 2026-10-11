@@ -35,7 +35,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const close = () => { if (stillCurrent()) onClose(); };
   const query = useQuery(cockpitMeetingDetailOptions(wsId, meetingId, scope));
   const detail = query.data;
-  const preparationAvailable = detail?.capabilities?.meeting_templates === true || detail?.capabilities?.meeting_disposition === true;
+  const preparationAvailable = detail?.capabilities?.meeting_templates === true || detail?.capabilities?.meeting_disposition === true || detail?.capabilities?.meeting_directory_preparation === true;
   const basis = useQuery({ ...cockpitMeetingOperationBasisOptions(wsId, meetingId), enabled: preparationAvailable });
   const [actionsOpen, setActionsOpen] = useState(false); const [authorizedPreparationId, setAuthorizedPreparationId] = useState<string | null>(null);
   const workflow = useQuery(cockpitMeetingWorkflowOptions(wsId, meetingId));
@@ -86,6 +86,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   return <><CockpitMeetingPanel wsId={wsId} currentUserId={actorId} meeting={detail.meeting}
     lifecycleAvailable={detail.capabilities?.meeting_lifecycle === true}
     templatesAvailable={detail.capabilities?.meeting_templates === true} canAddPreparation={canAddPreparation} dispositionAvailable={detail.capabilities?.meeting_disposition === true}
+    directoryPreparationAvailable={detail.capabilities?.meeting_directory_preparation === true} onManageMeeting={() => setActionsOpen(true)}
     artifactReferences={detail.capabilities?.artifacts === true ? <CockpitMeetingArtifactReferences key={`${wsId}:${meetingId}`} wsId={wsId} meetingId={meetingId} readOnly={readOnly || !canAddPreparation} /> : undefined}
     meetingActions={<CockpitMeetingOperationsMenu wsId={wsId} meeting={detail.meeting} open={actionsOpen} onOpenChange={setActionsOpen} available={preparationAvailable} dispositionAvailable={detail.capabilities?.meeting_disposition === true} readOnly={readOnly} legacyDeleteAllowed={workflow.data?.enabled === false && !workflow.isError} onDelete={() => { setDeleteError(""); setDeleting(true); }} onPrepared={(id, advance) => { setAuthorizedPreparationId(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(navigation.pathname, meetingId, id, navigation.searchParams)); }} />}
     authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={() => setAuthorizedPreparationId(null)}

@@ -41,6 +41,7 @@ import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cock
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { CockpitMeetingMaterials } from "./cockpit-meeting-materials";
+import { CockpitMeetingDirectory } from "./cockpit-meeting-directory";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, useNavigation } from "../../navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
@@ -87,6 +88,8 @@ export interface CockpitMeetingPanelProps {
   templatesAvailable?: boolean;
   canAddPreparation?: boolean;
   dispositionAvailable?: boolean;
+  directoryPreparationAvailable?: boolean;
+  onManageMeeting?: () => void;
   meetingActions?: React.ReactNode;
   authorizedPreparationId?: string | null;
   onPreparationAuthorizationConsumed?: () => void;
@@ -113,7 +116,7 @@ export function CockpitMeetingPanel({
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, lifecycleAvailable = false, templatesAvailable = false, canAddPreparation, dispositionAvailable = false, meetingActions, authorizedPreparationId, onPreparationAuthorizationConsumed,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, lifecycleAvailable = false, templatesAvailable = false, canAddPreparation, dispositionAvailable = false, directoryPreparationAvailable = false, onManageMeeting, meetingActions, authorizedPreparationId, onPreparationAuthorizationConsumed,
   onOpenNode,
   onSaveMaterialPatch,
   onPrepareDirectory,
@@ -124,6 +127,7 @@ export function CockpitMeetingPanel({
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
   const section = destination.meetingId === meeting.id ? destination.meetingView ?? "workflow" : "workflow";
+  const directoryOperationId = destination.meetingId === meeting.id ? destination.directoryOperationId : null;
   const [agendaOpened, setAgendaOpened] = useState(section === "agenda");
   useEffect(() => { if (section === "agenda") setAgendaOpened(true); }, [section]);
   const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "agenda");
@@ -253,7 +257,7 @@ export function CockpitMeetingPanel({
         </TabsList>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <TabsContent value="agenda" keepMounted>
-            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
+            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
           </TabsContent>
           <TabsContent value="workflow" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
@@ -263,8 +267,10 @@ export function CockpitMeetingPanel({
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>
+            <CockpitMeetingDirectory key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} available={directoryPreparationAvailable} active={section === "resources"} operationId={directoryOperationId} readOnly={readOnly} onManageMeeting={() => onManageMeeting?.()} />
+            <div hidden={Boolean(directoryOperationId)} className="space-y-4">
             {artifactReferences}
-            <CockpitMeetingMaterials wsId={wsId} meeting={meeting} workflow={workflowQuery.data} workflowHref={workflowHref} readOnly={readOnly}
+            <CockpitMeetingMaterials wsId={wsId} meeting={meeting} workflow={workflowQuery.data} workflowHref={workflowHref} readOnly={readOnly} directoryPreparationAvailable={directoryPreparationAvailable}
               onSaveMaterialPatch={onSaveMaterialPatch} onPrepareDirectory={onPrepareDirectory} />
         <Separator className="my-3" />
 
@@ -328,8 +334,7 @@ export function CockpitMeetingPanel({
         </CockpitField>
 
         <Separator className="my-3" />
-
-
+            </div>
           </TabsContent>
           <TabsContent value="details" keepMounted>
         <div className="grid grid-cols-2 gap-3">

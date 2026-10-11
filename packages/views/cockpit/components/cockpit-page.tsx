@@ -24,9 +24,9 @@ import {
   cockpitScopeViewKey, useCockpitScopeViewStore, EMPTY_COCKPIT_PLAN_CONTEXT,
   useCockpitMeetingCreateDraftStore, checkpointCockpitMeetingCreation,
   cockpitPlanOptions, cockpitContextOptions, cockpitSelectedMemberOptions, buildCockpitDisplayCodesFromIndex,
-  cockpitSurfacePath,
+  cockpitSurfacePath, cockpitScopedPath,
   cockpitShellDestination,
-  cockpitObjectPath, cockpitMeetingContextPath,
+  cockpitObjectPath, cockpitMeetingContextPath, cockpitMeetingDirectoryPath,
   cockpitDestination,
   cockpitScope,
   cockpitOverallProgress,
@@ -82,7 +82,7 @@ import { CockpitChanges } from "./cockpit-changes";
 import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./cockpit-export";
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
-import { CockpitMeetingCreate, type CockpitMeetingDraft } from "./cockpit-meeting-create";
+import { CockpitMeetingCreate, type CockpitMeetingDraft, type CockpitMeetingCreationResult } from "./cockpit-meeting-create";
 import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
@@ -235,7 +235,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const currentMember = useQuery(cockpitSelectedMemberOptions(wsId, currentUserId));
   const currentUserName = currentMember.data?.items.find((member) => member.id === currentUserId)?.title ?? "";
   const members = useMemo(() => (currentMember.data?.items ?? []).map((member) => ({ user_id: member.id, name: member.title, avatar_url: member.avatar_url })), [currentMember.data]);
-  const canRestore = context.data?.actor.is_human === true && ["owner", "admin"].includes(context.data.actor.role);
+  const canRestore = !context.isError && context.data?.actor.is_human === true && ["owner", "admin"].includes(context.data.actor.role);
 
   const updateBoard = useUpdateCockpit(wsId);
   const updateNode = useUpdateCockpitNode(wsId);
@@ -432,15 +432,16 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   /** Reports what provisioning actually managed, part by part. */
   const reportProvision = useCallback(
-    (result: { task: { issue_identifier: string } | null; task_error: string; dir_created: boolean; dir_error: string }) => {
+    (result: { task: { issue_identifier: string } | null; task_error: string; dir_created: boolean; dir_error: string; directory_operation_id?: string }) => {
       if (result.task) {
         toast.success(t(($) => $.meetings.task_opened, { identifier: result.task!.issue_identifier }));
       }
       if (result.task_error) {
         toast.error(t(($) => $.meetings.task_failed, { reason: result.task_error }));
       }
-      if (result.dir_created) toast.success(t(($) => $.meetings.dir_created));
-      if (result.dir_error) {
+      if (result.directory_operation_id) toast.info(t(($) => $.meeting_directory.plan_registered));
+      else if (result.dir_created) toast.success(t(($) => $.meetings.dir_created));
+      if (result.dir_error && !result.directory_operation_id) {
         toast.error(t(($) => $.meetings.dir_failed, { reason: result.dir_error }));
       }
     },
@@ -449,13 +450,14 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   /** Each retry resumes the same confirmed command. The form owns navigation after the full operation settles. */
   const submitMeeting = useCallback(
-    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null): Promise<string> => {
+    async (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null): Promise<CockpitMeetingCreationResult> => {
       const isCurrent = captureMeetingContext();
       const existing = useCockpitMeetingCreateDraftStore.getState().draft.byScope[meetingCreateKey];
       const progress = existing?.meeting.creation_key === draft.creation_key ? existing : null;
       if (!progress) throw new Error(t(($) => $.workflow.unconfirmed));
       try {
         let meetingId = progress?.meetingId ?? null;
+        let directoryOperationId = progress.directoryOperationId ?? undefined;
         if (!meetingId) {
           const meeting = await createMeeting.mutateAsync({
             creation_key: draft.creation_key, node_id: draft.node_id || undefined,
@@ -471,14 +473,20 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           await enableMeetingWorkflow.mutateAsync({ meetingId, body: workflow });
           checkpointCockpitMeetingCreation(meetingCreateKey, progress, { workflowCreated: true });
         }
-        if (provision.create_dir && !progress?.directoryReady) {
+        if (provision.create_dir && !progress?.directoryReady && !directoryOperationId) {
           const result = await provisionMeeting.mutateAsync({ id: meetingId, body: { ...provision, create_task: false } });
           if (isCurrent()) reportProvision(result);
-          if (result.dir_error) throw new Error(result.dir_error);
-          if (result.meeting.id !== meetingId || !result.meeting.nas_dir) throw new Error(t(($) => $.workflow.unconfirmed));
-          checkpointCockpitMeetingCreation(meetingCreateKey, progress, { directoryReady: true });
+          if (result.meeting.id !== meetingId) throw new Error(t(($) => $.workflow.unconfirmed));
+          if (result.directory_operation_id) {
+            directoryOperationId = result.directory_operation_id;
+            checkpointCockpitMeetingCreation(meetingCreateKey, progress, { directoryOperationId });
+          } else {
+            if (result.dir_error) throw new Error(result.dir_error);
+            if (!result.meeting.nas_dir) throw new Error(t(($) => $.workflow.unconfirmed));
+            checkpointCockpitMeetingCreation(meetingCreateKey, progress, { directoryReady: true });
+          }
         }
-        return meetingId;
+        return { meetingId, directoryOperationId };
       } catch (error) {
         if (isCurrent()) fail(error);
         throw error;
@@ -724,7 +732,8 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
           hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
           hasMeetingPreparation={context.data?.has_meeting_preparation === true}
-          meetingsHref={cockpitSurfacePath(navigation.pathname, "meetings", { projectId: null, moduleId: null })}
+          hasDirectoryHistory={context.data?.has_directory_history === true}
+          meetingsHref={cockpitScopedPath(navigation.pathname, new URLSearchParams(context.data?.has_directory_history === true ? "tab=meetings&meeting_archive=all" : "tab=meetings"), { projectId: null, moduleId: null })}
           hasStableBindings={context.data?.has_stable_bindings !== false} />}
 
         {tab === "gantt" && planView === "gantt" && board && <DropdownMenu>
@@ -903,7 +912,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         defaultAssigneeType={cockpit?.meeting_assignee_type || null}
         defaultAssigneeId={cockpit?.meeting_assignee_id ?? null}
         onSubmit={submitMeeting}
-        onCreated={openMeeting}
+        onCreated={({ meetingId, directoryOperationId }) => directoryOperationId ? navigation.push(cockpitMeetingDirectoryPath(navigation.pathname, meetingId, directoryOperationId, navigation.searchParams)) : openMeeting(meetingId)}
       />
       <CockpitMeetingImport
         open={scanningMeetings}

@@ -3,13 +3,13 @@ import { beforeEach as beforeLayout, afterEach as afterLayout } from "vitest";
 let restoreLayout = () => {};
 beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
 afterLayout(() => restoreLayout());
-import { useCockpitScopeViewStore } from "@multica/core/cockpit";
+import { useCockpitScopeViewStore, cockpitContextOptions, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -249,13 +249,13 @@ function useDetailedBoard(legacyGroup = false) {
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  return { client: qc, ...render(
     <QueryClientProvider client={qc}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
         <CockpitPage />
       </I18nProvider>
     </QueryClientProvider>,
-  );
+  ) };
 }
 
 describe("CockpitPage", () => {
@@ -765,6 +765,18 @@ describe("CockpitPage versions", () => {
     expect(within(row.closest("li")!).getByRole("button", { name: "Restore" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save current" })).toBeEnabled();
     expect(api.getCockpitMeetingWorkflowSummary).not.toHaveBeenCalled();
+  });
+
+  it("stops whole-board restore when a refreshed protection read fails while old owner metadata remains cached", async () => {
+    const view = renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Versions" }));
+    const row = await screen.findByText("217 nodes · Owner");
+    expect(within(row.closest("li")!).getByRole("button", { name: "Restore" })).toBeEnabled();
+    vi.mocked(api.getCockpitContext).mockRejectedValueOnce(new Error("Directory protection facts unavailable"));
+    await act(async () => { await view.client.invalidateQueries({ queryKey: cockpitContextOptions("ws-1", EMPTY_COCKPIT_SCOPE).queryKey }); });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Restore" })).toBeNull());
+    expect(screen.getAllByRole("button", { name: enCockpit.snapshot_diff.compare }).every((button) => !button.hasAttribute("disabled"))).toBe(true);
+    expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
   });
 
   it("lists the version history and restores on a confirmed second click", async () => {

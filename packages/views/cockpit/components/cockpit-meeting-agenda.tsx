@@ -34,7 +34,7 @@ const purposes: CockpitAgendaPurpose[] = ["planning", "goal_review", "boundary_c
 const isPurpose = (value: string): value is CockpitAgendaPurpose => purposes.some((purpose) => purpose === value);
 const size = (value: string) => new TextEncoder().encode(value).length;
 
-export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvailable = false, dispositionAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed }: { wsId: string; meetingId: string; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void }) {
+export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvailable = false, dispositionAvailable = false, directoryPreparationAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed }: { wsId: string; meetingId: string; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; directoryPreparationAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const client = useQueryClient();
   const viewKey = cockpitRelationViewKey(wsId, "agenda", meetingId);
   const view = useCockpitScopeViewStore((state) => state.agendas[viewKey] ?? EMPTY_COCKPIT_AGENDA_CONTEXT);
@@ -62,7 +62,7 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvail
     {lifecycle.isPending ? <Spinner /> : lifecycle.isError || !lifecycle.data ? <CockpitFlowError onRetry={() => void lifecycle.refetch()} /> : <>
       <CockpitMeetingOccurrence wsId={wsId} header={lifecycle.data} refresh={() => void lifecycle.refetch()} readOnly={readOnly} />
       {operationId && preparationAvailable ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={cockpitMeetingPreparationPath(paths.cockpit(), meetingId, null, navigation.searchParams)} onClick={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }}>{t(($) => $.meeting_preparation.close)}</AppLink>
-        <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
+        <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} directoryPreparationAvailable={directoryPreparationAvailable} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
       </div> : selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
         <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
       </div> : <section className="space-y-3">

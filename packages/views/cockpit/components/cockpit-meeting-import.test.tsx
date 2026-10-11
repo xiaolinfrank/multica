@@ -33,6 +33,22 @@ beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.scanCockpitMeetingFolders).
 
 describe("meeting folder import recovery", () => {
 
+  it("keeps an imported meeting out of retries while showing its directory plan and separate task recovery", async () => {
+    const onSubmit = vi.fn<CockpitMeetingImportProps["onSubmit"]>().mockResolvedValue({ ...imported(), task_errors: [{ name: scan.entries[0]!.name, meeting_id: "meeting-created", error: "Assignee needs review" }],
+      directory_results: [{ name: scan.entries[0]!.name, meeting_id: "meeting-created", directory_operation_id: "10000000-0000-4000-8000-000000000044", directory_state: "needs_attention", dir_created: true, dir_error: "Subfolder still unavailable", dir_error_code: "mount_unavailable" }] });
+    setup(onSubmit); const user = userEvent.setup(); await screen.findByDisplayValue("Weekly review");
+    await user.click(within(screen.getByText(enCockpit.meetings.scan_with_task).closest("label")!).getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Import 1" }));
+    const importedSection = within(await screen.findByRole("region", { name: enCockpit.import_recovery.imported }));
+    expect(importedSection.getByText(enCockpit.meeting_directory.import_task_pending)).toBeVisible();
+    expect(importedSection.getByText("Assignee needs review")).toBeVisible();
+    const directory = importedSection.getByRole("link", { name: /View directory progress/ });
+    const href = new URL(directory.getAttribute("href")!, "https://example.test");
+    expect(href.searchParams.get("directory_operation")).toBe("10000000-0000-4000-8000-000000000044"); expect(href.searchParams.get("meeting_view")).toBe("resources"); expect(directory).toHaveAttribute("target", "_blank");
+    expect(importedSection.getByRole("link", { name: /Open the meeting work package/ })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-created&meeting_view=workflow");
+    expect(screen.getByRole("button", { name: "Import 0" })).toBeDisabled(); expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a failed read as an error with retry instead of claiming the share has no new folders", async () => {
     vi.mocked(api.scanCockpitMeetingFolders).mockRejectedValueOnce(new Error("offline"));
     setup();

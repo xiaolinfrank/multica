@@ -59,6 +59,7 @@ const FIELD_TRIGGER =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-title-sm";
 
 export type CockpitMeetingDraft = CockpitMeetingCreationFields;
+export interface CockpitMeetingCreationResult { meetingId: string; directoryOperationId?: string }
 
 export interface CockpitMeetingCreateProps {
   open: boolean;
@@ -86,8 +87,8 @@ export interface CockpitMeetingCreateProps {
   defaultAssigneeType: string | null;
   defaultAssigneeId: string | null;
   /** Resolves once the meeting row exists and provisioning has answered. */
-  onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null) => Promise<string>;
-  onCreated: (id: string) => void;
+  onSubmit: (draft: CockpitMeetingDraft, provision: CockpitMeetingProvision, workflow: CockpitMeetingWorkflowSetup | null) => Promise<CockpitMeetingCreationResult>;
+  onCreated: (result: CockpitMeetingCreationResult) => void;
 }
 
 export function CockpitMeetingCreate({
@@ -282,12 +283,12 @@ export function CockpitMeetingCreate({
     setWithTask(Boolean(command.workflow)); setWithDir(command.provision.create_dir === true);
     const isCurrent = captureContext(); submitLock.current = true; setSubmitting(true); setError(""); setCreationGone(false);
     try {
-      const meetingId = await onSubmit(command.meeting, command.provision, command.workflow);
+      const result = await onSubmit(command.meeting, command.provision, command.workflow);
       settleCockpitMeetingCreation(draftKey, command, "accepted");
       if (isCurrent()) {
         if (command.autoSaveEntries.length > 0) onAutoSaveDirectory?.(command.autoSaveEntries.map((entry) => ({ ...entry, source: "user" })));
         onOpenChange(false);
-        onCreated(meetingId);
+        onCreated(result);
       }
     } catch (cause) {
       const definite = cause instanceof ApiError && [400, 403, 404, 409, 422].includes(cause.status);
@@ -308,7 +309,9 @@ export function CockpitMeetingCreate({
         </DialogHeader>
 
         <fieldset disabled={submitting || Boolean(pending && !pending.meetingId)} className="flex min-w-0 flex-col gap-3">
-          {savedMeetingId && <div role="status" className="space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.workflow.meeting_saved)}</p><AppLink href={cockpitMeetingContextPath(paths.cockpit(), savedMeetingId, scope, navigation.searchParams)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.meeting_center.open_saved)}</AppLink></div>}
+          {savedMeetingId && <div role="status" className="space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.workflow.meeting_saved)}</p><AppLink href={cockpitMeetingContextPath(paths.cockpit(), savedMeetingId, scope, navigation.searchParams)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.meeting_center.open_saved)}</AppLink>
+            {pending?.provision.create_dir && <AppLink href={cockpitMeetingContextPath(paths.cockpit(), savedMeetingId, scope, navigation.searchParams, "resources")} target="_blank" rel="noreferrer" className="block text-primary underline">{t(($) => $.meeting_directory.open_materials)} {t(($) => $.action_flow.new_tab)}</AppLink>}
+          </div>}
           <fieldset disabled={submitting || Boolean(savedMeetingId)} className="contents">
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">

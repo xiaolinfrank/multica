@@ -9,7 +9,7 @@ import { CockpitVersions } from "./cockpit-versions";
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("@multica/core/api", () => ({ api: { listCockpitSnapshotPage: vi.fn(), listCockpitSnapshots: vi.fn(), getCockpitSnapshotDiff: vi.fn(), createCockpitSnapshot: vi.fn(), deleteCockpitSnapshot: vi.fn(), restoreCockpitSnapshot: vi.fn() } }));
 const snapshots = Array.from({ length: 27 }, (_, index) => ({ id: `snapshot-${index + 1}`, label: `Checkpoint ${index + 1}`, trigger_kind: "manual", node_count: 10, created_by_type: "member", created_by_label: "Person", created_at: "2026-10-10T00:00:00Z" }));
-function setup(hasMeetingLifecycle = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitVersions wsId="ws-1" canRestore hasStableBindings={!hasMeetingLifecycle} hasMeetingLifecycle={hasMeetingLifecycle} meetingsHref="/ws/cockpit?tab=meetings" /></I18nProvider></QueryClientProvider>); }
+function setup(hasMeetingLifecycle = false, hasDirectoryHistory = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitVersions wsId="ws-1" canRestore hasStableBindings={!hasMeetingLifecycle && !hasDirectoryHistory} hasDirectoryHistory={hasDirectoryHistory} hasMeetingLifecycle={hasMeetingLifecycle} meetingsHref="/ws/cockpit?tab=meetings" /></I18nProvider></QueryClientProvider>); }
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.listCockpitSnapshotPage).mockImplementation(async (_ws, query = {}) => ({ workspace_id: "ws-1", scope: "workspace", q: query.q ?? "", items: query.cursor ? snapshots.slice(25) : snapshots.slice(0, 25), total: 27, next_cursor: query.cursor ? null : "second-page" })); });
 describe("bounded workspace snapshot history", () => {
   it("protects agenda and occurrence facts without requiring a work package or stable plan binding, while keeping comparisons available", async () => {
@@ -18,6 +18,15 @@ describe("bounded workspace snapshot history", () => {
     expect(screen.getByRole("link", { name: enCockpit.work_overview.open_meetings })).toHaveAttribute("href", "/ws/cockpit?tab=meetings");
     expect(screen.getAllByRole("button", { name: "Restore" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
     expect(screen.getAllByRole("button", { name: enCockpit.snapshot_diff.compare }).every((button) => !button.hasAttribute("disabled"))).toBe(true); expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("preserves directory history identities without bindings or workflow facts, while allowing comparison and a meeting destination", async () => {
+    setup(false, true); const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: enCockpit.versions.button })); await screen.findByText("Checkpoint 1");
+    expect(screen.getByText(enCockpit.meeting_directory.restore_protected)).toBeVisible();
+    expect(screen.getByRole("link", { name: enCockpit.work_overview.open_meetings })).toHaveAttribute("href", "/ws/cockpit?tab=meetings");
+    expect(screen.getAllByRole("button", { name: "Restore" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.getAllByRole("button", { name: enCockpit.snapshot_diff.compare }).every((button) => !button.hasAttribute("disabled"))).toBe(true);
+    expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
   });
 
   it("opens a read-only comparison on demand and explains a legacy snapshot without allowing restore", async () => {
