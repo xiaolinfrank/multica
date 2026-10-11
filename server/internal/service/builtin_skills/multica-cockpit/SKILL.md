@@ -140,6 +140,12 @@ Use it for an authored plan, not a few field edits. It is refused on protected b
 Parents use `parent_code`; document order is irrelevant. Unresolvable issue references
 are reported on stderr and skipped. See the reference for the import shape.
 
+## Input materials
+
+Use [fixed input materials](references/inputs.md) for uploads, existing attachments,
+collaboration-directory selections, exact version references, and Issue/Run material
+manifests. Fixing a file is not human approval; saving a manifest does not start an Agent.
+
 ## Boundaries
 
 - Fixed deliverables, handoffs and L3 acceptance use [artifacts and acceptance](references/artifacts.md); Issue completion alone does not approve them.

@@ -222,7 +222,7 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
-		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitArtifactCommand(), newCockpitAcceptanceCommand())
+		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
 		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd, newCockpitVersionCompareCommand())
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
