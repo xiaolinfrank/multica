@@ -1820,7 +1820,9 @@
     "run_failed": "失敗",
     "run_cancelled": "キャンセル記録済み",
     "link_meeting_hint": "選択した議題に準備の関連付けを追加します。タスクと元の会議の関連付けは保持します。",
-    "open_target": "対象の議題を開く"
+    "open_target": "対象の議題を開く",
+    "search_issues": "準備タスクを検索",
+    "append_preview": "準備の対応内容をプレビュー"
   },
   "meeting_preparation": {
     "authorized_count": "承認された操作：{{count}} 件。実際の結果は進捗で確認してください。",

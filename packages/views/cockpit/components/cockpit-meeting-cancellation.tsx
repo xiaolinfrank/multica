@@ -61,7 +61,7 @@ export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCr
     {!permitted && <CockpitPreparationReasons codes={basis[append ? "append_disposition" : "cancel"].reason_codes} targets={basis.targets} />}
     {pending && <div className="space-y-2 text-caption"><p>{t(($) => $.meeting_lifecycle.pending_hint)}</p><Button size="sm" variant="outline" disabled={busy} onClick={() => void verify()}>{t(($) => $.meeting_lifecycle.check_command)}</Button></div>}
     {stage === "choices" ? <><CockpitCancellationItems wsId={wsId} meetingId={meetingId} value={value} onChange={update} disabled={busy || Boolean(pending)} />
-      <Button disabled={busy || Boolean(pending) || !permitted || !value.reason.trim() || value.issues.length + value.run_ids.length > 50} onClick={() => void makePreview()}>{t(($) => $.meeting_disposition.preview)}</Button></> : preview.data && <>
+      <Button disabled={busy || Boolean(pending) || !permitted || !value.reason.trim() || value.issues.length + value.run_ids.length > 50} onClick={() => void makePreview()}>{append ? t(($) => $.meeting_disposition.append_preview) : t(($) => $.meeting_disposition.preview)}</Button></> : preview.data && <>
       <CockpitPreparationPreview effects={preview.data.effects} selectedTotal={preview.data.selected_total} blockedReasons={preview.data.blocked_reasons} />
       <div className="space-y-1 rounded-lg border border-border p-3 text-caption"><p>{t(($) => $.meeting_disposition.kept_issues, { count: preview.data.unselected_issue_total })}</p><p>{t(($) => $.meeting_disposition.kept_runs, { count: preview.data.unselected_run_total })}</p></div>
       <CockpitMeetingPendingResponsibilities basis={basis} />

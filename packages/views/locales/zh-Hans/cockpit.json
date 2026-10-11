@@ -1820,7 +1820,9 @@
     "run_failed": "已失败",
     "run_cancelled": "已记录取消",
     "link_meeting_hint": "为目标议题新增准备关联。任务及原会议关联保持不变。",
-    "open_target": "打开目标议题"
+    "open_target": "打开目标议题",
+    "search_issues": "搜索准备任务",
+    "append_preview": "预览准备处置"
   },
   "meeting_preparation": {
     "authorized_count": "已授权 {{count}} 项；实际结果请查看处理进度。",

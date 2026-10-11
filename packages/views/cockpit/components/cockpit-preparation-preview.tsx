@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@multica/ui/lib/utils";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink } from "../../navigation";
 import type { CockpitPreparationPreviewEffect, CockpitMeetingTemplateSlot, CockpitPreparationResolvedScope, IssueOperationTarget } from "@multica/core/types";
@@ -46,7 +47,7 @@ export function CockpitPreparationPreview({ effects, selectedTotal, blockedReaso
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption"><p>{t(($) => $.meeting_templates.selected_total, { count: selectedTotal })}</p>{created > 0 && <p>{t(($) => $.meeting_templates.creates_total, { count: created })}</p>}{reused > 0 && <p>{t(($) => $.meeting_templates.links_total, { count: reused })}</p>}</div>
     <CockpitPreparationReasons codes={blockedReasons} />
     {selected.length > 25 && <CockpitFlowPaging page={currentPage} shown={shown.length} total={selectedTotal} hasNext={currentPage * 25 < selected.length} busy={false} onPrevious={() => setPage(currentPage - 1)} onNext={() => setPage(currentPage + 1)} />}
-    <ul className="max-h-[42vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3">{shown.map((effect) => <li key={effect.slot_id} className="space-y-2 py-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 flex-1 line-clamp-2 break-words text-body font-medium" title={effect.label}>{effect.label}</p><span className="text-caption text-muted-foreground">{label(effect.kind)}</span></div>
+    <ul className={cn("max-h-[42vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3", selected.length > 25 && "h-[42vh]")}>{shown.map((effect) => <li key={effect.slot_id} className="space-y-2 py-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 flex-1 line-clamp-2 break-words text-body font-medium" title={effect.label}>{effect.label}</p><span className="text-caption text-muted-foreground">{label(effect.kind)}</span></div>
       {slots?.some((slot) => slot.slot_id === effect.slot_id) && <CockpitTemplateSlotText slot={slots.find((slot) => slot.slot_id === effect.slot_id)!} />}
       {effect.scope && <CockpitPreparationScope value={effect.scope} />}
       <CockpitPreparationReasons codes={effect.reason_codes} targets={effect.targets} />

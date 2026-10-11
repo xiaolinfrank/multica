@@ -1820,7 +1820,9 @@
     "run_failed": "Failed",
     "run_cancelled": "Cancellation recorded",
     "link_meeting_hint": "Adds a preparation link to the selected agenda. The issue and its original meeting references remain unchanged.",
-    "open_target": "Open the destination agenda"
+    "open_target": "Open the destination agenda",
+    "search_issues": "Search preparation issues",
+    "append_preview": "Preview preparation changes"
   },
   "meeting_preparation": {
     "authorized_count": "Authorized items: {{count}}. See progress for their actual results.",

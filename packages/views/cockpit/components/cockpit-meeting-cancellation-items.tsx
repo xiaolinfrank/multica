@@ -36,7 +36,7 @@ export function CockpitCancellationItems({ wsId, meetingId, value, onChange, dis
   const labels = { retain: t(($) => $.meeting_disposition.retain), change_due_date: t(($) => $.meeting_disposition.change_due_date), link_meeting: t(($) => $.meeting_disposition.link_meeting), cancel: t(($) => $.meeting_disposition.cancel_issue) };
   return <section aria-label={t(($) => $.meeting_disposition.preparation_impact)} className="space-y-3">
     <p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.keep_default)}</p>
-    <label className="block space-y-1 text-caption">{t(($) => $.task_flow.search)}<Input value={text} name="cancellation-issue-search" autoComplete="off" onChange={(event) => { setText(event.target.value); setCursors([""]); }} /></label>
+    <label className="block space-y-1 text-caption">{t(($) => $.meeting_disposition.search_issues)}<Input value={text} name="cancellation-issue-search" autoComplete="off" onChange={(event) => { setText(event.target.value); setCursors([""]); }} /></label>
     {query.isPending || q !== text.trim() ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
       <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
       <ul className="max-h-[48vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3">{page.items.map((item) => {
