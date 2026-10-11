@@ -1,0 +1,1372 @@
+{
+  "stage": "N2 candidate compiled; latest runtime and browser acceptance pending; resident remains N1",
+  "host": "fosun_agent_3 / 10.35.182.2",
+  "resident": "unchanged N1 f802 API / wdHrq Web / multica_dev schema9104 ledger793",
+  "test_database": "multica_test schema9143 ledger829; original828 stems/times retained during single9143 application; original7 artifact capture tombstones unchanged; resident multica_dev schema9104 ledger793 unchanged",
+  "checks": {
+    "bytes": {
+      "parents_pass": 16,
+      "log": "/tmp/multica-n2-evidence/n2-bytes-first.log"
+    },
+    "storage": {
+      "parents_pass": 51,
+      "log": "/tmp/multica-n2-evidence/n2-storage-first.log"
+    },
+    "core": {
+      "unique_tests": 14,
+      "initial_pass": 13,
+      "initial_fail": 1,
+      "initial_failure": "API singleton fixture was not installed; fetch expected1 got0",
+      "retest": "API7 PASS after exact test-only singleton/status404 fix; original drafts4 and query3 retained",
+      "test_patch_sha256": "0cd185fd54a3d0b1eb7d5f0f1ce41cab7dcbe335375795ceabada7a768319440",
+      "logs": [
+        "/tmp/multica-n2-evidence/n2-core-first.log",
+        "/tmp/multica-n2-evidence/n2-core-fixture-fix.log"
+      ]
+    },
+    "web_stream": {
+      "tests_pass": 7,
+      "log": "/tmp/multica-n2-evidence/n2-web-stream-first.log"
+    },
+    "middleware_deadlines": {
+      "parents_pass": 6,
+      "log": "/tmp/multica-n2-evidence/n2-middleware-first.log"
+    },
+    "middleware_input_auth": {
+      "parents_pass": 1,
+      "children_pass": 12,
+      "log": "/tmp/multica-n2-evidence/n2-input-auth-first.log"
+    },
+    "ui_first": {
+      "archive_sha256": "3af80c86a97261da19665dafbd3334d8c6b09de4232047f4a31fcf8972bafaa9",
+      "source_files_verified": 2566,
+      "components_pass": 15,
+      "components_fail": 1,
+      "locale_pass": 203,
+      "failure": "cockpit-input-controls.test.tsx:40 status query matches outer status and Spinner status",
+      "log": "/tmp/multica-n2-evidence/n2-ui-first.log",
+      "owner": "input_ux",
+      "resident_modified": false
+    },
+    "ui_status_fix": {
+      "tests_pass": 4,
+      "test_assertions_changed": false,
+      "product_change": "Spinner decorative within existing live status",
+      "file_sha256": "27fc489dabfaa249a912eb053614c1aeb7c6eef5d7c19ae00682c4ff1bd3eec8",
+      "log": "/tmp/multica-n2-evidence/n2-ui-status-fix.log"
+    },
+    "ui_unique_result": {
+      "component_tests_pass": 16,
+      "new": 14,
+      "existing": 2,
+      "locale_pass": 203,
+      "initial_failure_retained": true
+    },
+    "nas_input_first": {
+      "new_parents_pass": 11,
+      "existing_parents_pass": 22,
+      "total_parents_pass": 33,
+      "descendants_pass": 34,
+      "real_nas": false,
+      "database": false,
+      "binary_sha256": "3fecdc7b4f0fcfdd4cadacf18ca60225b1ffc59b40c6c5aa0ff44836520373fb",
+      "manifest": "/tmp/multica-n2-nas-input-manifest.json",
+      "log": "/tmp/multica-n2-evidence/n2-nas-input-first.log"
+    },
+    "nas_input_final": {
+      "new_parents_pass": 12,
+      "existing_parents_retained": 22,
+      "unique_parents_pass": 34,
+      "descendants_pass": 34,
+      "binary_sha256": "3f80f43460170f0da48fdee5acb0bda8d95d9a02f07a3c5f76d85a52d128718a",
+      "manifest": "/tmp/multica-n2-nas-input-final-manifest.json",
+      "log": "/tmp/multica-n2-evidence/n2-nas-input-close-final.log",
+      "last_change": "N2 held reader returns filesystem Close errors as well as final observation errors; only a successful Close permits domain pinning",
+      "go_vet": "exit0",
+      "linux_cross_compile": "exit0 build-only",
+      "real_nas": false,
+      "database": false,
+      "binary": "/tmp/multica-n2-nas-input-close.test"
+    },
+    "migration_isolated": {
+      "host": "fosun_agent_3",
+      "started_from_database": "multica_test",
+      "public_schema_applied": false,
+      "resident_modified": false,
+      "binary_sha256": "af2743775099133603854d9e467e5786eeebe437dd0130aaf04774b1f393136a",
+      "archive_sha256": "7782553a48a6b5d6bcfe38e75ae4d8921b57d4af2483a0a15ab09dd6697e8c02",
+      "source_files": 79,
+      "command": [
+        "binary",
+        "-test.run",
+        "^TestCockpitInputBatchPreservesLegacyAndRejectsRollbackBeforeFirstIndex$",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout",
+        "4m"
+      ],
+      "exit_code": 0,
+      "before": {
+        "database": "multica_test",
+        "ledger": 790,
+        "ledger_hash": "a3ecba751f6b8ebc153d049c0b5d5ff2",
+        "tombstones": 7,
+        "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+        "workspaces": 0,
+        "n2_table": null,
+        "temporary_schemas": []
+      },
+      "after": {
+        "database": "multica_test",
+        "ledger": 790,
+        "ledger_hash": "a3ecba751f6b8ebc153d049c0b5d5ff2",
+        "tombstones": 7,
+        "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+        "workspaces": 0,
+        "n2_table": null,
+        "temporary_schemas": []
+      },
+      "public_unchanged": true,
+      "recorded_at": "2026-10-11T14:08:41.889698+00:00"
+    },
+    "migration_public": {
+      "host": "fosun_agent_3",
+      "database": "multica_test",
+      "backup": "/Users/fosun_agent_3/var/multica-dev-test/backups/before-input-9142-20261011T142751Z",
+      "runner_sha256": "b0683892994d1240b9e73ba4d45af406c3aade5f6648592e6e1f1687cd66ad9f",
+      "archive_sha256": "7782553a48a6b5d6bcfe38e75ae4d8921b57d4af2483a0a15ab09dd6697e8c02",
+      "applied": [
+        "9105_cockpit_inputs",
+        "9106_cockpit_input_id_idx",
+        "9107_cockpit_input_creation_idx",
+        "9108_cockpit_input_page_idx",
+        "9109_cockpit_input_project_page_idx",
+        "9110_cockpit_input_title_idx",
+        "9111_cockpit_input_principal_page_idx",
+        "9112_cockpit_input_version_id_idx",
+        "9113_cockpit_input_version_number_idx",
+        "9114_cockpit_input_version_submission_idx",
+        "9115_cockpit_input_version_verify_due_idx",
+        "9116_cockpit_input_version_verify_lease_idx",
+        "9117_cockpit_input_version_artifact_source_idx",
+        "9118_cockpit_input_transfer_id_idx",
+        "9119_cockpit_input_transfer_number_idx",
+        "9120_cockpit_input_transfer_command_idx",
+        "9121_cockpit_input_transfer_owned_key_idx",
+        "9122_cockpit_input_transfer_active_idx",
+        "9123_cockpit_input_transfer_due_idx",
+        "9124_cockpit_input_transfer_lease_idx",
+        "9125_cockpit_input_transfer_cleanup_idx",
+        "9126_cockpit_input_reference_id_idx",
+        "9127_cockpit_input_reference_creation_idx",
+        "9128_cockpit_input_reference_active_idx",
+        "9129_cockpit_input_reference_meeting_idx",
+        "9130_cockpit_input_reference_agenda_idx",
+        "9131_cockpit_input_reference_version_idx",
+        "9132_cockpit_input_manifest_head_idx",
+        "9133_cockpit_input_manifest_version_id_idx",
+        "9134_cockpit_input_manifest_version_number_idx",
+        "9135_cockpit_input_manifest_version_command_idx",
+        "9136_cockpit_input_manifest_item_position_idx",
+        "9137_cockpit_input_manifest_item_version_idx",
+        "9138_cockpit_input_manifest_item_reverse_idx",
+        "9139_cockpit_input_task_manifest_idx",
+        "9140_cockpit_input_artifact_manifest_idx",
+        "9141_cockpit_input_integrity",
+        "9142_cockpit_input_reference_removal_idx"
+      ],
+      "ledger_before": 790,
+      "ledger_after": 828,
+      "old_ledger_stems_and_timestamps_unchanged": true,
+      "reup_stems_and_timestamps_unchanged": true,
+      "new_valid_ready_indexes": [
+        "idx_cockpit_input_id",
+        "idx_cockpit_input_creation",
+        "idx_cockpit_input_page",
+        "idx_cockpit_input_project_page",
+        "idx_cockpit_input_title",
+        "idx_cockpit_input_principal_page",
+        "idx_cockpit_input_version_id",
+        "idx_cockpit_input_version_number",
+        "idx_cockpit_input_version_submission",
+        "idx_cockpit_input_version_verify_due",
+        "idx_cockpit_input_version_verify_lease",
+        "idx_cockpit_input_version_artifact_source",
+        "idx_cockpit_input_transfer_id",
+        "idx_cockpit_input_transfer_number",
+        "idx_cockpit_input_transfer_command",
+        "idx_cockpit_input_transfer_owned_key",
+        "idx_cockpit_input_transfer_active",
+        "idx_cockpit_input_transfer_due",
+        "idx_cockpit_input_transfer_lease",
+        "idx_cockpit_input_transfer_cleanup",
+        "idx_cockpit_input_reference_id",
+        "idx_cockpit_input_reference_creation",
+        "idx_cockpit_input_reference_active",
+        "idx_cockpit_input_reference_meeting",
+        "idx_cockpit_input_reference_agenda",
+        "idx_cockpit_input_reference_version",
+        "idx_cockpit_input_manifest_head",
+        "idx_cockpit_input_manifest_version_id",
+        "idx_cockpit_input_manifest_version_number",
+        "idx_cockpit_input_manifest_version_command",
+        "idx_cockpit_input_manifest_item_position",
+        "idx_cockpit_input_manifest_item_version",
+        "idx_cockpit_input_manifest_item_reverse",
+        "idx_cockpit_input_task_manifest",
+        "idx_cockpit_input_artifact_manifest",
+        "cockpit_input_reference_removal_idx"
+      ],
+      "tombstones": 7,
+      "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+      "workspace_count": 0,
+      "resident_modified": false,
+      "caps_enabled": false,
+      "recorded_at": "2026-10-11T14:34:29.349397+00:00"
+    },
+    "core_second": {
+      "archive_sha256": "00414103638723e175ed0bb8a0e1fac7b7e378ae31e2eb9f0f3bbfea65ad5d11",
+      "files": 7,
+      "tests_pass": 176,
+      "by_file": {
+        "api/cockpit-input": 10,
+        "cockpit/input-draft-store": 6,
+        "cockpit/input-queries": 3,
+        "cockpit/input-view-drafts": 2,
+        "api/cockpit-artifact-schemas": 8,
+        "api/task-detail": 6,
+        "api/client": 141
+      },
+      "log": "/tmp/multica-n2-evidence/n2-core-second.log"
+    },
+    "ui_b": {
+      "archive_sha256": "291aa9da9f1561f97eba851aa8553b618e40d01d4d30bd2ee1ee446ca26d5ebf",
+      "components_unique": 26,
+      "initial_pass": 24,
+      "initial_fail": 2,
+      "failure": "test accessible button names disagreed with existing locale; no product change",
+      "retest_pass": 2,
+      "test_patch_sha256": "6bcc3781747f365a2721a66460b8ffd8dc44bff7be9c45f00662b9cf719c5f28",
+      "locale_pass": 203,
+      "core_pass": 164,
+      "core_by_file": {
+        "api/client": 141,
+        "api/cockpit-input": 10,
+        "api/task-detail": 8,
+        "cockpit/input-view-drafts": 3,
+        "cockpit/input-run-launch": 2
+      },
+      "logs": [
+        "/tmp/multica-n2-evidence/n2-ui-b.log",
+        "/tmp/multica-n2-evidence/n2-ui-b-fix1.log",
+        "/tmp/multica-n2-evidence/n2-ui-b-core.log"
+      ],
+      "counts_overlap_previous_runs": true
+    },
+    "service_first": {
+      "binary_sha256": "2580b7b3676d8bab4941a083da3f4880e7ed590ca05f9ecbff2196231608e737",
+      "parents_pass": 17,
+      "parents_fail": 3,
+      "failures": {
+        "artifact_provenance": "fixture issue number counter",
+        "projection": "fixture missing explicit version ID",
+        "reference_cleanup": "fixture missing archived reason"
+      },
+      "log": "/tmp/multica-n2-evidence/n2-service-first.log",
+      "fix_retest_pending": false,
+      "fix_retest": "all 3 fixture failures PASS in service_run_first; original failures retained"
+    },
+    "input_cli": {
+      "binary_sha256": "c3ccb05fdf83879c235d4718b191ec691bfbbe3b857a9d78818b785bc557214a",
+      "parents_pass": 3,
+      "descendants_pass": 10,
+      "log": "/tmp/multica-n2-evidence/n2-input-cli.log"
+    },
+    "input_transport": {
+      "binary_sha256": "9638c2f92ebea3b244e85cbe408a25a0893dabe4b3e3b0ea8a275b519d8f7d06",
+      "parents_pass": 3,
+      "descendants_pass": 4,
+      "log": "/tmp/multica-n2-evidence/n2-input-transport.log"
+    },
+    "service_run_first": {
+      "binary_sha256": "cff38985108ee6dbfedd5729d9f6d2718964a5e9b249bba19bd939a08da055e3",
+      "parents": [
+        [
+          "PASS",
+          "TestCockpitArtifactExplicitInputManifestKeepsCrossIssueProvenance"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputLateWriteCannotReviveAbandonedOrDeletedInput"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputManifestKeepsExactReceiptAndOrderedFixedVersions"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputManifestConcurrentConfirmationCommitsOneVersion"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputManifestCanonicalEnqueueRetryAndRerunKeepPins"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputNASCapturePinsObservedFileAndSurvivesSourceRemoval"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputProjectionKeepsRecoverySeparateFromAvailability"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputProjectionDoesNotLetManagerUploadIntoAnotherSession"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputProjectionBatchesIdentitiesAndExcludesReceiptBodies"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputReferenceCleanupRemainsAvailableAfterMeetingArchive"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputRunRequiresExactPreparationBeforeStartAndAfterReclaim"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputRunExplicitNullPreconditionDoesNotCancelPendingTask"
+        ]
+      ],
+      "descendants": [
+        [
+          "PASS",
+          "TestCockpitInputLateWriteCannotReviveAbandonedOrDeletedInput/abandon"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputLateWriteCannotReviveAbandonedOrDeletedInput/workspace_teardown"
+        ]
+      ],
+      "pass": 12,
+      "fail": 0,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-service-run-first.log"
+    },
+    "service_task_adjacent": {
+      "binary_sha256": "cff38985108ee6dbfedd5729d9f6d2718964a5e9b249bba19bd939a08da055e3",
+      "parents": [
+        [
+          "PASS",
+          "TestRerunIssueBlockedBeforeMutationWhenInvokeDenied"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueAttributesToRerunningMember"
+        ],
+        [
+          "PASS",
+          "TestManualRerunSettlesDeliveredRecovery"
+        ],
+        [
+          "PASS",
+          "TestManualRerunKeepsDelegatedFailureRecoveryReplayable"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueQueuesBehindActiveTaskWithoutCancelling"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueReplacesNotYetStartedTask"
+        ],
+        [
+          "PASS",
+          "TestRerunIssuePinsForceFreshSessionForRollbackSafety"
+        ],
+        [
+          "PASS",
+          "TestCreateRetryTaskFireAtControlsDeferral"
+        ],
+        [
+          "PASS",
+          "TestClaimTaskRejectsMismatchedAgentRuntime"
+        ],
+        [
+          "PASS",
+          "TestClaimTaskForRuntimeKeepsOwnerlessPrivateAgentClaimable"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimesKeepsOwnerlessPrivateAgentClaimable"
+        ],
+        [
+          "PASS",
+          "TestClaimTaskUsesCurrentAgentRuntimeWhenRuntimeIDIsOmitted"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_PromotesDeferredAndEmitsQueuedEvent"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_PartialSuccessOnSecondAgentClaimFailure"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_PartialSuccessOnCandidateQueryFailureAfterReclaim"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_MultiRuntimeDrain"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_MaxTasksCap"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_AnyDueRuntimeChecksTheCompleteSet"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_EmptyReclaimDefersHintForRetry"
+        ],
+        [
+          "PASS",
+          "TestClaimTasksForRuntimes_EmptyInputs"
+        ],
+        [
+          "PASS",
+          "TestDeferredChannelIssueTaskPromotesAfterMediaSettlement"
+        ],
+        [
+          "PASS",
+          "TestDeferredChannelIssueTaskConflictsWithQueuedSiblingAtDatabase"
+        ],
+        [
+          "PASS",
+          "TestClaimTaskConcurrentCapacityRespected"
+        ],
+        [
+          "PASS",
+          "TestStartTaskLegacyDoesNotAcknowledgeReplayOrDatabaseFailure"
+        ]
+      ],
+      "descendants": [
+        [
+          "PASS",
+          "TestRerunIssueQueuesBehindActiveTaskWithoutCancelling/running"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueQueuesBehindActiveTaskWithoutCancelling/waiting_local_directory"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueReplacesNotYetStartedTask/queued"
+        ],
+        [
+          "PASS",
+          "TestRerunIssueReplacesNotYetStartedTask/dispatched"
+        ],
+        [
+          "PASS",
+          "TestRerunIssuePinsForceFreshSessionForRollbackSafety/transient_timeout"
+        ],
+        [
+          "PASS",
+          "TestRerunIssuePinsForceFreshSessionForRollbackSafety/transient_provider_network"
+        ],
+        [
+          "PASS",
+          "TestRerunIssuePinsForceFreshSessionForRollbackSafety/poisoned_context_overflow"
+        ],
+        [
+          "PASS",
+          "TestRerunIssuePinsForceFreshSessionForRollbackSafety/cancelled_no_reason"
+        ],
+        [
+          "PASS",
+          "TestCreateRetryTaskFireAtControlsDeferral/deferred_final_tier_persists_budget"
+        ],
+        [
+          "PASS",
+          "TestCreateRetryTaskFireAtControlsDeferral/queued_immediate_tier_inherits_budget"
+        ]
+      ],
+      "pass": 24,
+      "fail": 0,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-service-task-adjacent.log"
+    },
+    "service_wakeup": {
+      "binary_sha256": "9a3de1d4fb7e7d5733a8fdc3296d9690cb540dd389480be611feaaed106940fe",
+      "parents": [
+        [
+          "PASS",
+          "TestCockpitInputManifestCanonicalEnqueueRetryAndRerunKeepPins"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupMemberFilterPreservesOnceUntilMatchingComment"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupActorMatchesEditorNotOriginalAuthor"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupActorValidationAndWorkspaceScope"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupActorFilterSurvivesEnableAndExplicitReplacement"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupLegacyMutationAgentFilterNormalizes"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupBusyRuleDoesNotBlockOtherWorkspace"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupPendingEventsAreBoundedAndLegacyInputsDrain"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupCaptureRacingConsumptionKeepsNewInput"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupReceiptExpiryIsBoundedAndKeepsPending"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupActivationCapacityAndReenable"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupWorkspaceCapacitySerializesDifferentIssues"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupLegacyConsumerCannotConsumeUnseenMerge"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupCollaborationCapture"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupNonterminalSubscriptionIsProspective"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupReplyUnresolveKeepsSource"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupCollaborationTransactionAndActor"
+        ],
+        [
+          "PASS",
+          "TestWakeupConditionFieldValueWakesOnceWhenItHolds"
+        ],
+        [
+          "PASS",
+          "TestWakeupConditionRepeatsOnlyWhenItBecomesTrueAgain"
+        ],
+        [
+          "PASS",
+          "TestWakeupConditionChildrenAndOtherIssue"
+        ],
+        [
+          "PASS",
+          "TestWakeupConditionPullRequestChecksWaitForNewResult"
+        ],
+        [
+          "PASS",
+          "TestWakeupConditionValidation"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnablePreservesConfigAndFencesReplay"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnableOneShotRequiresExplicitFutureRearm"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnableChecksScopeAuthorityAndClosedState"
+        ],
+        [
+          "PASS",
+          "TestWakeupEvidenceStructuredMergeAndLegacyWriter"
+        ],
+        [
+          "PASS",
+          "TestWakeupEvidenceJSONBFormattingAndTimerReplacement"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupStructuredEvidenceSurvivesDatabaseRoundTrip"
+        ],
+        [
+          "PASS",
+          "TestWakeupEvidenceInstructionEditDoesNotReintroduceOldPrompt"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupExpiryValidation"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeoutWakesOnceAndEnds"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeoutEndsQuietly"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupPastAbsoluteDeadlineCannotBeEnabled"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesStateAndPendingEvents"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesQueuedRunAndChecksScope"
+        ],
+        [
+          "PASS",
+          "TestWakeupJoinsOnlyRunsOfTheSamePerson"
+        ],
+        [
+          "PASS",
+          "TestWakeupKeepsItsInputWhenTheWaitingRunDoesNotTakeIt"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTaskLockWaitDoesNotHoldReceipt"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupLargeSingleFactPreservesReferences"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupRegistrationRunDoesNotTriggerItself"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupOversizedPendingEvidenceStillConsumesInputs"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupDispatchedWaitIsObservableAndResumes"
+        ],
+        [
+          "PASS",
+          "TestWakeupMaxFiresPausesAfterTheCap"
+        ],
+        [
+          "PASS",
+          "TestWakeupBurstPausesTheRule"
+        ],
+        [
+          "PASS",
+          "TestWakeupLoopBetweenRulesPausesTheRule"
+        ],
+        [
+          "PASS",
+          "TestWakeupTriggerDeleteAndCheckIn"
+        ],
+        [
+          "PASS",
+          "TestWakeupCheckInIsOnlyForScheduledChecks"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEventAtomicOnceAndIndependentInputs"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupStartsItsOwnRunWhenNothingWaits"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTerminalStateAndScope"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupContinuousSelfLoopAndClose"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeRecoveryUpdateAndRevocation"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupValidate"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupStatusSourceAndClaimAuthority"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupRetryKeepsPromptAndSchedulingScope"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupConcurrentDispatchIsIdempotent"
+        ]
+      ],
+      "descendants": [
+        [
+          "PASS",
+          "TestIssueWakeupBusyRuleDoesNotBlockOtherWorkspace/issue"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupBusyRuleDoesNotBlockOtherWorkspace/rule"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupBusyRuleDoesNotBlockOtherWorkspace/task"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupBusyRuleDoesNotBlockOtherWorkspace/workspace"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnablePreservesConfigAndFencesReplay/event"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnablePreservesConfigAndFencesReplay/at"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnablePreservesConfigAndFencesReplay/every"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupEnablePreservesConfigAndFencesReplay/cron"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeoutEndsQuietly/event"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeoutEndsQuietly/every"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesStateAndPendingEvents/event"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesStateAndPendingEvents/at"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesStateAndPendingEvents/every"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupInstructionPreservesStateAndPendingEvents/cron"
+        ],
+        [
+          "PASS",
+          "TestWakeupKeepsItsInputWhenTheWaitingRunDoesNotTakeIt/run_cancelled_with_the_rule_that_queued_it"
+        ],
+        [
+          "PASS",
+          "TestWakeupKeepsItsInputWhenTheWaitingRunDoesNotTakeIt/run_claimed,_sent_back,_then_cancelled_with_its_rule"
+        ],
+        [
+          "PASS",
+          "TestWakeupKeepsItsInputWhenTheWaitingRunDoesNotTakeIt/run_claimed_by_an_older_daemon"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeRecoveryUpdateAndRevocation/at"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeRecoveryUpdateAndRevocation/every"
+        ],
+        [
+          "PASS",
+          "TestIssueWakeupTimeRecoveryUpdateAndRevocation/cron"
+        ]
+      ],
+      "pass": 56,
+      "fail": 0,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-service-wakeup.log"
+    },
+    "handler_first": {
+      "binary_sha256": "3ded01fe6b0a1f6713d0326d59b6154822bc2d4994a584a92d1c29c7e84d11ac",
+      "parents": [
+        [
+          "PASS",
+          "TestRerunIssue_PrivateHistoricalAgent"
+        ],
+        [
+          "FAIL",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch"
+        ],
+        [
+          "FAIL",
+          "TestCockpitInputRetainedIssueDeleteRejectsBeforeCancellingRun"
+        ],
+        [
+          "FAIL",
+          "TestCockpitInputUnusedManifestIsCleanedWithIssueDeletion"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPDisabledDoesNotInitializeOrReadBody"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPBoundedQueryRejectsAmbiguousScope"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPTransportDoesNotTrustMachineHeaders"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPCapabilityBindsExactBytesAndPrincipal"
+        ],
+        [
+          "PASS",
+          "TestRerunIssue_PreservesSourceCommentPlanAndResetsReceipt"
+        ],
+        [
+          "PASS",
+          "TestRerunIssue_PromotesNewestSurvivorAfterSourceTriggerDeleted"
+        ],
+        [
+          "PASS",
+          "TestStartTask_AutopilotRunOnlyTask_ResolvesWorkspace"
+        ]
+      ],
+      "descendants": [
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/exact_whitespace"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/actor_injection"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/missing_key"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/null_object"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/trailing_command"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPStrictWirePreservesTextAndRejectsIdentityPollution/oversize"
+        ],
+        [
+          "PASS",
+          "TestRerunIssue_PromotesNewestSurvivorAfterSourceTriggerDeleted/removed"
+        ],
+        [
+          "PASS",
+          "TestRerunIssue_PromotesNewestSurvivorAfterSourceTriggerDeleted/tombstoned"
+        ]
+      ],
+      "pass": 9,
+      "fail": 3,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-handler-first.log"
+    },
+    "handler_second": {
+      "binary_sha256": "79483e6ea09e0d8792bf3ee5749b67645e83305519050b34b1c4529b9fb0f31e",
+      "parents": [
+        [
+          "PASS",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputRetainedIssueDeleteRejectsBeforeCancellingRun"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputUnusedManifestIsCleanedWithIssueDeletion"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPManifestRunUsesRealPrincipalAndExactClaim"
+        ]
+      ],
+      "descendants": [
+        [
+          "PASS",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch/precise_claim"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch/same_owner_different_runtime"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch/wrong_task_dispatch"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputHTTPDaemonClaimRequiresActualRuntimeAndDispatch/foreign_daemon_workspace"
+        ]
+      ],
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-handler-second.log"
+    },
+    "runtime_init": {
+      "binary_sha256": "d0cf7c9c1fb3b8d50ca16fd74ce49c045237ce5eafe2b08ca46b5258a581d662",
+      "parents": [
+        [
+          "PASS",
+          "TestCockpitInputRuntimeDoesNotConfuseStorageWithCompleteCapability"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputRuntimeSeparatesHistoryFromPrivateStorageAndNAS"
+        ],
+        [
+          "PASS",
+          "TestCockpitInputUploadCORSAllowsExactRevisionHeader"
+        ]
+      ],
+      "descendants": [],
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "log": "/tmp/multica-n2-evidence/n2-input-runtime.log",
+      "instrumentation": "first invocation did not execute binary because wrapper cwd was wrong; corrected cwd then all3PASS"
+    },
+    "handler_private_files": {
+      "binary_sha256": "fccfd3a2149c7ff6e6b51c78291ac4e05021d105960e59af994a3bdc3bad20c8",
+      "parents_pass": 1,
+      "log": "/tmp/multica-n2-evidence/n2-handler-file.log"
+    },
+    "ui_c": {
+      "archive_sha256": "2b5146314ed2e6ff834b1f05d3b1431e1c1a5da50c7d53c683c069d1c75b6ffa",
+      "source_files": 2596,
+      "additional_artifact_runtime_tests_sha256": "850d34906c27b1501ac0b6a8ad1bf6ab8343b1dc1260cb7b70b5a81e8e0417ba",
+      "initial_executed_pass": 256,
+      "initial_executed_fail": 1,
+      "initial_not_executed_history_tests": 3,
+      "initial_history_failure": "hoisted mock accessed imported fixture before initialization",
+      "initial_nas_failure": "bare click did not select Base UI option",
+      "fixture_fix_retest_pass": 5,
+      "final_tests_by_file": {
+        "cockpit/components/cockpit-issue-input-manifest.test.tsx": 2,
+        "cockpit/components/cockpit-input-nas-picker.test.tsx": 2,
+        "cockpit/components/cockpit-input-upload-form.test.tsx": 5,
+        "cockpit/components/cockpit-preparation-run.test.tsx": 3,
+        "cockpit/components/cockpit-versions.test.tsx": 6,
+        "cockpit/components/cockpit-input-run-launch.test.tsx": 1,
+        "cockpit/components/cockpit-input-source-form.test.tsx": 2,
+        "cockpit/components/cockpit-input-manifest-history.test.tsx": 3,
+        "cockpit/components/cockpit-input-controls.test.tsx": 4,
+        "cockpit/components/cockpit-input-inspector.test.tsx": 2,
+        "cockpit/components/cockpit-artifact-input-manifest.test.tsx": 2,
+        "cockpit/components/cockpit-artifact-runtime.test.tsx": 11,
+        "cockpit/components/cockpit-input-version-picker.test.tsx": 2,
+        "issues/components/issue-operation-restriction.test.tsx": 4,
+        "locales/parity.test.ts": 203,
+        "cockpit/components/cockpit-input-metadata.test.tsx": 2,
+        "cockpit/components/cockpit-input-version-summary.test.tsx": 3,
+        "cockpit/components/cockpit-input-reference-form.test.tsx": 1,
+        "cockpit/components/use-cockpit-input-request.test.tsx": 1,
+        "cockpit/components/cockpit-input-nas-repair.test.tsx": 1
+      },
+      "final_total": 260,
+      "includes_locale203": true,
+      "logs": [
+        "/tmp/multica-n2-evidence/n2-ui-c.log",
+        "/tmp/multica-n2-evidence/n2-ui-c-fix1.log"
+      ]
+    },
+    "core_c": {
+      "initial_pass": 200,
+      "initial_fail": 4,
+      "failure": "old exact expectations did not include new documented default fields",
+      "retest_pass": 14,
+      "product_increment": "require counts/has_input/exact target sample consistency",
+      "final_tests_by_file": {
+        "api/client.test.ts": 141,
+        "cockpit/input-queries.test.ts": 5,
+        "api/cockpit-read.test.ts": 14,
+        "api/cockpit-input.test.ts": 11,
+        "api/task-detail.test.ts": 8,
+        "cockpit/input-draft-store.test.ts": 6,
+        "api/cockpit-artifact-schemas.test.ts": 8,
+        "cockpit/input-view-drafts.test.ts": 3,
+        "cockpit/artifact-draft-store.test.ts": 6,
+        "cockpit/input-view-navigation.test.ts": 1,
+        "cockpit/input-run-launch.test.ts": 2
+      },
+      "final_total": 205,
+      "logs": [
+        "/tmp/multica-n2-evidence/n2-ui-c-core.log",
+        "/tmp/multica-n2-evidence/n2-ui-c-core-fix1.log"
+      ]
+    },
+    "owner_lock_red": {
+      "binary_sha256": "7cc59a27d40a455bfdab3d3b2a144365a467981c27f8d0e2c737b2f6f5ca8b96",
+      "parent": "TestCockpitInputRunAuthorizationDoesNotDeadlockCanonicalOwnerFence",
+      "expected_red": true,
+      "result": "FAIL; actual PostgreSQL deadlock SQLSTATE40P01",
+      "log": "/tmp/multica-n2-evidence/n2-owner-lock-red.log",
+      "fix_pending_runtime": true
+    },
+    "daemon_first": {
+      "binary_sha256": "3a14b7ba6b1e2df1ea7624eb9f581d30b383b62a5f2ca03eb661aec95d696aa6",
+      "parents_pass": 4,
+      "parents_fail": 3,
+      "first_cause": "private_input_directory_required in fixture before planned file checks",
+      "warning": "some error-path PASS may also be masked by the same prerequisite; repeat whole7 after fixture correction",
+      "real_agent": false,
+      "log": "/tmp/multica-n2-evidence/n2-daemon-input-first.log"
+    },
+    "migration_9143": {
+      "isolated": "PASS 39 migrations/37 indexes; public unchanged",
+      "public": "PASS backed up and single forward828→829; old828 timestamps unchanged; index idx_cockpit_input_state_due valid/ready; reup retained timestamp",
+      "wrapper_first_check": "initial post-check used migration stem instead of actual index name; corrected read-only, migration was not reapplied",
+      "remote_report": "logs/n2-9143-public.json",
+      "backup_sha256": "89c018c0c69c928f11679df56f4c46fe5abb577f7b75a06d4f5695c7ca9edfa7"
+    },
+    "service_sixth": {
+      "result": "9 parents PASS",
+      "binary_sha256": "803bb09075b4bad57b99c22c9101511a53182502060f84a91c72ee8af4e85c05",
+      "includes": "N2 owner-fence deadlock GREEN, async verification/proof expiry, storage reconciliation and fixed-copy recovery"
+    },
+    "service_seventh": {
+      "result": "1 parent PASS",
+      "binary_sha256": "fc32b6e99ebef1b9cc7425a87ed4573b657b5d40d6cb445cbeaf58942a2c9900"
+    },
+    "directory_owner_red": {
+      "result": "1 parent FAIL SQLSTATE40P01; actual former FOR UPDATE deadlock",
+      "binary_sha256": "203025301e651357c83f23f8ebb2463b4c8ccb38fe8836cc84ef0ca4adc72658"
+    },
+    "service_eighth": {
+      "result": "7 parents PASS",
+      "binary_sha256": "1def6c6149d8d465143cb5d01b890ace343bfd623af29273bf7795d657b1ee06",
+      "includes": "N1 owner-fence GREEN, exact accepted key spelling/retained receipt checks and adjacent upload/recovery"
+    },
+    "manifest_run_final_increment": {
+      "result": "3 parents PASS",
+      "binary_sha256": "30128625bce313a1565d72dd8e138ed137186d1d6281fbfb191873deb8c97dff",
+      "includes": "uppercase manifest key, fixed preparation/reclaim, committed ACK events without replay broadcasts"
+    },
+    "reference_final": {
+      "result": "5 parents PASS",
+      "binary_sha256": "ff9862028dce6fe6645b777980ceb1c77f5df441f2cadefc8e69031c0fc07503"
+    },
+    "daemon_fix1": {
+      "result": "7 feature parents PASS +4 adjacent parents PASS",
+      "binary_sha256": "75df0e9fbd87c1f21090fe8c0fd856de728525d9d7a4a876309c9ad7cc64ce3e",
+      "fixture": "private0700 temp directory; mismatch regression proves one actual download plus exact failure code/version"
+    },
+    "daemon_ready_red": {
+      "result": "1 parent/2 children FAIL; preparing ACK rejected before actual re-download",
+      "binary_sha256": "ac0e06eba8e085669550d105e9397bbb373833cbda6117ae00af2b971ef720ba"
+    },
+    "daemon_ready_green": {
+      "result": "8 feature parents PASS; prior4 adjacent retained;12 unique parents total",
+      "binary_sha256": "00abc6bac8cd610e4e43cb22ad5dfc652ef7e823790e2044b2dcbaece087bce1"
+    },
+    "ui_d": {
+      "result": "18 component cases +203 locale parity PASS after named required_ready label fix",
+      "first_failure": "new Run test lacked auth fixture; corrected then exposed real ready vs required_ready product map error",
+      "product_green_sha256": "34d74b8b89c5bfb3ece1ab8c61d376cadcc8ce68e142662c02ffb16350d248c3",
+      "c_d_unique_components": 67
+    },
+    "large_service": {
+      "result": "PASS exclusive opt-in actual500MiB; shared2-slot/1GiB spool budget and Close/cleanup verified",
+      "binary_sha256": "f1f21d78bd100c81e8d7102ddba3048640aaff2242a6e3989ccbb872e5f194b2",
+      "bytes": 524288000,
+      "sha256": "69c81870ce3bd21381dcc18313c004dbfacc798f916bd84033a99facce05ddc9",
+      "native_darwin_max_rss_raw": 64651264,
+      "report_paths": [
+        "/tmp/multica-n2-evidence/n2-large-service.log",
+        "/tmp/multica-n2-evidence/n2-large-service-body.json",
+        "/tmp/multica-n2-evidence/n2-large-service-process.json"
+      ],
+      "scope": "service only, not HTTP or realNAS"
+    },
+    "service_full_baseline": {
+      "exit_code": 1,
+      "parent_counts": {
+        "PASS": 658,
+        "FAIL": 1,
+        "SKIP": 1
+      },
+      "descendant_counts": {
+        "PASS": 401,
+        "FAIL": 1,
+        "SKIP": 0
+      },
+      "failed_parents": [
+        "TestBuiltinSkillsConformToTemplate"
+      ],
+      "binary_sha256": "f1f21d78bd100c81e8d7102ddba3048640aaff2242a6e3989ccbb872e5f194b2",
+      "source_files": 4236,
+      "source_archive_sha256": "8ae5bfd33c746b4b1d4ed6b338d5ae6fe9a9bee2da6ffc36fe1e0cc6bcca0475",
+      "remote_raw": [
+        "logs/n2-service-full.log",
+        "logs/n2-service-full.json"
+      ],
+      "note": "Root identified and narrowly shortened the Builtin routing text; exact remote diagnostic retrieval pending coordinator SSH recovery. Late security deltas excluded from baseline."
+    }
+  },
+  "pending": [
+    "Run authenticated Start owner RED/GREEN and owner-change regression on agent 3",
+    "Run real-socket stream deadline regression on agent 3",
+    "Recheck builtin template budget after body reduced to exact parser count 149",
+    "Retrieve raw full-service baseline diagnostics; run full handler baseline and necessary final delta checks",
+    "Execute E+F+G component/core runtime increments on agent 3",
+    "Start isolated API/Web candidate and run owned browser flows",
+    "Execute real SMB input capture and Next HTTP 500 MiB fixture",
+    "Inspect real screenshots; clean owned test state; prepare and deploy paired agent 3 resident candidate after acceptance",
+    "Continue formal decisions, baseline recovery and long-running automation scope"
+  ],
+  "compile_only": {
+    "handler": {
+      "path": "/tmp/multica-n2-http-transport.test",
+      "sha256": "a43437a40960d08d3c9b230b9158e54c17ee9bddda6122af08c438d92bb57c02",
+      "new_parents": 6,
+      "runtime": false,
+      "note": "New issuer-kind/TrustedDaemonID pure additions await next compile after domain read methods; previous compile artifact retained separately."
+    },
+    "source_manifest": "/tmp/multica-n2-http-first-manifest.json",
+    "vet": "Deferred after service/cockpit_input_write.go intermediate missing GetCockpitInput and tuple types; not a runtime failure"
+  },
+  "transport_boundary": {
+    "mdt": "existing trusted daemon ID exactly matches runtime.daemon_id; precise task/runtime/dispatched_at and immutable pin membership required",
+    "cloud_pat": "existing owner/runtime access authorization plus exact live claim and current Run.originator member+INVOKE; no new cloud physical-instance binding",
+    "capabilities": {
+      "inputs": false,
+      "run_input_manifests": false
+    }
+  },
+  "current_core_unique_by_file": {
+    "api/cockpit-input.test.ts": 10,
+    "cockpit/input-draft-store.test.ts": 6,
+    "cockpit/input-queries.test.ts": 3,
+    "cockpit/input-view-drafts.test.ts": 3,
+    "cockpit/input-run-launch.test.ts": 2,
+    "api/cockpit-artifact-schemas.test.ts": 8,
+    "api/task-detail.test.ts": 8,
+    "api/client.test.ts": 141
+  },
+  "after_run_narrow_cleanup": {
+    "database": "multica_test",
+    "ledger": 828,
+    "workspace": 0,
+    "input": 0,
+    "transfers": 0,
+    "manifest_versions": 0,
+    "artifact_tombstones": 7,
+    "artifact_tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd"
+  },
+  "current_core_unique_total": 181,
+  "updated_at": "2026-10-11T17:16:09.344806+00:00",
+  "candidate_backend_build": {
+    "source_manifest": "/tmp/multica-n2-server-io-owner-source.json",
+    "builds": [
+      {
+        "name": "service-race",
+        "binary": "/tmp/multica-n2-service-io-owner.test",
+        "sha256": "287655c747840ab043f85a9847a8c6fcf936a95e5f260996edcaf1c84c93b9fa",
+        "size_bytes": 46455282,
+        "log": "/tmp/multica-n2-service-race-io-owner-build.log"
+      },
+      {
+        "name": "handler-race",
+        "binary": "/tmp/multica-n2-handler-io-owner.test",
+        "sha256": "3d9bdd38094ac8175a24a4c9fa847f20b00bc90dbe216c5451e867d6bc815d18",
+        "size_bytes": 96090402,
+        "log": "/tmp/multica-n2-handler-race-io-owner-build.log"
+      },
+      {
+        "name": "runtime-race",
+        "binary": "/tmp/multica-n2-runtime-io-owner.test",
+        "sha256": "bf99d4496a9750da82c2f8635b893eea8368f151f48f9c9a6f7fc45df5914d5e",
+        "size_bytes": 87694546,
+        "log": "/tmp/multica-n2-runtime-race-io-owner-build.log"
+      },
+      {
+        "name": "api",
+        "binary": "/tmp/multica-n2-server-io-owner",
+        "sha256": "db9b3753213d3149becd7aa0ef7fc205e7346de8bee472f75fab7fdbf8f07515",
+        "size_bytes": 73005378,
+        "log": "/tmp/multica-n2-api-io-owner-build.log"
+      },
+      {
+        "name": "cli-daemon",
+        "binary": "/tmp/multica-n2-multica-io-owner",
+        "sha256": "555a74cd285f7c811be16719a7a26df8bdefb02c308261a961b752c1d2d1a315",
+        "size_bytes": 25860450,
+        "log": "/tmp/multica-n2-cli-daemon-io-owner-build.log"
+      }
+    ],
+    "source_unchanged": true,
+    "finished_at": "2026-10-11T17:20:33.133979+00:00"
+  },
+  "candidate_web_build": {
+    "source_manifest": "/tmp/multica-n2-web-final-source.json",
+    "source_files": 2822,
+    "source_unchanged": true,
+    "BUILD_ID": "mJaI5JWXtUHdvKz1uaeX9",
+    "api_target": "http://127.0.0.1:18880",
+    "api_rewrite": [
+      {
+        "source": "/api/:path((?!cockpit/inputs/[^/]+/versions/[^/]+/transfers/[^/]+/bytes/?$).*)",
+        "destination": "http://127.0.0.1:18880/api/:path*",
+        "regex": "^/api(?:/((?!cockpit/inputs/[^/]+/versions/[^/]+/transfers/[^/]+/bytes/?$).*))(?:/)?$"
+      }
+    ],
+    "artifact_directory": "/tmp/multica-n2-web-e-build/apps/web/.next",
+    "finished_at": "2026-10-11T17:09:32.522013+00:00",
+    "runtime_acceptance": false
+  },
+  "candidate_web_artifact": {
+    "archive": "/tmp/multica-n2-web-qa-mJaI5JWXtUHdvKz1uaeX9.tar.gz",
+    "size_bytes": 36249189,
+    "sha256": "4131783a51581d792a160c405ec55be45df788bd3f53b91e41f5af4cc15c8c3c",
+    "files": 3899,
+    "BUILD_ID": "mJaI5JWXtUHdvKz1uaeX9",
+    "api_target": "http://127.0.0.1:18880",
+    "source_manifest": "/tmp/multica-n2-web-final-source.json",
+    "dependencies": "Reuse exact pnpm-lock dependencies; node_modules and application env excluded"
+  },
+  "source_commit": "fb1d492d8738d65f1b327cad9f76a6836019334c",
+  "backend_source_fingerprint": {
+    "files": 4240,
+    "sha256": "700f3cad6f2cd258446994f1dc010ec6fcb21360cf30787879955507c41b6a70",
+    "committed_content_matches": true
+  },
+  "web_source_fingerprint": {
+    "files": 2822,
+    "sha256": "ad9a3f711f2b632ce4b14ba35b0345a4d8a6b9d3ac343bd88668fe9923f7ccd0",
+    "committed_content_matches": true
+  },
+  "static_checks": {
+    "typecheck": {
+      "successful": 10,
+      "executed": 5,
+      "cache_hits": 5,
+      "scope": "whole frontend excluding mobile; final G component also covered by successful Web build typecheck"
+    },
+    "lint": {
+      "successful": 7,
+      "executed": 3,
+      "cache_hits": 4
+    },
+    "e2e_typecheck": {
+      "exit_code": 0,
+      "files": 4,
+      "runtime": false
+    }
+  },
+  "current_transport_blocker": {
+    "host": "coordinating Mac",
+    "symptoms": [
+      "UID 501 account lookup unavailable",
+      "DNS unavailable",
+      "ssh-agent socket refused"
+    ],
+    "existing_tunnels": "23000 and 28080 retained; not restarted",
+    "system_configuration_changed": false
+  },
+  "retained_n1_tunnel_check": {
+    "host": "coordinator via existing loopback tunnels",
+    "read_only": true,
+    "ssh_connection_created": false,
+    "tunnels_restarted": false,
+    "resident_modified": false,
+    "checks": [
+      {
+        "url": "http://127.0.0.1:23000/login",
+        "checked_at": "2026-10-11T17:33:38.488519+00:00",
+        "status": 200,
+        "content_type": "text/html; charset=utf-8",
+        "bytes_read": 475644,
+        "final_url": "http://127.0.0.1:23000/login",
+        "html_document": true,
+        "has_next_assets": true
+      },
+      {
+        "url": "http://127.0.0.1:28080/health",
+        "checked_at": "2026-10-11T17:33:38.554954+00:00",
+        "status": 200,
+        "content_type": "application/json",
+        "bytes_read": 116,
+        "final_url": "http://127.0.0.1:28080/health",
+        "health": {
+          "status": "ok",
+          "pid": 48328,
+          "commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+          "started_at": "2026-10-11T11:06:36Z"
+        }
+      },
+      {
+        "url": "http://127.0.0.1:28080/api/config",
+        "checked_at": "2026-10-11T17:33:38.556678+00:00",
+        "status": 200,
+        "content_type": "application/json",
+        "bytes_read": 624,
+        "final_url": "http://127.0.0.1:28080/api/config",
+        "valid_json": true,
+        "top_level_keys": [
+          "agent_conversation_starters_supported",
+          "allow_signup",
+          "analytics_environment",
+          "cdn_domain",
+          "collab_space_host",
+          "comment_delete_keep_replies_supported",
+          "daemon_app_url",
+          "daemon_server_url",
+          "feature_flags",
+          "issue_create_properties_supported",
+          "local_worktree_supported",
+          "posthog_host",
+          "posthog_key",
+          "server_version"
+        ]
+      }
+    ]
+  }
+}

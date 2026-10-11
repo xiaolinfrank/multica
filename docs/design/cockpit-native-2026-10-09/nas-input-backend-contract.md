@@ -1,6 +1,6 @@
-# N2 原始输入：最小后端实施草案
+# N2 原始输入：后端实施合同
 
-日期：2026-10-11。状态：**N2 实施准备中；第一版 Go DTO 已落，9105 起迁移草案范围待 root 审查/freeze，未应用、未开放能力。** N1 目录准备唯一合同为[目录准备运行合同](nas-directory-runtime-contract.md)，本文不再重复其状态机、表或权限。[交互草案](nas-input-interaction-contract.md)保留入口与恢复要求。
+日期：2026-10-12。状态：**N2 实施与验收中。9105–9142 已在 4713783dc 冻结，并在 agent 3 独立测试库应用；9143 到期恢复索引也已单独验证并应用，测试库账本为 829 条。常驻环境仍为 N1，N2 尚未完成真实页面、真实 NAS 与大文件整体验收。** N1 目录准备唯一合同为[目录准备运行合同](nas-directory-runtime-contract.md)，本文不重复其状态机、表或权限。[交互合同](nas-input-interaction-contract.md)保留入口与恢复要求。
 
 N2 首片必须同时交付：浏览器直接上传、受管 NAS 手动选择、独立输入身份与固定版本、会议/议题引用、已有 Issue 的版本化输入清单、真实 Run 的固定清单与交付门禁。无需 L3、纪要工作包、评审人或虚构 Attachment。登记不创建任务，不发起 Review，不自动确认材料齐备；转写、OCR、自动监视、递归摄取和任意 Agent 执行不在本片。
 
@@ -71,7 +71,7 @@ N2 首片必须同时交付：浏览器直接上传、受管 NAS 手动选择、
 
 capture_state：`awaiting_upload|queued|capturing|ready|needs_attention`；payload_kind=file|text。旧 ready 内容暂时失联不改为 needs_attention，使用 availability=`unknown|checking|available|unavailable` 和 checked_at/error。新 key/new version 是内容变化的入口，不能在原版本悄悄换字节。
 
-verification 字段属于当前存储观察缓存：generation、lease、due_at、checked_at、proof_expires_at、provider_object_identity、last_error。它们不改正式内容 pin/版本号。后台逐文件核验，多个清单可复用同一固定版本的有效证明；无强对象身份时不能把一次 HEAD/mtime 相同冒充新 SHA 校验。实际交付仍验证准确字节。
+verification 字段属于当前存储观察缓存：generation、lease、due_at、checked_at、proof_expires_at、provider_object_identity、last_error。它们不改正式内容 pin/版本号。后台逐文件核验，多个清单可复用同一固定版本的有效证明；无强对象身份时不能把一次 HEAD/mtime 相同冒充新 SHA 校验。实际交付仍验证准确字节。读取时若存储的 available 缺少 checked_at、证明到期时间缺失或已经到期，对外投影为 unknown（待复核），不改写原观察记录。版本详情、会议汇总、清单计数与清单项使用同一规则。verify 请求仅授权并调度准确固定副本的后台核验，返回 checking；不得重新读取后来变化的 NAS/附件源来替换固定内容。
 
 ### 为什么不单建 run_input_manifest
 
@@ -81,23 +81,23 @@ verification 字段属于当前存储观察缓存：generation、lease、due_at�
 
 人工成果溯源已由 root 批准纳入本片，用一个 typed `cockpit_artifact_version.input_manifest_version_id` nullable 列闭合，无新表：机器提交从可信 producer_run 的固定 pin 派生；人类必须显式选择有权读取的固定清单版本，省略保持 NULL。禁止从 producer Issue 当前清单倒填。此列只表达来源，不把原始输入自动变成果或绕评审。此列纳入本次结构/索引/不可变守卫；NULL 的历史来源不倒填。
 
-## 4. 第一版迁移预算：7表、35个索引、37对迁移草案
+## 4. 迁移范围：7表、37个索引、39对迁移
 
-所有新增索引每个独立单 statement `CREATE [UNIQUE] INDEX CONCURRENTLY`。root 已允许从9105起准备草案；下列完整范围须先经 root review/freeze，不能据此应用任何数据库。
+所有新增索引每个独立单 statement `CREATE [UNIQUE] INDEX CONCURRENTLY`。9105–9142 已审查冻结并应用于独立测试库，原 790 条账本身份与时间保持不变。新增 9143 仅补后台恢复查询索引，不改旧迁移；独立模式验证及常驻发布分别留证，不能用测试库应用代替服务上线。
 
 | 表 | 索引及直接服务的查询 |
 | --- | --- |
 | input：6 | unique(id) 精确头；unique(workspace_id,creation_key) 未知新建回执；(workspace_id,created_at DESC,id) 25页；(workspace_id,project_id,created_at DESC,id) 明确登记项目；(workspace_id,lower(title) text_pattern_ops,id) 有界标题前缀检索。首片 q 明确前缀，不宣称任意全文搜索；(workspace_id,source_agent_id,source_issue_id,authorizing_user_id,created_at DESC,id) 为机器同精确来源的有界页，不扫全 workspace 再逐条判权 |
 | version：6 | unique(id) 固定版；unique(workspace_id,input_id,number) 倒序版本页/序号；unique(workspace_id,input_id,submission_key) 原提交确认；(verification_due_at,id) WHERE ready 且需核验；(verification_lease_expires_at,id) WHERE核验进行中。后两者仅调度观察，不把 ready 改掉；(workspace_id,source_artifact_id,source_artifact_version_id,id) WHERE source_kind=artifact_version，为来源 Artifact/版本保留守卫提供索引，不扫全部输入版本 |
-| transfer：8 | unique(id) session/attempt；unique(workspace_id,version_id,number) 尝试页；unique(workspace_id,command_key) 上传/重试原命令；unique(owned_storage_key) 明确对象唯一归属；unique(workspace_id,version_id) WHERE 非终态避免两个有效上传；(next_attempt_at,id) source_capture到期与awaiting_bytes session过期维护；(lease_expires_at,id) 失联接收/捕获恢复；(cleanup_due_at,id) 非完成清理责任 |
-| reference：6 | unique(id)；unique(workspace_id,creation_key)；unique(workspace_id,meeting_id,COALESCE(agenda_id,zeroUUID),input_version_id,purpose) WHERE removed_at IS NULL；(workspace_id,meeting_id,created_at DESC,id) 全场聚合；(workspace_id,meeting_id,agenda_id,created_at DESC,id) 单题页；(workspace_id,input_version_id,id) 固定版被引用依据/反向分页 |
+| transfer：9 | unique(id) session/attempt；unique(workspace_id,version_id,number) 尝试页；unique(workspace_id,command_key) 上传/重试原命令；unique(owned_storage_key) 明确对象唯一归属；unique(workspace_id,version_id) WHERE 非终态避免两个有效上传；(next_attempt_at,id) source_capture到期与awaiting_bytes session过期维护；(lease_expires_at,id) 失联接收/捕获恢复；(cleanup_due_at,id) 非完成清理责任；9143 的 (state,next_attempt_at,id) 供 awaiting_finalize 等状态的到期对账恢复 |
+| reference：7 | unique(id)；unique(workspace_id,creation_key)；unique(workspace_id,meeting_id,COALESCE(agenda_id,zeroUUID),input_version_id,purpose) WHERE removed_at IS NULL；(workspace_id,meeting_id,created_at DESC,id) 全场聚合；(workspace_id,meeting_id,agenda_id,created_at DESC,id) 单题页；(workspace_id,input_version_id,id) 固定版被引用依据/反向分页；9142 的 unique(workspace_id,meeting_id,removal_key) 为移除命令的原回执恢复 |
 | manifest head：1 | unique(workspace_id,issue_id)，既是精确头也支持 workspace cleanup，不再给它无用途UUID/第二索引 |
 | manifest version：3 | unique(id)；unique(workspace_id,issue_id,number) 历史页；unique(workspace_id,issue_id,command_key) 保存原回执 |
 | manifest item：3 | unique(workspace_id,manifest_version_id,position) 顺序页；unique(workspace_id,manifest_version_id,input_version_id) 禁重复；(workspace_id,input_version_id,manifest_version_id) 引用保护/使用位置 |
 
-表内合计 **6+6+8+6+1+3+3=33**。另加 `agent_task_queue(input_manifest_version_id,id) WHERE input_manifest_version_id IS NOT NULL` 和 `cockpit_artifact_version(workspace_id,input_manifest_version_id,id) WHERE ... IS NOT NULL`，完整预算 **35个索引**。相比上一草案34，增加的唯一索引服务已批准的 artifact_version 借用来源保留，不增加第8张表。
+表内合计 **6+6+9+7+1+3+3=35**。另加 `agent_task_queue(input_manifest_version_id,id) WHERE input_manifest_version_id IS NOT NULL` 和 `cockpit_artifact_version(workspace_id,input_manifest_version_id,id) WHERE ... IS NOT NULL`，合计 **37 个索引**。9142 为引用移除命令的唯一索引，9143 为恢复状态的到期查询索引；它们不新增业务表。
 
-| 草案编号 | 内容 |
+| 编号 | 内容 |
 | --- | --- |
 | 9105 | 7张正式表；Task typed manifest/preparation字段；ArtifactVersion nullable input_manifest_version_id；无索引、无FK |
 | 9106–9111 | input 6索引 |
@@ -109,8 +109,10 @@ verification 字段属于当前存储观察缓存：generation、lease、due_at�
 | 9136–9138 | manifest item 3索引 |
 | 9139–9140 | Task pin与Artifact输出来源各1索引 |
 | 9141 | 内容pin/来源/清单/回执/Run pin不可变及借用来源保留守卫；不替换旧冻结文件 |
+| 9142 | 引用移除命令按 workspace/meeting/removal_key 的独立唯一并发索引，供统一按key恢复 |
+| 9143 | transfer 状态与到期时间并发索引，包含 awaiting_finalize 的后台对账恢复 |
 
-共 **9105–9141，37对**。正式 down 必须由 runner 在删除第一个索引前核全批事实/cleanup tombstone和借用/Run来源，空态才允许逆序；新增对象条件迁移均记录账本，后续依赖用IF EXISTS/IF NOT EXISTS并明确缺表拒开放。
+共 **9105–9142，38对，36个独立并发索引**。正式 down 必须由 runner 在删除第一个索引前核全批事实/cleanup tombstone和借用/Run来源，空态才允许逆序；新增对象条件迁移均记录账本，后续依赖用IF EXISTS/IF NOT EXISTS并明确缺表拒开放。
 
 恢复上界必须实测：35不是已证明查询计划最优。服务增长列表25/100，manifest已选恢复按100 IDs分最多两批；metadata不读文件/大正文。不能为了减少索引让全部读取扫描正文或回退全数组。
 
@@ -162,7 +164,7 @@ Issue manifest 保存完整≤200个有序item，单次 `expected_revision` 校�
 2. 自动重试在 `CreateRetryTask` 的同一 INSERT ... SELECT 复制这个typed指针，新的准备状态重新从pending开始，不继承父Run的required_ready；FailTask与MaybeRetryFailedTask两个调用点一致。指定源Run人工恢复经 `RerunIssue→enqueueRerunTask` 继承源pin，即使当前Issue清单已改。明确新运行才能选择新修订；不可用必需资料不能通过换清单假装恢复原Run。
 3. `buildClaimedTaskResponse/finalizeClaimDelivery`只读取task pin，返回manifest identity/hash/计数和有界读取入口，不临时展开当前meeting全材料。现QuickCreate/chat未接此清单时维持not_recorded，不补造旧事实。
 4. 大文件核验在业务锁外由有限后台步骤进行，metadata页显示checking/失败/准确缺口。有效内容证明只能在同一固定对象身份下复用，不能每次同步HTTP持锁重hash200份500MiB文件，更不能用20秒超时宣称完整解决。
-5. 真正启动前需在 `internal/daemon/daemon.go:runTask` 的Prepare→StartTask边界准备原清单：分页获取、校验下载/本地固定缓存hash、保留明确进度；必需项失败不启动Agent backend。只有实际准备好的集合可给准确task/runtime/manifest交付ACK。服务端StartTask再次核同pin/hash与准备状态，不能只靠daemon忽略字段后的旧行为。
+5. 真正启动前需在 `internal/daemon/daemon.go:runTask` 的Prepare→StartTask边界准备原清单：分页获取、校验下载/本地固定缓存hash、保留明确进度；必需项失败不启动Agent backend。只有实际准备好的集合可给准确task/runtime/manifest交付ACK。同一 claim 的本地执行重试保留已经确认的 required_ready 历史，仍重新下载并核验本次使用的准确文件，不再次写 preparing 或用本地失败抹去原准备事实；必需项本次失败仍不启动执行器。新的 claim/reclaim 则重新从 pending 准备。服务端StartTask再次核同pin/hash与准备状态，不能只靠daemon忽略字段后的旧行为。
 6. 新daemon能力 `fixed_input_manifest_v1` 必须真实协商。旧daemon不接需要此能力的任务，不静默漏材料；提示可达升级/改执行端入口。任务已入队不等于材料已交付，更不等于模型已阅读。
 
 在逐个 canonical入口、恢复与实际daemon准备都接通并验证前，`run_input_manifests` capability保持false。不能只写Task列和界面就称整链完成。默认测试用fake backend/私有fixture，真实Agent仍需单独授权。
@@ -236,11 +238,13 @@ workspace teardown先撤销运行/版本关联，再把每个transfer保留为cl
 
 普通Issue删除必须同时处理自己未被保留的manifest头/版本/items；有真实Run/人工成果或借用成果来源需要保留的固定版本则提供权威operation-basis与真实办理入口，不能只新增一个409死路。纯输入归档不清引用。应用回退保留新增schema；任何内容pin、正式引用、Run pin或cleanup责任存在时，整批down先拒绝，再考虑一致备份恢复，不能先删索引。
 
-实施顺序：①冻结本稿来源/权限/7表+35索引与上传协议；②共享纯字节层、私有namespace及直接上传恢复；③会议/议题引用与清单；④canonical Run继承、daemon准备/交付门禁与溯源；⑤完整真实接口、浏览器上传/刷新重选及故障验收后再开cap。迁移仅准备9105–9141草案，尚未freeze/apply。
+应用回退必须同时保留私有 `input-versions` 对象的匿名访问阻断。旧 N1 二进制既不具备此隔离规则，也不会为新任务写固定清单 pin，因此 N2 产生数据之后，禁止直接换回旧 API 并继续写入。发布时先停止旧写入端，API、Web 与支持固定输入的 daemon 一起验证；故障优先前向修复，确需回退则使用新事实产生前的完整一致备份，并核对私有对象保护。
+
+实施顺序：①冻结本稿来源/权限/7表与上传协议；②共享纯字节层、私有namespace及直接上传恢复；③会议/议题引用与清单；④canonical Run继承、daemon准备/交付门禁与溯源；⑤完整真实接口、浏览器上传/刷新重选及故障验收后再开cap。迁移9105–9142已冻结；实际应用及验证以 agent3 证据为准，常驻部署与能力开放另行验收。
 
 必要回归包括：无L3/reviewer/工作包直接上传零Issue/Run；机器有效源登记并原子建立准确初始Meeting引用；同Agent跨originator/Issue拒绝；撤成员/INVOKE后零来源读取，cloud_pat拒私有文件，机器不得改manifest/跨对象引用；完整spool后上传失败仍保hash；未知上传成功先核原key；重选不同字节不能改原版本；源删除但固定副本可读；匿名/编码/alias私有拒绝；撤权/删除/晚上传无复活；会议+多个议题重复引用可分别移除；200items两批恢复/25分页；Run选旧清单、当前清单修改后自动和手动恢复仍旧pin；旧daemon不启动缺材料任务；必需内容失败不启动fake backend；500MiB与磁盘/并发预算、非真正冷缓存说明和owned清理证据。
 
-本稿仅源码核对与设计，不构成N2能力已实现或已验证的声明。
+本合同定义验收边界；实际通过项目以 agent 3 的同源验证记录为准。定向测试通过不等于完整 N2 页面闭环或常驻部署完成。
 
 
 ## 10. 首轮实现交接：路由、ACK、分页与状态
@@ -257,6 +261,7 @@ workspace teardown先撤销运行/版本关联，再把每个transfer保留为cl
 | POST `/inputs/{inputId}/archive` | CockpitInputArchiveInput → CockpitInputHeader，true归档/false解除 |
 | GET/POST `/inputs/{inputId}/versions` | 页 / CockpitInputVersionSubmitInput → VersionPage / VersionResult |
 | GET `/inputs/{inputId}/version-commands/{commandKey}` | 固定提交回执 → CockpitInputVersionResult |
+| GET `/input-versions` | ids重复参数1–100，按请求顺序返回CockpitInputVersionBatch完整items/unavailable_ids分区，无N+1、无权限与缺失同unavailable |
 | GET `/inputs/{inputId}/versions/{versionId}` | 单版按需正文 → CockpitInputVersionDetail |
 | GET `/inputs/{inputId}/versions/{versionId}/transfers` | 页 → CockpitInputTransferPage |
 | GET `/inputs/{inputId}/versions/{versionId}/transfers/{transferId}` | 准确session → CockpitInputTransferDetail |
@@ -271,7 +276,8 @@ workspace teardown先撤销运行/版本关联，再把每个transfer保留为cl
 | GET/POST `/meetings/{meetingId}/input-references` | agenda_id可空/页 / CockpitInputReferenceCreateInput → ReferencePage / ReferenceResult |
 | GET `/meetings/{meetingId}/agenda/{agendaId}/input-references` | 精确单题页 → CockpitInputReferencePage |
 | POST `/meetings/{meetingId}/input-references/{referenceId}/remove` | CockpitInputReferenceRemoveInput → CockpitInputReferenceResult |
-| GET `/meetings/{meetingId}/input-reference-commands/{commandKey}` | 准确创建/移除receipt → CockpitInputReferenceResult |
+| GET `/meetings/{meetingId}/input-reference-commands/{commandKey}` | 原创建receipt（尚未知reference ID）→ CockpitInputReferenceResult |
+| GET `/meetings/{meetingId}/input-references/{referenceId}/commands/{commandKey}` | 原移除receipt（已知reference ID），精确单行查验 → CockpitInputReferenceResult |
 | GET/PUT `/issues/{issueId}/input-manifest` | 当前头 / CockpitInputManifestSaveInput → Header / Result |
 | GET `/issues/{issueId}/input-manifest/commands/{commandKey}` | 原保存 → CockpitInputManifestResult |
 | GET `/issues/{issueId}/input-manifest/versions` | 页 → CockpitInputManifestVersionPage |
@@ -279,7 +285,7 @@ workspace teardown先撤销运行/版本关联，再把每个transfer保留为cl
 | GET `/issues/{issueId}/input-manifest/versions/{manifestVersionId}/items` | 页 → CockpitInputManifestItemPage |
 | GET `/input-spaces` | 单root元数据0/1 → CockpitInputSpacePage，仅human |
 | POST `/input-spaces/{rootId}/entries` | CockpitInputNASBrowseInput → CockpitInputNASPage，仅human |
-| GET `/api/tasks/{taskId}/input-manifest` | 精确Run pin → CockpitRunInputManifest；人VIEW/机器自身task |
+| GET `/api/tasks/{taskId}/input-manifest` | 精确Run pin → CockpitRunInputManifest；人VIEW/机器自身task/daemon准确runtime+dispatched_at已领claim |
 | POST `/api/tasks/{taskId}/input-preparation` | CockpitRunInputPreparationInput → CockpitRunInputManifest，沿现runtime/task/dispatched_at claim门禁 |
 
 Run准备沿现canonical claim的 `task_id/runtime_id/dispatched_at`，不新造task lease UUID；Task追加input_prepared_dispatched_at以拒绝上次claim迟到准备ACK。新claim/自动retry重新准备，不能复用旧required_ready。每项安全交付名从固定version UUID/position及受限扩展生成，既不信来源标题，也不拼输入路径。
