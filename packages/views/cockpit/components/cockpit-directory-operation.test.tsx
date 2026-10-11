@@ -6,16 +6,56 @@ import { api } from "@multica/core/api";
 import { useCockpitMeetingDirectoryDraftStore, cockpitMeetingDirectoryDraftKey, setCockpitDirectoryForm } from "@multica/core/cockpit";
 import { CockpitDirectoryOperation } from "./cockpit-directory-operation";
 import { CockpitDirectoryRetry } from "./cockpit-directory-retry";
-import { WS, MEETING, OP, operation, preview, receipt, summary, step, directoryId } from "./meeting-directory-test-fixtures";
+import { WS, MEETING, OP, ROOT, HASH, operation, preview, receipt, summary, step, directoryId } from "./meeting-directory-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
 vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path }: { path: string }) => <span>{path}</span> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitDirectoryOperation: vi.fn(), getCockpitDirectorySteps: vi.fn(), previewCockpitDirectoryRetry: vi.fn(), retryCockpitDirectory: vi.fn(), getCockpitDirectoryAttempts: vi.fn(),
+  getCockpitDirectoryRoots: vi.fn(), getCockpitDirectoryRoot: vi.fn(), previewCockpitMeetingDirectory: vi.fn(),
 } }));
 beforeEach(() => { vi.clearAllMocks(); useCockpitMeetingDirectoryDraftStore.getState().clearDraft(); });
 describe("directory partial repair", () => {
+  it("reopens each completed plan with only its original single or custom partition and keeps their repair drafts separate", async () => {
+    const secondId = directoryId(90), names = new Map([[OP, "照片"], [secondId, "custom-audio"]]);
+    const header = (id: string) => ({ ...operation(), id, state: "completed", counts: { total: 2, pending: 0, running: 0, retry_wait: 0, satisfied: 2, needs_attention: 0, abandoned: 0 } });
+    const rows = (id: string) => [step({ operation_id: id, state: "satisfied" }), step({ id: directoryId(20), operation_id: id, position: 1, kind: "partition", label: `Original folder for ${id}`, relative_path: `meetings/review/${names.get(id)}`, state: "satisfied" })];
+    vi.mocked(api.getCockpitDirectoryOperation).mockImplementation(async (_ws, _meeting, id) => header(id));
+    vi.mocked(api.getCockpitDirectorySteps).mockImplementation(async (_ws, _meeting, id) => ({ workspace_id: WS, meeting_id: MEETING, operation_id: id, items: rows(id), total: 2, counts: header(id).counts }));
+    vi.mocked(api.getCockpitDirectoryRoots).mockResolvedValue({ workspace_id: WS, page_size: 25, items: [{ root_id: ROOT, root_path: "/approved", prepare_subpath_count: 1 }], total: 1, next_cursor: null });
+    vi.mocked(api.getCockpitDirectoryRoot).mockResolvedValue({ workspace_id: WS, root_id: ROOT, root_path: "/approved", prepare_subpath_count: 1, prepare_subpaths: ["meetings"] });
+    vi.mocked(api.previewCockpitMeetingDirectory).mockImplementation(async (_ws, _meeting, body) => ({ ...preview(), observed_binding: { nas_dir: body.observed_nas_dir, revision: body.observed_binding_revision }, bind_after_base: false,
+      counts: { total: 2, exists: 2, missing: 0, conflict: 0, unknown: 0 }, steps: [preview().steps[0]!, { step_id: null, position: 1, parent_position: 0, kind: "partition", label: body.partitions[0]!, relative_path: `meetings/review/${body.partitions[0]}`, path_hash: HASH, planned_state: "exists", error_code: "" }] }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>{children}</I18nProvider></QueryClientProvider>;
+    const props = { wsId: WS, summary: { ...summary(), binding: { nas_dir: operation().target.directory, revision: 1 } }, active: false, onCreated: vi.fn(), onManageMeeting: vi.fn(), refreshSummary: vi.fn() };
+    const view = render(<CockpitDirectoryOperation {...props} operationId={OP} />, { wrapper });
+    for (const [id, name] of names) {
+      if (id !== OP) view.rerender(<CockpitDirectoryOperation {...props} operationId={id} />);
+      await screen.findByText(`Original folder for ${id}`);
+      fireEvent.click(screen.getByRole("button", { name: enCockpit.meeting_directory.repair })); const dialog = within(screen.getByRole("dialog"));
+      expect(dialog.getByRole("checkbox", { name })).toBeChecked(); expect(dialog.getByRole("checkbox", { name })).toBeDisabled();
+      expect(dialog.queryByRole("checkbox", { name: "会议材料" })).toBeNull(); expect(dialog.queryByRole("checkbox", { name: "会议纪要与录音转写" })).toBeNull();
+      expect(dialog.getByRole("textbox", { name: enCockpit.meeting_directory.relative_path })).toHaveAttribute("readonly");
+      const button = dialog.getByRole("button", { name: enCockpit.meeting_directory.preview }); await waitFor(() => expect(button).toBeEnabled()); fireEvent.click(button);
+      await waitFor(() => expect(api.previewCockpitMeetingDirectory).toHaveBeenLastCalledWith(WS, MEETING, expect.objectContaining({ mode: "repair", root_id: ROOT, relative_directory: "meetings/review", partitions: [name] })));
+      expect(useCockpitMeetingDirectoryDraftStore.getState().draft.forms[cockpitMeetingDirectoryDraftKey(WS, MEETING, "prepare", "repair", id)]).toMatchObject({ partitions: [name] });
+      fireEvent.click(dialog.getByRole("button", { name: enCockpit.task_create.cancel })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+    expect(api.previewCockpitMeetingDirectory).toHaveBeenCalledTimes(2);
+    expect(useCockpitMeetingDirectoryDraftStore.getState().draft.forms[cockpitMeetingDirectoryDraftKey(WS, MEETING, "prepare", "repair", OP)]).toMatchObject({ partitions: ["照片"] });
+  });
+
+  it("does not offer a default repair scope when the original full step list cannot be read", async () => {
+    vi.mocked(api.getCockpitDirectoryOperation).mockResolvedValue({ ...operation(), state: "completed" });
+    vi.mocked(api.getCockpitDirectorySteps).mockRejectedValue(new Error("Step page unavailable"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitDirectoryOperation wsId={WS} summary={summary()} operationId={OP} active={false} onCreated={vi.fn()} onManageMeeting={vi.fn()} refreshSummary={vi.fn()} /></I18nProvider></QueryClientProvider>);
+    expect(await screen.findByRole("button", { name: enCockpit.meeting_directory.repair })).toBeDisabled();
+    expect(screen.getByText(enCockpit.meeting_directory.repair_scope_unavailable)).toBeVisible(); expect(api.previewCockpitMeetingDirectory).not.toHaveBeenCalled();
+  });
+
   it("explicitly includes the still-pending base step when a changed binding requires it, without dropping the selected partition", async () => {
     const base = step({ state: "pending", can_retry: true }), child = step({ id: directoryId(20), position: 1, kind: "partition", state: "needs_attention", can_retry: true });
     const key = cockpitMeetingDirectoryDraftKey(WS, MEETING, "retry", OP);

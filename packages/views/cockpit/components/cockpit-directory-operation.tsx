@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  cockpitDirectoryOperationOptions, cockpitDirectoryStepsOptions, cockpitMeetingDirectoryDraftKey,
+  cockpitDirectoryOperationOptions, cockpitDirectoryStepsOptions, cockpitMeetingDirectoryDraftKey, cockpitDirectoryRepairSelection,
   useCockpitMeetingDirectoryDraftStore, setCockpitDirectoryForm, type CockpitDirectoryFormDraft,
 } from "@multica/core/cockpit";
 import type { CockpitDirectorySummary } from "@multica/core/types";
@@ -38,6 +38,7 @@ export function CockpitDirectoryOperation({ wsId, summary, operationId, active, 
   const select = (stepIds: string[]) => setCockpitDirectoryForm(key, { ...value, stepIds: [...new Set(stepIds)], observedRevision: current?.revision ?? value.observedRevision });
   const currentPage = Math.min(page, Math.max(1, Math.ceil((data?.items.length ?? 0) / 25))), shown = data?.items.slice((currentPage - 1) * 25, currentPage * 25) ?? [];
   const sameBinding = current?.target.root_id === summary.binding_candidate?.root_id && current?.target.relative_directory === summary.binding_candidate?.relative_directory && current?.target.directory === summary.binding_candidate?.directory;
+  const repairSelection = current && data ? cockpitDirectoryRepairSelection(current, data) : null;
   return <section className="space-y-3" aria-label={t(($) => $.meeting_directory.open_operation)}>
     {(header.isError || steps.isError) && <CockpitFlowError onRetry={refresh} />}
     {!current ? header.isPending ? <Spinner /> : null : <>
@@ -53,7 +54,7 @@ export function CockpitDirectoryOperation({ wsId, summary, operationId, active, 
         <CockpitDirectoryReasons codes={current.blocked_reasons} />
         {current.blocked_reasons.some((code) => code === "meeting_cancelled" || code === "meeting_archived") && <Button variant="outline" size="sm" onClick={onManageMeeting}>{t(($) => $.meeting_disposition.actions)}</Button>}
         <div className="flex flex-wrap gap-2">{(["pause", "resume", "claim", "abandon"] as const).map((transition) => <CockpitDirectoryControl key={transition} wsId={wsId} header={current} transition={transition} readOnly={disabled} refresh={refresh} />)}
-          {current.state === "completed" && sameBinding && <CockpitDirectoryPrepare wsId={wsId} summary={summary} mode="repair" readOnly={disabled} refresh={refresh} onCreated={onCreated} onManageMeeting={onManageMeeting} />}
+          {current.state === "completed" && <CockpitDirectoryPrepare wsId={wsId} summary={summary} mode="repair" repair={{ operationId, selection: repairSelection }} readOnly={disabled || !sameBinding} refresh={refresh} onCreated={onCreated} onManageMeeting={onManageMeeting} />}
         </div>
       </div>
       {!data ? steps.isPending ? <Spinner /> : null : <>

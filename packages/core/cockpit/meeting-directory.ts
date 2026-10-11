@@ -1,7 +1,50 @@
 import { z } from "zod";
 import { ApiError } from "../api/client";
 import type { CockpitLifecycleCommandDetail } from "../types/cockpit-meeting-lifecycle";
-import type { CockpitDirectoryCommandResult, CockpitDirectoryCreateInput, CockpitDirectoryRetryInput, CockpitDirectoryControlInput } from "../types/cockpit-meeting-directory";
+import type { CockpitDirectoryCommandResult, CockpitDirectoryCreateInput, CockpitDirectoryRetryInput, CockpitDirectoryControlInput, CockpitDirectoryOperationHeader, CockpitDirectoryStepPage } from "../types/cockpit-meeting-directory";
+
+export interface CockpitDirectoryRepairSelection {
+  rootId: string;
+  relativeDirectory: string;
+  partitions: string[];
+}
+
+function directoryPathPart(value: string): boolean {
+  return Boolean(value) && value !== "." && value !== ".." && !value.includes("/") && !value.includes("\\")
+    && !Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+}
+function directoryRelativePath(value: string): boolean { return value === "." || value.split("/").every(directoryPathPart); }
+
+/** Recover only the complete original plan's direct partitions; labels are presentation, never path evidence. */
+export function cockpitDirectoryRepairSelection(
+  header: Pick<CockpitDirectoryOperationHeader, "workspace_id" | "meeting_id" | "id" | "target">,
+  page: CockpitDirectoryStepPage | null | undefined,
+): CockpitDirectoryRepairSelection | null {
+  const base = header.target.relative_directory;
+  if (!page || !header.target.root_id || !directoryRelativePath(base) || page.workspace_id !== header.workspace_id
+    || page.meeting_id !== header.meeting_id || page.operation_id !== header.id || page.total !== page.items.length
+    || page.counts.total !== page.total || page.total < 1 || page.total > 32
+    || new Set(page.items.map((item) => item.id)).size !== page.total
+    || new Set(page.items.map((item) => item.position)).size !== page.total
+    || page.items.some((item) => item.operation_id !== header.id || !Number.isInteger(item.position) || item.position < 0 || !directoryRelativePath(item.relative_path))) return null;
+  const bases = page.items.filter((item) => item.kind === "base");
+  if (bases.length !== 1 || bases[0]!.relative_path !== base) return null;
+  const partitions: string[] = [];
+  for (const step of [...page.items].sort((a, b) => a.position - b.position)) {
+    if (step.kind === "base") continue;
+    if (step.kind === "ancestor") {
+      if (base === "." || step.relative_path !== "." && !base.startsWith(`${step.relative_path}/`)) return null;
+      continue;
+    }
+    if (step.kind !== "partition") return null;
+    const prefix = base === "." ? "" : `${base}/`;
+    if (!step.relative_path.startsWith(prefix)) return null;
+    const name = step.relative_path.slice(prefix.length);
+    if (!directoryPathPart(name) || partitions.includes(name)) return null;
+    partitions.push(name);
+  }
+  return partitions.length <= 16 ? { rootId: header.target.root_id, relativeDirectory: base, partitions } : null;
+}
 
 export type CockpitDirectoryCommandInput = CockpitDirectoryCreateInput | CockpitDirectoryRetryInput | CockpitDirectoryControlInput;
 

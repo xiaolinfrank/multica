@@ -2014,6 +2014,8 @@
     "select_base": "Include the meeting-directory step",
     "retry_required": "Some steps need renewed confirmation. Select the retryable steps and preview them again.",
     "preparation_incomplete": "Directory preparation is not complete. Open the recorded plan to check the remaining steps.",
-    "preparation_unconfirmed": "The latest directory result is not confirmed. Open the recorded plan and reload its status before retrying."
+    "preparation_unconfirmed": "The latest directory result is not confirmed. Open the recorded plan and reload its status before retrying.",
+    "repair_scope": "Recheck the fixed target and the same material folders from this plan. New folders require a separate preparation plan.",
+    "repair_scope_unavailable": "The complete original directory scope is not confirmed. Reload the plan before repairing it."
   }
 }

@@ -2014,6 +2014,8 @@
     "select_base": "同时选择基目录步骤",
     "retry_required": "部分步骤需要重新确认。请选择可重试步骤，再重新预览。",
     "preparation_incomplete": "目录准备尚未完成。请打开准备记录查看剩余步骤。",
-    "preparation_unconfirmed": "最新目录结果尚未核实。请打开准备记录重新读取状态，再决定是否重试。"
+    "preparation_unconfirmed": "最新目录结果尚未核实。请打开准备记录重新读取状态，再决定是否重试。",
+    "repair_scope": "重新检查本计划的固定目标及原有分区。新增分区请另行确认准备计划。",
+    "repair_scope_unavailable": "尚未核实原计划的完整目录范围。请重新读取记录后再修复。"
   }
 }
