@@ -9,14 +9,35 @@ import { CockpitDirectoryRetry } from "./cockpit-directory-retry";
 import { WS, MEETING, OP, ROOT, HASH, operation, preview, receipt, summary, step, directoryId } from "./meeting-directory-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a>, useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
 vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path }: { path: string }) => <span>{path}</span> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
-  getCockpitDirectoryOperation: vi.fn(), getCockpitDirectorySteps: vi.fn(), previewCockpitDirectoryRetry: vi.fn(), retryCockpitDirectory: vi.fn(), getCockpitDirectoryAttempts: vi.fn(),
+  getTask: vi.fn(), getCockpitDirectoryOperation: vi.fn(), getCockpitDirectorySteps: vi.fn(), previewCockpitDirectoryRetry: vi.fn(), retryCockpitDirectory: vi.fn(), getCockpitDirectoryAttempts: vi.fn(),
   getCockpitDirectoryRoots: vi.fn(), getCockpitDirectoryRoot: vi.fn(), previewCockpitMeetingDirectory: vi.fn(),
 } }));
 beforeEach(() => { vi.clearAllMocks(); useCockpitMeetingDirectoryDraftStore.getState().clearDraft(); });
 describe("directory partial repair", () => {
+  it.each([true, false])("shows only recorded Issue and Run sources without inventing a human Issue (delegated: %s)", async (delegated) => {
+    const issueId = directoryId(80), runId = directoryId(81);
+    const original = operation(); const header = { ...original, source_principal: delegated ? { ...original.source_principal, source: "task_token", actor_type: "agent", actor_name: "Preparation agent", confirmed_by_user_id: null, issue_id: issueId, run_id: runId } : original.source_principal };
+    vi.mocked(api.getCockpitDirectoryOperation).mockResolvedValue(header);
+    vi.mocked(api.getCockpitDirectorySteps).mockResolvedValue({ workspace_id: WS, meeting_id: MEETING, operation_id: OP, items: [step()], total: 1, counts: header.counts });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitDirectoryOperation wsId={WS} summary={summary()} operationId={OP} active={false} onCreated={vi.fn()} onManageMeeting={vi.fn()} refreshSummary={vi.fn()} /></I18nProvider></QueryClientProvider>);
+    try {
+      await screen.findByText(enCockpit.meeting_directory.background);
+      if (delegated) {
+        expect(screen.getByRole("link", { name: `${enCockpit.input_materials.source_issue} ${enCockpit.action_flow.new_tab}` })).toHaveAttribute("href", `/ws/issues/${issueId}`);
+        expect(screen.getByRole("button", { name: enCockpit.input_materials.source_run })).toBeVisible();
+      } else {
+        expect(screen.queryByRole("link", { name: `${enCockpit.input_materials.source_issue} ${enCockpit.action_flow.new_tab}` })).toBeNull();
+        expect(screen.queryByRole("button", { name: enCockpit.input_materials.source_run })).toBeNull();
+      }
+      expect(api.getTask).not.toHaveBeenCalled();
+    } finally { view.unmount(); client.clear(); }
+  });
+
   it("reopens each completed plan with only its original single or custom partition and keeps their repair drafts separate", async () => {
     const secondId = directoryId(90), names = new Map([[OP, "照片"], [secondId, "custom-audio"]]);
     const header = (id: string) => ({ ...operation(), id, state: "completed", counts: { total: 2, pending: 0, running: 0, retry_wait: 0, satisfied: 2, needs_attention: 0, abandoned: 0 } });

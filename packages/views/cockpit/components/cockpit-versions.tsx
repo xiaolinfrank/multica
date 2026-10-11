@@ -12,7 +12,8 @@
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CockpitSnapshot } from "@multica/core/types";
-import { cockpitSnapshotPageOptions } from "@multica/core/cockpit";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { cockpitObjectPath, cockpitSnapshotPageOptions } from "@multica/core/cockpit";
 import { Input } from "@multica/ui/components/ui/input";
 import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 import {
@@ -250,7 +251,7 @@ function SnapshotRunRow({
  * re-checks regardless. Stable bindings separately protect board identity,
  * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, hasMeetingPreparation = false, hasDirectoryHistory = false, meetingsHref }: {
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, hasMeetingPreparation = false, hasDirectoryHistory = false, hasInputReferences = false, inputReferenceMeetings = [], inputReferenceMeetingsTotal = 0, onRefreshInputReferences, meetingsHref }: {
   wsId: string;
   canRestore: boolean;
   hasStableBindings?: boolean;
@@ -258,9 +259,13 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
   hasMeetingLifecycle?: boolean;
   hasMeetingPreparation?: boolean;
   hasDirectoryHistory?: boolean;
+  hasInputReferences?: boolean;
+  inputReferenceMeetings?: Array<{ meeting_id: string; title: string }>;
+  inputReferenceMeetingsTotal?: number;
+  onRefreshInputReferences?: () => void;
   meetingsHref: string;
 }) {
-  const { t } = useT("cockpit");
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(""); const [cursors, setCursors] = useState<string[]>([""]);
   const [comparison, setComparison] = useState<{ wsId: string; snapshot: CockpitSnapshot } | null>(null);
@@ -270,7 +275,9 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
   const { data: page, isLoading } = query;
   const create = useCreateCockpitSnapshot(wsId);
   const restoreBlockedReasonId = useId();
-  const restoreBlocked = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory;
+  const retainedHistory = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory;
+  const hasActiveInputReferences = hasInputReferences || inputReferenceMeetingsTotal > 0 || inputReferenceMeetings.length > 0;
+  const restoreBlocked = retainedHistory || hasActiveInputReferences;
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -315,8 +322,12 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
         </div>
         {restoreBlocked && (
           <div id={restoreBlockedReasonId} className="space-y-2 border-b px-3 py-2 text-caption text-muted-foreground">
-            <p>{hasDirectoryHistory ? t(($) => $.meeting_directory.restore_protected) : hasMeetingPreparation ? t(($) => $.meeting_preparation.restore_protected) : hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>
-            {(hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory) && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
+            {retainedHistory && <p>{hasDirectoryHistory ? t(($) => $.meeting_directory.restore_protected) : hasMeetingPreparation ? t(($) => $.meeting_preparation.restore_protected) : hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>}
+            {hasActiveInputReferences && <div className="space-y-2"><p>{t(($) => $.input_materials.restore_reference_protected)}</p>{inputReferenceMeetingsTotal > 0 && <p>{t(($) => $.input_materials.restore_reference_targets, { shown: inputReferenceMeetings.length, total: inputReferenceMeetingsTotal })}</p>}
+              <ul className="space-y-1">{inputReferenceMeetings.map((meeting) => <li key={meeting.meeting_id}><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.meeting_id, view: "resources" })} onClick={() => setOpen(false)} className="break-words text-primary underline">{meeting.title || t(($) => $.input_materials.restore_open_materials)}</AppLink></li>)}</ul>
+              {onRefreshInputReferences && <Button type="button" variant="outline" size="sm" onClick={onRefreshInputReferences}>{t(($) => $.input_materials.restore_recheck_references)}</Button>}
+            </div>}
+            {(hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory || hasActiveInputReferences) && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
           </div>
         )}
         {!canRestore && (

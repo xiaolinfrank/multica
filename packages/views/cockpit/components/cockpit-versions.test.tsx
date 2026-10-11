@@ -6,12 +6,27 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitVersions } from "./cockpit-versions";
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("@multica/core/api", () => ({ api: { listCockpitSnapshotPage: vi.fn(), listCockpitSnapshots: vi.fn(), getCockpitSnapshotDiff: vi.fn(), createCockpitSnapshot: vi.fn(), deleteCockpitSnapshot: vi.fn(), restoreCockpitSnapshot: vi.fn() } }));
 const snapshots = Array.from({ length: 27 }, (_, index) => ({ id: `snapshot-${index + 1}`, label: `Checkpoint ${index + 1}`, trigger_kind: "manual", node_count: 10, created_by_type: "member", created_by_label: "Person", created_at: "2026-10-10T00:00:00Z" }));
 function setup(hasMeetingLifecycle = false, hasDirectoryHistory = false) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitVersions wsId="ws-1" canRestore hasStableBindings={!hasMeetingLifecycle && !hasDirectoryHistory} hasDirectoryHistory={hasDirectoryHistory} hasMeetingLifecycle={hasMeetingLifecycle} meetingsHref="/ws/cockpit?tab=meetings" /></I18nProvider></QueryClientProvider>); }
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.listCockpitSnapshotPage).mockImplementation(async (_ws, query = {}) => ({ workspace_id: "ws-1", scope: "workspace", q: query.q ?? "", items: query.cursor ? snapshots.slice(25) : snapshots.slice(0, 25), total: 27, next_cursor: query.cursor ? null : "second-page" })); });
 describe("bounded workspace snapshot history", () => {
+  it("blocks full-board restore only for active meeting input references and opens the bounded exact meeting resources", async () => {
+    const cache = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); const refresh = vi.fn();
+    const targets = [{ meeting_id: "meeting-1", title: "Materials review" }, { meeting_id: "meeting-2", title: "Planning" }, { meeting_id: "meeting-3", title: "Decision" }];
+    const view = render(<QueryClientProvider client={cache}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitVersions wsId="ws-1" canRestore hasInputReferences inputReferenceMeetings={targets} inputReferenceMeetingsTotal={27} onRefreshInputReferences={refresh} meetingsHref="/ws/cockpit?tab=meetings" /></I18nProvider></QueryClientProvider>);
+    try {
+      const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: enCockpit.versions.button })); await screen.findByText("Checkpoint 1");
+      expect(screen.getByText(enCockpit.input_materials.restore_reference_protected)).toBeVisible();
+      expect(screen.getByText("Showing 3 of 27 affected meetings. Remove their references, then check for the next group.")).toBeVisible();
+      expect(screen.getByRole("link", { name: "Materials review" })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1&meeting_view=resources");
+      expect(screen.getAllByRole("button", { name: "Restore" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+      await user.click(screen.getByRole("button", { name: enCockpit.input_materials.restore_recheck_references })); expect(refresh).toHaveBeenCalledOnce();
+      expect(api.restoreCockpitSnapshot).not.toHaveBeenCalled();
+    } finally { view.unmount(); cache.clear(); }
+  });
   it("protects agenda and occurrence facts without requiring a work package or stable plan binding, while keeping comparisons available", async () => {
     setup(true); const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: enCockpit.versions.button })); await screen.findByText("Checkpoint 1");
     expect(screen.getByText(enCockpit.meeting_lifecycle.restore_protected)).toBeVisible();

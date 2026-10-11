@@ -60,7 +60,9 @@
     "human_review": "正式结论由指定人员提交，智能体运行不能代替评审。",
     "formal_status": "待评审时仍可修改非结束工作状态。已决定或已退役的评审保留原有结论。",
     "execution_leaf": "此执行任务已有需保留的工作，不能改为父级。",
-    "blocked": "请先查看此操作的前置条件。"
+    "blocked": "请先查看此操作的前置条件。",
+    "retained_input_history": "此任务的输入清单已被运行或产出物保留，需要保留任务以追溯历史。可打开对应清单查看。",
+    "meeting_input_references": "本会议仍引用固定资料。请打开会议资料，移除这些引用后再删除会议；资料本身会保留。"
   },
   "inline_run": {
     "label": "{{name}} 的运行",
@@ -1430,7 +1432,6 @@
     "unmark": "不是重复",
     "section_title": "重复项",
     "unmark_toast": "已重新打开为待办"
-
   },
   "pr_automation": {
     "link_action": "关联 PR",

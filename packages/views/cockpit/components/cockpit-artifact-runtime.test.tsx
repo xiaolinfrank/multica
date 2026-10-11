@@ -19,7 +19,7 @@ vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () 
 vi.mock("./cockpit-workflow-issue-link", () => ({ WorkflowIssueLink: ({ issue }: { issue: { title: string } }) => <p>{issue.title}</p> }));
 vi.mock("./cockpit-reviewer-select", () => ({ CockpitReviewerSelect: ({ value, label, onChange, disabled }: { value: string; label: string; onChange: (id: string) => void; disabled: boolean }) => <label>{label}<select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}><option value="" /><option value="reviewer-2">Second reviewer</option></select></label> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
-  getCockpitArtifact: vi.fn(), getCockpitArtifactVersion: vi.fn(), reviewCockpitArtifactVersion: vi.fn(), submitCockpitArtifactVersion: vi.fn(),
+  getCockpitInputManifestVersion: vi.fn(), getCockpitIssueInputManifest: vi.fn(), getCockpitContext: vi.fn(), getCockpitArtifact: vi.fn(), getCockpitArtifactVersion: vi.fn(), reviewCockpitArtifactVersion: vi.fn(), submitCockpitArtifactVersion: vi.fn(),
   searchCockpitScopeMembers: vi.fn(), reassignCockpitArtifactReviewer: vi.fn(),
   searchCockpitAssignees: vi.fn(), assignCockpitArtifactProducer: vi.fn(),
   getAttachment: vi.fn(), getCockpitArtifactSourceAttachments: vi.fn(),
@@ -31,6 +31,8 @@ function client() { return new QueryClient({ defaultOptions: { queries: { retry:
 beforeEach(() => {
   vi.clearAllMocks(); useCockpitArtifactDraftStore.getState().clearDraft(); useCockpitArtifactCommandStore.getState().clearDraft();
   navigation.searchParams = new URLSearchParams("artifact=artifact-1&version=version-1"); header = artifactFixture(); detail = artifactVersionDetailFixture();
+  vi.mocked(api.getCockpitContext).mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: "project-1", module_id: "module-1", project_title: "", module_title: "" }, cockpit: null,
+    actor: { user_id: "author-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false, capabilities: { artifacts: true, acceptance: true, run_input_manifests: false } });
   vi.mocked(api.getCockpitArtifact).mockImplementation(async () => structuredClone(header));
   vi.mocked(api.getCockpitArtifactVersion).mockImplementation(async () => structuredClone(detail));
   vi.mocked(api.searchCockpitScopeMembers).mockResolvedValue({ workspace_id: "ws-1", scope: { q: "", ids: ["reviewer-2"] }, items: [{ id: "reviewer-2", title: "Second reviewer", email: "second@example.test", avatar_url: "", role: "member" }], total: 1, filtered_total: 1, next_cursor: null });
@@ -41,6 +43,33 @@ beforeEach(() => {
 });
 
 describe("artifact runtime workflow", () => {
+  it.each([true, false])("confirms a human artifact submission only when its explicit cross-Issue manifest is acknowledged (matching: %s)", async (matching) => {
+    const sourceIssue = "b6000000-0000-4000-8000-000000000001";
+    const sourceManifest = "b6000000-0000-4000-8000-000000000002";
+    const manifest = { workspaceId: "ws-1", issueId: sourceIssue, id: sourceManifest, versionNumber: 3, commandKey: sourceManifest, manifestHash: "a".repeat(64), itemTotal: 2, requiredTotal: 1, createdBy: "author-1", createdByName: "Author", createdAt: "2026-10-11T00:00:00Z", hasNote: false };
+    vi.mocked(api.getCockpitInputManifestVersion).mockResolvedValue({ ...manifest, note: "" });
+    vi.mocked(api.getCockpitIssueInputManifest).mockResolvedValue({ workspaceId: "ws-1", issue: { id: sourceIssue, identifier: "PMO-30", title: "Source research", status: "todo", statusCategory: "unstarted", priority: "none", assigneeType: null, assigneeId: null, assigneeName: "", dueDate: null, projectId: null, moduleId: null, primaryNodeId: null, primaryNodeCode: "", primaryNodeName: "", primaryRevision: 0, creationKey: null }, revision: 1, currentVersion: manifest, counts: { total: 2, required: 1, availableRequired: 1, unknownRequired: 0, unavailableRequired: 0 }, canEdit: true, blockedReasons: [] });
+    header = { ...header, status: "draft", current_version: null, can_submit: true };
+    const key = cockpitArtifactDraftKey("ws-1", "submit", "artifact-1");
+    updateCockpitArtifactSubmissionDraft(key, { revision: header.revision, producerIssueId: header.producer_issue.id }, { text: "Human delivery", inputManifestIssueId: sourceIssue, inputManifestVersionId: sourceManifest });
+    vi.mocked(api.submitCockpitArtifactVersion).mockImplementation(async (_ws, _artifact, body) => ({ workspace_id: "ws-1", artifact: header,
+      version: { ...detail, content: "Human delivery", version: { ...detail.version, submission_key: body.submission_key, input_manifest_version_id: matching ? sourceManifest : null, input_manifest_issue_id: matching ? sourceIssue : null } } }));
+    const cache = client(); const view = render(shell(<CockpitArtifactSubmitForm wsId="ws-1" artifact={header} scope={scope} disabled={false} />, cache));
+    try {
+      const submit = screen.getByRole("button", { name: enCockpit.artifacts.submit_version }); await waitFor(() => expect(submit).toBeEnabled()); fireEvent.click(submit);
+      await waitFor(() => expect(api.submitCockpitArtifactVersion).toHaveBeenCalledTimes(1));
+      const body = vi.mocked(api.submitCockpitArtifactVersion).mock.calls[0]![2]; expect(body.input_manifest_version_id).toBe(sourceManifest);
+      if (matching) {
+        await waitFor(() => expect(navigation.push).toHaveBeenCalledOnce());
+        expect(useCockpitArtifactDraftStore.getState().draft.submissions[key]).toBeUndefined();
+      } else {
+        await screen.findByText(enCockpit.task_flow.unconfirmed);
+        expect(useCockpitArtifactDraftStore.getState().draft.submissions[key]?.pending?.submission_key).toBe(body.submission_key);
+        expect(navigation.push).not.toHaveBeenCalled();
+      }
+    } finally { view.unmount(); cache.clear(); }
+  });
+
   it("keeps text submission and a production-issue recovery link when private file capture is unavailable", () => {
     header = { ...header, status: "draft", current_version: null, can_submit: true, file_capture_available: false, file_capture_unavailable_reason: "private_storage_required" };
     render(shell(<CockpitArtifactSubmitForm wsId="ws-1" artifact={header} scope={scope} disabled={false} />, client()));

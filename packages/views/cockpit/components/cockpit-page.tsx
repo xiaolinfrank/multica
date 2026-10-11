@@ -86,6 +86,7 @@ import { CockpitMeetingCreate, type CockpitMeetingDraft, type CockpitMeetingCrea
 import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
+import { CockpitInputInspector } from "./cockpit-input-inspector";
 import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitMeetings } from "./cockpit-meetings";
@@ -557,6 +558,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
+      {currentUserId && <CockpitInputInspector wsId={wsId} accountId={currentUserId} inputsAvailable={context.data?.capabilities?.inputs === true} />}
       <header className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2", (tab === "meetings" ? Boolean(selectedMeetingId) : showTaskWorkspace) && "max-xl:hidden")}>
         <span className="flex-1" />
 
@@ -733,6 +735,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
           hasMeetingPreparation={context.data?.has_meeting_preparation === true}
           hasDirectoryHistory={context.data?.has_directory_history === true}
+          hasInputReferences={context.data?.has_input_references === true} inputReferenceMeetings={context.data?.input_reference_meetings ?? []} inputReferenceMeetingsTotal={context.data?.input_reference_meetings_total ?? 0} onRefreshInputReferences={() => void context.refetch()}
           meetingsHref={cockpitScopedPath(navigation.pathname, new URLSearchParams(context.data?.has_directory_history === true ? "tab=meetings&meeting_archive=all" : "tab=meetings"), { projectId: null, moduleId: null })}
           hasStableBindings={context.data?.has_stable_bindings !== false} />}
 

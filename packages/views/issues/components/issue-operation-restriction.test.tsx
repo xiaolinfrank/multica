@@ -35,6 +35,16 @@ describe("issue operation recovery", () => {
     expect(screen.queryByRole("link", { name: "Unknown object" })).not.toBeInTheDocument();
     expect(screen.getByText("Unknown object")).toBeVisible();
   });
+  it("opens the exact retained input manifest and meeting resource recovery destinations", () => {
+    const value = basis(); value.delete = { state: "blocked", reason_codes: ["retained_input_history", "meeting_input_references"] };
+    value.targets = [{ kind: "issue", issue_id: "issue-1", view: "inputs", version_id: "manifest-1", label: "Saved inputs 1", purpose: "input_manifest" },
+      { kind: "meeting", meeting_id: "meeting-1", view: "resources", label: "Meeting materials", purpose: "input_reference" }]; value.targets_total = 2;
+    setup({ basis: value, pending: false, error: false, retry: vi.fn() }, "delete");
+    expect(screen.getByText(enIssues.operation_basis.retained_input_history)).toBeVisible();
+    expect(screen.getByText(enIssues.operation_basis.meeting_input_references)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Saved inputs 1 (new tab)" })).toHaveAttribute("href", "/ws/issues/issue-1?input_manifest=manifest-1");
+    expect(screen.getByRole("link", { name: "Meeting materials (new tab)" })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1&meeting_view=resources");
+  });
   it("keeps a failed read actionable and does not show stale available facts", async () => {
     const retry = vi.fn(); setup({ basis: basis(), pending: false, error: true, retry });
     expect(screen.getByRole("alert")).toHaveTextContent(enIssues.operation_basis.failed);

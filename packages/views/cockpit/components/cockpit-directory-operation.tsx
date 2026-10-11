@@ -46,7 +46,7 @@ export function CockpitDirectoryOperation({ wsId, summary, operationId, active, 
         <CockpitDirectoryTargetView value={current.target} openable={Boolean(data?.items.some((step) => step.kind === "base" && step.state === "satisfied"))} />
         <CockpitDirectoryProgressCounts value={current.counts} />
         <p className="break-words text-caption text-muted-foreground">{t(($) => $.meeting_preparation.responsible, { name: current.responsible_user_name || t(($) => $.meeting_directory.no_name) })}</p>
-        <CockpitDirectoryPrincipalView value={current.source_principal} />
+        <CockpitDirectoryPrincipalView wsId={wsId} value={current.source_principal} />
         {Number.isFinite(Date.parse(current.updated_at)) && <p className="text-caption text-muted-foreground">{new Date(current.updated_at).toLocaleString(locale)}</p>}
         {current.state === "active" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_directory.background)}</p>}
         {current.state === "completed" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_directory.last_verified)}</p>}

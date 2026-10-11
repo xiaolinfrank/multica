@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@multica/core/api";
 import {
   cockpitArtifactOptions, cockpitArtifactVersionsOptions, cockpitArtifactVersionOptions, cockpitArtifactVersionActions,
-  cockpitArtifactReturn, cockpitArtifactPath, cockpitObjectPath, cockpitSurfacePath, cockpitArtifactDraftKey, useCockpitArtifactDraftStore,
+  cockpitIssueInputManifestPath, cockpitArtifactReturn, cockpitArtifactPath, cockpitObjectPath, cockpitSurfacePath, cockpitArtifactDraftKey, useCockpitArtifactDraftStore,
   clearCockpitArtifactReviewDraft, updateCockpitArtifactReviewDraft, useReviewCockpitArtifactVersion, useRetryCockpitArtifactCapture, type CockpitScope,
 } from "@multica/core/cockpit";
 import type { CockpitArtifactHeader, CockpitArtifactVersionMetadata, CockpitArtifactReview } from "@multica/core/types";
@@ -20,6 +20,7 @@ import { Markdown } from "@multica/ui/markdown";
 import { ArrowLeft, ArrowUpRight, Download, FileCheck2, FileText, History } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
+import { CockpitPreparationRun } from "./cockpit-preparation-run";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { ArtifactStatus, useArtifactStatusLabel } from "./cockpit-artifact-status";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
@@ -129,7 +130,8 @@ function ArtifactReader({ wsId, artifact, versionId, scope, currentUserId, readO
       <div className="flex flex-wrap gap-2"><ArtifactStatus status={version.decision} /><ArtifactStatus status={version.capture_status} /></div>
       <dl className="space-y-2 text-caption"><div><dt className="text-muted-foreground">{t(($) => $.artifact_runtime.version_producer)}</dt><dd><AppLink href={paths.issueDetail(version.producer_issue_id)} target="_blank" rel="noopener noreferrer" className="break-words text-primary hover:underline">{version.producer_issue_identifier} · {version.producer_issue_title || version.producer_issue_id}</AppLink></dd></div>
         {version.source_meeting_id && <div><dt className="text-muted-foreground">{t(($) => $.artifact_runtime.meeting_source)}</dt><dd><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: version.source_meeting_id }, scope)} target="_blank" rel="noopener noreferrer" className="break-words text-primary hover:underline">{version.source_meeting_title || version.source_meeting_id}</AppLink>{version.source_minutes_version_number !== null && <span> · {t(($) => $.workflow.version, { number: version.source_minutes_version_number })}</span>}</dd></div>}
-        {version.producer_run_id && <div><dt className="text-muted-foreground">{t(($) => $.artifact_runtime.producer_run)}</dt><dd className="break-all font-mono text-micro">{version.producer_run_id}</dd></div>}
+        {version.producer_run_id && <div><dt className="text-muted-foreground">{t(($) => $.artifact_runtime.producer_run)}</dt><dd><CockpitPreparationRun key={version.producer_run_id} wsId={wsId} issueId={version.producer_issue_id} runId={version.producer_run_id} context="source" /></dd></div>}
+        {version.input_manifest_version_id && <div><dt className="text-muted-foreground">{t(($) => $.input_materials.artifact_manifest_record)}</dt><dd>{version.input_manifest_issue_id ? <AppLink href={cockpitIssueInputManifestPath(paths.issueDetail(version.input_manifest_issue_id), new URLSearchParams(), version.input_manifest_version_id)} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline">{t(($) => $.input_materials.artifact_view_manifest)}{version.input_manifest_version_number != null && <> · {t(($) => $.workflow.version, { number: version.input_manifest_version_number })}</>} · {t(($) => $.action_flow.new_tab)}</AppLink> : <span className="space-y-2"><span className="block">{t(($) => $.input_materials.artifact_manifest_location_missing)}</span><Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>{t(($) => $.input_materials.refresh_version)}</Button></span>}</dd></div>}
       </dl>
       {staleVersion && <div role="status" className="space-y-2 rounded-lg bg-warning-subtle p-3 text-caption"><p>{t(($) => $.artifact_runtime.version_changed)}</p><Button size="sm" variant="outline" onClick={() => void query.refetch()}>{t(($) => $.artifact_runtime.recheck)}</Button></div>}
       {current && identity !== reviewKey && !staleVersion && <div className="space-y-2 text-caption"><p>{t(($) => $.artifact_runtime.review_changed)}</p>{!readOnly && version.can_review && version.reviewer_id === currentUserId && <Button size="sm" variant="outline" onClick={() => { observedReview.current = identity; setReviewContext((old) => old + 1); }}>{t(($) => $.artifact_runtime.use_current_review)}</Button>}</div>}

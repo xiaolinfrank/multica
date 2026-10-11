@@ -6,6 +6,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useLocale, useT } from "../../i18n";
 import { LocalPathLink } from "../../common/local-path-link";
 import { CollabPathCopyButton } from "../../projects/components/collab-path";
+import { CockpitSourceContextLinks } from "./cockpit-source-context-links";
 import { CockpitFlowPaging } from "./cockpit-task-flow";
 
 export const knownDirectoryStates = new Set(["active", "paused", "needs_attention", "completed", "abandoned"]);
@@ -59,12 +60,14 @@ export function CockpitDirectoryTargetView({ value, openable = true }: { value: 
   </div>;
 }
 
-export function CockpitDirectoryPrincipalView({ value }: { value: CockpitDirectoryPrincipal }) {
+export function CockpitDirectoryPrincipalView({ value, wsId }: { value: CockpitDirectoryPrincipal; wsId?: string }) {
   const { t } = useT("cockpit");
   const actor = value.actor_name || t(($) => $.meeting_directory.no_name), authorizer = value.authorizing_user_name || t(($) => $.meeting_directory.no_name);
-  return <p className="break-words text-caption text-muted-foreground">{value.source === "human" && value.actor_type === "member" && value.confirmed_by_user_id === value.actor_id
+  return <div className="space-y-2"><p className="break-words text-caption text-muted-foreground">{value.source === "human" && value.actor_type === "member" && value.confirmed_by_user_id === value.actor_id
     ? t(($) => $.meeting_directory.human_authorization, { name: actor })
-    : value.source === "task_token" && value.actor_type === "agent" ? t(($) => $.meeting_directory.delegated_authorization, { actor, name: authorizer }) : t(($) => $.meeting_directory.unknown)}</p>;
+    : value.source === "task_token" && value.actor_type === "agent" ? t(($) => $.meeting_directory.delegated_authorization, { actor, name: authorizer }) : t(($) => $.meeting_directory.unknown)}</p>
+    {wsId && (value.issue_id || value.run_id) && <CockpitSourceContextLinks wsId={wsId} issueId={value.issue_id} runId={value.run_id} />}
+  </div>;
 }
 
 export function CockpitDirectoryProgressCounts({ value }: { value: CockpitDirectoryCounts }) {
@@ -82,7 +85,7 @@ export function CockpitDirectoryPreviewView({ value }: { value: CockpitDirectory
     {value.bind_after_base && value.observed_binding.nas_dir !== value.target.directory && <div className="space-y-1 text-caption"><p className="text-muted-foreground">{t(($) => $.meeting_directory.current_binding)}</p><p dir="ltr" className="max-h-20 overflow-y-auto break-all">{value.observed_binding.nas_dir || t(($) => $.common.unset)}</p></div>}
     <p className="text-caption">{t(($) => $.meeting_directory.counts, { ...value.counts })}</p><p className="text-caption text-muted-foreground">{value.bind_after_base ? t(($) => $.meeting_directory.bind_after) : t(($) => $.meeting_directory.binding_kept)}</p>
     {Number.isFinite(Date.parse(value.checked_at)) && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_directory.checked_at, { time: new Date(value.checked_at).toLocaleString(locale) })}</p>}
-    {value.principal && <CockpitDirectoryPrincipalView value={value.principal} />}<CockpitDirectoryReasons codes={value.blocked_reasons} />
+    {value.principal && <CockpitDirectoryPrincipalView wsId={value.workspace_id} value={value.principal} />}<CockpitDirectoryReasons codes={value.blocked_reasons} />
     {value.steps.length > 25 && <CockpitFlowPaging page={currentPage} shown={shown.length} total={value.steps.length} hasNext={currentPage * 25 < value.steps.length} busy={false} onPrevious={() => setPage(currentPage - 1)} onNext={() => setPage(currentPage + 1)} />}
     <ol className={cn("max-h-[42vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3", value.steps.length > 25 && "h-[42vh]")}>
       {shown.map((step) => <li key={step.position} className="space-y-2 py-3 text-caption"><div className="flex flex-wrap items-start gap-2"><p className="min-w-0 flex-1 line-clamp-2 break-words font-medium" title={step.label}>{step.label}</p><span className="text-muted-foreground">{label(step.planned_state)}</span></div>

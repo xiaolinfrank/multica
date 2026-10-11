@@ -14,11 +14,12 @@ import { useT } from "../../i18n";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitPathField } from "./cockpit-path-field";
 
-export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref, readOnly, directoryPreparationAvailable = false, onSaveMaterialPatch, onPrepareDirectory }: {
+export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref, readOnly, inputManifestAvailable = false, directoryPreparationAvailable = false, onSaveMaterialPatch, onPrepareDirectory }: {
   wsId: string; meeting: CockpitMeeting; workflow: CockpitMeetingWorkflowSummary | null | undefined; workflowHref: string; readOnly?: boolean;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
   directoryPreparationAvailable?: boolean;
+  inputManifestAvailable?: boolean;
 }) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
@@ -79,6 +80,6 @@ export function CockpitMeetingMaterials({ wsId, meeting, workflow, workflowHref,
       <p className="text-caption text-muted-foreground">{directoryPreparationAvailable ? t(($) => $.meeting_directory.binding_hint) : t(($) => $.meeting_materials.directory_hint)}</p>
       {directoryError && <p role="alert" className="text-caption text-destructive">{directoryError}</p>}
     </div>
-    <p className="text-caption text-muted-foreground">{t(($) => $.meeting_materials.related_hint)}</p>
+    <p className="text-caption text-muted-foreground">{inputManifestAvailable ? t(($) => $.input_materials.related_tasks_hint) : t(($) => $.meeting_materials.related_hint)}</p>
   </section>;
 }

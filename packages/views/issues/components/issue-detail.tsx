@@ -121,6 +121,7 @@ import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
 import { CockpitClearPrimaryNode, CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
+import { CockpitIssueInputManifest, CockpitIssueInputManifestInspector } from "../../cockpit/components/cockpit-issue-input-manifest";
 import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
 import { useGitHubSettings } from "@multica/core/github";
 import { DeliverablesSection } from "./deliverables/deliverables-section";
@@ -2982,6 +2983,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           end; hides itself when the workspace keeps no register. */}
       <CockpitMeetingsSection issueId={issue.id} />
       <CockpitArtifactContexts issueId={issue.id} />
+      <CockpitIssueInputManifest issueId={issue.id} />
 
       {/* Deliverables — the files this issue's comments delivered. Hidden
           while there are none. */}
@@ -4009,6 +4011,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       onOpenOverview={openOverviewFromViewer}
     >
       <AttachmentVersionsProvider files={deliverableFiles}>{layout}</AttachmentVersionsProvider>
+      {!isPeek && <CockpitIssueInputManifestInspector issueId={issue.id} />}
       <DeliverablesOverview
         open={overview.open}
         onClose={closeOverview}

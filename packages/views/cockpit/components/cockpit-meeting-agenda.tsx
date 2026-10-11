@@ -27,6 +27,7 @@ import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
 import { CockpitAgendaReferences } from "./cockpit-agenda-references";
 import { CockpitMeetingTemplateApplication } from "./cockpit-meeting-template-application";
 import { CockpitPreparationOperation } from "./cockpit-preparation-operation";
+import { CockpitMeetingInputs } from "./cockpit-meeting-inputs";
 import { CockpitPreparationHistory } from "./cockpit-preparation-history";
 import { CockpitPreparationReasons } from "./cockpit-preparation-preview";
 
@@ -34,7 +35,7 @@ const purposes: CockpitAgendaPurpose[] = ["planning", "goal_review", "boundary_c
 const isPurpose = (value: string): value is CockpitAgendaPurpose => purposes.some((purpose) => purpose === value);
 const size = (value: string) => new TextEncoder().encode(value).length;
 
-export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvailable = false, dispositionAvailable = false, directoryPreparationAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed }: { wsId: string; meetingId: string; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; directoryPreparationAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void }) {
+export function CockpitMeetingAgenda({ wsId, meetingId, accountId, inputsAvailable = false, readOnly, templatesAvailable = false, dispositionAvailable = false, directoryPreparationAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed }: { wsId: string; meetingId: string; accountId?: string; inputsAvailable?: boolean; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; directoryPreparationAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const client = useQueryClient();
   const viewKey = cockpitRelationViewKey(wsId, "agenda", meetingId);
   const view = useCockpitScopeViewStore((state) => state.agendas[viewKey] ?? EMPTY_COCKPIT_AGENDA_CONTEXT);
@@ -64,7 +65,7 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvail
       {operationId && preparationAvailable ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={cockpitMeetingPreparationPath(paths.cockpit(), meetingId, null, navigation.searchParams)} onClick={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }}>{t(($) => $.meeting_preparation.close)}</AppLink>
         <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} directoryPreparationAvailable={directoryPreparationAvailable} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
       </div> : selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
-        <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
+        <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} accountId={accountId} inputsAvailable={inputsAvailable} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
       </div> : <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_lifecycle.agenda)}</h3>
           <Dialog open={create} onOpenChange={(next) => { if (next || !dialogBusy.current) setCreate(next); }}><DialogTrigger render={<Button size="sm" disabled={!pendingCreate && (readOnly || !lifecycle.data.can_edit_agenda)} />}>{t(($) => $.meeting_lifecycle.add)}</DialogTrigger>
@@ -93,11 +94,12 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvail
   </section>;
 }
 
-function CockpitAgendaReader({ wsId, meetingId, agendaId, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agendaId: string; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
+function CockpitAgendaReader({ wsId, meetingId, agendaId, accountId, inputsAvailable, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agendaId: string; accountId?: string; inputsAvailable?: boolean; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
   const query = useQuery(cockpitAgendaDetailOptions(wsId, meetingId, agendaId));
   if (query.isPending) return <Spinner />;
   if (query.isError || !query.data) return <CockpitFlowError onRetry={() => void query.refetch()} />;
   return <div className="space-y-4"><CockpitAgendaEditor wsId={wsId} meetingId={meetingId} agenda={query.data} readOnly={readOnly} refresh={() => void query.refetch()} />
+    {inputsAvailable && accountId && <CockpitMeetingInputs wsId={wsId} accountId={accountId} meetingId={meetingId} agendaId={agendaId} targetLabel={query.data.title} readOnly={readOnly || Boolean(query.data.removed_at)} />}
     <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} canAddPreparation={canAddPreparation} />
   </div>;
 }

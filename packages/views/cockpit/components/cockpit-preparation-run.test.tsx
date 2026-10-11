@@ -12,6 +12,21 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
 beforeEach(() => vi.clearAllMocks());
 
 describe("preparation run recovery", () => {
+  it("opens the exact source run without presenting it as a stop request", async () => {
+    vi.mocked(api.getTask).mockResolvedValue({ id: "source-run", issue_id: "source-issue", agent_id: "agent-1", runtime_id: "runtime-1", status: "completed", priority: 0,
+      dispatched_at: null, started_at: null, completed_at: null, result: null, error: null, created_at: "2026-10-11T00:00:00Z" });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitPreparationRun wsId="ws-1" runId="source-run" issueId="source-issue" context="source" /></I18nProvider></QueryClientProvider>);
+    try {
+      expect(api.getTask).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "View source run" }));
+      expect(await screen.findByText(enCockpit.meeting_disposition.run_completed)).toBeVisible();
+      expect(api.getTask).toHaveBeenCalledExactlyOnceWith("ws-1", "source-run", expect.any(AbortSignal));
+      expect(screen.queryByText(enCockpit.meeting_disposition.stop_hint)).toBeNull();
+      expect(screen.getByRole("link", { name: `${enCockpit.meeting_preparation.open_issue} ${enCockpit.action_flow.new_tab}` })).toHaveAttribute("href", "/ws/issues/source-issue");
+    } finally { view.unmount(); client.clear(); }
+  });
+
   it.each([403, 404])("reads one exact run on demand and explains %s while preserving the Issue destination", async (status) => {
     vi.mocked(api.getTask).mockRejectedValue(new ApiError("Unavailable run", status, status === 403 ? "Forbidden" : "Not Found"));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

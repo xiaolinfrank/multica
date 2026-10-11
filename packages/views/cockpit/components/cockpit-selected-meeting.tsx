@@ -84,6 +84,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
     </div>;
   };
   return <><CockpitMeetingPanel wsId={wsId} currentUserId={actorId} meeting={detail.meeting}
+    inputsAvailable={detail.capabilities?.inputs === true} inputManifestAvailable={detail.capabilities?.run_input_manifests === true}
     lifecycleAvailable={detail.capabilities?.meeting_lifecycle === true}
     templatesAvailable={detail.capabilities?.meeting_templates === true} canAddPreparation={canAddPreparation} dispositionAvailable={detail.capabilities?.meeting_disposition === true}
     directoryPreparationAvailable={detail.capabilities?.meeting_directory_preparation === true} onManageMeeting={() => setActionsOpen(true)}

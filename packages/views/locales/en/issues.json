@@ -60,7 +60,9 @@
     "human_review": "The designated person submits the formal decision. An agent run cannot complete this review.",
     "formal_status": "Working statuses remain available while review is pending. Final and retired reviews retain their recorded outcome.",
     "execution_leaf": "This execution work item already has retained work and cannot become a parent.",
-    "blocked": "Review the action requirements before continuing."
+    "blocked": "Review the action requirements before continuing.",
+    "retained_input_history": "This issue has input manifests retained by runs or artifacts. Open the saved list to inspect the history before changing the issue.",
+    "meeting_input_references": "This meeting still references fixed materials. Open meeting resources and remove those references before deleting the meeting. The materials themselves are retained."
   },
   "inline_run": {
     "label": "{{name}} run",
@@ -1473,7 +1475,6 @@
     "unmark": "Not a duplicate",
     "section_title": "Duplicates",
     "unmark_toast": "Reopened as Todo"
-
   },
   "pr_automation": {
     "link_action": "Link pull request",

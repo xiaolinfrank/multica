@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 import { AgentTranscriptDialog, buildTimeline } from "../../common/task-transcript";
+import { CockpitRunInputManifest } from "./cockpit-run-input-manifest";
 import { CockpitFlowError } from "./cockpit-task-flow";
 
 export function usePreparationRunStatusLabel() {
@@ -25,18 +26,20 @@ export function usePreparationRunStatusLabel() {
 }
 
 /** Read only this run on demand; the Issue's complete run collection is never a lookup fallback. */
-export function CockpitPreparationRun({ wsId, runId, issueId }: { wsId: string; runId: string; issueId?: string | null }) {
+export function CockpitPreparationRun({ wsId, runId, issueId, context = "preparation" }: { wsId: string; runId: string; issueId?: string | null; context?: "preparation" | "source" | "execution" }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const status = usePreparationRunStatusLabel(); const [open, setOpen] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const query = useQuery({ ...taskDetailOptions(wsId, runId), enabled: open, staleTime: 0 });
   const task = query.data; const matches = task?.id === runId && (!issueId || task.issue_id === issueId);
   const messages = useQuery({ ...taskMessagesOptions(runId), enabled: open && transcriptOpen && Boolean(matches), staleTime: 0, retry: false });
   const issueHref = issueId ? paths.issueDetail(issueId) : undefined;
-  return <><Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setTranscriptOpen(false); }}><DialogTrigger render={<Button variant="outline" size="sm" />}>{t(($) => $.meeting_preparation.open_run)}</DialogTrigger>
-    <DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t(($) => $.meeting_preparation.open_run)}</DialogTitle></DialogHeader>
+  const title = context === "execution" ? t(($) => $.input_materials.run_created) : context === "source" ? t(($) => $.input_materials.source_run) : t(($) => $.meeting_preparation.open_run);
+  return <><Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setTranscriptOpen(false); }}><DialogTrigger render={<Button variant="outline" size="sm" />}>{title}</DialogTrigger>
+    <DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
       {query.isPending ? <Spinner /> : query.isError || !task || !matches ? <RunReadFailure error={query.error} retry={() => void query.refetch()} /> : <div className="space-y-3">
-        <p className="text-body font-medium">{status(task.status)}</p><p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>
+        <p className="text-body font-medium">{status(task.status)}</p>{context === "preparation" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>}
         <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => setTranscriptOpen(true)}>{t(($) => $.meeting_preparation.open_transcript)}</Button><Button size="sm" variant="ghost" onClick={() => void query.refetch()}>{t(($) => $.meeting_lifecycle.refresh)}</Button></div>
+        {task.input_manifest_version_id && <CockpitRunInputManifest wsId={wsId} runId={runId} runtimeId={task.runtime_id} />}
         <details className="text-caption text-muted-foreground"><summary className="cursor-pointer">{t(($) => $.artifact_runtime.diagnostics)}</summary><p className="break-all">{runId}</p></details>
       </div>}
       {issueId && <AppLink target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline" href={paths.issueDetail(issueId)}>{t(($) => $.meeting_preparation.open_issue)} {t(($) => $.action_flow.new_tab)}</AppLink>}
