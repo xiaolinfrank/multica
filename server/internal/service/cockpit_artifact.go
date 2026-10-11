@@ -33,6 +33,7 @@ type CockpitArtifactEdit struct {
 type CockpitArtifactSubmission struct {
 	CockpitArtifactCommand
 	SubmissionKey, ProducerIssueID, ProducerRunID, SourceMeetingID, SourceMinutesVersionID, AuthorID pgtype.UUID
+	InputManifestVersionID                                                                           pgtype.UUID // explicit human source only; machine source is the exact producing Run pin
 	ActorType                                                                                        string
 	Payload                                                                                          CockpitArtifactPayload
 }
@@ -273,6 +274,11 @@ type cockpitArtifactIssue struct {
 }
 
 func artifactSubmissionHash(p CockpitArtifactSubmission, payload CockpitArtifactPayloadIdentity) string {
+	if p.InputManifestVersionID.Valid {
+		original := p
+		original.InputManifestVersionID = pgtype.UUID{}
+		return planningHash([]any{artifactSubmissionHash(original, payload), p.InputManifestVersionID})
+	}
 	return planningHash(struct {
 		Actor, Author, Producer, Run, Meeting, Minutes pgtype.UUID
 		ActorType                                      string
@@ -308,20 +314,34 @@ func prepareArtifactSubmission(ctx context.Context, q *db.Queries, a db.CockpitA
 	if err != nil {
 		return db.CreateCockpitArtifactVersionParams{}, nil, err
 	}
+	manifestID := p.InputManifestVersionID
 	if p.ActorType == "member" {
 		if !p.Human || p.AuthorID != p.ActorID || p.ProducerRunID.Valid || (!artifactManager(a, p.ActorID, member.Role, true) && !(producer.AssigneeType.String == "member" && producer.AssigneeID == p.ActorID)) {
 			return db.CreateCockpitArtifactVersionParams{}, nil, ErrCockpitWorkflowForbidden
 		}
 	} else if p.ActorType == "agent" {
-		if p.Human || !p.AuthorID.Valid || !p.ProducerRunID.Valid {
+		if p.Human || !p.AuthorID.Valid || !p.ProducerRunID.Valid || p.InputManifestVersionID.Valid {
 			return db.CreateCockpitArtifactVersionParams{}, nil, ErrCockpitWorkflowForbidden
 		}
 		run, err := q.GetAgentTask(ctx, p.ProducerRunID)
 		if err != nil || run.IssueID != producer.ID || run.AgentID != p.AuthorID {
 			return db.CreateCockpitArtifactVersionParams{}, nil, ErrCockpitWorkflowForbidden
 		}
+		manifestID = run.InputManifestVersionID
 	} else {
 		return db.CreateCockpitArtifactVersionParams{}, nil, ErrCockpitWorkflowForbidden
+	}
+	if manifestID.Valid {
+		versions, e := q.GetCockpitInputManifestVersionsByIDs(ctx, db.GetCockpitInputManifestVersionsByIDsParams{WorkspaceID: p.WorkspaceID, Ids: []pgtype.UUID{manifestID}})
+		if e != nil {
+			return db.CreateCockpitArtifactVersionParams{}, nil, e
+		}
+		if len(versions) != 1 {
+			return db.CreateCockpitArtifactVersionParams{}, nil, artifactConflict("the selected fixed input manifest is unavailable in this workspace")
+		}
+		if _, e = q.LockCockpitInputManifestIssue(ctx, db.LockCockpitInputManifestIssueParams{WorkspaceID: p.WorkspaceID, ID: versions[0].IssueID}); e != nil {
+			return db.CreateCockpitArtifactVersionParams{}, nil, cockpitWorkflowError(e)
+		}
 	}
 	number := int32(1)
 	var current *CockpitArtifactVersionMetadata
@@ -350,7 +370,7 @@ func prepareArtifactSubmission(ctx context.Context, q *db.Queries, a db.CockpitA
 	if !ok {
 		return db.CreateCockpitArtifactVersionParams{}, nil, ErrCockpitWorkflowNotFound
 	}
-	v := db.CreateCockpitArtifactVersionParams{ID: dbid.NewV7(), WorkspaceID: a.WorkspaceID, ArtifactID: a.ID, VersionNumber: number, SubmissionKey: p.SubmissionKey, RequestHash: hash, ProducerIssueID: producer.ID, ProducerIssueIdentifier: fact.Identifier, ProducerIssueTitle: producer.Title, ProducerRunID: p.ProducerRunID, SourceMeetingID: p.SourceMeetingID, SourceMinutesVersionID: p.SourceMinutesVersionID, PayloadKind: payload.Kind, ReviewerID: a.ReviewerID, SubmittedByType: p.ActorType, SubmittedByID: p.AuthorID, SubmittedByUserID: p.ActorID, CaptureStatus: "queued", Decision: "not_requested"}
+	v := db.CreateCockpitArtifactVersionParams{ID: dbid.NewV7(), WorkspaceID: a.WorkspaceID, ArtifactID: a.ID, VersionNumber: number, SubmissionKey: p.SubmissionKey, RequestHash: hash, ProducerIssueID: producer.ID, ProducerIssueIdentifier: fact.Identifier, ProducerIssueTitle: producer.Title, ProducerRunID: p.ProducerRunID, SourceMeetingID: p.SourceMeetingID, SourceMinutesVersionID: p.SourceMinutesVersionID, PayloadKind: payload.Kind, ReviewerID: a.ReviewerID, SubmittedByType: p.ActorType, SubmittedByID: p.AuthorID, SubmittedByUserID: p.ActorID, CaptureStatus: "queued", Decision: "not_requested", InputManifestVersionID: manifestID}
 	if p.SourceMinutesVersionID.Valid && !p.SourceMeetingID.Valid {
 		return v, nil, artifactInput("a minutes version requires its meeting")
 	}

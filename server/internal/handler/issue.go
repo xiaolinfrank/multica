@@ -4590,6 +4590,14 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 		if err := cockpitWorkflowProtectsIssue(ctx, qtx, locked); err != nil {
 			return issueDeleteResult{}, err
 		}
+		if _, err := qtx.LockCockpitInputManifest(ctx, db.LockCockpitInputManifestParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return issueDeleteResult{}, fmt.Errorf("lock input manifest for delete: %w", err)
+		}
+		if retained, err := qtx.HasCockpitInputIssueHistory(ctx, db.HasCockpitInputIssueHistoryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
+			return issueDeleteResult{}, fmt.Errorf("inspect fixed input history: %w", err)
+		} else if retained {
+			return issueDeleteResult{}, fmt.Errorf("%w: this task retains input versions used by a Run or deliverable; inspect its input manifest and close the task to preserve its history", service.ErrCockpitWorkflowConflict)
+		}
 	}
 	for _, issue := range issues {
 		failure.IssueID = issue.ID
@@ -4669,6 +4677,15 @@ func (h *Handler) deleteIssuesAndCollectAttachmentURLs(ctx context.Context, issu
 		// This is explicit application cleanup, in the same deletion transaction.
 		if err := qtx.TombstoneCockpitIssuePrimary(ctx, db.TombstoneCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
 			return issueDeleteResult{}, fmt.Errorf("tombstone cockpit primary ownership: %w", err)
+		}
+		if err := qtx.DeleteCockpitInputManifestItemsByIssue(ctx, db.DeleteCockpitInputManifestItemsByIssueParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
+			return issueDeleteResult{}, fmt.Errorf("clear unused input manifest items: %w", err)
+		}
+		if err := qtx.DeleteCockpitInputManifestHeadByIssue(ctx, db.DeleteCockpitInputManifestHeadByIssueParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
+			return issueDeleteResult{}, fmt.Errorf("clear unused input manifest: %w", err)
+		}
+		if err := qtx.DeleteCockpitInputManifestVersionsByIssue(ctx, db.DeleteCockpitInputManifestVersionsByIssueParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
+			return issueDeleteResult{}, fmt.Errorf("clear unused input manifest history: %w", err)
 		}
 		if err := qtx.DeleteIssue(ctx, db.DeleteIssueParams{ID: issue.ID, WorkspaceID: issue.WorkspaceID}); err != nil {
 			return issueDeleteResult{}, fmt.Errorf("delete issue: %w", err)

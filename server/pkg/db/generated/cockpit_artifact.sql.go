@@ -81,7 +81,7 @@ func (q *Queries) CockpitArtifactEvidenceEligible(ctx context.Context, arg Cockp
 
 const completeCockpitArtifactVersionCapture = `-- name: CompleteCockpitArtifactVersionCapture :one
 UPDATE cockpit_artifact_version SET capture_status='ready',capture_error_code='',capture_error='',storage_key=$4,object_url=$5,content_hash=$6,size_bytes=$7,decision='pending',review_issue_id=$8,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at
+WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id
 `
 
 type CompleteCockpitArtifactVersionCaptureParams struct {
@@ -146,6 +146,7 @@ func (q *Queries) CompleteCockpitArtifactVersionCapture(ctx context.Context, arg
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
@@ -304,8 +305,8 @@ func (q *Queries) CreateCockpitArtifact(ctx context.Context, arg CreateCockpitAr
 }
 
 const createCockpitArtifactVersion = `-- name: CreateCockpitArtifactVersion :one
-INSERT INTO cockpit_artifact_version(id,workspace_id,artifact_id,version_number,submission_key,request_hash,producer_issue_id,producer_issue_identifier,producer_issue_title,producer_run_id,source_meeting_id,source_meeting_title,source_minutes_version_id,source_minutes_version_number,payload_kind,content,source_attachment_id,filename,content_type,size_bytes,content_hash,storage_key,object_url,capture_status,decision,reviewer_id,review_issue_id,submitted_by_type,submitted_by_id,submitted_by_user_id)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at
+INSERT INTO cockpit_artifact_version(id,workspace_id,artifact_id,version_number,submission_key,request_hash,producer_issue_id,producer_issue_identifier,producer_issue_title,producer_run_id,source_meeting_id,source_meeting_title,source_minutes_version_id,source_minutes_version_number,payload_kind,content,source_attachment_id,filename,content_type,size_bytes,content_hash,storage_key,object_url,capture_status,decision,reviewer_id,review_issue_id,submitted_by_type,submitted_by_id,submitted_by_user_id,input_manifest_version_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id
 `
 
 type CreateCockpitArtifactVersionParams struct {
@@ -339,6 +340,7 @@ type CreateCockpitArtifactVersionParams struct {
 	SubmittedByType            string      `json:"submitted_by_type"`
 	SubmittedByID              pgtype.UUID `json:"submitted_by_id"`
 	SubmittedByUserID          pgtype.UUID `json:"submitted_by_user_id"`
+	InputManifestVersionID     pgtype.UUID `json:"input_manifest_version_id"`
 }
 
 func (q *Queries) CreateCockpitArtifactVersion(ctx context.Context, arg CreateCockpitArtifactVersionParams) (CockpitArtifactVersion, error) {
@@ -373,6 +375,7 @@ func (q *Queries) CreateCockpitArtifactVersion(ctx context.Context, arg CreateCo
 		arg.SubmittedByType,
 		arg.SubmittedByID,
 		arg.SubmittedByUserID,
+		arg.InputManifestVersionID,
 	)
 	var i CockpitArtifactVersion
 	err := row.Scan(
@@ -414,6 +417,7 @@ func (q *Queries) CreateCockpitArtifactVersion(ctx context.Context, arg CreateCo
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
@@ -537,7 +541,7 @@ func (q *Queries) GetCockpitArtifactByKey(ctx context.Context, arg GetCockpitArt
 }
 
 const getCockpitArtifactVersion = `-- name: GetCockpitArtifactVersion :one
-SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3
+SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3
 `
 
 type GetCockpitArtifactVersionParams struct {
@@ -588,12 +592,13 @@ func (q *Queries) GetCockpitArtifactVersion(ctx context.Context, arg GetCockpitA
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
 
 const getCockpitArtifactVersionByKey = `-- name: GetCockpitArtifactVersionByKey :one
-SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND submission_key=$3
+SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND submission_key=$3
 `
 
 type GetCockpitArtifactVersionByKeyParams struct {
@@ -644,6 +649,7 @@ func (q *Queries) GetCockpitArtifactVersionByKey(ctx context.Context, arg GetCoc
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
@@ -711,7 +717,7 @@ v.producer_issue_id,v.producer_issue_identifier,v.producer_issue_title,v.produce
 v.source_meeting_id,v.source_meeting_title,v.source_minutes_version_id,v.source_minutes_version_number,
 v.payload_kind,v.source_attachment_id,v.filename,v.content_type,v.size_bytes,v.content_hash,
 v.capture_status,v.capture_error_code,v.capture_error,v.decision,v.reviewer_id,v.review_issue_id,
-v.submitted_by_type,v.submitted_by_id,v.created_at,v.reviewed_at,(v.feedback<>'')::boolean AS has_feedback FROM cockpit_artifact_version v WHERE v.workspace_id=$1 AND v.artifact_id=$2 AND ($3::integer IS NULL OR v.version_number<$3) ORDER BY v.version_number DESC LIMIT $4
+v.submitted_by_type,v.submitted_by_id,v.created_at,v.reviewed_at,(v.feedback<>'')::boolean AS has_feedback,v.input_manifest_version_id,m.issue_id AS input_manifest_issue_id,m.version_number AS input_manifest_version_number,m.manifest_hash AS input_manifest_hash FROM cockpit_artifact_version v LEFT JOIN cockpit_issue_input_manifest_version m ON m.workspace_id=v.workspace_id AND m.id=v.input_manifest_version_id WHERE v.workspace_id=$1 AND v.artifact_id=$2 AND ($3::integer IS NULL OR v.version_number<$3) ORDER BY v.version_number DESC LIMIT $4
 `
 
 type ListCockpitArtifactVersionMetadataParams struct {
@@ -753,6 +759,10 @@ type ListCockpitArtifactVersionMetadataRow struct {
 	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
 	ReviewedAt                 pgtype.Timestamptz `json:"reviewed_at"`
 	HasFeedback                bool               `json:"has_feedback"`
+	InputManifestVersionID     pgtype.UUID        `json:"input_manifest_version_id"`
+	InputManifestIssueID       pgtype.UUID        `json:"input_manifest_issue_id"`
+	InputManifestVersionNumber pgtype.Int4        `json:"input_manifest_version_number"`
+	InputManifestHash          pgtype.Text        `json:"input_manifest_hash"`
 }
 
 func (q *Queries) ListCockpitArtifactVersionMetadata(ctx context.Context, arg ListCockpitArtifactVersionMetadataParams) ([]ListCockpitArtifactVersionMetadataRow, error) {
@@ -801,6 +811,10 @@ func (q *Queries) ListCockpitArtifactVersionMetadata(ctx context.Context, arg Li
 			&i.CreatedAt,
 			&i.ReviewedAt,
 			&i.HasFeedback,
+			&i.InputManifestVersionID,
+			&i.InputManifestIssueID,
+			&i.InputManifestVersionNumber,
+			&i.InputManifestHash,
 		); err != nil {
 			return nil, err
 		}
@@ -818,7 +832,7 @@ v.producer_issue_id,v.producer_issue_identifier,v.producer_issue_title,v.produce
 v.source_meeting_id,v.source_meeting_title,v.source_minutes_version_id,v.source_minutes_version_number,
 v.payload_kind,v.source_attachment_id,v.filename,v.content_type,v.size_bytes,v.content_hash,
 v.capture_status,v.capture_error_code,v.capture_error,v.decision,v.reviewer_id,v.review_issue_id,
-v.submitted_by_type,v.submitted_by_id,v.created_at,v.reviewed_at,(v.feedback<>'')::boolean AS has_feedback FROM cockpit_artifact_version v WHERE v.workspace_id=$1 AND v.id=ANY($2::uuid[]) ORDER BY v.id
+v.submitted_by_type,v.submitted_by_id,v.created_at,v.reviewed_at,(v.feedback<>'')::boolean AS has_feedback,v.input_manifest_version_id,m.issue_id AS input_manifest_issue_id,m.version_number AS input_manifest_version_number,m.manifest_hash AS input_manifest_hash FROM cockpit_artifact_version v LEFT JOIN cockpit_issue_input_manifest_version m ON m.workspace_id=v.workspace_id AND m.id=v.input_manifest_version_id WHERE v.workspace_id=$1 AND v.id=ANY($2::uuid[]) ORDER BY v.id
 `
 
 type ListCockpitArtifactVersionMetadataByIDsParams struct {
@@ -858,6 +872,10 @@ type ListCockpitArtifactVersionMetadataByIDsRow struct {
 	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
 	ReviewedAt                 pgtype.Timestamptz `json:"reviewed_at"`
 	HasFeedback                bool               `json:"has_feedback"`
+	InputManifestVersionID     pgtype.UUID        `json:"input_manifest_version_id"`
+	InputManifestIssueID       pgtype.UUID        `json:"input_manifest_issue_id"`
+	InputManifestVersionNumber pgtype.Int4        `json:"input_manifest_version_number"`
+	InputManifestHash          pgtype.Text        `json:"input_manifest_hash"`
 }
 
 func (q *Queries) ListCockpitArtifactVersionMetadataByIDs(ctx context.Context, arg ListCockpitArtifactVersionMetadataByIDsParams) ([]ListCockpitArtifactVersionMetadataByIDsRow, error) {
@@ -901,6 +919,10 @@ func (q *Queries) ListCockpitArtifactVersionMetadataByIDs(ctx context.Context, a
 			&i.CreatedAt,
 			&i.ReviewedAt,
 			&i.HasFeedback,
+			&i.InputManifestVersionID,
+			&i.InputManifestIssueID,
+			&i.InputManifestVersionNumber,
+			&i.InputManifestHash,
 		); err != nil {
 			return nil, err
 		}
@@ -1037,7 +1059,7 @@ func (q *Queries) LockCockpitArtifact(ctx context.Context, arg LockCockpitArtifa
 }
 
 const lockCockpitArtifactVersion = `-- name: LockCockpitArtifactVersion :one
-SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 FOR UPDATE
+SELECT id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id FROM cockpit_artifact_version WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 FOR UPDATE
 `
 
 type LockCockpitArtifactVersionParams struct {
@@ -1088,6 +1110,7 @@ func (q *Queries) LockCockpitArtifactVersion(ctx context.Context, arg LockCockpi
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
@@ -1135,7 +1158,7 @@ func (q *Queries) ReadCockpitArtifactFile(ctx context.Context, arg ReadCockpitAr
 
 const reviewCockpitArtifactVersion = `-- name: ReviewCockpitArtifactVersion :one
 UPDATE cockpit_artifact_version SET decision=$4,feedback=$5,reviewed_by=$6,reviewed_at=now(),revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at
+WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id
 `
 
 type ReviewCockpitArtifactVersionParams struct {
@@ -1196,6 +1219,7 @@ func (q *Queries) ReviewCockpitArtifactVersion(ctx context.Context, arg ReviewCo
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
@@ -1354,7 +1378,7 @@ func (q *Queries) SetCockpitArtifactReviewer(ctx context.Context, arg SetCockpit
 
 const setCockpitArtifactVersionCapture = `-- name: SetCockpitArtifactVersionCapture :one
 UPDATE cockpit_artifact_version SET capture_status=$4,capture_error_code=$5,capture_error=$6,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at
+WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id
 `
 
 type SetCockpitArtifactVersionCaptureParams struct {
@@ -1415,13 +1439,14 @@ func (q *Queries) SetCockpitArtifactVersionCapture(ctx context.Context, arg SetC
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }
 
 const setCockpitArtifactVersionReviewer = `-- name: SetCockpitArtifactVersionReviewer :one
 UPDATE cockpit_artifact_version SET reviewer_id=$4,review_issue_id=$5,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at
+WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_number, submission_key, request_hash, revision, producer_issue_id, producer_issue_identifier, producer_issue_title, producer_run_id, source_meeting_id, source_meeting_title, source_minutes_version_id, source_minutes_version_number, payload_kind, content, source_attachment_id, filename, content_type, size_bytes, content_hash, storage_key, object_url, capture_status, capture_error_code, capture_error, decision, reviewer_id, review_issue_id, reviewed_by, feedback, reviewed_at, submitted_by_type, submitted_by_id, submitted_by_user_id, created_at, updated_at, input_manifest_version_id
 `
 
 type SetCockpitArtifactVersionReviewerParams struct {
@@ -1480,6 +1505,7 @@ func (q *Queries) SetCockpitArtifactVersionReviewer(ctx context.Context, arg Set
 		&i.SubmittedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.InputManifestVersionID,
 	)
 	return i, err
 }

@@ -2242,6 +2242,17 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This meeting retains directory preparation history; open its Resources or archive it instead")
 		return
 	}
+	if retained, err := q.HasCockpitInputMeetingReferences(ctx, db.HasCockpitInputMeetingReferencesParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting input references")
+		return
+	} else if retained {
+		writeErrorCode(w, http.StatusConflict, "meeting_input_references", "Open this meeting's Resources to remove its exact input references, or archive the meeting to retain them")
+		return
+	}
+	if err := q.DeleteRemovedCockpitInputReferencesByMeeting(ctx, db.DeleteRemovedCockpitInputReferencesByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear removed input references")
+		return
+	}
 	if err := q.DeleteCockpitAgendaByMeeting(ctx, db.DeleteCockpitAgendaByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to clear meeting agenda")
 		return
@@ -2565,6 +2576,11 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	} else if protected.Bool {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "directory preparation history protects meeting identities; open its Resources instead of replacing the board"}
 	}
+	if protected, err := qtx.HasCockpitInputReferencesForBoard(ctx, db.HasCockpitInputReferencesForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect meeting input references"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting input references protect this board; open meeting Resources to remove their exact references before replacing meeting identities"}
+	}
 	if protected, err := qtx.HasCockpitPlanningForBoard(ctx, db.HasCockpitPlanningForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect primary ownership and meeting actions"}
 	} else if protected {
@@ -2615,6 +2631,9 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	// Replace order matters: children of the old tree carry payment and issue
 	// rows that reference node ids about to disappear.
 	for _, del := range []func() error{
+		func() error {
+			return qtx.DeleteRemovedCockpitInputReferencesByBoard(ctx, db.DeleteRemovedCockpitInputReferencesByBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+		},
 		func() error {
 			return qtx.DeleteCockpitPaymentsByCockpit(ctx, board.ID)
 		},

@@ -37,7 +37,13 @@ func artifactVersionMetadata(v db.ListCockpitArtifactVersionMetadataRow, a db.Co
 		x := v.SourceMinutesVersionNumber.Int32
 		sourceNumber = &x
 	}
+	var manifestNumber *int32
+	if v.InputManifestVersionNumber.Valid {
+		n := v.InputManifestVersionNumber.Int32
+		manifestNumber = &n
+	}
 	return CockpitArtifactVersionMetadata{ID: util.UUIDToString(v.ID), ArtifactID: util.UUIDToString(v.ArtifactID), VersionNumber: v.VersionNumber, SubmissionKey: util.UUIDToString(v.SubmissionKey), Revision: v.Revision,
+		InputManifestVersionID: planningUUID(v.InputManifestVersionID), InputManifestIssueID: planningUUID(v.InputManifestIssueID), InputManifestVersionNumber: manifestNumber, InputManifestHash: planningText(v.InputManifestHash),
 		ProducerIssueID: util.UUIDToString(v.ProducerIssueID), ProducerIssueIdentifier: v.ProducerIssueIdentifier, ProducerIssueTitle: v.ProducerIssueTitle, ProducerRunID: planningUUID(v.ProducerRunID), SourceMeetingID: planningUUID(v.SourceMeetingID), SourceMeetingTitle: v.SourceMeetingTitle, SourceMinutesVersionID: planningUUID(v.SourceMinutesVersionID), SourceMinutesVersionNumber: sourceNumber,
 		PayloadKind: v.PayloadKind, SourceAttachmentID: planningUUID(v.SourceAttachmentID), Filename: v.Filename, ContentType: v.ContentType, SizeBytes: util.Int8ToPtr(v.SizeBytes), ContentHash: planningText(v.ContentHash), CaptureStatus: v.CaptureStatus, CaptureErrorCode: v.CaptureErrorCode, CaptureError: v.CaptureError, Decision: v.Decision, ReviewerID: util.UUIDToString(v.ReviewerID), ReviewIssue: review, SubmittedByType: v.SubmittedByType, SubmittedByID: util.UUIDToString(v.SubmittedByID), CreatedAt: v.CreatedAt.Time.UTC().Format(time.RFC3339Nano), ReviewedAt: timestamp(v.ReviewedAt), HasFeedback: v.HasFeedback,
 		CanReview:       p.Human && v.ReviewerID == p.ActorID && a.CurrentVersionID == v.ID && !a.ArchivedAt.Valid && v.CaptureStatus == "ready" && v.Decision == "pending",

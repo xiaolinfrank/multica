@@ -178,6 +178,24 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 			}
 		}
 	}
+	inputsRetained, e := q.HasCockpitInputMeetingReferences(ctx, db.HasCockpitInputMeetingReferencesParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	if e != nil {
+		return out, e
+	}
+	if inputsRetained {
+		out.Delete = operationField("blocked", "meeting_input_references")
+		out.TargetsTotal++
+		if len(out.Targets) < 3 {
+			meetings, err := q.ReadCockpitInputSourceMeetings(ctx, db.ReadCockpitInputSourceMeetingsParams{WorkspaceID: p.WorkspaceID, Ids: []pgtype.UUID{p.MeetingID}})
+			if err != nil {
+				return out, err
+			}
+			if len(meetings) != 1 {
+				return out, ErrCockpitWorkflowNotFound
+			}
+			out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "resources", Label: meetings[0].Title, Purpose: "meeting_input_references"})
+		}
+	}
 	counts, e := q.ReadCockpitMeetingPendingCounts(ctx, db.ReadCockpitMeetingPendingCountsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
 	if e != nil {
 		return out, e

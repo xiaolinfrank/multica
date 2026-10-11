@@ -145,6 +145,10 @@ type CockpitArtifactScope struct {
 }
 
 type CockpitArtifactVersionMetadata struct {
+	InputManifestVersionID     *string              `json:"input_manifest_version_id"`
+	InputManifestIssueID       *string              `json:"input_manifest_issue_id"`
+	InputManifestVersionNumber *int32               `json:"input_manifest_version_number"`
+	InputManifestHash          *string              `json:"input_manifest_hash"`
 	ID                         string               `json:"id"`
 	ArtifactID                 string               `json:"artifact_id"`
 	VersionNumber              int32                `json:"version_number"`

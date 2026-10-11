@@ -750,6 +750,15 @@ func main() {
 			slog.Info("cockpit NAS export worker enabled", "roots", len(nasFiles.RootIDs()))
 		}
 	}
+	inputNASConfigError := ""
+	if nasConfigErr != nil {
+		inputNASConfigError = "input_configuration_invalid"
+	}
+	configureCockpitInputRuntime(h, nasFiles, inputNASConfigError)
+	if h.IssueService.CockpitInputBackendReady {
+		go h.IssueService.RunCockpitInputWorker(sweepCtx)
+		slog.Info("cockpit fixed input capture, lease reconciliation and retained object cleanup enabled")
+	}
 	if h.IssueService.CockpitMeetingDirectoryBackendReady {
 		go h.IssueService.RunCockpitDirectoryWorker(sweepCtx)
 		slog.Info("cockpit meeting directory preparation enabled")

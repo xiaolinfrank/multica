@@ -143,11 +143,11 @@ func directoryPrincipalWithRetainedPlan(ctx context.Context, q *db.Queries, p Co
 		var runtime db.AgentRuntime
 		var agent db.Agent
 		if lock {
-			runtime, err = q.LockAgentRuntime(ctx, run.RuntimeID)
+			runtime, err = q.LockCockpitInputRuntimeAuthority(ctx, run.RuntimeID)
 			if err != nil {
 				return out, err
 			}
-			agent, err = q.GetAgentForUpdate(ctx, p.AgentID)
+			agent, err = q.LockCockpitInputAgentAuthority(ctx, p.AgentID)
 			if err != nil {
 				return out, err
 			}

@@ -25,6 +25,7 @@ func unknownIssueOperationBasis(id, availability string) IssueOperationBasis {
 }
 
 type issueOperationFacts struct {
+	InputHistory            bool                   `json:"input_history"`
 	ID                      string                 `json:"id"`
 	Revision                int64                  `json:"revision"`
 	ProjectID               *string                `json:"project_id"`
@@ -63,6 +64,9 @@ func projectIssueOperationBasis(f issueOperationFacts, human bool) IssueOperatio
 	}
 	if f.MeetingHistory {
 		out.Delete = operationField("blocked", "retained_meeting_history")
+	}
+	if f.InputHistory {
+		out.Delete = operationField("blocked", "retained_input_history")
 	}
 	if f.MeetingExecutionBlocked {
 		out.Execution = operationField("blocked", "meeting_execution_gate")

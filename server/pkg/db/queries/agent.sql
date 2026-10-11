@@ -315,12 +315,29 @@ LIMIT @page_limit;
 -- COALESCE keeps the column's gen_random_uuid() default reachable, so a caller
 -- that passes no id still inserts — it just gets a random v4, exactly as before.
 -- The same pattern is used by every INSERT listed in pkg/dbid's write table.
+WITH owners AS MATERIALIZED (
+    SELECT lock_task_owner_rows($1, $3, $2) AS allowed
+), locked_issue AS MATERIALIZED (
+    SELECT i.id,i.workspace_id FROM issue i,owners
+    WHERE owners.allowed AND i.id=$3
+      AND EXISTS (SELECT 1 FROM agent a WHERE a.id=$1 AND a.workspace_id=i.workspace_id)
+    FOR KEY SHARE OF i
+), locked_manifest AS MATERIALIZED (
+    SELECT h.current_version_id FROM cockpit_issue_input_manifest h
+    JOIN locked_issue i ON i.id=h.issue_id AND i.workspace_id=h.workspace_id
+    FOR SHARE OF h
+), fixed_input AS MATERIALIZED (
+    SELECT CASE WHEN sqlc.narg(rerun_of_task_id)::uuid IS NOT NULL
+      THEN (SELECT p.input_manifest_version_id FROM agent_task_queue p
+            WHERE p.id=sqlc.narg(rerun_of_task_id)::uuid AND p.issue_id=$3)
+      ELSE (SELECT current_version_id FROM locked_manifest) END AS manifest_id
+)
 INSERT INTO agent_task_queue (
     agent_id, runtime_id, issue_id, status, priority, trigger_comment_id,
     coalesced_comment_ids, trigger_summary, force_fresh_session, is_leader_task, handoff_note,
     squad_id, context, originator_user_id, accountable_user_id, runtime_mcp_overlay, runtime_connected_apps,
     originator_source, delegated_from_task_id, rule_version_id, rerun_of_task_id, trigger_evidence_kind, trigger_evidence_ref_id,
-    id
+    id, input_manifest_version_id, input_preparation_state
 )
 SELECT
     $1, $2, $3, 'queued', $4, sqlc.narg(trigger_comment_id),
@@ -345,8 +362,11 @@ SELECT
     sqlc.narg(rerun_of_task_id),
     sqlc.narg(trigger_evidence_kind),
     sqlc.narg(trigger_evidence_ref_id),
-    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
-WHERE lock_task_owner_rows($1, $3, $2)
+    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()),
+    fixed_input.manifest_id, CASE WHEN fixed_input.manifest_id IS NULL THEN 'not_recorded' ELSE 'pending' END
+FROM owners,fixed_input
+WHERE owners.allowed AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM locked_issue))
+  AND (sqlc.narg(rerun_of_task_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM agent_task_queue p WHERE p.id=sqlc.narg(rerun_of_task_id)::uuid AND p.issue_id=$3))
 RETURNING *;
 
 -- name: CreateDeferredChannelIssueTask :one
@@ -357,13 +377,30 @@ RETURNING *;
 -- Channel /issue media resolves after issue creation. Persist the assigned
 -- issue task up front for crash safety, but keep it inert until attachment
 -- binding settles or the fire_at fallback is promoted by the normal sweeper.
+WITH owners AS MATERIALIZED (
+    SELECT lock_task_owner_rows($1, $3, $2) AS allowed
+), locked_issue AS MATERIALIZED (
+    SELECT i.id,i.workspace_id FROM issue i,owners
+    WHERE owners.allowed AND i.id=$3
+      AND EXISTS (SELECT 1 FROM agent a WHERE a.id=$1 AND a.workspace_id=i.workspace_id)
+    FOR KEY SHARE OF i
+), locked_manifest AS MATERIALIZED (
+    SELECT h.current_version_id FROM cockpit_issue_input_manifest h
+    JOIN locked_issue i ON i.id=h.issue_id AND i.workspace_id=h.workspace_id
+    FOR SHARE OF h
+), fixed_input AS MATERIALIZED (
+    SELECT CASE WHEN sqlc.narg(rerun_of_task_id)::uuid IS NOT NULL
+      THEN (SELECT p.input_manifest_version_id FROM agent_task_queue p
+            WHERE p.id=sqlc.narg(rerun_of_task_id)::uuid AND p.issue_id=$3)
+      ELSE (SELECT current_version_id FROM locked_manifest) END AS manifest_id
+)
 INSERT INTO agent_task_queue (
     agent_id, runtime_id, issue_id, status, priority, trigger_comment_id,
     coalesced_comment_ids, trigger_summary, force_fresh_session, is_leader_task, handoff_note,
     squad_id, context, originator_user_id, accountable_user_id, runtime_mcp_overlay, runtime_connected_apps,
     originator_source, delegated_from_task_id, rule_version_id, rerun_of_task_id,
     trigger_evidence_kind, trigger_evidence_ref_id, fire_at,
-    id
+    id, input_manifest_version_id, input_preparation_state
 )
 SELECT
     $1, $2, $3, 'deferred', $4, sqlc.narg(trigger_comment_id),
@@ -388,8 +425,11 @@ SELECT
     sqlc.narg(trigger_evidence_kind),
     sqlc.narg(trigger_evidence_ref_id),
     @fire_at,
-    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
-WHERE lock_task_owner_rows($1, $3, $2)
+    COALESCE(sqlc.narg('id')::uuid, gen_random_uuid()),
+    fixed_input.manifest_id, CASE WHEN fixed_input.manifest_id IS NULL THEN 'not_recorded' ELSE 'pending' END
+FROM owners,fixed_input
+WHERE owners.allowed AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM locked_issue))
+  AND (sqlc.narg(rerun_of_task_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM agent_task_queue p WHERE p.id=sqlc.narg(rerun_of_task_id)::uuid AND p.issue_id=$3))
 RETURNING *;
 
 -- name: PromoteDeferredChannelIssueTask :one
@@ -535,6 +575,12 @@ WHERE id = $1 AND issue_id IS NULL
 -- attempt=3, max_attempts=3 rather than leaking attempt=3, max_attempts=2 to the
 -- task API (MUL-4910). The Go retryAttemptCeiling already refuses to raise a
 -- disabled (max_attempts<=1) task, so this only ever widens, never revives.
+WITH source_task AS MATERIALIZED (
+    SELECT p.* FROM agent_task_queue p WHERE p.id=$1
+      AND lock_task_owner_rows(p.agent_id,p.issue_id,p.runtime_id)
+), locked_issue AS MATERIALIZED (
+    SELECT i.id FROM issue i JOIN source_task p ON p.issue_id=i.id FOR KEY SHARE OF i
+)
 INSERT INTO agent_task_queue (
     agent_id, runtime_id, issue_id, chat_session_id, autopilot_run_id,
     status, priority, trigger_comment_id, coalesced_comment_ids, trigger_summary, context,
@@ -544,7 +590,7 @@ INSERT INTO agent_task_queue (
     originator_source, delegated_from_task_id, rule_version_id,
     trigger_evidence_kind, trigger_evidence_ref_id, retry_of_task_id,
     chat_input_task_id, fire_at,
-    channel_context_revision, handoff_note, id
+    channel_context_revision, handoff_note, id, input_manifest_version_id, input_preparation_state
 )
 SELECT
     p.agent_id, p.runtime_id, p.issue_id, p.chat_session_id, p.autopilot_run_id,
@@ -567,10 +613,10 @@ SELECT
     p.channel_context_revision,
     CASE WHEN p.context->>'wakeup_id' IS NOT NULL THEN p.handoff_note END,
     -- Named new_task_id, not id: $1 above is the PARENT task's id.
-    COALESCE(sqlc.narg('new_task_id')::uuid, gen_random_uuid())
-FROM agent_task_queue p
-WHERE p.id = $1
-  AND lock_task_owner_rows(p.agent_id, p.issue_id, p.runtime_id)
+    COALESCE(sqlc.narg('new_task_id')::uuid, gen_random_uuid()),
+    p.input_manifest_version_id, CASE WHEN p.input_manifest_version_id IS NULL THEN 'not_recorded' ELSE 'pending' END
+FROM source_task p
+WHERE p.issue_id IS NULL OR EXISTS (SELECT 1 FROM locked_issue)
 ON CONFLICT (issue_id, agent_id, (COALESCE(comment_thread_id, '00000000-0000-0000-0000-000000000000'::uuid))) WHERE status IN ('queued', 'dispatched')
        OR (status = 'deferred' AND context->>'channel_issue_media_pending' = 'true')
 DO NOTHING
@@ -760,12 +806,15 @@ WHERE atq.id = $1 AND a.workspace_id = $2;
 UPDATE agent_task_queue
 SET status = 'dispatched',
     dispatched_at = now(),
+    input_preparation_state = CASE WHEN input_manifest_version_id IS NULL THEN 'not_recorded' ELSE 'pending' END,
+    input_preparation_hash = NULL, input_prepared_at = NULL, input_prepared_dispatched_at = NULL, input_preparation_error_code = '',
     prepare_lease_expires_at = now() + make_interval(secs => @prepare_lease_secs::double precision)
 WHERE id = (
     SELECT atq.id FROM agent_task_queue atq
     WHERE atq.agent_id = @agent_id
       AND atq.runtime_id = @runtime_id
       AND atq.status = 'queued'
+      AND (atq.input_manifest_version_id IS NULL OR @supports_fixed_input_manifests::boolean)
       AND (atq.context->>'wakeup_id' IS NULL OR EXISTS (SELECT 1 FROM issue_wakeup w WHERE w.id=(atq.context->>'wakeup_id')::uuid AND w.disabled_at IS NULL AND w.revision=(atq.context->>'wakeup_revision')::bigint))
       AND EXISTS (
           SELECT 1
@@ -859,6 +908,8 @@ WHERE id = @task_id
 UPDATE agent_task_queue
 SET status = 'queued',
     dispatched_at = NULL,
+    input_preparation_state = CASE WHEN input_manifest_version_id IS NULL THEN 'not_recorded' ELSE 'pending' END,
+    input_preparation_hash = NULL, input_prepared_at = NULL, input_prepared_dispatched_at = NULL, input_preparation_error_code = '',
     prepare_lease_expires_at = NULL,
     delivered_comment_ids = '{}'
 WHERE id = @task_id
@@ -876,11 +927,14 @@ RETURNING *;
 -- recovered delivery attempt.
 UPDATE agent_task_queue
 SET dispatched_at = now(),
+    input_preparation_state = CASE WHEN input_manifest_version_id IS NULL THEN 'not_recorded' ELSE 'pending' END,
+    input_preparation_hash = NULL, input_prepared_at = NULL, input_prepared_dispatched_at = NULL, input_preparation_error_code = '',
     prepare_lease_expires_at = now() + make_interval(secs => @prepare_lease_secs::double precision)
 WHERE id = (
     SELECT atq.id FROM agent_task_queue atq
     WHERE atq.runtime_id = $1
       AND atq.status = 'dispatched'
+      AND (atq.input_manifest_version_id IS NULL OR @supports_fixed_input_manifests::boolean)
       AND atq.started_at IS NULL
       AND atq.dispatched_at < now() - make_interval(secs => @claim_recovery_secs::double precision)
       AND (atq.prepare_lease_expires_at IS NULL OR atq.prepare_lease_expires_at < now())
@@ -923,11 +977,14 @@ RETURNING *;
 -- (= ANY) and the LIMIT (max_tasks instead of 1) differ.
 UPDATE agent_task_queue
 SET dispatched_at = now(),
+    input_preparation_state = CASE WHEN input_manifest_version_id IS NULL THEN 'not_recorded' ELSE 'pending' END,
+    input_preparation_hash = NULL, input_prepared_at = NULL, input_prepared_dispatched_at = NULL, input_preparation_error_code = '',
     prepare_lease_expires_at = now() + make_interval(secs => @prepare_lease_secs::double precision)
 WHERE id IN (
     SELECT atq.id FROM agent_task_queue atq
     WHERE atq.runtime_id = ANY(@runtime_ids::uuid[])
       AND atq.status = 'dispatched'
+      AND (atq.input_manifest_version_id IS NULL OR @supports_fixed_input_manifests::boolean)
       AND atq.started_at IS NULL
       AND atq.dispatched_at < now() - make_interval(secs => @claim_recovery_secs::double precision)
       AND (atq.prepare_lease_expires_at IS NULL OR atq.prepare_lease_expires_at < now())

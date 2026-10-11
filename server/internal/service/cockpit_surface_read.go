@@ -23,6 +23,8 @@ type CockpitSurfaceQuery struct {
 	MeetingTemplatesAvailable                 bool `json:"-"`
 	MeetingDispositionAvailable               bool `json:"-"`
 	MeetingDirectoryAvailable                 bool `json:"-"`
+	InputsAvailable                           bool `json:"-"`
+	RunInputManifestsAvailable                bool `json:"-"`
 }
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
@@ -33,6 +35,8 @@ type CockpitSurfaceScope struct {
 
 // Availability describes implemented services, not a user's write authority.
 type CockpitSurfaceCapabilities struct {
+	Inputs                      bool `json:"inputs"`
+	RunInputManifests           bool `json:"run_input_manifests"`
 	MeetingLifecycle            bool `json:"meeting_lifecycle"`
 	MeetingTemplates            bool `json:"meeting_templates"`
 	MeetingDisposition          bool `json:"meeting_disposition"`
@@ -40,17 +44,24 @@ type CockpitSurfaceCapabilities struct {
 	Artifacts                   bool `json:"artifacts"`
 	Acceptance                  bool `json:"acceptance"`
 }
+type CockpitInputReferenceMeetingTarget struct {
+	MeetingID string `json:"meeting_id"`
+	Title     string `json:"title"`
+}
 type CockpitSurfaceContext struct {
-	WorkspaceID           string                     `json:"workspace_id"`
-	Scope                 CockpitSurfaceScope        `json:"scope"`
-	Cockpit               *db.Cockpit                `json:"cockpit"`
-	Actor                 CockpitOverviewActor       `json:"actor"`
-	HasMeetingLifecycle   bool                       `json:"has_meeting_lifecycle"`
-	HasMeetingPreparation bool                       `json:"has_meeting_preparation"`
-	HasDirectoryHistory   bool                       `json:"has_directory_history"`
-	HasMeetingWorkflows   bool                       `json:"has_meeting_workflows"`
-	HasStableBindings     bool                       `json:"has_stable_bindings"`
-	Capabilities          CockpitSurfaceCapabilities `json:"capabilities"`
+	InputReferenceMeetings      []CockpitInputReferenceMeetingTarget `json:"input_reference_meetings"`
+	InputReferenceMeetingsTotal int64                                `json:"input_reference_meetings_total"`
+	WorkspaceID                 string                               `json:"workspace_id"`
+	Scope                       CockpitSurfaceScope                  `json:"scope"`
+	Cockpit                     *db.Cockpit                          `json:"cockpit"`
+	Actor                       CockpitOverviewActor                 `json:"actor"`
+	HasMeetingLifecycle         bool                                 `json:"has_meeting_lifecycle"`
+	HasMeetingPreparation       bool                                 `json:"has_meeting_preparation"`
+	HasDirectoryHistory         bool                                 `json:"has_directory_history"`
+	HasInputReferences          bool                                 `json:"has_input_references"`
+	HasMeetingWorkflows         bool                                 `json:"has_meeting_workflows"`
+	HasStableBindings           bool                                 `json:"has_stable_bindings"`
+	Capabilities                CockpitSurfaceCapabilities           `json:"capabilities"`
 }
 type CockpitSurfacePlan struct {
 	CockpitSurfaceContext
@@ -82,7 +93,7 @@ type CockpitScopeChoicePage struct {
 }
 
 func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurfaceQuery) (CockpitSurfaceContext, error) {
-	var out CockpitSurfaceContext
+	out := CockpitSurfaceContext{InputReferenceMeetings: []CockpitInputReferenceMeetingTarget{}}
 	if p.ModuleID.Valid && !p.ProjectID.Valid {
 		return out, fmt.Errorf("%w: module_id requires project_id", ErrCockpitWorkflowInput)
 	}
@@ -93,7 +104,7 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	out.WorkspaceID = util.UUIDToString(p.WorkspaceID)
 	out.Scope = CockpitSurfaceScope{ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID)}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(p.ActorID), Role: member.Role, IsHuman: p.Human}
-	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable, MeetingDirectoryPreparation: p.MeetingDirectoryAvailable}
+	out.Capabilities = CockpitSurfaceCapabilities{Inputs: p.InputsAvailable, RunInputManifests: p.RunInputManifestsAvailable, Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable, MeetingDirectoryPreparation: p.MeetingDirectoryAvailable}
 	out.HasMeetingPreparation, err = q.HasCockpitMeetingPreparation(ctx, p.WorkspaceID)
 	if err != nil {
 		return out, err
@@ -139,6 +150,15 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	if err != nil {
 		return out, err
 	}
+	inputMeetings, err := q.ReadCockpitInputReferencedMeetings(ctx, db.ReadCockpitInputReferencedMeetingsParams{WorkspaceID: p.WorkspaceID, CockpitID: board.ID})
+	if err != nil {
+		return out, err
+	}
+	for _, m := range inputMeetings {
+		out.InputReferenceMeetings = append(out.InputReferenceMeetings, CockpitInputReferenceMeetingTarget{MeetingID: util.UUIDToString(m.ID), Title: m.Title})
+		out.InputReferenceMeetingsTotal = m.Total
+	}
+	out.HasInputReferences = out.InputReferenceMeetingsTotal > 0
 	out.HasStableBindings, err = q.CockpitHasBoundNodes(ctx, db.CockpitHasBoundNodesParams{WorkspaceID: p.WorkspaceID, CockpitID: board.ID})
 	return out, err
 }

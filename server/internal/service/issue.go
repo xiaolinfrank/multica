@@ -54,6 +54,13 @@ type IssueService struct {
 	CockpitNASExporter cockpitnas.Exporter
 	// Enabled only after the full artifact runtime is wired; client declaration
 	// controls entry visibility, never business authorization.
+	CockpitInputBackendReady              bool
+	CockpitRunInputManifestBackendReady   bool
+	CockpitInputCapturer                  *artifactcapture.Capturer
+	CockpitInputStorage                   storage.Storage
+	CockpitInputNAS                       *cockpitnas.Files
+	CockpitInputConfigurationError        string
+	inputIOBudget                         *cockpitInputIOBudget
 	CockpitArtifactBackendReady           bool
 	CockpitMeetingLifecycleBackendReady   bool
 	CockpitMeetingTemplatesBackendReady   bool

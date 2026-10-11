@@ -106,6 +106,10 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT a.review_issue_id,NULL::uuid,NULL::uuid,a.node_id,a.id,'formal_review',0 FROM cockpit_acceptance_request a JOIN related r ON r.id=a.review_issue_id WHERE a.workspace_id=(SELECT ws FROM args)
  UNION
  SELECT h.from_review_issue_id,NULL::uuid,NULL::uuid,h.node_id,h.request_id,'formal_review',0 FROM cockpit_acceptance_reviewer_handoff h JOIN related r ON r.id=h.from_review_issue_id WHERE h.workspace_id=(SELECT ws FROM args)
+), input_edges AS MATERIALIZED (
+ SELECT v.issue_id,v.id AS manifest_id,v.version_number FROM cockpit_issue_input_manifest_version v JOIN requested r ON r.id=v.issue_id
+ WHERE v.workspace_id=(SELECT ws FROM args) AND (EXISTS(SELECT 1 FROM agent_task_queue t WHERE t.input_manifest_version_id=v.id)
+ OR EXISTS(SELECT 1 FROM cockpit_artifact_version a WHERE a.workspace_id=v.workspace_id AND a.input_manifest_version_id=v.id))
 ), retained AS MATERIALIZED (SELECT DISTINCT issue_id FROM artifact_edges), primary_edges AS MATERIALIZED (
  SELECT p.issue_id,p.node_id FROM cockpit_issue_primary p JOIN related r ON r.id=p.issue_id WHERE p.workspace_id=(SELECT ws FROM args) AND p.node_id IS NOT NULL
 ), meeting_edges AS MATERIALIZED (
@@ -130,6 +134,9 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  'label',CASE WHEN e.request_id IS NOT NULL THEN coalesce(n.name,'') ELSE coalesce(a.title,'') END,'purpose',e.purpose)) AS target
  FROM artifact_edges e JOIN requested r ON r.id=e.issue_id LEFT JOIN cockpit_artifact a ON a.id=e.artifact_id AND a.workspace_id=(SELECT ws FROM args) LEFT JOIN cockpit_node n ON n.id=e.node_id AND n.workspace_id=(SELECT ws FROM args) WHERE e.node_id IS NOT NULL
  UNION
+ SELECT e.issue_id,5,jsonb_build_object('kind','issue','issue_id',e.issue_id,'version_id',e.manifest_id,'view','inputs','label',r.title||' · v'||e.version_number::text,'purpose','input_manifest')
+ FROM input_edges e JOIN requested r ON r.id=e.issue_id
+ UNION
  SELECT p.issue_id,10,jsonb_build_object('kind','node','node_id',p.node_id,'view','tasks','label',coalesce(n.name,''),'purpose','primary') FROM primary_edges p JOIN requested r ON r.id=p.issue_id LEFT JOIN cockpit_node n ON n.id=p.node_id AND n.workspace_id=(SELECT ws FROM args)
  UNION
  SELECT e.issue_id,20,jsonb_strip_nulls(jsonb_build_object('kind','meeting','meeting_id',e.meeting_id,'action_id',e.action_id,'view','workflow','label',coalesce(m.title,''),'purpose',e.purpose)) FROM meeting_edges e LEFT JOIN cockpit_meeting m ON m.id=e.meeting_id AND m.workspace_id=(SELECT ws FROM args)
@@ -145,6 +152,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT r.id,r.revision,r.project_id,r.module_id,r.parent_issue_id,r.triage_state,r.assignee_type,r.assignee_id,r.status,
  cockpit_artifact_review_stage((SELECT ws FROM args),r.id)::text AS formal_stage,
  EXISTS(SELECT 1 FROM retained t WHERE t.issue_id=r.id) AS retained_self,
+ EXISTS(SELECT 1 FROM input_edges t WHERE t.issue_id=r.id) AS input_history,
  s.retained_scope,s.primary_scope,EXISTS(SELECT 1 FROM primary_edges p WHERE p.issue_id=r.id) AS has_primary,
  EXISTS(SELECT 1 FROM meeting_edges e WHERE e.issue_id=r.id) AS meeting_history,
  EXISTS(SELECT 1 FROM meeting_edges e WHERE e.issue_id=r.id AND e.blocks_execution) AS meeting_execution_blocked,

@@ -72,6 +72,7 @@ var corsAllowedHeaders = []string{
 	"Idempotency-Key",
 	"If-Match",
 	"X-Workspace-ID",
+	"X-Input-Transfer-Revision",
 	"X-Workspace-Slug",
 	"X-Request-ID",
 	"X-Agent-ID",
@@ -1499,6 +1500,14 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// unchanged — this one is purely additive.
 	r.Get("/api/attachments/{id}/signed-download", h.DownloadAttachmentWithCapability)
 	r.Get("/api/cockpit/artifact-files/{versionId}/download", h.DownloadCockpitArtifactSignedFile)
+	r.Get("/api/cockpit/input-files/{versionId}/download", h.DownloadCockpitInputSignedFile)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.InputClaimAuth(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner), middleware.DaemonAuth(queries, patCache, daemonTokenCache, cloudPATVerifier)))
+		r.Get("/api/tasks/{taskId}/input-manifest", h.GetCockpitRunInputManifest)
+		r.Post("/api/tasks/{taskId}/input-preparation", h.RecordCockpitRunInputPreparation)
+		r.Get("/api/cockpit/issues/{issueId}/input-manifest/versions/{manifestVersionId}/items", h.ListCockpitInputManifestItems)
+		r.Post("/api/cockpit/inputs/{inputId}/versions/{versionId}/download-link", h.GetCockpitInputDownloadLink)
+	})
 
 	// Avatar serving. Public for the same reason as the capability download
 	// above: the auth cookie is SameSite=Strict, so an auth-gated URL cannot
@@ -2151,6 +2160,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// correct is a board that goes stale. Import replaces the whole
 			// board and is gated to owner/admin inside the handler.
 			r.Route("/api/cockpit", func(r chi.Router) {
+				registerCockpitInputRoutes(r, h)
 				r.Get("/artifacts", h.ListCockpitArtifacts)
 				r.With(handler.RequireHumanActor).Post("/artifacts", h.CreateCockpitArtifact)
 				r.Route("/artifacts/{artifactId}", func(r chi.Router) {

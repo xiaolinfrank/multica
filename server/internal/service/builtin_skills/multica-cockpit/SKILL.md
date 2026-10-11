@@ -140,14 +140,9 @@ Use it for an authored plan, not a few field edits. It is refused on protected b
 Parents use `parent_code`; document order is irrelevant. Unresolvable issue references
 are reported on stderr and skipped. See the reference for the import shape.
 
-## Input materials
-
-Use [fixed input materials](references/inputs.md) for uploads, existing attachments,
-collaboration-directory selections, exact version references, and Issue/Run material
-manifests. Fixing a file is not human approval; saving a manifest does not start an Agent.
-
 ## Boundaries
 
+- [Fixed input materials](references/inputs.md) covers uploads, source selection and fixed Issue/Run manifests; capture is not approval, and saving does not start an Agent.
 - Fixed deliverables, handoffs and L3 acceptance use [artifacts and acceptance](references/artifacts.md); Issue completion alone does not approve them.
 - The cockpit is programme planning. Day-to-day execution lives on issues —
   use the issue commands for those, and link the issue to the node.
@@ -155,6 +150,4 @@ manifests. Fixing a file is not human approval; saving a manifest does not start
   the connection; duplicating text guarantees the two drift.
 - Do not invent codes to fill gaps in the numbering. A plan's codes are its own;
   add a node only when the work is real.
-- A code is spent once handed out: a deleted node's number never comes back,
-  and asking for one that was used before is refused (409). Rebuilding from an
-  import document or a snapshot is the exception — it replays its own codes.
+- Deleted node codes cannot be reused (409), except when replaying an allowed import or snapshot.

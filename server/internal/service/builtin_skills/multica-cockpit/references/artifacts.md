@@ -153,3 +153,14 @@ subsequent management follows the definition creator or current owner/admin.
 
 Acceptance decisions do not change ordinary L3 progress, finish arbitrary Issues,
 launch Agents or automatically approve downstream work.
+
+## Fixed input provenance
+
+A human version submission may explicitly include `input_manifest_version_id`
+for a readable fixed manifest in the same workspace, including another Issue.
+Omitting it preserves an unknown source; the server never substitutes the current
+Issue manifest. A producer task cannot submit this field: its version inherits
+the exact manifest pinned to its producing Run. Version metadata returns the
+source manifest's actual Issue ID, version number and hash, so follow that fixed
+source rather than guessing from the producer Issue. A recorded input manifest
+states what was authorized for the Run; it does not claim every file was read.

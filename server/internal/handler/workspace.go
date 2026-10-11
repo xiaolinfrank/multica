@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/service"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -1320,6 +1321,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 				_, err := qtx.DeleteIssueSourceContextsForWorkspace(ctx, requester.WorkspaceID)
 				return err
 			},
+		},
+		{
+			name: "delete fixed inputs and retain sanitized object cleanup intents",
+			run:  func() error { return service.DeleteCockpitInputsForWorkspace(ctx, qtx, requester.WorkspaceID) },
 		},
 		{
 			name: "delete artifact and acceptance facts and retain object cleanup",

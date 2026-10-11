@@ -263,6 +263,7 @@ func (h *Handler) SubmitCockpitArtifactVersion(w http.ResponseWriter, r *http.Re
 		ProducerIssueID        string                         `json:"producer_issue_id"`
 		SourceMeetingID        *string                        `json:"source_meeting_id"`
 		SourceMinutesVersionID *string                        `json:"source_minutes_version_id"`
+		InputManifestVersionID *string                        `json:"input_manifest_version_id"`
 		Payload                service.CockpitArtifactPayload `json:"payload"`
 	}
 	if !decodeCockpitArtifactBody(w, r, &req) {
@@ -286,7 +287,7 @@ func (h *Handler) SubmitCockpitArtifactVersion(w http.ResponseWriter, r *http.Re
 		value *string
 		name  string
 		out   *pgtype.UUID
-	}{{req.SourceMeetingID, "source_meeting_id", &input.SourceMeetingID}, {req.SourceMinutesVersionID, "source_minutes_version_id", &input.SourceMinutesVersionID}} {
+	}{{req.SourceMeetingID, "source_meeting_id", &input.SourceMeetingID}, {req.SourceMinutesVersionID, "source_minutes_version_id", &input.SourceMinutesVersionID}, {req.InputManifestVersionID, "input_manifest_version_id", &input.InputManifestVersionID}} {
 		if field.value != nil {
 			*field.out, ok = parseUUIDOrBadRequest(w, *field.value, field.name)
 			if !ok {
@@ -295,6 +296,10 @@ func (h *Handler) SubmitCockpitArtifactVersion(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if !p.Human {
+		if req.InputManifestVersionID != nil {
+			writeError(w, http.StatusForbidden, "a producer task uses only its own fixed input manifest")
+			return
+		}
 		if r.Header.Get("X-Actor-Source") != "task_token" {
 			writeError(w, http.StatusForbidden, "submission requires a trusted producer task credential")
 			return
