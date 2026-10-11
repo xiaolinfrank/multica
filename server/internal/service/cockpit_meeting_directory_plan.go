@@ -138,10 +138,11 @@ func (s *IssueService) PreviewCockpitMeetingDirectory(ctx context.Context, p Coc
 	principal, principalErr := directoryPrincipal(ctx, q, p, false)
 	_ = tx.Rollback(ctx)
 	if principalErr != nil {
-		out.BlockedReasons = append(out.BlockedReasons, directoryCode(principalErr))
-	} else {
-		out.Principal = &principal
+		// Filesystem observations require current delegation, not merely the
+		// runtime credential owner's workspace membership.
+		return out, principalErr
 	}
+	out.Principal = &principal
 	if err = directoryNewPreparation(m); err != nil {
 		out.BlockedReasons = append(out.BlockedReasons, directoryCode(err))
 	}
@@ -247,13 +248,12 @@ func (s *IssueService) PreviewCockpitDirectoryRetry(ctx context.Context, p Cockp
 		v.BlockedReasons = append(v.BlockedReasons, directoryCode(baseErr))
 	}
 	if pe != nil {
-		v.BlockedReasons = append(v.BlockedReasons, directoryCode(pe))
-	} else {
-		v.Principal = &principal
-		responsible, _ := directoryControlAuthority(member, principal, o)
-		if !responsible {
-			v.BlockedReasons = append(v.BlockedReasons, "permission_revoked")
-		}
+		return out, pe
+	}
+	v.Principal = &principal
+	responsible, _ := directoryControlAuthority(member, principal, o)
+	if !responsible {
+		return out, directoryError("permission_revoked", "Only this plan's current responsible principal may inspect steps for a new grant.")
 	}
 	if o.FinishedAt.Valid {
 		v.BlockedReasons = append(v.BlockedReasons, "operation_finished")

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -540,4 +541,140 @@ func TestCockpitDirectoryLeaseSweepContinuesWhileFixedFilesystemExecutorIsBlocke
 	if e != nil || h.State != "abandoned" {
 		t.Fatalf("late executor revived plan: %+v %v", h, e)
 	}
+}
+
+type directoryInspectionCounter struct {
+	cockpitnas.Preparation
+	inspects atomic.Int32
+	writes   atomic.Int32
+}
+
+func (c *directoryInspectionCounter) InspectPreparation(ctx context.Context, target cockpitnas.PreparationTarget, paths []string) ([]cockpitnas.PreparationInspection, error) {
+	c.inspects.Add(1)
+	return c.Preparation.InspectPreparation(ctx, target, paths)
+}
+func (c *directoryInspectionCounter) EnsurePreparedDirectory(ctx context.Context, target cockpitnas.PreparationTarget, path string) (cockpitnas.PreparationObservation, error) {
+	c.writes.Add(1)
+	return c.Preparation.EnsurePreparedDirectory(ctx, target, path)
+}
+
+func TestCockpitDirectoryPreviewRejectsInvalidPrincipalBeforeFilesystemInspection(t *testing.T) {
+	f, _, root, rid := legacyDirectoryFixture(t, true)
+	ctx := context.Background()
+	credentialOwner := f.member(t, "preview-runtime-owner")
+	runtime := f.Runtime(t, "Preview runtime", testutil.Cols{"owner_id": credentialOwner, "visibility": "public"})
+	agent := f.Agent(t, "Preview producer", runtime, testutil.Cols{"owner_id": f.owner, "permission_mode": "private", "status": "idle"})
+	issue := f.Issue(t, "Authorized preparation")
+	otherIssue := f.Issue(t, "Unrelated preparation")
+	f.InsertNoID(t, "cockpit_meeting_issue", testutil.Cols{"workspace_id": f.ws, "meeting_id": f.meeting, "issue_id": issue, "role": "task", "roles": []string{"preparation"}}, "workspace_id=$1 AND meeting_id=$2 AND issue_id=$3", f.ws, f.meeting, issue)
+	principal := func(source string, authorizer pgtype.UUID) CockpitDirectoryRead {
+		run := f.Task(t, agent, testutil.Cols{"issue_id": source, "runtime_id": runtime, "status": "running", "originator_user_id": authorizer, "accountable_user_id": authorizer})
+		token, err := f.q.CreateTaskToken(ctx, db.CreateTaskTokenParams{ID: dbid.NewV7(), TokenHash: util.UUIDToString(dbid.NewV7()), TaskID: parseTestUUID(t, run), AgentID: parseTestUUID(t, agent), WorkspaceID: f.ws, UserID: parseTestUUID(t, credentialOwner), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Cleanup(t, "DELETE FROM task_token WHERE id=$1", token.ID)
+		return CockpitDirectoryRead{WorkspaceID: f.ws, MeetingID: f.meeting, CredentialOwnerID: parseTestUUID(t, credentialOwner), ActorSource: "task_token", AgentID: parseTestUUID(t, agent), RunID: parseTestUUID(t, run), TaskTokenID: token.ID}
+	}
+	original := principal(issue, f.owner)
+	made, _ := directoryCreateFixturePlan(t, f, original, rid, "known-target", []string{"会议纪要与录音转写", "会议材料", "照片"})
+	counter := &directoryInspectionCounter{Preparation: f.issues.CockpitDirectoryPreparer}
+	f.issues.CockpitDirectoryPreparer = counter
+	input := CockpitDirectoryPreviewInput{Mode: "prepare", RootID: rid, RelativeDirectory: "known-target", Partitions: []string{"会议纪要与录音转写", "会议材料", "照片"}, ObservedBindingRevision: 1, BindAfterBase: true}
+	legacy := CockpitLegacyDirectoryInput{Directory: filepath.Join(root, "known-target")}
+	assertDenied := func(t *testing.T, p CockpitDirectoryRead, historical bool) {
+		t.Helper()
+		counter.inspects.Store(0)
+		counter.writes.Store(0)
+		var err error
+		if historical {
+			_, err = f.issues.ProvisionCockpitMeetingDirectory(ctx, p, legacy)
+		} else {
+			_, err = f.issues.PreviewCockpitMeetingDirectory(ctx, p, input)
+		}
+		if !errors.Is(err, ErrCockpitWorkflowForbidden) || counter.inspects.Load() != 0 || counter.writes.Load() != 0 {
+			t.Fatalf("refused principal touched filesystem: historical=%v inspections=%d writes=%d err=%v", historical, counter.inspects.Load(), counter.writes.Load(), err)
+		}
+	}
+	steps, err := f.q.ListCockpitDirectorySteps(ctx, db.ListCockpitDirectoryStepsParams{WorkspaceID: f.ws, OperationID: parseTestUUID(t, made.Current.ID)})
+	if err != nil || len(steps) == 0 {
+		t.Fatalf("retained steps: %v", err)
+	}
+	assertRetryDenied := func(t *testing.T, p CockpitDirectoryRead) {
+		t.Helper()
+		counter.inspects.Store(0)
+		counter.writes.Store(0)
+		_, err := f.issues.PreviewCockpitDirectoryRetry(ctx, CockpitDirectoryQuery{CockpitDirectoryRead: p, OperationID: parseTestUUID(t, made.Current.ID)}, CockpitDirectoryRetryPreviewInput{StepIDs: []string{util.UUIDToString(steps[0].ID)}})
+		if !errors.Is(err, ErrCockpitWorkflowForbidden) || counter.inspects.Load() != 0 || counter.writes.Load() != 0 {
+			t.Fatalf("refused retry principal touched filesystem: inspections=%d writes=%d err=%v", counter.inspects.Load(), counter.writes.Load(), err)
+		}
+	}
+	t.Run("unrelated Issue cannot probe a new or retained target", func(t *testing.T) {
+		p := principal(otherIssue, f.owner)
+		assertDenied(t, p, false)
+		assertDenied(t, p, true)
+		assertRetryDenied(t, p)
+	})
+	t.Run("credential owner cannot substitute for originator invocation", func(t *testing.T) {
+		p := principal(issue, parseTestUUID(t, credentialOwner))
+		assertDenied(t, p, false)
+		assertDenied(t, p, true)
+		assertRetryDenied(t, p)
+	})
+	t.Run("mismatched task token cannot probe", func(t *testing.T) {
+		p := original
+		p.TaskTokenID = dbid.NewV7()
+		assertDenied(t, p, false)
+		assertDenied(t, p, true)
+		assertRetryDenied(t, p)
+	})
+	if _, err := f.Pool.Exec(ctx, "UPDATE agent_task_queue SET status='completed' WHERE id=$1", original.RunID); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("terminal Run cannot request public preview", func(t *testing.T) {
+		assertDenied(t, original, false)
+		assertRetryDenied(t, original)
+	})
+	t.Run("another current member cannot inspect a retry grant", func(t *testing.T) {
+		p := CockpitDirectoryRead{WorkspaceID: f.ws, MeetingID: f.meeting, CredentialOwnerID: parseTestUUID(t, credentialOwner), ActorSource: "human"}
+		assertRetryDenied(t, p)
+	})
+	t.Run("terminal same source may continue and inspect only retained target", func(t *testing.T) {
+		result, err := f.issues.ProvisionCockpitMeetingDirectory(ctx, original, legacy)
+		if err != nil || result.OperationID != made.Current.ID || result.State != "completed" {
+			t.Fatalf("retained continuation: %+v %v", result, err)
+		}
+		counter.inspects.Store(0)
+		counter.writes.Store(0)
+		result, err = f.issues.ProvisionCockpitMeetingDirectory(ctx, original, legacy)
+		if err != nil || result.OperationID != made.Current.ID || counter.inspects.Load() != 1 || counter.writes.Load() != 0 {
+			t.Fatalf("retained inspection: %+v %v inspections=%d writes=%d", result, err, counter.inspects.Load(), counter.writes.Load())
+		}
+		changed := legacy
+		changed.Directory = filepath.Join(root, "never-authorized")
+		counter.inspects.Store(0)
+		_, err = f.issues.ProvisionCockpitMeetingDirectory(ctx, original, changed)
+		if !errors.Is(err, ErrCockpitWorkflowForbidden) || counter.inspects.Load() != 0 || counter.writes.Load() != 0 {
+			t.Fatalf("terminal task probed a different target: %v inspections=%d writes=%d", err, counter.inspects.Load(), counter.writes.Load())
+		}
+	})
+	t.Run("retained authority still requires current INVOKE", func(t *testing.T) {
+		if _, err := f.Pool.Exec(ctx, "UPDATE agent SET owner_id=$1 WHERE id=$2", credentialOwner, agent); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if _, err := f.Pool.Exec(ctx, "UPDATE agent SET owner_id=$1 WHERE id=$2", f.owner, agent); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		assertDenied(t, original, false)
+		assertDenied(t, original, true)
+	})
+	t.Run("retained authority still requires authorizer membership", func(t *testing.T) {
+		if _, err := f.Pool.Exec(ctx, "DELETE FROM member WHERE workspace_id=$1 AND user_id=$2", f.ws, f.owner); err != nil {
+			t.Fatal(err)
+		}
+		assertDenied(t, original, false)
+		assertDenied(t, original, true)
+	})
 }

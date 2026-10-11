@@ -52,10 +52,12 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 	}
 	out.Directory = target.Directory
 	input := CockpitDirectoryPreviewInput{Mode: "prepare", RootID: root.RootID, RelativeDirectory: relative, Partitions: []string{"会议纪要与录音转写", "会议材料", "照片"}, ObservedNASDir: m.NasDir, ObservedBindingRevision: m.NasDirRevision, BindAfterBase: filepath.Clean(m.NasDir) != target.Directory}
-	preview, err := s.PreviewCockpitMeetingDirectory(executionCtx, p, input)
+	steps, planHash, err := directoryPlan(target, input.Partitions)
 	if err != nil {
 		return out, err
 	}
+	// Resolve the exact retained intent before any filesystem observation.
+	// New paths must still pass public preview's complete current admission.
 	q := s.Queries
 	authorizing, sourceIssue := p.CredentialOwnerID, pgtype.UUID{}
 	actorType, actor := "member", p.CredentialOwnerID
@@ -94,14 +96,14 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 	default:
 		return out, directoryError("task_context_required", "The authenticated principal is not supported.")
 	}
-	find := db.FindLegacyCockpitDirectoryPlanParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, CreatedByType: actorType, CreatedBy: actor, PlanHash: preview.PlanHash, AuthorizingUserID: authorizing, SourceIssueID: sourceIssue}
+	find := db.FindLegacyCockpitDirectoryPlanParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, CreatedByType: actorType, CreatedBy: actor, PlanHash: planHash, AuthorizingUserID: authorizing, SourceIssueID: sourceIssue}
 	// Use the ordinary query handle after ending the snapshot transaction.
 	existing, findErr := q.FindLegacyCockpitDirectoryPlan(executionCtx, find)
 	if findErr != nil && !errors.Is(findErr, pgx.ErrNoRows) {
 		return out, findErr
 	}
 	if findErr == nil {
-		if !legacyDirectoryTargetMatches(existing, preview.Target) {
+		if !legacyDirectoryTargetMatches(existing, directoryTarget(target)) {
 			return out, directoryError("command_conflict", "An existing plan does not match the exact requested directory.")
 		}
 		prior, readErr := s.readLegacyDirectoryResult(executionCtx, p, existing.ID)
@@ -112,9 +114,14 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 			return prior, directoryError("permission_revoked", "This plan now belongs to another responsible member. Open its recorded operation instead of reusing the old command.")
 		}
 
+		if _, err = directoryPrincipalWithRetainedPlan(executionCtx, q, p, false, &existing); err != nil {
+			return prior, err
+		}
 		if existing.State == "completed" {
-			allExist := len(preview.Steps) > 0
-			for _, step := range preview.Steps {
+			observed := CockpitDirectoryPreview{Steps: steps}
+			s.inspectDirectoryPreview(executionCtx, &observed, target)
+			allExist := len(observed.Steps) > 0
+			for _, step := range observed.Steps {
 				allExist = allExist && step.PlannedState == "exists"
 			}
 			if allExist && !input.BindAfterBase {
@@ -123,11 +130,6 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 			out = prior
 			out.BaseReady = false
 			input.Mode = "repair"
-			preview, err = s.PreviewCockpitMeetingDirectory(executionCtx, p, input)
-			if err != nil {
-				prior.BaseReady = false
-				return prior, err
-			}
 		} else if existing.State != "abandoned" {
 			if existing.State != "active" {
 				return prior, nil
@@ -135,6 +137,10 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 			driveErr := s.DriveCockpitDirectoryOperation(executionCtx, p.WorkspaceID, p.MeetingID, existing.ID)
 			return s.finishLegacyDirectoryResult(ctx, p, existing.ID, prior, driveErr)
 		}
+	}
+	preview, err := s.PreviewCockpitMeetingDirectory(executionCtx, p, input)
+	if err != nil {
+		return out, err
 	}
 	if !preview.CanConfirm {
 		code := "directory_preparation_blocked"
@@ -170,6 +176,9 @@ func (s *IssueService) ProvisionCockpitMeetingDirectory(ctx context.Context, p C
 			return prior, directoryError("permission_revoked", "This plan now belongs to another responsible member. Open its recorded operation instead of reusing the old command.")
 		}
 
+		if _, admissionErr := directoryPrincipalWithRetainedPlan(executionCtx, q, p, false, &won); admissionErr != nil {
+			return prior, admissionErr
+		}
 		if won.State != "active" {
 			return prior, nil
 		}

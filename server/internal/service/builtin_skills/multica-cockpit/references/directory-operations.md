@@ -43,6 +43,11 @@ A subsequent valid Run may explicitly recover the same Agent/Issue/member tuple.
 Legacy natural reuse also requires that exact Agent/source Issue/originator; an
 unfinished plan must still have the same responsible member. A terminal source
 Run does not block this existing grant, while a new repair needs full new authorization.
+Public and retry previews check the current principal before any filesystem
+inspection; retry also requires the plan's current responsible principal.
+Legacy reuse first matches the retained source and fixed target; terminal-Run
+continuation still requires a valid task token, current originating membership
+and Agent invocation permission. A refused principal performs no filesystem I/O.
 Cloud credentials without a concrete task can only read existing plans.
 Pause or abandon prevents future attempts; in-flight I/O may finish and is
 recorded without reviving the plan. Human claim creates an explicit new grant.

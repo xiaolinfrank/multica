@@ -92,6 +92,13 @@ func directoryMembership(ctx context.Context, q *db.Queries, p CockpitDirectoryR
 // New delegation admission is distinct from continuation of an accepted grant.
 // A caller taking locks already holds workspace/member/board/meeting first.
 func directoryPrincipal(ctx context.Context, q *db.Queries, p CockpitDirectoryRead, lock bool) (CockpitDirectoryPrincipal, error) {
+	return directoryPrincipalWithRetainedPlan(ctx, q, p, lock, nil)
+}
+
+// A matched retained plan permits only a terminal source Run, never a stale
+// token, missing member, revoked invocation grant, or unrelated preparation Issue.
+// This private path is used only after resolving the exact historical target.
+func directoryPrincipalWithRetainedPlan(ctx context.Context, q *db.Queries, p CockpitDirectoryRead, lock bool, retained *db.CockpitMeetingDirectoryOperation) (CockpitDirectoryPrincipal, error) {
 	var out CockpitDirectoryPrincipal
 	if _, err := directoryMembership(ctx, q, p); err != nil {
 		return out, err
@@ -166,7 +173,14 @@ func directoryPrincipal(ctx context.Context, q *db.Queries, p CockpitDirectoryRe
 				return out, err
 			}
 		}
-		if run.AgentID != p.AgentID || agent.WorkspaceID != p.WorkspaceID || agent.RuntimeID != run.RuntimeID || runtime.WorkspaceID != p.WorkspaceID || runtime.OwnerID != p.CredentialOwnerID || token.AgentID != p.AgentID || token.TaskID != run.ID || token.UserID != p.CredentialOwnerID || !cockpitAssignableAgentStatus(agent.Status) || (run.Status != "dispatched" && run.Status != "running") {
+		eligibleRun := run.Status == "dispatched" || run.Status == "running"
+		if retained != nil {
+			if retained.WorkspaceID != p.WorkspaceID || retained.MeetingID != p.MeetingID || retained.CreatedByType != "agent" || retained.CreatedBy != p.AgentID || retained.SourceAgentID != p.AgentID || retained.SourceIssueID != run.IssueID || retained.AuthorizingUserID != run.OriginatorUserID {
+				return out, directoryError("delegation_unavailable", "The retained directory plan does not belong to this precise preparation source.")
+			}
+			eligibleRun = eligibleRun || run.Status == "completed" || run.Status == "failed" || run.Status == "cancelled"
+		}
+		if run.AgentID != p.AgentID || agent.WorkspaceID != p.WorkspaceID || agent.RuntimeID != run.RuntimeID || runtime.WorkspaceID != p.WorkspaceID || runtime.OwnerID != p.CredentialOwnerID || token.AgentID != p.AgentID || token.TaskID != run.ID || token.UserID != p.CredentialOwnerID || !cockpitAssignableAgentStatus(agent.Status) || !eligibleRun {
 			return out, directoryError("source_run_unavailable", "The authenticated run is not currently eligible to authorize this directory plan.")
 		}
 		if runtime.Visibility == "private" && runtime.OwnerID != agent.OwnerID {
