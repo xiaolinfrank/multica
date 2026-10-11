@@ -92,6 +92,7 @@ func TestCockpitSurfaceCLIRejectsInvalidInputBeforeHTTP(t *testing.T) {
 		{newCockpitMeetingPageCommand, []string{"--from", "2026-10-10", "--to", "2026-10-09"}},
 		{newCockpitMeetingPageCommand, []string{"--page-size", "101"}},
 		{newCockpitMeetingPageCommand, []string{"--only", "links,folder"}},
+		{newCockpitMeetingPageCommand, []string{"--archive", "unknown"}},
 		{newCockpitMeetingPageCommand, []string{"--q", strings.Repeat("a", 513)}},
 		{newCockpitMeetingShowCommand, []string{"not-a-UUID"}},
 		{newCockpitVersionCompareCommand, []string{"not-a-UUID"}},

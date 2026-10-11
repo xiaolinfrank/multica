@@ -9,6 +9,7 @@ For scoped plans, paginated meeting/object reads and visible-row markers, see [s
 For bounded minutes metadata/body reads and compact command receipts, see [history.md](history.md).
 For bounded work overview, personal/team attention and recent meetings, see [overview.md](overview.md).
 For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](actions.md); primary tasks are not added to the board's reference array.
+For immutable meeting templates, preparation operations, cancellation impact and archive recovery, see [meeting-preparation.md](meeting-preparation.md).
 
 | Method | Path | What it does |
 | --- | --- | --- |

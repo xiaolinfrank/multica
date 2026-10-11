@@ -99,6 +99,7 @@ multica cockpit meeting workflow submit <meeting-id> --revision <observed-revisi
 ```
 
 Read [agenda and occurrence](references/meeting-lifecycle.md), materials and workflow state before drafting evidence-grounded minutes.
+Use [preparation plans and meeting disposition](references/meeting-preparation.md) for immutable templates, exact preparation effects, cancellation impact and archive recovery. These commands do not grant permission to start an agent or provision NAS directories.
 Submit using the minutes issue's task credential; retain the submission UUID/file for retries.
 Missing evidence is a blocker to report, not permission to invent outcomes.
 Submitting creates a fixed version and human Review Issue; completing/reassigning it is not approval.

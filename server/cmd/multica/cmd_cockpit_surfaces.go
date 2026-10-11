@@ -40,6 +40,7 @@ func newCockpitMeetingPageCommand() *cobra.Command {
 	cmd.Flags().String("from", "", "Inclusive calendar date YYYY-MM-DD")
 	cmd.Flags().String("to", "", "Inclusive calendar date YYYY-MM-DD")
 	cmd.Flags().String("node-id", "", "Optional node UUID; includes meetings linked to descendants")
+	cmd.Flags().String("archive", "active", "Meeting register: active, archived or all")
 	for _, flag := range []string{"party", "track", "kind", "status", "only"} {
 		cmd.Flags().StringArray(flag, nil, "Repeat to select several values; commas stay inside each value")
 	}
@@ -99,6 +100,13 @@ func cockpitSurfaceQuery(cmd *cobra.Command, kind string) (url.Values, int, erro
 	}
 	if kind != "meetings" {
 		return query, size, nil
+	}
+	archive, _ := cmd.Flags().GetString("archive")
+	if !slices.Contains([]string{"active", "archived", "all"}, archive) {
+		return nil, 0, fmt.Errorf("--archive must be active, archived or all")
+	}
+	if archive != "active" {
+		query.Set("archive", archive)
 	}
 	search, _ := cmd.Flags().GetString("q")
 	search = strings.TrimSpace(search)
@@ -267,6 +275,14 @@ func confirmCockpitPlanReceipt(value map[string]any, ws string, q url.Values) bo
 	return ok
 }
 func confirmCockpitMeetingPage(value map[string]any, ws string, q url.Values, size int) bool {
+	wantedArchive := q.Get("archive")
+	if wantedArchive == "" {
+		wantedArchive = "active"
+	}
+	actualArchive, exists := value["archive"]
+	if exists && actualArchive != wantedArchive || !exists && wantedArchive != "active" {
+		return false
+	}
 	if !confirmCockpitSurfaceScope(value, ws, q) || !cockpitSurfacePage(value, size) || !cockpitNullableScope(value, "node_id", q.Get("node_id"), false) || !cockpitNullableScope(value, "date_from", q.Get("date_from"), false) || !cockpitNullableScope(value, "date_to", q.Get("date_to"), false) {
 		return false
 	}
