@@ -37,6 +37,11 @@ export interface TestCockpitMeeting {
   code: string;
   title: string;
 }
+export interface TestDirectoryOperation {
+  workspace_id: string; meeting_id: string; id: string; state: string; revision: number; command_key: string;
+  target: { directory: string; root_id: string }; counts: { total: number; satisfied: number; needs_attention: number };
+}
+export interface TestDirectoryStep { id: string; operation_id: string; kind: string; label: string; relative_path: string; state: string; outcome: string | null; attempt_count: number }
 
 export interface TestArtifactVersion {
   id: string; version_number: number; revision: number; producer_issue_id: string; content_hash: string | null;
@@ -577,6 +582,53 @@ export class TestApiClient {
 
   private assertOwnedMeeting(meetingId: string) {
     if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !this.createdCockpitMeetingIds.includes(meetingId)) throw new Error("Meeting lifecycle fixture requires an owned meeting and workspace");
+  }
+
+  async getOwnedDirectoryOperation(meetingId: string, operationId: string): Promise<TestDirectoryOperation> {
+    this.assertOwnedMeeting(meetingId);
+    if (!/^[0-9a-f-]{36}$/i.test(operationId)) throw new Error("Directory operation requires an exact UUID");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/directory-preparations/${operationId}`);
+    if (!response.ok) throw new Error(`Directory operation read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json() as TestDirectoryOperation;
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId || data.id !== operationId) throw new Error("Directory operation scope mismatch");
+    return data;
+  }
+
+  async getOwnedDirectorySteps(meetingId: string, operationId: string): Promise<{ workspace_id: string; meeting_id: string; operation_id: string; items: TestDirectoryStep[]; total: number }> {
+    this.assertOwnedMeeting(meetingId);
+    if (!/^[0-9a-f-]{36}$/i.test(operationId)) throw new Error("Directory steps require an exact operation UUID");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/directory-preparations/${operationId}/steps`);
+    if (!response.ok) throw new Error(`Directory steps read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json();
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId || data.operation_id !== operationId || data.total > 32) throw new Error("Directory step scope or bound mismatch");
+    return data;
+  }
+
+  /** Seed a legitimate custom plan only inside the explicitly owned local directory fixture. */
+  async seedOwnedDirectoryPlan(meetingId: string, rootId: string, relativeDirectory: string, partitions: string[]): Promise<string> {
+    this.assertOwnedMeeting(meetingId);
+    if (process.env.MULTICA_E2E_REAL_NAS === "1" || rootId !== process.env.MULTICA_E2E_NAS_ROOT_ID
+      || this.workspaceId !== process.env.MULTICA_E2E_NAS_WORKSPACE_ID
+      || !/^directory-e2e\/directory-e2e-[A-Za-z0-9]+\/[^/\\]+$/.test(relativeDirectory)
+      || relativeDirectory.split("/").some((part) => part === "." || part === "..")) throw new Error("Custom directory plan must remain in the owned local fixture boundary");
+    const base = `/api/cockpit/meetings/${encodeURIComponent(meetingId)}`;
+    const summaryResponse = await this.authedFetch(`${base}/directory-preparation`);
+    if (!summaryResponse.ok) throw new Error(`Directory summary read failed: ${summaryResponse.status}`);
+    const summary = await summaryResponse.json();
+    if (summary.workspace_id !== this.workspaceId || summary.meeting_id !== meetingId) throw new Error("Directory summary scope mismatch");
+    const body = { mode: "prepare", root_id: rootId, relative_directory: relativeDirectory, partitions, observed_nas_dir: summary.binding.nas_dir,
+      observed_binding_revision: summary.binding.revision, bind_after_base: false };
+    const previewResponse = await this.authedFetch(`${base}/directory-preparations/preview`, { method: "POST", body: JSON.stringify(body) });
+    if (!previewResponse.ok) throw new Error(`Custom directory preview failed: ${previewResponse.status} ${await previewResponse.text()}`);
+    const preview = await previewResponse.json();
+    if (!preview.can_confirm || preview.workspace_id !== this.workspaceId || preview.meeting_id !== meetingId || preview.target.root_id !== rootId
+      || preview.target.relative_directory !== relativeDirectory || preview.target.directory !== summary.binding.nas_dir) throw new Error("Custom directory preview did not confirm the owned target");
+    const commandKey = crypto.randomUUID();
+    const response = await this.authedFetch(`${base}/directory-preparations`, { method: "POST", body: JSON.stringify({ ...body, command_key: commandKey, expected_revision: summary.binding.revision, context_token: preview.context_token }) });
+    if (!response.ok) throw new Error(`Custom directory registration failed: ${response.status} ${await response.text()}`);
+    const result = await response.json();
+    if (result.workspace_id !== this.workspaceId || result.meeting_id !== meetingId || result.command_key !== commandKey || !/^[0-9a-f-]{36}$/i.test(result.receipt?.directory_operation_id ?? "")) throw new Error("Custom directory receipt scope mismatch");
+    return result.receipt.directory_operation_id;
   }
 
   async getOwnedMeetingLifecycle(meetingId: string): Promise<TestMeetingLifecycle> {
