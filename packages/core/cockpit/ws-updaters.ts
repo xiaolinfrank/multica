@@ -1,3 +1,4 @@
+import { invalidateCockpitDirectoryProjections, invalidateCockpitMeetingDirectoryFacts } from "./meeting-directory-queries";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
@@ -113,6 +114,11 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  if (scope === "meeting_directory") {
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void invalidateCockpitMeetingDirectoryFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    return;
+  }
   if (scope === "meeting_templates" || scope === "meeting_preparation") {
     const meetingId = asRecord(entity)?.["meeting_id"];
     void invalidateCockpitMeetingPreparationFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
@@ -125,6 +131,7 @@ export function onCockpitChanged(
     const meetingId = asRecord(entity)?.["meeting_id"] ?? (scope === "meeting" ? asRecord(entity)?.["id"] : undefined);
     invalidateCockpitMeetingLifecycle(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
     void invalidateCockpitPreparationProjections(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    void invalidateCockpitDirectoryProjections(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
   }
   if (scope === "node" || scope === "primary_node" || scope === "artifacts" || scope === "acceptance" || scope === "meeting_actions") {
     void qc.invalidateQueries({ queryKey: cockpitPreparationKeys.all(wsId), predicate: (query) => query.queryKey[3] === "meeting" });

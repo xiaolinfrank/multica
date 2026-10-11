@@ -57,6 +57,7 @@ export interface CockpitDestination {
   actionId: string | null;
   agendaId: string | null;
   preparationId: string | null;
+  directoryOperationId: string | null;
   nodeView: CockpitNodeView | null;
   meetingView: CockpitMeetingView | null;
   key: string;
@@ -69,6 +70,7 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
   const actionId = meetingId ? search.get("action") || null : null;
   const agendaId = meetingId ? search.get("agenda") || null : null;
   const preparationId = meetingId ? search.get("preparation") || null : null;
+  const directoryOperationId = meetingId ? search.get("directory_operation") || null : null;
   const requestedNodeView = search.get("node_view");
   const requestedMeetingView = search.get("meeting_view");
   const nodeView = nodeId && (requestedNodeView === "tasks" || requestedNodeView === "artifacts" || requestedNodeView === "acceptance" || requestedNodeView === "details") ? requestedNodeView : null;
@@ -78,7 +80,7 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
     : search.get("view") === "operations" ? "operations"
       : tab === "gantt" || tab === "meetings" || tab === "changes" || tab === "finance" ? tab : "work";
   return { area, boardTab: area === "operations" || area === "work" ? "overview" : area,
-    nodeId, meetingId, actionId, agendaId, preparationId, nodeView, meetingView, key: JSON.stringify([area, nodeId, meetingId]) };
+    nodeId, meetingId, actionId, agendaId, preparationId, directoryOperationId, nodeView, meetingView, key: JSON.stringify([area, nodeId, meetingId]) };
 }
 
 /** Section changes deliberately drop stale object targets and unrelated filters. */
@@ -87,7 +89,7 @@ export function cockpitAreaPath(pathname: string, area: CockpitArea): string {
   return `${pathname}?${area === "operations" ? "view=operations" : `tab=${area}`}`;
 }
 
-export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView; planView?: CockpitPlanView; requestId?: string } | { kind: "meeting"; id: string; actionId?: string; agendaId?: string; preparationId?: string; view?: CockpitMeetingView }, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
+export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView; planView?: CockpitPlanView; requestId?: string } | { kind: "meeting"; id: string; actionId?: string; agendaId?: string; preparationId?: string; directoryOperationId?: string; view?: CockpitMeetingView }, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
   const query = new URLSearchParams({ [target.kind]: target.id });
   if (target.kind === "meeting" && target.actionId) query.set("action", target.actionId);
   if (target.kind === "meeting" && target.agendaId) {
@@ -97,6 +99,10 @@ export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: 
   if (target.kind === "meeting" && target.preparationId) {
     query.set("preparation", target.preparationId);
     if (!target.view) query.set("meeting_view", "agenda");
+  }
+  if (target.kind === "meeting" && target.directoryOperationId) {
+    query.set("directory_operation", target.directoryOperationId);
+    if (!target.view) query.set("meeting_view", "resources");
   }
   if (target.view) query.set(`${target.kind}_view`, target.view);
   if (target.kind === "node" && target.requestId) query.set("acceptance", target.requestId);
@@ -130,6 +136,7 @@ export function cockpitMeetingContextPath(pathname: string, meetingId: string | 
   if (meetingId && source.get("meeting") === meetingId && source.get("action")) query.set("action", source.get("action")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("agenda")) query.set("agenda", source.get("agenda")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("preparation")) query.set("preparation", source.get("preparation")!);
+  if (meetingId && source.get("meeting") === meetingId && source.get("directory_operation")) query.set("directory_operation", source.get("directory_operation")!);
   for (const name of ["meeting_node", "meeting_nodes", "meeting_archive", "from", "to"] as const) {
     const value = source.get(name); if (value) query.set(name, value);
   }
@@ -140,7 +147,7 @@ export function cockpitMeetingContextPath(pathname: string, meetingId: string | 
 export function cockpitMeetingAgendaPath(pathname: string, meetingId: string, agendaId: string | null,
   source: { toString(): string }): string {
   const query = new URLSearchParams(source.toString());
-  if (query.get("meeting") !== meetingId) query.delete("action");
+  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("directory_operation"); }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance", "preparation"]) query.delete(name);
   query.set("meeting", meetingId);
   query.set("meeting_view", "agenda");
@@ -152,10 +159,24 @@ export function cockpitMeetingAgendaPath(pathname: string, meetingId: string, ag
 export function cockpitMeetingPreparationPath(pathname: string, meetingId: string, preparationId: string | null,
   source: { toString(): string }): string {
   const query = new URLSearchParams(source.toString());
-  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("agenda"); }
+  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("agenda"); query.delete("directory_operation"); }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance"]) query.delete(name);
   query.set("meeting", meetingId);
   query.set("meeting_view", "agenda");
   if (preparationId) query.set("preparation", preparationId); else query.delete("preparation");
+  return `${pathname}?${query}`;
+}
+
+/** A directory plan retains the same meeting and its return context. */
+export function cockpitMeetingDirectoryPath(pathname: string, meetingId: string, directoryOperationId: string | null,
+  source: { toString(): string }): string {
+  const query = new URLSearchParams(source.toString());
+  if (query.get("meeting") !== meetingId) {
+    query.delete("action"); query.delete("agenda"); query.delete("preparation");
+  }
+  for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance"]) query.delete(name);
+  query.set("meeting", meetingId);
+  query.set("meeting_view", "resources");
+  if (directoryOperationId) query.set("directory_operation", directoryOperationId); else query.delete("directory_operation");
   return `${pathname}?${query}`;
 }

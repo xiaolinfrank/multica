@@ -1,3 +1,4 @@
+import type { CockpitDirectoryCommandReceipt } from "./cockpit-meeting-directory";
 import type { CockpitTask } from "./cockpit";
 import type { CockpitMeetingArchiveView, CockpitPreparationCommandReceipt } from "./cockpit-meeting-preparation";
 
@@ -135,6 +136,7 @@ export interface CockpitLifecycleReceipt {
   archive?: CockpitMeetingArchiveView | null;
   previous_archive?: CockpitMeetingArchiveView | null;
   preparation?: CockpitPreparationCommandReceipt | null;
+  directory?: CockpitDirectoryCommandReceipt | null;
 }
 export interface CockpitLifecycleCommandResult {
   workspace_id: string; meeting_id: string; command_key: string;
@@ -145,6 +147,7 @@ export interface CockpitLifecycleCommandMetadata {
   command_key: string; action: string; actor_id: string; actor_name: string; created_at: string;
   revision: number; agenda_id: string | null; reference_id: string | null; issue_id: string | null;
   operation_id?: string | null; effect_id?: string | null;
+  actor_type?: string; directory_operation_id?: string | null; directory_step_id?: string | null;
 }
 export interface CockpitLifecycleCommandPage {
   workspace_id: string; meeting_id: string; page_size: number;

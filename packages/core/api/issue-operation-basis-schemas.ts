@@ -15,9 +15,10 @@ export const IssueOperationTargetSchema = z.object({
   kind: id, label: z.string(), purpose: id,
   issue_id: id.optional(), node_id: id.optional(), meeting_id: id.optional(),
   action_id: id.optional(), artifact_id: id.optional(), version_id: id.optional(),
-  operation_id: id.optional(),
+  operation_id: id.optional(), directory_operation_id: id.optional(),
   request_id: id.optional(), view: z.string().optional(),
 }).refine((target) => {
+  if (target.directory_operation_id && (target.kind !== "meeting" || target.view !== "resources" || target.operation_id)) return false;
   switch (target.kind) {
     case "issue": return Boolean(target.issue_id);
     case "node": return Boolean(target.node_id);

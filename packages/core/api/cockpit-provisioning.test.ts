@@ -36,6 +36,27 @@ describe("captured meeting workspace and provisioning evidence", () => {
     await expect(request.api.importCockpitMeetingFolders({ items: [{ name: "folder" }], expected_base_dir: "/share/module" }, "workspace")).resolves.toMatchObject(partial);
     expect(JSON.parse(request.fetchMock.mock.calls[0]?.[1].body)).toMatchObject({ expected_base_dir: "/share/module" });
   });
+  it("keeps imported meetings separate from unfinished directory plans and task creation errors", async () => {
+    const directory = { name: "folder", meeting_id: "meeting", directory_operation_id: "10000000-0000-4000-8000-000000000009", directory_state: "needs_attention", dir_created: true, dir_error: "A partition needs review", dir_error_code: "path_is_file" };
+    const value = { meetings: [{ id: "meeting", nas_dir: "/share/module/folder" }], issues: [], skipped: [], directory_results: [directory], task_errors: [{ name: "folder", meeting_id: "meeting", error: "Choose an assignee" }] };
+    const body = { items: [{ name: "folder" }], create_task: true };
+    await expect(reply(value).api.importCockpitMeetingFolders(body, "workspace")).resolves.toMatchObject(value);
+    for (const changed of [{ ...value, directory_results: [] }, { ...value, directory_results: [directory, directory] },
+      { ...value, directory_results: [{ ...directory, meeting_id: "other" }] }, { ...value, directory_results: [{ ...directory, name: "unselected" }] },
+      { ...value, directory_results: [{ ...directory, dir_error: "" }] }, { ...value, task_errors: [{ ...value.task_errors[0], meeting_id: "other" }] }]) {
+      await expect(reply(changed).api.importCockpitMeetingFolders(body, "workspace")).rejects.toThrow("cockpit_write_not_confirmed");
+    }
+    await expect(reply(value).api.importCockpitMeetingFolders({ ...body, create_task: false }, "workspace")).rejects.toThrow("cockpit_write_not_confirmed");
+    const older = { meetings: value.meetings, issues: [], skipped: [] };
+    await expect(reply(older).api.importCockpitMeetingFolders(body, "workspace")).resolves.toMatchObject({ directory_results: null, task_errors: [] });
+  });
+  it("acknowledges a registered background directory plan without pretending its partitions are ready", async () => {
+    const value = { ...receipt, directory_operation_id: "10000000-0000-4000-8000-000000000009", directory_state: "active", dir_error: "Directory preparation is continuing", dir_error_code: "preparation_pending" };
+    await expect(reply(value).api.provisionCockpitMeeting("meeting", { create_task: false }, "workspace")).resolves.toMatchObject(value);
+    for (const changed of [{ ...value, directory_state: "" }, { ...value, directory_operation_id: "not-an-operation" }, { ...value, dir_error: "" }]) {
+      await expect(reply(changed).api.provisionCockpitMeeting("meeting", { create_task: false }, "workspace")).rejects.toThrow("cockpit_write_not_confirmed");
+    }
+  });
   it("does not turn an invalid destination response into an unconfigured directory", async () => {
     const valid = { project_id: "project", module_id: "module", base_dir: "/share" };
     for (const invalid of [{}, { ...valid, project_id: "other" }, { ...valid, module_id: "other" }]) {

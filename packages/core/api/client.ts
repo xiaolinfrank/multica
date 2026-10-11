@@ -1,3 +1,6 @@
+import type * as MeetingDirectory from "../types/cockpit-meeting-directory";
+import * as DirectorySchemas from "./cockpit-meeting-directory-schemas";
+import { cockpitDirectoryCommandAcknowledged, type CockpitDirectoryCommandInput } from "../cockpit/meeting-directory";
 import type * as MeetingPreparation from "../types/cockpit-meeting-preparation";
 import * as PreparationSchemas from "./cockpit-meeting-preparation-schemas";
 import { cockpitMeetingTemplateAcknowledged, cockpitPreparationCommandAcknowledged, cockpitPreparationEffectAcknowledged } from "../cockpit/meeting-preparation";
@@ -2100,7 +2103,8 @@ export class ApiClient {
     if (!result || result.meeting.id !== id || result.issues.some((link) => link.meeting_id !== id)
       || (result.task && result.task.meeting_id !== id)
       || (body.create_dir !== false && !result.dir_error && (!result.dir || result.dir !== result.meeting.nas_dir))
-      || (body.create_task !== false && !result.task_error && !result.task)) throw new CockpitUnconfirmedWriteError();
+      || (body.create_task !== false && !result.task_error && !result.task)
+      || (result.directory_operation_id && (!result.directory_state || result.directory_state !== "completed" && !result.dir_error))) throw new CockpitUnconfirmedWriteError();
     return result;
   }
 
@@ -2142,7 +2146,13 @@ export class ApiClient {
     const result = parseWithFallback<CockpitMeetingImportResult | null>(raw, CockpitMeetingImportWriteSchema, null,
       { endpoint: "POST /api/cockpit/meetings/import" });
     if (!result || new Set(result.meetings.map((meeting) => meeting.id)).size !== result.meetings.length
-      || result.issues.some((link) => !result.meetings.some((meeting) => meeting.id === link.meeting_id))) {
+      || result.issues.some((link) => !result.meetings.some((meeting) => meeting.id === link.meeting_id))
+      || (result.directory_results != null && (result.directory_results.length !== result.meetings.length
+        || new Set(result.directory_results.map((item) => item.meeting_id)).size !== result.directory_results.length
+        || result.directory_results.some((item) => !result.meetings.some((meeting) => meeting.id === item.meeting_id) || !body.items.some((input) => input.name.trim() === item.name))))
+      || (result.task_errors?.some((item) => !result.meetings.some((meeting) => meeting.id === item.meeting_id) || !body.items.some((input) => input.name.trim() === item.name)))
+      || (result.task_errors && new Set(result.task_errors.map((item) => item.meeting_id)).size !== result.task_errors.length)
+      || (body.create_task === false && Boolean(result.task_errors?.length))) {
       throw new CockpitUnconfirmedWriteError();
     }
     return result;
@@ -2779,6 +2789,92 @@ export class ApiClient {
   }
   async createCockpitPreparationIssue(wsId: string, meetingId: string, agendaId: string, body: CockpitPreparationIssueInput): Promise<CockpitLifecycleCommandResult> {
     return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/preparation-issues"), "preparation_issue_create", body, agendaId);
+  }
+
+  async getCockpitDirectoryRoots(wsId: string, query: MeetingDirectory.CockpitMeetingDirectoryPageQuery = {}, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryRootPage | null> {
+    if (!wsId) throw new RangeError("Directory roots require an explicit workspace");
+    const params = new URLSearchParams({ page_size: String(query.page_size ?? 25) });
+    if (query.cursor) params.set("cursor", query.cursor);
+    const endpoint = "/api/cockpit/directory-roots?" + params;
+    const raw = await this.fetch<unknown>(endpoint, { headers: { "X-Workspace-ID": wsId }, signal });
+    const value = parseWithFallback<MeetingDirectory.CockpitDirectoryRootPage | null>(raw, DirectorySchemas.CockpitDirectoryRootPageSchema, null, { endpoint });
+    return value?.workspace_id === wsId && value.page_size === (query.page_size ?? 25) ? value : null;
+  }
+  async getCockpitDirectoryRoot(wsId: string, rootId: string, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryRootDetail | null> {
+    if (!wsId || !rootId) throw new RangeError("Directory roots require workspace and root identities");
+    const endpoint = "/api/cockpit/directory-roots/" + encodeURIComponent(rootId);
+    const raw = await this.fetch<unknown>(endpoint, { headers: { "X-Workspace-ID": wsId }, signal });
+    const value = parseWithFallback<MeetingDirectory.CockpitDirectoryRootDetail | null>(raw, DirectorySchemas.CockpitDirectoryRootDetailSchema, null, { endpoint });
+    return value?.workspace_id === wsId && value.root_id === rootId ? value : null;
+  }
+  private cockpitDirectoryOperationPath(operationId: string, suffix = ""): string {
+    if (!operationId) throw new RangeError("Directory operations require their identity");
+    return "directory-preparations/" + encodeURIComponent(operationId) + suffix;
+  }
+  async getCockpitMeetingDirectorySummary(wsId: string, meetingId: string, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectorySummary | null> {
+    return this.readCockpitLifecycle(wsId, meetingId, "directory-preparation", DirectorySchemas.CockpitDirectorySummarySchema, {}, signal);
+  }
+  async getCockpitDirectoryOperations(wsId: string, meetingId: string, query: MeetingDirectory.CockpitMeetingDirectoryPageQuery = {}, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryOperationPage | null> {
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, "directory-preparations", DirectorySchemas.CockpitDirectoryOperationPageSchema, params, signal);
+    return value?.page_size === params.page_size ? value : null;
+  }
+  async getCockpitDirectoryOperation(wsId: string, meetingId: string, operationId: string, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryOperationHeader | null> {
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId), DirectorySchemas.CockpitDirectoryOperationHeaderSchema, {}, signal);
+    return value?.id === operationId ? value : null;
+  }
+  async getCockpitDirectorySteps(wsId: string, meetingId: string, operationId: string, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryStepPage | null> {
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId, "/steps"), DirectorySchemas.CockpitDirectoryStepPageSchema, {}, signal);
+    return value?.operation_id === operationId ? value : null;
+  }
+  private cockpitDirectoryStepPath(operationId: string, stepId: string, suffix = ""): string {
+    if (!stepId) throw new RangeError("Directory steps require their identity");
+    return this.cockpitDirectoryOperationPath(operationId, "/steps/" + encodeURIComponent(stepId) + suffix);
+  }
+  async getCockpitDirectoryAttempts(wsId: string, meetingId: string, operationId: string, stepId: string, query: MeetingDirectory.CockpitMeetingDirectoryPageQuery = {}, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryAttemptPage | null> {
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitDirectoryStepPath(operationId, stepId, "/attempts"), DirectorySchemas.CockpitDirectoryAttemptPageSchema, params, signal);
+    return value?.operation_id === operationId && value.step_id === stepId && value.page_size === params.page_size ? value : null;
+  }
+  async getCockpitDirectoryAttempt(wsId: string, meetingId: string, operationId: string, stepId: string, attemptId: string, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryAttemptDetail | null> {
+    if (!attemptId) throw new RangeError("Directory attempts require their identity");
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitDirectoryStepPath(operationId, stepId, "/attempts/" + encodeURIComponent(attemptId)), DirectorySchemas.CockpitDirectoryAttemptDetailSchema, {}, signal);
+    return value?.operation_id === operationId && value.step_id === stepId && value.id === attemptId ? value : null;
+  }
+  async previewCockpitMeetingDirectory(wsId: string, meetingId: string, body: MeetingDirectory.CockpitDirectoryPreviewInput): Promise<MeetingDirectory.CockpitDirectoryPreview> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, "directory-preparations/preview");
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingDirectory.CockpitDirectoryPreview | null>(raw, DirectorySchemas.CockpitDirectoryPreviewSchema, null, { endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || value.target.root_id !== body.root_id
+      || value.target.relative_directory !== body.relative_directory.trim() || value.observed_binding.nas_dir !== body.observed_nas_dir
+      || value.observed_binding.revision !== body.observed_binding_revision || value.bind_after_base !== body.bind_after_base) throw new CockpitUnconfirmedReadError();
+    return value;
+  }
+  async previewCockpitDirectoryRetry(wsId: string, meetingId: string, operationId: string, body: MeetingDirectory.CockpitDirectoryRetryPreviewInput): Promise<MeetingDirectory.CockpitDirectoryRetryPreview> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId, "/retry-preview"));
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingDirectory.CockpitDirectoryRetryPreview | null>(raw, DirectorySchemas.CockpitDirectoryRetryPreviewSchema, null, { endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || value.operation_id !== operationId
+      || value.step_ids.length !== body.step_ids.length || new Set(body.step_ids).size !== body.step_ids.length
+      || !body.step_ids.every((id) => value.step_ids.includes(id))) throw new CockpitUnconfirmedReadError();
+    return value;
+  }
+  private async writeCockpitDirectoryCommand(wsId: string, meetingId: string, suffix: string, action: string, body: CockpitDirectoryCommandInput,
+    operationId?: string): Promise<MeetingDirectory.CockpitDirectoryCommandResult> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix);
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingDirectory.CockpitDirectoryCommandResult | null>(raw, DirectorySchemas.CockpitDirectoryCommandResultSchema, null, { endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || !cockpitDirectoryCommandAcknowledged(value, action, body, operationId)) throw new CockpitUnconfirmedWriteError();
+    return value;
+  }
+  async createCockpitMeetingDirectory(wsId: string, meetingId: string, body: MeetingDirectory.CockpitDirectoryCreateInput) {
+    return this.writeCockpitDirectoryCommand(wsId, meetingId, "directory-preparations", "directory_prepare", body);
+  }
+  async retryCockpitDirectory(wsId: string, meetingId: string, operationId: string, body: MeetingDirectory.CockpitDirectoryRetryInput) {
+    return this.writeCockpitDirectoryCommand(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId, "/retry"), "directory_retry", body, operationId);
+  }
+  async controlCockpitDirectory(wsId: string, meetingId: string, operationId: string, body: MeetingDirectory.CockpitDirectoryControlInput) {
+    return this.writeCockpitDirectoryCommand(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId, "/control"), `directory_${body.transition}`, body, operationId);
   }
 
   private cockpitTemplatePath(wsId: string, suffix = ""): string {

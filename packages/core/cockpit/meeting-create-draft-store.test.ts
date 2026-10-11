@@ -22,6 +22,20 @@ describe("durable meeting creation intent", () => {
     checkpointCockpitMeetingCreation(key, next, { workflowCreated: true }); settleCockpitMeetingCreation(key, next, "accepted");
     expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope[key]).toBeUndefined();
   });
+  it("retains an acknowledged background directory plan without declaring its directories ready or resubmitting changed intent", () => {
+    const confirmed = { ...input, provision: { create_dir: true, base_dir: "/approved/meetings" } };
+    const command = prepareCockpitMeetingCreation(key, confirmed);
+    checkpointCockpitMeetingCreation(key, command, { meetingId: "meeting", workflowCreated: true });
+    const operation = "10000000-0000-4000-8000-000000000003";
+    checkpointCockpitMeetingCreation(key, command, { directoryOperationId: operation });
+    const restored = prepareCockpitMeetingCreation(key, { ...confirmed, provision: { create_dir: false, base_dir: "/different" } });
+    expect(restored.directoryOperationId).toBe(operation);
+    expect(restored.directoryReady).toBe(false);
+    expect(restored.provision).toEqual(confirmed.provision);
+    expect(restored.meetingId).toBe("meeting");
+    settleCockpitMeetingCreation(key, restored, "accepted");
+    expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope[key]).toBeUndefined();
+  });
   it("allows a definite first rejection to be corrected, while logout and other scopes cannot be resurrected by late receipts", () => {
     const rejected = prepareCockpitMeetingCreation(key, input); settleCockpitMeetingCreation(key, rejected, "rejected"); expect(useCockpitMeetingCreateDraftStore.getState().draft.byScope[key]).toBeUndefined();
     const command = prepareCockpitMeetingCreation(key, input); resetAllRegisteredDrafts(); checkpointCockpitMeetingCreation(key, command, { meetingId: "late" }); settleCockpitMeetingCreation(key, command, "uncertain");

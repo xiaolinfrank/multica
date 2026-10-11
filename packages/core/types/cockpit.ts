@@ -421,6 +421,7 @@ export type CockpitEventScope =
   | "meeting_workflow"
   | "meeting_lifecycle"
   | "meeting_templates"
+  | "meeting_directory"
   | "meeting_preparation"
   | "meeting_actions"
   | "primary_node"
@@ -553,6 +554,9 @@ export interface CockpitMeetingProvision {
 }
 
 export interface CockpitMeetingProvisionResult {
+  directory_operation_id?: string;
+  directory_state?: string;
+  dir_error_code?: string;
   meeting: CockpitMeeting;
   issues: CockpitMeetingIssueLink[];
   task: CockpitMeetingIssueLink | null;
@@ -774,7 +778,19 @@ export interface CockpitMeetingImportItem {
   kind?: string;
 }
 
+export interface CockpitMeetingImportDirectoryResult {
+  name: string;
+  meeting_id: string;
+  directory_operation_id: string;
+  directory_state: string;
+  dir_created: boolean;
+  dir_error: string;
+  dir_error_code: string;
+}
+export interface CockpitMeetingImportTaskError { name: string; meeting_id: string; error: string }
 export interface CockpitMeetingImportResult {
+  directory_results?: CockpitMeetingImportDirectoryResult[] | null;
+  task_errors?: CockpitMeetingImportTaskError[];
   meetings: CockpitMeeting[];
   issues: CockpitMeetingIssueLink[];
   /** Folders that were asked for and not imported, each with why. One folder

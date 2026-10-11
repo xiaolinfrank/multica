@@ -7,6 +7,8 @@ import { api } from "../api";
 import { CockpitBoardSchema, CockpitMeetingSchema } from "../api/schemas";
 import type { CockpitBoard, CockpitMeeting } from "../types";
 import { cockpitKeys } from "./queries";
+import { cockpitReadKeys } from "./read-queries";
+import { cockpitDirectoryKeys } from "./meeting-directory-queries";
 import { CockpitUnconfirmedWriteError } from "./errors";
 import { useSaveCockpitMeetingMaterials } from "./mutations";
 
@@ -28,6 +30,9 @@ function setup() {
   const board = CockpitBoardSchema.parse({ cockpit: { id: "cp" }, meetings: [a, b] });
   client.setQueryData(cockpitKeys.board("ws-1"), board);
   client.setQueryData(cockpitKeys.board("ws-2"), board);
+  for (const [ws, meeting] of [["ws-1", a.id], ["ws-1", b.id], ["ws-2", a.id]]) {
+    client.setQueryData(cockpitDirectoryKeys.summary(ws!, meeting!), { binding: "Last confirmed path" });
+  }
   function Wrapper({ children }: { children: ReactNode }) { return <QueryClientProvider client={client}>{children}</QueryClientProvider>; }
   const { result } = renderHook(() => useSaveCockpitMeetingMaterials("ws-1"), { wrapper: Wrapper });
   const cached = () => client.getQueryData<CockpitBoard>(cockpitKeys.board("ws-1"))!;
@@ -70,9 +75,15 @@ describe("confirmed meeting material writes", () => {
     });
     expect(cached()).toEqual(board);
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all("ws-1") }],
       [{ queryKey: cockpitKeys.board("ws-1"), exact: true }],
       [{ queryKey: cockpitKeys.workflow("ws-1", a.id), exact: true }],
+      [{ queryKey: cockpitDirectoryKeys.meeting("ws-1", a.id) }],
     ]);
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-1", a.id))?.isInvalidated).toBe(true);
+    expect(client.getQueryData(cockpitDirectoryKeys.summary("ws-1", a.id))).toEqual({ binding: "Last confirmed path" });
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-1", "meeting-b"))?.isInvalidated).toBe(false);
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-2", a.id))?.isInvalidated).toBe(false);
   });
 
   it("merges only the confirmed fields when note and directory saves settle out of order", async () => {
@@ -92,10 +103,16 @@ describe("confirmed meeting material writes", () => {
     await act(async () => { noteSave.resolve({ ...a, note: "Saved new note" }); await notePending; });
     expect(cached().meetings[0]).toMatchObject({ note: "Saved new note", nas_dir: "/Volumes/share/Confirmed" });
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all("ws-1") }],
       [{ queryKey: cockpitKeys.board("ws-1"), exact: true }],
       [{ queryKey: cockpitKeys.workflow("ws-1", a.id), exact: true }],
+      [{ queryKey: cockpitDirectoryKeys.meeting("ws-1", a.id) }],
+      [{ queryKey: cockpitReadKeys.all("ws-1") }],
       [{ queryKey: cockpitKeys.board("ws-1"), exact: true }],
     ]);
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-1", a.id))?.isInvalidated).toBe(true);
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-1", "meeting-b"))?.isInvalidated).toBe(false);
+    expect(client.getQueryState(cockpitDirectoryKeys.summary("ws-2", a.id))?.isInvalidated).toBe(false);
   });
 
   it("does not resurrect a deleted meeting when its earlier save is acknowledged", async () => {

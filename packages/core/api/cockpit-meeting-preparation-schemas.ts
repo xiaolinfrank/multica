@@ -1,3 +1,4 @@
+import { CockpitDirectoryCancellationImpactSchema, CockpitDirectoryCancellationEffectSchema } from "./cockpit-meeting-directory-schemas";
 import { z } from "zod";
 import { CockpitTaskSchema } from "./schemas";
 import { IssueOperationFieldSchema, IssueOperationTargetSchema } from "./issue-operation-basis-schemas";
@@ -312,6 +313,7 @@ export const CockpitPreparationAuthorizationSchema = z.object({
   .refine((v) => !v.selected_run || !v.impact || v.selected_run.issue_id === v.impact.issue.id);
 
 export const CockpitPreparationCommandReceiptSchema = z.object({
+  directory_effect: CockpitDirectoryCancellationEffectSchema.nullable().default(null),
   operation_id: id,
   kind: z.string(),
   revision: revision,
@@ -404,6 +406,7 @@ export const CockpitDispositionRunPageSchema = z.object({
   .refine((v) => v.items.every((i) => i.issue_id === v.issue_id));
 
 export const CockpitCancellationPreviewSchema = z.object({
+  directory_impact: CockpitDirectoryCancellationImpactSchema.nullable().default(null),
   intent: z.string(),
   workspace_id: id,
   meeting_id: id,
@@ -423,6 +426,7 @@ export const CockpitCancellationPreviewSchema = z.object({
   .transform((v) => ({ ...v, can_confirm: v.can_confirm && ((v.intent === "cancel" && ["unconfirmed", "scheduled"].includes(v.occurrence.state)) || (v.intent === "append_disposition" && v.occurrence.state === "cancelled")) && v.effects.every((e) => !e.selected || e.allowed && effectKinds.has(e.kind)) }));
 
 export const CockpitMeetingPendingCountsSchema = z.object({
+  directory_operations: count.default(0),
   minutes_review: count,
   draft_actions: count,
   active_preparation_issues: count,

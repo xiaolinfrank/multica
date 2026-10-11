@@ -2075,6 +2075,9 @@ export const CockpitDirectorySchema = z.object({
 }).loose();
 
 export const CockpitMeetingProvisionResultSchema = z.object({
+  directory_operation_id: z.union([z.string().uuid(), z.literal("")]).default(""),
+  directory_state: z.string().default(""),
+  dir_error_code: z.string().default(""),
   meeting: CockpitMeetingSchema,
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
   task: CockpitMeetingIssueLinkSchema.nullable().default(null),
@@ -2332,7 +2335,15 @@ export const CockpitMeetingScanReadSchema = CockpitMeetingScanSchema.extend({
   matched: z.number().int().nonnegative(), truncated: z.boolean(), error: z.string(),
 });
 
+export const CockpitMeetingImportDirectoryResultSchema = z.object({
+  name: z.string().min(1), meeting_id: z.string().min(1),
+  directory_operation_id: z.union([z.string().uuid(), z.literal("")]), directory_state: z.string(),
+  dir_created: z.boolean(), dir_error: z.string(), dir_error_code: z.string().default(""),
+}).refine((value) => value.directory_operation_id ? Boolean(value.directory_state) && (value.directory_state === "completed" || Boolean(value.dir_error)) : Boolean(value.dir_error),
+  "Directory preparation must identify its retained operation or explain why no plan was authorized");
 export const CockpitMeetingImportResultSchema = z.object({
+  directory_results: z.array(CockpitMeetingImportDirectoryResultSchema).max(500).nullable().default(null),
+  task_errors: z.array(z.object({ name: z.string().min(1), meeting_id: z.string().min(1), error: z.string().min(1) })).max(500).default([]),
   meetings: z.array(CockpitMeetingSchema).default([]),
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
   skipped: z

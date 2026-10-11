@@ -86,7 +86,7 @@ function effectResult(patch: Partial<CockpitPreparationEffectResult> = {}): Cock
     receipt: effectReceipt(), current: operation({ revision: 3, state: "completed", counts: { total: 1, pending: 0, applied: 1, needs_attention: 0, skipped: 0 }, can_continue: false, can_pause: false }), ...patch };
 }
 function commandReceipt(patch: Partial<CockpitPreparationCommandReceipt> = {}): CockpitPreparationCommandReceipt {
-  return { operation_id: OP, kind: "apply_template", revision: 1, state: "active", effect_ids: [EFFECT], effect_id: null, reason: "",
+  return { directory_effect: null, operation_id: OP, kind: "apply_template", revision: 1, state: "active", effect_ids: [EFFECT], effect_id: null, reason: "",
     request_hash: HASH, occurrence: null, context_token: TOKEN, template_version_id: VERSION, authorization: null, previous_authorization: null, ...patch };
 }
 function commandResult(patch: Partial<CockpitPreparationCommandResult> = {}): CockpitPreparationCommandResult {
@@ -108,7 +108,7 @@ function envelope(patch: Partial<CockpitLifecycleReceipt> = {}): CockpitLifecycl
     archive: null, previous_archive: null, preparation: null, ...patch };
 }
 function history(patch: Partial<CockpitLifecycleCommandDetail> = {}): CockpitLifecycleCommandDetail {
-  return { workspace_id: WS, meeting_id: MEETING, command_key: KEY, action: "template_apply", actor_id: USER, actor_name: "Template owner",
+  return { workspace_id: WS, meeting_id: MEETING, command_key: KEY, action: "template_apply", actor_id: USER, actor_type: "member", actor_name: "Template owner",
     created_at: TIME, revision: 4, agenda_id: null, reference_id: null, issue_id: null, operation_id: OP, effect_id: null, receipt: envelope({ preparation: commandReceipt() }), ...patch };
 }
 function task(patch: Partial<CockpitTask> = {}): CockpitTask {
@@ -126,7 +126,7 @@ function run(patch: Partial<CockpitDispositionRun> = {}): CockpitDispositionRun 
     is_wakeup: false, can_stop: true, blocked_reasons: [], ...patch };
 }
 function cancellationPreview(patch: Partial<CockpitCancellationPreview> = {}): CockpitCancellationPreview {
-  return { intent: "cancel", workspace_id: WS, meeting_id: MEETING, lifecycle_revision: 4, context_token: TOKEN, occurrence: occurrence(),
+  return { directory_impact: null, intent: "cancel", workspace_id: WS, meeting_id: MEETING, lifecycle_revision: 4, context_token: TOKEN, occurrence: occurrence(),
     affected_issue_total: 28, unselected_issue_total: 27, active_run_total: 9, unselected_run_total: 9,
     effects: [{ slot_id: ISSUE, kind: "cancel_issue", label: "Collect evidence", agenda_slot_id: null, selected: true, allowed: true,
       reason_codes: [], targets: [], issue_impact: issueImpact(), scope: null }], selected_total: 1, can_confirm: true, blocked_reasons: [], ...patch };
@@ -135,7 +135,7 @@ function basis(patch: Partial<CockpitMeetingOperationBasis> = {}): CockpitMeetin
   const allowed = () => ({ state: "allowed" as const, reason_codes: [] });
   return { workspace_id: WS, meeting_id: MEETING, schema_version: 1, generated_at: TIME, availability: "available", lifecycle_revision: 4,
     delete: { state: "blocked", reason_codes: ["preparation_history"] }, cancel: allowed(), reinstate: allowed(), archive: allowed(), unarchive: allowed(),
-    add_preparation: allowed(), apply_template: allowed(), append_disposition: allowed(), can_add_preparation: true, pending: { minutes_review: 1, draft_actions: 2,
+    add_preparation: allowed(), apply_template: allowed(), append_disposition: allowed(), can_add_preparation: true, pending: { directory_operations: 0, minutes_review: 1, draft_actions: 2,
       active_preparation_issues: 3, active_runs: 4, nas_operations: 5, preparation_operations: 1 }, current_operation: operation(), targets: [], targets_total: 0, ...patch };
 }
 function applyBody(patch: Partial<CockpitPreparationEffectApplyInput> = {}): CockpitPreparationEffectApplyInput {
@@ -397,6 +397,25 @@ describe("meeting template and disposition API boundaries", () => {
       { ...value, receipt: { ...value.receipt, reason: "Different cancellation" } }, { ...value, receipt: { ...value.receipt, context_token: "another-preview" } }]) {
       await expect(reply(bad).client.cancelCockpitMeeting(WS, MEETING, body)).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
     }
+  });
+
+  it("preserves directory pause counts and bounded identities without claiming that an active filesystem call was undone", async () => {
+    const selection = { reason: "The planned discussion will not be held.", issues: [], run_ids: [] };
+    const impact = { unfinished_total: 202, will_pause_total: 150, sample_operation_ids: Array.from({ length: 100 }, (_, n) => id(200 + n)), facts_hash: HASH };
+    const preview = cancellationPreview({ directory_impact: impact, effects: [], selected_total: 0 });
+    await expect(reply(preview).client.previewCockpitMeetingCancellation(WS, MEETING, selection)).resolves.toEqual(preview);
+    for (const changed of [{ ...impact, will_pause_total: 203 }, { ...impact, sample_operation_ids: [OP, OP] }, { ...impact, facts_hash: "" }, { ...impact, will_pause_total: 99 }]) {
+      await expect(reply({ ...preview, directory_impact: changed }).client.previewCockpitMeetingCancellation(WS, MEETING, selection)).rejects.toBeInstanceOf(CockpitUnconfirmedReadError);
+    }
+    const body = { ...selection, command_key: KEY, expected_revision: 4, context_token: TOKEN };
+    const fixed = occurrence({ state: "cancelled", cancelled_at: TIME, cancelled_by: USER, cancelled_reason: selection.reason });
+    const effect = { paused_total: 150, sample_operation_ids: impact.sample_operation_ids, facts_hash: HASH };
+    const value = commandResult({ action: "cancel", receipt: commandReceipt({ kind: "cancel_preparation", template_version_id: null, effect_ids: [], reason: selection.reason, occurrence: fixed, directory_effect: effect, state: "completed" }),
+      current: operation({ kind: "cancel_preparation", template_id: null, template_version_id: null, state: "completed", counts: { total: 0, pending: 0, applied: 0, needs_attention: 0, skipped: 0 }, can_continue: false, can_pause: false }) });
+    await expect(reply(value).client.cancelCockpitMeeting(WS, MEETING, body)).resolves.toEqual(value);
+    await expect(reply({ ...value, receipt: { ...value.receipt, directory_effect: { ...effect, paused_total: 1 } } }).client.cancelCockpitMeeting(WS, MEETING, body)).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
+    const legacy = { ...preview, directory_impact: undefined };
+    await expect(reply(legacy).client.previewCockpitMeetingCancellation(WS, MEETING, selection)).resolves.toMatchObject({ directory_impact: null });
   });
 
   it("keeps archive, unarchive and reinstatement receipts independent from later lifecycle facts", async () => {

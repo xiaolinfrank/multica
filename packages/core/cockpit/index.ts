@@ -103,3 +103,7 @@ export * from "./meeting-preparation-draft-store";
 export * from "./meeting-preparation";
 export * from "./meeting-preparation-queries";
 export * from "./meeting-preparation-mutations";
+export * from "./meeting-directory";
+export * from "./meeting-directory-queries";
+export * from "./meeting-directory-mutations";
+export * from "./meeting-directory-draft-store";

@@ -1,8 +1,28 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingAgendaPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitMeetingDirectoryPath, cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingAgendaPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
+  it("keeps directory plans distinct from preparation instances and prevents cross-meeting carryover", () => {
+    const source = new URLSearchParams("meeting=m1&agenda=a1&preparation=p1&project=pr1&meeting_archive=all&from=2026-10-01");
+    const opened = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m1", "d1", source), "https://example.test");
+    expect(cockpitDestination(opened.searchParams)).toMatchObject({ meetingId: "m1", meetingView: "resources", directoryOperationId: "d1", preparationId: "p1", agendaId: "a1" });
+    expect(cockpitDestination(opened.searchParams).key).toBe(cockpitDestination(source).key);
+    const agenda = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", cockpitScope(source), opened.searchParams, "agenda"), "https://example.test");
+    expect(agenda.searchParams.get("directory_operation")).toBe("d1");
+    const closed = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m1", null, opened.searchParams), "https://example.test");
+    expect(closed.searchParams.has("directory_operation")).toBe(false);
+    expect(closed.searchParams.get("preparation")).toBe("p1");
+    expect(closed.searchParams.get("meeting_archive")).toBe("all");
+    expect(closed.searchParams.get("from")).toBe("2026-10-01");
+    const other = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m2", "d2", opened.searchParams), "https://example.test");
+    expect(other.searchParams.has("agenda")).toBe(false); expect(other.searchParams.has("preparation")).toBe(false);
+    for (const path of [cockpitMeetingAgendaPath("/acme/cockpit", "m2", "a2", opened.searchParams), cockpitMeetingPreparationPath("/acme/cockpit", "m2", "p2", opened.searchParams)]) {
+      expect(new URL(path, "https://example.test").searchParams.has("directory_operation")).toBe(false);
+    }
+    expect(cockpitDestination(new URLSearchParams("directory_operation=orphan")).directoryOperationId).toBeNull();
+    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", directoryOperationId: "d1" })).toBe("/acme/cockpit?meeting=m1&directory_operation=d1&meeting_view=resources");
+  });
   it("returns from a preparation instance to its topic without transferring it to another meeting", () => {
     const source = new URLSearchParams("meeting=m1&agenda=topic-1&action=a1&project=p1&from=2026-10-01&custom_filter=kept");
     const opened = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m1", "operation-1", source), "https://example.test");

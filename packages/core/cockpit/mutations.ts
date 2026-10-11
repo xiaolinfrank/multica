@@ -1,5 +1,7 @@
 "use client";
 
+import { invalidateCockpitDirectoryProjections } from "./meeting-directory-queries";
+
 import type { CockpitNodeCreate } from "../types/cockpit";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -429,11 +431,14 @@ export function useSaveCockpitMeetingMaterials(wsId: string) {
         ? { ...current, ...(patch.note !== undefined ? { note: meeting.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: meeting.nas_dir } : {}) }
         : current) }));
     },
-    onSettled: (_meeting, _error, { id, patch }) => {
+    onSettled: async (_meeting, _error, { id, patch }) => {
       void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
       // A later response to an earlier same-field save must converge on current server state.
       void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId), exact: true });
-      if (patch.nas_dir !== undefined) void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+      if (patch.nas_dir !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+        await invalidateCockpitDirectoryProjections(queryClient, wsId, id);
+      }
     },
   });
 }
@@ -445,7 +450,10 @@ export function useUpdateCockpitMeeting(wsId: string) {
     async ({ id, patch }: { id: string; patch: CockpitMeetingPatch }) => {
       try { return await api.updateCockpitMeeting(id, patch); }
       finally {
-        if (patch.nas_dir !== undefined) void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+        if (patch.nas_dir !== undefined) {
+          void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+          await invalidateCockpitDirectoryProjections(queryClient, wsId, id);
+        }
       }
     },
     ({ id, patch }, board) => ({

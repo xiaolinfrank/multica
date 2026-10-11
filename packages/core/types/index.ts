@@ -267,6 +267,8 @@ export type {
   CockpitMeetingScanEntry,
   CockpitMeetingImportItem,
   CockpitMeetingImportResult,
+  CockpitMeetingImportDirectoryResult,
+  CockpitMeetingImportTaskError,
   CockpitDirectoryEntry,
   CockpitDirectory,
   CockpitBoard,
@@ -455,3 +457,4 @@ export type * from "./issue-batch";
 export type * from "./cockpit-meeting-lifecycle";
 
 export * from "./cockpit-meeting-preparation";
+export * from "./cockpit-meeting-directory";

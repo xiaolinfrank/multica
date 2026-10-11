@@ -50,7 +50,7 @@ function page() { return { workspace_id: WS, meeting_id: MEETING, agenda_revisio
   page_size: 25, items: [metadata()], total: 1000, next_cursor: "page-two" }; }
 function referencePage() { return { workspace_id: WS, meeting_id: MEETING, agenda_id: AGENDA, agenda_revision: 9,
   include_removed: false, page_size: 25, items: [reference()], total: 27, next_cursor: "next-references" }; }
-function historyMetadata() { return { command_key: KEY, action: "agenda_update", actor_id: USER, actor_name: "Reviewer", created_at: TIME,
+function historyMetadata() { return { command_key: KEY, action: "agenda_update", actor_id: USER, actor_type: "member", actor_name: "Reviewer", created_at: TIME,
   revision: 2, agenda_id: AGENDA, reference_id: null, issue_id: null }; }
 function reply(body: unknown) {
   const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -130,6 +130,7 @@ describe("meeting lifecycle API boundaries", () => {
     const value = { ...historyMetadata(), workspace_id: WS, meeting_id: MEETING, receipt: receipt({ agenda_id: AGENDA, agenda: agenda() }) };
     const { client, fetchMock } = reply(value); await expect(client.getCockpitLifecycleCommand(WS, MEETING, KEY)).resolves.toEqual(value);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${endpoint}/lifecycle/commands/${KEY}`); expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(reply({ ...value, actor_type: undefined }).client.getCockpitLifecycleCommand(WS, MEETING, KEY)).resolves.toEqual(value);
     for (const bad of [{ ...value, command_key: OTHER }, { ...value, workspace_id: OTHER }, { ...value, meeting_id: OTHER },
       { ...value, receipt: receipt({ agenda_id: AGENDA, agenda: agenda({ id: OTHER }) }) }, { ...value, receipt: receipt({ agenda_id: AGENDA, agenda: agenda(), revision: 3 }) }]) {
       await expect(reply(bad).client.getCockpitLifecycleCommand(WS, MEETING, KEY)).resolves.toBeNull();

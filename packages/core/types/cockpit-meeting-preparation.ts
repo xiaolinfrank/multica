@@ -1,3 +1,4 @@
+import type { CockpitDirectoryCancellationImpact, CockpitDirectoryCancellationEffect } from "./cockpit-meeting-directory";
 import type { CockpitTask } from "./cockpit";
 import type { IssueOperationField, IssueOperationTarget } from "./issue-operation-basis";
 import type { CockpitLifecycleCommandInput, CockpitOccurrenceView, CockpitLifecyclePageQuery } from "./cockpit-meeting-lifecycle";
@@ -266,6 +267,7 @@ export interface CockpitPreparationControlInput extends CockpitLifecycleCommandI
 }
 
 export interface CockpitPreparationCommandReceipt {
+  directory_effect?: CockpitDirectoryCancellationEffect | null;
   operation_id: string;
   kind: string;
   revision: number;
@@ -424,6 +426,7 @@ export interface CockpitCancellationPreviewInput {
 }
 
 export interface CockpitCancellationPreview {
+  directory_impact?: CockpitDirectoryCancellationImpact | null;
   intent: string;
   workspace_id: string;
   meeting_id: string;
@@ -456,6 +459,7 @@ export interface CockpitMeetingArchiveView {
 }
 
 export interface CockpitMeetingPendingCounts {
+  directory_operations?: number;
   minutes_review: number;
   draft_actions: number;
   active_preparation_issues: number;

@@ -1,3 +1,4 @@
+import { CockpitDirectoryCommandReceiptSchema } from "./cockpit-meeting-directory-schemas";
 import { z } from "zod";
 import { CockpitTaskSchema } from "./schemas";
 import { CockpitOccurrenceSchema, CockpitMeetingArchiveSchema, cockpitOccurrenceStates as occurrenceStates } from "./cockpit-meeting-common-schemas";
@@ -70,6 +71,7 @@ export const CockpitLifecycleReceiptSchema = z.object({
   agenda: CockpitAgendaDetailSchema.nullable(), reference: CockpitAgendaReferenceSchema.nullable(),
   archive: CockpitMeetingArchiveSchema.nullable().optional(), previous_archive: CockpitMeetingArchiveSchema.nullable().optional(),
   preparation: CockpitPreparationCommandReceiptSchema.nullable().optional(),
+  directory: CockpitDirectoryCommandReceiptSchema.nullable().optional(),
 });
 export const CockpitLifecycleCommandResultSchema = z.object({
   workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: CockpitLifecycleActionSchema,
@@ -98,17 +100,24 @@ export const CockpitLifecycleCommandResultSchema = z.object({
 
 export const CockpitLifecycleCommandPageSchema = z.object({
   workspace_id: id, meeting_id: id, page_size: z.number().int().min(1).max(100),
-  items: z.array(z.object({ command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_name: z.string(),
-    created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional() })).max(100),
+  items: z.array(z.object({ command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_type: z.string().default("member"), actor_name: z.string(),
+    created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), directory_operation_id: id.nullable().optional(), directory_step_id: id.nullable().optional() })).max(100),
   total: count, next_cursor: id.nullable(),
 }).refine((page) => page.items.length <= page.page_size && page.items.length <= page.total
   && new Set(page.items.map((item) => item.command_key)).size === page.items.length, "Command metadata page repeats or exceeds its items");
 
 export const CockpitLifecycleCommandDetailSchema = z.object({
-  workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_name: z.string(),
-  created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), receipt: CockpitLifecycleReceiptSchema,
+  workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_type: z.string().default("member"), actor_name: z.string(),
+  created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), directory_operation_id: id.nullable().optional(), directory_step_id: id.nullable().optional(), receipt: CockpitLifecycleReceiptSchema,
 }).refine((value) => value.receipt.revision === value.revision && value.receipt.agenda_id === value.agenda_id
   && value.receipt.reference_id === value.reference_id && value.receipt.issue_id === value.issue_id
+  && (!value.receipt.directory || !value.receipt.preparation && value.operation_id == null && value.effect_id == null
+    && value.receipt.directory.directory_operation_id === value.directory_operation_id
+    && value.receipt.directory.request_hash === value.receipt.request_hash
+    && value.receipt.directory.principal.actor_type === value.actor_type
+    && value.receipt.directory.principal.actor_id === value.actor_id
+    && (!value.directory_step_id || value.receipt.directory.directory_step_ids.includes(value.directory_step_id)))
+  && (!value.receipt.preparation || value.directory_operation_id == null && value.directory_step_id == null)
   && (!value.receipt.preparation || value.receipt.preparation.operation_id === value.operation_id && value.receipt.preparation.effect_id === (value.effect_id ?? null))
   && (!value.receipt.preparation || value.receipt.preparation.request_hash === value.receipt.request_hash
     && (value.action !== "template_apply" || value.receipt.preparation.kind === "apply_template")
