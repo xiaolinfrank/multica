@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   buildCockpitDisplayCodesFromIndex, cockpitMeetingDetailOptions, cockpitMeetingIssuesOptions, cockpitMeetingNodesOptions,
-  cockpitMeetingWorkflowOptions, cockpitScopeMembersOptions, cockpitRelationViewKey,
+  cockpitMeetingWorkflowOptions, cockpitScopeMembersOptions, cockpitRelationViewKey, cockpitMeetingOperationBasisOptions, cockpitMeetingPreparationPath,
   useCockpitScopeViewStore, EMPTY_COCKPIT_RELATION_PAGE, cockpitObjectPath, cockpitSurfacePath,
   useAppendCockpitMeetingIssue, useAppendCockpitMeetingNode, useDeleteCockpitMeetingIssue, useDeleteCockpitMeetingNode,
   useSetCockpitMeetingIssueRolesCompact, useUpdateCockpitMeeting, useSaveCockpitMeetingMaterials, useProvisionCockpitMeeting,
@@ -23,6 +23,8 @@ import { CockpitMeetingArtifactReferences } from "./cockpit-meeting-artifact-ref
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
+import { CockpitMeetingOperationsMenu, CockpitMeetingRetentionNotice } from "./cockpit-meeting-operations-menu";
+import { CockpitPreparationReasons } from "./cockpit-preparation-preview";
 
 export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpenNode }: {
   wsId: string; meetingId: string; scope: CockpitScope; onClose: () => void; onOpenNode: (id: string) => void;
@@ -33,6 +35,9 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const close = () => { if (stillCurrent()) onClose(); };
   const query = useQuery(cockpitMeetingDetailOptions(wsId, meetingId, scope));
   const detail = query.data;
+  const preparationAvailable = detail?.capabilities?.meeting_templates === true || detail?.capabilities?.meeting_disposition === true;
+  const basis = useQuery({ ...cockpitMeetingOperationBasisOptions(wsId, meetingId), enabled: preparationAvailable });
+  const [actionsOpen, setActionsOpen] = useState(false); const [authorizedPreparationId, setAuthorizedPreparationId] = useState<string | null>(null);
   const workflow = useQuery(cockpitMeetingWorkflowOptions(wsId, meetingId));
   const actorId = detail?.actor.user_id ?? "";
   const memberIds = [...new Set([actorId, workflow.data?.reviewer_id, workflow.data?.current_version?.reviewer_id,
@@ -63,6 +68,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
     {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} /> : <Spinner />}
   </aside>;
   const readOnly = !detail.actor.is_human || !detail.scope_match || query.isError;
+  const canAddPreparation = !preparationAvailable || !basis.isError && basis.data?.availability === "available" && basis.data.can_add_preparation;
   const defaults = detail.cockpit;
   const projectId = scope.projectId ?? defaults?.meeting_project_id ?? null;
   const moduleId = scope.moduleId ?? (!scope.projectId || scope.projectId === defaults?.meeting_project_id ? defaults?.meeting_module_id ?? null : null);
@@ -79,16 +85,19 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   };
   return <><CockpitMeetingPanel wsId={wsId} currentUserId={actorId} meeting={detail.meeting}
     lifecycleAvailable={detail.capabilities?.meeting_lifecycle === true}
-    artifactReferences={detail.capabilities?.artifacts === true ? <CockpitMeetingArtifactReferences key={`${wsId}:${meetingId}`} wsId={wsId} meetingId={meetingId} readOnly={readOnly} /> : undefined}
+    templatesAvailable={detail.capabilities?.meeting_templates === true} canAddPreparation={canAddPreparation} dispositionAvailable={detail.capabilities?.meeting_disposition === true}
+    artifactReferences={detail.capabilities?.artifacts === true ? <CockpitMeetingArtifactReferences key={`${wsId}:${meetingId}`} wsId={wsId} meetingId={meetingId} readOnly={readOnly || !canAddPreparation} /> : undefined}
+    meetingActions={<CockpitMeetingOperationsMenu wsId={wsId} meeting={detail.meeting} open={actionsOpen} onOpenChange={setActionsOpen} available={preparationAvailable} dispositionAvailable={detail.capabilities?.meeting_disposition === true} readOnly={readOnly} legacyDeleteAllowed={workflow.data?.enabled === false && !workflow.isError} onDelete={() => { setDeleteError(""); setDeleting(true); }} onPrepared={(id, advance) => { setAuthorizedPreparationId(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(navigation.pathname, meetingId, id, navigation.searchParams)); }} />}
+    authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={() => setAuthorizedPreparationId(null)}
     meetings={[detail.meeting]} members={people}
     defaultPlacement={{ project_id: projectId, module_id: moduleId, node_id: defaultNodeId }}
     defaultAssigneeType={defaults?.meeting_assignee_type || null} defaultAssigneeId={defaults?.meeting_assignee_id ?? null}
     issueLinks={issuePage?.items ?? []} nodeLinks={nodePage?.items ?? []} nodeLabels={labels} nodeCodes={codes} issuePaging={pager("issues")} nodePaging={pager("nodes")} issuePageReady={Boolean(issuePage)} nodePageReady={Boolean(nodePage)}
     readOnly={readOnly} onClose={close} onOpenNode={onOpenNode} onPatch={(patch) => update.mutate({ id: meetingId, patch }, { onError: fail })}
-    onLinkIssue={(issueId) => appendIssue.mutateAsync({ meetingId, issueId })}
+    onLinkIssue={(issueId) => canAddPreparation ? appendIssue.mutateAsync({ meetingId, issueId }) : Promise.reject(new Error(t(($) => $.meeting_disposition.preparation_blocked)))}
     onUnlinkIssue={(issueId) => unlinkIssue.mutate({ meetingId, issueId }, { onError: fail })}
     onSaveIssueRoles={(issueId, nextRoles) => roles.mutateAsync({ meetingId, issueId, roles: nextRoles })}
-    onLinkNode={(nodeId) => appendNode.mutateAsync({ meetingId, nodeId })}
+    onLinkNode={(nodeId) => canAddPreparation ? appendNode.mutateAsync({ meetingId, nodeId }) : Promise.reject(new Error(t(($) => $.meeting_disposition.preparation_blocked)))}
     onUnlinkNode={(nodeId) => unlinkNode.mutate({ meetingId, nodeId }, { onError: fail })}
     onSaveDirectoryEntry={(entry) => saveContacts([entry])} onAutoSaveDirectory={(entries) => upsertDirectory.mutate({ entries: entries.map(({ party, name, position }) => ({ party, name, position })), only_unknown_names: true }, { onError: fail })}
     onDeleteDirectoryEntry={async (entry) => { try { await deleteContact.mutateAsync(entry); return true; } catch { toast.error(t(($) => $.meetings.directory_delete_failed)); return false; } }}
@@ -97,16 +106,17 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
       if (result.dir_error) throw new Error(result.dir_error);
       if (result.meeting.id !== meetingId || !result.meeting.nas_dir?.trim()) throw new Error(t(($) => $.workflow.unconfirmed)); }}
     onDelete={() => { setDeleteError(""); setDeleting(true); }}
-    notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "meeting", id: meetingId }, { projectId: null, moduleId: null })} className="text-primary underline">{t(($) => $.shell.clear_scope)}</AppLink></div>
-      : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} /> : undefined} />
+    notice={!detail.scope_match || query.isError || detail.meeting.archived_at || detail.meeting.occurrence_state === "cancelled" ? <>{!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "meeting", id: meetingId }, { projectId: null, moduleId: null })} className="text-primary underline">{t(($) => $.shell.clear_scope)}</AppLink></div>
+      : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} /> : null}<CockpitMeetingRetentionNotice meeting={detail.meeting} basis={basis.data} onManage={() => setActionsOpen(true)} /></> : undefined} />
     <AlertDialog open={deleting} onOpenChange={(open) => { if (!deleteLock.current) setDeleting(open); }}><AlertDialogContent><AlertDialogHeader>
       <AlertDialogTitle>{t(($) => $.meeting.delete, { title: detail.meeting.title || detail.meeting.code })}</AlertDialogTitle><AlertDialogDescription>{t(($) => $.confirmation.delete_description, { label: detail.meeting.title || detail.meeting.code })}</AlertDialogDescription></AlertDialogHeader>
+      {preparationAvailable && (basis.isError ? <CockpitFlowError onRetry={() => void basis.refetch()} /> : basis.data?.delete.state !== "allowed" ? <CockpitPreparationReasons codes={basis.data?.delete.reason_codes ?? []} targets={basis.data?.targets ?? []} /> : null)}
       {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
       <AlertDialogFooter><AlertDialogCancel render={<Button type="button" variant="outline" disabled={remove.isPending} />}>{t(($) => $.task_create.cancel)}</AlertDialogCancel>
-        <Button type="button" variant="destructive" disabled={remove.isPending || workflow.data?.enabled !== false || workflow.isError} onClick={() => {
-          if (deleteLock.current || workflow.data?.enabled !== false) return; deleteLock.current = true;
-          void remove.mutateAsync(meetingId).then(() => { setDeleting(false); if (stillCurrent()) navigation.push(cockpitSurfacePath(navigation.pathname, "meetings", scope)); })
-            .catch((cause: unknown) => setDeleteError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))).finally(() => { deleteLock.current = false; });
+        <Button type="button" variant="destructive" disabled={remove.isPending || readOnly || (preparationAvailable ? basis.isError || basis.data?.availability !== "available" || basis.data.delete.state !== "allowed" : workflow.data?.enabled !== false || workflow.isError)} onClick={() => {
+          if (deleteLock.current || readOnly || (preparationAvailable ? basis.isError || basis.data?.availability !== "available" || basis.data.delete.state !== "allowed" : workflow.data?.enabled !== false || workflow.isError)) return; deleteLock.current = true;
+          void remove.mutateAsync(meetingId).then(() => { if (stillCurrent()) { setDeleting(false); navigation.push(cockpitSurfacePath(navigation.pathname, "meetings", scope)); } })
+            .catch((cause: unknown) => { if (stillCurrent()) setDeleteError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed)); }).finally(() => { deleteLock.current = false; });
         }}>{remove.isPending && <Spinner />}{t(($) => $.meeting.delete, { title: detail.meeting.title || detail.meeting.code })}</Button></AlertDialogFooter>
     </AlertDialogContent></AlertDialog>
   </>;

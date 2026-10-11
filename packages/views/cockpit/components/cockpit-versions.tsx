@@ -250,12 +250,13 @@ function SnapshotRunRow({
  * re-checks regardless. Stable bindings separately protect board identity,
  * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, meetingsHref }: {
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, hasMeetingPreparation = false, meetingsHref }: {
   wsId: string;
   canRestore: boolean;
   hasStableBindings?: boolean;
   hasMeetingWorkflows?: boolean;
   hasMeetingLifecycle?: boolean;
+  hasMeetingPreparation?: boolean;
   meetingsHref: string;
 }) {
   const { t } = useT("cockpit");
@@ -268,7 +269,7 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
   const { data: page, isLoading } = query;
   const create = useCreateCockpitSnapshot(wsId);
   const restoreBlockedReasonId = useId();
-  const restoreBlocked = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle;
+  const restoreBlocked = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle || hasMeetingPreparation;
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -313,8 +314,8 @@ export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, h
         </div>
         {restoreBlocked && (
           <div id={restoreBlockedReasonId} className="space-y-2 border-b px-3 py-2 text-caption text-muted-foreground">
-            <p>{hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>
-            {hasMeetingLifecycle && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
+            <p>{hasMeetingPreparation ? t(($) => $.meeting_preparation.restore_protected) : hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>
+            {(hasMeetingLifecycle || hasMeetingPreparation) && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
           </div>
         )}
         {!canRestore && (

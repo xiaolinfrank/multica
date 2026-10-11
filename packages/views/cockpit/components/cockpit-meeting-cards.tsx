@@ -52,6 +52,7 @@ export function CockpitMeetingCards({ items, scope, selectedId }: {
     </AppLink>
       <div className="flex max-w-full flex-wrap items-start justify-between gap-2 sm:max-w-52 sm:flex-col sm:items-end">
         {typeof meeting.occurrence_state === "string" && <AppLink href={cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, "agenda")} className="max-w-full break-words rounded-md bg-muted px-2 py-1 text-caption hover:underline" aria-label={`${t(($) => $.meeting_lifecycle.record_occurrence)} · ${occurrenceLabel(meeting.occurrence_state)}`}>{occurrenceLabel(meeting.occurrence_state)}</AppLink>}
+        {meeting.archived_at && <span className="rounded-md bg-muted px-2 py-1 text-caption">{t(($) => $.meeting_disposition.archived)}</span>}
         {meeting.workflow_enabled && <span className="rounded-md bg-brand/8 px-2 py-1 text-caption text-brand">{stageLabel(meeting.workflow_stage)}</span>}
         {meeting.status && <span className="line-clamp-2 max-w-full break-words text-caption text-muted-foreground" title={meeting.status}>{typeof meeting.occurrence_state === "string" ? t(($) => $.meeting_lifecycle.custom_status_value, { status: meeting.status }) : meeting.status}</span>}
         <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />

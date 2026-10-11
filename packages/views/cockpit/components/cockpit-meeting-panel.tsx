@@ -84,6 +84,12 @@ export interface CockpitMeetingPanelProps {
   notice?: React.ReactNode;
   artifactReferences?: React.ReactNode;
   lifecycleAvailable?: boolean;
+  templatesAvailable?: boolean;
+  canAddPreparation?: boolean;
+  dispositionAvailable?: boolean;
+  meetingActions?: React.ReactNode;
+  authorizedPreparationId?: string | null;
+  onPreparationAuthorizationConsumed?: () => void;
   onOpenNode: (nodeId: string) => void;
   onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
   onPrepareDirectory: () => Promise<void>;
@@ -107,7 +113,7 @@ export function CockpitMeetingPanel({
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, lifecycleAvailable = false,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, lifecycleAvailable = false, templatesAvailable = false, canAddPreparation, dispositionAvailable = false, meetingActions, authorizedPreparationId, onPreparationAuthorizationConsumed,
   onOpenNode,
   onSaveMaterialPatch,
   onPrepareDirectory,
@@ -199,6 +205,7 @@ export function CockpitMeetingPanel({
             />
           </div>
         </div>
+        {meetingActions ?? (!readOnly && <Button variant="ghost" size="icon-sm" disabled={workflowEnabled || workflowUnknown} aria-label={t(($) => $.meeting.delete, { title: meeting.title })} onClick={onDelete}><Trash2 className="size-4" /></Button>)}
         <button
           ref={closeButton}
           type="button"
@@ -246,14 +253,14 @@ export function CockpitMeetingPanel({
         </TabsList>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <TabsContent value="agenda" keepMounted>
-            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} readOnly={readOnly} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
+            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
           </TabsContent>
           <TabsContent value="workflow" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
               onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}
-              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />
+              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
           </TabsContent>
           <TabsContent value="resources" keepMounted>
             {artifactReferences}
@@ -276,7 +283,7 @@ export function CockpitMeetingPanel({
             onUnlink={onUnlinkIssue}
             onSaveRoles={onSaveIssueRoles}
             disabled={readOnly || workflowUnknown}
-            requiredRolesByIssue={requiredRolesByIssue}
+            requiredRolesByIssue={requiredRolesByIssue} canAddPreparation={canAddPreparation}
           />
 
         </CockpitField>
@@ -315,7 +322,7 @@ export function CockpitMeetingPanel({
             </ul>
           )}
           {!readOnly && (
-            <CockpitNodeChoicePicker wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={cockpitScope(navigation.searchParams)}
+            <CockpitNodeChoicePicker disabled={canAddPreparation === false} wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={cockpitScope(navigation.searchParams)}
               onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
           )}
         </CockpitField>
@@ -534,22 +541,7 @@ export function CockpitMeetingPanel({
         </div>
       </Tabs>
 
-      {!readOnly && (
-        <footer className="space-y-2 border-t border-border p-3">
-          {workflowEnabled && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.delete_protected)}</p>}
-          {workflowUnknown && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.delete_unavailable)}</p>}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-destructive hover:text-destructive"
-            disabled={workflowEnabled || workflowUnknown}
-            onClick={onDelete}
-          >
-            <Trash2 className="size-3.5" />
-            {t(($) => $.meeting.delete, { title: meeting.title })}
-          </Button>
-        </footer>
-      )}
+
     </aside>
   );
 }

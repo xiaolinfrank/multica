@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  cockpitObjectPath, EMPTY_COCKPIT_SCOPE, cockpitAgendaOptions, cockpitAgendaDetailOptions, cockpitMeetingLifecycleOptions, cockpitMeetingAgendaPath,
+  cockpitObjectPath, EMPTY_COCKPIT_SCOPE, cockpitMeetingOperationBasisOptions, cockpitMeetingPreparationPath, cockpitAgendaOptions, cockpitAgendaDetailOptions, cockpitMeetingLifecycleOptions, cockpitMeetingAgendaPath,
   cockpitRelationViewKey, EMPTY_COCKPIT_AGENDA_CONTEXT, useCockpitScopeViewStore,
   cockpitMeetingContextPath, cockpitScope, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore,
   updateCockpitAgendaDraft, rebaseCockpitAgendaDraft, clearCockpitAgendaDraft, cockpitSelectedMemberOptions,
@@ -25,16 +25,20 @@ import { CockpitNodeIssuePicker, useCockpitSelectedNodeIssueOption } from "./coc
 import { CockpitMeetingCommandRecovery } from "./cockpit-meeting-command-recovery";
 import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
 import { CockpitAgendaReferences } from "./cockpit-agenda-references";
+import { CockpitMeetingTemplateApplication } from "./cockpit-meeting-template-application";
+import { CockpitPreparationOperation } from "./cockpit-preparation-operation";
+import { CockpitPreparationHistory } from "./cockpit-preparation-history";
+import { CockpitPreparationReasons } from "./cockpit-preparation-preview";
 
 const purposes: CockpitAgendaPurpose[] = ["planning", "goal_review", "boundary_confirmation", "question_clarification", "solution_discussion", "direction_decision"];
 const isPurpose = (value: string): value is CockpitAgendaPurpose => purposes.some((purpose) => purpose === value);
 const size = (value: string) => new TextEncoder().encode(value).length;
 
-export function CockpitMeetingAgenda({ wsId, meetingId, readOnly }: { wsId: string; meetingId: string; readOnly?: boolean }) {
+export function CockpitMeetingAgenda({ wsId, meetingId, readOnly, templatesAvailable = false, dispositionAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed }: { wsId: string; meetingId: string; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const client = useQueryClient();
   const viewKey = cockpitRelationViewKey(wsId, "agenda", meetingId);
   const view = useCockpitScopeViewStore((state) => state.agendas[viewKey] ?? EMPTY_COCKPIT_AGENDA_CONTEXT);
-  const [create, setCreate] = useState(false); const dialogBusy = useRef(false);
+  const [create, setCreate] = useState(false); const dialogBusy = useRef(false); const [autoStart, setAutoStart] = useState<string | null>(null);
   const text = view.query, removed = view.includeRemoved;
   const q = useCockpitSearch(text); const changing = q !== text.trim();
   const signature = JSON.stringify([q, removed]); const cursors = view.cursorKey === signature ? view.cursors : [""];
@@ -45,6 +49,11 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly }: { wsId: stri
   const lifecycle = useQuery(cockpitMeetingLifecycleOptions(wsId, meetingId));
   const query = useQuery(cockpitAgendaOptions(wsId, meetingId, { q, include_removed: removed, cursor: cursors.at(-1) || undefined, page_size: 25 })); const page = query.data;
   const selectedId = navigation.searchParams.get("meeting") === meetingId ? navigation.searchParams.get("agenda") : null;
+  const operationId = navigation.searchParams.get("meeting") === meetingId ? navigation.searchParams.get("preparation") : null;
+  const preparationAvailable = templatesAvailable || dispositionAvailable;
+  const basis = useQuery({ ...cockpitMeetingOperationBasisOptions(wsId, meetingId), enabled: preparationAvailable });
+  const canAddPreparation = !preparationAvailable ? undefined : !basis.isError && basis.data?.availability === "available" && basis.data.can_add_preparation;
+  useEffect(() => { if (operationId && autoStart && operationId !== autoStart) setAutoStart(null); }, [operationId, autoStart]);
   const href = (agendaId: string | null) => cockpitMeetingAgendaPath(paths.cockpit(), meetingId, agendaId, navigation.searchParams);
   const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
   const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "workflow");
@@ -52,8 +61,10 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly }: { wsId: stri
   return <section aria-label={t(($) => $.meeting_lifecycle.title)} className="min-w-0 space-y-4">
     {lifecycle.isPending ? <Spinner /> : lifecycle.isError || !lifecycle.data ? <CockpitFlowError onRetry={() => void lifecycle.refetch()} /> : <>
       <CockpitMeetingOccurrence wsId={wsId} header={lifecycle.data} refresh={() => void lifecycle.refetch()} readOnly={readOnly} />
-      {selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
-        <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} resourcesHref={resourcesHref} readOnly={readOnly} />
+      {operationId && preparationAvailable ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={cockpitMeetingPreparationPath(paths.cockpit(), meetingId, null, navigation.searchParams)} onClick={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }}>{t(($) => $.meeting_preparation.close)}</AppLink>
+        <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
+      </div> : selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
+        <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
       </div> : <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_lifecycle.agenda)}</h3>
           <Dialog open={create} onOpenChange={(next) => { if (next || !dialogBusy.current) setCreate(next); }}><DialogTrigger render={<Button size="sm" disabled={!pendingCreate && (readOnly || !lifecycle.data.can_edit_agenda)} />}>{t(($) => $.meeting_lifecycle.add)}</DialogTrigger>
@@ -71,17 +82,23 @@ export function CockpitMeetingAgenda({ wsId, meetingId, readOnly }: { wsId: stri
         </>}
         {cursors.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => void firstPage()}>{t(($) => $.meeting_lifecycle.refresh_first)}</Button>}
       </section>}
+      {preparationAvailable && !operationId && <div className="space-y-2">
+        {templatesAvailable && <CockpitMeetingTemplateApplication wsId={wsId} meetingId={meetingId} resourcesHref={resourcesHref} disabled={Boolean(readOnly) || basis.isError || basis.data?.availability !== "available" || basis.data.apply_template.state !== "allowed"} onCreated={(id, advance) => { setAutoStart(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(paths.cockpit(), meetingId, id, navigation.searchParams)); }} />}
+        {basis.isError && <CockpitFlowError onRetry={() => void basis.refetch()} />}
+        {templatesAvailable && basis.data?.apply_template.state === "blocked" && <CockpitPreparationReasons codes={basis.data.apply_template.reason_codes} targets={basis.data.targets} />}
+        <CockpitPreparationHistory wsId={wsId} meetingId={meetingId} />
+      </div>}
       <CockpitMeetingMaterialsConfirmation wsId={wsId} header={lifecycle.data} resourcesHref={resourcesHref} workflowHref={workflowHref} readOnly={readOnly} />
     </>}
   </section>;
 }
 
-function CockpitAgendaReader({ wsId, meetingId, agendaId, resourcesHref, readOnly }: { wsId: string; meetingId: string; agendaId: string; resourcesHref: string; readOnly?: boolean }) {
+function CockpitAgendaReader({ wsId, meetingId, agendaId, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agendaId: string; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
   const query = useQuery(cockpitAgendaDetailOptions(wsId, meetingId, agendaId));
   if (query.isPending) return <Spinner />;
   if (query.isError || !query.data) return <CockpitFlowError onRetry={() => void query.refetch()} />;
   return <div className="space-y-4"><CockpitAgendaEditor wsId={wsId} meetingId={meetingId} agenda={query.data} readOnly={readOnly} refresh={() => void query.refetch()} />
-    <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} />
+    <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} canAddPreparation={canAddPreparation} />
   </div>;
 }
 

@@ -52,11 +52,12 @@ export function CockpitMeetingRoleLabels({ link }: {
   );
 }
 
-function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: {
+function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [], canAddPreparation }: {
   link: CockpitMeetingIssueLink;
   onSave: (issueId: string, roles: string[]) => Promise<unknown>;
   disabled?: boolean;
   requiredRoles?: readonly string[];
+  canAddPreparation?: boolean;
 }) {
   const { t } = useT("cockpit");
   const labels = useRoleLabels();
@@ -65,8 +66,9 @@ function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const saveLock = useRef(false);
+  const addsPreparation = draft.includes("preparation") && !link.roles?.includes("preparation");
   const save = async () => {
-    if (saveLock.current) return;
+    if (saveLock.current || canAddPreparation === false && addsPreparation) return;
     saveLock.current = true;
     setSaving(true);
     setError("");
@@ -102,8 +104,8 @@ function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: 
           <legend className="mb-2 text-label font-medium">{t(($) => $.meeting_roles.title)}</legend>
           {COCKPIT_MEETING_ISSUE_ROLES.map((role) => (
             <label key={role} className="flex items-center gap-2 text-body">
-              <Checkbox checked={draft.includes(role)} disabled={requiredRoles.includes(role)} onCheckedChange={(checked) => {
-                if (requiredRoles.includes(role)) return;
+              <Checkbox checked={draft.includes(role)} disabled={requiredRoles.includes(role) || role === "preparation" && !link.roles?.includes("preparation") && canAddPreparation === false} onCheckedChange={(checked) => {
+                if (requiredRoles.includes(role) || role === "preparation" && !link.roles?.includes("preparation") && canAddPreparation === false) return;
                 setDraft((current) => checked === true
                   ? [...current.filter((value) => value !== role), role]
                   : current.filter((value) => value !== role));
@@ -116,7 +118,8 @@ function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: 
           <CockpitMeetingRoleLabels link={{ role: "", roles: draft.filter((role) => !isCockpitMeetingIssueRole(role)) }} />
         )}
         {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
-        <Button disabled={saving} aria-busy={saving} size="sm" onClick={() => void save()}>
+        {canAddPreparation === false && addsPreparation && <p role="status" className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.preparation_blocked)}</p>}
+        <Button disabled={saving || canAddPreparation === false && addsPreparation} aria-busy={saving} size="sm" onClick={() => void save()}>
           {saving && <LoaderCircle className="size-3.5 animate-spin" />}
           {t(($) => $.meeting_roles.save)}
         </Button>
@@ -125,7 +128,7 @@ function MeetingIssueRolePicker({ link, onSave, disabled, requiredRoles = [] }: 
   );
 }
 
-export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSaveRoles, disabled, requiredRolesByIssue }: {
+export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSaveRoles, disabled, requiredRolesByIssue, canAddPreparation }: {
   wsId: string;
   links: CockpitMeetingIssueLink[];
   onLink: (issueId: string) => Promise<unknown>;
@@ -133,6 +136,7 @@ export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSave
   onSaveRoles?: (issueId: string, roles: string[]) => Promise<unknown>;
   disabled?: boolean;
   requiredRolesByIssue?: ReadonlyMap<string, readonly string[]>;
+  canAddPreparation?: boolean;
 }) {
   const paths = useWorkspacePaths();
   const { t } = useT("cockpit");
@@ -156,19 +160,19 @@ export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSave
             </div>
             <div className="flex items-start justify-between gap-1">
               {cockpitMeetingHasDirectReference(link) && <CockpitMeetingRoleLabels link={{ ...link, roles: [...new Set([...(link.roles ?? []), ...(requiredRolesByIssue?.get(link.issue_id) ?? [])])] }} />}
-              {!disabled && cockpitMeetingHasDirectReference(link) && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} />}
+              {!disabled && cockpitMeetingHasDirectReference(link) && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} canAddPreparation={canAddPreparation} />}
             </div>
             {link.has_agenda_reference && <div className="flex flex-wrap gap-2 text-caption text-muted-foreground"><span>{t(($) => $.meeting_lifecycle.agenda_source, { count: link.agenda_total ?? 1 })}</span>{link.agenda_id && <AppLink className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: link.meeting_id, view: "agenda", agendaId: link.agenda_id })}>{t(($) => $.meeting_lifecycle.open_agenda)}</AppLink>}</div>}
             {requiredRolesByIssue?.has(link.issue_id) && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
           </li>
         ))}
       </ul>
-      {!disabled && <MeetingIssueAppend wsId={wsId} onLink={onLink} />}
+      {!disabled && <MeetingIssueAppend wsId={wsId} onLink={onLink} disabled={canAddPreparation === false} />}
     </div>
   );
 }
 
-function MeetingIssueAppend({ wsId, onLink }: { wsId: string; onLink: (id: string) => Promise<unknown> }) {
+function MeetingIssueAppend({ wsId, onLink, disabled }: { wsId: string; onLink: (id: string) => Promise<unknown>; disabled?: boolean }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Issue | null>(null);
@@ -176,12 +180,12 @@ function MeetingIssueAppend({ wsId, onLink }: { wsId: string; onLink: (id: strin
   const [error, setError] = useState("");
   const lock = useRef(false);
   return <Popover open={open} onOpenChange={(next) => { if (!lock.current) setOpen(next); }}>
-    <PopoverTrigger render={<Button type="button" variant="outline" size="sm" />}>{t(($) => $.issues.link)}</PopoverTrigger>
+    <PopoverTrigger render={<Button type="button" variant="outline" size="sm" disabled={disabled} />}>{t(($) => $.issues.link)}</PopoverTrigger>
     <PopoverContent align="start" className="w-[min(28rem,calc(100vw-2rem))] space-y-3">
-      <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setError(""); }} disabled={busy} />
+      <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setError(""); }} disabled={busy || disabled} />
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
-      <Button type="button" size="sm" disabled={!selected || busy} onClick={() => {
-        if (!selected || lock.current) return; lock.current = true; setBusy(true); setError("");
+      <Button type="button" size="sm" disabled={!selected || busy || disabled} onClick={() => {
+        if (!selected || lock.current || disabled) return; lock.current = true; setBusy(true); setError("");
         void onLink(selected.id).then(() => { setSelected(null); setOpen(false); })
           .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed)))
           .finally(() => { lock.current = false; setBusy(false); });

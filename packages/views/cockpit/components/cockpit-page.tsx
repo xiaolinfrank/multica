@@ -706,6 +706,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               {t(($) => $.toolbar.show_finance)}
             </Button>
 
+            {context.data?.capabilities?.meeting_disposition === true && <label className="flex items-center gap-2 text-caption"><input type="checkbox" checked={planState.includeArchivedMeetings} onChange={(event) => useCockpitScopeViewStore.getState().updatePlan(planKey, { includeArchivedMeetings: event.target.checked })} />{t(($) => $.meeting_disposition.include_archived_markers)}</label>}
             <Button
               variant="ghost"
               size="sm"
@@ -722,6 +723,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         {cockpit && <CockpitVersions wsId={wsId} canRestore={canRestore}
           hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
           hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
+          hasMeetingPreparation={context.data?.has_meeting_preparation === true}
           meetingsHref={cockpitSurfacePath(navigation.pathname, "meetings", { projectId: null, moduleId: null })}
           hasStableBindings={context.data?.has_stable_bindings !== false} />}
 
@@ -817,6 +819,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               statusSuggestions={statusSuggestions}
               ownerSuggestions={ownerSuggestions}
               showFinance={showFinance}
+              includeArchivedMeetings={planState.includeArchivedMeetings}
               toolbarOpen={toolsOpen}
               scrollToTodayNonce={scrollToTodayNonce}
               focusTarget={focusTarget}
@@ -835,6 +838,8 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               onSelect={openMeeting}
               onCreate={() => setCreatingMeeting(true)}
               onScan={() => setScanningMeetings(true)}
+              templatesAvailable={context.data?.capabilities?.meeting_templates === true}
+              dispositionAvailable={context.data?.capabilities?.meeting_disposition === true}
               readOnly={context.data?.actor.is_human !== true}
             />
           )}

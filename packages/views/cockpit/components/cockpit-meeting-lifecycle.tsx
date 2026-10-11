@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { cockpitObjectPath, cockpitArtifactPath, EMPTY_COCKPIT_SCOPE, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
+import { cockpitObjectPath, cockpitArtifactPath, cockpitMeetingPreparationPath, EMPTY_COCKPIT_SCOPE, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
 import type { CockpitMeetingLifecycleHeader, CockpitOccurrenceTransition, CockpitOccurrenceView, CockpitLifecycleCommandDetail } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
@@ -11,10 +11,11 @@ import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useLocale, useT } from "../../i18n";
-import { AppLink } from "../../navigation";
+import { AppLink, useNavigation } from "../../navigation";
 import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { CockpitMeetingCommandRecovery } from "./cockpit-meeting-command-recovery";
+import { CockpitPreparationImpactComparison } from "./cockpit-preparation-reauthorization";
 import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
 
 const knownStates = new Set(["unconfirmed", "scheduled", "in_progress", "ended"]);
@@ -129,6 +130,10 @@ function useMeetingCommandLabel() {
     schedule: t(($) => $.meeting_lifecycle.schedule), start: t(($) => $.meeting_lifecycle.start), end: t(($) => $.meeting_lifecycle.end), correct_times: t(($) => $.meeting_lifecycle.correct_times),
     materials: t(($) => $.meeting_lifecycle.materials), agenda_create: t(($) => $.meeting_lifecycle.add), agenda_update: t(($) => $.meeting_lifecycle.save), agenda_remove: t(($) => $.meeting_lifecycle.remove),
     reference_attach: t(($) => $.meeting_lifecycle.attach), reference_remove: t(($) => $.meeting_lifecycle.unlink), preparation_issue_create: t(($) => $.meeting_lifecycle.create_preparation),
+    preparation_dispose: t(($) => $.meeting_disposition.append_disposition), template_apply: t(($) => $.meeting_preparation.template_application), cancel: t(($) => $.meeting_disposition.cancel),
+    archive: t(($) => $.meeting_disposition.archive), unarchive: t(($) => $.meeting_disposition.unarchive), reinstate: t(($) => $.meeting_disposition.reinstate),
+    preparation_pause: t(($) => $.meeting_preparation.pause), preparation_resume: t(($) => $.meeting_preparation.resume),
+    preparation_reauthorize: t(($) => $.meeting_preparation.reauthorize), preparation_skip: t(($) => $.meeting_preparation.skip), preparation_claim: t(($) => $.meeting_preparation.claim),
   };
   return (action: string) => labels[action] ?? t(($) => $.meeting_lifecycle.unknown_action, { action });
 }
@@ -158,7 +163,7 @@ function CockpitMeetingCommandHistory({ wsId, meetingId }: { wsId: string; meeti
 
 function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetail }) {
   const locale = useLocale();
-  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const occurrenceLabel = useMeetingOccurrenceLabel();
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const occurrenceLabel = useMeetingOccurrenceLabel();
   const receipt = detail.receipt, reference = receipt.reference;
   const agendaHref = receipt.agenda_id ? cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: detail.meeting_id, view: "agenda", agendaId: receipt.agenda_id }) : null;
   const issue = reference?.issue;
@@ -167,6 +172,14 @@ function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetai
   const targetLabel = issue ? `${issue.identifier} ${issue.title}` : reference?.label || receipt.issue_id || reference?.target_id;
   return <div className="space-y-3 text-caption">
     {receipt.occurrence && <div className="space-y-1"><p>{occurrenceLabel(receipt.occurrence.state)}</p>{receipt.occurrence.ended_at ? <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(receipt.occurrence.ended_at, locale) })}</p> : receipt.occurrence.started_confirmed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(receipt.occurrence.started_confirmed_at, locale) })}</p>}</div>}
+    {receipt.occurrence?.cancelled_at && <p className="text-muted-foreground">{t(($) => $.meeting_disposition.cancelled_at, { time: displayTime(receipt.occurrence.cancelled_at, locale) })}</p>}
+    {receipt.archive && <p>{receipt.archive.archived_at ? t(($) => $.meeting_disposition.archived) : t(($) => $.meeting_disposition.unarchived)}</p>}
+    {receipt.preparation && <div className="space-y-2">{(detail.action === "template_apply" || detail.action === "cancel" || detail.action === "preparation_dispose") && <p>{t(($) => $.meeting_preparation.authorized_count, { count: receipt.preparation.effect_ids.length })}</p>}
+      <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={cockpitMeetingPreparationPath(paths.cockpit(), detail.meeting_id, receipt.preparation.operation_id, navigation.searchParams)}>{t(($) => $.meeting_preparation.title)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}
+    {detail.action === "preparation_reauthorize" && receipt.preparation && <CockpitPreparationImpactComparison wsId={detail.workspace_id}
+      previous={receipt.preparation.previous_authorization?.impact ?? null} current={receipt.preparation.authorization?.impact ?? null}
+      previousRun={receipt.preparation.previous_authorization?.selected_run} currentRun={receipt.preparation.authorization?.selected_run}
+      previousScope={receipt.preparation.previous_authorization?.scope} currentScope={receipt.preparation.authorization?.scope} />}
     {receipt.materials && <p>{receipt.materials.ready ? t(($) => $.meeting_lifecycle.materials_confirmed) : t(($) => $.meeting_lifecycle.materials_cleared)}</p>}
     {receipt.agenda && <div className="space-y-1"><p className="break-words font-medium">{receipt.agenda.title}</p>{receipt.agenda.removed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.removed)}</p>}</div>}
     {targetLabel && <div className="space-y-1">{targetHref ? <AppLink href={targetHref} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline">{targetLabel} {t(($) => $.action_flow.new_tab)}</AppLink> : <p className="break-words">{targetLabel}</p>}

@@ -10,6 +10,7 @@ import {
 import type { CockpitMeetingRegisterQuery } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { cn } from "@multica/ui/lib/utils";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, ScanSearch } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
@@ -19,6 +20,7 @@ import { CockpitMeetingCards } from "./cockpit-meeting-cards";
 import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
 import { CockpitMeetingTimeline } from "./cockpit-meeting-timeline";
 import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
+import { CockpitMeetingTemplates } from "./cockpit-meeting-templates";
 
 export type CockpitMeetingsView = "list" | "month" | "week" | "agenda" | "timeline";
 const VIEWS: CockpitMeetingsView[] = ["list", "month", "week", "agenda", "timeline"];
@@ -32,10 +34,12 @@ export interface CockpitMeetingsProps {
   onCreate: () => void;
   onScan: () => void;
   readOnly?: boolean;
+  templatesAvailable?: boolean;
+  dispositionAvailable?: boolean;
 }
 
 /** Server-filtered metadata pages. Calendar counts cover the window, never just the first metadata page. */
-export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly }: CockpitMeetingsProps) {
+export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, templatesAvailable = false, dispositionAvailable = false }: CockpitMeetingsProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const navigation = useNavigation();
@@ -43,14 +47,18 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
   const relatedNodeId = navigation.searchParams.get("meeting_node") || "";
   const routeFrom = navigation.searchParams.get("from") || "";
   const routeTo = navigation.searchParams.get("to") || "";
+  const archiveParam = navigation.searchParams.get("meeting_archive");
+  const routeArchive = archiveParam === "active" || archiveParam === "archived" || archiveParam === "all" ? archiveParam : null;
   const key = JSON.stringify([cockpitScopeViewKey(wsId, scope), relatedNodeId, relatedNodeIds]);
-  const initial = useMemo(() => ({ ...EMPTY_COCKPIT_MEETING_CONTEXT, from: routeFrom, to: routeTo }), [routeFrom, routeTo]);
+  const initial = useMemo<typeof EMPTY_COCKPIT_MEETING_CONTEXT>(() => ({ ...EMPTY_COCKPIT_MEETING_CONTEXT, archive: routeArchive ?? "active", from: routeFrom, to: routeTo }), [routeFrom, routeTo, routeArchive]);
   const state = useCockpitScopeViewStore((store) => store.meetings[key] ?? initial);
   const update = (patch: Parameters<ReturnType<typeof useCockpitScopeViewStore.getState>["updateMeeting"]>[1]) => useCockpitScopeViewStore.getState().updateMeeting(key, patch);
   useEffect(() => {
     const current = useCockpitScopeViewStore.getState().meetings[key];
     if ((routeFrom || routeTo) && (current?.from !== routeFrom || current?.to !== routeTo)) useCockpitScopeViewStore.getState().updateMeeting(key, { from: routeFrom, to: routeTo, selectedDay: null });
   }, [key, routeFrom, routeTo]);
+  useEffect(() => { const current = useCockpitScopeViewStore.getState().meetings[key]; if (routeArchive && current?.archive !== routeArchive) useCockpitScopeViewStore.getState().updateMeeting(key, { archive: routeArchive }); }, [key, routeArchive]);
+  const changeArchive = (archive: "active" | "archived" | "all") => { update({ archive }); const params = new URLSearchParams(navigation.searchParams); params.set("meeting_archive", archive); navigation.replace(`${navigation.pathname}?${params}`); };
   const filter: CockpitMeetingFilter = useMemo(() => ({ query: state.query, from: state.from, to: state.to, tracks: state.tracks,
     kinds: state.kinds, statuses: state.statuses, parties: state.parties, only: state.only }), [state]);
   const changeFilter = (next: CockpitMeetingFilter) => {
@@ -75,7 +83,7 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
   const from = windowFrom && filter.from ? (windowFrom > filter.from ? windowFrom : filter.from) : windowFrom || filter.from;
   const to = windowTo && filter.to ? (windowTo < filter.to ? windowTo : filter.to) : windowTo || filter.to;
   const disjointDates = Boolean(from && to && from > to);
-  const query: CockpitMeetingRegisterQuery = { node_id: relatedNodeId || undefined, node_ids: relatedNodeIds.length ? relatedNodeIds : undefined, q: q || undefined, date_from: from || undefined, date_to: to || undefined,
+  const query: CockpitMeetingRegisterQuery = { archive: state.archive, node_id: relatedNodeId || undefined, node_ids: relatedNodeIds.length ? relatedNodeIds : undefined, q: q || undefined, date_from: from || undefined, date_to: to || undefined,
     tracks: filter.tracks, kinds: filter.kinds, statuses: filter.statuses, parties: filter.parties, only: filter.only,
     page_size: calendar ? 1 : 25 };
   const signature = JSON.stringify([scope, query]);
@@ -107,8 +115,8 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
     <p>{t(($) => $.errors.load_failed)}</p><Button type="button" variant="outline" size="sm" onClick={retry}>{t(($) => $.binding.retry)}</Button></div>;
   const loading = <div role="status" className="flex items-center gap-2 p-5 text-caption text-muted-foreground"><Spinner />{t(($) => $.work_overview.loading)}</div>;
   const empty = <div className="space-y-3 rounded-xl border border-dashed border-border p-6 text-caption text-muted-foreground">
-    <p>{isCockpitMeetingFilterActive(filter) || selectedDay ? t(($) => $.meetings.no_results) : t(($) => $.meetings.empty)}</p>
-    {isCockpitMeetingFilterActive(filter) ? <Button type="button" variant="outline" size="sm" onClick={reset}>{t(($) => $.meetings.filter_clear)}</Button>
+    <p>{state.archive === "archived" ? t(($) => $.meeting_disposition.empty_archived) : isCockpitMeetingFilterActive(filter) || selectedDay ? t(($) => $.meetings.no_results) : t(($) => $.meetings.empty)}</p>
+    {state.archive === "archived" ? <Button type="button" variant="outline" size="sm" onClick={() => changeArchive("active")}>{t(($) => $.meeting_disposition.filter_active)}</Button> : isCockpitMeetingFilterActive(filter) ? <Button type="button" variant="outline" size="sm" onClick={reset}>{t(($) => $.meetings.filter_clear)}</Button>
       : !readOnly && <Button type="button" variant="outline" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button>}
   </div>;
 
@@ -118,7 +126,9 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
         {VIEWS.map((value) => <Button key={value} type="button" variant={view === value ? "secondary" : "ghost"} size="sm" aria-pressed={view === value}
           onClick={() => update({ view: value })}>{viewLabels[value]}</Button>)}
       </div>
+      {dispositionAvailable && <Select value={state.archive} items={(["active", "archived", "all"] as const).map((value) => ({ value, label: t(($) => $.meeting_disposition[`filter_${value}`]) }))} onValueChange={(archive) => { if (archive === "active" || archive === "archived" || archive === "all") changeArchive(archive); }}><SelectTrigger aria-label={t(($) => $.meeting_disposition.archive_filter)}><SelectValue /></SelectTrigger><SelectContent>{(["active", "archived", "all"] as const).map((value) => <SelectItem key={value} value={value}>{t(($) => $.meeting_disposition[`filter_${value}`])}</SelectItem>)}</SelectContent></Select>}
       <CockpitMeetingFilterBar filter={filter} onChange={changeFilter} meetings={page?.items ?? data?.items ?? []} today={today} />
+      {templatesAvailable && <CockpitMeetingTemplates wsId={wsId} readOnly={readOnly} />}
       {!readOnly && <div className="ml-auto flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={onScan}><ScanSearch className="size-3.5" />{t(($) => $.meetings.scan)}</Button>
         <Button type="button" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button></div>}
     </div>

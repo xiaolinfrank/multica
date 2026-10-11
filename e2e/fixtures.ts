@@ -288,6 +288,16 @@ export interface TestMeetingLifecycle {
   workspace_id: string; meeting_id: string; lifecycle_revision: number; agenda_revision: number; workflow_enabled: boolean;
   occurrence: { state: string; ended_at: string | null; actual_started_at: string | null; actual_ended_at: string | null; ended_source: string | null };
   materials: { ready: boolean; workflow_revision: number } | null;
+  archive?: { archived_at: string | null; archived_by: string | null; reason: string };
+}
+export interface TestPreparationOperation {
+  workspace_id: string; meeting_id: string; id: string; kind: string; state: string; revision: number;
+  counts: { total: number; applied: number; pending: number; needs_attention: number; skipped: number };
+}
+export interface TestPreparationEffect {
+  id: string; operation_id: string; kind: string; label: string; state: string; command_key: string;
+  authorization_key: string; authorization_revision: number;
+  receipt: { issue_id: string | null; agenda_id: string | null; reference_id: string | null; command_key: string } | null;
 }
 export interface TestMeetingAgendaItem {
   id: string; workspace_id: string; meeting_id: string; revision: number; title: string; purposes: string[]; desired_outcome?: string; notes?: string;
@@ -583,6 +593,36 @@ export class TestApiClient {
     const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/agenda?${params}`);
     if (!response.ok) throw new Error(`Meeting agenda read failed: ${response.status} ${await response.text()}`);
     const data = await response.json(); if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId) throw new Error("Meeting agenda scope mismatch");
+    return data;
+  }
+
+  async getOwnedPreparationOperation(meetingId: string, operationId: string): Promise<TestPreparationOperation> {
+    this.assertOwnedMeeting(meetingId);
+    if (!/^[0-9a-f-]{36}$/i.test(operationId)) throw new Error("Preparation operation requires an exact UUID");
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/preparation-operations/${operationId}`);
+    if (!response.ok) throw new Error(`Preparation operation read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json() as TestPreparationOperation;
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId || data.id !== operationId) throw new Error("Preparation operation scope mismatch");
+    return data;
+  }
+
+  async getOwnedPreparationEffects(meetingId: string, operationId: string, cursor?: string): Promise<{ workspace_id: string; meeting_id: string; operation_id: string; items: TestPreparationEffect[]; total: number; next_cursor: string | null }> {
+    this.assertOwnedMeeting(meetingId);
+    if (!/^[0-9a-f-]{36}$/i.test(operationId)) throw new Error("Preparation effects require an exact operation UUID");
+    const params = new URLSearchParams({ page_size: "25" }); if (cursor) params.set("cursor", cursor);
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/preparation-operations/${operationId}/effects?${params}`);
+    if (!response.ok) throw new Error(`Preparation effect read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json();
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId || data.operation_id !== operationId) throw new Error("Preparation effect scope mismatch");
+    return data;
+  }
+
+  async getOwnedMeetingOperationBasis(meetingId: string): Promise<{ workspace_id: string; meeting_id: string; availability: string; delete: { state: string; reason_codes: string[] }; cancel: { state: string; reason_codes: string[] }; archive: { state: string; reason_codes: string[] } }> {
+    this.assertOwnedMeeting(meetingId);
+    const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/operation-basis`);
+    if (!response.ok) throw new Error(`Meeting operation basis read failed: ${response.status} ${await response.text()}`);
+    const data = await response.json();
+    if (data.workspace_id !== this.workspaceId || data.meeting_id !== meetingId) throw new Error("Meeting operation basis scope mismatch");
     return data;
   }
 

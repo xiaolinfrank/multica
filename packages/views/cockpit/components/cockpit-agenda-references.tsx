@@ -23,7 +23,7 @@ import { CockpitAssigneePicker } from "./cockpit-assignee-picker";
 import { CockpitScopePicker } from "./cockpit-scope-control";
 import { useCockpitSelectedNodeIssueOption } from "./cockpit-node-issue-picker";
 
-export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref, readOnly }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; resourcesHref: string; readOnly?: boolean }) {
+export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const status = useStatusLabel(wsId); const client = useQueryClient();
   const [cursors, setCursors] = useState([""]); const [removed, setRemoved] = useState(false); const [mode, setMode] = useState<"issue" | "artifact_reference" | "create" | null>(null);
   const dialogBusy = useRef(false);
@@ -35,11 +35,11 @@ export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref
   return <section aria-label={t(($) => $.meeting_lifecycle.references)} className="space-y-3 rounded-lg border border-border p-3">
     <h3 className="text-body font-medium">{t(($) => $.meeting_lifecycle.references)}</h3>
     <Dialog open={mode !== null} onOpenChange={(open) => { if (!open && !dialogBusy.current) setMode(null); }}><div className="flex flex-wrap gap-2">
-      <DialogTrigger render={<Button size="sm" disabled={!writable && !hasPending("create")} />} onClick={() => setMode("create")}>{t(($) => $.meeting_lifecycle.create_preparation)}</DialogTrigger>
-      <DialogTrigger render={<Button size="sm" variant="outline" disabled={!writable && !hasPending("issue")} />} onClick={() => setMode("issue")}>{t(($) => $.meeting_lifecycle.attach_issue)}</DialogTrigger>
-      <DialogTrigger render={<Button size="sm" variant="outline" disabled={!writable && !hasPending("artifact_reference")} />} onClick={() => setMode("artifact_reference")}>{t(($) => $.meeting_lifecycle.attach_artifact)}</DialogTrigger>
-    </div>{mode === "create" ? <CockpitPreparationIssueForm key={`${agenda.id}:create`} wsId={wsId} meetingId={meetingId} agenda={agenda} onDone={() => setMode(null)} onBusyChange={(busy) => { dialogBusy.current = busy; }} />
-      : mode && <CockpitAgendaAttachForm key={`${agenda.id}:${mode}`} wsId={wsId} meetingId={meetingId} agenda={agenda} kind={mode} resourcesHref={resourcesHref} onDone={() => setMode(null)} onBusyChange={(busy) => { dialogBusy.current = busy; }} />}</Dialog>
+      <DialogTrigger render={<Button size="sm" disabled={(!writable || canAddPreparation === false) && !hasPending("create")} />} onClick={() => setMode("create")}>{t(($) => $.meeting_lifecycle.create_preparation)}</DialogTrigger>
+      <DialogTrigger render={<Button size="sm" variant="outline" disabled={(!writable || canAddPreparation === false) && !hasPending("issue")} />} onClick={() => setMode("issue")}>{t(($) => $.meeting_lifecycle.attach_issue)}</DialogTrigger>
+      <DialogTrigger render={<Button size="sm" variant="outline" disabled={(!writable || canAddPreparation === false) && !hasPending("artifact_reference")} />} onClick={() => setMode("artifact_reference")}>{t(($) => $.meeting_lifecycle.attach_artifact)}</DialogTrigger>
+    </div>{mode === "create" ? <CockpitPreparationIssueForm key={`${agenda.id}:create`} wsId={wsId} meetingId={meetingId} agenda={agenda} canAddPreparation={canAddPreparation} onDone={() => setMode(null)} onBusyChange={(busy) => { dialogBusy.current = busy; }} />
+      : mode && <CockpitAgendaAttachForm key={`${agenda.id}:${mode}`} wsId={wsId} meetingId={meetingId} agenda={agenda} kind={mode} resourcesHref={resourcesHref} canAddPreparation={canAddPreparation} onDone={() => setMode(null)} onBusyChange={(busy) => { dialogBusy.current = busy; }} />}</Dialog>
     <label className="flex items-center gap-2 text-caption"><input type="checkbox" checked={removed} onChange={(event) => { setRemoved(event.target.checked); setCursors([""]); }} />{t(($) => $.artifact_runtime.include_removed)}</label>
     {query.isPending ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
       <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
@@ -57,7 +57,7 @@ export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref
   </section>;
 }
 
-function CockpitAgendaAttachForm({ wsId, meetingId, agenda, kind, resourcesHref, onDone, onBusyChange }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; kind: "issue" | "artifact_reference"; resourcesHref: string; onDone: () => void; onBusyChange: (busy: boolean) => void }) {
+function CockpitAgendaAttachForm({ wsId, meetingId, agenda, kind, resourcesHref, canAddPreparation, onDone, onBusyChange }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; kind: "issue" | "artifact_reference"; resourcesHref: string; canAddPreparation?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void }) {
   const { t } = useT("cockpit"); const command = useCockpitMeetingCommand(wsId, meetingId, cockpitMeetingAgendaDraftKey(wsId, meetingId, `attach:${agenda.id}:${kind}`));
   useEffect(() => { onBusyChange(command.busy); return () => onBusyChange(false); }, [command.busy, onBusyChange]);
   const original = command.pending?.kind === "reference_attach" ? command.pending : null;
@@ -70,7 +70,7 @@ function CockpitAgendaAttachForm({ wsId, meetingId, agenda, kind, resourcesHref,
   const selectedIssue = useQuery({ ...issueDetailOptions(wsId, target), enabled: kind === "issue" && Boolean(target) });
   const fixed = useQuery({ ...cockpitMeetingArtifactReferencesOptions(wsId, meetingId, { page_size: 25, cursor: cursors.at(-1) || undefined }), enabled: kind === "artifact_reference" }); const page = fixed.data;
   const changed = revision !== agenda.revision; const locked = command.busy || Boolean(original);
-  const save = async () => { if (command.busy || !original && (!target || changed || !agenda.can_edit || Boolean(agenda.removed_at))) return;
+  const save = async () => { if (command.busy || !original && (!target || changed || !agenda.can_edit || canAddPreparation === false || Boolean(agenda.removed_at))) return;
     setCockpitMeetingFormDraft(formKey, value);
     const response = await command.run(original ?? { kind: "reference_attach", agendaId: agenda.id, body: { command_key: crypto.randomUUID(), expected_revision: revision, kind, target_id: target, purpose } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
   return <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{kind === "issue" ? t(($) => $.meeting_lifecycle.attach_issue) : t(($) => $.meeting_lifecycle.attach_artifact)}</DialogTitle></DialogHeader>
@@ -86,7 +86,7 @@ function CockpitAgendaAttachForm({ wsId, meetingId, agenda, kind, resourcesHref,
     <fieldset disabled={locked} className="flex flex-wrap gap-3"><legend className="mb-2 text-caption">{t(($) => $.meeting_lifecycle.purpose)}</legend>{(kind === "issue" ? ["preparation", "material"] as const : ["material"] as const).map((value) => <label key={value} className="flex items-center gap-2 text-caption"><input type="radio" name="agenda-reference-purpose" checked={purpose === value} onChange={() => change({ purpose: value })} />{t(($) => $.meeting_lifecycle[value])}</label>)}</fieldset>
     {changed && !original && <div role="alert" className="space-y-2 text-caption"><p>{t(($) => $.meeting_lifecycle.changed)}</p><Button variant="outline" size="sm" onClick={() => change({ observedRevision: agenda.revision })}>{t(($) => $.meeting_lifecycle.rebase)}</Button></div>}<CockpitMeetingCommandRecovery command={command} onConfirmed={() => clearCockpitMeetingFormDraft(formKey, value)} onCurrentConfirmed={onDone} />
     {command.error && <p role="alert" className="break-words text-caption text-destructive">{command.error}</p>}
-    <DialogFooter><DialogClose render={<Button variant="outline" disabled={command.busy} />}>{t(($) => $.task_create.cancel)}</DialogClose><Button onClick={() => void save()} disabled={command.busy || !original && (!target || changed || !agenda.can_edit || Boolean(agenda.removed_at))}>{original ? t(($) => $.meeting_lifecycle.retry_command) : t(($) => $.meeting_lifecycle.attach)}</Button></DialogFooter>
+    <DialogFooter><DialogClose render={<Button variant="outline" disabled={command.busy} />}>{t(($) => $.task_create.cancel)}</DialogClose><Button onClick={() => void save()} disabled={command.busy || !original && (!target || changed || !agenda.can_edit || canAddPreparation === false || Boolean(agenda.removed_at))}>{original ? t(($) => $.meeting_lifecycle.retry_command) : t(($) => $.meeting_lifecycle.attach)}</Button></DialogFooter>
   </DialogContent>;
 }
 
@@ -103,7 +103,7 @@ function CockpitAgendaUnlink({ wsId, meetingId, agenda, reference, disabled }: {
     </DialogContent></Dialog>;
 }
 
-function CockpitPreparationIssueForm({ wsId, meetingId, agenda, onDone, onBusyChange }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; onDone: () => void; onBusyChange: (busy: boolean) => void }) {
+function CockpitPreparationIssueForm({ wsId, meetingId, agenda, canAddPreparation, onDone, onBusyChange }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; canAddPreparation?: boolean; onDone: () => void; onBusyChange: (busy: boolean) => void }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const { t: issueT } = useT("issues"); const command = useCockpitMeetingCommand(wsId, meetingId, cockpitMeetingAgendaDraftKey(wsId, meetingId, `preparation:${agenda.id}`));
   useEffect(() => { onBusyChange(command.busy); return () => onBusyChange(false); }, [command.busy, onBusyChange]);
   const original = command.pending?.kind === "preparation_issue_create" ? command.pending : null;
@@ -119,7 +119,7 @@ function CockpitPreparationIssueForm({ wsId, meetingId, agenda, onDone, onBusyCh
   const changed = revision !== agenda.revision || value.primaryNodeId !== agenda.node_id; const locked = command.busy || Boolean(original);
   const invalidPlacement = selectedNodeId ? node.isPending || node.isFetching || node.isError || !node.option : Boolean(fields.project_id || fields.module_id) && (selectedScope.isPending || selectedScope.isFetching || selectedScope.isError || !selectedScope.data);
   const invalidAssignee = Boolean(fields.assignee_id) && !assignee.available;
-  const invalid = !fields.title.trim() || changed || invalidPlacement || invalidAssignee || !agenda.can_edit || Boolean(agenda.removed_at);
+  const invalid = !fields.title.trim() || changed || invalidPlacement || invalidAssignee || !agenda.can_edit || canAddPreparation === false || Boolean(agenda.removed_at);
   const save = async () => { if (command.busy || !original && invalid) return;
     setCockpitMeetingFormDraft(formKey, value);
     const response = await command.run(original ?? { kind: "preparation_issue_create", agendaId: agenda.id, body: { command_key: crypto.randomUUID(), expected_revision: revision, primary_node_id: selectedNodeId,

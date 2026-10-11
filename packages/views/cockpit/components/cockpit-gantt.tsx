@@ -118,6 +118,7 @@ export interface CockpitGanttProps {
   ownerSuggestions: string[];
   /** Show budget and instalment badges on every row. */
   showFinance: boolean;
+  includeArchivedMeetings?: boolean;
   /** Whether the toolbar is open; a collapsed toolbar takes the legend with it. */
   toolbarOpen: boolean;
   /** Bumped by the toolbar to scroll the timeline back to the today line. */
@@ -651,6 +652,7 @@ export function CockpitGantt({
   statusSuggestions,
   ownerSuggestions,
   showFinance,
+  includeArchivedMeetings = false,
   toolbarOpen,
   scrollToTodayNonce,
   focusTarget,
@@ -855,7 +857,7 @@ export function CockpitGantt({
     date_from: new Date(axis.start.getTime() + day * MS_PER_DAY).toISOString().slice(0, 10),
     date_to: new Date(axis.start.getTime() + Math.min(day + 92, lastDay) * MS_PER_DAY).toISOString().slice(0, 10),
   });
-  const markerQueries = useQueries({ queries: markerWindows.map((window) => ({ ...cockpitPlanMeetingWindowOptions(wsId, scope, { rows: markerRows, ...window }), enabled: Boolean(onOpenMeeting && !renderAllRows && markerRows.length) })) });
+  const markerQueries = useQueries({ queries: markerWindows.map((window) => ({ ...cockpitPlanMeetingWindowOptions(wsId, scope, { rows: markerRows, archive: includeArchivedMeetings ? "all" : "active", ...window }), enabled: Boolean(onOpenMeeting && !renderAllRows && markerRows.length) })) });
   const meetingMarks = new Map<string, CockpitPlanMeetingMarkerGroup[]>();
   for (const query of markerQueries) for (const group of query.data ?? []) meetingMarks.set(group.row_key, [...(meetingMarks.get(group.row_key) ?? []), group]);
   const markerError = markerQueries.some((query) => query.isError);
@@ -865,7 +867,7 @@ export function CockpitGantt({
     const params = new URLSearchParams(path.split("?")[1] ?? "");
     if (row?.node_ids.length === 1) params.set("meeting_node", row.node_ids[0]!);
     else if (row?.node_ids.length) params.set("meeting_nodes", row.node_ids.join(","));
-    params.set("from", date); params.set("to", date);
+    params.set("from", date); params.set("to", date); params.set("meeting_archive", includeArchivedMeetings ? "all" : "active");
     return `${navigation.pathname}?${params.toString()}`;
   };
 

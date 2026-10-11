@@ -50,7 +50,7 @@ function OperationTargets({ targets }: { targets: IssueOperationTarget[] }) {
       : target.kind === "artifact_version" && target.artifact_id && target.version_id ? cockpitArtifactPath(paths.cockpit(), target.artifact_id, EMPTY_COCKPIT_SCOPE, target.version_id)
         : target.kind === "acceptance_request" && target.node_id && target.request_id ? cockpitObjectPath(paths.cockpit(), { kind: "node", id: target.node_id, view: "acceptance", requestId: target.request_id })
           : target.kind === "node" && target.node_id ? cockpitObjectPath(paths.cockpit(), { kind: "node", id: target.node_id, view: target.view === "acceptance" || target.view === "details" || target.view === "artifacts" ? target.view : "tasks" })
-            : target.kind === "meeting" && target.meeting_id ? cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: target.meeting_id, view: target.view === "resources" ? "resources" : "workflow", actionId: target.action_id }) : null;
+            : target.kind === "meeting" && target.meeting_id ? cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: target.meeting_id, view: target.view === "resources" || target.view === "agenda" || target.view === "details" ? target.view : "workflow", actionId: target.action_id, preparationId: target.operation_id }) : null;
     if (!href) return <li key={`unavailable:${index}`} className="break-words">{target.label || t(($) => $.operation_basis.unknown)}</li>;
     const label = target.purpose === "formal_review" ? `${t(($) => $.operation_basis.open_formal)}${target.label && target.label !== t(($) => $.operation_basis.open_formal) ? ` · ${target.label}` : ""}` : target.label || t(($) => $.operation_basis.open_record);
     return <li key={`${href}:${index}`}><AppLink href={href} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline underline-offset-4">{label} {t(($) => $.operation_basis.new_tab)}</AppLink></li>;
@@ -86,3 +86,5 @@ export function ContainerOperationRestriction({ basis, operation, pending, error
 }) {
   return <OperationExplanation field={basis?.[operation]} availability={basis?.availability} targets={basis?.targets ?? []} total={basis?.targets_total ?? 0} pending={pending} error={error} retry={retry} />;
 }
+
+export { OperationTargets as IssueOperationTargets, useReasonLabel as useIssueOperationReasonLabel };
