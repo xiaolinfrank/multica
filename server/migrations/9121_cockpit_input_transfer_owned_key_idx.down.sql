@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS idx_cockpit_input_transfer_owned_key;

@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_manifest_item_reverse ON cockpit_issue_input_manifest_item (workspace_id,input_version_id,manifest_version_id);

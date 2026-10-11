@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_reference_active ON cockpit_input_reference (workspace_id,meeting_id,COALESCE(agenda_id,'00000000-0000-0000-0000-000000000000'::uuid),input_version_id,purpose) WHERE removed_at IS NULL;

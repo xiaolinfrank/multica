@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_version_artifact_source ON cockpit_input_version (workspace_id,source_artifact_id,source_artifact_version_id,id) WHERE source_kind='artifact_version';

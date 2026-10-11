@@ -545,6 +545,9 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	for _, version := range cockpitDirectoryMigrationVersions {
 		hooks[version] = ensureCockpitDirectoryRollbackSafe
 	}
+	for _, version := range cockpitInputMigrationVersions {
+		hooks[version] = ensureCockpitInputRollbackSafe
+	}
 	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
 	return hooks
 }()

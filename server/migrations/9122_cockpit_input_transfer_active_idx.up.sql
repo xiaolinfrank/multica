@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_transfer_active ON cockpit_input_transfer (workspace_id,version_id) WHERE state IN ('awaiting_bytes','queued','reading','pinned','writing','verifying','awaiting_finalize') AND workspace_deleted_at IS NULL;
