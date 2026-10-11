@@ -35,13 +35,16 @@ describe("meeting folder import recovery", () => {
 
   it("keeps an imported meeting out of retries while showing its directory plan and separate task recovery", async () => {
     const onSubmit = vi.fn<CockpitMeetingImportProps["onSubmit"]>().mockResolvedValue({ ...imported(), task_errors: [{ name: scan.entries[0]!.name, meeting_id: "meeting-created", error: "Assignee needs review" }],
-      directory_results: [{ name: scan.entries[0]!.name, meeting_id: "meeting-created", directory_operation_id: "10000000-0000-4000-8000-000000000044", directory_state: "needs_attention", dir_created: true, dir_error: "Subfolder still unavailable", dir_error_code: "mount_unavailable" }] });
+      directory_results: [{ name: scan.entries[0]!.name, meeting_id: "meeting-created", directory_operation_id: "10000000-0000-4000-8000-000000000044", directory_state: "active", dir_created: true, dir_error: "Directory preparation is not complete. Open its recorded plan to check the remaining steps.", dir_error_code: "directory_preparation_incomplete" }] });
     setup(onSubmit); const user = userEvent.setup(); await screen.findByDisplayValue("Weekly review");
     await user.click(within(screen.getByText(enCockpit.meetings.scan_with_task).closest("label")!).getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: "Import 1" }));
     const importedSection = within(await screen.findByRole("region", { name: enCockpit.import_recovery.imported }));
     expect(importedSection.getByText(enCockpit.meeting_directory.import_task_pending)).toBeVisible();
     expect(importedSection.getByText("Assignee needs review")).toBeVisible();
+    expect(importedSection.getByText("Directory preparation · Preparing")).toBeVisible();
+    expect(importedSection.getByText(enCockpit.meeting_directory.preparation_incomplete)).toBeVisible();
+    expect(importedSection.queryByText(enCockpit.meeting_directory.unknown_reason)).toBeNull();
     const directory = importedSection.getByRole("link", { name: /View directory progress/ });
     const href = new URL(directory.getAttribute("href")!, "https://example.test");
     expect(href.searchParams.get("directory_operation")).toBe("10000000-0000-4000-8000-000000000044"); expect(href.searchParams.get("meeting_view")).toBe("resources"); expect(directory).toHaveAttribute("target", "_blank");

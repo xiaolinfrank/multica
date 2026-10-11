@@ -2012,6 +2012,8 @@
     "plan_registered": "目录计划已登记，可查看各步骤的核验进度。",
     "base_reauthorization_required": "基目录尚未核验，会议路径已发生变化。请同时选择原基目录步骤，再重新预览。",
     "select_base": "同时选择基目录步骤",
-    "retry_required": "部分步骤需要重新确认。请选择可重试步骤，再重新预览。"
+    "retry_required": "部分步骤需要重新确认。请选择可重试步骤，再重新预览。",
+    "preparation_incomplete": "目录准备尚未完成。请打开准备记录查看剩余步骤。",
+    "preparation_unconfirmed": "最新目录结果尚未核实。请打开准备记录重新读取状态，再决定是否重试。"
   }
 }

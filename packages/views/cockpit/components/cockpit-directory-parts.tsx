@@ -39,6 +39,7 @@ export function CockpitDirectoryReasons({ codes }: { codes: string[] }) {
     meeting_cancelled: t(($) => $.meeting_directory.meeting_cancelled), meeting_archived: t(($) => $.meeting_directory.meeting_archived),
     task_context_required: t(($) => $.meeting_directory.delegation_unavailable), delegation_unavailable: t(($) => $.meeting_directory.delegation_unavailable), source_run_unavailable: t(($) => $.meeting_directory.delegation_unavailable),
     io_timeout: t(($) => $.meeting_directory.io_failed), io_failed: t(($) => $.meeting_directory.io_failed), directory_retry_required: t(($) => $.meeting_directory.retry_required),
+    directory_preparation_incomplete: t(($) => $.meeting_directory.preparation_incomplete), directory_preparation_unconfirmed: t(($) => $.meeting_directory.preparation_unconfirmed),
   };
   if (codes.length === 0) return null;
   return <div className="space-y-2 text-caption text-muted-foreground">{[...new Set(codes.map((code) => labels[code] ?? t(($) => $.meeting_directory.unknown_reason)))].map((text) => <p key={text}>{text}</p>)}

@@ -2012,6 +2012,8 @@
     "plan_registered": "Directory plan registered. View progress for the verified results.",
     "base_reauthorization_required": "The meeting path changed before its base directory was verified. Include the original meeting-directory step, then preview again.",
     "select_base": "Include the meeting-directory step",
-    "retry_required": "Some steps need renewed confirmation. Select the retryable steps and preview them again."
+    "retry_required": "Some steps need renewed confirmation. Select the retryable steps and preview them again.",
+    "preparation_incomplete": "Directory preparation is not complete. Open the recorded plan to check the remaining steps.",
+    "preparation_unconfirmed": "The latest directory result is not confirmed. Open the recorded plan and reload its status before retrying."
   }
 }
