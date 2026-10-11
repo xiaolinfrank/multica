@@ -49,6 +49,7 @@ var cockpitInputMigrationVersions = []string{
 	"9140_cockpit_input_artifact_manifest_idx",
 	"9141_cockpit_input_integrity",
 	"9142_cockpit_input_reference_removal_idx",
+	"9143_cockpit_input_state_due_idx",
 }
 var cockpitInputTables = []string{
 	"cockpit_input", "cockpit_input_version", "cockpit_input_transfer", "cockpit_input_reference",

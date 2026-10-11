@@ -80,20 +80,20 @@ INSERT INTO schema_migrations(version) VALUES('legacy_input_test_sentinel');`)
 	indexes := func() int {
 		t.Helper()
 		var n int
-		if err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND (c.relname LIKE 'idx_cockpit_input_%' OR c.relname='cockpit_input_reference_removal_idx') AND i.indisvalid AND i.indisready", schema).Scan(&n); err != nil {
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND (c.relname LIKE 'idx_cockpit_input_%' OR c.relname IN ('cockpit_input_reference_removal_idx','cockpit_input_state_due_idx')) AND i.indisvalid AND i.indisready", schema).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		return n
 	}
-	if n := indexes(); n != 36 {
-		t.Fatalf("expected 36 valid N2 indexes, got %d", n)
+	if n := indexes(); n != 37 {
+		t.Fatalf("expected 37 valid N2 indexes, got %d", n)
 	}
 	blocked := func() {
 		t.Helper()
 		if err := runMigrations(ctx, pool, down); err == nil {
 			t.Fatal("rollback accepted retained input authority")
 		}
-		if ledger() != original || indexes() != 36 {
+		if ledger() != original || indexes() != 37 {
 			t.Fatal("blocked rollback already dropped an index or ledger entry")
 		}
 	}
@@ -124,5 +124,5 @@ VALUES(gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),1
 	if err := runMigrations(ctx, pool, up); err != nil {
 		t.Fatal("empty input reapply", err)
 	}
-	t.Log("owned schema only: 38 migration pairs, 36 concurrent indexes, unchanged old Run/artifact provenance, retained intent/tombstone/pin rejection before first index, empty down/up")
+	t.Log("owned schema only: 39 migration pairs, 37 concurrent indexes, unchanged old Run/artifact provenance, retained intent/tombstone/pin rejection before first index, empty down/up")
 }
