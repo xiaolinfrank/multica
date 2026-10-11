@@ -1,0 +1,722 @@
+{
+  "host": "fosun_agent_3 (10.35.182.2)",
+  "stage": "L isolated acceptance and resident deployment complete",
+  "updated_at": "2026-10-11T06:25:01.907199+00:00",
+  "source_hashes": {
+    "packages/core/api/cockpit-meeting-preparation.test.ts": "14cd646c9ec877950e8363f4180a6407078efb7a739f2e8cc80495bb869cb99b",
+    "packages/core/api/cockpit-meeting-preparation-schemas.ts": "4e5aae582151ab22c33fbb3f8efdacb3d19120a0ed168c51e4932a9c5ce687c4",
+    "packages/core/api/cockpit-meeting-lifecycle-schemas.ts": "54caaf4e78a11db20bd8b211bdf79fe1958f4cdec023144675ac841a17b31326",
+    "packages/core/types/cockpit-meeting-preparation.ts": "311195b5207f65ac2eb7fafd9c5231db224a2964d916fec6fcda4abf25b2c31b",
+    "server/internal/handler/task_read.go": "732fac4b1b6e9120f1601de5175ca7a173b4fa0cb39c28fd2ae72c3e85551123",
+    "server/internal/handler/task_read_test.go": "6a67942af6f01c1b13cf8c53fa44aba7b6172a719b35764fdd93412436b52f92",
+    "server/internal/handler/cockpit_meeting_preparation.go": "9b2231ff29bfc367b2da2bd69512b04458df70e6cbfec3eeedeb4033377eb4b7",
+    "server/internal/handler/cockpit_meeting_preparation_test.go": "ec5726a85d2b81ad1b382aa64e387666fee0ff218b998d1b351217642dcc7981",
+    "server/internal/service/cockpit_meeting_preparation_read_scale_test.go": "d67f43a3baf29cb91783892f777f4d4293867866e748250d496756c2ba4c6158"
+  },
+  "core_unique_tests": 215,
+  "core_files": {
+    "api/cockpit-meeting-preparation.test.ts": 24,
+    "api/task-detail.test.ts": 5,
+    "cockpit/marker-queries.test.ts": 3,
+    "cockpit/saved-views.test.ts": 4,
+    "cockpit/scope-view-store.test.ts": 11,
+    "cockpit/ws-updaters.test.ts": 27,
+    "api/cockpit-read.test.ts": 13,
+    "cockpit/preparation-queries.test.ts": 5,
+    "cockpit/meeting-preparation-draft-store.test.ts": 6,
+    "realtime/use-realtime-sync.test.ts": 48,
+    "realtime/use-realtime-sync-ws-instance.test.tsx": 31,
+    "cockpit/navigation.test.ts": 18,
+    "api/cockpit-meeting-lifecycle.test.ts": 16,
+    "cockpit/meeting-lifecycle-mutations.test.tsx": 4
+  },
+  "core_runs": [
+    {
+      "log": "preparation-core-first.log",
+      "passed": 91,
+      "failed": 4,
+      "note": "Three preview empty-token product failures and one history fixture missing actual operation metadata."
+    },
+    {
+      "log": "preparation-api-second.log",
+      "passed": 21,
+      "failed": 1,
+      "note": "Fixed history fixture exposed mismatched nested request hash acceptance."
+    },
+    {
+      "log": "preparation-api-third.log",
+      "passed": 22,
+      "failed": 0
+    },
+    {
+      "log": "preparation-api-target-meeting.log",
+      "passed": 22,
+      "failed": 0,
+      "note": "Required target_meeting_id nullable DTO included."
+    },
+    {
+      "log": "preparation-api-fixed-target.log",
+      "passed": 23,
+      "failed": 0,
+      "note": "New canonical cross-meeting link receipt test; rejects missing destination and link identities for both POST/GET."
+    },
+    {
+      "log": "preparation-core-display-realtime.log",
+      "passed": 102,
+      "failed": 1,
+      "note": "API24+realtime48 passed; ws-instance31 had one stale exact invalidation count fixture."
+    },
+    {
+      "log": "preparation-realtime-task-detail.log",
+      "passed": 1,
+      "failed": 0,
+      "filtered_out": 30,
+      "note": "Targeted correction; 30 filtered tests were already covered, not feature opt-in skips."
+    },
+    {
+      "log": "preparation-lifecycle-ws-final.log",
+      "passed": 5,
+      "failed": 0,
+      "note": "Includes real initial lifecycle GET race recovery."
+    },
+    {
+      "log": "preparation-core-lifecycle-adjacent.log",
+      "passed": 38,
+      "failed": 0
+    }
+  ],
+  "views_runs": [
+    {
+      "log": "preparation-ui-first.log",
+      "passed": 2,
+      "failed": 2,
+      "note": "Request lifetime hook passed; template fields failed exact accessible-name whitespace selectors, sent to UX owner."
+    },
+    {
+      "log": "preparation-confirmation-ui-green.log",
+      "passed": 206,
+      "failed": 0,
+      "note": "203 locale parity + request hook2 + reauthorization1; overlapping subset of the final unique totals."
+    },
+    {
+      "log": "preparation-polish-locale.log",
+      "passed": 203,
+      "failed": 0,
+      "note": "Parity recheck after approved copy overlay, not 203 new tests."
+    }
+  ],
+  "go_task_hook": {
+    "unique_parents": 18,
+    "new_parents": 4,
+    "existing_parents": 14,
+    "binary_sha256": "ded915f01706f6afccd685289f0806770d787cb76124d17a209a8e25746df07a",
+    "test_fixture_only_incremental_sha256": "ef753e61b346b781e5d6383ac2f3a851437bb4a1ab680801b4ca4e2b9be60734",
+    "final_incremental_parents": 1,
+    "included_in_service_full": true
+  },
+  "pending": [],
+  "task_read": {
+    "parents": 4,
+    "status": "PASS",
+    "binary_sha256": "bc23e5e53a155e0ad846a153f3ab2a8a88a1389f8f4c69342696374fd81feb92",
+    "log": "preparation-task-read-second.log",
+    "existing_message_parents": 2,
+    "initial_failure": "All4 new tests stopped at missing fixture runtime_id; real constraint retained, fixture fixed.",
+    "subsequent_test_only_change": "Owned workspace search-index hygiene included in final handler full run.",
+    "included_in_handler_full": true
+  },
+  "cli": {
+    "unique_parents": 14,
+    "initial_binary_sha256": "35b68e361a6e7938b6de68d2161aae4557f42ca0ea083bc91a4f4acd4b9fe66c",
+    "initial_parents": 13,
+    "initial_log": "preparation-cli-first.log",
+    "final_binary_sha256": "2e1f222868ed8455d422874bf1ca7dcac7157108f8f98ec662ed78b275658e6d",
+    "final_affected_parents": 5,
+    "additional_existing_show_parent": 1,
+    "final_log": "preparation-cli-final.log",
+    "note": "14 unique parents across initial13 and overlapping final6 (five affected plus one additional show parent); final log is not all14 in one run.",
+    "final_log_counts": {
+      "log": "/tmp/multica-l-preparation-evidence/preparation-cli-final.log",
+      "parents": {
+        "PASS": 6,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "descendants": {
+        "PASS": 38,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "failures": [],
+      "skips": []
+    }
+  },
+  "schema": "multica_test.public through 9091; 777 ledger entries",
+  "migration": {
+    "host": "fosun_agent_3",
+    "database": "multica_test",
+    "completed_at": "2026-10-11T01:03:17.293676+00:00",
+    "runner": "/Users/fosun_agent_3/var/multica-dev-test/bin/multica-meeting-preparation-migrate",
+    "runner_sha256": "eaf6bf06ba087a2ca86b3765caed55acced03cb7622561e3f19c821ed3c64c72",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-test/backups/before-preparation-9091-20261011T010119Z",
+    "applied": [
+      "9076_cockpit_meeting_preparation",
+      "9077_cockpit_template_id_idx",
+      "9078_cockpit_template_page_idx",
+      "9079_cockpit_template_version_id_idx",
+      "9080_cockpit_template_version_number_idx",
+      "9081_cockpit_template_version_command_idx",
+      "9082_cockpit_preparation_operation_id_idx",
+      "9083_cockpit_preparation_operation_command_idx",
+      "9084_cockpit_preparation_operation_template_idx",
+      "9085_cockpit_preparation_operation_page_idx",
+      "9086_cockpit_preparation_effect_id_idx",
+      "9087_cockpit_preparation_effect_position_idx",
+      "9088_cockpit_preparation_effect_slot_idx",
+      "9089_cockpit_preparation_effect_command_idx",
+      "9090_cockpit_preparation_effect_issue_idx",
+      "9091_cockpit_meeting_preparation_integrity"
+    ],
+    "ledger_before": 761,
+    "ledger_after": 777,
+    "old_ledger_stems_and_timestamps_unchanged": true,
+    "new_valid_ready_indexes": [
+      "cockpit_template_id_idx",
+      "cockpit_template_page_idx",
+      "cockpit_template_version_id_idx",
+      "cockpit_template_version_number_idx",
+      "cockpit_template_version_command_idx",
+      "cockpit_preparation_operation_id_idx",
+      "cockpit_preparation_operation_command_idx",
+      "cockpit_preparation_operation_template_idx",
+      "cockpit_preparation_operation_page_idx",
+      "cockpit_preparation_effect_id_idx",
+      "cockpit_preparation_effect_position_idx",
+      "cockpit_preparation_effect_slot_idx",
+      "cockpit_preparation_effect_command_idx",
+      "cockpit_preparation_effect_issue_idx"
+    ],
+    "k_facts_unchanged": {
+      "cockpit_meeting": {
+        "count": 0,
+        "hash": null
+      },
+      "cockpit_meeting_work_package": {
+        "count": 0,
+        "hash": null
+      },
+      "cockpit_meeting_agenda": {
+        "count": 0,
+        "hash": null
+      },
+      "cockpit_meeting_agenda_reference": {
+        "count": 0,
+        "hash": null
+      },
+      "cockpit_meeting_lifecycle_command": {
+        "count": 0,
+        "hash": null
+      }
+    },
+    "tombstones": 7,
+    "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+    "workspace_count": 0,
+    "resident_modified": false
+  },
+  "backup": {
+    "database": "multica_test",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-test/backups/before-preparation-9091-20261011T010119Z",
+    "dump_bytes": 14381700,
+    "dump_sha256": "29120917693074282a33a02f7040de383d2dfb4a337f6d086e4090553d9d46c5",
+    "dump_entries": 1084,
+    "ledger_count": 761,
+    "pending": [
+      "9076_cockpit_meeting_preparation",
+      "9077_cockpit_template_id_idx",
+      "9078_cockpit_template_page_idx",
+      "9079_cockpit_template_version_id_idx",
+      "9080_cockpit_template_version_number_idx",
+      "9081_cockpit_template_version_command_idx",
+      "9082_cockpit_preparation_operation_id_idx",
+      "9083_cockpit_preparation_operation_command_idx",
+      "9084_cockpit_preparation_operation_template_idx",
+      "9085_cockpit_preparation_operation_page_idx",
+      "9086_cockpit_preparation_effect_id_idx",
+      "9087_cockpit_preparation_effect_position_idx",
+      "9088_cockpit_preparation_effect_slot_idx",
+      "9089_cockpit_preparation_effect_command_idx",
+      "9090_cockpit_preparation_effect_issue_idx",
+      "9091_cockpit_meeting_preparation_integrity"
+    ],
+    "tombstones": 7,
+    "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+    "workspace_count": 0
+  },
+  "ddl_proof": {
+    "parents": 1,
+    "status": "PASS",
+    "binary_sha256": "dfc993dda3284a05f6917132e7a42a6f0f16e96d79b4e1d22fbdbc4822bfa99e",
+    "public_ledger_unchanged": true,
+    "new_temp_schemas_after": 0
+  },
+  "preparation_http": {
+    "parents": 7,
+    "status": "PASS",
+    "included_in_handler_full": true,
+    "initial_parents": 6,
+    "initial_log": "preparation-http-first.log",
+    "additional_parent": "TestCockpitPreparationHTTPClosedMeetingKeepsMaintenanceButRejectsLegacyAdditions",
+    "additional_subtests": 2,
+    "final_log": "/tmp/multica-l-preparation-evidence/preparation-handler-full.log"
+  },
+  "core_current_results": {
+    "passed": 215,
+    "failed": 0,
+    "unique": true,
+    "note": "Per-file map sums to 215. Preserve initial RED runs; later targeted GREEN resolves them.",
+    "final_logs": [
+      "/tmp/multica-l-preparation-evidence/preparation-lifecycle-ws-final.log",
+      "/tmp/multica-l-preparation-evidence/preparation-core-lifecycle-adjacent.log",
+      "/tmp/multica-l-preparation-evidence/preparation-realtime-task-detail.log",
+      "/tmp/multica-l-preparation-evidence/preparation-core-display-realtime.log"
+    ]
+  },
+  "views_unique_passed": 11,
+  "domain_first": {
+    "parents": 6,
+    "business": 3,
+    "pure_config": 3,
+    "status": "PASS",
+    "binary_sha256": "307493b400de0d5436bd7c6511f6f8a77b603ebfcc232747164596a96a9d5714",
+    "log": "preparation-domain-first.log",
+    "included_in_service_full": true
+  },
+  "bounded_read_scale": {
+    "parents": 1,
+    "status": "PASS",
+    "binary_sha256": "5fb043b4cd3c8e7627c47500c82b6b51c6fb399ba93d1c119da49aa1403212d4",
+    "template_versions": 31,
+    "large_body_versions": 30,
+    "large_body_bytes_each": 36020,
+    "operations": 31,
+    "last_operation_effects": 50,
+    "measurement": "First service+JSON observations, not browser/network or OS cold cache benchmark",
+    "observations": [
+      {
+        "read": "versions_page_25",
+        "service_plus_json_ms": 3.825,
+        "bytes": 11298
+      },
+      {
+        "read": "versions_continuation_6",
+        "service_plus_json_ms": 2.056,
+        "bytes": 2785
+      },
+      {
+        "read": "selected_fixed_version_body",
+        "service_plus_json_ms": 5.842,
+        "bytes": 36822
+      },
+      {
+        "read": "operations_page_25",
+        "service_plus_json_ms": 7.409,
+        "bytes": 22718
+      },
+      {
+        "read": "effects_page_25",
+        "service_plus_json_ms": 6.067,
+        "bytes": 12959
+      },
+      {
+        "read": "effects_continuation_after_write_25",
+        "service_plus_json_ms": 5.385,
+        "bytes": 12779
+      },
+      {
+        "read": "operations_continuation_after_write_6",
+        "service_plus_json_ms": 3.335,
+        "bytes": 5508
+      }
+    ],
+    "cleanup": {
+      "workspace": 0,
+      "templates": 0,
+      "versions": 0,
+      "operations": 0,
+      "effects": 0,
+      "meetings": 0,
+      "issues": 0,
+      "retained_deleted_tombstones": 7
+    },
+    "log": "preparation-read-scale-first.log",
+    "included_in_service_full": true
+  },
+  "draft": false,
+  "audit_scope": "Final report combines validator runtime evidence and independent local evidence audit; report/source hashes refer to immutable L release, not later N1 worktree.",
+  "historical_views_files": {
+    "cockpit/components/use-cockpit-preparation-request.test.tsx": 2,
+    "cockpit/components/cockpit-meeting-template-fields.test.tsx": 2,
+    "cockpit/components/cockpit-meeting-template-bindings.test.tsx": 1
+  },
+  "views_final": {
+    "unique_passed": 11,
+    "failed": 0,
+    "locale_parity_passed": 203,
+    "note": "Validator-confirmed distinct component tests; do not add repeated request-hook/reauthorization runs or parity to the component count.",
+    "final_increment_logs": [
+      "/tmp/multica-l-preparation-evidence/preparation-confirmation-ui-green.log",
+      "/tmp/multica-l-preparation-evidence/preparation-polish-locale.log"
+    ]
+  },
+  "go_service": {
+    "unique_parents_passed": 600,
+    "unique_parents_failed": 0,
+    "unique_parents_skipped": 0,
+    "unique_descendants_passed": 387,
+    "race": true,
+    "broad_run": {
+      "log": "/tmp/multica-l-preparation-evidence/preparation-service-full.log",
+      "parents": {
+        "PASS": 599,
+        "FAIL": 1,
+        "SKIP": 0
+      },
+      "descendants": {
+        "PASS": 386,
+        "FAIL": 1,
+        "SKIP": 0
+      },
+      "failures": [
+        "TestBuiltinSkillsConformToTemplate"
+      ],
+      "skips": []
+    },
+    "final_builtin_increment": {
+      "log": "/tmp/multica-l-preparation-evidence/preparation-builtin-final.log",
+      "parents": {
+        "PASS": 1,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "descendants": {
+        "PASS": 4,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "failures": [],
+      "skips": []
+    },
+    "broad_binary_sha256": "07ab4075edd679aee3b0891c6c3078e52a4e114b5f57aaac31a73ef9db797280",
+    "builtin_binary_sha256": "1f08ff4d5a4f451fd1e456054d8a1b54abb6e6fff83eb058d7a9333e5f2c0906",
+    "note": "599 broad PASS plus the single builtin parent corrected and rerun; not one all-green 600-parent run."
+  },
+  "go_handler": {
+    "unique_parents_passed": 2655,
+    "unique_parents_failed": 0,
+    "unique_parents_opt_in_skipped": 1,
+    "unique_descendants_passed": 1959,
+    "race": true,
+    "full_run": {
+      "log": "/tmp/multica-l-preparation-evidence/preparation-handler-full.log",
+      "parents": {
+        "PASS": 2655,
+        "FAIL": 0,
+        "SKIP": 1
+      },
+      "descendants": {
+        "PASS": 1959,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "failures": [],
+      "skips": [
+        "TestFetchFromSkillsSh_AnthropicPptxIntegration"
+      ]
+    },
+    "binary_sha256": "06dc5aef3754dc8bc6c866548a71cefdde90e39c473a38783574f5b76616bd98",
+    "skip_reason": "Live GitHub skills.sh integration requires MULTICA_RUN_SKILLS_SH_INTEGRATION=1."
+  },
+  "historical_source_hashes": {
+    "packages/core/api/cockpit-meeting-preparation.test.ts": "14cd646c9ec877950e8363f4180a6407078efb7a739f2e8cc80495bb869cb99b",
+    "packages/core/api/cockpit-meeting-preparation-schemas.ts": "4e5aae582151ab22c33fbb3f8efdacb3d19120a0ed168c51e4932a9c5ce687c4",
+    "packages/core/api/cockpit-meeting-lifecycle-schemas.ts": "54caaf4e78a11db20bd8b211bdf79fe1958f4cdec023144675ac841a17b31326",
+    "packages/core/types/cockpit-meeting-preparation.ts": "311195b5207f65ac2eb7fafd9c5231db224a2964d916fec6fcda4abf25b2c31b",
+    "server/internal/handler/task_read.go": "732fac4b1b6e9120f1601de5175ca7a173b4fa0cb39c28fd2ae72c3e85551123",
+    "server/internal/handler/task_read_test.go": "6a67942af6f01c1b13cf8c53fa44aba7b6172a719b35764fdd93412436b52f92",
+    "server/internal/handler/cockpit_meeting_preparation.go": "9b2231ff29bfc367b2da2bd69512b04458df70e6cbfec3eeedeb4033377eb4b7",
+    "server/internal/handler/cockpit_meeting_preparation_test.go": "35a46db0d73ada72ca3c7fd4b98614c4adeccbba42c729e850758d4a61185438",
+    "server/internal/service/cockpit_meeting_preparation_read_scale_test.go": "d67f43a3baf29cb91783892f777f4d4293867866e748250d496756c2ba4c6158"
+  },
+  "source_hashes_commit": "bab527b428b88394856eaf7280bfbfa174dce086",
+  "candidate": {
+    "source_commit": "bab527b428b88394856eaf7280bfbfa174dce086",
+    "release_archive_sha256": "3cabb8cf559cf6a9e1e6653c722c03aae801e204909f97799c955e0bce165db6",
+    "frontend_manifest_entries": 2810,
+    "all_product_build_inputs_match": true,
+    "test_changes_after_build": [
+      "e2e/cockpit-meeting-preparation.spec.ts"
+    ],
+    "api_commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+    "api_sha256": "2b046128d4ae66c6ac28db0de84ff16f8bbee636fb4a4bfea4612ed2a919c4f2",
+    "web_build_id": "OuhoQpAaH0TUo2o3uS7Yy",
+    "cli_sha256": "a25e835f52fc239492bc93a9aec0590f4e5e1307f7651124f915881f7b21e217",
+    "api_server_tree": "560072374c64b971e56210acc94e2136677d3764",
+    "product_overlay_commit": "55b27f9b8573efb20558b5d9f3cd0824bb35b7b3",
+    "product_overlay_files": 7,
+    "e2e_overlay_files": 2,
+    "archive_path": "/tmp/multica-meeting-preparation-release.tar",
+    "archive_locally_verified": true,
+    "business_source_variations_from_full_go": [
+      "SQL source trailing blank line trimmed; successful sqlc yielded no generated Go difference.",
+      "Builtin cockpit reference adjacent lines combined to satisfy size bound; only builtin parent rerun."
+    ]
+  },
+  "browser": {
+    "final_status": "PASS",
+    "unique_scenarios": 2,
+    "final_api_commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+    "final_web_build_id": "OuhoQpAaH0TUo2o3uS7Yy",
+    "runs": [
+      {
+        "round": "first",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-first.json",
+        "stats": {
+          "startTime": "2026-10-11T02:09:29.011Z",
+          "duration": 19375.973,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 2,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "unexpected",
+            "duration_ms": 10592,
+            "failure": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  getByRole('dialog').getByRole('region', { name: 'Review the planned changes', exact: true }).locator('ul').last().locator(':scope > li')\nExpected: 25\nReceived: 0\nTimeout:  5000ms\n\nCall log:\n  - Expect \"toHaveCount\" with timeout 5000ms\n  - waiting for getByRole('dialog').getByRole('region', { name: 'Review the planned changes', exact: true }).locator('ul').last().locator(':scope > li')\n    9 × locator resolved to 0 elements\n      - unexpected value \"0\"\n"
+          },
+          {
+            "scenario": "cockpit-meeting-workflow.spec.ts",
+            "title": "requires readiness and a human decision before publishing a fixed minutes version",
+            "status": "unexpected",
+            "duration_ms": 6780,
+            "failure": "Error: expect(locator).toBeDisabled() failed\n\nLocator: getByRole('button', { name: 'Delete meeting Evidence and acceptance review', exact: true })\nExpected: disabled\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeDisabled\" with timeout 5000ms\n  - waiting for getByRole('button', { name: 'Delete meeting Evidence and acceptance review', exact: true })\n"
+          }
+        ],
+        "explanation": "Two stale selectors: preview nested list and former delete button."
+      },
+      {
+        "round": "second",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-second.json",
+        "stats": {
+          "startTime": "2026-10-11T02:14:25.568Z",
+          "duration": 33947.625,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "unexpected",
+            "duration_ms": 25345,
+            "failure": "TimeoutError: locator.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByRole('dialog').getByRole('region', { name: 'Preparation affected by cancellation', exact: true }).getByRole('listitem').filter({ has: getByRole('link', { name: /Prepare evidence 02/ }) }).getByLabel('Due date', { exact: true })\n"
+          },
+          {
+            "scenario": "cockpit-meeting-workflow.spec.ts",
+            "title": "requires readiness and a human decision before publishing a fixed minutes version",
+            "status": "expected",
+            "duration_ms": 6621,
+            "failure": null
+          }
+        ],
+        "explanation": "Legacy workflow passed; preparation stopped at exact due-date label lookup."
+      },
+      {
+        "round": "third",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-third.json",
+        "stats": {
+          "startTime": "2026-10-11T02:23:06.601Z",
+          "duration": 27116.623,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "unexpected",
+            "duration_ms": 25857,
+            "failure": "TimeoutError: locator.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for getByRole('dialog').getByRole('region', { name: 'Preparation affected by cancellation', exact: true }).getByRole('listitem').filter({ has: getByRole('link', { name: /Prepare evidence 02/ }) }).getByLabel(/^Due date\\b/)\n"
+          }
+        ],
+        "explanation": "Preparation due-date word-boundary selector timed out; polling active before completed is not a separate failure."
+      },
+      {
+        "round": "fourth",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-fourth.json",
+        "stats": {
+          "startTime": "2026-10-11T02:36:55.431Z",
+          "duration": 27121.141,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "unexpected",
+            "duration_ms": 25588,
+            "failure": "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"closed\"\nReceived: \"cancelled\""
+          }
+        ],
+        "explanation": "Preparation reached cancellation and explicit reauthorization; status_category assertion expected closed but public API returned cancelled."
+      },
+      {
+        "round": "fifth",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-fifth.json",
+        "stats": {
+          "startTime": "2026-10-11T02:50:20.489Z",
+          "duration": 34439.534,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 1,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "unexpected",
+            "duration_ms": 25443,
+            "failure": "Error: expect(received).toMatchObject(expected)\n\n- Expected  - 1\n+ Received  + 1\n\n  Object {\n-   \"status\": \"closed\",\n+   \"status\": \"cancelled\",\n    \"status_category\": \"cancelled\",\n  }"
+          },
+          {
+            "scenario": "cockpit-meeting-workflow.spec.ts",
+            "title": "requires readiness and a human decision before publishing a fixed minutes version",
+            "status": "expected",
+            "duration_ms": 6562,
+            "failure": null
+          }
+        ],
+        "explanation": "Final Ouho Web: legacy workflow passed; preparation test still hardcoded closed instead of the configured cancellation status."
+      },
+      {
+        "round": "sixth",
+        "report": "/tmp/multica-l-preparation-evidence/preparation-browser-sixth.json",
+        "stats": {
+          "startTime": "2026-10-11T05:52:14.310Z",
+          "duration": 27940.338000000003,
+          "expected": 1,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "tests": [
+          {
+            "scenario": "cockpit-meeting-preparation.spec.ts",
+            "title": "applies a human preparation template across bounded pages, reconciles an unknown effect and explicitly reviews changed facts",
+            "status": "expected",
+            "duration_ms": 27063,
+            "failure": null
+          }
+        ],
+        "explanation": "Preparation complete end-to-end PASS on unchanged Ouho Web/API99f; test observes the exact status selected in the preview."
+      }
+    ],
+    "scenario_final_runs": {
+      "cockpit-meeting-workflow.spec.ts": "fifth",
+      "cockpit-meeting-preparation.spec.ts": "sixth"
+    },
+    "note": "Two distinct scenarios pass on the same final Web/API, in consecutive runs, not a single two-scenario run. Fifth preparation failed a hardcoded status assertion; sixth changes only that test assertion.",
+    "screenshots": [
+      "/tmp/multica-l-preparation-evidence/final-screenshots/meeting-preparation-preview-390-zh-dark.png",
+      "/tmp/multica-l-preparation-evidence/final-screenshots/meeting-preparation-preview-page-two-390-zh-dark.png",
+      "/tmp/multica-l-preparation-evidence/final-screenshots/meeting-preparation-progress-390-zh-dark.png",
+      "/tmp/multica-l-preparation-evidence/final-screenshots/meeting-preparation-results-390-zh-dark.png"
+    ]
+  },
+  "final_isolated_cleanup": {
+    "api_stopped": true,
+    "web_stopped": true,
+    "restored_proxy_port": 18880,
+    "restored_build_id": "sFWEfsflzzbySK6O7z3rc",
+    "cleanup_counts": {
+      "workspace": 0,
+      "issue": 0,
+      "cockpit_meeting": 0,
+      "agent_task_queue": 0,
+      "cockpit_meeting_template": 0,
+      "cockpit_meeting_template_version": 0,
+      "cockpit_meeting_preparation_operation": 0,
+      "cockpit_meeting_preparation_effect": 0
+    },
+    "ledger": 777,
+    "retained_capture_tombstones": 7,
+    "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+    "runtime_env_sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0",
+    "raw_cleanup_record": "/tmp/multica-l-preparation-evidence/deployment/deployment-final-check.json",
+    "tombstone_hash_sql": "md5(jsonb_agg(row ORDER BY id)::text), database timezone Asia/Shanghai",
+    "tombstones_unchanged": true
+  },
+  "deployment": {
+    "status": "DEPLOYED_AND_VERIFIED",
+    "resident_modified": true,
+    "report": "agent3-meeting-preparation-resident-deployment.json",
+    "source_commit": "bab527b428b88394856eaf7280bfbfa174dce086",
+    "schema": 9091,
+    "ledger": 780,
+    "api_commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+    "api_pid": 21607,
+    "web_pid": 21608,
+    "build_id": "EpCE6h3_HsDsXDkVqqB7K",
+    "owned_probe": "PASS",
+    "original_data_preserved": true,
+    "review_url": "http://localhost:23000/fosun-bio/cockpit?meeting=13ee0d80-d32a-405e-a815-1d8d2e6e0f3a&meeting_view=agenda"
+  },
+  "screenshots": [
+    {
+      "file": "meeting-preparation-preview-390-zh-dark.png",
+      "sha256": "7625efb7e4802495b15f5445df3281611529d71147987fcbe8541188d2570828",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-preview-page-two-390-zh-dark.png",
+      "sha256": "298724500edd0d28cbb419716dcb25dd007598bfe53a5e694046791192071de5",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-progress-390-zh-dark.png",
+      "sha256": "a4a67bb0386c5bb86ed5dc062ef2afcf3e0963768fb58c6e61be2e8c2388c8f8",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-results-390-zh-dark.png",
+      "sha256": "d4895a4819e1b439e5927dbec0d71129e23fef435dba91bfa42766c0dce0c3f9",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "resident-preparation-dark-zh.png",
+      "sha256": "5f4879b63be9dcf44fd625c8a5e0d7c1aaaf6f0253be2aca2b3d77883a430de5",
+      "origin": "resident probe"
+    },
+    {
+      "file": "resident-preparation-light-zh.png",
+      "sha256": "a3c3ed9b5d9638975727d69f7309e87f97518e97b8660aaacb2cf4d070a6fda8",
+      "origin": "resident probe"
+    }
+  ],
+  "qa_profile_restore": {
+    "api_and_web_stopped": true,
+    "build_id": "sFWEfsflzzbySK6O7z3rc",
+    "proxy_port": 18880,
+    "runtime_env_unchanged": true
+  }
+}
