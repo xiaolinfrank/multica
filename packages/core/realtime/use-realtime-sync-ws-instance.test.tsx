@@ -10,7 +10,7 @@ import { defaultStorage } from "../platform/storage";
 import { issueKeys } from "../issues/queries";
 import { chatKeys } from "../chat/queries";
 import { runtimeKeys } from "../runtimes/queries";
-import { workspaceWorkingAgentsKeys } from "../agents/queries";
+import { workspaceWorkingAgentsKeys, agentTasksKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
 import { cockpitKeys } from "../cockpit/queries";
@@ -210,12 +210,15 @@ describe("useRealtimeSync — ws instance change", () => {
     // (17 workspace-scoped [incl. property definitions and modules] + 6
     // per-issue prefixes + the workspace working-agents projection + 5
     // per-chat prefixes + 1 workspaceKeys.list() + 1 cross-workspace inbox
-    // unread summary = 32 calls).
+    // unread summary + 1 agent task history/detail prefix = 33 calls).
     //
     // Awaited rather than counted synchronously: the inbox unread summary
     // refresh cancels any in-flight request before invalidating (see
     // onInboxSummaryInvalidate), so that one lands after the synchronous ones.
-    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(32));
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(33));
+    expect(invalidateSpy.mock.calls.filter(([filters]: [InvalidateQueryFilters | undefined]) =>
+      JSON.stringify(filters?.queryKey) === JSON.stringify(agentTasksKeys.all("ws-1")),
+    )).toHaveLength(1);
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {

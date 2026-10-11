@@ -1,8 +1,9 @@
 import type { CockpitTask } from "./cockpit";
+import type { CockpitMeetingArchiveView, CockpitPreparationCommandReceipt } from "./cockpit-meeting-preparation";
 
 export type CockpitOccurrenceTransition = "schedule" | "start" | "end" | "correct_times";
 export type CockpitAgendaPurpose = "planning" | "goal_review" | "boundary_confirmation" | "question_clarification" | "solution_discussion" | "direction_decision";
-export type CockpitLifecycleAction = CockpitOccurrenceTransition | "materials" | "agenda_create" | "agenda_update" | "agenda_remove" | "reference_attach" | "reference_remove" | "preparation_issue_create";
+export type CockpitLifecycleAction = CockpitOccurrenceTransition | "materials" | "agenda_create" | "agenda_update" | "agenda_remove" | "reference_attach" | "reference_remove" | "preparation_issue_create" | "reinstate" | "archive" | "unarchive";
 export interface CockpitLifecycleCommandInput { command_key: string; expected_revision: number }
 export interface CockpitOccurrenceInput extends CockpitLifecycleCommandInput {
   transition: CockpitOccurrenceTransition;
@@ -49,6 +50,9 @@ export interface CockpitOccurrenceView {
   ended_source: string | null;
   actual_started_at: string | null;
   actual_ended_at: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancelled_reason?: string;
 }
 export interface CockpitMaterialsView {
   workflow_revision: number;
@@ -74,6 +78,7 @@ export interface CockpitMeetingLifecycleHeader {
   can_edit_agenda: boolean;
   can_confirm_materials: boolean;
   blocked_reasons: Array<{ action: string; code: string }>;
+  archive?: CockpitMeetingArchiveView;
 }
 export interface CockpitAgendaMetadata {
   id: string;
@@ -127,6 +132,9 @@ export interface CockpitLifecycleReceipt {
   materials: CockpitMaterialsView | null;
   agenda: CockpitAgendaDetail | null;
   reference: CockpitAgendaReferenceView | null;
+  archive?: CockpitMeetingArchiveView | null;
+  previous_archive?: CockpitMeetingArchiveView | null;
+  preparation?: CockpitPreparationCommandReceipt | null;
 }
 export interface CockpitLifecycleCommandResult {
   workspace_id: string; meeting_id: string; command_key: string;
@@ -136,6 +144,7 @@ export interface CockpitLifecycleCommandResult {
 export interface CockpitLifecycleCommandMetadata {
   command_key: string; action: string; actor_id: string; actor_name: string; created_at: string;
   revision: number; agenda_id: string | null; reference_id: string | null; issue_id: string | null;
+  operation_id?: string | null; effect_id?: string | null;
 }
 export interface CockpitLifecycleCommandPage {
   workspace_id: string; meeting_id: string; page_size: number;

@@ -1995,6 +1995,10 @@ export const CockpitMeetingSchema = z.object({
   ended_at: z.string().datetime({ offset: true }).nullable().optional(),
   actual_started_at: z.string().datetime({ offset: true }).nullable().optional(),
   actual_ended_at: z.string().datetime({ offset: true }).nullable().optional(),
+  cancelled_at: z.string().datetime({ offset: true }).nullable().optional(),
+  cancelled_by: z.string().nullable().optional(), cancelled_reason: z.string().optional(),
+  archived_at: z.string().datetime({ offset: true }).nullable().optional(),
+  archived_by: z.string().nullable().optional(), archived_reason: z.string().optional(),
   track: z.string().default(""),
   parties: z.string().default(""),
   organizer: z.string().default(""),
@@ -2345,6 +2349,7 @@ export const CockpitMeetingImportWriteSchema = CockpitMeetingImportResultSchema.
 export const CockpitBoardSchema = z.object({
   has_meeting_workflows: z.boolean().default(false),
   has_meeting_lifecycle: z.boolean().optional(),
+  has_meeting_preparation: z.boolean().optional(),
   cockpit: CockpitSchema,
   nodes: z.array(CockpitNodeSchema).default([]),
   payments: z.array(CockpitPaymentSchema).default([]),
@@ -2864,6 +2869,12 @@ export const AgentActivityBucketListSchema = z.array(z.object({
 }).loose());
 
 export const AgentTaskListSchema = z.array(AgentTaskSchema);
+// Exact task reads require their identity and current status rather than the
+// tolerant defaults used by older list responses.
+export const AgentTaskDetailSchema = AgentTaskSchema.extend({
+  id: z.string().min(1), workspace_id: z.string().min(1),
+  agent_id: z.string().min(1), status: z.string().min(1),
+});
 
 // Row-resilient list form for the workspace snapshot and agent run history.
 // parseWithFallback returns the WHOLE fallback on any failure (see

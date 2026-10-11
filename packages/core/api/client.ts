@@ -1,3 +1,6 @@
+import type * as MeetingPreparation from "../types/cockpit-meeting-preparation";
+import * as PreparationSchemas from "./cockpit-meeting-preparation-schemas";
+import { cockpitMeetingTemplateAcknowledged, cockpitPreparationCommandAcknowledged, cockpitPreparationEffectAcknowledged } from "../cockpit/meeting-preparation";
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
 import type {
   CockpitMeetingLifecycleHeader, CockpitAgendaPage, CockpitAgendaDetail, CockpitAgendaReferencePage,
@@ -495,6 +498,7 @@ import {
   CreateIssueResponseSchema,
   IssueSchema,
   AgentTaskSchema,
+  AgentTaskDetailSchema,
   SourceContextPreviewSchema,
   CommentSubIssueTaskResponseSchema,
   ListWebhookDeliveriesResponseSchema,
@@ -2585,8 +2589,10 @@ export class ApiClient {
 
   async getCockpitMeetingRegister(wsId: string, scope: CockpitScope, query: CockpitMeetingRegisterQuery, signal?: AbortSignal): Promise<CockpitMeetingRegisterPage | null> {
     const nodeIds = [...new Set(query.node_ids ?? [])].sort();
-    const result = await this.readCockpitSurface(wsId, "/meetings", scope, CockpitMeetingRegisterPageSchema, { ...query, page_size: query.page_size ?? 25 }, signal);
+    const archive = query.archive ?? "active";
+    const result = await this.readCockpitSurface(wsId, "/meetings", scope, CockpitMeetingRegisterPageSchema, { ...query, archive, page_size: query.page_size ?? 25 }, signal);
     return result && result.items.length <= (query.page_size ?? 25) && result.node_id === (query.node_id || null)
+      && (result.archive ?? "active") === archive
       && result.node_ids.length === nodeIds.length && result.node_ids.every((id, index) => id === nodeIds[index])
       && result.date_from === (query.date_from || null) && result.date_to === (query.date_to || null) ? result : null;
   }
@@ -2641,14 +2647,16 @@ export class ApiClient {
     return value?.workspace_id === wsId && value.parent_id === parentId ? value : null;
   }
   async getCockpitPlanMeetingMarkers(wsId: string, scope: CockpitScope, query: CockpitPlanMeetingMarkerQuery, signal?: AbortSignal): Promise<CockpitPlanMeetingMarkerPage | null> {
+    const { archive = "active", ...window } = query;
     const rows = query.rows.map((row) => ({ row_key: row.row_key, node_ids: [...new Set(row.node_ids)].sort() }))
       .sort((a, b) => a.row_key < b.row_key ? -1 : a.row_key > b.row_key ? 1 : 0);
     const params = new URLSearchParams();
     if (scope.projectId) params.set("project_id", scope.projectId);
     if (scope.moduleId) params.set("module_id", scope.moduleId);
-    const raw = await this.fetch<unknown>(`/api/cockpit/plan/meetings/query?${params}`, { method: "POST", signal, headers: { "X-Workspace-ID": wsId }, body: JSON.stringify({ ...query, rows }) });
+    const raw = await this.fetch<unknown>(`/api/cockpit/plan/meetings/query?${params}`, { method: "POST", signal, headers: { "X-Workspace-ID": wsId }, body: JSON.stringify({ ...window, ...(archive !== "active" ? { archive } : {}), rows }) });
     const value = parseWithFallback<CockpitPlanMeetingMarkerPage | null>(raw, CockpitPlanMeetingMarkerPageSchema, null, { endpoint: "POST /api/cockpit/plan/meetings/query" });
     return value?.workspace_id === wsId && value.scope.project_id === scope.projectId && value.scope.module_id === scope.moduleId
+      && (value.archive ?? "active") === archive
       && value.date_from === query.date_from && value.date_to === query.date_to && JSON.stringify(value.rows) === JSON.stringify(rows) ? value : null;
   }
 
@@ -2771,6 +2779,149 @@ export class ApiClient {
   }
   async createCockpitPreparationIssue(wsId: string, meetingId: string, agendaId: string, body: CockpitPreparationIssueInput): Promise<CockpitLifecycleCommandResult> {
     return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/preparation-issues"), "preparation_issue_create", body, agendaId);
+  }
+
+  private cockpitTemplatePath(wsId: string, suffix = ""): string {
+    if (!wsId) throw new RangeError("Template operations require an explicit workspace");
+    return "/api/cockpit/meeting-templates" + suffix;
+  }
+  private cockpitPreparationOperationPath(operationId: string, suffix = ""): string {
+    if (!operationId) throw new RangeError("Preparation operations require their identity");
+    return "preparation-operations/" + encodeURIComponent(operationId) + suffix;
+  }
+  private async readCockpitTemplate<T extends { workspace_id: string }>(wsId: string, suffix: string, schema: ZodType<T>, query: Record<string, string | number | boolean | undefined> = {}, signal?: AbortSignal): Promise<T | null> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    const endpoint = this.cockpitTemplatePath(wsId, suffix) + (params.size ? "?" + params : "");
+    const raw = await this.fetch<unknown>(endpoint, { headers: { "X-Workspace-ID": wsId }, signal });
+    const parsed = parseWithFallback<T | null>(raw, schema, null, { endpoint: "GET " + endpoint });
+    return parsed?.workspace_id === wsId ? parsed : null;
+  }
+  async getCockpitMeetingTemplates(wsId: string, query: MeetingPreparation.CockpitMeetingTemplateQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplatePage | null> {
+    const params = { ...query, q: query.q?.trim() ?? "", include_inactive: query.include_inactive ?? false, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitTemplate(wsId, "", PreparationSchemas.CockpitMeetingTemplatePageSchema, params, signal);
+    return value?.q === params.q && value.include_inactive === params.include_inactive && value.page_size === params.page_size ? value : null;
+  }
+  async getCockpitMeetingTemplate(wsId: string, templateId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateHeader | null> {
+    if (!templateId) throw new RangeError("A template requires its identity");
+    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId), PreparationSchemas.CockpitMeetingTemplateHeaderSchema, {}, signal);
+    return value?.id === templateId ? value : null;
+  }
+  async getCockpitMeetingTemplateVersions(wsId: string, templateId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateVersionPage | null> {
+    if (!templateId) throw new RangeError("A template requires its identity");
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId) + "/versions", PreparationSchemas.CockpitMeetingTemplateVersionPageSchema, params, signal);
+    return value?.template_id === templateId && value.page_size === params.page_size ? value : null;
+  }
+  async getCockpitMeetingTemplateVersion(wsId: string, templateId: string, versionId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateVersionDetail | null> {
+    if (!templateId || !versionId) throw new RangeError("A version requires its template and version identity");
+    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId) + "/versions/" + encodeURIComponent(versionId), PreparationSchemas.CockpitMeetingTemplateVersionDetailSchema, {}, signal);
+    return value?.template_id === templateId && value.id === versionId ? value : null;
+  }
+  async getCockpitMeetingTemplateCommand(wsId: string, commandKey: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateSaveResult | null> {
+    if (!commandKey) throw new RangeError("A command requires its original key");
+    const value = await this.readCockpitTemplate(wsId, "/commands/" + encodeURIComponent(commandKey), PreparationSchemas.CockpitMeetingTemplateSaveResultSchema, {}, signal);
+    return value?.command_key === commandKey ? value : null;
+  }
+  async saveCockpitMeetingTemplate(wsId: string, templateId: string | null, body: MeetingPreparation.CockpitMeetingTemplateSaveInput): Promise<MeetingPreparation.CockpitMeetingTemplateSaveResult> {
+    const endpoint = this.cockpitTemplatePath(wsId, templateId ? "/" + encodeURIComponent(templateId) + "/versions" : "");
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingPreparation.CockpitMeetingTemplateSaveResult | null>(raw, PreparationSchemas.CockpitMeetingTemplateSaveResultSchema, null, { endpoint: "POST " + endpoint });
+    if (!value || value.workspace_id !== wsId || !cockpitMeetingTemplateAcknowledged(value, body, templateId)) throw new CockpitUnconfirmedWriteError();
+    return value;
+  }
+  async previewCockpitTemplateApplication(wsId: string, meetingId: string, body: MeetingPreparation.CockpitTemplateApplicationPreviewInput): Promise<MeetingPreparation.CockpitTemplateApplicationPreview> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, "template-applications/preview");
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingPreparation.CockpitTemplateApplicationPreview | null>(raw, PreparationSchemas.CockpitTemplateApplicationPreviewSchema, null, { endpoint: "POST " + endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || value.template_version_id !== body.template_version_id
+      || value.selected_total !== body.bindings.filter((item) => item.selected).length
+      || value.effects.some((effect) => !body.bindings.some((binding) => binding.slot_id === effect.slot_id && binding.selected === effect.selected))) throw new CockpitUnconfirmedReadError();
+    return value;
+  }
+  private async writeCockpitPreparationCommand(wsId: string, meetingId: string, suffix: string, action: string,
+    body: MeetingPreparation.CockpitTemplateApplicationInput | MeetingPreparation.CockpitCancellationInput | MeetingPreparation.CockpitPreparationControlInput | MeetingPreparation.CockpitPreparationReauthorizationInput, operationId?: string, effectId?: string): Promise<MeetingPreparation.CockpitPreparationCommandResult> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix);
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingPreparation.CockpitPreparationCommandResult | null>(raw, PreparationSchemas.CockpitPreparationCommandResultSchema, null, { endpoint: "POST " + endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || !cockpitPreparationCommandAcknowledged(value, action, body, operationId, effectId)) throw new CockpitUnconfirmedWriteError();
+    return value;
+  }
+  async applyCockpitMeetingTemplate(wsId: string, meetingId: string, body: MeetingPreparation.CockpitTemplateApplicationInput) {
+    return this.writeCockpitPreparationCommand(wsId, meetingId, "template-applications", "template_apply", body);
+  }
+  async getCockpitPreparationOperations(wsId: string, meetingId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationOperationPage | null> {
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, "preparation-operations", PreparationSchemas.CockpitPreparationOperationPageSchema, params, signal);
+    return value?.page_size === params.page_size ? value : null;
+  }
+  async getCockpitPreparationOperation(wsId: string, meetingId: string, operationId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationOperationHeader | null> {
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitPreparationOperationPath(operationId), PreparationSchemas.CockpitPreparationOperationHeaderSchema, {}, signal);
+    return value?.id === operationId ? value : null;
+  }
+  async getCockpitPreparationEffects(wsId: string, meetingId: string, operationId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationEffectPage | null> {
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/effects"), PreparationSchemas.CockpitPreparationEffectPageSchema, params, signal);
+    return value?.operation_id === operationId && value.page_size === params.page_size ? value : null;
+  }
+  async getCockpitPreparationEffect(wsId: string, meetingId: string, operationId: string, effectId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationEffectDetail | null> {
+    if (!effectId) throw new RangeError("An effect requires its identity");
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/effects/" + encodeURIComponent(effectId)), PreparationSchemas.CockpitPreparationEffectDetailSchema, {}, signal);
+    return value?.operation_id === operationId && value.effect.id === effectId ? value : null;
+  }
+  async applyCockpitPreparationEffect(wsId: string, meetingId: string, operationId: string, effectId: string, body: MeetingPreparation.CockpitPreparationEffectApplyInput): Promise<MeetingPreparation.CockpitPreparationEffectResult> {
+    if (!effectId) throw new RangeError("An effect requires its identity");
+    if (!body.authorization_key || !Number.isInteger(body.authorization_revision) || body.authorization_revision < 1) throw new RangeError("An effect requires its observed authorization");
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/effects/" + encodeURIComponent(effectId) + "/apply"));
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingPreparation.CockpitPreparationEffectResult | null>(raw, PreparationSchemas.CockpitPreparationEffectResultSchema, null, { endpoint: "POST " + endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || !cockpitPreparationEffectAcknowledged(value, operationId, effectId, body.command_key, body.authorization_key, body.authorization_revision)) throw new CockpitUnconfirmedWriteError();
+    return value;
+  }
+  async controlCockpitPreparationOperation(wsId: string, meetingId: string, operationId: string, body: MeetingPreparation.CockpitPreparationControlInput) {
+    if (!["pause", "resume", "skip", "claim"].includes(body.transition)) throw new RangeError("Unsupported preparation transition");
+    return this.writeCockpitPreparationCommand(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/control"), "preparation_" + body.transition, body, operationId);
+  }
+  async getCockpitCancellationImpact(wsId: string, meetingId: string, query: MeetingPreparation.CockpitCancellationImpactQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitCancellationImpactPage | null> {
+    const params = { ...query, q: query.q?.trim() ?? "", page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, "cancellation-impact", PreparationSchemas.CockpitCancellationImpactPageSchema, params, signal);
+    return value?.page_size === params.page_size && value.q === params.q ? value : null;
+  }
+  async getCockpitCancellationRuns(wsId: string, meetingId: string, issueId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitDispositionRunPage | null> {
+    if (!issueId) throw new RangeError("Run inspection requires an issue identity");
+    const params = { ...query, page_size: query.page_size ?? 25 };
+    const value = await this.readCockpitLifecycle(wsId, meetingId, "cancellation-impact/" + encodeURIComponent(issueId) + "/runs", PreparationSchemas.CockpitDispositionRunPageSchema, params, signal);
+    return value?.issue_id === issueId && value.page_size === params.page_size ? value : null;
+  }
+  async previewCockpitMeetingCancellation(wsId: string, meetingId: string, body: MeetingPreparation.CockpitCancellationPreviewInput): Promise<MeetingPreparation.CockpitCancellationPreview> {
+    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, "cancellation/preview");
+    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
+    const value = parseWithFallback<MeetingPreparation.CockpitCancellationPreview | null>(raw, PreparationSchemas.CockpitCancellationPreviewSchema, null, { endpoint: "POST " + endpoint });
+    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId
+      || value.selected_total !== body.issues.filter((item) => item.action !== "retain").length + new Set(body.run_ids).size) throw new CockpitUnconfirmedReadError();
+    return value;
+  }
+  async cancelCockpitMeeting(wsId: string, meetingId: string, body: MeetingPreparation.CockpitCancellationInput) {
+    return this.writeCockpitPreparationCommand(wsId, meetingId, "cancellation", "cancel", body);
+  }
+  async appendCockpitMeetingDisposition(wsId: string, meetingId: string, body: MeetingPreparation.CockpitCancellationInput) {
+    return this.writeCockpitPreparationCommand(wsId, meetingId, "cancellation/dispositions", "preparation_dispose", body);
+  }
+  async getCockpitPreparationAuthorizationPreview(wsId: string, meetingId: string, operationId: string, effectId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationReauthorizationPreview | null> {
+    if (!effectId) throw new RangeError("An effect requires its identity");
+    const value = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/effects/" + encodeURIComponent(effectId) + "/authorization-preview"), PreparationSchemas.CockpitPreparationReauthorizationPreviewSchema, {}, signal);
+    return value?.operation_id === operationId && value.effect_id === effectId ? value : null;
+  }
+  async reauthorizeCockpitPreparationEffect(wsId: string, meetingId: string, operationId: string, effectId: string, body: MeetingPreparation.CockpitPreparationReauthorizationInput) {
+    if (!effectId) throw new RangeError("An effect requires its identity");
+    return this.writeCockpitPreparationCommand(wsId, meetingId, this.cockpitPreparationOperationPath(operationId, "/effects/" + encodeURIComponent(effectId) + "/reauthorize"), "preparation_reauthorize", body, operationId, effectId);
+  }
+  async recordCockpitMeetingDisposition(wsId: string, meetingId: string, body: MeetingPreparation.CockpitMeetingDispositionInput) {
+    if (body.transition !== "reinstate" && body.transition !== "archive" && body.transition !== "unarchive") throw new RangeError("Unsupported meeting disposition");
+    return this.writeCockpitLifecycle(wsId, meetingId, "lifecycle/disposition", body.transition, body);
+  }
+  async getCockpitMeetingOperationBasis(wsId: string, meetingId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingOperationBasis | null> {
+    return this.readCockpitLifecycle(wsId, meetingId, "operation-basis", PreparationSchemas.CockpitMeetingOperationBasisSchema, {}, signal);
   }
 
   async getCockpitMeetingWorkflowSummary(wsId: string, meetingId: string, signal?: AbortSignal): Promise<CockpitMeetingWorkflowSummary | null> {
@@ -4470,6 +4621,14 @@ export class ApiClient {
     return parseWithFallback<AgentTask[]>(raw, AgentTaskListSchema, [], {
       endpoint: "GET /api/issues/:id/task-runs",
     });
+  }
+
+  async getTask(wsId: string, taskId: string, signal?: AbortSignal): Promise<AgentTask | null> {
+    if (!wsId || !taskId) throw new RangeError("An exact task read requires a workspace and task identity");
+    const endpoint = `/api/tasks/${encodeURIComponent(taskId)}`;
+    const raw = await this.fetch<unknown>(endpoint, { headers: { "X-Workspace-ID": wsId }, signal });
+    const value = parseWithFallback<(AgentTask & { workspace_id: string }) | null>(raw, AgentTaskDetailSchema, null, { endpoint: "GET /api/tasks/:id" });
+    return value?.id === taskId && value.workspace_id === wsId ? value : null;
   }
 
   async retryTaskSupplement(issueId: string, taskId: string, commentId: string): Promise<void> {

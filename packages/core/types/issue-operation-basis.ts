@@ -16,6 +16,7 @@ export interface IssueOperationTarget {
   node_id?: string;
   meeting_id?: string;
   action_id?: string;
+  operation_id?: string;
   artifact_id?: string;
   version_id?: string;
   request_id?: string;

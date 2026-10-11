@@ -6,7 +6,7 @@ import { cockpitReadKeys } from "./read-queries";
 
 /** Complete only the finite visible row/date window; never load meeting history. */
 export function cockpitPlanMeetingWindowOptions(wsId: string, scope: CockpitScope, params: Omit<CockpitPlanMeetingMarkerQuery, "cursor">) {
-  const query = { ...params, rows: params.rows.map((row) => ({ row_key: row.row_key, node_ids: [...new Set(row.node_ids)].sort() })).sort((a, b) => a.row_key.localeCompare(b.row_key)) };
+  const query = { ...params, archive: params.archive ?? "active", rows: params.rows.map((row) => ({ row_key: row.row_key, node_ids: [...new Set(row.node_ids)].sort() })).sort((a, b) => a.row_key.localeCompare(b.row_key)) };
   return queryOptions({ queryKey: [...cockpitReadKeys.all(wsId), "plan-meeting-window", scope, query],
     enabled: Boolean(wsId && query.rows.length && query.date_from && query.date_to), staleTime: 15_000,
     queryFn: async ({ signal }) => {

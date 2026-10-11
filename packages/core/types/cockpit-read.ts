@@ -5,7 +5,8 @@ export interface CockpitContextData {
   workspace_id: string; scope: CockpitReadScope; cockpit: Cockpit | null;
   actor: { user_id: string; role: string; is_human: boolean }; has_meeting_workflows: boolean; has_stable_bindings: boolean;
   has_meeting_lifecycle?: boolean;
-  capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean };
+  has_meeting_preparation?: boolean;
+  capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean; meeting_templates?: boolean; meeting_disposition?: boolean };
 }
 export interface CockpitNodeIndexEntry { id: string; parent_id: string | null; code: string; position: number }
 export interface CockpitNodeIndexPage { workspace_id: string; items: CockpitNodeIndexEntry[]; total: number }
@@ -27,15 +28,18 @@ export type CockpitMeetingCard = Omit<CockpitMeeting, "note" | "minutes" | "deci
   issue_count: number; node_count: number; workflow_enabled: boolean; workflow_stage: string; display_excerpt: string;
 };
 export interface CockpitMeetingRegisterQuery {
+  archive?: CockpitMeetingArchiveFilter;
   q?: string; node_id?: string; node_ids?: string[]; tracks?: string[]; kinds?: string[]; statuses?: string[]; parties?: string[];
   only?: ("consensus" | "folder" | "links" | "detected")[]; workflow_stage?: string;
   date_from?: string; date_to?: string; cursor?: string; page_size?: number;
 }
 export interface CockpitMeetingRegisterPage extends CockpitReadPage<CockpitMeetingCard> {
+  archive?: CockpitMeetingArchiveFilter;
   workspace_id: string; scope: CockpitReadScope; node_id: string | null; node_ids: string[];
   /** Present only for finite windows up to 93 days; counts cover every matching row. */
   day_counts: { date: string; total: number }[]; date_from: string | null; date_to: string | null;
 }
+export type CockpitMeetingArchiveFilter = "active" | "archived" | "all";
 export interface CockpitNodeBindingContext {
   project_id: string | null; module_id: string | null; project_title: string; module_title: string;
   source_node_id: string | null; eligible: boolean; reason: string;
@@ -51,9 +55,10 @@ export interface CockpitMeetingDetailData extends CockpitContextData {
   linked_nodes: CockpitReadPage<CockpitMeetingNodeLink & { code: string; name: string }>;
 }
 export interface CockpitPlanMeetingMarkerRow { row_key: string; node_ids: string[] }
-export interface CockpitPlanMeetingMarkerQuery { rows: CockpitPlanMeetingMarkerRow[]; date_from: string; date_to: string; cursor?: string }
+export interface CockpitPlanMeetingMarkerQuery { rows: CockpitPlanMeetingMarkerRow[]; date_from: string; date_to: string; archive?: CockpitMeetingArchiveFilter; cursor?: string }
 export interface CockpitPlanMeetingMarkerGroup { row_key: string; date: string; total: number; items: { id: string; title: string; code: string; start_time: string | null }[] }
 export interface CockpitPlanMeetingMarkerPage {
+  archive?: CockpitMeetingArchiveFilter;
   workspace_id: string; scope: CockpitReadScope; rows: CockpitPlanMeetingMarkerRow[]; date_from: string; date_to: string;
   groups: CockpitPlanMeetingMarkerGroup[]; total_groups: number; next_cursor: string | null;
 }

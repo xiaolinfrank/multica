@@ -292,6 +292,12 @@ export interface CockpitMeeting {
   ended_at?: string | null;
   actual_started_at?: string | null;
   actual_ended_at?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancelled_reason?: string;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string;
   /** Which line of the programme this meeting advances ("高质量数据集" …),
    *  in the board's own words. The timeline lanes are these values; empty
    *  lands the meeting in the unfiled lane. */
@@ -386,6 +392,7 @@ export interface CockpitBoard {
   /** Aggregate protection signal; older backends omit it. */
   has_meeting_workflows?: boolean;
   has_meeting_lifecycle?: boolean;
+  has_meeting_preparation?: boolean;
   nodes: CockpitNode[];
   payments: CockpitPayment[];
   issue_links: CockpitIssueLink[];
@@ -413,6 +420,8 @@ export type CockpitEventScope =
   | "meeting_nodes"
   | "meeting_workflow"
   | "meeting_lifecycle"
+  | "meeting_templates"
+  | "meeting_preparation"
   | "meeting_actions"
   | "primary_node"
   | "directory"

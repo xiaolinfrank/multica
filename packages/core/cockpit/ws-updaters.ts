@@ -5,6 +5,7 @@ import { issueKeys } from "../issues/queries";
 import { cockpitReadKeys } from "./read-queries";
 import { invalidateCockpitArtifactEvent, invalidateCockpitArtifactLabels } from "./artifact-queries";
 import { invalidateCockpitMeetingLifecycle } from "./meeting-lifecycle-queries";
+import { invalidateCockpitMeetingPreparationFacts, invalidateCockpitPreparationProjections, cockpitPreparationKeys } from "./meeting-preparation-queries";
 import { CockpitNodeIssueLinkReceiptSchema, CockpitMeetingIssueLinkReceiptSchema, CockpitMeetingNodeLinkReceiptSchema } from "../api/cockpit-reference-schemas";
 import type {
   CockpitBoard,
@@ -112,12 +113,21 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  if (scope === "meeting_templates" || scope === "meeting_preparation") {
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void invalidateCockpitMeetingPreparationFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    return;
+  }
   void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
   void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
   if (scope === "node" || scope === "meeting") invalidateCockpitArtifactLabels(qc, wsId);
   if (scope === "meeting_lifecycle" || scope === "meeting" || scope === "meeting_workflow") {
     const meetingId = asRecord(entity)?.["meeting_id"] ?? (scope === "meeting" ? asRecord(entity)?.["id"] : undefined);
     invalidateCockpitMeetingLifecycle(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    void invalidateCockpitPreparationProjections(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+  }
+  if (scope === "node" || scope === "primary_node" || scope === "artifacts" || scope === "acceptance" || scope === "meeting_actions") {
+    void qc.invalidateQueries({ queryKey: cockpitPreparationKeys.all(wsId), predicate: (query) => query.queryKey[3] === "meeting" });
   }
   if (scope === "node" || scope === "primary_node") invalidateCockpitMeetingLifecycle(qc, wsId);
   if (scope === "meeting_lifecycle") {

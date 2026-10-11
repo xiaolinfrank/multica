@@ -15,6 +15,7 @@ export const IssueOperationTargetSchema = z.object({
   kind: id, label: z.string(), purpose: id,
   issue_id: id.optional(), node_id: id.optional(), meeting_id: id.optional(),
   action_id: id.optional(), artifact_id: id.optional(), version_id: id.optional(),
+  operation_id: id.optional(),
   request_id: id.optional(), view: z.string().optional(),
 }).refine((target) => {
   switch (target.kind) {

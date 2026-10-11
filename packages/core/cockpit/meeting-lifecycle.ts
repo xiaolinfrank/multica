@@ -17,6 +17,13 @@ export function cockpitLifecycleAcknowledged(result: { command_key: string; acti
   if (result.command_key !== body.command_key || result.action !== action) return false;
   const receipt = result.receipt;
   if (agendaId && receipt.agenda_id !== agendaId || referenceId && receipt.reference_id !== referenceId) return false;
+  if (action === "archive" || action === "unarchive" || action === "reinstate") {
+    if (!("reason" in body) || !body.reason?.trim() || receipt.reason !== body.reason.trim()) return false;
+    if (action === "reinstate") return receipt.occurrence?.state === "scheduled" && receipt.previous_occurrence?.state === "cancelled"
+      && receipt.occurrence.cancelled_at === null && receipt.occurrence.cancelled_by === null && receipt.occurrence.cancelled_reason === "";
+    return Boolean(receipt.previous_archive && receipt.archive)
+      && (action === "archive" ? Boolean(receipt.archive?.archived_at) && receipt.archive?.reason === body.reason.trim() : receipt.archive?.archived_at === null && receipt.archive.archived_by === null && receipt.archive.reason === "");
+  }
   if ("transition" in body) {
     const occurrence = receipt.occurrence;
     if (!occurrence || action !== body.transition) return false;

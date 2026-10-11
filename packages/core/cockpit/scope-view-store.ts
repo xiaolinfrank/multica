@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { registerDraftCleanup } from "../drafts/cleanup-registry";
 import type { CockpitScope } from "./navigation";
 import type { CockpitMeetingOnlyFlag } from "./meeting-search";
+import type { CockpitMeetingArchiveFilter } from "../types/cockpit-read";
 
 export interface CockpitPlanContext {
   seeded: boolean;
@@ -11,13 +12,15 @@ export interface CockpitPlanContext {
   rootIds: string[];
   showFinance: boolean;
   toolsOpen: boolean;
+  includeArchivedMeetings: boolean;
   scrollTop: number;
   scrollLeft: number;
 }
 export const EMPTY_COCKPIT_PLAN_CONTEXT: CockpitPlanContext = {
-  seeded: false, query: "", zoom: "month", collapsedIds: [], rootIds: [], showFinance: false, toolsOpen: true, scrollTop: 0, scrollLeft: 0,
+  seeded: false, query: "", zoom: "month", collapsedIds: [], rootIds: [], showFinance: false, toolsOpen: true, includeArchivedMeetings: false, scrollTop: 0, scrollLeft: 0,
 };
 export interface CockpitMeetingContext {
+  archive: CockpitMeetingArchiveFilter;
   view: "list" | "month" | "week" | "agenda" | "timeline";
   query: string;
   anchorDay: string | null;
@@ -34,6 +37,7 @@ export interface CockpitMeetingContext {
   cursors: string[];
 }
 export const EMPTY_COCKPIT_MEETING_CONTEXT: CockpitMeetingContext = {
+  archive: "active",
   view: "list", query: "", anchorDay: null, from: "", to: "", tracks: [], kinds: [], statuses: [], parties: [], only: [], selectedDay: null, scrollTop: 0, cursorKey: "", cursors: [""],
 };
 export const cockpitScopeViewKey = (wsId: string, scope: CockpitScope) => JSON.stringify([wsId, scope.projectId, scope.moduleId]);
@@ -68,7 +72,7 @@ export const useCockpitScopeViewStore = create<{
   updatePlan: (key, patch) => set((state) => ({ plans: { ...state.plans, [key]: { ...(state.plans[key] ?? EMPTY_COCKPIT_PLAN_CONTEXT), ...patch } } })),
   updateMeeting: (key, patch) => set((state) => {
     const current = state.meetings[key] ?? EMPTY_COCKPIT_MEETING_CONTEXT;
-    const changed = (["query", "view", "anchorDay", "from", "to", "tracks", "kinds", "statuses", "parties", "only", "selectedDay"] as const).some((field) => field in patch && JSON.stringify(current[field]) !== JSON.stringify(patch[field]));
+    const changed = (["archive", "query", "view", "anchorDay", "from", "to", "tracks", "kinds", "statuses", "parties", "only", "selectedDay"] as const).some((field) => field in patch && JSON.stringify(current[field]) !== JSON.stringify(patch[field]));
     return { meetings: { ...state.meetings, [key]: { ...current, ...patch, ...(changed ? { cursors: [""], cursorKey: "", scrollTop: 0 } : {}) } } };
   }),
   updateGovernance: (key, patch) => set((state) => {

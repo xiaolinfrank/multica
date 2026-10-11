@@ -15,8 +15,8 @@ const meetingView = z.enum(["list", "month", "week", "agenda", "timeline"]);
 /** These are implemented view settings only. Object selections, pages, scroll positions and server data are intentionally absent. */
 export const CockpitSavedViewDefinitionSchema = z.discriminatedUnion("surface", [
   z.object({ surface: z.literal("work"), scope, audience: z.enum(["mine", "team"]), kind: z.enum(["", "workflow", "action", "nas", "issue"]), mode: z.enum(["overview", "attention"]) }),
-  z.object({ surface: z.literal("plan"), scope, view: planView, query: text, zoom: z.enum(["month", "week"]), rootIds: z.array(z.string().uuid()).max(100), showFinance: z.boolean(), toolsOpen: z.boolean() }),
-  z.object({ surface: z.literal("meetings"), scope, view: meetingView, query: text, anchorDay: calendarDay.nullable(), from: day, to: day, tracks: values, kinds: values, statuses: values, parties: values, only: z.array(z.enum(COCKPIT_MEETING_ONLY_FLAGS)).max(4) }),
+  z.object({ surface: z.literal("plan"), scope, view: planView, query: text, zoom: z.enum(["month", "week"]), rootIds: z.array(z.string().uuid()).max(100), showFinance: z.boolean(), toolsOpen: z.boolean(), includeArchivedMeetings: z.boolean().default(false) }),
+  z.object({ surface: z.literal("meetings"), scope, view: meetingView, archive: z.enum(["active", "archived", "all"]).default("active"), query: text, anchorDay: calendarDay.nullable(), from: day, to: day, tracks: values, kinds: values, statuses: values, parties: values, only: z.array(z.enum(COCKPIT_MEETING_ONLY_FLAGS)).max(4) }),
   z.object({ surface: z.literal("governance"), scope, query: text, status: z.enum(["pending", "decided", "all"]), qualityOpen: z.boolean() }),
 ]);
 export type CockpitSavedViewDefinition = z.infer<typeof CockpitSavedViewDefinitionSchema>;
@@ -35,11 +35,11 @@ export function captureCockpitSavedView(wsId: string, search: { get: (name: stri
     candidate = { surface: "work", scope: route.scope, audience: view.audience, kind: view.kind, mode: view.mode };
   } else if (route.surface === "plan") {
     const view = state.plans[key] ?? EMPTY_COCKPIT_PLAN_CONTEXT;
-    candidate = { surface: "plan", scope: route.scope, view: route.planView, query: view.query, zoom: view.zoom, rootIds: [...view.rootIds], showFinance: view.showFinance, toolsOpen: view.toolsOpen };
+    candidate = { surface: "plan", scope: route.scope, view: route.planView, query: view.query, zoom: view.zoom, rootIds: [...view.rootIds], showFinance: view.showFinance, toolsOpen: view.toolsOpen, includeArchivedMeetings: view.includeArchivedMeetings };
   } else if (route.surface === "meetings") {
     if (search.get("meeting_node") || search.get("meeting_nodes")) return null;
     const view = state.meetings[cockpitMeetingSavedViewKey(wsId, route.scope)] ?? EMPTY_COCKPIT_MEETING_CONTEXT;
-    candidate = { surface: "meetings", scope: route.scope, view: view.view, query: view.query, anchorDay: view.anchorDay,
+    candidate = { surface: "meetings", scope: route.scope, view: view.view, archive: view.archive, query: view.query, anchorDay: view.anchorDay,
       from: search.get("from") || view.from, to: search.get("to") || view.to, tracks: [...view.tracks], kinds: [...view.kinds], statuses: [...view.statuses], parties: [...view.parties], only: [...view.only] };
   } else if (route.surface === "governance" && route.governanceView === "changes") {
     const view = state.governance[key] ?? EMPTY_COCKPIT_GOVERNANCE_CONTEXT;
@@ -53,6 +53,7 @@ export function cockpitSavedViewPath(pathname: string, view: CockpitSavedViewDef
   if (view.surface !== "meetings") return href;
   const query = new URLSearchParams(href.split("?")[1] ?? "");
   if (view.from) query.set("from", view.from); if (view.to) query.set("to", view.to);
+  if (view.archive !== "active") query.set("meeting_archive", view.archive);
   return `${pathname}?${query}`;
 }
 
@@ -60,8 +61,8 @@ export function cockpitSavedViewPath(pathname: string, view: CockpitSavedViewDef
 export function applyCockpitSavedView(wsId: string, input: CockpitSavedViewDefinition) {
   const view = CockpitSavedViewDefinitionSchema.parse(input); const key = cockpitScopeViewKey(wsId, view.scope);
   if (view.surface === "work") useCockpitDashboardViewStore.setState((state) => ({ views: { ...state.views, [key]: { ...EMPTY_COCKPIT_DASHBOARD_VIEW, audience: view.audience, kind: view.kind, mode: view.mode, pages: {} } } }));
-  else if (view.surface === "plan") useCockpitScopeViewStore.getState().updatePlan(key, { ...EMPTY_COCKPIT_PLAN_CONTEXT, query: view.query, zoom: view.zoom, rootIds: [...view.rootIds], showFinance: view.showFinance, toolsOpen: view.toolsOpen, collapsedIds: [] });
+  else if (view.surface === "plan") useCockpitScopeViewStore.getState().updatePlan(key, { ...EMPTY_COCKPIT_PLAN_CONTEXT, query: view.query, zoom: view.zoom, rootIds: [...view.rootIds], showFinance: view.showFinance, toolsOpen: view.toolsOpen, includeArchivedMeetings: view.includeArchivedMeetings, collapsedIds: [] });
   else if (view.surface === "meetings") useCockpitScopeViewStore.getState().updateMeeting(cockpitMeetingSavedViewKey(wsId, view.scope), { ...EMPTY_COCKPIT_MEETING_CONTEXT,
-    view: view.view, query: view.query, anchorDay: view.anchorDay, from: view.from, to: view.to, tracks: [...view.tracks], kinds: [...view.kinds], statuses: [...view.statuses], parties: [...view.parties], only: [...view.only], cursors: [""] });
+    view: view.view, archive: view.archive, query: view.query, anchorDay: view.anchorDay, from: view.from, to: view.to, tracks: [...view.tracks], kinds: [...view.kinds], statuses: [...view.statuses], parties: [...view.parties], only: [...view.only], cursors: [""] });
   else useCockpitScopeViewStore.getState().updateGovernance(key, { ...EMPTY_COCKPIT_GOVERNANCE_CONTEXT, query: view.query, status: view.status, qualityOpen: view.qualityOpen, cursors: [""] });
 }

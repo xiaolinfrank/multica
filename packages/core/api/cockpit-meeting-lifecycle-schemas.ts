@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { CockpitTaskSchema } from "./schemas";
+import { CockpitOccurrenceSchema, CockpitMeetingArchiveSchema, cockpitOccurrenceStates as occurrenceStates } from "./cockpit-meeting-common-schemas";
+import { CockpitPreparationCommandReceiptSchema } from "./cockpit-meeting-preparation-schemas";
 
 const id = z.string().min(1);
 const revision = z.number().int().positive();
@@ -8,18 +10,6 @@ const time = z.string().datetime({ offset: true });
 const nullableTime = time.nullable();
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const capability = z.boolean().catch(false).default(false);
-const occurrenceStates = new Set(["unconfirmed", "scheduled", "in_progress", "ended"]);
-
-export const CockpitOccurrenceSchema = z.object({
-  state: z.string(), started_confirmed_at: nullableTime, started_confirmed_by: id.nullable(),
-  ended_at: nullableTime, ended_by: id.nullable(), ended_source: z.string().nullable(),
-  actual_started_at: nullableTime, actual_ended_at: nullableTime,
-}).refine((value) => !occurrenceStates.has(value.state) || (
-  (value.state === "ended") === (value.ended_at !== null)
-  && (!value.actual_ended_at || value.state === "ended")
-  && (!value.actual_started_at || !value.actual_ended_at || Date.parse(value.actual_started_at) <= Date.parse(value.actual_ended_at))
-), "Occurrence confirmation and explicitly recorded times are inconsistent");
-
 export const CockpitMaterialsSchema = z.object({
   workflow_revision: revision, ready: z.boolean(), confirmed_at: nullableTime,
   confirmed_by: id.nullable(), released: z.boolean(),
@@ -32,6 +22,7 @@ export const CockpitMeetingLifecycleHeaderSchema = z.object({
   can_schedule: capability, can_start: capability, can_end: capability,
   can_correct_times: capability, can_edit_agenda: capability, can_confirm_materials: capability,
   blocked_reasons: z.array(z.object({ action: z.string(), code: z.string() })).default([]),
+  archive: CockpitMeetingArchiveSchema.optional(),
 }).refine((value) => value.workflow_enabled === (value.materials !== null), "Materials confirmation requires the same meeting work package")
   .transform((value) => occurrenceStates.has(value.occurrence.state) ? value : {
     ...value, can_schedule: false, can_start: false, can_end: false, can_correct_times: false,
@@ -71,12 +62,14 @@ export const CockpitAgendaReferencePageSchema = z.object({
     && (page.include_removed || item.removed_at === null)), "Agenda reference page does not match its scope or filter");
 
 export const CockpitLifecycleActionSchema = z.enum(["schedule", "start", "end", "correct_times", "materials",
-  "agenda_create", "agenda_update", "agenda_remove", "reference_attach", "reference_remove", "preparation_issue_create"]);
+  "agenda_create", "agenda_update", "agenda_remove", "reference_attach", "reference_remove", "preparation_issue_create", "reinstate", "archive", "unarchive"]);
 export const CockpitLifecycleReceiptSchema = z.object({
   revision, agenda_revision: revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(),
   request_hash: hash, reason: z.string(), previous_occurrence: CockpitOccurrenceSchema.nullable(),
   occurrence: CockpitOccurrenceSchema.nullable(), materials: CockpitMaterialsSchema.nullable(),
   agenda: CockpitAgendaDetailSchema.nullable(), reference: CockpitAgendaReferenceSchema.nullable(),
+  archive: CockpitMeetingArchiveSchema.nullable().optional(), previous_archive: CockpitMeetingArchiveSchema.nullable().optional(),
+  preparation: CockpitPreparationCommandReceiptSchema.nullable().optional(),
 });
 export const CockpitLifecycleCommandResultSchema = z.object({
   workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: CockpitLifecycleActionSchema,
@@ -89,6 +82,9 @@ export const CockpitLifecycleCommandResultSchema = z.object({
     || receipt.reference.workspace_id !== result.workspace_id || receipt.reference.meeting_id !== result.meeting_id)) return false;
   if (["schedule", "start", "end", "correct_times"].includes(action)) return receipt.occurrence !== null
     && (action !== "correct_times" || Boolean(receipt.reason.trim() && receipt.previous_occurrence));
+  if (action === "archive" || action === "unarchive") return Boolean(receipt.archive && receipt.previous_archive && receipt.reason.trim())
+    && (action === "archive" ? receipt.archive?.archived_at !== null : receipt.archive?.archived_at === null);
+  if (action === "reinstate") return receipt.occurrence?.state === "scheduled" && receipt.previous_occurrence?.state === "cancelled" && Boolean(receipt.reason.trim());
   if (action === "materials") return receipt.materials !== null;
   if (action.startsWith("agenda_")) return receipt.agenda !== null
     && (action !== "agenda_remove" || Boolean(receipt.agenda.removed_at && receipt.reason.trim()));
@@ -103,16 +99,20 @@ export const CockpitLifecycleCommandResultSchema = z.object({
 export const CockpitLifecycleCommandPageSchema = z.object({
   workspace_id: id, meeting_id: id, page_size: z.number().int().min(1).max(100),
   items: z.array(z.object({ command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_name: z.string(),
-    created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable() })).max(100),
+    created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional() })).max(100),
   total: count, next_cursor: id.nullable(),
 }).refine((page) => page.items.length <= page.page_size && page.items.length <= page.total
   && new Set(page.items.map((item) => item.command_key)).size === page.items.length, "Command metadata page repeats or exceeds its items");
 
 export const CockpitLifecycleCommandDetailSchema = z.object({
   workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_name: z.string(),
-  created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), receipt: CockpitLifecycleReceiptSchema,
+  created_at: time, revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), receipt: CockpitLifecycleReceiptSchema,
 }).refine((value) => value.receipt.revision === value.revision && value.receipt.agenda_id === value.agenda_id
   && value.receipt.reference_id === value.reference_id && value.receipt.issue_id === value.issue_id
+  && (!value.receipt.preparation || value.receipt.preparation.operation_id === value.operation_id && value.receipt.preparation.effect_id === (value.effect_id ?? null))
+  && (!value.receipt.preparation || value.receipt.preparation.request_hash === value.receipt.request_hash
+    && (value.action !== "template_apply" || value.receipt.preparation.kind === "apply_template")
+    && (!["cancel", "preparation_dispose"].includes(value.action) || value.receipt.preparation.kind === "cancel_preparation"))
   && (!value.receipt.agenda || value.receipt.agenda.id === value.receipt.agenda_id
     && value.receipt.agenda.workspace_id === value.workspace_id && value.receipt.agenda.meeting_id === value.meeting_id)
   && (!value.receipt.reference || value.receipt.reference.id === value.receipt.reference_id

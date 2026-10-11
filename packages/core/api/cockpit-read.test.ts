@@ -57,6 +57,31 @@ describe("cockpit scoped read contracts", () => {
       await expect(reply(invalid).client.getCockpitMeetingRegister("ws-1", scope, query)).resolves.toBeNull();
     }
   });
+  it("defaults to active meetings and refuses a missing or different nondefault archive echo", async () => {
+    const page = { workspace_id: "ws-1", scope: header.scope, node_id: null, node_ids: [], items: [], total: 0, next_cursor: null, day_counts: [], date_from: null, date_to: null };
+    const read = reply(page); await expect(read.client.getCockpitMeetingRegister("ws-1", scope, {})).resolves.toEqual(page);
+    expect(new URL(read.fetchMock.mock.calls[0]?.[0]).searchParams.get("archive")).toBe("active");
+    for (const archive of ["archived", "all"] as const) {
+      const current = reply({ ...page, archive });
+      await expect(current.client.getCockpitMeetingRegister("ws-1", scope, { archive })).resolves.toEqual({ ...page, archive });
+      expect(current.fetchMock).toHaveBeenCalledTimes(1); expect(new URL(current.fetchMock.mock.calls[0]?.[0]).searchParams.get("archive")).toBe(archive);
+      await expect(reply(page).client.getCockpitMeetingRegister("ws-1", scope, { archive })).resolves.toBeNull();
+      await expect(reply({ ...page, archive: "active" }).client.getCockpitMeetingRegister("ws-1", scope, { archive })).resolves.toBeNull();
+    }
+    await expect(reply({ ...page, archive: "future" }).client.getCockpitMeetingRegister("ws-1", scope, {})).resolves.toBeNull();
+  });
+  it("does not let an old marker response silently omit archived meetings from an explicit all request", async () => {
+    const query = { rows: [{ row_key: "node", node_ids: ["node"] }], date_from: "2026-10-01", date_to: "2026-10-02" };
+    const page = { workspace_id: "ws-1", scope: header.scope, ...query, groups: [], total_groups: 0, next_cursor: null };
+    await expect(reply(page).client.getCockpitPlanMeetingMarkers("ws-1", scope, query)).resolves.toEqual(page);
+    const current = reply({ ...page, archive: "all" });
+    await expect(current.client.getCockpitPlanMeetingMarkers("ws-1", scope, { ...query, archive: "all" })).resolves.toEqual({ ...page, archive: "all" });
+    expect(JSON.parse(current.fetchMock.mock.calls[0]?.[1].body)).toEqual({ ...query, archive: "all" });
+    expect(current.fetchMock).toHaveBeenCalledTimes(1);
+    for (const response of [page, { ...page, archive: "active" }, { ...page, archive: "archived" }, { ...page, archive: "future" }]) {
+      await expect(reply(response).client.getCockpitPlanMeetingMarkers("ws-1", scope, { ...query, archive: "all" })).resolves.toBeNull();
+    }
+  });
   it("preserves explicit occurrence metadata without deriving it from legacy status", async () => {
     const page = { workspace_id: "ws-1", scope: header.scope, node_id: null, node_ids: [], total: 1, next_cursor: null, day_counts: [], date_from: null, date_to: null };
     const meeting = { id: "meeting-1", status: "已结束", issue_count: 0, node_count: 0, workflow_enabled: false, workflow_stage: "", display_excerpt: "" };

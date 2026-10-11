@@ -9,8 +9,10 @@ export const CockpitContextDataSchema = z.object({
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, cockpit: CockpitSchema.nullable(),
   actor: z.object({ user_id: z.string().min(1), role: z.string(), is_human: z.boolean() }), has_meeting_workflows: z.boolean(), has_stable_bindings: z.boolean(),
   has_meeting_lifecycle: z.boolean().optional(),
-  capabilities: z.object({ artifacts: z.boolean().catch(false).default(false), acceptance: z.boolean().catch(false).default(false), meeting_lifecycle: z.boolean().catch(false).default(false) }).optional().catch(undefined),
-}).refine((value) => !value.capabilities?.meeting_lifecycle || typeof value.has_meeting_lifecycle === "boolean", "Lifecycle-enabled contexts must report their retained meeting facts");
+  has_meeting_preparation: z.boolean().optional(),
+  capabilities: z.object({ artifacts: z.boolean().catch(false).default(false), acceptance: z.boolean().catch(false).default(false), meeting_lifecycle: z.boolean().catch(false).default(false), meeting_templates: z.boolean().catch(false).default(false), meeting_disposition: z.boolean().catch(false).default(false) }).optional().catch(undefined),
+}).refine((value) => !value.capabilities?.meeting_lifecycle || typeof value.has_meeting_lifecycle === "boolean", "Lifecycle-enabled contexts must report their retained meeting facts")
+  .refine((value) => !value.capabilities?.meeting_templates && !value.capabilities?.meeting_disposition || typeof value.has_meeting_preparation === "boolean", "Preparation-enabled contexts must report retained preparation facts");
 const nodeIndex = z.array(z.object({ id: z.string(), parent_id: z.string().nullable(), code: z.string(), position: z.number().finite() }));
 export const CockpitNodeIndexPageSchema = z.object({ workspace_id: z.string().min(1), items: nodeIndex.max(20_000), total: count })
   .refine((value) => value.items.length === value.total && new Set(value.items.map((item) => item.id)).size === value.total);
@@ -34,6 +36,7 @@ export const CockpitMeetingCardSchema = CockpitMeetingSchema.omit({ note: true, 
   issue_count: count, node_count: count, workflow_enabled: z.boolean(), workflow_stage: z.string(), display_excerpt: z.string().refine((value) => [...value].length <= 200),
 }).strip();
 export const CockpitMeetingRegisterPageSchema = page(CockpitMeetingCardSchema).safeExtend({
+  archive: z.enum(["active", "archived", "all"]).optional(),
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, node_id: z.string().nullable(), node_ids: z.array(z.string()).max(200),
   day_counts: z.array(z.object({ date: z.string(), total: count })).max(93), date_from: z.string().nullable(), date_to: z.string().nullable(),
 });
@@ -53,6 +56,7 @@ export const CockpitMeetingNodePageSchema = page(CockpitMeetingNodeLinkSchema.ex
 export const CockpitMeetingNextCodeSchema = z.object({ workspace_id: z.string().min(1), date: z.string(), code: z.string().min(1) });
 export const CockpitNodeCodePreviewSchema = z.object({ workspace_id: z.string().min(1), parent_id: z.string().nullable(), code: z.string().min(1).max(64) });
 export const CockpitPlanMeetingMarkerPageSchema = z.object({
+  archive: z.enum(["active", "archived", "all"]).optional(),
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, rows: z.array(z.object({ row_key: z.string().min(1).max(100), node_ids: z.array(z.string().min(1)).min(1).max(20) })).max(100), date_from: z.string(), date_to: z.string(),
   groups: z.array(z.object({ row_key: z.string().min(1), date: z.string(), total: count,
     items: z.array(z.object({ id: z.string().min(1), title: z.string(), code: z.string(), start_time: z.string().nullable() })).max(5),

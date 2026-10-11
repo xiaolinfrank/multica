@@ -51,6 +51,22 @@ describe("cockpit scope navigation", () => {
     expect(useCockpitScopeViewStore.getState().meetings[key]).toMatchObject({ cursors: ["", "fresh-page-2"], scrollTop: 120 });
   });
 
+  it("starts with active meetings and never restores an obsolete page when archive selection changes back", () => {
+    const store = useCockpitScopeViewStore.getState(), first = cockpitScopeViewKey("ws", { projectId: "project", moduleId: null });
+    const other = cockpitScopeViewKey("other", { projectId: "project", moduleId: null });
+    store.updateMeeting(first, { query: "review", anchorDay: "2026-10-11", cursors: ["", "old-active"], cursorKey: "active-page", scrollTop: 700 });
+    expect(useCockpitScopeViewStore.getState().meetings[first]?.archive).toBe("active");
+    store.updateMeeting(other, { archive: "all", query: "other scope" });
+    store.updateMeeting(first, { archive: "archived" });
+    expect(useCockpitScopeViewStore.getState().meetings[first]).toMatchObject({ archive: "archived", query: "review", anchorDay: "2026-10-11", cursors: [""], cursorKey: "", scrollTop: 0 });
+    store.updateMeeting(first, { cursors: ["", "archived-page"], cursorKey: "archived", scrollTop: 200 });
+    store.updateMeeting(first, { archive: "archived" });
+    expect(useCockpitScopeViewStore.getState().meetings[first]?.cursors).toEqual(["", "archived-page"]);
+    store.updateMeeting(first, { archive: "active" });
+    expect(useCockpitScopeViewStore.getState().meetings[first]?.cursors).toEqual([""]);
+    expect(useCockpitScopeViewStore.getState().meetings[other]).toMatchObject({ archive: "all", query: "other scope" });
+  });
+
   it("clears all scope navigation on account cleanup and changes the pending unmount generation", () => {
     const store = useCockpitScopeViewStore.getState();
     store.updatePlan("private", { query: "private title" });
