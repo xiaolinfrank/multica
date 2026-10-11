@@ -59,7 +59,8 @@ export function useSubmitCockpitArtifactVersion(wsId: string) {
     const result = await api.submitCockpitArtifactVersion(wsId, artifactId, body);
     if (!versionMatches(result, wsId, artifactId) || result.version.version.submission_key !== body.submission_key || result.version.version.payload_kind !== body.payload.kind
       || result.version.version.producer_issue_id !== body.producer_issue_id || result.version.version.source_meeting_id !== (body.source_meeting_id || null)
-      || result.version.version.source_minutes_version_id !== (body.source_minutes_version_id || null)) throw new CockpitUnconfirmedWriteError();
+      || result.version.version.source_minutes_version_id !== (body.source_minutes_version_id || null)
+      || (result.version.version.input_manifest_version_id ?? null) !== (body.input_manifest_version_id || null)) throw new CockpitUnconfirmedWriteError();
     if (body.payload.kind === "text" ? result.version.content !== body.payload.content || !result.version.version.content_hash || result.version.version.capture_status !== "ready"
       : result.version.version.source_attachment_id !== body.payload.attachment_id || !["queued", "running", "retry_wait", "ready", "needs_attention"].includes(result.version.version.capture_status)) throw new CockpitUnconfirmedWriteError();
     return result;

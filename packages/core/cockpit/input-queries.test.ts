@@ -45,3 +45,50 @@ it("opens and closes an exact input version without losing the meeting and agend
   const restored = cockpitInputContextPath("/workspace/cockpit", new URL(opened, "https://example.test").searchParams, null);
   expect(restored).toBe(`/workspace/cockpit?${search}`);
 });
+
+it("restores at most 200 explicit header labels in two bounded pages and retains missing identities", async () => {
+  const { ApiClient } = await import("../api/client");
+  const { setApiInstance } = await import("../api");
+  const { cockpitInputSelectedHeadersOptions } = await import("./input-queries");
+  const ws = "10000000-0000-4000-8000-000000000001";
+  const ids = Array.from({ length: 200 }, (_, i) => `20000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`);
+  setApiInstance(new ApiClient("https://agent3.test"));
+  const fetcher = vi.fn<typeof fetch>(async (input) => {
+    const url = new URL(String(input));
+    expect(url.searchParams.get("archive")).toBe("all");
+    expect(url.searchParams.get("page_size")).toBe("100");
+    expect(url.searchParams.getAll("ids")).toHaveLength(100);
+    return Response.json({ workspace_id: ws, scope: { ids: url.searchParams.getAll("ids"), project_id: null, meeting_id: null, agenda_id: null, origin_issue_id: null, q: "", archive: "all", source_kind: "" },
+      page_size: 100, items: [], total: 0, next_cursor: null, can_create: false });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  try {
+    expect(await client.fetchQuery(cockpitInputSelectedHeadersOptions(ws, ids))).toMatchObject({ requestedIds: ids, items: [], unavailableIds: ids });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await expect(client.fetchQuery(cockpitInputSelectedHeadersOptions(ws, [...ids, ws]))).rejects.toThrow("Invalid input header selection");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  } finally { client.clear(); vi.unstubAllGlobals(); }
+});
+
+it("refreshes restore and exact meeting deletion context only when input references change", async () => {
+  const { cockpitReadKeys } = await import("./read-queries");
+  const { cockpitPreparationKeys } = await import("./meeting-preparation-queries");
+  const client = new QueryClient();
+  const context = cockpitReadKeys.context("workspace", { projectId: null, moduleId: null });
+  const basis = cockpitPreparationKeys.basis("workspace", "meeting-a");
+  const otherBasis = cockpitPreparationKeys.basis("workspace", "meeting-b");
+  const otherContext = cockpitReadKeys.context("other", { projectId: null, moduleId: null });
+  const input = cockpitInputKeys.input("workspace", "input");
+  for (const key of [context, basis, otherBasis, otherContext, input]) client.setQueryData(key, { existing: true });
+  onCockpitChanged(client, "workspace", { scope: "inputs", action: "updated", entity: { input_id: "input" } });
+  await vi.waitFor(() => expect(client.getQueryState(input)?.isInvalidated).toBe(true));
+  expect(client.getQueryState(context)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(basis)?.isInvalidated).toBe(false);
+  onCockpitChanged(client, "workspace", { scope: "inputs", action: "reference_updated", entity: { input_id: "input", meeting_id: "meeting-a" } });
+  await vi.waitFor(() => expect(client.getQueryState(context)?.isInvalidated).toBe(true));
+  expect(client.getQueryState(basis)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(otherBasis)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(otherContext)?.isInvalidated).toBe(false);
+  client.clear();
+});

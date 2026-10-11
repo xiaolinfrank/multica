@@ -23,3 +23,10 @@ export const useCockpitInputViewStore = create<{
   reset: () => set({ references: {} }),
 }));
 registerDraftCleanup({ storageKey: "multica_cockpit_input_navigation", workspaceScoped: false, resetInMemory: () => useCockpitInputViewStore.getState().reset() });
+
+/** Exact historical manifests can be opened even if creation is disabled. */
+export function cockpitIssueInputManifestPath(pathname: string, source: { toString(): string }, manifestVersionId: string | null): string {
+  const query = new URLSearchParams(source.toString());
+  if (manifestVersionId) query.set("input_manifest", manifestVersionId); else query.delete("input_manifest");
+  const suffix = query.toString(); return suffix ? `${pathname}?${suffix}` : pathname;
+}

@@ -11,10 +11,17 @@ export const CockpitContextDataSchema = z.object({
   has_meeting_lifecycle: z.boolean().optional(),
   has_meeting_preparation: z.boolean().optional(),
   has_directory_history: z.boolean().optional(),
+  has_input_references: z.boolean().default(false),
+  input_reference_meetings: z.array(z.object({meeting_id: z.string().uuid(), title: z.string()})).max(3).default([]),
+  input_reference_meetings_total: z.number().int().nonnegative().default(0),
   capabilities: z.object({ artifacts: z.boolean().catch(false).default(false), acceptance: z.boolean().catch(false).default(false), meeting_lifecycle: z.boolean().catch(false).default(false), meeting_templates: z.boolean().catch(false).default(false), meeting_disposition: z.boolean().catch(false).default(false), meeting_directory_preparation: z.boolean().catch(false).default(false), inputs: z.boolean().catch(false).default(false), run_input_manifests: z.boolean().catch(false).default(false) }).optional().catch(undefined),
 }).refine((value) => !value.capabilities?.meeting_lifecycle || typeof value.has_meeting_lifecycle === "boolean", "Lifecycle-enabled contexts must report their retained meeting facts")
   .refine((value) => !value.capabilities?.meeting_templates && !value.capabilities?.meeting_disposition || typeof value.has_meeting_preparation === "boolean", "Preparation-enabled contexts must report retained preparation facts")
-  .refine((value) => !value.capabilities?.meeting_directory_preparation || typeof value.has_directory_history === "boolean", "Directory-enabled contexts must report retained directory history");
+  .refine((value) => !value.capabilities?.meeting_directory_preparation || typeof value.has_directory_history === "boolean", "Directory-enabled contexts must report retained directory history")
+  .refine((value) => value.has_input_references === (value.input_reference_meetings_total > 0)
+    && value.input_reference_meetings.length === Math.min(3, value.input_reference_meetings_total)
+    && new Set(value.input_reference_meetings.map((meeting) => meeting.meeting_id)).size === value.input_reference_meetings.length,
+  "Retained input references require exact bounded meeting targets");
 const nodeIndex = z.array(z.object({ id: z.string(), parent_id: z.string().nullable(), code: z.string(), position: z.number().finite() }));
 export const CockpitNodeIndexPageSchema = z.object({ workspace_id: z.string().min(1), items: nodeIndex.max(20_000), total: count })
   .refine((value) => value.items.length === value.total && new Set(value.items.map((item) => item.id)).size === value.total);

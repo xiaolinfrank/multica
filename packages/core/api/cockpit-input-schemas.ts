@@ -1266,3 +1266,10 @@ export const CockpitInputAttachmentPageSchema = z.object({
   .transform((value) => ({ workspaceId: value.workspace_id, issueId: value.issue_id, q: value.q,
     pageSize: value.page_size, items: value.items, total: value.total, nextCursor: value.next_cursor,
     canCapture: value.can_capture, blockedReasons: value.blocked_reasons }));
+
+
+export const CockpitInputAttachmentDetailSchema = z.object({
+  workspace_id: id, issue_id: id, id, filename: z.string(), content_type: z.string(),
+  size_bytes: count, created_at: z.string().datetime({ offset: true }),
+}).transform((value) => ({ workspaceId: value.workspace_id, id: value.id, issueId: value.issue_id,
+  filename: value.filename, contentType: value.content_type, sizeBytes: value.size_bytes, createdAt: value.created_at }));

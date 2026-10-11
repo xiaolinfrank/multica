@@ -5,8 +5,10 @@ import {
   useCockpitInputDraftStore, cockpitInputDraftKey, emptyCockpitInputForm, setCockpitInputForm,
   advanceCockpitInputForm, clearCockpitInputForm, prepareCockpitInputCommand, settleCockpitInputCommand,
   type CockpitInputPendingCommand,
-  beginCockpitInputNASBatch, skipCockpitInputNASItem, completeCockpitInputNASBatch,
+  endCockpitInputRegistration, removeEndedCockpitInputRegistration, beginCockpitInputNASBatch, skipCockpitInputNASItem, completeCockpitInputNASBatch,
 } from "./input-draft-store";
+
+import { cockpitEndedInputRegistrations } from "./input-view-drafts";
 
 const id = (n: number) => `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const key = cockpitInputDraftKey(id(1), id(2), "upload", id(3));
@@ -91,4 +93,45 @@ describe("input command drafts", () => {
     expect(useCockpitInputDraftStore.getState().draft.forms[key]).toMatchObject({ batch: null, generation: id(40), sourceSelections: [] });
     expect(useCockpitInputDraftStore.getState().draft.forms[childKey]).toBeUndefined();
   });
+  it("ends a registered NAS item without a fixed version, retains its exact local pointer across batches, and removes it only by explicit scoped request", () => {
+    const parentKey = cockpitInputDraftKey(id(1), id(2), "nas", id(3), "");
+    const selected = { ...draft, sourceSelections: [{ selectionId: id(20), rootId: id(10), relativePath: "meeting/file.wav", observationToken: "observed", filename: "file.wav", sizeBytes: 100, modifiedAt: null }] };
+    setCockpitInputForm(parentKey, selected);
+    const batch = beginCockpitInputNASBatch(id(1), id(2), id(3), parentKey, useCockpitInputDraftStore.getState().draft.forms[parentKey]!);
+    const childKey = batch.childKeys[0]!;
+    advanceCockpitInputForm(childKey, id(20), { inputId: id(30), inputRevision: 1 });
+    prepareCockpitInputCommand(childKey, command);
+    expect(() => endCockpitInputRegistration(id(1), id(2), id(3), childKey, id(20), "No longer needed")).toThrow("input_registration_context_changed");
+    expect(useCockpitInputDraftStore.getState().draft.commands[childKey]).toEqual(command);
+    settleCockpitInputCommand(childKey, command.body.commandKey);
+    expect(() => endCockpitInputRegistration(id(1), id(9), id(3), childKey, id(20), "No longer needed")).toThrow();
+    endCockpitInputRegistration(id(1), id(2), id(3), childKey, id(20), "  No longer needed  ");
+    expect(() => removeEndedCockpitInputRegistration(id(1), id(2), id(3), childKey, id(20))).toThrow();
+    expect(() => prepareCockpitInputCommand(childKey, command)).toThrow("input_registration_ended");
+    completeCockpitInputNASBatch(parentKey, draft.generation, id(40));
+    const records = cockpitEndedInputRegistrations(useCockpitInputDraftStore.getState().draft, id(1), id(2), id(3));
+    expect(records).toEqual([expect.objectContaining({ inputId: id(30), reason: "No longer needed", sourcePath: "meeting/file.wav", inActiveBatch: false })]);
+    expect(useCockpitInputDraftStore.getState().draft.forms[childKey]).toMatchObject({ inputId: id(30), versionId: null, transferId: null });
+    expect(useCockpitInputDraftStore.getState().draft.forms[parentKey]).toMatchObject({ generation: id(40), batch: null });
+    expect(cockpitEndedInputRegistrations(useCockpitInputDraftStore.getState().draft, id(1), id(9), id(3))).toEqual([]);
+    expect(() => removeEndedCockpitInputRegistration(id(1), id(9), id(3), childKey, id(20))).toThrow();
+    removeEndedCockpitInputRegistration(id(1), id(2), id(3), childKey, id(20));
+    expect(useCockpitInputDraftStore.getState().draft.forms[childKey]).toBeUndefined();
+  });
+
+  it.each(["upload", "source-input"])("atomically frees a %s registration slot while retaining the ended generation and rejecting later fixed-version termination", (kind) => {
+    const activeKey = cockpitInputDraftKey(id(1), id(2), kind, id(3), "");
+    const value = { ...draft, inputId: id(30), inputRevision: 1 };
+    setCockpitInputForm(activeKey, value);
+    endCockpitInputRegistration(id(1), id(2), id(3), activeKey, draft.generation, "User ended this intent");
+    const records = cockpitEndedInputRegistrations(useCockpitInputDraftStore.getState().draft, id(1), id(2), id(3));
+    expect(records).toHaveLength(1);
+    expect(useCockpitInputDraftStore.getState().draft.forms[activeKey]).toBeUndefined();
+    expect(useCockpitInputDraftStore.getState().draft.forms[records[0]!.key]).toMatchObject({ generation: draft.generation, inputId: id(30), title: draft.title, description: draft.description, registrationEnd: { originalKey: activeKey } });
+    setCockpitInputForm(activeKey, { ...value, generation: id(40), inputId: id(31), versionId: id(32) });
+    expect(() => endCockpitInputRegistration(id(1), id(2), id(3), activeKey, id(40), "Cannot end a fixed version")).toThrow();
+    removeEndedCockpitInputRegistration(id(1), id(2), id(3), records[0]!.key, draft.generation);
+    expect(useCockpitInputDraftStore.getState().draft.forms[activeKey]).toMatchObject({ generation: id(40), inputId: id(31), versionId: id(32) });
+  });
+
 });

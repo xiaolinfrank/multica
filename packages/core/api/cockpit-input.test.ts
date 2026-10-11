@@ -130,3 +130,18 @@ it("lists existing Issue attachments without accepting another Issue or duplicat
   expect(await client.getCockpitInputAttachments(WS, id(42))).toBeNull();
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it("restores an exact attachment label without retaining its signed download URLs or accepting a different Issue", async () => {
+  const issueId = id(40), attachmentId = id(41);
+  const raw = { id: attachmentId, workspace_id: WS, issue_id: issueId, filename: "Original agenda.pdf", content_type: "application/pdf", size_bytes: 17, created_at: TIME,
+    url: "private-object-path", download_url: "https://private.invalid/?signature=temporary", file_path: "/private/source" };
+  const fetcher = vi.fn().mockImplementation(async () => Response.json(raw));
+  vi.stubGlobal("fetch", fetcher);
+  const client = new ApiClient("https://agent3.test");
+  const value = await client.getCockpitInputAttachment(WS, issueId, attachmentId);
+  expect(value).toMatchObject({ workspaceId: WS, issueId, id: attachmentId, filename: "Original agenda.pdf" });
+  for (const field of ["url", "download_url", "file_path"]) expect(value).not.toHaveProperty(field);
+  expect(new Headers(fetcher.mock.calls[0]![1].headers).get("X-Workspace-ID")).toBe(WS);
+  expect(await client.getCockpitInputAttachment(WS, id(42), attachmentId)).toBeNull();
+  expect(await client.getCockpitInputAttachment(id(42), issueId, attachmentId)).toBeNull();
+});

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { cockpitInputDraftKey, emptyCockpitInputForm, type CockpitInputPendingCommand } from "./input-draft-store";
-import { cockpitMeetingInputDraftEntries } from "./input-view-drafts";
+import { cockpitInputVersionDraftEntries, cockpitMeetingInputDraftEntries } from "./input-view-drafts";
 
 const ws = "b1000000-0000-4000-8000-000000000001";
 const account = "b1000000-0000-4000-8000-000000000002";
@@ -33,5 +33,18 @@ describe("meeting input draft destinations", () => {
     expect(cockpitMeetingInputDraftEntries(drafts, ws, account, meeting)).toEqual([expect.objectContaining({ key: parentKey, kind: "nas", unfinishedItems: 1 })]);
     expect(cockpitMeetingInputDraftEntries({ ...drafts, forms: { ...drafts.forms, [childKey]: { ...child, generation } } }, ws, account, meeting)).toEqual([]);
     expect(drafts.forms[childKey]!.inputId).toBe(generation);
+  });
+});
+
+
+describe("per-input draft destinations", () => {
+  it("exposes an exact retained recovery command and never attaches a different version's command to it", () => {
+    const inputId = meeting; const versionId = selection;
+    const key = cockpitInputDraftKey(ws, account, "recover-input-version", inputId, versionId);
+    const command: CockpitInputPendingCommand = { kind: "restart", inputId, versionId, body: { commandKey: generation, mode: "upload_matching_bytes", previousTransferId: null, expectedRevision: 2, reason: "" } };
+    const drafts = { forms: { [key]: { ...emptyCockpitInputForm(generation), inputId, versionId } }, commands: { [key]: command } };
+    expect(cockpitInputVersionDraftEntries(drafts, ws, account, inputId)).toEqual([{ key, kind: "recover-input-version", versionId, hasPendingCommand: true }]);
+    expect(cockpitInputVersionDraftEntries(drafts, ws, generation, inputId)).toEqual([]);
+    expect(cockpitInputVersionDraftEntries({ ...drafts, commands: { [key]: { ...command, versionId: generation } } }, ws, account, inputId)).toEqual([]);
   });
 });

@@ -1205,6 +1205,11 @@ export class ApiClient {
     return result && result.requestedIds.length === versionIds.length && result.requestedIds.every((id, index) => id === versionIds[index]) ? result : null;
   }
 
+  async getCockpitInputAttachment(wsId: string, issueId: string, attachmentId: string, signal?: AbortSignal): Promise<(inputTypes.CockpitInputAttachment & { workspaceId: string }) | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/attachments/${encodeURIComponent(attachmentId)}`, inputSchemas.CockpitInputAttachmentDetailSchema, { signal });
+    return result && result.issueId === issueId && result.id === attachmentId ? result : null;
+  }
+
   async getCockpitInputAttachments(wsId: string, issueId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputAttachmentPage | null> {
     const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-attachments${cockpitInputSearch(query)}`, inputSchemas.CockpitInputAttachmentPageSchema, { signal });
     return result && result.issueId === issueId ? result : null;
@@ -4958,11 +4963,19 @@ export class ApiClient {
     return task;
   }
 
-  async rerunIssue(issueId: string, taskId?: string): Promise<AgentTask> {
-    return this.fetch(`/api/issues/${issueId}/rerun`, {
+  async rerunIssue(issueId: string, taskId?: string, options?: { expectedInputManifestVersionId: string; workspaceId?: string }): Promise<AgentTask> {
+    if (taskId && options) throw new Error("A historical Run retry cannot select a new input manifest");
+    const raw = await this.fetch<unknown>(`/api/issues/${encodeURIComponent(issueId)}/rerun`, {
       method: "POST",
-      body: JSON.stringify(taskId ? { task_id: taskId } : {}),
+      retryCsrf: !options,
+      headers: options?.workspaceId ? { "X-Workspace-ID": options.workspaceId, "X-Workspace-Slug": "" } : undefined,
+      body: JSON.stringify(taskId ? { task_id: taskId } : options ? { expected_input_manifest_version_id: options.expectedInputManifestVersionId } : {}),
     });
+    const task = parseWithFallback<(AgentTask & { workspace_id: string }) | null>(raw, AgentTaskDetailSchema, null, {
+      endpoint: "POST /api/issues/:id/rerun",
+    });
+    if (!task || options && (task.input_manifest_version_id !== options.expectedInputManifestVersionId || options.workspaceId && task.workspace_id !== options.workspaceId)) throw new Error("Invalid task rerun response");
+    return task;
   }
 
   async retrySourceContextQuickCreate(taskId: string): Promise<AgentTask> {

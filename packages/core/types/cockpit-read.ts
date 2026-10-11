@@ -7,6 +7,9 @@ export interface CockpitContextData {
   has_meeting_lifecycle?: boolean;
   has_meeting_preparation?: boolean;
   has_directory_history?: boolean;
+  has_input_references?: boolean;
+  input_reference_meetings?: Array<{meeting_id: string; title: string}>;
+  input_reference_meetings_total?: number;
   capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean; meeting_templates?: boolean; meeting_disposition?: boolean; meeting_directory_preparation?: boolean; inputs?: boolean; run_input_manifests?: boolean };
 }
 export interface CockpitNodeIndexEntry { id: string; parent_id: string | null; code: string; position: number }

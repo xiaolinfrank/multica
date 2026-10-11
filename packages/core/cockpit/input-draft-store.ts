@@ -23,6 +23,7 @@ const form = z.object({
   batch: z.object({ meetingId: id, selectionIds: z.array(id).min(1).max(50), childKeys: z.array(z.string()).min(1).max(50) })
     .refine((value) => value.selectionIds.length === value.childKeys.length && new Set(value.childKeys).size === value.childKeys.length).nullable().default(null),
   batchItem: z.object({ parentKey: z.string(), selectionId: id, skipped: z.boolean(), skipReason: text }).nullable().default(null),
+  registrationEnd: z.object({ originalKey: z.string(), reason: text.refine((value) => Boolean(value.trim())), endedAt: z.string().datetime() }).nullable().default(null),
   observedRevision: revision.nullable(),
   inputId: id.nullable(), inputRevision: revision.nullable(), versionId: id.nullable(), transferId: id.nullable(), transferRevision: revision.nullable(),
 });
@@ -44,7 +45,7 @@ export type CockpitInputPendingCommand = z.infer<typeof commands>;
  * survive reloads. File objects, bytes, server projections, and progress do not. */
 export const useCockpitInputDraftStore = createDraftStore<z.infer<typeof persisted>>({
   storageKey: "multica_cockpit_input_drafts", emptyData: { forms: {}, commands: {} },
-  hasMeaningful: (data) => Object.keys(data.forms).length > 0 || Object.keys(data.commands).length > 0,
+  hasMeaningful: (data) => Object.values(data.forms).some((value) => !value.registrationEnd) || Object.keys(data.commands).length > 0,
   migrateData: (raw) => { const result = persisted.safeParse(raw); return result.success ? result.data : { forms: {}, commands: {} }; },
 });
 
@@ -54,23 +55,23 @@ export function cockpitInputDraftKey(workspaceId: string, accountId: string, kin
 export function emptyCockpitInputForm(generation: string, agendaId: string | null = null): CockpitInputFormDraft {
   return { generation, title: "", description: "", purpose: "material", agendaId, declaration: null, source: null,
     selectedVersionIds: [], manifestItems: [], note: "", observedRevision: null,
-    sourceSelections: [], nasBrowse: null, batch: null, batchItem: null,
+    sourceSelections: [], nasBrowse: null, batch: null, batchItem: null, registrationEnd: null,
     inputId: null, inputRevision: null, versionId: null, transferId: null, transferRevision: null };
 }
 export function setCockpitInputForm(key: string, value: CockpitInputFormDraft): void {
   const state = useCockpitInputDraftStore.getState();
-  if (state.draft.commands[key] || state.draft.forms[key]?.batch) return;
+  if (state.draft.commands[key] || state.draft.forms[key]?.batch || state.draft.forms[key]?.registrationEnd) return;
   state.setDraft({ forms: { ...state.draft.forms, [key]: form.parse(value) } });
 }
 export function advanceCockpitInputForm(key: string, generation: string, patch: Partial<CockpitInputFormDraft>): void {
   const state = useCockpitInputDraftStore.getState();
   const current = state.draft.forms[key];
-  if (!current || current.generation !== generation || state.draft.commands[key]) return;
+  if (!current || current.generation !== generation || state.draft.commands[key] || current.registrationEnd) return;
   state.setDraft({ forms: { ...state.draft.forms, [key]: form.parse({ ...current, ...patch, generation }) } });
 }
 export function clearCockpitInputForm(key: string, observed: CockpitInputFormDraft): void {
   const state = useCockpitInputDraftStore.getState();
-  if (state.draft.commands[key] || state.draft.forms[key]?.batch || JSON.stringify(state.draft.forms[key]) !== JSON.stringify(observed)) return;
+  if (state.draft.commands[key] || state.draft.forms[key]?.batch || state.draft.forms[key]?.registrationEnd || JSON.stringify(state.draft.forms[key]) !== JSON.stringify(observed)) return;
   const forms = { ...state.draft.forms }; delete forms[key]; state.setDraft({ forms });
 }
 export function prepareCockpitInputCommand<T extends CockpitInputPendingCommand>(key: string, value: T): T {
@@ -81,6 +82,7 @@ export function prepareCockpitInputCommand<T extends CockpitInputPendingCommand>
     if (scope(previous) !== scope(value)) throw new Error("input_command_scope_changed");
     return previous as T;
   }
+  if (state.draft.forms[key]?.registrationEnd) throw new Error("input_registration_ended");
   const parsed = commands.parse(value) as T;
   state.setDraft({ commands: { ...state.draft.commands, [key]: parsed } });
   return parsed;
@@ -126,7 +128,7 @@ export function beginCockpitInputNASBatch(workspaceId: string, accountId: string
  * an unconfirmed command must be reconciled before another user decision. */
 export function skipCockpitInputNASItem(key: string, generation: string, reason: string): void {
   const state = useCockpitInputDraftStore.getState(); const current = state.draft.forms[key];
-  if (!current?.batchItem || current.generation !== generation || state.draft.commands[key]) throw new Error("input_batch_context_changed");
+  if (!current?.batchItem || current.generation !== generation || state.draft.commands[key] || current.registrationEnd) throw new Error("input_batch_context_changed");
   const explanation = reason.trim();
   if (!explanation) throw new Error("input_skip_reason_required");
   state.setDraft({ forms: { ...state.draft.forms, [key]: form.parse({ ...current,
@@ -136,14 +138,15 @@ export function skipCockpitInputNASItem(key: string, generation: string, reason:
 
 export function resumeCockpitInputNASItem(key: string, generation: string): void {
   const state = useCockpitInputDraftStore.getState(); const current = state.draft.forms[key];
-  if (!current?.batchItem || current.generation !== generation || state.draft.commands[key]) throw new Error("input_batch_context_changed");
+  if (!current?.batchItem || current.generation !== generation || state.draft.commands[key] || current.registrationEnd) throw new Error("input_batch_context_changed");
   state.setDraft({ forms: { ...state.draft.forms, [key]: form.parse({ ...current,
     batchItem: { ...current.batchItem, skipped: false, skipReason: "" },
   }) } });
 }
 
 /** Completed registrations are recoverable through their server references.
- * Unbound registered inputs stay in this batch until explicitly repaired. */
+ * Explicitly ended registrations retain their original local entry and input
+ * pointer; they are never counted as a confirmed fixed version. */
 export function completeCockpitInputNASBatch(parentKey: string, generation: string, nextGeneration: string): void {
   const state = useCockpitInputDraftStore.getState(); const parent = state.draft.forms[parentKey];
   if (!parent?.batch || parent.generation !== generation || state.draft.commands[parentKey]) throw new Error("input_batch_context_changed");
@@ -151,9 +154,58 @@ export function completeCockpitInputNASBatch(parentKey: string, generation: stri
   for (const [index, childKey] of parent.batch.childKeys.entries()) {
     const child = forms[childKey];
     if (!child || child.batchItem?.parentKey !== parentKey || child.batchItem.selectionId !== parent.batch.selectionIds[index]
-      || state.draft.commands[childKey] || !child.versionId && !(child.batchItem.skipped && !child.inputId)) throw new Error("input_batch_unfinished");
-    delete forms[childKey];
+      || state.draft.commands[childKey] || !child.versionId && !(child.batchItem.skipped && !child.inputId)
+        && !(child.registrationEnd && child.inputId)) throw new Error("input_batch_unfinished");
+    if (!child.registrationEnd) delete forms[childKey];
   }
   forms[parentKey] = form.parse({ ...emptyCockpitInputForm(nextGeneration, parent.agendaId), purpose: parent.purpose, nasBrowse: parent.nasBrowse });
   state.setDraft({ forms });
+}
+
+
+/** Resolve only recognized registration keys. Unknown client records must
+ * never be assigned a guessed scope or deleted as collateral cleanup. */
+export function cockpitInputRegistrationScope(workspaceId: string, accountId: string, meetingId: string, originalKey: string, value: CockpitInputFormDraft): "nas" | "single" | null {
+  if (value.batchItem) {
+    const item = value.batchItem;
+    return value.generation === item.selectionId
+      && originalKey === cockpitInputDraftKey(workspaceId, accountId, "nas-selection", meetingId, item.selectionId)
+      && item.parentKey === cockpitInputDraftKey(workspaceId, accountId, "nas", meetingId, value.agendaId || "") ? "nas" : null;
+  }
+  return ["upload", "source-input"].some((kind) => originalKey === cockpitInputDraftKey(workspaceId, accountId, kind, meetingId, value.agendaId || "")) ? "single" : null;
+}
+
+/** End this device's remaining intent, preserving the acknowledged header.
+ * Moving a single form and freeing its original slot is one atomic state write. */
+export function endCockpitInputRegistration(workspaceId: string, accountId: string, meetingId: string, key: string, generation: string, reason: string): void {
+  const state = useCockpitInputDraftStore.getState(); const current = state.draft.forms[key];
+  if (!current || current.registrationEnd || current.generation !== generation || state.draft.commands[key]
+    || !current.inputId || current.inputRevision === null || current.versionId || current.transferId || current.batch) throw new Error("input_registration_context_changed");
+  const scope = cockpitInputRegistrationScope(workspaceId, accountId, meetingId, key, current);
+  if (!scope) throw new Error("input_registration_context_changed");
+  if (scope === "nas") {
+    const parent = state.draft.forms[current.batchItem!.parentKey];
+    if (parent?.batch?.meetingId !== meetingId || !parent.batch.childKeys.includes(key)) throw new Error("input_registration_context_changed");
+  }
+  const explanation = reason.trim(); if (!explanation) throw new Error("input_end_reason_required");
+  const recordKey = scope === "nas" ? key : cockpitInputDraftKey(workspaceId, accountId, "ended-registration", meetingId, generation);
+  if (recordKey !== key && (state.draft.forms[recordKey] || state.draft.commands[recordKey])) throw new Error("input_registration_context_changed");
+  const forms = { ...state.draft.forms, [recordKey]: form.parse({ ...current,
+    registrationEnd: { originalKey: key, reason: explanation, endedAt: new Date().toISOString() },
+    ...(current.batchItem ? { batchItem: { ...current.batchItem, skipped: false, skipReason: "" } } : {}),
+  }) };
+  if (recordKey !== key) delete forms[key];
+  state.setDraft({ forms });
+}
+
+/** Removal affects only a recognized ended record. An active NAS batch still
+ * owns its child pointer until the user explicitly finishes that batch. */
+export function removeEndedCockpitInputRegistration(workspaceId: string, accountId: string, meetingId: string, key: string, generation: string): void {
+  const state = useCockpitInputDraftStore.getState(); const current = state.draft.forms[key];
+  if (!current?.registrationEnd || current.generation !== generation || state.draft.commands[key]
+    || !current.inputId || current.versionId || current.transferId) throw new Error("input_registration_context_changed");
+  const scope = cockpitInputRegistrationScope(workspaceId, accountId, meetingId, current.registrationEnd.originalKey, current);
+  if (!scope || scope === "single" && key !== cockpitInputDraftKey(workspaceId, accountId, "ended-registration", meetingId, generation)
+    || scope === "nas" && (key !== current.registrationEnd.originalKey || state.draft.forms[current.batchItem!.parentKey]?.batch?.childKeys.includes(key))) throw new Error("input_registration_context_changed");
+  const forms = { ...state.draft.forms }; delete forms[key]; state.setDraft({ forms });
 }

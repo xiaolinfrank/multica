@@ -8,7 +8,7 @@ import type {
 function sameSource(actual: CockpitInputSourceInput, expected: CockpitInputSourceInput): boolean {
   if (actual.kind !== expected.kind) return false;
   switch (expected.kind) {
-    case "upload": return Boolean(actual.upload && expected.upload && actual.upload.filename === expected.upload.filename.trim()
+    case "upload": return Boolean(actual.upload && expected.upload && actual.upload.filename === expected.upload.filename
       && actual.upload.contentType === expected.upload.contentType && actual.upload.sizeBytes === expected.upload.sizeBytes
       && actual.upload.clientSha256 === expected.upload.clientSha256);
     case "nas_file": return Boolean(actual.nasFile && expected.nasFile && actual.nasFile.rootId === expected.nasFile.rootId

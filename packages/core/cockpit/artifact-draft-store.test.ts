@@ -72,3 +72,22 @@ describe("artifact command drafts", () => {
     expect(useCockpitArtifactDraftStore.getState().draft).toEqual({ creations: {}, submissions: {}, reviews: {} });
   });
 });
+
+
+it("retains an explicit cross-Issue input manifest through producer rebase and freezes its original pending command", () => {
+  const key = cockpitArtifactDraftKey("ws", "submit", "artifact-inputs");
+  const first = { revision: 1, producerIssueId: "producer-a" }, next = { revision: 2, producerIssueId: "producer-b" };
+  updateCockpitArtifactSubmissionDraft(key, first, { text: "Fixed output", inputManifestIssueId: "another-source-issue", inputManifestVersionId: firstKey });
+  rebaseCockpitArtifactSubmissionDraft(key, next);
+  expect(useCockpitArtifactDraftStore.getState().draft.submissions[key]).toMatchObject({ inputManifestIssueId: "another-source-issue", inputManifestVersionId: firstKey });
+  const command = prepareCockpitArtifactSubmission(key, next, nextKey);
+  expect(command).toMatchObject({ producer_issue_id: "producer-b", input_manifest_version_id: firstKey });
+  updateCockpitArtifactSubmissionDraft(key, next, { inputManifestIssueId: "different-source", inputManifestVersionId: nextKey });
+  expect(prepareCockpitArtifactSubmission(key, next, firstKey)).toEqual(command);
+  settleCockpitArtifactSubmission(key, nextKey, false);
+  updateCockpitArtifactSubmissionDraft(key, next, { inputManifestIssueId: "different-source" });
+  expect(useCockpitArtifactDraftStore.getState().draft.submissions[key]?.inputManifestVersionId).toBe("");
+  expect(() => prepareCockpitArtifactSubmission(key, next, firstKey)).toThrow("artifact_input_manifest_source_required");
+  updateCockpitArtifactSubmissionDraft(key, next, { inputManifestIssueId: "", inputManifestVersionId: "" });
+  expect(prepareCockpitArtifactSubmission(key, next, firstKey)).not.toHaveProperty("input_manifest_version_id");
+});

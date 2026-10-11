@@ -13,6 +13,7 @@ import { runtimeKeys } from "../runtimes/queries";
 import { workspaceWorkingAgentsKeys, agentTasksKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { cockpitInputKeys } from "../cockpit/input-queries";
 import { cockpitKeys } from "../cockpit/queries";
 import { cockpitArtifactKeys } from "../cockpit/artifact-queries";
 import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
@@ -159,6 +160,21 @@ describe("useRealtimeSync — ws instance change", () => {
       cleanup();
       vi.useRealTimers();
     }
+  });
+
+  it("refreshes a reclaimed Run preparation without replacing its fixed manifest or another Run", async () => {
+    const ws = createMockWs();
+    const run = cockpitInputKeys.run("ws-1", "run-1");
+    const otherRun = cockpitInputKeys.run("ws-1", "run-2");
+    const otherWorkspace = cockpitInputKeys.run("ws-2", "run-1");
+    const manifest = [...cockpitInputKeys.issue("ws-1", "issue-1"), "manifest-version", "fixed"];
+    for (const key of [run, otherRun, otherWorkspace, manifest]) qc.setQueryData(key, { manifestVersionId: "fixed", preparationState: "required_ready" });
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+    onAny({ type: "task:dispatch", payload: { task_id: "run-1" } } as never);
+    await waitFor(() => expect(qc.getQueryState(run)?.isInvalidated).toBe(true));
+    for (const key of [otherRun, otherWorkspace, manifest]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(qc.getQueryData(run)).toEqual({ manifestVersionId: "fixed", preparationState: "required_ready" });
   });
 
   it("skips invalidation on first non-null ws instance", () => {
@@ -344,6 +360,22 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(chatKeys.messagesAll());
     expect(calls).toContainEqual(chatKeys.messagesPageAll());
     expect(calls).toContainEqual(chatKeys.pendingTaskAll());
+  });
+
+  it("recovers missed input progress on reconnect while preserving selected NAS observations", async () => {
+    const run = cockpitInputKeys.run("ws-1", "run-1");
+    const input = cockpitInputKeys.input("ws-1", "input-1");
+    const other = cockpitInputKeys.input("ws-2", "input-1");
+    const browse = [...cockpitInputKeys.browse("ws-1"), "entries", "selected-root"];
+    for (const key of [run, input, other, browse]) qc.setQueryData(key, { original: true });
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    vi.mocked(ws.onReconnect).mock.calls[0]![0]();
+    await waitFor(() => expect(qc.getQueryState(run)?.isInvalidated).toBe(true));
+    expect(qc.getQueryState(input)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(browse)?.isInvalidated).toBe(false);
+    expect(qc.getQueryData(browse)).toEqual({ original: true });
   });
 
   it("invalidates one issue attachment cache after detached channel media binds", () => {

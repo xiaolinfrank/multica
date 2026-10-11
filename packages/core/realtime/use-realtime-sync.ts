@@ -1,5 +1,6 @@
 "use client";
 
+import { invalidateCockpitInputs, invalidateCockpitRunInputs } from "../cockpit/input-queries";
 import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
 import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
 
@@ -653,6 +654,9 @@ export async function handleInboxNew(
 function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
   const wsId = getCurrentWsId();
   if (wsId) {
+    // Recover progress/permissions missed while disconnected; selected NAS
+    // observations live outside this cache and keep their original identity.
+    void invalidateCockpitInputs(qc, wsId);
     qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
     // Through the inbox's own entry point, not a plain invalidate: a reconnect
     // can land during the list's first load, and a plain invalidate would be
@@ -1110,6 +1114,14 @@ export function useRealtimeSync(
 
     const unsubAny = ws.onAny((msg) => {
       if (specificEvents.has(msg.type)) return;
+      if (msg.type === "task:dispatch") {
+        const wsId = getCurrentWsId();
+        const payload = msg.payload;
+        if (wsId && payload && typeof payload === "object" && "task_id" in payload
+          && typeof payload.task_id === "string" && payload.task_id) {
+          void invalidateCockpitRunInputs(qc, wsId, payload.task_id);
+        }
+      }
       if (msg.type === "project:deleted") {
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });

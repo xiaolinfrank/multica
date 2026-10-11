@@ -1,3 +1,5 @@
+import { cockpitReadKeys } from "./read-queries";
+import { cockpitPreparationKeys } from "./meeting-preparation-queries";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { CockpitInputListQuery, CockpitInputPageQuery, CockpitInputNASBrowseInput, CockpitInputManifestVersionMetadata } from "../types/cockpit-input";
@@ -247,4 +249,48 @@ export function cockpitInputAttachmentsOptions(wsId: string, issueId: string, pa
     queryFn: ({ signal }) => api.getCockpitInputAttachments(wsId, issueId, query, signal).then(requireCockpitReadResult),
     enabled: Boolean(wsId && issueId), retry: false,
   });
+}
+
+
+export function cockpitInputSelectedAttachmentOptions(wsId: string, issueId: string, attachmentId: string) {
+  return queryOptions({
+    queryKey: [...cockpitInputKeys.issue(wsId, issueId), "attachment", attachmentId],
+    queryFn: ({ signal }) => api.getCockpitInputAttachment(wsId, issueId, attachmentId, signal).then(requireCockpitReadResult),
+    enabled: Boolean(wsId && issueId && attachmentId), retry: false,
+  });
+}
+
+/** Header labels for an explicit selection; currentVersion never replaces a selected fixed version. */
+export function cockpitInputSelectedHeadersOptions(wsId: string, inputIds: string[]) {
+  const ids = [...inputIds];
+  return queryOptions({
+    queryKey: [...cockpitInputKeys.all(wsId), "selected-headers", ids],
+    enabled: Boolean(wsId && ids.length), retry: false,
+    queryFn: async ({ signal }) => {
+      if (ids.length > 200 || new Set(ids).size !== ids.length) throw new Error("Invalid input header selection");
+      const pages = await Promise.all([ids.slice(0, 100), ids.slice(100)].filter((batch) => batch.length)
+        .map(async (batch) => {
+          const page = requireCockpitReadResult(await api.getCockpitInputs(wsId, { ids: batch, archive: "all", pageSize: 100 }, signal));
+          if (page.nextCursor || page.total !== page.items.length || page.items.some((item) => item.workspaceId !== wsId || !batch.includes(item.id))
+            || new Set(page.items.map((item) => item.id)).size !== page.items.length) throw new Error("Incomplete selected input header response");
+          return page.items;
+        }));
+      const items = new Map(pages.flat().map((item) => [item.id, item]));
+      return { workspaceId: wsId, requestedIds: ids, items: ids.flatMap((id) => { const item = items.get(id); return item ? [item] : []; }), unavailableIds: ids.filter((id) => !items.has(id)) };
+    },
+  });
+}
+
+
+export async function invalidateCockpitInputReferenceContext(client: QueryClient, wsId: string, meetingId: string) {
+  const keys = [[...cockpitReadKeys.all(wsId), "context"], cockpitPreparationKeys.basis(wsId, meetingId)];
+  await Promise.all(keys.map((queryKey) => client.cancelQueries({ queryKey })));
+  await Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
+}
+
+/** A reclaimed Run keeps its manifest pin but has a new preparation state. */
+export async function invalidateCockpitRunInputs(client: QueryClient, wsId: string, taskId: string) {
+  const filter = { queryKey: cockpitInputKeys.run(wsId, taskId) };
+  await client.cancelQueries(filter);
+  await client.invalidateQueries(filter);
 }

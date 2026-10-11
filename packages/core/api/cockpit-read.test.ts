@@ -5,6 +5,8 @@ import { ApiClient } from "./client";
 const scope = { projectId: "project-1", moduleId: "module-1" };
 const header = { workspace_id: "ws-1", scope: { project_id: "project-1", module_id: "module-1", project_title: "Project", module_title: "Module" },
   cockpit: null, actor: { user_id: "user-1", role: "member", is_human: true }, has_meeting_workflows: false, has_stable_bindings: false };
+const inputContextDefaults = { has_input_references: false, input_reference_meetings: [], input_reference_meetings_total: 0 };
+const parsedHeader = { ...header, ...inputContextDefaults };
 function reply(body: unknown) {
   const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
   vi.stubGlobal("fetch", fetchMock);
@@ -21,7 +23,7 @@ describe("cockpit scoped read contracts", () => {
       await expect(reply({ ...header, capabilities, has_meeting_lifecycle }).client.getCockpitContext("ws-1", scope))
         .resolves.toMatchObject({ has_meeting_lifecycle });
     }
-    await expect(reply(header).client.getCockpitContext("ws-1", scope)).resolves.toEqual(header);
+    await expect(reply(header).client.getCockpitContext("ws-1", scope)).resolves.toEqual(parsedHeader);
   });
   it("does not enable unavailable services from missing or malformed capability flags", async () => {
     for (const capabilities of [{}, { artifacts: "true", acceptance: 1 }, { artifacts: false, acceptance: false }]) {
@@ -31,7 +33,7 @@ describe("cockpit scoped read contracts", () => {
   });
   it("carries explicit workspace and rejects a different scope instead of showing an empty plan", async () => {
     const { client, fetchMock } = reply(header);
-    await expect(client.getCockpitContext("ws-1", scope)).resolves.toEqual(header);
+    await expect(client.getCockpitContext("ws-1", scope)).resolves.toEqual(parsedHeader);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ "X-Workspace-ID": "ws-1" });
     expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get("client_contract")).toBe("artifacts-v1");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("project_id=project-1&module_id=module-1");
@@ -40,7 +42,7 @@ describe("cockpit scoped read contracts", () => {
   });
   it("requires complete plan counts and never fills absent arrays with apparent zeros", async () => {
     const plan = { ...header, complete: true, nodes: [], payments: [], milestones: [], node_index: [], context_node_ids: [], task_counts: [], counts: { nodes: 0, payments: 0, milestones: 0, index_nodes: 0 } };
-    await expect(reply(plan).client.getCockpitPlan("ws-1", scope)).resolves.toEqual(plan);
+    await expect(reply(plan).client.getCockpitPlan("ws-1", scope)).resolves.toEqual({ ...plan, ...inputContextDefaults });
     for (const invalid of [{ ...plan, complete: false }, { ...plan, counts: { ...plan.counts, nodes: 1 } }, { ...plan, payments: undefined }]) {
       await expect(reply(invalid).client.getCockpitPlan("ws-1", scope)).resolves.toBeNull();
     }
@@ -114,7 +116,7 @@ describe("cockpit scoped read contracts", () => {
   it("requires all export mappings and excludes context ancestor mappings", async () => {
     const exported = { ...header, complete: true, nodes: [], payments: [], milestones: [], node_index: [], context_node_ids: [], task_counts: [], counts: { nodes: 0, payments: 0, milestones: 0, index_nodes: 0 },
       issue_links: [], issue_link_total: 0, generated_at: "2026-10-10T00:00:00Z" };
-    await expect(reply(exported).client.getCockpitPlanExport("ws-1", scope)).resolves.toEqual(exported);
+    await expect(reply(exported).client.getCockpitPlanExport("ws-1", scope)).resolves.toEqual({ ...exported, ...inputContextDefaults });
     await expect(reply({ ...exported, issue_link_total: 1 }).client.getCockpitPlanExport("ws-1", scope)).resolves.toBeNull();
     await expect(reply({ ...exported, issue_link_total: 1, issue_links: [{ node_id: "outside", issue_identifier: "TES-1" }] }).client.getCockpitPlanExport("ws-1", scope)).resolves.toBeNull();
   });
@@ -130,4 +132,14 @@ describe("cockpit scoped read contracts", () => {
     await expect(reply({ ...page, rows: [{ row_key: "merged-directions", node_ids: ["node-a"] }] }).client.getCockpitPlanMeetingMarkers("ws-1", scope, query)).resolves.toBeNull();
     await expect(reply({ ...page, groups: [{ ...page.groups[0], row_key: "unknown" }] }).client.getCockpitPlanMeetingMarkers("ws-1", scope, query)).resolves.toBeNull();
   });
+});
+
+
+it("keeps old input-free context defaults and rejects an incomplete list of retained meeting targets", async () => {
+  const id = "10000000-0000-4000-8000-000000000001";
+  await expect(reply(header).client.getCockpitContext("ws-1", scope)).resolves.toMatchObject(inputContextDefaults);
+  const retained = { ...header, has_input_references: true, input_reference_meetings: [{ meeting_id: id, title: "Source meeting" }], input_reference_meetings_total: 1 };
+  await expect(reply(retained).client.getCockpitContext("ws-1", scope)).resolves.toMatchObject({ has_input_references: true, input_reference_meetings_total: 1 });
+  await expect(reply({ ...retained, input_reference_meetings: [] }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();
+  await expect(reply({ ...retained, has_input_references: false }).client.getCockpitContext("ws-1", scope)).resolves.toBeNull();
 });
