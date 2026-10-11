@@ -317,7 +317,7 @@ folder is always the board's own; the endpoint takes no path. `POST
 resolves outside the archive folder is reported in `skipped` rather than
 failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
-Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md).
+Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md). Persistent meeting directory preparation uses [meeting-directory.md](meeting-directory.md).
 
 ## Stable project/module bindings
 
