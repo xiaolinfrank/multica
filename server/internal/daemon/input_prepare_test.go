@@ -29,6 +29,7 @@ func fixedInputTestHash(body string) string {
 
 type fixedInputFixture struct {
 	busy                           bool
+	previouslyReady                bool
 	task                           Task
 	items                          []fixedInputManifestItem
 	contents                       map[string]string
@@ -122,7 +123,11 @@ func (f *fixedInputFixture) server(t *testing.T) *httptest.Server {
 			if r.URL.Query().Get("runtime_id") != f.task.RuntimeID || r.URL.Query().Get("dispatched_at") != f.task.DispatchedAt {
 				t.Error("manifest read lost dispatch claim")
 			}
-			write(f.summary("pending"))
+			if f.previouslyReady {
+				write(f.summary("required_ready"))
+			} else {
+				write(f.summary("pending"))
+			}
 		case strings.HasSuffix(r.URL.Path, "/input-preparation"):
 			var body struct {
 				State      string   `json:"state"`
@@ -143,6 +148,10 @@ func (f *fixedInputFixture) server(t *testing.T) *httptest.Server {
 				f.readyIDs = append([]string{}, body.Prepared...)
 			}
 			f.mu.Unlock()
+			if f.previouslyReady && body.State != "required_ready" {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
 			write(f.summary(body.State))
 		case strings.HasSuffix(r.URL.Path, "/items"):
 			if r.URL.Query().Get("task_id") != f.task.ID || r.URL.Query().Get("runtime_id") != f.task.RuntimeID || r.URL.Query().Get("page_size") != "100" {
@@ -333,5 +342,34 @@ func TestFixedInputReadCapacityWaitEndsWithPreparationDeadline(t *testing.T) {
 	var failure *fixedInputPreparationError
 	if !errors.As(err, &failure) || failure.Code != "input_preparation_timeout" || f.downloads != 1 || len(f.readyIDs) != 0 {
 		t.Fatalf("capacity wait escaped its claim deadline: %v reads=%d ready=%v", err, f.downloads, f.readyIDs)
+	}
+}
+
+func TestFixedInputRetryPreservesReadyHistoryWhileRecheckingLocalFiles(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(fmt.Sprint(mismatch), func(t *testing.T) {
+			f := newFixedInputFixture(1)
+			f.previouslyReady = true
+			if mismatch {
+				f.badVersion = f.items[0].InputVersionID
+			}
+			root := privateFixedInputTestDir(t)
+			out, err := f.client(t).prepareFixedInputs(context.Background(), f.task, root, nil)
+			if f.downloads != 1 {
+				t.Fatalf("retry did not verify its own local bytes: reads=%d err=%v", f.downloads, err)
+			}
+			if mismatch {
+				var failure *fixedInputPreparationError
+				if !errors.As(err, &failure) || failure.Code != "required_input_unavailable" || len(f.states) != 0 {
+					t.Fatalf("failed local retry rewrote historical preparation: err=%v states=%v", err, f.states)
+				}
+				entries, readErr := os.ReadDir(root)
+				if readErr != nil || len(entries) != 0 {
+					t.Fatalf("failed retry retained partial copies: %v %v", entries, readErr)
+				}
+			} else if err != nil || out == nil || out.PreparedCount != 1 || len(f.states) != 1 || f.states[0] != "required_ready" {
+				t.Fatalf("ready retry was not idempotently acknowledged: out=%+v err=%v states=%v", out, err, f.states)
+			}
+		})
 	}
 }

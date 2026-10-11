@@ -99,16 +99,25 @@ func (c *Client) prepareFixedInputs(ctx context.Context, task Task, directory st
 	default:
 		return nil, &fixedInputPreparationError{Code: "unsupported_input_preparation_state"}
 	}
-	preparing, err := c.recordFixedInputPreparation(ctx, task, "preparing", nil, "")
-	if err != nil {
-		return nil, &fixedInputPreparationError{Code: "input_preparation_unconfirmed", Cause: err}
-	}
-	if !fixedRunInputsMatch(task, preparing) || preparing.PreparationState != "preparing" {
-		return nil, &fixedInputPreparationError{Code: "input_preparation_unconfirmed"}
+	alreadyReady := original.PreparationState == "required_ready"
+	if alreadyReady {
+		if original.PreparationHash == nil || *original.PreparationHash != task.InputManifestHash {
+			return nil, &fixedInputPreparationError{Code: "input_preparation_unconfirmed"}
+		}
+	} else {
+		preparing, err := c.recordFixedInputPreparation(ctx, task, "preparing", nil, "")
+		if err != nil {
+			return nil, &fixedInputPreparationError{Code: "input_preparation_unconfirmed", Cause: err}
+		}
+		if !fixedRunInputsMatch(task, preparing) || preparing.PreparationState != "preparing" {
+			return nil, &fixedInputPreparationError{Code: "input_preparation_unconfirmed"}
+		}
 	}
 	preparedIDs := []string{}
 	defer func() {
-		if returnedErr != nil {
+		if returnedErr != nil && !alreadyReady {
+			// A local retry still verifies its own files, but cannot erase the
+			// earlier preparation fact for the same claim.
 			// A failed required file must never proceed to StartTask. Failure reporting
 			// is bounded and cannot convert a stale claim into another authorization.
 			reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
