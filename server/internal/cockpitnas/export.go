@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/google/uuid"
@@ -74,9 +75,13 @@ type Root struct {
 	AllowLocal      bool     `json:"allow_local,omitempty"`
 	WriteMode       string   `json:"write_mode,omitempty"`
 	PrepareSubpaths []string `json:"prepare_subpaths,omitempty"`
+	InputSubpaths   []string `json:"input_subpaths,omitempty"`
 }
 
 type Files struct {
+	inputInit        sync.Once
+	inputReader      *inputState
+	inputInitError   error
 	roots            map[string]Root
 	preparationSlots chan struct{}
 	// Package-private fault injection; never configured by an API or runtime.
@@ -104,6 +109,9 @@ func New(raw string) (*Files, error) {
 	seen := make(map[string]bool)
 	for _, root := range roots {
 		if err := normalizePrepareSubpaths(&root); err != nil {
+			return nil, err
+		}
+		if err := normalizeInputSubpaths(&root); err != nil {
 			return nil, err
 		}
 		if root.WriteMode == "" {
