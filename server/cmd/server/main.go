@@ -731,6 +731,7 @@ func main() {
 
 	// Capabilities are advertised only after every domain service is wired.
 	enableCockpitArtifactRuntime(h)
+	enableCockpitMeetingPreparationRuntime(h)
 	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
 	if h.IssueService.CockpitArtifactBackendReady {

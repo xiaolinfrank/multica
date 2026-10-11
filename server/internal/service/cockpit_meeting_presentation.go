@@ -60,8 +60,8 @@ type CockpitPlanMarkerRow struct {
 }
 type CockpitPlanMarkerQuery struct {
 	CockpitSurfaceQuery
-	Rows                     []CockpitPlanMarkerRow
-	DateFrom, DateTo, Cursor string
+	Rows                              []CockpitPlanMarkerRow
+	DateFrom, DateTo, Cursor, Archive string
 }
 type CockpitPlanMarkerPreview struct {
 	ID        string  `json:"id"`
@@ -77,6 +77,7 @@ type CockpitPlanMarkerGroup struct {
 	SortKey string                     `json:"sort_key,omitempty"`
 }
 type CockpitPlanMarkerPage struct {
+	Archive     string                   `json:"archive"`
 	WorkspaceID string                   `json:"workspace_id"`
 	Scope       CockpitSurfaceScope      `json:"scope"`
 	Rows        []CockpitPlanMarkerRow   `json:"rows"`
@@ -89,6 +90,11 @@ type CockpitPlanMarkerPage struct {
 
 func (s *IssueService) GetCockpitPlanMeetingMarkers(ctx context.Context, p CockpitPlanMarkerQuery) (CockpitPlanMarkerPage, error) {
 	var out CockpitPlanMarkerPage
+	var archiveErr error
+	p.Archive, archiveErr = normalizeMeetingArchive(p.Archive, "active")
+	if archiveErr != nil {
+		return out, archiveErr
+	}
 	from, err := time.Parse("2006-01-02", p.DateFrom)
 	if err != nil {
 		return out, fmt.Errorf("%w: date_from must use YYYY-MM-DD", ErrCockpitWorkflowInput)
@@ -148,7 +154,7 @@ func (s *IssueService) GetCockpitPlanMeetingMarkers(ctx context.Context, p Cockp
 	if err != nil {
 		return out, err
 	}
-	payload, err := q.GetCockpitPlanMeetingMarkers(ctx, db.GetCockpitPlanMeetingMarkersParams{WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, NodeIds: ids, Rows: rowDefs, DateFrom: pgtype.Date{Time: from, Valid: true}, DateTo: pgtype.Date{Time: to, Valid: true}, CursorKey: key})
+	payload, err := q.GetCockpitPlanMeetingMarkers(ctx, db.GetCockpitPlanMeetingMarkersParams{WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, Archive: p.Archive, NodeIds: ids, Rows: rowDefs, DateFrom: pgtype.Date{Time: from, Valid: true}, DateTo: pgtype.Date{Time: to, Valid: true}, CursorKey: key})
 	if err != nil {
 		return out, err
 	}
@@ -164,6 +170,7 @@ func (s *IssueService) GetCockpitPlanMeetingMarkers(ctx context.Context, p Cockp
 	}
 	out = raw.CockpitPlanMarkerPage
 	out.WorkspaceID = header.WorkspaceID
+	out.Archive = p.Archive
 	out.Scope = header.Scope
 	out.Rows = p.Rows
 	out.DateFrom = p.DateFrom

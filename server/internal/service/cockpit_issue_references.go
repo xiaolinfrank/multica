@@ -23,6 +23,7 @@ type CockpitIssueNodeReference struct {
 	CanUnlink bool   `json:"can_unlink"`
 }
 type CockpitIssueMeetingReference struct {
+	ArchivedAt         *string  `json:"archived_at"`
 	HasDirectReference bool     `json:"has_direct_reference"`
 	HasAgendaReference bool     `json:"has_agenda_reference"`
 	AgendaID           *string  `json:"agenda_id"`

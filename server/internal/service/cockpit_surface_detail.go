@@ -266,7 +266,7 @@ func (s *IssueService) GetCockpitSurfaceNode(ctx context.Context, p CockpitSurfa
 	out.PaymentTotal = out.Payments.PaymentTotal
 	relationHeader := out.CockpitSurfaceContext
 	relationHeader.Scope = CockpitSurfaceScope{}
-	out.Meetings, err = readCockpitMeetingRegister(ctx, q, relationHeader, CockpitMeetingRegisterQuery{CockpitSurfaceQuery: relationScope, NodeID: id, PageSize: 25})
+	out.Meetings, err = readCockpitMeetingRegister(ctx, q, relationHeader, CockpitMeetingRegisterQuery{CockpitSurfaceQuery: relationScope, NodeID: id, PageSize: 25, Archive: "all"})
 	if err != nil {
 		return out, err
 	}

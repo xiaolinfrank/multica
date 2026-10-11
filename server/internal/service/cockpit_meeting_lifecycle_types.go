@@ -77,6 +77,9 @@ type CockpitOccurrenceView struct {
 	EndedSource        *string `json:"ended_source"`
 	ActualStartedAt    *string `json:"actual_started_at"`
 	ActualEndedAt      *string `json:"actual_ended_at"`
+	CancelledAt        *string `json:"cancelled_at"`
+	CancelledBy        *string `json:"cancelled_by"`
+	CancelledReason    string  `json:"cancelled_reason"`
 }
 type CockpitMaterialsView struct {
 	WorkflowRevision int64   `json:"workflow_revision"`
@@ -90,22 +93,23 @@ type CockpitLifecycleBlock struct {
 	Code   string `json:"code"`
 }
 type CockpitMeetingLifecycleHeader struct {
-	WorkspaceID         string                  `json:"workspace_id"`
-	MeetingID           string                  `json:"meeting_id"`
-	LifecycleRevision   int64                   `json:"lifecycle_revision"`
-	AgendaRevision      int64                   `json:"agenda_revision"`
-	GeneratedAt         string                  `json:"generated_at"`
-	Occurrence          CockpitOccurrenceView   `json:"occurrence"`
-	Materials           *CockpitMaterialsView   `json:"materials"`
-	WorkflowEnabled     bool                    `json:"workflow_enabled"`
-	AgendaTotal         int64                   `json:"agenda_total"`
-	CanSchedule         bool                    `json:"can_schedule"`
-	CanStart            bool                    `json:"can_start"`
-	CanEnd              bool                    `json:"can_end"`
-	CanCorrectTimes     bool                    `json:"can_correct_times"`
-	CanEditAgenda       bool                    `json:"can_edit_agenda"`
-	CanConfirmMaterials bool                    `json:"can_confirm_materials"`
-	BlockedReasons      []CockpitLifecycleBlock `json:"blocked_reasons"`
+	WorkspaceID         string                    `json:"workspace_id"`
+	MeetingID           string                    `json:"meeting_id"`
+	LifecycleRevision   int64                     `json:"lifecycle_revision"`
+	AgendaRevision      int64                     `json:"agenda_revision"`
+	GeneratedAt         string                    `json:"generated_at"`
+	Occurrence          CockpitOccurrenceView     `json:"occurrence"`
+	Materials           *CockpitMaterialsView     `json:"materials"`
+	WorkflowEnabled     bool                      `json:"workflow_enabled"`
+	AgendaTotal         int64                     `json:"agenda_total"`
+	CanSchedule         bool                      `json:"can_schedule"`
+	CanStart            bool                      `json:"can_start"`
+	CanEnd              bool                      `json:"can_end"`
+	CanCorrectTimes     bool                      `json:"can_correct_times"`
+	CanEditAgenda       bool                      `json:"can_edit_agenda"`
+	CanConfirmMaterials bool                      `json:"can_confirm_materials"`
+	BlockedReasons      []CockpitLifecycleBlock   `json:"blocked_reasons"`
+	Archive             CockpitMeetingArchiveView `json:"archive"`
 }
 type CockpitAgendaMetadata struct {
 	ID                string   `json:"id"`
@@ -175,18 +179,21 @@ type CockpitAgendaReferencePage struct {
 	NextCursor     *string                      `json:"next_cursor"`
 }
 type CockpitLifecycleReceipt struct {
-	Reason             string                      `json:"reason"`
-	PreviousOccurrence *CockpitOccurrenceView      `json:"previous_occurrence"`
-	Revision           int64                       `json:"revision"`
-	AgendaRevision     int64                       `json:"agenda_revision"`
-	AgendaID           *string                     `json:"agenda_id"`
-	ReferenceID        *string                     `json:"reference_id"`
-	IssueID            *string                     `json:"issue_id"`
-	RequestHash        string                      `json:"request_hash"`
-	Occurrence         *CockpitOccurrenceView      `json:"occurrence"`
-	Materials          *CockpitMaterialsView       `json:"materials"`
-	Agenda             *CockpitAgendaDetail        `json:"agenda"`
-	Reference          *CockpitAgendaReferenceView `json:"reference"`
+	Reason             string                            `json:"reason"`
+	PreviousOccurrence *CockpitOccurrenceView            `json:"previous_occurrence"`
+	Revision           int64                             `json:"revision"`
+	AgendaRevision     int64                             `json:"agenda_revision"`
+	AgendaID           *string                           `json:"agenda_id"`
+	ReferenceID        *string                           `json:"reference_id"`
+	IssueID            *string                           `json:"issue_id"`
+	RequestHash        string                            `json:"request_hash"`
+	Occurrence         *CockpitOccurrenceView            `json:"occurrence"`
+	Materials          *CockpitMaterialsView             `json:"materials"`
+	Agenda             *CockpitAgendaDetail              `json:"agenda"`
+	Reference          *CockpitAgendaReferenceView       `json:"reference"`
+	Archive            *CockpitMeetingArchiveView        `json:"archive"`
+	PreviousArchive    *CockpitMeetingArchiveView        `json:"previous_archive"`
+	Preparation        *CockpitPreparationCommandReceipt `json:"preparation"`
 }
 type CockpitLifecycleCommandResult struct {
 	WorkspaceID string                        `json:"workspace_id"`
@@ -207,6 +214,8 @@ type CockpitLifecycleCommandMetadata struct {
 	AgendaID    *string `json:"agenda_id"`
 	ReferenceID *string `json:"reference_id"`
 	IssueID     *string `json:"issue_id"`
+	OperationID *string `json:"operation_id"`
+	EffectID    *string `json:"effect_id"`
 }
 type CockpitLifecycleCommandPage struct {
 	WorkspaceID string                            `json:"workspace_id"`

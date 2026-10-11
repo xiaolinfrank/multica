@@ -35,8 +35,10 @@ func (h *Handler) cockpitSurfaceQuery(w http.ResponseWriter, r *http.Request) (s
 		}
 	}
 	return service.CockpitSurfaceQuery{WorkspaceID: id, ProjectID: project, ModuleID: module, ActorID: member.UserID, Human: !isMachineCredentialActor(r),
-		MeetingLifecycleAvailable: h.IssueService != nil && h.IssueService.CockpitMeetingLifecycleBackendReady,
-		ArtifactsAvailable:        h.IssueService != nil && h.IssueService.CockpitArtifactBackendReady && r.URL.Query().Get("client_contract") == "artifacts-v1"}, true
+		MeetingLifecycleAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingLifecycleBackendReady,
+		MeetingTemplatesAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingTemplatesBackendReady,
+		MeetingDispositionAvailable: h.IssueService != nil && h.IssueService.CockpitMeetingDispositionBackendReady,
+		ArtifactsAvailable:          h.IssueService != nil && h.IssueService.CockpitArtifactBackendReady && r.URL.Query().Get("client_contract") == "artifacts-v1"}, true
 }
 func writeCockpitSurfaceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	if errors.Is(err, service.ErrCockpitIndexLimit) {
@@ -126,7 +128,7 @@ func (h *Handler) ListCockpitMeetingRegister(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	out, err := h.IssueService.ListCockpitMeetingRegister(r.Context(), service.CockpitMeetingRegisterQuery{
-		CockpitSurfaceQuery: p, NodeID: nodeID, NodeIDs: nodeIDs, Query: v.Get("q"), WorkflowStage: v.Get("workflow_stage"), DateFrom: v.Get("date_from"), DateTo: v.Get("date_to"), Cursor: v.Get("cursor"), PageSize: size,
+		CockpitSurfaceQuery: p, NodeID: nodeID, NodeIDs: nodeIDs, Archive: v.Get("archive"), Query: v.Get("q"), WorkflowStage: v.Get("workflow_stage"), DateFrom: v.Get("date_from"), DateTo: v.Get("date_to"), Cursor: v.Get("cursor"), PageSize: size,
 		Tracks: v["tracks"], Kinds: v["kinds"], Statuses: v["statuses"], Parties: v["parties"], Only: v["only"],
 	})
 	if !writeCockpitSurfaceError(w, r, err) {
@@ -215,7 +217,7 @@ func (h *Handler) ListCockpitNodeMeetings(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	out, err := h.IssueService.ListCockpitMeetingRegister(r.Context(), service.CockpitMeetingRegisterQuery{CockpitSurfaceQuery: p, NodeID: id, Cursor: r.URL.Query().Get("cursor"), PageSize: size})
+	out, err := h.IssueService.ListCockpitMeetingRegister(r.Context(), service.CockpitMeetingRegisterQuery{CockpitSurfaceQuery: p, NodeID: id, Cursor: r.URL.Query().Get("cursor"), PageSize: size, Archive: defaultCockpitArchive(r.URL.Query().Get("archive"), "all")})
 	if !writeCockpitSurfaceError(w, r, err) {
 		writeJSON(w, http.StatusOK, out)
 	}
@@ -239,6 +241,7 @@ func (h *Handler) GetCockpitPlanMeetingMarkers(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
 	var body struct {
+		Archive  string                         `json:"archive"`
 		Rows     []service.CockpitPlanMarkerRow `json:"rows"`
 		DateFrom string                         `json:"date_from"`
 		DateTo   string                         `json:"date_to"`
@@ -260,8 +263,15 @@ func (h *Handler) GetCockpitPlanMeetingMarkers(w http.ResponseWriter, r *http.Re
 			body.Rows[i].NodeIDs[j] = uuidToString(id)
 		}
 	}
-	out, err := h.IssueService.GetCockpitPlanMeetingMarkers(r.Context(), service.CockpitPlanMarkerQuery{CockpitSurfaceQuery: p, Rows: body.Rows, DateFrom: body.DateFrom, DateTo: body.DateTo, Cursor: body.Cursor})
+	out, err := h.IssueService.GetCockpitPlanMeetingMarkers(r.Context(), service.CockpitPlanMarkerQuery{CockpitSurfaceQuery: p, Rows: body.Rows, DateFrom: body.DateFrom, DateTo: body.DateTo, Cursor: body.Cursor, Archive: body.Archive})
 	if !writeCockpitSurfaceError(w, r, err) {
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+func defaultCockpitArchive(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

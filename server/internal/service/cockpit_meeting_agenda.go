@@ -136,6 +136,11 @@ func (s *IssueService) SaveCockpitMeetingAgenda(ctx context.Context, p CockpitLi
 	if old != nil {
 		return *old, nil
 	}
+	if create {
+		if e := requireMeetingPreparationOpen(x.meeting); e != nil {
+			return CockpitLifecycleCommandResult{}, e
+		}
+	}
 	var a db.CockpitMeetingAgenda
 	if create {
 		if x.meeting.AgendaRevision != in.ExpectedRevision {
@@ -145,6 +150,17 @@ func (s *IssueService) SaveCockpitMeetingAgenda(ctx context.Context, p CockpitLi
 		a, e = loadActiveAgenda(ctx, q, p, id, in.ExpectedRevision)
 		if e != nil {
 			return CockpitLifecycleCommandResult{}, e
+		}
+	}
+	if !create && len(in.NodeID) > 0 {
+		nextNode, err := nullableAgendaUUID(in.NodeID, a.NodeID)
+		if err != nil {
+			return CockpitLifecycleCommandResult{}, err
+		}
+		if nextNode.Valid && nextNode != a.NodeID {
+			if err = requireMeetingPreparationOpen(x.meeting); err != nil {
+				return CockpitLifecycleCommandResult{}, err
+			}
 		}
 	}
 	a, e = applyAgendaFields(ctx, q, p, a, in)
@@ -224,6 +240,9 @@ func (s *IssueService) AttachCockpitAgendaReference(ctx context.Context, p Cockp
 	defer tx.Rollback(ctx)
 	if old != nil {
 		return *old, nil
+	}
+	if e = RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, p.MeetingID); e != nil {
+		return CockpitLifecycleCommandResult{}, e
 	}
 	if _, e = loadActiveAgenda(ctx, q, p, agenda, in.ExpectedRevision); e != nil {
 		return CockpitLifecycleCommandResult{}, e

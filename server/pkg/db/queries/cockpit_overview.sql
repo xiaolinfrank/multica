@@ -43,7 +43,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
  WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
- SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at
+ SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at,m.archived_at
  FROM cockpit_meeting m CROSS JOIN args x
  WHERE m.workspace_id=x.ws AND (x.project IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_project=x.project)
@@ -165,7 +165,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN w.released_at IS NULL THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
  m.meet_date::text||':'||m.id::text AS sort_key
  FROM meetings m CROSS JOIN args x LEFT JOIN workflow w ON w.id=m.id
- WHERE m.meet_date BETWEEN x.as_of-(x.days-1) AND x.as_of+7
+ WHERE m.archived_at IS NULL AND m.meet_date BETWEEN x.as_of-(x.days-1) AND x.as_of+7
 ), recent_page AS (
  SELECT r.* FROM recent r CROSS JOIN args x WHERE x.section IN ('overview','meetings') AND (x.cursor_key='' OR r.sort_key<x.cursor_key)
  ORDER BY r.sort_key DESC LIMIT (SELECT CASE WHEN section='overview' THEN 7 ELSE page_size+1 END FROM args)

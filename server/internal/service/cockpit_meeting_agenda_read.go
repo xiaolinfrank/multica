@@ -278,7 +278,7 @@ func (s *IssueService) ListCockpitMeetingLifecycleCommands(ctx context.Context, 
 		out.NextCursor = encodeLifecycleCursor(lifecycleCursor{Scope: scope, ID: util.UUIDToString(r.CommandKey), Time: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano)})
 	}
 	for _, r := range rows {
-		out.Items = append(out.Items, CockpitLifecycleCommandMetadata{CommandKey: util.UUIDToString(r.CommandKey), Action: r.Kind, ActorID: util.UUIDToString(r.ActorID), ActorName: r.ActorName, CreatedAt: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano), Revision: r.Revision, AgendaID: planningUUID(r.AgendaID), ReferenceID: planningUUID(r.ReferenceID), IssueID: planningUUID(r.IssueID)})
+		out.Items = append(out.Items, CockpitLifecycleCommandMetadata{CommandKey: util.UUIDToString(r.CommandKey), Action: r.Kind, ActorID: util.UUIDToString(r.ActorID), ActorName: r.ActorName, CreatedAt: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano), Revision: r.Revision, AgendaID: planningUUID(r.AgendaID), ReferenceID: planningUUID(r.ReferenceID), IssueID: planningUUID(r.IssueID), OperationID: planningUUID(r.OperationID), EffectID: planningUUID(r.EffectID)})
 	}
 	return out, nil
 }
@@ -303,7 +303,7 @@ func (s *IssueService) GetCockpitMeetingLifecycleCommand(ctx context.Context, p 
 	if e != nil {
 		return CockpitLifecycleCommandDetail{}, cockpitWorkflowError(e)
 	}
-	out := CockpitLifecycleCommandDetail{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), CockpitLifecycleCommandMetadata: CockpitLifecycleCommandMetadata{CommandKey: util.UUIDToString(c.CommandKey), Action: c.Kind, ActorID: util.UUIDToString(c.ActorID), CreatedAt: c.CreatedAt.Time.UTC().Format(time.RFC3339Nano), Revision: c.Revision, AgendaID: planningUUID(c.AgendaID), ReferenceID: planningUUID(c.ReferenceID), IssueID: planningUUID(c.IssueID)}}
+	out := CockpitLifecycleCommandDetail{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), CockpitLifecycleCommandMetadata: CockpitLifecycleCommandMetadata{CommandKey: util.UUIDToString(c.CommandKey), Action: c.Kind, ActorID: util.UUIDToString(c.ActorID), CreatedAt: c.CreatedAt.Time.UTC().Format(time.RFC3339Nano), Revision: c.Revision, AgendaID: planningUUID(c.AgendaID), ReferenceID: planningUUID(c.ReferenceID), IssueID: planningUUID(c.IssueID), OperationID: planningUUID(c.OperationID), EffectID: planningUUID(c.EffectID)}}
 	users, e := q.GetUsersByIDs(ctx, []pgtype.UUID{c.ActorID})
 	if e != nil {
 		return out, e

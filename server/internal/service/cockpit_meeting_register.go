@@ -15,13 +15,14 @@ import (
 
 type CockpitMeetingRegisterQuery struct {
 	CockpitSurfaceQuery
-	NodeID                                         pgtype.UUID
-	NodeIDs                                        []pgtype.UUID
-	Query, WorkflowStage, DateFrom, DateTo, Cursor string
-	Tracks, Kinds, Statuses, Parties, Only         []string
-	PageSize                                       int32
+	NodeID                                                  pgtype.UUID
+	NodeIDs                                                 []pgtype.UUID
+	Query, WorkflowStage, DateFrom, DateTo, Cursor, Archive string
+	Tracks, Kinds, Statuses, Parties, Only                  []string
+	PageSize                                                int32
 }
 type CockpitMeetingRegisterPage struct {
+	Archive     string                   `json:"archive"`
 	WorkspaceID string                   `json:"workspace_id"`
 	Scope       CockpitSurfaceScope      `json:"scope"`
 	NodeID      *string                  `json:"node_id"`
@@ -40,6 +41,11 @@ type CockpitMeetingDayCount struct {
 
 func normalizeMeetingRegister(p CockpitMeetingRegisterQuery) (CockpitMeetingRegisterQuery, pgtype.Date, pgtype.Date, error) {
 	var from, to pgtype.Date
+	var archiveErr error
+	p.Archive, archiveErr = normalizeMeetingArchive(p.Archive, "active")
+	if archiveErr != nil {
+		return p, from, to, archiveErr
+	}
 	if len(p.NodeIDs) > 200 || p.NodeID.Valid && len(p.NodeIDs) > 0 {
 		return p, from, to, fmt.Errorf("%w: node_id and node_ids are exclusive; at most 200 node IDs", ErrCockpitWorkflowInput)
 	}
@@ -143,7 +149,7 @@ func readCockpitMeetingRegister(ctx context.Context, q *db.Queries, header Cockp
 		}
 	}
 	payload, err := q.ListCockpitMeetingRegister(ctx, db.ListCockpitMeetingRegisterParams{
-		WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, NodeIds: nodeIDs,
+		WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, NodeIds: nodeIDs, Archive: p.Archive,
 		Words: strings.Fields(strings.ToLower(p.Query)), Tracks: p.Tracks, Kinds: p.Kinds, Statuses: p.Statuses, Parties: p.Parties, OnlyFlags: p.Only, WorkflowStage: p.WorkflowStage,
 		DateFrom: from, DateTo: to, CalendarCounts: from.Valid && to.Valid && to.Time.Sub(from.Time) <= 92*24*time.Hour, CursorKey: key, PageSize: p.PageSize,
 	})
@@ -154,6 +160,7 @@ func readCockpitMeetingRegister(ctx context.Context, q *db.Queries, header Cockp
 		return out, err
 	}
 	out.WorkspaceID = header.WorkspaceID
+	out.Archive = p.Archive
 	out.Scope = header.Scope
 	out.NodeID = planningUUID(p.NodeID)
 	out.NodeIDs = []string{}
@@ -180,4 +187,16 @@ func readCockpitMeetingRegister(ctx context.Context, q *db.Queries, header Cockp
 		out.NextCursor = makeOverviewCursor(scope, item.SortKey)
 	}
 	return out, nil
+}
+
+func normalizeMeetingArchive(value, fallback string) (string, error) {
+	if value == "" {
+		value = fallback
+	}
+	switch value {
+	case "active", "archived", "all":
+		return value, nil
+	default:
+		return "", fmt.Errorf("%w: archive must be active, archived, or all", ErrCockpitWorkflowInput)
+	}
 }

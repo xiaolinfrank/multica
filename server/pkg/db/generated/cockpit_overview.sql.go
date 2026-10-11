@@ -90,7 +90,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
  WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
- SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at
+ SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at,m.archived_at
  FROM cockpit_meeting m CROSS JOIN args x
  WHERE m.workspace_id=x.ws AND (x.project IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_project=x.project)
@@ -107,7 +107,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.module_id=x.module))
 ), workflow AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.materials_ready,w.released_at,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.materials_ready,w.released_at,
  w.current_version_id,w.published_version_id,v.version_number,v.reviewer_id,v.review_issue_id,v.decision,v.published_at,
  i.status AS minutes_status,i.assignee_type,i.assignee_id,
  (x.actor_role IN ('owner','admin') OR w.created_by=x.actor)::bool AS manager,
@@ -208,13 +208,13 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  'module_id',e.module_id,'module_title',e.module_title,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
  'issue_counts',COALESCE(c.counts,jsonb_build_object('total',0,'active',0,'unstarted',0,'started',0,'done',0,'closed',0,'unknown',0,'overdue',0,'blocked',0,'unassigned',0))) AS card FROM execution_page e LEFT JOIN execution_counts c ON c.node_id=e.id
 ), recent AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
  CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN w.released_at IS NULL THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
  m.meet_date::text||':'||m.id::text AS sort_key
  FROM meetings m CROSS JOIN args x LEFT JOIN workflow w ON w.id=m.id
- WHERE m.meet_date BETWEEN x.as_of-(x.days-1) AND x.as_of+7
+ WHERE m.archived_at IS NULL AND m.meet_date BETWEEN x.as_of-(x.days-1) AND x.as_of+7
 ), recent_page AS (
- SELECT r.id, r.code, r.title, r.meet_date, r.time_range, r.status, r.created_at, r.ended_at, r.minutes_issue_id, r.current_version_id, r.version_number, r.published_version_id, r.workflow_stage, r.sort_key FROM recent r CROSS JOIN args x WHERE x.section IN ('overview','meetings') AND (x.cursor_key='' OR r.sort_key<x.cursor_key)
+ SELECT r.id, r.code, r.title, r.meet_date, r.time_range, r.status, r.created_at, r.ended_at, r.archived_at, r.minutes_issue_id, r.current_version_id, r.version_number, r.published_version_id, r.workflow_stage, r.sort_key FROM recent r CROSS JOIN args x WHERE x.section IN ('overview','meetings') AND (x.cursor_key='' OR r.sort_key<x.cursor_key)
  ORDER BY r.sort_key DESC LIMIT (SELECT CASE WHEN section='overview' THEN 7 ELSE page_size+1 END FROM args)
 ), recent_cards AS (
  SELECT r.sort_key,jsonb_build_object('id',r.id,'code',r.code,'title',r.title,'meet_date',r.meet_date,'time_range',r.time_range,'meeting_status',r.status,

@@ -55,6 +55,7 @@ func newPrincipalFixture(t *testing.T) (principalFixture, string) {
 	fx := testutil.New(pool, "", "")
 	ownerUserID := fx.User(t, "principal owner", fmt.Sprintf("principal-owner-%d@multica.test", n))
 	workspaceID := fx.Workspace(t, "principal ws", fmt.Sprintf("principal-ws-%d", n))
+	fx.Cleanup(t, "DELETE FROM search_index_change WHERE workspace_id=$1", workspaceID)
 	fx.Member(t, workspaceID, ownerUserID, "owner")
 	fx.WorkspaceID = workspaceID
 	fx.UserID = ownerUserID

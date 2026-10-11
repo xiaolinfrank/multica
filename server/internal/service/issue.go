@@ -54,10 +54,12 @@ type IssueService struct {
 	CockpitNASExporter cockpitnas.Exporter
 	// Enabled only after the full artifact runtime is wired; client declaration
 	// controls entry visibility, never business authorization.
-	CockpitArtifactBackendReady         bool
-	CockpitMeetingLifecycleBackendReady bool
-	CockpitArtifactCapturer             *artifactcapture.Capturer
-	CockpitArtifactStorage              storage.Storage
+	CockpitArtifactBackendReady           bool
+	CockpitMeetingLifecycleBackendReady   bool
+	CockpitMeetingTemplatesBackendReady   bool
+	CockpitMeetingDispositionBackendReady bool
+	CockpitArtifactCapturer               *artifactcapture.Capturer
+	CockpitArtifactStorage                storage.Storage
 	// Tests can shorten the total probe budget without changing production limits.
 	artifactProbeTimeout time.Duration
 }

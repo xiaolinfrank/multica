@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_preparation_effect_position_idx ON cockpit_meeting_preparation_effect (workspace_id,operation_id,position);

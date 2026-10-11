@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -131,6 +132,14 @@ func appendCockpitNodeIssueRecord(ctx context.Context, q *db.Queries, cc cockpit
 }
 
 func appendCockpitMeetingIssueRecord(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID, issueID pgtype.UUID) (CockpitMeetingIssueResponse, error) {
+	if _, err := q.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID, IssueID: issueID}); errors.Is(err, pgx.ErrNoRows) {
+		if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meetingID); err != nil {
+			return CockpitMeetingIssueResponse{}, err
+		}
+	} else if err != nil {
+		return CockpitMeetingIssueResponse{}, err
+	}
+
 	if _, err := q.LockIssueForChannelMediaBind(ctx, db.LockIssueForChannelMediaBindParams{WorkspaceID: cc.workspaceID, ID: issueID}); err != nil {
 		return CockpitMeetingIssueResponse{}, err
 	}
@@ -153,6 +162,14 @@ func readCockpitMeetingIssueReceipt(ctx context.Context, q *db.Queries, cc cockp
 }
 
 func appendCockpitMeetingNodeRecord(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID, nodeID pgtype.UUID) (CockpitMeetingNodeResponse, error) {
+	if _, err := q.GetCockpitMeetingNodeLink(ctx, db.GetCockpitMeetingNodeLinkParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID, NodeID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
+		if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meetingID); err != nil {
+			return CockpitMeetingNodeResponse{}, err
+		}
+	} else if err != nil {
+		return CockpitMeetingNodeResponse{}, err
+	}
+
 	node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{WorkspaceID: cc.workspaceID, ID: nodeID})
 	if err != nil {
 		return CockpitMeetingNodeResponse{}, err
@@ -187,7 +204,11 @@ func writeCockpitReferenceError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, service.ErrCockpitWorkflowConflict) {
+		writeError(w, 409, err.Error())
+	} else if errors.Is(err, service.ErrCockpitWorkflowForbidden) {
+		writeError(w, 403, err.Error())
+	} else if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "related item no longer exists")
 	} else {
 		writeError(w, 500, "relation could not be saved; refresh and retry")

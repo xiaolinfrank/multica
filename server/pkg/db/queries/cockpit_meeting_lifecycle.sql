@@ -1,6 +1,6 @@
 -- name: GetCockpitMeetingLifecycle :one
 SELECT id,workspace_id,cockpit_id,lifecycle_revision,agenda_revision,occurrence_state,
- started_confirmed_at,started_confirmed_by,ended_at,ended_by,ended_source,actual_started_at,actual_ended_at,
+ started_confirmed_at,started_confirmed_by,ended_at,ended_by,ended_source,actual_started_at,actual_ended_at,cancelled_at,cancelled_by,cancelled_reason,archived_at,archived_by,archived_reason,
  now()::timestamptz AS database_now
 FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2;
 
@@ -23,11 +23,11 @@ UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now() WHE
 SELECT * FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3;
 
 -- name: CreateCockpitLifecycleCommand :exec
-INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,agenda_id,reference_id,issue_id,receipt)
-VALUES(sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(command_key),sqlc.arg(kind),sqlc.arg(actor_id),sqlc.arg(request_hash),sqlc.arg(revision),sqlc.arg(agenda_revision),sqlc.narg(agenda_id),sqlc.narg(reference_id),sqlc.narg(issue_id),sqlc.arg(receipt));
+INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,agenda_id,reference_id,issue_id,operation_id,effect_id,receipt)
+VALUES(sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(command_key),sqlc.arg(kind),sqlc.arg(actor_id),sqlc.arg(request_hash),sqlc.arg(revision),sqlc.arg(agenda_revision),sqlc.narg(agenda_id),sqlc.narg(reference_id),sqlc.narg(issue_id),sqlc.narg(operation_id),sqlc.narg(effect_id),sqlc.arg(receipt));
 
 -- name: ListCockpitLifecycleCommands :many
-SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
+SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
 FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
 WHERE c.workspace_id=sqlc.arg(workspace_id) AND c.meeting_id=sqlc.arg(meeting_id)
  AND (sqlc.narg(after_key)::uuid IS NULL OR (c.created_at,c.command_key)<(sqlc.arg(after_time)::timestamptz,sqlc.narg(after_key)))

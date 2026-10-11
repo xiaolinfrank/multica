@@ -808,6 +808,10 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if boolOrDefault(req.CreateTask, true) {
+		if err := service.RequireCockpitMeetingPreparationOpen(ctx, h.Queries, cc.workspaceID, meeting.ID); err != nil {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		if _, err := h.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID}); err == nil {
 			writeError(w, http.StatusConflict, "this meeting has a work package; use its minutes task and workflow")
 			return
@@ -1391,6 +1395,17 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if req.Replace {
+		for _, issueID := range resolved {
+			if _, exists := markers[issueID]; !exists {
+				if err := service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meeting.ID); err != nil {
+					writeError(w, http.StatusConflict, err.Error())
+					return
+				}
+				break
+			}
+		}
+	}
+	if req.Replace {
 		if err := q.DeleteCockpitMeetingIssuesExcept(ctx, db.DeleteCockpitMeetingIssuesExceptParams{
 			MeetingID: meeting.ID, WorkspaceID: cc.workspaceID, IssueIds: resolved,
 		}); err != nil {
@@ -1538,6 +1553,19 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	if req.Replace {
+		for _, nodeID := range resolved {
+			if _, err := q.GetCockpitMeetingNodeLink(ctx, db.GetCockpitMeetingNodeLinkParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, NodeID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
+				if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meeting.ID); err != nil {
+					writeError(w, http.StatusConflict, err.Error())
+					return
+				}
+			} else if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to check existing meeting reference")
+				return
+			}
+		}
+	}
 	if req.Replace {
 		if err := q.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
 			MeetingID:   meeting.ID,

@@ -258,22 +258,6 @@ func assertIssueStatusStillActive(ctx context.Context, qtx *db.Queries, workspac
 	return nil
 }
 
-// updateIssueStoppingWakeups writes params and, when the write moves the issue
-// into a done/closed status, ends its wakeups with the same queries. Callers
-// run it inside the status write's transaction and broadcast the returned runs
-// after commit.
-func updateIssueStoppingWakeups(ctx context.Context, q *db.Queries, params db.UpdateIssueParams) (db.Issue, []db.AgentTaskQueue, error) {
-	issue, err := q.UpdateIssue(ctx, params)
-	if err != nil || !params.Status.Valid {
-		return issue, nil, err
-	}
-	cancelled, err := service.StopClosedIssueWakeups(ctx, q, issue)
-	if err != nil {
-		return db.Issue{}, nil, fmt.Errorf("stop closed issue wakeups: %w", err)
-	}
-	return issue, cancelled, nil
-}
-
 func (h *Handler) broadcastCancelledWakeups(ctx context.Context, workspaceID pgtype.UUID, cancelled []db.AgentTaskQueue) {
 	if len(cancelled) > 0 {
 		h.TaskService.BroadcastCancelledTasks(ctx, uuidToString(workspaceID), cancelled)
@@ -3846,7 +3830,7 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 		return db.Issue{}, current, false, nil, &issueParentFilingError{status: status, code: code, message: message}
 	}
 
-	issue, cancelledWakeups, err := updateIssueStoppingWakeups(ctx, qtx, params)
+	issue, cancelledWakeups, err := service.UpdateIssueStoppingWakeups(ctx, qtx, params)
 	if err != nil {
 		return db.Issue{}, current, false, nil, fmt.Errorf("update locked issue: %w", err)
 	}

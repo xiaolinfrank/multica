@@ -16,7 +16,7 @@ SELECT EXISTS(SELECT 1 FROM cockpit_meeting WHERE workspace_id=sqlc.arg('workspa
 -- separately. A meeting linked to several descendants counts once per row/day.
 WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT sqlc.arg('workspace_id')::uuid AS ws,sqlc.narg('project_id')::uuid AS project,sqlc.narg('module_id')::uuid AS module,
- sqlc.arg('node_ids')::uuid[] AS node_ids,sqlc.arg('rows')::jsonb AS row_defs,sqlc.arg('date_from')::date AS date_from,sqlc.arg('date_to')::date AS date_to,sqlc.arg('cursor_key')::text AS cursor_key
+ sqlc.arg('node_ids')::uuid[] AS node_ids,sqlc.arg('rows')::jsonb AS row_defs,sqlc.arg('date_from')::date AS date_from,sqlc.arg('date_to')::date AS date_to,sqlc.arg('cursor_key')::text AS cursor_key,sqlc.arg('archive')::text AS archive
 ), requested_rows AS MATERIALIZED (
  SELECT value->>'row_key' AS row_key,ARRAY(SELECT jsonb_array_elements_text(value->'node_ids'))::uuid[] AS node_ids
  FROM args x,jsonb_array_elements(x.row_defs) AS entry(value)
@@ -38,7 +38,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT wanted.row_key,n.id AS node_id FROM scoped n JOIN requested_rows wanted ON wanted.node_ids && n.path
 ), dated_meetings AS MATERIALIZED (
  SELECT m.id,m.meet_date,m.title,m.code,m.start_time FROM cockpit_meeting m,args x
- WHERE m.workspace_id=x.ws AND m.meet_date>=x.date_from AND m.meet_date<=x.date_to
+ WHERE m.workspace_id=x.ws AND (x.archive='all' OR (x.archive='active' AND m.archived_at IS NULL) OR (x.archive='archived' AND m.archived_at IS NOT NULL)) AND m.meet_date>=x.date_from AND m.meet_date<=x.date_to
 ), meeting_node_links AS NOT MATERIALIZED (
  SELECT l.workspace_id,l.meeting_id,l.node_id FROM cockpit_meeting_node l,args x WHERE l.workspace_id=x.ws
  UNION SELECT a.workspace_id,a.meeting_id,a.node_id FROM cockpit_meeting_agenda a,args x WHERE a.workspace_id=x.ws AND a.removed_at IS NULL AND a.node_id IS NOT NULL

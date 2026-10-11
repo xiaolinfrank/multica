@@ -58,7 +58,7 @@ func (q *Queries) GetCockpitMeetingCodeSequence(ctx context.Context, arg GetCock
 const getCockpitPlanMeetingMarkers = `-- name: GetCockpitPlanMeetingMarkers :one
 WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT $1::uuid AS ws,$2::uuid AS project,$3::uuid AS module,
- $4::uuid[] AS node_ids,$5::jsonb AS row_defs,$6::date AS date_from,$7::date AS date_to,$8::text AS cursor_key
+ $4::uuid[] AS node_ids,$5::jsonb AS row_defs,$6::date AS date_from,$7::date AS date_to,$8::text AS cursor_key,$9::text AS archive
 ), requested_rows AS MATERIALIZED (
  SELECT value->>'row_key' AS row_key,ARRAY(SELECT jsonb_array_elements_text(value->'node_ids'))::uuid[] AS node_ids
  FROM args x,jsonb_array_elements(x.row_defs) AS entry(value)
@@ -80,7 +80,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT wanted.row_key,n.id AS node_id FROM scoped n JOIN requested_rows wanted ON wanted.node_ids && n.path
 ), dated_meetings AS MATERIALIZED (
  SELECT m.id,m.meet_date,m.title,m.code,m.start_time FROM cockpit_meeting m,args x
- WHERE m.workspace_id=x.ws AND m.meet_date>=x.date_from AND m.meet_date<=x.date_to
+ WHERE m.workspace_id=x.ws AND (x.archive='all' OR (x.archive='active' AND m.archived_at IS NULL) OR (x.archive='archived' AND m.archived_at IS NOT NULL)) AND m.meet_date>=x.date_from AND m.meet_date<=x.date_to
 ), meeting_node_links AS NOT MATERIALIZED (
  SELECT l.workspace_id,l.meeting_id,l.node_id FROM cockpit_meeting_node l,args x WHERE l.workspace_id=x.ws
  UNION SELECT a.workspace_id,a.meeting_id,a.node_id FROM cockpit_meeting_agenda a,args x WHERE a.workspace_id=x.ws AND a.removed_at IS NULL AND a.node_id IS NOT NULL
@@ -117,6 +117,7 @@ type GetCockpitPlanMeetingMarkersParams struct {
 	DateFrom    pgtype.Date   `json:"date_from"`
 	DateTo      pgtype.Date   `json:"date_to"`
 	CursorKey   string        `json:"cursor_key"`
+	Archive     string        `json:"archive"`
 }
 
 // Aggregate every matching meeting for visible rows; preview metadata is capped
@@ -131,6 +132,7 @@ func (q *Queries) GetCockpitPlanMeetingMarkers(ctx context.Context, arg GetCockp
 		arg.DateFrom,
 		arg.DateTo,
 		arg.CursorKey,
+		arg.Archive,
 	)
 	var payload []byte
 	err := row.Scan(&payload)

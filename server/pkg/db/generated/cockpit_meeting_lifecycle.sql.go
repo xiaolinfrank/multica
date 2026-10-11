@@ -194,8 +194,8 @@ func (q *Queries) CreateCockpitAgendaReference(ctx context.Context, arg CreateCo
 }
 
 const createCockpitLifecycleCommand = `-- name: CreateCockpitLifecycleCommand :exec
-INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,agenda_id,reference_id,issue_id,receipt)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,agenda_id,reference_id,issue_id,operation_id,effect_id,receipt)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type CreateCockpitLifecycleCommandParams struct {
@@ -210,6 +210,8 @@ type CreateCockpitLifecycleCommandParams struct {
 	AgendaID       pgtype.UUID `json:"agenda_id"`
 	ReferenceID    pgtype.UUID `json:"reference_id"`
 	IssueID        pgtype.UUID `json:"issue_id"`
+	OperationID    pgtype.UUID `json:"operation_id"`
+	EffectID       pgtype.UUID `json:"effect_id"`
 	Receipt        []byte      `json:"receipt"`
 }
 
@@ -226,6 +228,8 @@ func (q *Queries) CreateCockpitLifecycleCommand(ctx context.Context, arg CreateC
 		arg.AgendaID,
 		arg.ReferenceID,
 		arg.IssueID,
+		arg.OperationID,
+		arg.EffectID,
 		arg.Receipt,
 	)
 	return err
@@ -439,7 +443,7 @@ func (q *Queries) GetCockpitAgendaReference(ctx context.Context, arg GetCockpitA
 }
 
 const getCockpitLifecycleCommand = `-- name: GetCockpitLifecycleCommand :one
-SELECT workspace_id, meeting_id, command_key, kind, actor_id, request_hash, revision, agenda_revision, agenda_id, reference_id, issue_id, receipt, created_at FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3
+SELECT workspace_id, meeting_id, command_key, kind, actor_id, request_hash, revision, agenda_revision, agenda_id, reference_id, issue_id, receipt, created_at, operation_id, effect_id FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3
 `
 
 type GetCockpitLifecycleCommandParams struct {
@@ -465,6 +469,8 @@ func (q *Queries) GetCockpitLifecycleCommand(ctx context.Context, arg GetCockpit
 		&i.IssueID,
 		&i.Receipt,
 		&i.CreatedAt,
+		&i.OperationID,
+		&i.EffectID,
 	)
 	return i, err
 }
@@ -506,7 +512,7 @@ func (q *Queries) GetCockpitMeetingAgenda(ctx context.Context, arg GetCockpitMee
 
 const getCockpitMeetingLifecycle = `-- name: GetCockpitMeetingLifecycle :one
 SELECT id,workspace_id,cockpit_id,lifecycle_revision,agenda_revision,occurrence_state,
- started_confirmed_at,started_confirmed_by,ended_at,ended_by,ended_source,actual_started_at,actual_ended_at,
+ started_confirmed_at,started_confirmed_by,ended_at,ended_by,ended_source,actual_started_at,actual_ended_at,cancelled_at,cancelled_by,cancelled_reason,archived_at,archived_by,archived_reason,
  now()::timestamptz AS database_now
 FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2
 `
@@ -530,6 +536,12 @@ type GetCockpitMeetingLifecycleRow struct {
 	EndedSource        pgtype.Text        `json:"ended_source"`
 	ActualStartedAt    pgtype.Timestamptz `json:"actual_started_at"`
 	ActualEndedAt      pgtype.Timestamptz `json:"actual_ended_at"`
+	CancelledAt        pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy        pgtype.UUID        `json:"cancelled_by"`
+	CancelledReason    string             `json:"cancelled_reason"`
+	ArchivedAt         pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy         pgtype.UUID        `json:"archived_by"`
+	ArchivedReason     string             `json:"archived_reason"`
 	DatabaseNow        pgtype.Timestamptz `json:"database_now"`
 }
 
@@ -550,6 +562,12 @@ func (q *Queries) GetCockpitMeetingLifecycle(ctx context.Context, arg GetCockpit
 		&i.EndedSource,
 		&i.ActualStartedAt,
 		&i.ActualEndedAt,
+		&i.CancelledAt,
+		&i.CancelledBy,
+		&i.CancelledReason,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.ArchivedReason,
 		&i.DatabaseNow,
 	)
 	return i, err
@@ -764,7 +782,7 @@ func (q *Queries) ListCockpitAgendaReferences(ctx context.Context, arg ListCockp
 }
 
 const listCockpitLifecycleCommands = `-- name: ListCockpitLifecycleCommands :many
-SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
+SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
 FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
 WHERE c.workspace_id=$1 AND c.meeting_id=$2
  AND ($3::uuid IS NULL OR (c.created_at,c.command_key)<($4::timestamptz,$3))
@@ -790,6 +808,8 @@ type ListCockpitLifecycleCommandsRow struct {
 	AgendaID       pgtype.UUID        `json:"agenda_id"`
 	ReferenceID    pgtype.UUID        `json:"reference_id"`
 	IssueID        pgtype.UUID        `json:"issue_id"`
+	OperationID    pgtype.UUID        `json:"operation_id"`
+	EffectID       pgtype.UUID        `json:"effect_id"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	ActorName      string             `json:"actor_name"`
 }
@@ -820,6 +840,8 @@ func (q *Queries) ListCockpitLifecycleCommands(ctx context.Context, arg ListCock
 			&i.AgendaID,
 			&i.ReferenceID,
 			&i.IssueID,
+			&i.OperationID,
+			&i.EffectID,
 			&i.CreatedAt,
 			&i.ActorName,
 		); err != nil {

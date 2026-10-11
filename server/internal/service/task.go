@@ -2835,6 +2835,9 @@ type TaskCancellationActor struct {
 // CancelTaskOptions carries what the caller knows about the client that asked
 // for the cancellation.
 type CancelTaskOptions struct {
+	// CockpitPreparation commits a fixed preparation effect with the canonical
+	// cancellation. Only the meeting service can construct this typed context.
+	CockpitPreparation *cockpitPreparationTaskCancel
 	// ClientSupportsDraftRestore is true when the caller can recover a prompt
 	// through the durable draft-restore path (#5219). Only such a client may be
 	// handed a deferred outcome; for anyone else the empty-transcript judgment
@@ -2915,6 +2918,9 @@ func (s *TaskService) CancelTaskWithReason(ctx context.Context, taskID pgtype.UU
 // CancelTaskWithResult cancels a single task and returns any chat-specific
 // cleanup result needed by user-facing callers.
 func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UUID, opts CancelTaskOptions) (*CancelTaskResult, error) {
+	if opts.CockpitPreparation != nil && (opts.QueuedOnly || !opts.UserInitiated || s.TxStarter == nil) {
+		return nil, errors.New("preparation cancellation requires an explicit user command and a transaction, not a queued-chat edit")
+	}
 	// Both fields are persisted onto the cancelled row's TEXT columns below, and
 	// at least one caller interpolates an externally-supplied path into
 	// ErrorMessage. A NUL in either rolls the cancellation back and leaves the
@@ -2936,6 +2942,7 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 	var (
 		task                 db.AgentTaskQueue
 		cancelledChatMessage *CancelledChatMessageResult
+		preparationObserved  bool
 		err                  error
 	)
 	if opts.QueuedOnly {
@@ -2968,6 +2975,19 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 		// other connection while the pointer still names the previous turn's
 		// session, and a queued follow-up can resume that older session.
 		err = s.runInTx(ctx, func(qtx *db.Queries) error {
+			if opts.CockpitPreparation != nil {
+				observed, err := opts.CockpitPreparation.Before(ctx, qtx, taskID)
+				if err != nil {
+					return err
+				}
+				if observed != nil {
+					if observed.ID != taskID {
+						return errors.New("preparation receipt does not identify the requested task")
+					}
+					task, preparationObserved = *observed, true
+					return nil
+				}
+			}
 			if err := lockChatSessionForTaskWrite(ctx, qtx, taskID); err != nil {
 				return err
 			}
@@ -2991,6 +3011,20 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 			} else {
 				cancelled, err = qtx.CancelAgentTask(ctx, taskID)
 			}
+			if errors.Is(err, pgx.ErrNoRows) && opts.CockpitPreparation != nil {
+				observed, readErr := qtx.GetAgentTask(ctx, taskID)
+				if readErr != nil {
+					return readErr
+				}
+				if observed.Status != "completed" && observed.Status != "failed" && observed.Status != "cancelled" {
+					return errors.New("preparation cancellation did not confirm a terminal task")
+				}
+				if err := opts.CockpitPreparation.After(ctx, qtx, observed, false); err != nil {
+					return err
+				}
+				task, preparationObserved = observed, true
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -3000,16 +3034,21 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 			if err := SettleTerminalTaskState(ctx, qtx, cancelled); err != nil {
 				return err
 			}
-			if !cancelled.ChatSessionID.Valid {
-				return nil
+			if cancelled.ChatSessionID.Valid {
+				if err := qtx.AdvanceCancelledChatSessionPointer(ctx, cancelled.ID); err != nil {
+					return err
+				}
 			}
-			return qtx.AdvanceCancelledChatSessionPointer(ctx, cancelled.ID)
+			if opts.CockpitPreparation != nil {
+				return opts.CockpitPreparation.After(ctx, qtx, cancelled, true)
+			}
+			return nil
 		})
 	}
 	if errors.Is(err, ErrTaskNoLongerQueued) {
 		return nil, err
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) && opts.CockpitPreparation == nil {
 		existing, err := s.Queries.GetAgentTask(ctx, taskID)
 		if err != nil {
 			return nil, fmt.Errorf("cancel task: %w", err)
@@ -3018,6 +3057,9 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 	}
 	if err != nil {
 		return nil, fmt.Errorf("cancel task: %w", err)
+	}
+	if preparationObserved {
+		return &CancelTaskResult{Task: task}, nil
 	}
 
 	slog.Info("task cancelled", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID))

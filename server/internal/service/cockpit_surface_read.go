@@ -20,6 +20,8 @@ type CockpitSurfaceQuery struct {
 	Human                                     bool
 	ArtifactsAvailable                        bool `json:"-"`
 	MeetingLifecycleAvailable                 bool `json:"-"`
+	MeetingTemplatesAvailable                 bool `json:"-"`
+	MeetingDispositionAvailable               bool `json:"-"`
 }
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
@@ -30,19 +32,22 @@ type CockpitSurfaceScope struct {
 
 // Availability describes implemented services, not a user's write authority.
 type CockpitSurfaceCapabilities struct {
-	MeetingLifecycle bool `json:"meeting_lifecycle"`
-	Artifacts        bool `json:"artifacts"`
-	Acceptance       bool `json:"acceptance"`
+	MeetingLifecycle   bool `json:"meeting_lifecycle"`
+	MeetingTemplates   bool `json:"meeting_templates"`
+	MeetingDisposition bool `json:"meeting_disposition"`
+	Artifacts          bool `json:"artifacts"`
+	Acceptance         bool `json:"acceptance"`
 }
 type CockpitSurfaceContext struct {
-	WorkspaceID         string                     `json:"workspace_id"`
-	Scope               CockpitSurfaceScope        `json:"scope"`
-	Cockpit             *db.Cockpit                `json:"cockpit"`
-	Actor               CockpitOverviewActor       `json:"actor"`
-	HasMeetingLifecycle bool                       `json:"has_meeting_lifecycle"`
-	HasMeetingWorkflows bool                       `json:"has_meeting_workflows"`
-	HasStableBindings   bool                       `json:"has_stable_bindings"`
-	Capabilities        CockpitSurfaceCapabilities `json:"capabilities"`
+	WorkspaceID           string                     `json:"workspace_id"`
+	Scope                 CockpitSurfaceScope        `json:"scope"`
+	Cockpit               *db.Cockpit                `json:"cockpit"`
+	Actor                 CockpitOverviewActor       `json:"actor"`
+	HasMeetingLifecycle   bool                       `json:"has_meeting_lifecycle"`
+	HasMeetingPreparation bool                       `json:"has_meeting_preparation"`
+	HasMeetingWorkflows   bool                       `json:"has_meeting_workflows"`
+	HasStableBindings     bool                       `json:"has_stable_bindings"`
+	Capabilities          CockpitSurfaceCapabilities `json:"capabilities"`
 }
 type CockpitSurfacePlan struct {
 	CockpitSurfaceContext
@@ -85,7 +90,11 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	out.WorkspaceID = util.UUIDToString(p.WorkspaceID)
 	out.Scope = CockpitSurfaceScope{ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID)}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(p.ActorID), Role: member.Role, IsHuman: p.Human}
-	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable}
+	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable}
+	out.HasMeetingPreparation, err = q.HasCockpitMeetingPreparation(ctx, p.WorkspaceID)
+	if err != nil {
+		return out, err
+	}
 	if p.ProjectID.Valid {
 		project, err := q.GetCockpitOverviewProject(ctx, db.GetCockpitOverviewProjectParams{WorkspaceID: p.WorkspaceID, ID: p.ProjectID})
 		if err != nil {

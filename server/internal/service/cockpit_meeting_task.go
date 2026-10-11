@@ -47,6 +47,9 @@ func beginCockpitMeetingTask(ctx context.Context, q *db.Queries, workspaceID pgt
 		WorkspaceID: workspaceID, MeetingID: task.MeetingID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
+		if err := RequireCockpitMeetingPreparationOpen(ctx, q, workspaceID, task.MeetingID); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 	if err != nil {

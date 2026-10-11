@@ -5947,43 +5947,15 @@ func attachTaskUsage(resp []AgentTaskResponse, byTask map[string][]TaskUsageData
 	}
 }
 
-// ListTaskMessagesByUser returns task messages for a task.
-// Used by the frontend under regular user auth (not daemon auth).
-// Verifies the task belongs to the caller's workspace.
+// ListTaskMessagesByUser returns task messages under the same workspace and
+// VIEW policy as the single-run metadata endpoint.
 func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request) {
-	taskID := chi.URLParam(r, "taskId")
-	taskUUID, ok := parseUUIDOrBadRequest(w, taskID, "task_id")
+	task, _, ok := h.loadTaskForRead(w, r)
 	if !ok {
 		return
 	}
-
-	task, err := h.Queries.GetAgentTask(r.Context(), taskUUID)
-	if err != nil {
-		if !isNotFound(err) {
-			slog.Warn("get agent task failed", "task_id", taskID, "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to load task")
-			return
-		}
-		writeError(w, http.StatusNotFound, "task not found")
-		return
-	}
-
-	// Verify the task belongs to the caller's workspace. A failed lookup is a
-	// 5xx here too: this endpoint does not drive the daemon's interrupt, but
-	// telling a reader "this task does not exist" because the DB blinked is
-	// the same lie, and it trains clients to give up on a retryable error.
-	wsID, err := h.TaskService.ResolveTaskWorkspaceIDChecked(r.Context(), task)
-	if err != nil {
-		slog.Warn("resolve task workspace failed", "task_id", taskID, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to load task")
-		return
-	}
-	// Mismatch stays a 404 rather than a 403: a task in another workspace must
-	// be indistinguishable from one that does not exist.
-	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
-		writeError(w, http.StatusNotFound, "task not found")
-		return
-	}
+	taskUUID := task.ID
+	taskID := uuidToString(task.ID)
 
 	var (
 		messages []db.TaskMessage

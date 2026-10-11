@@ -204,6 +204,20 @@ var concurrentIndexCleanups = map[string]string{
 	"9072_cockpit_agenda_reference_target_idx":                  "cockpit_agenda_reference_target_idx",
 	"9073_cockpit_lifecycle_command_key_idx":                    "cockpit_lifecycle_command_key_idx",
 	"9074_cockpit_lifecycle_command_page_idx":                   "cockpit_lifecycle_command_page_idx",
+	"9077_cockpit_template_id_idx":                              "cockpit_template_id_idx",
+	"9078_cockpit_template_page_idx":                            "cockpit_template_page_idx",
+	"9079_cockpit_template_version_id_idx":                      "cockpit_template_version_id_idx",
+	"9080_cockpit_template_version_number_idx":                  "cockpit_template_version_number_idx",
+	"9081_cockpit_template_version_command_idx":                 "cockpit_template_version_command_idx",
+	"9082_cockpit_preparation_operation_id_idx":                 "cockpit_preparation_operation_id_idx",
+	"9083_cockpit_preparation_operation_command_idx":            "cockpit_preparation_operation_command_idx",
+	"9084_cockpit_preparation_operation_template_idx":           "cockpit_preparation_operation_template_idx",
+	"9085_cockpit_preparation_operation_page_idx":               "cockpit_preparation_operation_page_idx",
+	"9086_cockpit_preparation_effect_id_idx":                    "cockpit_preparation_effect_id_idx",
+	"9087_cockpit_preparation_effect_position_idx":              "cockpit_preparation_effect_position_idx",
+	"9088_cockpit_preparation_effect_slot_idx":                  "cockpit_preparation_effect_slot_idx",
+	"9089_cockpit_preparation_effect_command_idx":               "cockpit_preparation_effect_command_idx",
+	"9090_cockpit_preparation_effect_issue_idx":                 "cockpit_preparation_effect_issue_idx",
 	"980_cockpit_primary_issue_index":                           "cockpit_primary_issue_idx",
 	"981_cockpit_primary_node_index":                            "cockpit_primary_node_idx",
 	"982_cockpit_primary_creation_index":                        "cockpit_primary_creation_idx",
@@ -513,6 +527,9 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	}
 	for _, version := range cockpitArtifactMigrationVersions {
 		hooks[version] = ensureCockpitArtifactRollbackSafe
+	}
+	for _, version := range cockpitPreparationMigrationVersions {
+		hooks[version] = ensureCockpitPreparationRollbackSafe
 	}
 	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
 	return hooks

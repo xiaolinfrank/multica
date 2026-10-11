@@ -203,6 +203,9 @@ func (s *IssueService) EnableCockpitMeetingWorkPackage(ctx context.Context, p Co
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
+	if err := RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, p.MeetingID); err != nil {
+		return err
+	}
 	issue, err := q.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{ID: p.ExistingIssueID, WorkspaceID: p.WorkspaceID})
 	if err != nil {
 		return cockpitWorkflowError(err)
@@ -264,6 +267,9 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 			return &issue, nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		if err := RequireCockpitMeetingPreparationOpen(ctx, q, in.WorkspaceID, in.MeetingID); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -410,6 +416,9 @@ func (s *IssueService) SetCockpitMeetingReadiness(ctx context.Context, p Cockpit
 	meeting, err := q.GetCockpitMeetingLifecycle(ctx, db.GetCockpitMeetingLifecycleParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if err != nil {
 		return cockpitWorkflowError(err)
+	}
+	if meeting.OccurrenceState == "cancelled" {
+		return fmt.Errorf("%w: reschedule this cancelled meeting before changing readiness", ErrCockpitWorkflowConflict)
 	}
 	if p.Ended != nil && !*p.Ended && meeting.EndedAt.Valid {
 		return fmt.Errorf("%w: an ended meeting cannot be reopened here", ErrCockpitWorkflowInput)

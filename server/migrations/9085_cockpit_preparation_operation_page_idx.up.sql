@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY cockpit_preparation_operation_page_idx ON cockpit_meeting_preparation_operation (workspace_id,meeting_id,created_at,id);

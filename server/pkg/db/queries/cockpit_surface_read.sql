@@ -85,7 +85,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  sqlc.arg('tracks')::text[] AS tracks,sqlc.arg('kinds')::text[] AS kinds,sqlc.arg('statuses')::text[] AS statuses,
  sqlc.arg('parties')::text[] AS parties,sqlc.arg('only_flags')::text[] AS only_flags,sqlc.arg('workflow_stage')::text AS stage,
  sqlc.narg('date_from')::date AS date_from,sqlc.narg('date_to')::date AS date_to,
- sqlc.arg('calendar_counts')::bool AS calendar_counts,sqlc.arg('cursor_key')::text AS cursor_key,sqlc.arg('page_size')::int AS page_size
+ sqlc.arg('calendar_counts')::bool AS calendar_counts,sqlc.arg('cursor_key')::text AS cursor_key,sqlc.arg('page_size')::int AS page_size,sqlc.arg('archive')::text AS archive
 ), tree AS (
  SELECT n.id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path,TRUE AS valid
  FROM cockpit_node n,args x WHERE n.workspace_id=x.ws AND n.parent_id IS NULL
@@ -152,6 +152,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  FROM cockpit_meeting m CROSS JOIN args x
  LEFT JOIN workflow_facts wf ON wf.meeting_id=m.id
  WHERE m.workspace_id=x.ws
+ AND (x.archive='all' OR (x.archive='active' AND m.archived_at IS NULL) OR (x.archive='archived' AND m.archived_at IS NOT NULL))
  AND (cardinality(x.node_ids)=0 OR m.id IN (SELECT meeting_id FROM node_meetings))
  AND (x.project IS NULL AND x.module IS NULL OR m.id IN (SELECT meeting_id FROM scope_meetings))
  AND (x.date_from IS NULL OR m.meet_date>=x.date_from) AND (x.date_to IS NULL OR m.meet_date<=x.date_to)
@@ -172,7 +173,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT f.* FROM filtered f,args x WHERE x.cursor_key='' OR f.sort_key<x.cursor_key ORDER BY f.sort_key DESC LIMIT (SELECT page_size+1 FROM args)
 ), cards AS (
  SELECT m.id,m.meet_date,m.time_range,to_char(m.start_time,'HH24:MI') AS start_time,to_char(m.end_time,'HH24:MI') AS end_time,
- m.title,m.code,m.kind,m.status,m.occurrence_state,m.ended_at,m.actual_started_at,m.actual_ended_at,m.track,m.parties,m.organizer,m.location,m.attendees,m.meet_no,m.link,m.nas_dir,m.detected,
+ m.title,m.code,m.kind,m.status,m.occurrence_state,m.ended_at,m.actual_started_at,m.actual_ended_at,m.cancelled_at,m.cancelled_by,m.cancelled_reason,m.archived_at,m.archived_by,m.archived_reason,m.track,m.parties,m.organizer,m.location,m.attendees,m.meet_no,m.link,m.nas_dir,m.detected,
  (SELECT count(*) FROM meeting_issue_links l JOIN issue linked ON linked.workspace_id=l.workspace_id AND linked.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS issue_count,
  (SELECT count(*) FROM meeting_node_links l JOIN cockpit_node linked ON linked.workspace_id=l.workspace_id AND linked.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id) AS node_count,
  p.workflow_enabled,p.workflow_stage,p.sort_key,

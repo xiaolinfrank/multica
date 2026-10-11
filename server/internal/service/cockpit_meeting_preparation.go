@@ -14,13 +14,14 @@ import (
 )
 
 type cockpitPreparationIssue struct {
-	command lifecycleCommand
-	input   CockpitPreparationIssueInput
-	issue   IssueCreateParams
-	node    db.CockpitNode
-	primary pgtype.UUID
-	result  *CockpitLifecycleCommandResult
-	created bool
+	command   lifecycleCommand
+	input     CockpitPreparationIssueInput
+	issue     IssueCreateParams
+	node      db.CockpitNode
+	primary   pgtype.UUID
+	result    *CockpitLifecycleCommandResult
+	created   bool
+	execution *cockpitPreparationExecution
 }
 
 func preparationUUID(raw *string) (pgtype.UUID, error) {
@@ -34,6 +35,9 @@ func preparationUUID(raw *string) (pgtype.UUID, error) {
 	return u, nil
 }
 func (s *IssueService) CreateCockpitMeetingPreparationIssue(ctx context.Context, p CockpitLifecycleRead, agenda pgtype.UUID, in CockpitPreparationIssueInput, opts IssueCreateOpts) (CockpitLifecycleCommandResult, error) {
+	return s.createCockpitPreparationIssue(ctx, p, agenda, in, opts, nil)
+}
+func (s *IssueService) createCockpitPreparationIssue(ctx context.Context, p CockpitLifecycleRead, agenda pgtype.UUID, in CockpitPreparationIssueInput, opts IssueCreateOpts, execution *cockpitPreparationExecution) (CockpitLifecycleCommandResult, error) {
 	in.NewIssue.Title = strings.TrimSpace(in.NewIssue.Title)
 	if in.NewIssue.Title == "" || utf8.RuneCountInString(in.NewIssue.Title) > 500 || len(in.NewIssue.Description) > 16000 {
 		return CockpitLifecycleCommandResult{}, ErrCockpitWorkflowInput
@@ -50,7 +54,7 @@ func (s *IssueService) CreateCockpitMeetingPreparationIssue(ctx context.Context,
 	if e != nil {
 		return CockpitLifecycleCommandResult{}, e
 	}
-	hook := &cockpitPreparationIssue{command: c, input: in}
+	hook := &cockpitPreparationIssue{command: c, input: in, execution: execution}
 	hook.primary, e = preparationUUID(in.PrimaryNodeID)
 	if e != nil {
 		return CockpitLifecycleCommandResult{}, e
@@ -113,33 +117,68 @@ func mustLifecycleUUID(s *string) pgtype.UUID {
 func prepareCockpitPreparationIssue(ctx context.Context, q *db.Queries, p *IssueCreateParams) (*db.Issue, error) {
 	h := p.CockpitPreparation
 	c := h.command
-	if e := lockLifecycleMember(ctx, q, c); e != nil {
-		return nil, e
-	}
-	if old, e := lifecycleReplay(ctx, q, c); old != nil || e != nil {
-		if e != nil {
+	if h.execution != nil {
+		if e := h.execution.lock(ctx, q); e != nil {
 			return nil, e
 		}
-		h.result = old
-		i, e := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: c.WorkspaceID, ID: mustLifecycleUUID(old.Receipt.IssueID)})
-		return &i, e
-	}
-	if _, e := lockLifecycleMeeting(ctx, q, c.WorkspaceID, c.MeetingID); e != nil {
-		return nil, e
-	}
-	if old, e := lifecycleReplay(ctx, q, c); old != nil || e != nil {
+		if h.execution.result != nil {
+			r := h.execution.result.Receipt
+			id, _ := preparationUUID(r.IssueID)
+			issue, e := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: c.WorkspaceID, ID: id})
+			if e != nil {
+				return nil, e
+			}
+			h.result = &CockpitLifecycleCommandResult{WorkspaceID: util.UUIDToString(c.WorkspaceID), MeetingID: util.UUIDToString(c.MeetingID), CommandKey: util.UUIDToString(c.key), Replayed: true, Receipt: CockpitLifecycleReceipt{IssueID: r.IssueID, AgendaID: r.AgendaID, ReferenceID: r.ReferenceID}}
+			return &issue, nil
+		}
+		c.agenda = h.execution.agenda
+		current, e := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: c.WorkspaceID, MeetingID: c.MeetingID, ID: c.agenda})
 		if e != nil {
+			return nil, cockpitWorkflowError(e)
+		}
+		c.expected = current.Revision
+		c.hash = h.execution.effect.RequestHash
+		h.command = c
+	} else {
+		if e := lockLifecycleMember(ctx, q, c); e != nil {
 			return nil, e
 		}
-		h.result = old
-		i, e := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: c.WorkspaceID, ID: mustLifecycleUUID(old.Receipt.IssueID)})
-		return &i, e
+		if old, e := lifecycleReplay(ctx, q, c); old != nil || e != nil {
+			if e != nil {
+				return nil, e
+			}
+			h.result = old
+			i, e := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: c.WorkspaceID, ID: mustLifecycleUUID(old.Receipt.IssueID)})
+			return &i, e
+		}
+		if _, e := lockLifecycleMeeting(ctx, q, c.WorkspaceID, c.MeetingID); e != nil {
+			return nil, e
+		}
+		if old, e := lifecycleReplay(ctx, q, c); old != nil || e != nil {
+			if e != nil {
+				return nil, e
+			}
+			h.result = old
+			i, e := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: c.WorkspaceID, ID: mustLifecycleUUID(old.Receipt.IssueID)})
+			return &i, e
+		}
+
+		if e := RequireCockpitMeetingPreparationOpen(ctx, q, c.WorkspaceID, c.MeetingID); e != nil {
+			return nil, e
+		}
 	}
 	a, e := loadActiveAgenda(ctx, q, c.CockpitLifecycleRead, c.agenda, c.expected)
 	if e != nil {
 		return nil, e
 	}
 	next := h.issue
+	if h.execution != nil && h.primary.Valid {
+		if e := h.execution.validateTemplateScope(ctx, q); e != nil {
+			return nil, e
+		}
+		next.ProjectID, _ = preparationUUID(h.execution.grant.Scope.ProjectID)
+		next.ModuleID, _ = preparationUUID(h.execution.grant.Scope.ModuleID)
+	}
 	if a.NodeID != h.primary {
 		return nil, fmt.Errorf("%w: confirm the agenda's current L3 before creating its preparation issue", ErrCockpitWorkflowConflict)
 	}
@@ -194,7 +233,19 @@ func linkCockpitPreparationIssue(ctx context.Context, q *db.Queries, p IssueCrea
 		return e
 	}
 	receipt := CockpitLifecycleReceipt{Revision: a.Revision, AgendaRevision: rev, AgendaID: planningUUID(a.ID), ReferenceID: planningUUID(r.ID), IssueID: planningUUID(issue.ID), Reference: &refs[0], RequestHash: c.hash}
-	if e = storeLifecycleReceipt(ctx, q, c, receipt); e != nil {
+	if h.execution != nil {
+		facts, e := readPlanningIssueFacts(ctx, q, c.WorkspaceID, []pgtype.UUID{issue.ID})
+		if e != nil {
+			return e
+		}
+		fixed, ok := facts[issue.ID]
+		if !ok {
+			return fmt.Errorf("created preparation issue facts are unavailable")
+		}
+		if e = h.execution.finish(ctx, q, CockpitPreparationEffectReceipt{AgendaID: planningUUID(a.ID), ReferenceID: planningUUID(r.ID), IssueID: planningUUID(issue.ID), Issue: &fixed, Changed: true}); e != nil {
+			return e
+		}
+	} else if e = storeLifecycleReceipt(ctx, q, c, receipt); e != nil {
 		return e
 	}
 	x, e := readLifecycleState(ctx, q, c.CockpitLifecycleRead)

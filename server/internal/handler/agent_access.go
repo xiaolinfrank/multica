@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -146,24 +147,16 @@ func (h *Handler) canAccessPrivateAgent(ctx context.Context, agent db.Agent, act
 	if actorType == "agent" {
 		return true
 	}
-	if uuidToString(agent.OwnerID) == actorID {
-		return true
-	}
-	member, err := h.getWorkspaceMember(ctx, actorID, workspaceID)
+	actor, err := util.ParseUUID(actorID)
 	if err != nil {
 		return false
 	}
-	if roleAllowed(member.Role, "owner", "admin") {
-		return true
-	}
-	if agent.PermissionMode != "public_to" {
-		return false
-	}
-	targets, err := h.Queries.ListAgentInvocationTargets(ctx, agent.ID)
+	workspace, err := util.ParseUUID(workspaceID)
 	if err != nil {
 		return false
 	}
-	return memberHitsInvocationTargets(targets, actorID)
+	allowed, err := service.MemberMayViewAgent(ctx, h.Queries, agent, actor, workspace)
+	return err == nil && allowed
 }
 
 // memberHitsInvocationTargets is the pure predicate deciding whether a regular

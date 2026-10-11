@@ -25,7 +25,7 @@ WITH args AS NOT MATERIALIZED (
  FROM page p CROSS JOIN args x LEFT JOIN cockpit_node n ON n.workspace_id=x.ws AND n.id=p.id WHERE x.kind='nodes'
  UNION ALL
  SELECT p.id,jsonb_build_object('meeting_id',p.id,'code',COALESCE(m.code,''),'title',COALESCE(m.title,''),'meet_date',COALESCE(m.meet_date::text,''),
- 'available',m.id IS NOT NULL,'role',COALESCE(l.role,''),'roles',COALESCE(l.roles,ARRAY['preparation']::text[]),'required_roles',required.roles,'can_unlink',l.issue_id IS NOT NULL AND cardinality(required.roles)=0,
+ 'archived_at',m.archived_at,'available',m.id IS NOT NULL,'role',COALESCE(l.role,''),'roles',COALESCE(l.roles,ARRAY['preparation']::text[]),'required_roles',required.roles,'can_unlink',l.issue_id IS NOT NULL AND cardinality(required.roles)=0,
  'has_direct_reference',l.issue_id IS NOT NULL,'has_agenda_reference',ar.meeting_id IS NOT NULL,'agenda_id',ar.agenda_id,'agenda_total',COALESCE(ar.agenda_total,0))
  FROM page p CROSS JOIN args x
  LEFT JOIN cockpit_meeting_issue l ON l.workspace_id=x.ws AND l.issue_id=x.issue_id AND l.meeting_id=p.id

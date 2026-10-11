@@ -147,6 +147,9 @@ func (s *IssueService) CreateCockpitArtifactReference(ctx context.Context, p Coc
 			if !errors.Is(e, pgx.ErrNoRows) {
 				return CockpitArtifactReferenceResponse{}, e
 			}
+			if e = RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, p.MeetingID); e != nil {
+				return CockpitArtifactReferenceResponse{}, e
+			}
 			r, e := q.CreateCockpitArtifactMeetingReference(ctx, db.CreateCockpitArtifactMeetingReferenceParams{ID: dbid.NewV7(), WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID, VersionID: p.VersionID, MeetingID: p.MeetingID, TargetLabel: meeting.Title, Purpose: p.Purpose, ReferenceKey: p.ReferenceKey, RequestHash: hash, CreatedBy: p.ActorID})
 			if e != nil {
 				return CockpitArtifactReferenceResponse{}, e
