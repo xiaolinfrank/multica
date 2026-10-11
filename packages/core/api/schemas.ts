@@ -2806,6 +2806,12 @@ const TaskUsageSchema = z.object({
 }).loose();
 
 export const AgentTaskSchema = z.object({
+  input_manifest_version_id: z.string().uuid().nullable().default(null),
+  input_preparation_state: z.string().default("not_recorded"),
+  input_preparation_hash: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
+  input_prepared_at: z.string().datetime({ offset: true }).nullable().default(null),
+  input_prepared_dispatched_at: z.string().datetime({ offset: true }).nullable().default(null),
+  input_preparation_error_code: z.string().default(""),
   wakeup_id: z.string().optional().catch(undefined),
   cancelled_by_comment_change: z.boolean().optional().catch(undefined),
   cancelled_by: TaskCancellationActorSchema.optional().catch(undefined),

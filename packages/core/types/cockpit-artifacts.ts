@@ -3,13 +3,15 @@ import type { CockpitTask } from "./cockpit";
 export type CockpitArtifactPayload = { kind: "text"; content: string } | { kind: "attachment"; attachment_id: string };
 export interface CockpitArtifactCreate { creation_key: string; node_id: string; source_issue_id: string; title: string; description: string; reviewer_id: string }
 export interface CockpitArtifactEdit { expected_revision: number; title: string; description: string }
-export interface CockpitArtifactSubmit { expected_revision: number; submission_key: string; producer_issue_id: string; source_meeting_id?: string; source_minutes_version_id?: string; payload: CockpitArtifactPayload }
+export interface CockpitArtifactSubmit { expected_revision: number; submission_key: string; producer_issue_id: string; source_meeting_id?: string; source_minutes_version_id?: string; input_manifest_version_id?: string; payload: CockpitArtifactPayload }
 export interface CockpitArtifactReview { expected_revision: number; decision: "approved" | "changes_requested" | "rejected"; feedback: string }
 export interface CockpitArtifactPageQuery { cursor?: string; page_size?: number }
 export interface CockpitArtifactQuery extends CockpitArtifactPageQuery { project_id?: string; module_id?: string; node_id?: string; source_issue_id?: string; ids?: string[]; q?: string; status?: string; relation?: "owned" | "referenced" | "all" }
 export interface CockpitArtifactScope { project_id: string | null; module_id: string | null; node_id: string | null; source_issue_id: string | null; ids: string[]; q: string; status: string; relation: string }
 
 export interface CockpitArtifactVersionMetadata {
+  input_manifest_version_id?: string | null; input_manifest_issue_id?: string | null;
+  input_manifest_version_number?: number | null; input_manifest_hash?: string | null;
   id: string; artifact_id: string; version_number: number; submission_key: string; revision: number;
   producer_issue_id: string; producer_issue_identifier: string; producer_issue_title: string; producer_run_id: string | null;
   source_meeting_id: string | null; source_meeting_title: string; source_minutes_version_id: string | null; source_minutes_version_number: number | null;

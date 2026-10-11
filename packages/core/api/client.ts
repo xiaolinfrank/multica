@@ -1,3 +1,6 @@
+import * as inputSchemas from "./cockpit-input-schemas";
+import type * as inputTypes from "../types/cockpit-input";
+import { cockpitInputBody, cockpitInputSearch } from "./cockpit-input-transport";
 import type * as MeetingDirectory from "../types/cockpit-meeting-directory";
 import * as DirectorySchemas from "./cockpit-meeting-directory-schemas";
 import { cockpitDirectoryCommandAcknowledged, type CockpitDirectoryCommandInput } from "../cockpit/meeting-directory";
@@ -1102,7 +1105,7 @@ export class ApiClient {
   // path, plain text for the attachment-preview proxy, etc.
   private async fetchRaw(
     path: string,
-    init?: RequestInit & { extraHeaders?: Record<string, string> },
+    init?: RequestInit & { extraHeaders?: Record<string, string>; retryCsrf?: boolean },
   ): Promise<Response> {
     const rid = createRequestId();
     const start = Date.now();
@@ -1121,6 +1124,7 @@ export class ApiClient {
     // Captured before the request so a late 401 can be matched against the
     // credential it actually used, not whatever is current when it lands.
     const credentialUsed = this.getToken();
+    const csrfSessionUsed = this.readCookie(SESSION_CSRF_COOKIE);
 
     this.logger.info(`→ ${method} ${path}`, { rid });
 
@@ -1149,9 +1153,18 @@ export class ApiClient {
     if (res.status === 403 && isReplayableBody(init?.body)) {
       const { message } = await this.parseErrorBody(res.clone(), "");
       if (message === CSRF_REJECTED_ERROR) {
-        this.csrfSessionValueRejected = this.readCookie(SESSION_CSRF_COOKIE);
-        this.logger.info(`↻ ${method} ${path} (CSRF token rejected, retrying once)`, { rid });
-        res = await send();
+        if (init?.retryCsrf === false) {
+          // Durable input commands belong to their original account intent.
+          // A later explicit retry may use the corrected CSRF binding, but a
+          // response must never resend this intent under a new account.
+          if (this.getToken() === credentialUsed && this.readCookie(SESSION_CSRF_COOKIE) === csrfSessionUsed) {
+            this.csrfSessionValueRejected = csrfSessionUsed;
+          }
+        } else {
+          this.csrfSessionValueRejected = this.readCookie(SESSION_CSRF_COOKIE);
+          this.logger.info(`↻ ${method} ${path} (CSRF token rejected, retrying once)`, { rid });
+          res = await send();
+        }
       }
     }
 
@@ -1167,7 +1180,7 @@ export class ApiClient {
     return res;
   }
 
-  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+  private async fetch<T>(path: string, init?: RequestInit & { retryCsrf?: boolean }): Promise<T> {
     const res = await this.fetchRaw(path, {
       ...init,
       extraHeaders: { "Content-Type": "application/json" },
@@ -1177,6 +1190,203 @@ export class ApiClient {
       return undefined as T;
     }
     return res.json() as Promise<T>;
+  }
+
+  private async cockpitInputResource<T extends { workspaceId: string }>(wsId: string, path: string, schema: ZodType<T>, init?: RequestInit): Promise<T | null> {
+    const raw: unknown = await this.fetch(path, { ...init, retryCsrf: false, headers: { ...init?.headers, "X-Workspace-ID": wsId, "X-Workspace-Slug": "" } });
+    const result = parseWithFallback<T | null>(raw, schema, null, { endpoint: `${init?.method ?? "GET"} ${path}` });
+    return result?.workspaceId === wsId ? result : null;
+  }
+
+  async getCockpitInputVersionBatch(wsId: string, versionIds: string[], signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionBatch | null> {
+    if (versionIds.length > 100 || new Set(versionIds).size !== versionIds.length) throw new Error("Invalid input version selection");
+    const query = new URLSearchParams(); versionIds.forEach((id) => query.append("ids", id));
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/input-versions?${query}`, inputSchemas.CockpitInputVersionBatchSchema, { signal });
+    return result && result.requestedIds.length === versionIds.length && result.requestedIds.every((id, index) => id === versionIds[index]) ? result : null;
+  }
+
+  async getCockpitInputAttachments(wsId: string, issueId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputAttachmentPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-attachments${cockpitInputSearch(query)}`, inputSchemas.CockpitInputAttachmentPageSchema, { signal });
+    return result && result.issueId === issueId ? result : null;
+  }
+
+  async getCockpitInputCapabilities(wsId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputCapabilities | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/capabilities`, inputSchemas.CockpitInputCapabilitiesSchema, { signal });
+    return result;
+  }
+
+  async getCockpitInputs(wsId: string, query: inputTypes.CockpitInputListQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs${cockpitInputSearch(query)}`, inputSchemas.CockpitInputPageSchema, { signal });
+    return result;
+  }
+
+  async getCockpitInput(wsId: string, inputId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputHeader | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}`, inputSchemas.CockpitInputHeaderSchema, { signal });
+    return result && result.id === inputId ? result : null;
+  }
+
+  async createCockpitInput(wsId: string, body: inputTypes.CockpitInputCreateInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputCreateResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs`, inputSchemas.CockpitInputCreateResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputCreateCommand(wsId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputCreateResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputCreateResultSchema, { signal });
+    return result && result.commandKey === commandKey ? result : null;
+  }
+
+  async editCockpitInput(wsId: string, inputId: string, body: inputTypes.CockpitInputEditInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputHeader | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}`, inputSchemas.CockpitInputHeaderSchema, { signal, method: "PATCH", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.id === inputId ? result : null;
+  }
+
+  async archiveCockpitInput(wsId: string, inputId: string, body: inputTypes.CockpitInputArchiveInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputHeader | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/archive`, inputSchemas.CockpitInputHeaderSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.id === inputId ? result : null;
+  }
+
+  async getCockpitInputVersions(wsId: string, inputId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions${cockpitInputSearch(query)}`, inputSchemas.CockpitInputVersionPageSchema, { signal });
+    return result && result.inputId === inputId ? result : null;
+  }
+
+  async getCockpitInputVersion(wsId: string, inputId: string, versionId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionDetail | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}`, inputSchemas.CockpitInputVersionDetailSchema, { signal });
+    return result && result.inputId === inputId && result.version.id === versionId ? result : null;
+  }
+
+  async submitCockpitInputVersion(wsId: string, inputId: string, body: inputTypes.CockpitInputVersionSubmitInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions`, inputSchemas.CockpitInputVersionResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.inputId === inputId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputVersionCommand(wsId: string, inputId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/version-commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputVersionResultSchema, { signal });
+    return result && result.inputId === inputId && result.commandKey === commandKey ? result : null;
+  }
+
+  async getCockpitInputTransfers(wsId: string, inputId: string, versionId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers${cockpitInputSearch(query)}`, inputSchemas.CockpitInputTransferPageSchema, { signal });
+    return result && result.inputId === inputId && result.versionId === versionId ? result : null;
+  }
+
+  async getCockpitInputTransfer(wsId: string, inputId: string, versionId: string, transferId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferDetail | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers/${encodeURIComponent(transferId)}`, inputSchemas.CockpitInputTransferDetailSchema, { signal });
+    return result && result.inputId === inputId && result.versionId === versionId && result.id === transferId ? result : null;
+  }
+
+  async restartCockpitInputTransfer(wsId: string, inputId: string, versionId: string, body: inputTypes.CockpitInputRestartInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/restart`, inputSchemas.CockpitInputTransferResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.inputId === inputId && result.versionId === versionId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputRestartCommand(wsId: string, inputId: string, versionId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfer-commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputTransferResultSchema, { signal });
+    return result && result.inputId === inputId && result.versionId === versionId && result.commandKey === commandKey ? result : null;
+  }
+
+  async finalizeCockpitInputTransfer(wsId: string, inputId: string, versionId: string, transferId: string, body: inputTypes.CockpitInputFinalizeInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers/${encodeURIComponent(transferId)}/finalize`, inputSchemas.CockpitInputTransferResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.inputId === inputId && result.versionId === versionId && result.receipt.transferId === transferId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async abandonCockpitInputTransfer(wsId: string, inputId: string, versionId: string, transferId: string, body: inputTypes.CockpitInputAbandonInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers/${encodeURIComponent(transferId)}/abandon`, inputSchemas.CockpitInputTransferResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.inputId === inputId && result.versionId === versionId && result.receipt.transferId === transferId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputTransferCommand(wsId: string, inputId: string, versionId: string, transferId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputTransferResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers/${encodeURIComponent(transferId)}/commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputTransferResultSchema, { signal });
+    return result && result.inputId === inputId && result.versionId === versionId && result.receipt.transferId === transferId && result.commandKey === commandKey ? result : null;
+  }
+
+  async verifyCockpitInputVersion(wsId: string, inputId: string, versionId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputVersionMetadata | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/verify`, inputSchemas.CockpitInputVersionMetadataSchema, { signal, method: "POST" });
+    return result && result.inputId === inputId && result.id === versionId ? result : null;
+  }
+
+  async getCockpitInputDownloadLink(wsId: string, inputId: string, versionId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputDownloadLink | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/download-link`, inputSchemas.CockpitInputDownloadLinkSchema, { signal, method: "POST" });
+    return result && result.inputId === inputId && result.versionId === versionId ? result : null;
+  }
+
+  async getCockpitMeetingInputReferences(wsId: string, meetingId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferencePage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references${cockpitInputSearch(query)}`, inputSchemas.CockpitInputReferencePageSchema, { signal });
+    return result && result.meetingId === meetingId && result.agendaId === null ? result : null;
+  }
+
+  async getCockpitAgendaInputReferences(wsId: string, meetingId: string, agendaId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferencePage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/agenda/${encodeURIComponent(agendaId)}/input-references${cockpitInputSearch(query)}`, inputSchemas.CockpitInputReferencePageSchema, { signal });
+    return result && result.meetingId === meetingId && result.agendaId === agendaId ? result : null;
+  }
+
+  async createCockpitInputReference(wsId: string, meetingId: string, body: inputTypes.CockpitInputReferenceCreateInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references`, inputSchemas.CockpitInputReferenceResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.receipt.meetingId === meetingId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async removeCockpitInputReference(wsId: string, meetingId: string, referenceId: string, body: inputTypes.CockpitInputReferenceRemoveInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references/${encodeURIComponent(referenceId)}/remove`, inputSchemas.CockpitInputReferenceResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.receipt.meetingId === meetingId && result.receipt.referenceId === referenceId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputReferenceCommand(wsId: string, meetingId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-reference-commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputReferenceResultSchema, { signal });
+    return result && result.receipt.meetingId === meetingId && result.commandKey === commandKey ? result : null;
+  }
+
+  async getCockpitIssueInputManifest(wsId: string, issueId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestHeader | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest`, inputSchemas.CockpitInputManifestHeaderSchema, { signal });
+    return result && result.issue.id === issueId ? result : null;
+  }
+
+  async saveCockpitIssueInputManifest(wsId: string, issueId: string, body: inputTypes.CockpitInputManifestSaveInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest`, inputSchemas.CockpitInputManifestResultSchema, { signal, method: "PUT", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.receipt.issueId === issueId && result.commandKey === body.commandKey ? result : null;
+  }
+
+  async getCockpitInputManifestCommand(wsId: string, issueId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestResult | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest/commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputManifestResultSchema, { signal });
+    return result && result.receipt.issueId === issueId && result.commandKey === commandKey ? result : null;
+  }
+
+  async getCockpitInputManifestVersions(wsId: string, issueId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestVersionPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest/versions${cockpitInputSearch(query)}`, inputSchemas.CockpitInputManifestVersionPageSchema, { signal });
+    return result && result.issueId === issueId ? result : null;
+  }
+
+  async getCockpitInputManifestVersion(wsId: string, issueId: string, manifestVersionId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestVersionDetail | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest/versions/${encodeURIComponent(manifestVersionId)}`, inputSchemas.CockpitInputManifestVersionDetailSchema, { signal });
+    return result && result.issueId === issueId && result.id === manifestVersionId ? result : null;
+  }
+
+  async getCockpitInputManifestItems(wsId: string, issueId: string, manifestVersionId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestItemPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest/versions/${encodeURIComponent(manifestVersionId)}/items${cockpitInputSearch(query)}`, inputSchemas.CockpitInputManifestItemPageSchema, { signal });
+    return result && result.issueId === issueId && result.manifestVersionId === manifestVersionId ? result : null;
+  }
+
+  async getCockpitRunInputManifest(wsId: string, taskId: string, signal?: AbortSignal): Promise<inputTypes.CockpitRunInputManifest | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/tasks/${encodeURIComponent(taskId)}/input-manifest`, inputSchemas.CockpitRunInputManifestSchema, { signal });
+    return result && result.taskId === taskId ? result : null;
+  }
+
+  async getCockpitInputSpaces(wsId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputSpacePage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/input-spaces`, inputSchemas.CockpitInputSpacePageSchema, { signal });
+    return result;
+  }
+
+  async browseCockpitInputEntries(wsId: string, rootId: string, body: inputTypes.CockpitInputNASBrowseInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputNASPage | null> {
+    const result = await this.cockpitInputResource(wsId, `/api/cockpit/input-spaces/${encodeURIComponent(rootId)}/entries`, inputSchemas.CockpitInputNASPageSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
+    return result && result.rootId === rootId && result.relativeDirectory === body.relativeDirectory && result.q === body.q ? result : null;
+  }
+
+  async uploadCockpitInputBytes(wsId: string, inputId: string, versionId: string, transferId: string, revision: number, file: Blob, signal?: AbortSignal): Promise<inputTypes.CockpitInputUploadResult | null> {
+    if (!Number.isSafeInteger(revision) || revision < 1 || file.size > 500 * 1024 * 1024) throw new Error("Invalid input upload session or size");
+    const path = `/api/cockpit/inputs/${encodeURIComponent(inputId)}/versions/${encodeURIComponent(versionId)}/transfers/${encodeURIComponent(transferId)}/bytes`;
+    const response = await this.fetchRaw(path, { method: "PUT", body: file, signal,
+      headers: { "X-Workspace-ID": wsId, "X-Workspace-Slug": "", "X-Input-Transfer-Revision": String(revision) }, extraHeaders: { "Content-Type": "application/octet-stream" } });
+    const result = parseWithFallback<inputTypes.CockpitInputUploadResult | null>(await response.json(), inputSchemas.CockpitInputUploadResultSchema, null, { endpoint: `PUT ${path}` });
+    return result?.workspaceId === wsId && result.inputId === inputId && result.versionId === versionId && result.transferId === transferId ? result : null;
   }
 
   // Auth

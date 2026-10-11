@@ -7,7 +7,7 @@ export interface CockpitContextData {
   has_meeting_lifecycle?: boolean;
   has_meeting_preparation?: boolean;
   has_directory_history?: boolean;
-  capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean; meeting_templates?: boolean; meeting_disposition?: boolean; meeting_directory_preparation?: boolean };
+  capabilities?: { artifacts: boolean; acceptance: boolean; meeting_lifecycle?: boolean; meeting_templates?: boolean; meeting_disposition?: boolean; meeting_directory_preparation?: boolean; inputs?: boolean; run_input_manifests?: boolean };
 }
 export interface CockpitNodeIndexEntry { id: string; parent_id: string | null; code: string; position: number }
 export interface CockpitNodeIndexPage { workspace_id: string; items: CockpitNodeIndexEntry[]; total: number }

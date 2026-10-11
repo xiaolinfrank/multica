@@ -8,6 +8,16 @@ const parsePage = (raw: unknown) => parseWithFallback(raw, CockpitArtifactPageSc
 const scope = { project_id: null, module_id: null, node_id: null, source_issue_id: null, q: "", status: "", relation: "owned", ids: [] };
 
 describe("artifact and acceptance response contracts", () => {
+  it("preserves explicit cross-issue input provenance and rejects an incomplete source instead of guessing from the producer", () => {
+    const version = artifactVersionFixture({ input_manifest_version_id: "manifest-1", input_manifest_issue_id: "another-issue",
+      input_manifest_version_number: 3, input_manifest_hash: "a".repeat(64) });
+    expect(CockpitArtifactVersionMetadataSchema.parse(version)).toMatchObject({ producer_issue_id: "source-1", input_manifest_issue_id: "another-issue" });
+    expect(CockpitArtifactVersionMetadataSchema.safeParse({ ...version, input_manifest_issue_id: null }).success).toBe(false);
+    expect(CockpitArtifactVersionMetadataSchema.safeParse({ ...version, input_manifest_hash: "wrong" }).success).toBe(false);
+    const old = artifactVersionFixture();
+    delete old.input_manifest_version_id; delete old.input_manifest_issue_id; delete old.input_manifest_version_number; delete old.input_manifest_hash;
+    expect(CockpitArtifactVersionMetadataSchema.parse(old)).toMatchObject({ input_manifest_version_id: null, input_manifest_issue_id: null });
+  });
   it("accepts a bounded empty result while rejecting false zeroes and oversized pages", () => {
     const empty = { workspace_id: "ws-1", scope, items: [], total: 0, filtered_total: 0, next_cursor: null, can_create: true };
     expect(parsePage(empty)).toEqual(empty);

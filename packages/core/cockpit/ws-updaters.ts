@@ -1,4 +1,5 @@
 import { invalidateCockpitDirectoryProjections, invalidateCockpitMeetingDirectoryFacts } from "./meeting-directory-queries";
+import { invalidateCockpitInputs } from "./input-queries";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
@@ -114,6 +115,10 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  if (scope === "inputs" || scope === "input_manifests") {
+    void invalidateCockpitInputs(qc, wsId);
+    return;
+  }
   if (scope === "meeting_directory") {
     const meetingId = asRecord(entity)?.["meeting_id"];
     void invalidateCockpitMeetingDirectoryFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);

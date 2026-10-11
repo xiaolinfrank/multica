@@ -7,6 +7,7 @@ export const ACCEPTANCE_REQUEST_KEY = "30000000-0000-4000-8000-000000000001";
 export const ARTIFACT_FINGERPRINT = "a".repeat(64);
 export function artifactVersionFixture(overrides: Partial<CockpitArtifactVersionMetadata> = {}): CockpitArtifactVersionMetadata {
   return { id: "version-1", artifact_id: "artifact-1", version_number: 1, submission_key: ARTIFACT_SUBMISSION_KEY, revision: 1,
+    input_manifest_version_id: null, input_manifest_issue_id: null, input_manifest_version_number: null, input_manifest_hash: null,
     producer_issue_id: "source-1", producer_issue_identifier: "PMO-1", producer_issue_title: "Prepare report", producer_run_id: null,
     source_meeting_id: null, source_meeting_title: "", source_minutes_version_id: null, source_minutes_version_number: null,
     payload_kind: "text", source_attachment_id: null, filename: "", content_type: "text/markdown", size_bytes: 12, content_hash: ARTIFACT_FINGERPRINT,

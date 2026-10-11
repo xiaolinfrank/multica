@@ -26,6 +26,8 @@ export function validCockpitArtifactDownloadURL(value: string, artifactId: strin
 }
 
 export const CockpitArtifactVersionMetadataSchema = z.object({
+  input_manifest_version_id: id.nullable().default(null), input_manifest_issue_id: id.nullable().default(null),
+  input_manifest_version_number: revision.nullable().default(null), input_manifest_hash: hash.nullable().default(null),
   id, artifact_id: id, version_number: revision, submission_key: key, revision,
   producer_issue_id: id, producer_issue_identifier: z.string(), producer_issue_title: z.string(), producer_run_id: id.nullable(),
   source_meeting_id: id.nullable(), source_meeting_title: z.string(), source_minutes_version_id: id.nullable(), source_minutes_version_number: revision.nullable(),
@@ -33,7 +35,9 @@ export const CockpitArtifactVersionMetadataSchema = z.object({
   size_bytes: count.nullable(), content_hash: hash.nullable(), capture_status: z.string(), capture_error_code: z.string().default(""), capture_error: z.string().default(""),
   decision: z.string(), reviewer_id: id, review_issue: CockpitTaskSchema.nullable(), submitted_by_type: z.string(), submitted_by_id: id,
   created_at: time, reviewed_at: nullableTime, has_feedback: z.boolean().default(false), can_review: capability, can_retry_capture: capability,
-}).refine((version) => (version.source_minutes_version_id === null) === (version.source_minutes_version_number === null)
+}).refine((version) => [version.input_manifest_issue_id, version.input_manifest_version_number, version.input_manifest_hash]
+  .every((value) => (value === null) === (version.input_manifest_version_id === null)), "Input provenance requires its actual fixed manifest and issue")
+  .refine((version) => (version.source_minutes_version_id === null) === (version.source_minutes_version_number === null)
   && (!version.source_minutes_version_id || Boolean(version.source_meeting_id)), "Minutes provenance must identify its meeting and fixed version")
   .refine((version) => version.capture_status !== "ready" || (version.content_hash !== null && version.size_bytes !== null), "Ready versions require a verified fingerprint and size")
   .refine((version) => !["pending", "approved", "changes_requested", "rejected"].includes(version.decision) || (version.capture_status === "ready" && version.review_issue !== null), "A formal decision requires a fixed payload and review issue");

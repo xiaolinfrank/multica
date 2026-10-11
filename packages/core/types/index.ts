@@ -1,3 +1,4 @@
+export type * from "./cockpit-input";
 export type * from "./cockpit-governance";
 export type * from "./cockpit-read";
 export type { Issue, IssueStatus, BuiltInIssueStatus, IssuePriority, IssueAssigneeType, IssueMetadata, IssueMetadataValue, IssueReaction, SourceContextAttachment, SourceContextAuthor, SourceContextIssueSnapshot, SourceContextCommentSnapshot, SourceContextSnapshot, SourceContextLimitUsage, SourceContextPreview, SourceContextAuthorState, IssueSourceContext,

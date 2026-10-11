@@ -11,6 +11,15 @@ export type CockpitArtifactView = "review" | "all" | "directory";
 export interface CockpitScope { projectId: string | null; moduleId: string | null }
 export const EMPTY_COCKPIT_SCOPE: CockpitScope = { projectId: null, moduleId: null };
 
+/** Fixed input detail preserves the exact meeting/agenda and search context. */
+export function cockpitInputContextPath(pathname: string, search: URLSearchParams, inputId: string | null, versionId?: string | null): string {
+  const query = new URLSearchParams(search);
+  if (inputId) query.set("input", inputId); else query.delete("input");
+  if (inputId && versionId) query.set("input_version", versionId); else query.delete("input_version");
+  const suffix = query.toString();
+  return suffix ? `${pathname}?${suffix}` : pathname;
+}
+
 export function cockpitScope(search: { get: (name: string) => string | null }): CockpitScope {
   return { projectId: search.get("project") || null, moduleId: search.get("module") || null };
 }

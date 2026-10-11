@@ -422,6 +422,8 @@ export type CockpitEventScope =
   | "meeting_lifecycle"
   | "meeting_templates"
   | "meeting_directory"
+  | "inputs"
+  | "input_manifests"
   | "meeting_preparation"
   | "meeting_actions"
   | "primary_node"
