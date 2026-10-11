@@ -1,0 +1,622 @@
+{
+  "host": "fosun_agent_3 (10.35.182.2)",
+  "updated_at": "2026-10-11T11:25:24.015507+00:00",
+  "stage": "N1 accepted and deployed to agent3 test resident; finalf802 checks complete",
+  "isolated_schema": 9104,
+  "N1_migrations_applied": true,
+  "core": {
+    "first_snapshot_manifest": "/tmp/multica-directory-core-first-manifest.json",
+    "first_archive_sha256": "27447334042d79838dcd9299f76438b1aae3389a740b8628976cf258435eb80f",
+    "files": 753,
+    "unique_passed": 114,
+    "unique_failed": 0,
+    "first_passed": 81,
+    "first_failed": 7,
+    "fixture_overlay_manifest": "/tmp/multica-directory-core-fixtures-manifest.json",
+    "second_passed": 47,
+    "first_log": "/tmp/directory-core-first-clean.log",
+    "second_log": "/tmp/directory-core-fixtures.log",
+    "per_file": {
+      "api/cockpit-meeting-directory.test.ts": 8,
+      "cockpit/meeting-directory-queries.test.ts": 2,
+      "cockpit/meeting-directory-draft-store.test.ts": 4,
+      "cockpit/navigation.test.ts": 19,
+      "api/cockpit-meeting-lifecycle.test.ts": 16,
+      "api/cockpit-meeting-preparation.test.ts": 25,
+      "cockpit/meeting-lifecycle-mutations.test.tsx": 4,
+      "cockpit/materials-mutations.test.tsx": 7,
+      "cockpit/meeting-materials-draft-store.test.ts": 4,
+      "api/cockpit-read.test.ts": 13,
+      "cockpit/meeting-create-draft-store.test.ts": 4,
+      "api/cockpit-provisioning.test.ts": 6,
+      "cockpit/meeting-directory-repair.test.ts": 2
+    },
+    "failure_explanation": "Old exact response/cache fixtures lacked additive actor/directory fields and pre-existing surface/new directory invalidation; root updated three tests and added actual stale-cache isolation assertions, without relaxing product/schema."
+  },
+  "CLI": {
+    "parents_passed": 4,
+    "binary_sha256": "b003998719ee34dbd7cda6c235d8def93c45b265ccae26562ad51ba0b1bd571d",
+    "log": "/tmp/directory-cli-first.log",
+    "fake_http_only": true
+  },
+  "auth": {
+    "new_parents_passed": 2,
+    "adjacent_parents_passed": 2,
+    "race": true,
+    "binary_sha256": "588a9b94a13bfd0f361240b3b7fa8047dc685c5042d28954a0957ebad6d6eacd",
+    "log": "/tmp/directory-auth-first.log"
+  },
+  "HTTP": {
+    "new_parents_passed": 5,
+    "adjacent_parents_passed": 9,
+    "race": true,
+    "binary_sha256": "1a354bd0e7bd21903acc6d6c0141b67b6660720d6775920dbb1fd31de3980b51",
+    "log": "/tmp/directory-http-first.log",
+    "full": {
+      "parents_passed": 2660,
+      "descendants_passed": 1959,
+      "parents_failed": 0,
+      "descendants_failed": 0,
+      "parents_skipped": 1,
+      "descendants_skipped": 0,
+      "binary_sha256": "8caaa6db1399a77f1a6f7f215b1da2e9b8e5d7eafd35e44b29f005efa8da0188",
+      "source_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+      "log": "/tmp/directory-handler-final-f802.log",
+      "race": true,
+      "exit_code": 0
+    },
+    "prior_afb_full": {
+      "parents_passed": 2660,
+      "descendants_passed": 1959,
+      "parents_failed": 0,
+      "descendants_failed": 0,
+      "parents_skipped": 1,
+      "descendants_skipped": 0,
+      "binary_sha256": "b8c43c918a35197ff48c4641b839874193540a1666a6d4ce1fde54fae8499db3",
+      "log": "/tmp/directory-handler-full.log",
+      "race": true,
+      "exit_code": 0
+    }
+  },
+  "DI": {
+    "parents_passed": 1,
+    "race": true,
+    "shared_testmain_test_fixture": true,
+    "binary_sha256": "456bee2f31d83b253cf2ac6efb02769fb4e035e01c86df6359e0198640509493",
+    "log": "/tmp/directory-runtime-initial.log"
+  },
+  "real_agent_runs": 0,
+  "real_NAS_operations": {
+    "result": "PASS",
+    "duration_seconds": 2.631,
+    "root": "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e",
+    "evidence": "/tmp/multica-n1-evidence/real-nas-final-f802/cockpit-meeting-directory--a6cde-eipts-and-conflicting-files-chromium/real-nas-directory-evidence.json",
+    "spec_sha256": "8f0bee9d2d7a4d34227d596b4ffb2b075f4cc2017e579b6e5280878e7fdc89e6",
+    "retained_paths": [
+      "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e/directory-preparation/meeting-evidence-3f88a7ad",
+      "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e/directory-preparation/meeting-evidence-3f88a7ad/已核资料",
+      "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e/directory-preparation/meeting-evidence-3f88a7ad/录音转写",
+      "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e/directory-preparation/meeting-evidence-3f88a7ad/新增明确分区",
+      "/Volumes/人机协作空间/.multica-validation-e495a90f-d2a0-4e5b-8b15-e3b4e527c18e/directory-preparation/meeting-evidence-3f88a7ad/保留冲突样本"
+    ],
+    "workspace_cleanup": "HTTP204; all owned domain data zero",
+    "scope": "real SMB creation, observed existing, discarded response body recovery, exact replay, explicit extra partition, valid-preview conflict rejection without overwrite; no rename/delete",
+    "post_cleanup_retention_report": "/tmp/multica-n1-evidence/directory-real-nas-retention-final.json",
+    "maintained_optin_spec": "e2e/cockpit-meeting-directory-real-nas.spec.ts",
+    "maintained_optin_spec_sha256": "8f0bee9d2d7a4d34227d596b4ffb2b075f4cc2017e579b6e5280878e7fdc89e6",
+    "previous_afb_evidence": "/tmp/multica-n1-evidence/real-nas-first/n1-real-nas-owned-confirms-9373c-eipts-and-conflicting-files-chromium/real-nas-directory-evidence.json",
+    "api_commit": "f8029979b",
+    "stats": {
+      "startTime": "2026-10-11T10:36:03.261Z",
+      "duration": 2631.075,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "opt_out_guard": "Explicit REAL_NAS=0 default run skipped1 without fixture or NAS writes",
+    "opt_out_log": "/tmp/directory-real-nas-optout.log",
+    "previous_afb_spec_sha256": "c32f95d7b226d5fb2a0b86b32620acbbde1b30c5af02a7191efe7913519086cf",
+    "executed_spec": "e2e/cockpit-meeting-directory-real-nas.spec.ts",
+    "maintained_optin_spec_runtime_executed": true,
+    "source_delta_from_temporary_probe": "Same assertions and unique-path API/FS flow; repository case adds opt-out skip, agent3/loopback test database/18880 guards, UUID/marker/scope/non-symlink boundaries and imports needed for those guards."
+  },
+  "legacy_facade": {
+    "source": "server/internal/service/cockpit_meeting_directory_legacy.go",
+    "new_parents_written": 4,
+    "runtime_executed": true,
+    "execution_budget_seconds": 8,
+    "final_metadata_budget_seconds": 1,
+    "direct_filesystem_writes": false,
+    "coverage": [
+      "same-actor natural reuse after binding CAS",
+      "completed historical receipt retained after explicit repair",
+      "explicit rebind to an old completed target requires new authority",
+      "missing preparation permission and cloud POST cannot write",
+      "concurrent legacy requests keep one plan and truthful partial outcome"
+    ],
+    "unique_passed": 4,
+    "additional_regression": "GREEN after actual RED; exact original authority required for natural POST reuse"
+  },
+  "migration": {
+    "database": "multica_test",
+    "schema": 9104,
+    "ledger_before": 777,
+    "ledger_after": 790,
+    "old_ledger_rows_exact": true,
+    "new_versions": [
+      "9092_cockpit_meeting_directory",
+      "9093_cockpit_directory_operation_id_idx",
+      "9094_cockpit_directory_operation_page_idx",
+      "9095_cockpit_directory_operation_target_idx",
+      "9096_cockpit_directory_operation_intent_idx",
+      "9097_cockpit_directory_step_id_idx",
+      "9098_cockpit_directory_step_position_idx",
+      "9099_cockpit_directory_step_path_idx",
+      "9100_cockpit_directory_step_queue_idx",
+      "9101_cockpit_directory_step_lease_idx",
+      "9102_cockpit_directory_attempt_id_idx",
+      "9103_cockpit_directory_attempt_page_idx",
+      "9104_cockpit_directory_integrity"
+    ],
+    "new_indexes": [
+      {
+        "name": "cockpit_directory_attempt_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_attempt_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_intent_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_target_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_lease_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_path_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_position_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_queue_idx",
+        "valid": true,
+        "ready": true
+      }
+    ],
+    "counts": {
+      "workspace": 0,
+      "issue": 0,
+      "agent_task_queue": 0,
+      "cockpit_meeting": 0,
+      "cockpit_meeting_directory_operation": 0,
+      "cockpit_meeting_directory_step": 0,
+      "cockpit_meeting_directory_attempt": 0
+    },
+    "retained_deleted_capture_tombstones": {
+      "count": 7,
+      "hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd"
+    },
+    "runner_sha256": "01683f3064c1fcf3eec7842fbd55468f576905277e03013d7df300d16971c7c1",
+    "frozen_ddl_manifest_sha256": "6196dcbbfc28c0fca2fe9549198bcc5cce18ccee750ffffcd1411a1eb8555592",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-test/backups/before-directory-9104-20261011T081537Z",
+    "resident_modified": false,
+    "verification_note": "Initial prefix count also matched the unchanged legacy cockpit_directory_pkey; exact three-table check confirms eleven new indexes. Migration was not rerun.",
+    "temporary_schema_proof": {
+      "created_at": "2026-10-11T08:13:16.318767+00:00",
+      "exit_code": 0,
+      "binary_sha256": "a9ff1f21e01bf674d837b2be377f1dc1cc67e6bff15a8c5739a9cc6c25d6be07",
+      "frozen_manifest_sha256": "6196dcbbfc28c0fca2fe9549198bcc5cce18ccee750ffffcd1411a1eb8555592",
+      "before": {
+        "database": "multica_test",
+        "ledger": 777,
+        "ledger_hash": "0a3a6d1ed0110655b377a1b750fb0f52",
+        "tombstones": 7,
+        "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+        "workspaces": 0,
+        "n1_public_table": null,
+        "temporary_schemas": []
+      },
+      "after": {
+        "database": "multica_test",
+        "ledger": 777,
+        "ledger_hash": "0a3a6d1ed0110655b377a1b750fb0f52",
+        "tombstones": 7,
+        "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+        "workspaces": 0,
+        "n1_public_table": null,
+        "temporary_schemas": []
+      },
+      "public_exactly_unchanged": true,
+      "temporary_schema_cleaned": true,
+      "log": "/Users/fosun_agent_3/var/multica-dev-test/logs/directory-migration-proof-guard-v2-fixed.log",
+      "unique_parent_passed": 1,
+      "name": "TestCockpitDirectoryBatchPreservesBindingsReceiptsAndRollbackBoundary",
+      "rounds": [
+        {
+          "report": "/tmp/directory-migration-proof-first.json",
+          "binary_sha256": "eab2bdd907deace936d74b39f450077587b638450e357cc1fd0078e84877938f",
+          "ddl_manifest_sha256": "6e79981cb114b29d39460d5ef4e24f22b07ae08f08cea0e04e3968b18c26481a",
+          "exit_code": 1,
+          "explanation": "fixture counted the unchanged ledger primary index; namespace cleaned"
+        },
+        {
+          "report": "/tmp/directory-migration-proof-second.json",
+          "binary_sha256": "076c54d73de7f24b33af76e617c8a73f6d9f573d9922b41b063c64675eb79a53",
+          "ddl_manifest_sha256": "6e79981cb114b29d39460d5ef4e24f22b07ae08f08cea0e04e3968b18c26481a",
+          "exit_code": 0,
+          "explanation": "old guard passed before later authorized v2 guard amendment"
+        },
+        {
+          "report": "/tmp/directory-migration-proof-guard-v2.json",
+          "binary_sha256": "81ba7cab7e5d544d58f827fbb34daeb35eaf3f865534d4bb5a750f4b4065d69a",
+          "ddl_manifest_sha256": "6196dcbbfc28c0fca2fe9549198bcc5cce18ccee750ffffcd1411a1eb8555592",
+          "exit_code": 1,
+          "explanation": "fixture duplicated synthetic path_hash for base and partition; namespace cleaned"
+        },
+        {
+          "report": "/tmp/directory-migration-proof-guard-v2-fixed.json",
+          "binary_sha256": "a9ff1f21e01bf674d837b2be377f1dc1cc67e6bff15a8c5739a9cc6c25d6be07",
+          "ddl_manifest_sha256": "6196dcbbfc28c0fca2fe9549198bcc5cce18ccee750ffffcd1411a1eb8555592",
+          "exit_code": 0,
+          "explanation": "final v2 guard, true up/re-up/retention/down/up and public invariance passed"
+        }
+      ]
+    }
+  },
+  "views": {
+    "unique_passed": 22,
+    "remaining_failed": 0,
+    "locale_parity": 203,
+    "copy_increment": {
+      "import_named_case": 1,
+      "locale_parity": 203,
+      "logs": [
+        "/tmp/directory-copy-import-final.log",
+        "/tmp/directory-copy-locale-final.log"
+      ],
+      "unique_count_unchanged": true
+    },
+    "repair_increment": {
+      "new_component_tests_passed": 2,
+      "core_helper_tests_passed": 2,
+      "locale_parity": 203,
+      "manifest": "/tmp/multica-n1-repair-narrow-manifest.json"
+    }
+  },
+  "filesystem": {
+    "new_parents_passed": 6,
+    "adjacent_parents_passed": 16,
+    "initial_failing_parent": "TestPreparationRejectsLinksAndRetainsPartialProgressWithoutRenaming",
+    "fix": "descriptor no-follow symlink classification on Darwin ENOTDIR",
+    "final_binary_sha256": "b88952826459c6e80d75d2c6ac9197cfa8dbca9ae2a38a71637ba540f5b7c2de",
+    "real_NAS_used": false,
+    "final_package": {
+      "parents_passed": 22,
+      "binary_sha256": "b88952826459c6e80d75d2c6ac9197cfa8dbca9ae2a38a71637ba540f5b7c2de",
+      "log": "/tmp/directory-nas-final.log",
+      "no_nasintegration_tag": true,
+      "race": true,
+      "descendants_passed": 31
+    },
+    "earlier_narrow_adjacent_passed": 5,
+    "symlink_fix_binary_sha256": "6ae965764895850fdf1cdb27ad1bafbeabe20a2d48d46f1a09955fbd54d0013a"
+  },
+  "service": {
+    "initial_14_unique_passed": 14,
+    "fixture_failures_before_pass": [
+      "invalid runtime visibility",
+      "missing accountable_user_id equality"
+    ],
+    "additional_authority_regression": "RED→GREEN confirmed; fixed natural source-authority matching without requiring source Run to remain active",
+    "product_fix_owner": "domain_audit",
+    "full": {
+      "parents_passed": 616,
+      "descendants_passed": 395,
+      "parents_failed": 0,
+      "descendants_failed": 0,
+      "parents_skipped": 0,
+      "descendants_skipped": 0,
+      "binary_sha256": "501c484bfdaa402df285a77a3103c2448a1f933da47f3cc48fbf7a32eef6609a",
+      "source_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+      "log": "/tmp/directory-service-final-f802.log",
+      "race": true,
+      "exit_code": 0
+    },
+    "no_io_authorization": {
+      "red": {
+        "binary_sha256": "690698daa6a60b7326721c05f86303cdc41370e242d60f9e1401e2d4e83c79b1",
+        "log": "/tmp/directory-noio-red.log",
+        "parents_failed": 1,
+        "descendants_failed": 7,
+        "actual": "refused principals still performed one inspection, no write"
+      },
+      "green": {
+        "binary_sha256": "501c484bfdaa402df285a77a3103c2448a1f933da47f3cc48fbf7a32eef6609a",
+        "log": "/tmp/directory-noio-final.log",
+        "parents_passed": 8,
+        "new_unique_parents": 1,
+        "new_descendants": 8,
+        "existing_reverified_parents": 7
+      },
+      "source_scope": "service-only authorization before public/retry filesystem inspection, exact retained legacy lookup; noDDL"
+    },
+    "accepted_unique_parents": 616,
+    "accepted_source_note": "Final complete616-parent run after NoIO fix; previous615 broad retained separately",
+    "prior_afb_full": {
+      "parents_passed": 615,
+      "descendants_passed": 387,
+      "parents_failed": 0,
+      "descendants_failed": 0,
+      "parents_skipped": 0,
+      "descendants_skipped": 0,
+      "binary_sha256": "3b871becb9f7a8dbc758e81309671e39aeb96094fc20576899dcff96983b4e57",
+      "log": "/tmp/directory-service-full.log",
+      "race": true,
+      "exit_code": 0
+    }
+  },
+  "frontend_build": {
+    "commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+    "archive_sha256": "0f1b681931862b8961c7674e8aa27f275da252ba3ea11f0b2b160ed9f7b5cc80",
+    "files": 2750,
+    "source_unchanged": true,
+    "BUILD_ID": "RNYrkMPGzj2R3RYFWI7hA",
+    "api_rewrite": [
+      {
+        "source": "/api/:path*",
+        "destination": "http://127.0.0.1:18880/api/:path*",
+        "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+      }
+    ],
+    "finished_at": "2026-10-11T09:50:56.884560+00:00",
+    "exit_code": 0
+  },
+  "browser": {
+    "api_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+    "api_sha256": "61cd5b1c857de9ed7ba52a2c1b27d8c2e69004a4bce5a96ec03af37e24f3b46c",
+    "build_id": "VpuzdC8SWchlFITJcZcAE",
+    "frontend_commit": "558bcc869",
+    "runs": [
+      {
+        "round": 1,
+        "result": "FAIL",
+        "spec_sha256": "428ecc93877d8fe13773539e2ab7204d2de8fbb5d2b71f47eb8678509e0b1851",
+        "reason": "test assumed completed plan remained current; actual completed record belongs to History",
+        "report": "/tmp/multica-n1-evidence/directory-browser-first.json"
+      },
+      {
+        "round": 2,
+        "result": "PASS",
+        "spec_sha256": "323b9aeac7f0a2937d36e290ba7a6de300b4bb2db32828b69691e4a65031043e",
+        "report": "/tmp/multica-n1-evidence/directory-browser-second.json",
+        "limitation": "default-three partitions; final repair fidelity change still pending"
+      },
+      {
+        "round": 3,
+        "result": "K PASS, N1 FAIL",
+        "frontend_commit": "94995e4f4",
+        "build_id": "RNYrkMPGzj2R3RYFWI7hA",
+        "spec_sha256": "4af6a7c2202f43254c3b282a6fe9d9fb638e5ac685bae31fd00206531500c25f",
+        "report": "/tmp/multica-n1-evidence/directory-browser-final.json",
+        "reason": "new screenshot locator used 待创建 instead of actual locale 将创建; no product fix"
+      },
+      {
+        "round": 4,
+        "result": "N1 FAIL",
+        "frontend_commit": "94995e4f4",
+        "build_id": "RNYrkMPGzj2R3RYFWI7hA",
+        "spec_sha256": "8b995f8e2bcbce9f9771858523c08150dd0fd9d020c04b0133146e0a2755e72f",
+        "report": "/tmp/multica-n1-evidence/directory-browser-final-n1.json",
+        "reason": "whole-row intersection ratio0.9968039989; trace text visible, instrument boundary under review; no product change yet"
+      },
+      {
+        "round": 5,
+        "result": "N1 PASS",
+        "frontend_commit": "94995e4f4",
+        "build_id": "RNYrkMPGzj2R3RYFWI7hA",
+        "spec_sha256": "ec54dcded736841471a696e7bac27280dac12f37b202f699cfdb059adc54cfd2",
+        "report": "/tmp/multica-n1-evidence/directory-browser-final-n1-content.json",
+        "note": "actual content blocks retain ratio1 and full ol client-rect checks; only empty row padding excluded from visibility assertion; custom single partition repair completed and default partitions absent"
+      },
+      {
+        "round": 6,
+        "result": "N1 PASS, K PASS",
+        "frontend_commit": "94995e4f4",
+        "build_id": "RNYrkMPGzj2R3RYFWI7hA",
+        "api_commit": "f8029979b",
+        "spec_sha256": "ec54dcded736841471a696e7bac27280dac12f37b202f699cfdb059adc54cfd2",
+        "report": "/tmp/multica-n1-evidence/directory-browser-f802.json",
+        "stats": {
+          "startTime": "2026-10-11T10:34:38.046Z",
+          "duration": 17211.845999999998,
+          "expected": 2,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        }
+      }
+    ],
+    "final_frontend_commit": "94995e4f4",
+    "final_build_id": "RNYrkMPGzj2R3RYFWI7hA",
+    "final_unique_scenarios_passed": 2,
+    "single_full_green_run": true,
+    "final_source_contract": "Final f802 API plus949/RNY Web; both N1 custom-scope directory and original K workflow passed together in final run",
+    "images": {
+      "meeting-directory-progress-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-progress-390-zh-dark.png",
+        "sha256": "60965605ab56b2fef35c5c9711747d3d3e6f754080e8534f9dea53afa085453c"
+      },
+      "meeting-directory-repair-preview-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-repair-preview-390-zh-dark.png",
+        "sha256": "bbed14e93c97b83bec2c7f4ac454dd044b96bcf92842cb8008cfa08134e3f84b"
+      },
+      "meeting-directory-preview-confirmation-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-preview-confirmation-390-zh-dark.png",
+        "sha256": "4456cdbb358b22767721b6f006b3c1e1657646613d78317824b73e162bda5c34"
+      },
+      "meeting-directory-preview-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-preview-390-zh-dark.png",
+        "sha256": "4b1b8526dea6cd902574326408907b4cbe60c3890dcc12afdfee8308e693a0a6"
+      },
+      "meeting-directory-custom-repair-preview-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-custom-repair-preview-390-zh-dark.png",
+        "sha256": "f307f4c88219623318f532e7a7ee3f6cf467ae07191da9ea67bb3b4f603f568a"
+      },
+      "meeting-directory-repair-preview-confirmation-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-directory-repair-preview-confirmation-390-zh-dark.png",
+        "sha256": "12d5fc7c647932968a881678794d8040574fed3d4c52a0c4b4770a52fe839404"
+      },
+      "review-done-still-pending.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/review-done-still-pending.png",
+        "sha256": "17cbde095345afb336d242f90a1771692288d71c59784adc6a67f9c5b6a93073"
+      },
+      "work-package-waiting.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/work-package-waiting.png",
+        "sha256": "30b35eb126bc6936fc6371d2ae6005a047e604b6a3ebd72ba408c8fbe0ab9e62"
+      },
+      "meeting-materials-narrow.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-materials-narrow.png",
+        "sha256": "102e10017c578256d0c8c308d80bd6e94b57dc51edab32d94e27c0d3661f7c4b"
+      },
+      "minutes-workbench-narrow.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/minutes-workbench-narrow.png",
+        "sha256": "8ecce7091d31493bdaa18355785469eeab4c72803728fd378c39aff94f1f3463"
+      },
+      "minutes-version-published.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/minutes-version-published.png",
+        "sha256": "21e03c7c7d5abc9b60ba6b0181a8f68e7d1ed1bb26b08464f6d524032b6c4453"
+      },
+      "meeting-materials-prepared.png": {
+        "path": "/tmp/multica-n1-evidence/final-f802/meeting-materials-prepared.png",
+        "sha256": "54ef3a6ef9b5942b108b501828991a855e0f332466799e8651edaf29c812da1f"
+      }
+    }
+  },
+  "cleanup": {
+    "database": "multica_test",
+    "schema": 9104,
+    "ledger": 790,
+    "workspace": 0,
+    "issue": 0,
+    "tasks": 0,
+    "meetings": 0,
+    "directory_operations": 0,
+    "directory_steps": 0,
+    "directory_attempts": 0,
+    "capture_tombstones": 7,
+    "capture_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd"
+  },
+  "candidate": {
+    "api_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+    "api_sha256": "61cd5b1c857de9ed7ba52a2c1b27d8c2e69004a4bce5a96ec03af37e24f3b46c",
+    "server_tree": "10a6ec274ef5819908a223b2b06460742307a933",
+    "manifest": "/tmp/multica-n1-candidate-f8029979b.json",
+    "cli_sha256": "0d0616e7d91e1e96f0f0672ab0f780cf3445f70c57c9de1ff02e2989d164a51a",
+    "migrator_sha256": "57a9924ae547ffcfb6872e5fe028805afa805d0f875c0364f129bbeb5c014a15",
+    "frontend_current_commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+    "frontend_final_pending": false,
+    "binary_manifest_sha256": "b498c40aee2a427d5c578079965dff3fe793b75ba26cc6733dd7d881df8a932d",
+    "release_commit": "c312caba123742d20a6032dd6a5cf9b02f6e2bc2",
+    "release_archive_sha256": "db3beb94590940f172b4897a46fff5c2b797f112c73c439af73c4f0d108c4f5e",
+    "release_provenance": "/tmp/multica-meeting-directory-release-provenance.json"
+  },
+  "resident_scope_readonly_report": "/tmp/directory-resident-scope-readonly.json",
+  "resident_prepared_config": {
+    "report": "/tmp/directory-resident-config-candidate.json",
+    "active_env_applied": false,
+    "only_new_filesystem_item": "approved local root identity marker507d1833; existing content and binding values unchanged",
+    "services_and_schema_unchanged": true
+  },
+  "earlier_frontend_build": {
+    "commit": "558bcc8691d6c00b3947ae4ccb592bb9ce325a80",
+    "archive_sha256": "8e2c0abd6c50f7a283217c9748db5dc8f90dcaac93f8b90a54e2c16c106e4281",
+    "files": 2749,
+    "source_unchanged": true,
+    "BUILD_ID": "VpuzdC8SWchlFITJcZcAE",
+    "api_rewrite": [
+      {
+        "source": "/api/:path*",
+        "destination": "http://127.0.0.1:18880/api/:path*",
+        "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+      }
+    ],
+    "finished_at": "2026-10-11T09:00:48.189225+00:00",
+    "exit_code": 0,
+    "resident_modified": false
+  },
+  "deployment": {
+    "status": "deployed",
+    "report": "agent3-meeting-directory-resident-deployment.json",
+    "production_modified": false
+  },
+  "resident_web_build": {
+    "source_commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+    "input_archive_sha256": "0f1b681931862b8961c7674e8aa27f275da252ba3ea11f0b2b160ed9f7b5cc80",
+    "source_files_verified": 2750,
+    "source_unchanged": true,
+    "resident_web_build_id": "wdHrq4o1gQqyIsiWJqJSK",
+    "resident_api_target": "http://127.0.0.1:18080",
+    "artifact_directory": "/Users/fosun_agent_3/var/multica-dev-releases/directory-94995e4f4-web/web-build",
+    "qa_build_preserved": "RNYrkMPGzj2R3RYFWI7hA",
+    "finished_at": "2026-10-11T10:09:15.679200+00:00",
+    "deployed": false
+  },
+  "pending": [],
+  "isolated_services_running": false,
+  "resident_before_deploy": {
+    "api_commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+    "schema": 9091,
+    "ledger": 780,
+    "api_pid": 21607,
+    "web_pid": 21608
+  },
+  "static": {
+    "full_typecheck_tasks_passed": 10,
+    "full_lint_tasks_passed": 7,
+    "lint_errors": 0,
+    "existing_warnings": {
+      "views": 23,
+      "core": 2,
+      "ui": 3,
+      "web": 1,
+      "desktop": 1,
+      "total": 30
+    },
+    "repair_core_views_typecheck_exit": 0,
+    "repair_targeted_lint_exit": 0,
+    "canonical_real_nas_tsc_exit": 0
+  }
+}

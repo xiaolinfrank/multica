@@ -1,0 +1,474 @@
+{
+  "host": "fosun_agent_3 (10.35.182.2)",
+  "status": "deployed",
+  "environment": "agent3 test resident; no production operation",
+  "updated_at": "2026-10-11T11:25:24.015507+00:00",
+  "source": {
+    "api_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+    "api_sha256": "61cd5b1c857de9ed7ba52a2c1b27d8c2e69004a4bce5a96ec03af37e24f3b46c",
+    "server_tree": "10a6ec274ef5819908a223b2b06460742307a933",
+    "manifest": "/tmp/multica-n1-candidate-f8029979b.json",
+    "cli_sha256": "0d0616e7d91e1e96f0f0672ab0f780cf3445f70c57c9de1ff02e2989d164a51a",
+    "migrator_sha256": "57a9924ae547ffcfb6872e5fe028805afa805d0f875c0364f129bbeb5c014a15",
+    "frontend_current_commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+    "frontend_final_pending": false,
+    "binary_manifest_sha256": "b498c40aee2a427d5c578079965dff3fe793b75ba26cc6733dd7d881df8a932d",
+    "release_commit": "c312caba123742d20a6032dd6a5cf9b02f6e2bc2",
+    "release_archive_sha256": "db3beb94590940f172b4897a46fff5c2b797f112c73c439af73c4f0d108c4f5e",
+    "release_provenance": "/tmp/multica-meeting-directory-release-provenance.json"
+  },
+  "backup": {
+    "completed_at": "2026-10-11T11:02:14.420557+00:00",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-directory-f802-20261011T110205Z",
+    "database": "multica_dev",
+    "writer_stopped": true,
+    "old_pids": {
+      "api": 21607,
+      "web": 21608
+    },
+    "old_ledger_count": 780,
+    "pending": [
+      "9092_cockpit_meeting_directory",
+      "9093_cockpit_directory_operation_id_idx",
+      "9094_cockpit_directory_operation_page_idx",
+      "9095_cockpit_directory_operation_target_idx",
+      "9096_cockpit_directory_operation_intent_idx",
+      "9097_cockpit_directory_step_id_idx",
+      "9098_cockpit_directory_step_position_idx",
+      "9099_cockpit_directory_step_path_idx",
+      "9100_cockpit_directory_step_queue_idx",
+      "9101_cockpit_directory_step_lease_idx",
+      "9102_cockpit_directory_attempt_id_idx",
+      "9103_cockpit_directory_attempt_page_idx",
+      "9104_cockpit_directory_integrity"
+    ],
+    "expected_ledger_after": 793,
+    "old_stems_times_saved": true,
+    "frozen_old_up_files_identical": true,
+    "counts": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "file_entries": 807,
+    "dump_bytes": 67326679,
+    "dump_sha256": "e074673d9e22e3b5fc27aa5c7d3deeebbf5f5e303ae8585ad41ddd89b63d68d0",
+    "dump_readable_entries": 1131,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "candidate_env_sha256": "0a33458d674a47e5cbc8e809fcc04a1f1b583702c5ce60afcb3eccae14329421",
+    "exports": {
+      "total": 0,
+      "pending": 0,
+      "new_root_matches": 0
+    },
+    "release_dir": "/Users/fosun_agent_3/var/multica-dev-releases/directory-c312caba1"
+  },
+  "migration": {
+    "from_schema": 9091,
+    "to_schema": 9104,
+    "ledger_before": 780,
+    "ledger_after": 793,
+    "new_stems": [
+      "9092_cockpit_meeting_directory",
+      "9093_cockpit_directory_operation_id_idx",
+      "9094_cockpit_directory_operation_page_idx",
+      "9095_cockpit_directory_operation_target_idx",
+      "9096_cockpit_directory_operation_intent_idx",
+      "9097_cockpit_directory_step_id_idx",
+      "9098_cockpit_directory_step_position_idx",
+      "9099_cockpit_directory_step_path_idx",
+      "9100_cockpit_directory_step_queue_idx",
+      "9101_cockpit_directory_step_lease_idx",
+      "9102_cockpit_directory_attempt_id_idx",
+      "9103_cockpit_directory_attempt_page_idx",
+      "9104_cockpit_directory_integrity"
+    ],
+    "old_stems_and_timestamps_unchanged": true,
+    "frozen_ddl_manifest_sha256": "6196dcbbfc28c0fca2fe9549198bcc5cce18ccee750ffffcd1411a1eb8555592",
+    "runner_sha256": "57a9924ae547ffcfb6872e5fe028805afa805d0f875c0364f129bbeb5c014a15",
+    "new_indexes": [
+      {
+        "name": "cockpit_directory_attempt_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_attempt_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_intent_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_target_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_lease_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_path_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_position_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_queue_idx",
+        "valid": true,
+        "ready": true
+      }
+    ]
+  },
+  "running": {
+    "started_at": "2026-10-11T11:06:40.411801+00:00",
+    "api_pid": 48328,
+    "web_pid": 48331,
+    "api_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+    "api_sha256": "61cd5b1c857de9ed7ba52a2c1b27d8c2e69004a4bce5a96ec03af37e24f3b46c",
+    "cli_sha256": "0d0616e7d91e1e96f0f0672ab0f780cf3445f70c57c9de1ff02e2989d164a51a",
+    "web_build_id": "wdHrq4o1gQqyIsiWJqJSK",
+    "ledger": 793,
+    "schema": 9104,
+    "health": 200,
+    "login": 200,
+    "configuration_sha256": "0a33458d674a47e5cbc8e809fcc04a1f1b583702c5ce60afcb3eccae14329421",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-directory-f802-20261011T110205Z",
+    "release_dir": "/Users/fosun_agent_3/var/multica-dev-releases/directory-c312caba1"
+  },
+  "preservation": {
+    "completed_at": "2026-10-11T11:06:36.114940+00:00",
+    "ledger_before": 780,
+    "ledger_after": 793,
+    "old_stem_timestamps_unchanged": true,
+    "new_indexes": [
+      {
+        "name": "cockpit_directory_attempt_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_attempt_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_intent_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_operation_target_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_lease_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_path_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_position_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_directory_step_queue_idx",
+        "valid": true,
+        "ready": true
+      }
+    ],
+    "counts_unchanged": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "identities_unchanged": true,
+    "meeting_board_project_and_command_old_columns_unchanged": true,
+    "preserved_file_entries": 807,
+    "new_directory_counts": {
+      "cockpit_meeting_directory_operation": 0,
+      "cockpit_meeting_directory_step": 0,
+      "cockpit_meeting_directory_attempt": 0
+    },
+    "env_sha256": "0a33458d674a47e5cbc8e809fcc04a1f1b583702c5ce60afcb3eccae14329421",
+    "web_build_id": "wdHrq4o1gQqyIsiWJqJSK"
+  },
+  "postcheck": {
+    "checked_at": "2026-10-11T11:22:37.887967+00:00",
+    "counts_after_owned_probe_cleanup": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "directory_business_facts": {
+      "cockpit_meeting_directory_operation": 0,
+      "cockpit_meeting_directory_step": 0,
+      "cockpit_meeting_directory_attempt": 0
+    },
+    "original_meeting": {
+      "id": "13ee0d80-d32a-405e-a815-1d8d2e6e0f3a",
+      "workspace_id": "fc41c0f8-c42b-4cdc-8381-d7275e410b1b",
+      "workspace_slug": "fosun-bio"
+    },
+    "health": {
+      "status": "ok",
+      "pid": 48328,
+      "commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+      "started_at": "2026-10-11T11:06:36Z"
+    },
+    "web_status": 200,
+    "env_sha256": "0a33458d674a47e5cbc8e809fcc04a1f1b583702c5ce60afcb3eccae14329421",
+    "web_build_id": "wdHrq4o1gQqyIsiWJqJSK",
+    "ledger_count": 793
+  },
+  "configuration": {
+    "only_changed_key": "COCKPIT_NAS_EXPORT_ROOTS",
+    "old_env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "new_env_sha256": "0a33458d674a47e5cbc8e809fcc04a1f1b583702c5ce60afcb3eccae14329421",
+    "old_roots": [
+      {
+        "workspace_id": "9a9967e8-cf59-4904-bc11-1f43228d06eb",
+        "root_id": "66859815-dfa3-469a-b774-67be5737a57b",
+        "path": "/Volumes/人机协作空间/复星PMO演示",
+        "allow_local": false,
+        "write_mode": "create_only"
+      }
+    ],
+    "active_roots": [
+      {
+        "workspace_id": "9a9967e8-cf59-4904-bc11-1f43228d06eb",
+        "root_id": "66859815-dfa3-469a-b774-67be5737a57b",
+        "path": "/Volumes/人机协作空间/复星PMO演示",
+        "allow_local": false,
+        "write_mode": "create_only",
+        "prepare_subpaths": [
+          "HLX22-III期/会议纪要"
+        ]
+      },
+      {
+        "workspace_id": "fc41c0f8-c42b-4cdc-8381-d7275e410b1b",
+        "root_id": "507d1833-2903-4e2e-ba8c-ed5f76860fe9",
+        "path": "/Users/fosun_agent_3/var/meeting-verify/06.06多方协同与会议",
+        "allow_local": true,
+        "write_mode": "create_only",
+        "prepare_subpaths": [
+          "06.06.03会议纪要与素材",
+          "20260921-01 复星医药×华大基因 会议管理功能验收"
+        ]
+      }
+    ],
+    "new_local_root_marker": {
+      "path": "/Users/fosun_agent_3/var/meeting-verify/06.06多方协同与会议/.multica-root-id",
+      "root_id": "507d1833-2903-4e2e-ba8c-ed5f76860fe9",
+      "created_exclusively": true,
+      "root_device": 16777232,
+      "root_inode": 5055199,
+      "preserve_after_deploy": true
+    },
+    "exports_before_activation": {
+      "total": 0,
+      "pending": 0,
+      "relevant": []
+    },
+    "fosun_bio_remains_local": true,
+    "no_meeting_directory_binding_rewritten": true
+  },
+  "readonly_business_verification": {
+    "completed_at": "2026-10-11T11:11:31.096193+00:00",
+    "server_override": "http://127.0.0.1:18080",
+    "saved_cli_config_unchanged": true,
+    "used_existing_authenticated_account": true,
+    "results": [
+      {
+        "workspace_id": "fc41c0f8-c42b-4cdc-8381-d7275e410b1b",
+        "slug": "fosun-bio",
+        "root_id": "507d1833-2903-4e2e-ba8c-ed5f76860fe9",
+        "root_path": "/Users/fosun_agent_3/var/meeting-verify/06.06多方协同与会议",
+        "prepare_subpaths": [
+          "06.06.03会议纪要与素材",
+          "20260921-01 复星医药×华大基因 会议管理功能验收"
+        ],
+        "meeting_id": "12e95a8e-2156-46a7-bb70-6c17f8ab93a2",
+        "summary_capabilities": {
+          "available": true,
+          "can_create": true,
+          "can_preview": true
+        },
+        "preview_can_confirm": true,
+        "preview_counts": {
+          "conflict": 0,
+          "exists": 1,
+          "missing": 3,
+          "total": 4,
+          "unknown": 0
+        },
+        "no_command_sent": true,
+        "preview_target_matches_existing_binding": true
+      },
+      {
+        "workspace_id": "9a9967e8-cf59-4904-bc11-1f43228d06eb",
+        "slug": "pmo-showcase",
+        "root_id": "66859815-dfa3-469a-b774-67be5737a57b",
+        "root_path": "/Volumes/人机协作空间/复星PMO演示",
+        "prepare_subpaths": [
+          "HLX22-III期/会议纪要"
+        ],
+        "meeting_id": "11435931-6183-4d76-93d1-7f5f94c73b7e",
+        "summary_capabilities": {
+          "available": true,
+          "can_create": true,
+          "can_preview": true
+        },
+        "preview_can_confirm": true,
+        "preview_counts": {
+          "conflict": 0,
+          "exists": 4,
+          "missing": 0,
+          "total": 4,
+          "unknown": 0
+        },
+        "no_command_sent": true,
+        "preview_target_matches_existing_binding": true
+      }
+    ],
+    "original_meeting_readable": true,
+    "before": {
+      "meetings": "5787cd7dc7127ae778a6af6e1d067f65",
+      "commands": 0,
+      "operations": 0,
+      "steps": 0,
+      "attempts": 0,
+      "exports": 0
+    },
+    "after": {
+      "meetings": "5787cd7dc7127ae778a6af6e1d067f65",
+      "commands": 0,
+      "operations": 0,
+      "steps": 0,
+      "attempts": 0,
+      "exports": 0
+    },
+    "no_business_write": true
+  },
+  "resident_ui": {
+    "final_stats": {
+      "startTime": "2026-10-11T11:18:46.646Z",
+      "duration": 1815.036,
+      "expected": 1,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "no_cockpit_page_writes": true,
+    "no_agent_runs": true,
+    "owned_workspace_cleanup": "HTTP204; resident domain counts returned to before-deploy values",
+    "initial_instrument_failure": {
+      "stats": {
+        "startTime": "2026-10-11T11:16:01.828Z",
+        "duration": 621.261,
+        "expected": 0,
+        "skipped": 0,
+        "unexpected": 1,
+        "flaky": 0
+      },
+      "reason": "Browser cache path missing in resident-profile probe environment; failed before fixture setup",
+      "fix": "Explicit existing agent3 browser cache path; no product change"
+    },
+    "screenshots": {
+      "directory-resident-owned-wide-zh.png": {
+        "path": "/tmp/multica-n1-evidence/resident-ui-second/n1-resident-ui-shows-deplo-9e2ee-out-writing-a-business-plan-chromium/directory-resident-owned-wide-zh.png",
+        "sha256": "a786069fd4ab047efdd176195f5e7e3e42eed8955f455c85f3475c94344e27a2"
+      },
+      "directory-resident-owned-390-zh-dark.png": {
+        "path": "/tmp/multica-n1-evidence/resident-ui-second/n1-resident-ui-shows-deplo-9e2ee-out-writing-a-business-plan-chromium/directory-resident-owned-390-zh-dark.png",
+        "sha256": "7e8a11c872a4548a0b6499102d489f6a530f17f9d32779e2eb80cd83ee95b10f"
+      }
+    }
+  },
+  "browser_builds": {
+    "final_isolated_verified": "RNYrkMPGzj2R3RYFWI7hA",
+    "resident_target_18080": "wdHrq4o1gQqyIsiWJqJSK",
+    "frontend_source_commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+    "verified_source_files": 2750,
+    "qa_original_build_physically_restored": true
+  },
+  "isolated_cleanup": {
+    "api_web_stopped": true,
+    "stopped_pids": [
+      45070,
+      45071
+    ],
+    "schema": 9104,
+    "ledger": 790,
+    "workspace_issue_task_meeting_directory_tables": 0,
+    "retained_deleted_capture_tombstones": 7,
+    "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+    "runtime_env_sha256_unchanged": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0",
+    "real_nas_physical_evidence_retained": true
+  },
+  "review_url": "http://localhost:23000/fosun-bio/cockpit?meeting=13ee0d80-d32a-405e-a815-1d8d2e6e0f3a&meeting_view=resources",
+  "rollback_boundary": "Old full-stack backup is an option only before new authoritative N1 business facts. Any L API rollback must restore the old configuration because L does not understand prepare_subpaths. After new N1 facts, preserve data and safety boundaries and fix forward; do not run down or discard directory history. The approved new root identity marker is retained."
+}

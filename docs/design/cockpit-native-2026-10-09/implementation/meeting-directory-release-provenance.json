@@ -1,0 +1,13 @@
+{
+  "archive": "/tmp/multica-meeting-directory-release-c312caba1.tar",
+  "sha256": "db3beb94590940f172b4897a46fff5c2b797f112c73c439af73c4f0d108c4f5e",
+  "bytes": 128942080,
+  "server_files": 4062,
+  "server_mismatches": [],
+  "commit": "c312caba1",
+  "api_commit": "f8029979babb179f0f7b1090fb2c88ed5b22ea21",
+  "server_tree": "10a6ec274ef5819908a223b2b06460742307a933",
+  "frontend_commit": "94995e4f48ec97586027e7e501ed830fc8d4514a",
+  "frontend_files": 2750,
+  "frontend_mismatches": []
+}
