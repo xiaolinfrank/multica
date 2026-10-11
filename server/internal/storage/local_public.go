@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func privateArtifactPath(key string) bool {
+func privateFixedFilePath(key string) bool {
 	// HTTP routers normally decode once. Refuse encoded aliases too, without
 	// using the decoded input to access a different on-disk filename.
 	for i := 0; i < 8; i++ {
@@ -19,7 +19,8 @@ func privateArtifactPath(key string) bool {
 		}
 		if decoded == key {
 			parts := strings.Split(strings.TrimPrefix(path.Clean("/"+strings.ReplaceAll(key, "\\", "/")), "/"), "/")
-			return len(parts) >= 3 && strings.EqualFold(parts[0], "workspaces") && strings.EqualFold(parts[2], "artifact-versions")
+			return len(parts) >= 3 && strings.EqualFold(parts[0], "workspaces") &&
+				(strings.EqualFold(parts[2], "artifact-versions") || strings.EqualFold(parts[2], "input-versions"))
 		}
 		key = decoded
 	}
@@ -50,7 +51,7 @@ func openPublicRegular(root *os.Root, name string) (*os.File, error) {
 // attacker cannot change the pathname after validation to change served bytes.
 func (s *LocalStorage) openPublicFile(key string) (*os.File, *os.Root, error) {
 	clean := filepath.Clean(key)
-	if privateArtifactPath(key) || isInternalLocalPath(clean) || !filepath.IsLocal(clean) || clean == "." {
+	if privateFixedFilePath(key) || isInternalLocalPath(clean) || !filepath.IsLocal(clean) || clean == "." {
 		return nil, nil, fmt.Errorf("object is not public")
 	}
 	root, err := os.OpenRoot(s.uploadDir)

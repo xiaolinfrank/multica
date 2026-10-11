@@ -18,6 +18,10 @@ func (c *Capturer) OpenVerified(ctx context.Context, key string, size int64, has
 	if err := c.requirePrivateStorage(); err != nil {
 		return nil, err
 	}
+	return c.openVerified(ctx, key, size, hash)
+}
+
+func (c *Capturer) openVerified(ctx context.Context, key string, size int64, hash string) (io.ReadSeekCloser, error) {
 	if !validKey(key) || size < 0 || size > MaxBytes || !validHash(hash) {
 		return nil, captureError("invalid_payload", "The fixed artifact identity or fingerprint is invalid.", false)
 	}

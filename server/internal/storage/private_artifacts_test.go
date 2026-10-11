@@ -7,23 +7,31 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestLocalStoragePrivateArtifactNamespaceRejectsAnonymousAliases(t *testing.T) {
+func TestLocalStoragePrivateNamespacesRejectAnonymousAliases(t *testing.T) {
+	for _, namespace := range []string{"artifact-versions", "input-versions"} {
+		t.Run(namespace, func(t *testing.T) { assertPrivateNamespace(t, namespace) })
+	}
+}
+
+func assertPrivateNamespace(t *testing.T, namespace string) {
+	t.Helper()
 	root := t.TempDir()
 	store := &LocalStorage{uploadDir: root}
-	key := "workspaces/owned-workspace/artifact-versions/version/attempt.txt"
+	key := "workspaces/owned-workspace/" + namespace + "/version/attempt.txt"
 	if _, err := store.Upload(context.Background(), key, []byte("private fixed bytes"), "text/plain", "evidence.txt"); err != nil {
 		t.Fatal(err)
 	}
 	for name, filename := range map[string]string{
 		"exact":                       key,
-		"case insensitive filesystem": "WORKSPACES/owned-workspace/ARTIFACT-VERSIONS/version/attempt.txt",
+		"case insensitive filesystem": "WORKSPACES/owned-workspace/" + strings.ToUpper(namespace) + "/version/attempt.txt",
 		"cleaned":                     "public/../" + key,
-		"encoded":                     "workspaces%2Fowned-workspace%2Fartifact-versions%2Fversion%2Fattempt.txt",
-		"double encoded":              "workspaces%252Fowned-workspace%252Fartifact-versions%252Fversion%252Fattempt.txt",
-		"directory":                   "workspaces/owned-workspace/artifact-versions",
+		"encoded":                     "workspaces%2Fowned-workspace%2F" + namespace + "%2Fversion%2Fattempt.txt",
+		"double encoded":              "workspaces%252Fowned-workspace%252F" + namespace + "%252Fversion%252Fattempt.txt",
+		"directory":                   "workspaces/owned-workspace/" + namespace,
 		"ancestor listing":            "workspaces/owned-workspace",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -34,7 +42,7 @@ func TestLocalStoragePrivateArtifactNamespaceRejectsAnonymousAliases(t *testing.
 			}
 		})
 	}
-	for name, target := range map[string]string{"file-alias.txt": key, "dir-alias": "workspaces/owned-workspace/artifact-versions"} {
+	for name, target := range map[string]string{"file-alias.txt": key, "dir-alias": "workspaces/owned-workspace/" + namespace} {
 		if err := os.Symlink(filepath.Join(root, target), filepath.Join(root, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -75,3 +83,16 @@ func TestArtifactStorageRequiresAnExplicitPrivateProvider(t *testing.T) {
 		t.Fatal("protected local provider unavailable")
 	}
 }
+
+func TestInputStorageRequiresAnIndependentPrivateProvider(t *testing.T) {
+	if SupportsPrivateInputFiles(nil) || SupportsPrivateInputFiles(struct{}{}) || SupportsPrivateInputFiles(&S3Storage{}) || SupportsPrivateInputFiles(artifactOnlyProvider{}) {
+		t.Fatal("unconfirmed provider claimed private input storage")
+	}
+	if !SupportsPrivateInputFiles(&LocalStorage{uploadDir: t.TempDir()}) {
+		t.Fatal("protected input namespace unavailable")
+	}
+}
+
+type artifactOnlyProvider struct{}
+
+func (artifactOnlyProvider) SupportsPrivateArtifactFiles() bool { return true }

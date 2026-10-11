@@ -132,26 +132,20 @@ func (c *Capturer) Capture(ctx context.Context, request Request) (Result, error)
 	if err != nil {
 		return Result{}, captureError("source_unavailable", "The selected attachment could not be read.", true)
 	}
-	spool, size, hash, readErr := spoolReader(ctx, reader, c.TempDir, request.Source.SizeBytes)
+	prepared, readErr := PrepareBytes(ctx, reader, c.TempDir, request.Source.SizeBytes, request.ExpectedHash)
 	closeErr := reader.Close()
 	if readErr != nil {
 		return Result{}, readErr
 	}
-	defer removeSpool(spool)
+	defer prepared.Close()
 	if closeErr != nil {
 		return Result{}, captureError("source_unavailable", "The attachment read did not finish successfully.", true)
 	}
-	if request.ExpectedHash != "" && request.ExpectedHash != hash {
-		return Result{}, captureError("source_changed", "The selected attachment no longer matches the expected content.", false)
-	}
-	if _, err := c.Store.UploadStream(ctx, key, &contextReader{ctx: ctx, reader: spool}, size, request.Source.ContentType, request.Source.Filename); err != nil {
-		return Result{}, captureError("capture_write_failed", "The fixed artifact copy could not be stored.", true)
-	}
-	if err := c.Verify(ctx, key, size, hash); err != nil {
+	if err := c.writePrepared(ctx, key, request.Source.Filename, request.Source.ContentType, prepared); err != nil {
 		return Result{}, err
 	}
 	return Result{StorageKey: key, Filename: request.Source.Filename, ContentType: request.Source.ContentType,
-		SizeBytes: size, ContentHash: hash, AttachmentID: request.Source.AttachmentID}, nil
+		SizeBytes: prepared.SizeBytes(), ContentHash: prepared.ContentHash(), AttachmentID: request.Source.AttachmentID}, nil
 }
 
 // Verify checks the stored object, rather than treating a successful upload call as evidence.
@@ -159,6 +153,10 @@ func (c *Capturer) Verify(ctx context.Context, key string, size int64, hash stri
 	if err := c.requirePrivateStorage(); err != nil {
 		return err
 	}
+	return c.verify(ctx, key, size, hash)
+}
+
+func (c *Capturer) verify(ctx context.Context, key string, size int64, hash string) error {
 	if !validKey(key) || size < 0 || size > MaxBytes || !validHash(hash) {
 		return captureError("invalid_payload", "The fixed artifact identity or fingerprint is invalid.", false)
 	}
