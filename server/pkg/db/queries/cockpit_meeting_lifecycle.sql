@@ -27,8 +27,9 @@ INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_ke
 VALUES(sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(command_key),sqlc.arg(kind),sqlc.arg(actor_id),sqlc.arg(request_hash),sqlc.arg(revision),sqlc.arg(agenda_revision),sqlc.narg(agenda_id),sqlc.narg(reference_id),sqlc.narg(issue_id),sqlc.narg(operation_id),sqlc.narg(effect_id),sqlc.arg(receipt));
 
 -- name: ListCockpitLifecycleCommands :many
-SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
-FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
+SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.actor_type,c.directory_operation_id,c.directory_step_id,c.created_at,CASE WHEN c.actor_type='agent' THEN COALESCE(actor_agent.name,'') ELSE COALESCE(u.name,'') END::text AS actor_name
+FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id AND c.actor_type='member'
+LEFT JOIN agent actor_agent ON actor_agent.id=c.actor_id AND actor_agent.workspace_id=c.workspace_id AND c.actor_type='agent'
 WHERE c.workspace_id=sqlc.arg(workspace_id) AND c.meeting_id=sqlc.arg(meeting_id)
  AND (sqlc.narg(after_key)::uuid IS NULL OR (c.created_at,c.command_key)<(sqlc.arg(after_time)::timestamptz,sqlc.narg(after_key)))
 ORDER BY c.created_at DESC,c.command_key DESC LIMIT sqlc.arg(page_limit);

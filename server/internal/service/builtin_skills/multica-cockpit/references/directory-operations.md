@@ -1,44 +1,54 @@
 # Meeting directory operations
 
-Meeting directory preparation is separate from fixed minutes NAS export. The
-former prepares folders; the latter has a durable operation/attempt ledger and
-explicit atomic/create-only modes documented in [nas-export.md](nas-export.md).
+Meeting directory preparation has its own persistent plan, per-step grants,
+and attempt receipts. Fixed minutes NAS export is a separate operation; see
+[nas-export.md](nas-export.md). For the bounded directory commands and exact-key
+recovery, read [meeting-directory.md](meeting-directory.md).
 
 `GET /api/cockpit/meetings/destination` previews a configured destination.
-`GET /api/cockpit/meetings/scan` lists existing archive folders.
-`POST /api/cockpit/meetings/import` registers selected existing folders.
-`POST /api/cockpit/meetings/{meetingId}/provision` prepares folders and optionally
-the legacy meeting task; meetings with a work package use `create_task:false`.
+`GET /api/cockpit/meetings/scan` reads existing archive folders.
+`POST /api/cockpit/meetings/import` registers selected folders and returns
+independent directory results. `POST /api/cockpit/meetings/{meetingId}/provision`
+retains its interface and optional legacy task behavior, but directory writes
+use the same persistent plan/executor. Work-package meetings use `create_task:false`.
+A directory failure never requires creating a second meeting or Issue.
 
-The root is the selected project's configured collaboration directory, or the
-board's confirmed directory for that exact project/module/archive-node choice.
-All supplied references must belong to the workspace; a selected module must
-belong to the selected project. Changing the selection cannot inherit an old
-confirmed directory from a different selection. A failed attempt cannot remember
-that old directory as the new selection's destination.
+Project or board destinations propose paths; they do not grant filesystem
+write permission. The deployment's existing single workspace NAS root must
+explicitly list `prepare_subpaths` (at most 32; empty by default). Export
+permission does not enable preparation. Roots and permitted boundaries must
+already exist. A preview fixes the root, target and at most 32 ordered steps;
+confirmation never runs an Agent or creates the optional legacy task itself.
 
-A one-shot `base_dir` may narrow this root; it cannot promote an unrelated path
-into a new root. Configure the project/board destination explicitly first. The
-root must already exist and is never created by provisioning.
+Darwin/Linux pin directory descriptors and root identity, reject symlink
+components and file conflicts, and confirm each step independently. Other
+platforms refuse unsafe path-based writes. Existing files and partial folders
+are never renamed, overwritten, rolled back or automatically deleted.
+`created` means that attempt performed mkdir; `observed_existing` means only
+that the exact directory was verified. Neither proves permanent NAS availability.
 
-On Darwin/Linux, directory operations pin the existing root identity and use
-relative descriptors with no-follow opens below it. A platform alias in the
-root's ancestors may resolve to the same real root; the final root itself must
-not be a symlink. Symlink children and regular files cannot be accepted as
-directories. Replacement/movement of the opened root or a child is detected
-before confirming filesystem success. Other server platforms refuse these
-directory operations rather than use an unsafe path-based fallback; storing a
-cross-platform path as metadata remains supported.
+Provision returns independent `task_error` and `dir_error` outcomes.
+`dir_created:true` confirms only the base directory; nonempty `dir_error` means
+remaining preparation is incomplete. Retry the retained operation and inspect
+its exact attempts. A new root configuration or external binding revision
+requires explicit reauthorization of the selected unfinished steps. A successful
+base's own binding update does not invalidate its sibling steps.
 
-Provisioning returns independent `task_error` and `dir_error` outcomes. Existing
-files are not overwritten; partial directories are not automatically deleted.
-`dir_created:true` confirms the meeting directory, while a nonempty `dir_error`
-can still report missing subfolders. Do not treat a partial response as an
-all-or-nothing rollback, or create another meeting/issue to retry a directory.
+A human confirmation records that member. A task token can authorize deterministic
+steps only through its current Run, Agent, preparation Issue and originating
+member's permissions. It never becomes a human confirmation. An accepted plan
+survives normal source-Run completion; current responsibility, permissions,
+meeting cancellation and exact per-step grants still govern continuation.
+A subsequent valid Run may explicitly recover the same Agent/Issue/member tuple.
+Legacy natural reuse also requires that exact Agent/source Issue/originator; an
+unfinished plan must still have the same responsible member. A terminal source
+Run does not block this existing grant, while a new repair needs full new authorization.
+Cloud credentials without a concrete task can only read existing plans.
+Pause or abandon prevents future attempts; in-flight I/O may finish and is
+recorded without reviving the plan. Human claim creates an explicit new grant.
 
-These checks constrain an operation beneath the configured root. They do not
-provide physical isolation when administrators explicitly configure two
-workspaces to share the same directory, nor replace NAS account permissions.
+These boundaries do not replace NAS account permissions or isolate two workspaces
+whose administrators deliberately configure the same physical directory.
 
 ## Workspace contact book
 

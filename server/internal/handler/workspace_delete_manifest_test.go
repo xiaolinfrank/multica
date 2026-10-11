@@ -21,6 +21,9 @@ const (
 var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"cockpit_meeting_template":              workspaceDelete,
 	"cockpit_meeting_template_version":      workspaceDelete,
+	"cockpit_meeting_directory_operation":   workspaceDelete,
+	"cockpit_meeting_directory_step":        workspaceDelete,
+	"cockpit_meeting_directory_attempt":     workspaceDelete,
 	"cockpit_meeting_preparation_operation": workspaceDelete,
 	"cockpit_meeting_preparation_effect":    workspaceDelete,
 	"cockpit_artifact":                      workspaceDelete,

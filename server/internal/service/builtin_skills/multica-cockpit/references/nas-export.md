@@ -66,9 +66,12 @@ Operators configure `COCKPIT_NAS_EXPORT_ROOTS` as a JSON array, for example:
 ```
 
 There is one root per workspace; root IDs are unique and workspace roots cannot
-overlap. The preexisting `.multica-root-id` text must equal `root_id`. The server
+overlap. The preexisting `.multica-root-id` text must equal `root_id`. The export executor
 does not create the root, marker or meeting directory; it only creates the
-published-minutes subdirectory. macOS/Linux network mounts are required by
+published-minutes subdirectory. Separately authorized directory preparation uses
+`prepare_subpaths` (default empty) and its own persistent plan; see
+[meeting-directory.md](meeting-directory.md). Export permission does not enable
+preparation or file browsing. macOS/Linux network mounts are required by
 default. `allow_local:true` is an explicit operator/test choice, not an automatic
 fallback for an offline mount. Unsupported atomic commit/sync capabilities are
 reported; actual SMB/NFS capabilities need deployment verification. Removing

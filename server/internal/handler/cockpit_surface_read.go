@@ -38,6 +38,7 @@ func (h *Handler) cockpitSurfaceQuery(w http.ResponseWriter, r *http.Request) (s
 		MeetingLifecycleAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingLifecycleBackendReady,
 		MeetingTemplatesAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingTemplatesBackendReady,
 		MeetingDispositionAvailable: h.IssueService != nil && h.IssueService.CockpitMeetingDispositionBackendReady,
+		MeetingDirectoryAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingDirectoryBackendReady,
 		ArtifactsAvailable:          h.IssueService != nil && h.IssueService.CockpitArtifactBackendReady && r.URL.Query().Get("client_contract") == "artifacts-v1"}, true
 }
 func writeCockpitSurfaceError(w http.ResponseWriter, r *http.Request, err error) bool {

@@ -143,24 +143,6 @@ func (a *meetingArchiveRoot) directory(path string, create bool) (*meetingArchiv
 	}
 	return dir, dir.verify()
 }
-func (d *meetingArchiveDirectory) createSubdirs() error {
-	var failed []string
-	for _, name := range meetingSubdirs {
-		child, err := d.child(name, true)
-		if err != nil {
-			failed = append(failed, name)
-			continue
-		}
-		_ = child.file.Close()
-	}
-	if err := d.verify(); err != nil {
-		return err
-	}
-	if len(failed) > 0 {
-		return fmt.Errorf("meeting subfolders not created: %s", strings.Join(failed, ", "))
-	}
-	return nil
-}
 func (d *meetingArchiveDirectory) entries(ctx context.Context, limit int) ([]string, bool, error) {
 	var entries []string
 	truncated := false
@@ -256,25 +238,4 @@ func childDirNamedInRoot(root, parent, want string) string {
 		return ""
 	}
 	return match
-}
-
-func provisionMeetingArchive(plan meetingDirPlan, name string) (string, error, error) {
-	archive, err := openMeetingArchive(plan.Root)
-	if err != nil {
-		return "", nil, err
-	}
-	defer archive.close()
-	base, err := archive.directory(plan.Dir, true)
-	if err != nil {
-		return "", nil, err
-	}
-	meeting, err := base.child(sanitizeMeetingFolderName(name), true)
-	if err != nil {
-		return "", nil, err
-	}
-	subErr := meeting.createSubdirs()
-	if err := meeting.verify(); err != nil {
-		return "", nil, err
-	}
-	return meeting.path, subErr, nil
 }

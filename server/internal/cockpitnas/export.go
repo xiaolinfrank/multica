@@ -68,15 +68,17 @@ func fail(code, message string, retryable bool) error {
 // Root authorizes one workspace subtree on this server. The marker must be
 // provisioned by its operator; a request never creates a root or its identity.
 type Root struct {
-	WorkspaceID string `json:"workspace_id"`
-	RootID      string `json:"root_id"`
-	Path        string `json:"path"`
-	AllowLocal  bool   `json:"allow_local,omitempty"`
-	WriteMode   string `json:"write_mode,omitempty"`
+	WorkspaceID     string   `json:"workspace_id"`
+	RootID          string   `json:"root_id"`
+	Path            string   `json:"path"`
+	AllowLocal      bool     `json:"allow_local,omitempty"`
+	WriteMode       string   `json:"write_mode,omitempty"`
+	PrepareSubpaths []string `json:"prepare_subpaths,omitempty"`
 }
 
 type Files struct {
-	roots map[string]Root
+	roots            map[string]Root
+	preparationSlots chan struct{}
 	// Package-private fault injection; never configured by an API or runtime.
 	beforeCommit           func()
 	beforeAck              func()
@@ -86,7 +88,7 @@ type Files struct {
 }
 
 func New(raw string) (*Files, error) {
-	f := &Files{roots: make(map[string]Root)}
+	f := &Files{roots: make(map[string]Root), preparationSlots: make(chan struct{}, 2)}
 	if strings.TrimSpace(raw) == "" {
 		return f, nil
 	}
@@ -101,6 +103,9 @@ func New(raw string) (*Files, error) {
 	}
 	seen := make(map[string]bool)
 	for _, root := range roots {
+		if err := normalizePrepareSubpaths(&root); err != nil {
+			return nil, err
+		}
 		if root.WriteMode == "" {
 			root.WriteMode = ModeAtomic
 		}

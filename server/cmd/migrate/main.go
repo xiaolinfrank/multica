@@ -218,6 +218,17 @@ var concurrentIndexCleanups = map[string]string{
 	"9088_cockpit_preparation_effect_slot_idx":                  "cockpit_preparation_effect_slot_idx",
 	"9089_cockpit_preparation_effect_command_idx":               "cockpit_preparation_effect_command_idx",
 	"9090_cockpit_preparation_effect_issue_idx":                 "cockpit_preparation_effect_issue_idx",
+	"9093_cockpit_directory_operation_id_idx":                   "cockpit_directory_operation_id_idx",
+	"9094_cockpit_directory_operation_page_idx":                 "cockpit_directory_operation_page_idx",
+	"9095_cockpit_directory_operation_target_idx":               "cockpit_directory_operation_target_idx",
+	"9096_cockpit_directory_operation_intent_idx":               "cockpit_directory_operation_intent_idx",
+	"9097_cockpit_directory_step_id_idx":                        "cockpit_directory_step_id_idx",
+	"9098_cockpit_directory_step_position_idx":                  "cockpit_directory_step_position_idx",
+	"9099_cockpit_directory_step_path_idx":                      "cockpit_directory_step_path_idx",
+	"9100_cockpit_directory_step_queue_idx":                     "cockpit_directory_step_queue_idx",
+	"9101_cockpit_directory_step_lease_idx":                     "cockpit_directory_step_lease_idx",
+	"9102_cockpit_directory_attempt_id_idx":                     "cockpit_directory_attempt_id_idx",
+	"9103_cockpit_directory_attempt_page_idx":                   "cockpit_directory_attempt_page_idx",
 	"980_cockpit_primary_issue_index":                           "cockpit_primary_issue_idx",
 	"981_cockpit_primary_node_index":                            "cockpit_primary_node_idx",
 	"982_cockpit_primary_creation_index":                        "cockpit_primary_creation_idx",
@@ -530,6 +541,9 @@ var preRollbackHooks = func() map[string]preMigrationHook {
 	}
 	for _, version := range cockpitPreparationMigrationVersions {
 		hooks[version] = ensureCockpitPreparationRollbackSafe
+	}
+	for _, version := range cockpitDirectoryMigrationVersions {
+		hooks[version] = ensureCockpitDirectoryRollbackSafe
 	}
 	hooks["430_channel_outbound_message_binding_index"] = refuseChannelChatRouteHistoryRollback
 	return hooks

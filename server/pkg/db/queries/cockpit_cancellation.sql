@@ -89,3 +89,31 @@ SELECT t.id,t.issue_id,t.agent_id,t.status,t.started_at,(t.context->>'wakeup_id'
 FROM agent_task_queue t LEFT JOIN agent a ON a.id=t.agent_id AND a.workspace_id=sqlc.arg(workspace_id)
 JOIN issue i ON i.id=t.issue_id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE t.id=ANY(sqlc.arg(run_ids)::uuid[]) AND t.chat_session_id IS NULL ORDER BY t.id;
+
+-- name: ReadCockpitCancellationDirectoryFacts :one
+WITH active AS MATERIALIZED (
+ SELECT d.id,d.revision FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=sqlc.arg(workspace_id) AND d.meeting_id=sqlc.arg(meeting_id) AND d.state='active' AND d.finished_at IS NULL
+)
+SELECT jsonb_build_object(
+ 'unfinished_total',(SELECT count(*) FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=sqlc.arg(workspace_id) AND d.meeting_id=sqlc.arg(meeting_id) AND d.finished_at IS NULL),
+ 'will_pause_total',(SELECT count(*) FROM active),
+ 'sample_operation_ids',COALESCE((SELECT jsonb_agg(sample.id ORDER BY sample.id) FROM (SELECT id FROM active ORDER BY id LIMIT 100) sample),'[]'::jsonb),
+ 'facts_hash',(SELECT encode(sha256(convert_to(COALESCE(string_agg(id::text||':'||revision::text,',' ORDER BY id),''),'UTF8')),'hex') FROM active)
+)::jsonb AS facts;
+
+-- name: PauseCockpitDirectoriesForCancellation :one
+WITH selected AS MATERIALIZED (
+ SELECT d.id FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=sqlc.arg(workspace_id) AND d.meeting_id=sqlc.arg(meeting_id) AND d.state='active' AND d.finished_at IS NULL ORDER BY d.id FOR UPDATE OF d
+), paused AS (
+ UPDATE cockpit_meeting_directory_operation o SET state='paused',revision=o.revision+1,updated_at=now()
+ FROM selected s WHERE o.workspace_id=sqlc.arg(workspace_id) AND o.meeting_id=sqlc.arg(meeting_id) AND o.id=s.id RETURNING o.id,o.revision
+), unscheduled AS (
+ UPDATE cockpit_meeting_directory_step s SET next_attempt_at=NULL,revision=s.revision+1,updated_at=now()
+ FROM paused p WHERE s.workspace_id=sqlc.arg(workspace_id) AND s.meeting_id=sqlc.arg(meeting_id) AND s.operation_id=p.id
+ AND s.state IN ('pending','retry_wait') AND s.next_attempt_at IS NOT NULL
+)
+SELECT jsonb_build_object(
+ 'paused_total',(SELECT count(*) FROM paused),
+ 'sample_operation_ids',COALESCE((SELECT jsonb_agg(sample.id ORDER BY sample.id) FROM (SELECT id FROM paused ORDER BY id LIMIT 100) sample),'[]'::jsonb),
+ 'facts_hash',(SELECT encode(sha256(convert_to(COALESCE(string_agg(id::text||':'||revision::text,',' ORDER BY id),''),'UTF8')),'hex') FROM paused)
+)::jsonb AS effects;

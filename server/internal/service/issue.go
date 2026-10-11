@@ -58,6 +58,9 @@ type IssueService struct {
 	CockpitMeetingLifecycleBackendReady   bool
 	CockpitMeetingTemplatesBackendReady   bool
 	CockpitMeetingDispositionBackendReady bool
+	CockpitMeetingDirectoryBackendReady   bool
+	CockpitDirectoryPreparer              cockpitnas.Preparation
+	CockpitDirectoryConfigurationError    string
 	CockpitArtifactCapturer               *artifactcapture.Capturer
 	CockpitArtifactStorage                storage.Storage
 	// Tests can shorten the total probe budget without changing production limits.

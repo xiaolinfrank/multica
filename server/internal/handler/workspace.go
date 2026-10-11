@@ -1330,6 +1330,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			run:  func() error { return qtx.DeleteCockpitMeetingPreparationByWorkspace(ctx, requester.WorkspaceID) },
 		},
 		{
+			name: "delete meeting directory preparation history",
+			run:  func() error { return qtx.DeleteCockpitDirectoryByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
 			name: "delete meeting lifecycle facts",
 			run:  func() error { return qtx.DeleteCockpitLifecycleByWorkspace(ctx, requester.WorkspaceID) },
 		},

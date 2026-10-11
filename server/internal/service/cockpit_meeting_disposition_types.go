@@ -72,20 +72,21 @@ type CockpitCancellationPreviewInput struct {
 }
 
 type CockpitCancellationPreview struct {
-	Intent               string                            `json:"intent"`
-	WorkspaceID          string                            `json:"workspace_id"`
-	MeetingID            string                            `json:"meeting_id"`
-	LifecycleRevision    int64                             `json:"lifecycle_revision"`
-	ContextToken         string                            `json:"context_token"`
-	Occurrence           CockpitOccurrenceView             `json:"occurrence"`
-	AffectedIssueTotal   int64                             `json:"affected_issue_total"`
-	UnselectedIssueTotal int64                             `json:"unselected_issue_total"`
-	ActiveRunTotal       int64                             `json:"active_run_total"`
-	UnselectedRunTotal   int64                             `json:"unselected_run_total"`
-	Effects              []CockpitPreparationPreviewEffect `json:"effects"`
-	SelectedTotal        int32                             `json:"selected_total"`
-	CanConfirm           bool                              `json:"can_confirm"`
-	BlockedReasons       []string                          `json:"blocked_reasons"`
+	DirectoryImpact      *CockpitDirectoryCancellationImpact `json:"directory_impact"`
+	Intent               string                              `json:"intent"`
+	WorkspaceID          string                              `json:"workspace_id"`
+	MeetingID            string                              `json:"meeting_id"`
+	LifecycleRevision    int64                               `json:"lifecycle_revision"`
+	ContextToken         string                              `json:"context_token"`
+	Occurrence           CockpitOccurrenceView               `json:"occurrence"`
+	AffectedIssueTotal   int64                               `json:"affected_issue_total"`
+	UnselectedIssueTotal int64                               `json:"unselected_issue_total"`
+	ActiveRunTotal       int64                               `json:"active_run_total"`
+	UnselectedRunTotal   int64                               `json:"unselected_run_total"`
+	Effects              []CockpitPreparationPreviewEffect   `json:"effects"`
+	SelectedTotal        int32                               `json:"selected_total"`
+	CanConfirm           bool                                `json:"can_confirm"`
+	BlockedReasons       []string                            `json:"blocked_reasons"`
 }
 
 type CockpitCancellationInput struct {
@@ -107,6 +108,7 @@ type CockpitMeetingArchiveView struct {
 }
 
 type CockpitMeetingPendingCounts struct {
+	DirectoryOperations     int64 `json:"directory_operations"`
 	MinutesReview           int64 `json:"minutes_review"`
 	DraftActions            int64 `json:"draft_actions"`
 	ActivePreparationIssues int64 `json:"active_preparation_issues"`
@@ -137,4 +139,16 @@ type CockpitMeetingOperationBasis struct {
 	CurrentOperation  *CockpitPreparationOperationHeader `json:"current_operation"`
 	Targets           []IssueOperationTarget             `json:"targets"`
 	TargetsTotal      int64                              `json:"targets_total"`
+}
+
+type CockpitDirectoryCancellationImpact struct {
+	UnfinishedTotal    int64    `json:"unfinished_total"`
+	WillPauseTotal     int64    `json:"will_pause_total"`
+	SampleOperationIDs []string `json:"sample_operation_ids"`
+	FactsHash          string   `json:"facts_hash"`
+}
+type CockpitDirectoryCancellationEffect struct {
+	PausedTotal        int64    `json:"paused_total"`
+	SampleOperationIDs []string `json:"sample_operation_ids"`
+	FactsHash          string   `json:"facts_hash"`
 }

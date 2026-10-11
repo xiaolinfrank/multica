@@ -443,7 +443,7 @@ func (q *Queries) GetCockpitAgendaReference(ctx context.Context, arg GetCockpitA
 }
 
 const getCockpitLifecycleCommand = `-- name: GetCockpitLifecycleCommand :one
-SELECT workspace_id, meeting_id, command_key, kind, actor_id, request_hash, revision, agenda_revision, agenda_id, reference_id, issue_id, receipt, created_at, operation_id, effect_id FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3
+SELECT workspace_id, meeting_id, command_key, kind, actor_id, request_hash, revision, agenda_revision, agenda_id, reference_id, issue_id, receipt, created_at, operation_id, effect_id, actor_type, directory_operation_id, directory_step_id FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3
 `
 
 type GetCockpitLifecycleCommandParams struct {
@@ -471,6 +471,9 @@ func (q *Queries) GetCockpitLifecycleCommand(ctx context.Context, arg GetCockpit
 		&i.CreatedAt,
 		&i.OperationID,
 		&i.EffectID,
+		&i.ActorType,
+		&i.DirectoryOperationID,
+		&i.DirectoryStepID,
 	)
 	return i, err
 }
@@ -782,8 +785,9 @@ func (q *Queries) ListCockpitAgendaReferences(ctx context.Context, arg ListCockp
 }
 
 const listCockpitLifecycleCommands = `-- name: ListCockpitLifecycleCommands :many
-SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.created_at,COALESCE(u.name,'')::text AS actor_name
-FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id
+SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.actor_type,c.directory_operation_id,c.directory_step_id,c.created_at,CASE WHEN c.actor_type='agent' THEN COALESCE(actor_agent.name,'') ELSE COALESCE(u.name,'') END::text AS actor_name
+FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id AND c.actor_type='member'
+LEFT JOIN agent actor_agent ON actor_agent.id=c.actor_id AND actor_agent.workspace_id=c.workspace_id AND c.actor_type='agent'
 WHERE c.workspace_id=$1 AND c.meeting_id=$2
  AND ($3::uuid IS NULL OR (c.created_at,c.command_key)<($4::timestamptz,$3))
 ORDER BY c.created_at DESC,c.command_key DESC LIMIT $5
@@ -798,20 +802,23 @@ type ListCockpitLifecycleCommandsParams struct {
 }
 
 type ListCockpitLifecycleCommandsRow struct {
-	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
-	MeetingID      pgtype.UUID        `json:"meeting_id"`
-	CommandKey     pgtype.UUID        `json:"command_key"`
-	Kind           string             `json:"kind"`
-	ActorID        pgtype.UUID        `json:"actor_id"`
-	Revision       int64              `json:"revision"`
-	AgendaRevision int64              `json:"agenda_revision"`
-	AgendaID       pgtype.UUID        `json:"agenda_id"`
-	ReferenceID    pgtype.UUID        `json:"reference_id"`
-	IssueID        pgtype.UUID        `json:"issue_id"`
-	OperationID    pgtype.UUID        `json:"operation_id"`
-	EffectID       pgtype.UUID        `json:"effect_id"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	ActorName      string             `json:"actor_name"`
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	CommandKey           pgtype.UUID        `json:"command_key"`
+	Kind                 string             `json:"kind"`
+	ActorID              pgtype.UUID        `json:"actor_id"`
+	Revision             int64              `json:"revision"`
+	AgendaRevision       int64              `json:"agenda_revision"`
+	AgendaID             pgtype.UUID        `json:"agenda_id"`
+	ReferenceID          pgtype.UUID        `json:"reference_id"`
+	IssueID              pgtype.UUID        `json:"issue_id"`
+	OperationID          pgtype.UUID        `json:"operation_id"`
+	EffectID             pgtype.UUID        `json:"effect_id"`
+	ActorType            string             `json:"actor_type"`
+	DirectoryOperationID pgtype.UUID        `json:"directory_operation_id"`
+	DirectoryStepID      pgtype.UUID        `json:"directory_step_id"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	ActorName            string             `json:"actor_name"`
 }
 
 func (q *Queries) ListCockpitLifecycleCommands(ctx context.Context, arg ListCockpitLifecycleCommandsParams) ([]ListCockpitLifecycleCommandsRow, error) {
@@ -842,6 +849,9 @@ func (q *Queries) ListCockpitLifecycleCommands(ctx context.Context, arg ListCock
 			&i.IssueID,
 			&i.OperationID,
 			&i.EffectID,
+			&i.ActorType,
+			&i.DirectoryOperationID,
+			&i.DirectoryStepID,
 			&i.CreatedAt,
 			&i.ActorName,
 		); err != nil {

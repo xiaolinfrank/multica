@@ -447,74 +447,6 @@ func (h *Handler) meetingBaseDir(
 	return plan, nil
 }
 
-// ensureMeetingBase creates the folders between root and dir that are not
-// there yet, one level at a time.
-//
-// Root itself is never created. Everything below it is fair game: an archive
-// sub-item that nobody has made a folder for is an ordinary state of a share
-// that IS mounted, and refusing to file a meeting over it would send someone
-// to Finder to create one empty directory.
-func ensureMeetingBase(root, dir string) error {
-	archive, err := openMeetingArchive(root)
-	if err != nil {
-		return err
-	}
-	defer archive.close()
-	_, err = archive.directory(dir, true)
-	return err
-}
-
-// createMeetingDir creates one folder under base and returns its path.
-//
-// The name is sanitised to a single component and the result is re-checked
-// against base after cleaning, so a title full of separators still cannot
-// address anything outside the folder the board configured. Creating a folder
-// that already exists is success: provisioning is re-runnable.
-func createMeetingDir(base, name string) (string, error) {
-	component := sanitizeMeetingFolderName(name)
-	if component == "" {
-		return "", errors.New("meeting folder name is empty")
-	}
-	archive, err := openMeetingArchive(base)
-	if err != nil {
-		return "", err
-	}
-	defer archive.close()
-	dir, err := archive.directory(base, false)
-	if err != nil {
-		return "", err
-	}
-	child, err := dir.child(component, true)
-	if err != nil {
-		return "", err
-	}
-	return child.path, child.verify()
-}
-
-// meetingSubdirs are the drawers every meeting folder is given. Three fixed
-// names, so material lands in the same place whoever files it and whoever
-// goes looking for it a year later knows where to look.
-var meetingSubdirs = []string{"会议纪要与录音转写", "会议材料", "照片"}
-
-// createMeetingSubdirs fills a meeting folder with its drawers.
-//
-// Re-runnable like the folder itself: drawers that are already there are
-// left alone, and one that was renamed or removed by hand comes back. The
-// error names what could not be created rather than stopping at the first
-// failure — a share that half-answers should report both.
-func createMeetingSubdirs(dir string) error {
-	archive, err := openMeetingArchive(dir)
-	if err != nil {
-		return err
-	}
-	defer archive.close()
-	base, err := archive.directory(dir, false)
-	if err != nil {
-		return err
-	}
-	return base.createSubdirs()
-}
-
 // ---------------------------------------------------------------------------
 // Destination preview
 // ---------------------------------------------------------------------------
@@ -711,10 +643,13 @@ type CockpitMeetingProvisionResponse struct {
 	// Human-readable reason the task or the folder is missing. Empty on
 	// success; a filled one is not an HTTP error — the meeting itself is fine
 	// and the missing part can be retried.
-	TaskError  string `json:"task_error"`
-	Dir        string `json:"dir"`
-	DirCreated bool   `json:"dir_created"`
-	DirError   string `json:"dir_error"`
+	TaskError            string `json:"task_error"`
+	Dir                  string `json:"dir"`
+	DirCreated           bool   `json:"dir_created"`
+	DirError             string `json:"dir_error"`
+	DirErrorCode         string `json:"dir_error_code"`
+	DirectoryOperationID string `json:"directory_operation_id"`
+	DirectoryState       string `json:"directory_state"`
 }
 
 func boolOrDefault(v *bool, fallback bool) bool {
@@ -845,23 +780,38 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 				}
 			}
 		}
+		// An existing binding is stable across title changes. Explicit legacy
+		// destination fields still describe a new proposal, never a write root.
+		target := meeting.NasDir
+		explicitTarget := req.BaseDir != nil && strings.TrimSpace(*req.BaseDir) != "" || req.FolderName != nil && strings.TrimSpace(*req.FolderName) != ""
+		if target != "" && !explicitTarget {
+			resp.DirError = ""
+		}
 		if resp.DirError == "" {
-			name := meetingFolderName(meeting)
-			if req.FolderName != nil && strings.TrimSpace(*req.FolderName) != "" {
-				name = strings.TrimSpace(*req.FolderName)
+			if target == "" || explicitTarget {
+				name := meetingFolderName(meeting)
+				if req.FolderName != nil && strings.TrimSpace(*req.FolderName) != "" {
+					name = strings.TrimSpace(*req.FolderName)
+				}
+				name = sanitizeMeetingFolderName(name)
+				if name == "" {
+					resp.DirError = "meeting folder name is empty"
+				} else {
+					target = filepath.Join(plan.Dir, name)
+				}
 			}
-			if created, subErr, dirErr := provisionMeetingArchive(plan, name); dirErr != nil {
-				resp.DirError = dirErr.Error()
-			} else {
-				dir = created
-				resp.Dir = created
-				resp.DirCreated = true
-				// Not fatal: the folder is what the register points at, and a
-				// drawer that is missing is one anyone can add in Finder.
-				if subErr != nil {
-					resp.DirError = subErr.Error()
-					slog.Warn("createMeetingSubdirs failed",
-						append(logger.RequestAttrs(r), "error", subErr, "dir", created)...)
+			if resp.DirError == "" {
+				result := h.provisionLegacyCockpitDirectory(r, cc, meeting.ID, target)
+				resp.Dir, resp.DirCreated, resp.DirError = result.Directory, result.BaseReady, result.ErrorMessage
+				resp.DirErrorCode, resp.DirectoryOperationID, resp.DirectoryState = result.ErrorCode, result.OperationID, result.State
+				// The service alone owns binding CAS. Never repeat its write
+				// outside that transaction, even if a legacy request retries.
+				refreshed, readErr := h.Queries.GetCockpitMeeting(ctx, db.GetCockpitMeetingParams{ID: meeting.ID, WorkspaceID: cc.workspaceID})
+				if readErr != nil {
+					resp.DirError = "Directory work may have changed; reload the meeting to confirm its binding."
+				} else {
+					meeting = refreshed
+					dir = meeting.NasDir
 				}
 			}
 		}
@@ -893,18 +843,7 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 	}
 
 	// --- what the board remembers ---------------------------------------
-	if dir != meeting.NasDir && dir != "" {
-		updated, err := h.Queries.UpdateCockpitMeeting(ctx, db.UpdateCockpitMeetingParams{
-			ID:          meeting.ID,
-			WorkspaceID: cc.workspaceID,
-			NasDir:      pgtype.Text{String: dir, Valid: true},
-		})
-		if err != nil {
-			slog.Warn("UpdateCockpitMeeting nas_dir failed", append(logger.RequestAttrs(r), "error", err)...)
-		} else {
-			meeting = updated
-		}
-	}
+
 	if boolOrDefault(req.Remember, true) && (projectID.Valid || moduleID.Valid) {
 		params := db.UpdateCockpitParams{ID: cc.cockpit.ID, WorkspaceID: cc.workspaceID}
 		params.MeetingProjectID = projectID
@@ -2008,9 +1947,27 @@ type CockpitMeetingImportSkip struct {
 	Reason string `json:"reason"`
 }
 
+type CockpitMeetingImportDirectoryResult struct {
+	Name                 string `json:"name"`
+	MeetingID            string `json:"meeting_id"`
+	DirectoryOperationID string `json:"directory_operation_id"`
+	DirectoryState       string `json:"directory_state"`
+	DirCreated           bool   `json:"dir_created"`
+	DirError             string `json:"dir_error"`
+	DirErrorCode         string `json:"dir_error_code"`
+}
+
+type CockpitMeetingImportTaskError struct {
+	Name      string `json:"name"`
+	MeetingID string `json:"meeting_id"`
+	Error     string `json:"error"`
+}
+
 type CockpitMeetingImportResponse struct {
-	Meetings []CockpitMeetingResponse      `json:"meetings"`
-	Issues   []CockpitMeetingIssueResponse `json:"issues"`
+	TaskErrors       []CockpitMeetingImportTaskError       `json:"task_errors"`
+	DirectoryResults []CockpitMeetingImportDirectoryResult `json:"directory_results"`
+	Meetings         []CockpitMeetingResponse              `json:"meetings"`
+	Issues           []CockpitMeetingIssueResponse         `json:"issues"`
 	// Folders that were asked for and not imported, each with why. Reported
 	// rather than failing the batch: one folder that disappeared between the
 	// scan and the import must not cost the other nine.
@@ -2111,9 +2068,11 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 	codePrefix := h.meetingNodeCode(ctx, cc, nodeID)
 	createTask := req.CreateTask != nil && *req.CreateTask
 	resp := CockpitMeetingImportResponse{
-		Meetings: []CockpitMeetingResponse{},
-		Issues:   []CockpitMeetingIssueResponse{},
-		Skipped:  []CockpitMeetingImportSkip{},
+		TaskErrors:       []CockpitMeetingImportTaskError{},
+		DirectoryResults: []CockpitMeetingImportDirectoryResult{},
+		Meetings:         []CockpitMeetingResponse{},
+		Issues:           []CockpitMeetingIssueResponse{},
+		Skipped:          []CockpitMeetingImportSkip{},
 	}
 
 	for _, item := range req.Items {
@@ -2165,7 +2124,6 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			}
 			cc = initialized
 		}
-		subErr := child.createSubdirs()
 		verifyErr := child.verify()
 		_ = child.file.Close()
 		if verifyErr != nil {
@@ -2195,13 +2153,8 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 		meeting := created.Meeting
 		recorded[path] = true
 
-		// An adopted folder gets the same drawers a newly created one does,
-		// so a meeting filed by hand and one filed by the board look alike.
-		// Not fatal, for the same reason it is not when creating the folder.
-		if subErr != nil {
-			slog.Warn("createMeetingSubdirs for an imported folder failed",
-				append(logger.RequestAttrs(r), "error", subErr, "dir", path)...)
-		}
+		result := h.provisionLegacyCockpitDirectory(r, cc, meeting.ID, path)
+		resp.DirectoryResults = append(resp.DirectoryResults, CockpitMeetingImportDirectoryResult{Name: item.Name, MeetingID: uuidToString(meeting.ID), DirectoryOperationID: result.OperationID, DirectoryState: result.State, DirCreated: result.BaseReady, DirError: result.ErrorMessage, DirErrorCode: result.ErrorCode})
 
 		row := cockpitMeetingToResponse(meeting)
 		resp.Meetings = append(resp.Meetings, row)
@@ -2216,7 +2169,7 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 				dir:        path,
 			})
 			if taskErr != "" {
-				resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, taskErr})
+				resp.TaskErrors = append(resp.TaskErrors, CockpitMeetingImportTaskError{Name: item.Name, MeetingID: uuidToString(meeting.ID), Error: taskErr})
 			} else if link != nil {
 				resp.Issues = append(resp.Issues, *link)
 				// Another client may already have appended a reference after

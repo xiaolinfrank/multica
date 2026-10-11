@@ -59,6 +59,8 @@ func rejectTemporarilyDisabledUser(w http.ResponseWriter, r *http.Request, userI
 func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATVerifier, cfSigner *auth.CloudFrontSigner) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Reauthentication never inherits a task identity from an outer context.
+			r = r.WithContext(context.WithValue(r.Context(), taskTokenIdentityKey{}, TaskTokenIdentity{}))
 			// X-Actor-Source is server-set only — any value supplied by
 			// the client is untrusted and discarded before the auth
 			// branches run. Only the mat_ branch below re-sets it. This
@@ -133,6 +135,9 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 				// this header is allowed to carry — strip anything else a
 				// client tried to send.
 				r.Header.Set("X-Actor-Source", "task_token")
+				r = r.WithContext(context.WithValue(r.Context(), taskTokenIdentityKey{}, TaskTokenIdentity{
+					ID: tt.ID, WorkspaceID: tt.WorkspaceID, UserID: tt.UserID, AgentID: tt.AgentID, TaskID: tt.TaskID,
+				}))
 				next.ServeHTTP(w, r)
 				return
 			}

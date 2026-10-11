@@ -12,18 +12,19 @@ type IssueStatusOperationField struct {
 	AllowedCategories []string `json:"allowed_categories"`
 }
 type IssueOperationTarget struct {
-	Kind        string `json:"kind"`
-	IssueID     string `json:"issue_id,omitempty"`
-	NodeID      string `json:"node_id,omitempty"`
-	MeetingID   string `json:"meeting_id,omitempty"`
-	ActionID    string `json:"action_id,omitempty"`
-	ArtifactID  string `json:"artifact_id,omitempty"`
-	VersionID   string `json:"version_id,omitempty"`
-	RequestID   string `json:"request_id,omitempty"`
-	OperationID string `json:"operation_id,omitempty"`
-	View        string `json:"view,omitempty"`
-	Label       string `json:"label"`
-	Purpose     string `json:"purpose"`
+	Kind                 string `json:"kind"`
+	IssueID              string `json:"issue_id,omitempty"`
+	NodeID               string `json:"node_id,omitempty"`
+	MeetingID            string `json:"meeting_id,omitempty"`
+	ActionID             string `json:"action_id,omitempty"`
+	ArtifactID           string `json:"artifact_id,omitempty"`
+	VersionID            string `json:"version_id,omitempty"`
+	RequestID            string `json:"request_id,omitempty"`
+	OperationID          string `json:"operation_id,omitempty"`
+	DirectoryOperationID string `json:"directory_operation_id,omitempty"`
+	View                 string `json:"view,omitempty"`
+	Label                string `json:"label"`
+	Purpose              string `json:"purpose"`
 }
 type IssueOperationBasis struct {
 	IssueID       string                    `json:"issue_id"`

@@ -933,6 +933,7 @@ type CockpitMeeting struct {
 	ArchivedAt         pgtype.Timestamptz `json:"archived_at"`
 	ArchivedBy         pgtype.UUID        `json:"archived_by"`
 	ArchivedReason     string             `json:"archived_reason"`
+	NasDirRevision     int64              `json:"nas_dir_revision"`
 }
 
 type CockpitMeetingAction struct {
@@ -999,6 +1000,97 @@ type CockpitMeetingAgendaReference struct {
 	RemovedBy   pgtype.UUID        `json:"removed_by"`
 }
 
+type CockpitMeetingDirectoryAttempt struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	OperationID     pgtype.UUID        `json:"operation_id"`
+	StepID          pgtype.UUID        `json:"step_id"`
+	AttemptNumber   int32              `json:"attempt_number"`
+	GrantCommandKey pgtype.UUID        `json:"grant_command_key"`
+	GrantRevision   int64              `json:"grant_revision"`
+	LeaseToken      pgtype.UUID        `json:"lease_token"`
+	State           string             `json:"state"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	Outcome         pgtype.Text        `json:"outcome"`
+	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
+	ErrorCode       string             `json:"error_code"`
+	ErrorMessage    string             `json:"error_message"`
+	Receipt         []byte             `json:"receipt"`
+	LateReceipt     []byte             `json:"late_receipt"`
+	LateObservedAt  pgtype.Timestamptz `json:"late_observed_at"`
+}
+
+type CockpitMeetingDirectoryOperation struct {
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	MeetingID               pgtype.UUID        `json:"meeting_id"`
+	CreationCommandKey      pgtype.UUID        `json:"creation_command_key"`
+	RequestHash             string             `json:"request_hash"`
+	PlanHash                string             `json:"plan_hash"`
+	Revision                int64              `json:"revision"`
+	State                   string             `json:"state"`
+	RootID                  pgtype.UUID        `json:"root_id"`
+	RootPath                string             `json:"root_path"`
+	PrepareSubpath          string             `json:"prepare_subpath"`
+	RelativeDirectory       string             `json:"relative_directory"`
+	Directory               string             `json:"directory"`
+	TargetHash              string             `json:"target_hash"`
+	RootConfigHash          string             `json:"root_config_hash"`
+	ObservedNasDir          string             `json:"observed_nas_dir"`
+	ObservedBindingRevision int64              `json:"observed_binding_revision"`
+	AcceptedBindingRevision pgtype.Int8        `json:"accepted_binding_revision"`
+	BindAfterBase           bool               `json:"bind_after_base"`
+	BindingResult           string             `json:"binding_result"`
+	CreatedByType           string             `json:"created_by_type"`
+	CreatedBy               pgtype.UUID        `json:"created_by"`
+	CredentialOwnerUserID   pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID       pgtype.UUID        `json:"authorizing_user_id"`
+	SourceRunID             pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID           pgtype.UUID        `json:"source_issue_id"`
+	SourceAgentID           pgtype.UUID        `json:"source_agent_id"`
+	SourceRuntimeID         pgtype.UUID        `json:"source_runtime_id"`
+	SourceTaskTokenID       pgtype.UUID        `json:"source_task_token_id"`
+	SourceRelationKind      string             `json:"source_relation_kind"`
+	SourceAgendaReferenceID pgtype.UUID        `json:"source_agenda_reference_id"`
+	SourcePrincipal         []byte             `json:"source_principal"`
+	LastGrantCommandKey     pgtype.UUID        `json:"last_grant_command_key"`
+	ResponsibleUserID       pgtype.UUID        `json:"responsible_user_id"`
+	Input                   []byte             `json:"input"`
+	Receipt                 []byte             `json:"receipt"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	FinishedAt              pgtype.Timestamptz `json:"finished_at"`
+}
+
+type CockpitMeetingDirectoryStep struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	OperationID     pgtype.UUID        `json:"operation_id"`
+	Position        int32              `json:"position"`
+	ParentStepID    pgtype.UUID        `json:"parent_step_id"`
+	Kind            string             `json:"kind"`
+	Label           string             `json:"label"`
+	RelativePath    string             `json:"relative_path"`
+	PathHash        string             `json:"path_hash"`
+	State           string             `json:"state"`
+	Revision        int64              `json:"revision"`
+	GrantCommandKey pgtype.UUID        `json:"grant_command_key"`
+	GrantRevision   int64              `json:"grant_revision"`
+	AttemptCount    int32              `json:"attempt_count"`
+	LastAttemptID   pgtype.UUID        `json:"last_attempt_id"`
+	NextAttemptAt   pgtype.Timestamptz `json:"next_attempt_at"`
+	LeaseToken      pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt  pgtype.Timestamptz `json:"lease_expires_at"`
+	LastObservedAt  pgtype.Timestamptz `json:"last_observed_at"`
+	Outcome         pgtype.Text        `json:"outcome"`
+	LastErrorCode   string             `json:"last_error_code"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type CockpitMeetingIssue struct {
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	MeetingID   pgtype.UUID        `json:"meeting_id"`
@@ -1010,21 +1102,24 @@ type CockpitMeetingIssue struct {
 }
 
 type CockpitMeetingLifecycleCommand struct {
-	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
-	MeetingID      pgtype.UUID        `json:"meeting_id"`
-	CommandKey     pgtype.UUID        `json:"command_key"`
-	Kind           string             `json:"kind"`
-	ActorID        pgtype.UUID        `json:"actor_id"`
-	RequestHash    string             `json:"request_hash"`
-	Revision       int64              `json:"revision"`
-	AgendaRevision int64              `json:"agenda_revision"`
-	AgendaID       pgtype.UUID        `json:"agenda_id"`
-	ReferenceID    pgtype.UUID        `json:"reference_id"`
-	IssueID        pgtype.UUID        `json:"issue_id"`
-	Receipt        []byte             `json:"receipt"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	OperationID    pgtype.UUID        `json:"operation_id"`
-	EffectID       pgtype.UUID        `json:"effect_id"`
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	CommandKey           pgtype.UUID        `json:"command_key"`
+	Kind                 string             `json:"kind"`
+	ActorID              pgtype.UUID        `json:"actor_id"`
+	RequestHash          string             `json:"request_hash"`
+	Revision             int64              `json:"revision"`
+	AgendaRevision       int64              `json:"agenda_revision"`
+	AgendaID             pgtype.UUID        `json:"agenda_id"`
+	ReferenceID          pgtype.UUID        `json:"reference_id"`
+	IssueID              pgtype.UUID        `json:"issue_id"`
+	Receipt              []byte             `json:"receipt"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	OperationID          pgtype.UUID        `json:"operation_id"`
+	EffectID             pgtype.UUID        `json:"effect_id"`
+	ActorType            string             `json:"actor_type"`
+	DirectoryOperationID pgtype.UUID        `json:"directory_operation_id"`
+	DirectoryStepID      pgtype.UUID        `json:"directory_step_id"`
 }
 
 type CockpitMeetingNode struct {

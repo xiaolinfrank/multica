@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -158,6 +159,18 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 		return plan, e
 	}
 	tokenFacts := []any{x.meeting.LifecycleRevision, x.meeting.AgendaRevision, plan.View.AffectedIssueTotal, plan.View.ActiveRunTotal}
+	if intent == "cancel" {
+		facts, err := q.ReadCockpitCancellationDirectoryFacts(ctx, db.ReadCockpitCancellationDirectoryFactsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+		if err != nil {
+			return plan, err
+		}
+		var impact CockpitDirectoryCancellationImpact
+		if err := json.Unmarshal(facts, &impact); err != nil {
+			return plan, err
+		}
+		plan.View.DirectoryImpact = &impact
+		tokenFacts = append(tokenFacts, impact)
+	}
 	selectedIssues := map[pgtype.UUID]bool{}
 	selectedActiveRuns := int64(0)
 	for _, choice := range in.Issues {
@@ -349,6 +362,17 @@ func (s *IssueService) saveMeetingCancellation(ctx context.Context, p CockpitLif
 	occurrence := lifecycleOccurrence(x.meeting)
 	receipt.Occurrence = &occurrence
 	receipt.Reason = in.Reason
+	if !appendPlan {
+		facts, err := q.PauseCockpitDirectoriesForCancellation(ctx, db.PauseCockpitDirectoriesForCancellationParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+		if err != nil {
+			return out, err
+		}
+		var effect CockpitDirectoryCancellationEffect
+		if err := json.Unmarshal(facts, &effect); err != nil {
+			return out, err
+		}
+		receipt.DirectoryEffect = &effect
+	}
 	if e = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, RequestHash: c.hash, Reason: in.Reason, PreviousOccurrence: &previous, Occurrence: &occurrence, Preparation: &receipt}); e != nil {
 		return out, e
 	}

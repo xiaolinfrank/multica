@@ -194,6 +194,7 @@ type CockpitLifecycleReceipt struct {
 	Archive            *CockpitMeetingArchiveView        `json:"archive"`
 	PreviousArchive    *CockpitMeetingArchiveView        `json:"previous_archive"`
 	Preparation        *CockpitPreparationCommandReceipt `json:"preparation"`
+	Directory          *CockpitDirectoryCommandReceipt   `json:"directory"`
 }
 type CockpitLifecycleCommandResult struct {
 	WorkspaceID string                        `json:"workspace_id"`
@@ -205,17 +206,20 @@ type CockpitLifecycleCommandResult struct {
 	Current     CockpitMeetingLifecycleHeader `json:"current"`
 }
 type CockpitLifecycleCommandMetadata struct {
-	CommandKey  string  `json:"command_key"`
-	Action      string  `json:"action"`
-	ActorID     string  `json:"actor_id"`
-	ActorName   string  `json:"actor_name"`
-	CreatedAt   string  `json:"created_at"`
-	Revision    int64   `json:"revision"`
-	AgendaID    *string `json:"agenda_id"`
-	ReferenceID *string `json:"reference_id"`
-	IssueID     *string `json:"issue_id"`
-	OperationID *string `json:"operation_id"`
-	EffectID    *string `json:"effect_id"`
+	CommandKey           string  `json:"command_key"`
+	Action               string  `json:"action"`
+	ActorID              string  `json:"actor_id"`
+	ActorType            string  `json:"actor_type"`
+	ActorName            string  `json:"actor_name"`
+	CreatedAt            string  `json:"created_at"`
+	Revision             int64   `json:"revision"`
+	AgendaID             *string `json:"agenda_id"`
+	ReferenceID          *string `json:"reference_id"`
+	IssueID              *string `json:"issue_id"`
+	OperationID          *string `json:"operation_id"`
+	EffectID             *string `json:"effect_id"`
+	DirectoryOperationID *string `json:"directory_operation_id"`
+	DirectoryStepID      *string `json:"directory_step_id"`
 }
 type CockpitLifecycleCommandPage struct {
 	WorkspaceID string                            `json:"workspace_id"`

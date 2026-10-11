@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_directory_operation_target_idx ON cockpit_meeting_directory_operation(workspace_id,meeting_id,root_id,target_hash) WHERE finished_at IS NULL;

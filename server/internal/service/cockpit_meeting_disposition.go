@@ -165,6 +165,12 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "artifact", ArtifactID: util.UUIDToString(r.ArtifactID), Label: r.Label, Purpose: r.Purpose})
 			}
 		}
+		if r.DirectoryOperationID.Valid {
+			out.Delete = operationField("blocked", "meeting_directory_history")
+			if len(out.Targets) < 3 {
+				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "resources", DirectoryOperationID: util.UUIDToString(r.DirectoryOperationID), Label: r.Label, Purpose: r.Purpose})
+			}
+		}
 		if r.OperationID.Valid {
 			out.Delete = operationField("blocked", "meeting_preparation_history")
 			if len(out.Targets) < 3 {

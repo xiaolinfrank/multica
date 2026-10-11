@@ -741,12 +741,18 @@ func main() {
 	nasFiles, nasConfigErr := cockpitnas.New(os.Getenv("COCKPIT_NAS_EXPORT_ROOTS"))
 	if nasConfigErr != nil {
 		slog.Error("cockpit NAS export disabled: invalid root configuration", "error", nasConfigErr)
+		enableCockpitMeetingDirectoryRuntime(h, nil, "prepare_configuration_invalid")
 	} else {
 		h.IssueService.CockpitNASExporter = nasFiles
+		enableCockpitMeetingDirectoryRuntime(h, nasFiles, "")
 		if len(nasFiles.RootIDs()) > 0 {
 			go service.NewCockpitMinutesExportWorker(queries, nasFiles, bus).Run(sweepCtx)
 			slog.Info("cockpit NAS export worker enabled", "roots", len(nasFiles.RootIDs()))
 		}
+	}
+	if h.IssueService.CockpitMeetingDirectoryBackendReady {
+		go h.IssueService.RunCockpitDirectoryWorker(sweepCtx)
+		slog.Info("cockpit meeting directory preparation enabled")
 	}
 	autopilotCtx, autopilotCancel := context.WithCancel(context.Background())
 	telemetryWorker := selfhosttelemetry.New(pool, version, telemetryConfig, slog.Default())

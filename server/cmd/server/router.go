@@ -2263,6 +2263,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// several fresh names in one save.
 				r.Get("/directory", h.ListCockpitDirectory)
 				r.Get("/directory/page", h.ListCockpitDirectoryPage)
+				r.Get("/directory-roots", h.ListCockpitDirectoryRoots)
+				r.Get("/directory-roots/{rootId}", h.GetCockpitDirectoryRoot)
 				r.Put("/directory", h.UpsertCockpitDirectory)
 				r.Delete("/directory", h.DeleteCockpitDirectoryEntry)
 				r.Get("/meeting-templates", h.ListCockpitMeetingTemplates)
@@ -2283,6 +2285,19 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/meetings", h.CreateCockpitMeeting)
 				r.Get("/meetings", h.ListCockpitMeetingRegister)
 				r.Route("/meetings/{meetingId}", func(r chi.Router) {
+					r.Get("/directory-preparation", h.GetCockpitMeetingDirectory)
+					r.Get("/directory-preparations", h.ListCockpitDirectoryOperations)
+					r.Post("/directory-preparations/preview", h.PreviewCockpitMeetingDirectory)
+					r.Post("/directory-preparations", h.CreateCockpitMeetingDirectory)
+					r.Route("/directory-preparations/{operationId}", func(r chi.Router) {
+						r.Get("/", h.GetCockpitDirectoryOperation)
+						r.Get("/steps", h.ListCockpitDirectorySteps)
+						r.Get("/steps/{stepId}/attempts", h.ListCockpitDirectoryAttempts)
+						r.Get("/steps/{stepId}/attempts/{attemptId}", h.GetCockpitDirectoryAttempt)
+						r.Post("/retry-preview", h.PreviewCockpitDirectoryRetry)
+						r.Post("/retry", h.RetryCockpitDirectoryOperation)
+						r.Post("/control", h.ControlCockpitDirectoryOperation)
+					})
 					r.Post("/template-applications/preview", h.PreviewCockpitTemplateApplication)
 					r.With(handler.RequireHumanActor).Post("/template-applications", h.CreateCockpitTemplateApplication)
 					r.Get("/preparation-operations", h.ListCockpitPreparationOperations)

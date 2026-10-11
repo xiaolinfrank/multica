@@ -956,8 +956,9 @@ func TestCockpitMeetingProvisionOpensTaskAndFolder(t *testing.T) {
 		"parties": "复星医药 / 明略科技",
 	})
 
+	h, _ := directoryHTTPHandler(t, wsID, root, true)
 	var resp CockpitMeetingProvisionResponse
-	testutil.Call(t, cockpitHandler(testHandler.ProvisionCockpitMeeting),
+	testutil.Call(t, cockpitHandler(h.ProvisionCockpitMeeting),
 		testutil.WithURLParams(
 			cockpitRequest(http.MethodPost, "/api/cockpit/meetings/"+meeting.ID+"/provision", wsID, map[string]any{
 				"project_id": project, "module_id": module,
@@ -1610,13 +1611,14 @@ func TestCockpitMeetingTaskTitle(t *testing.T) {
 // project with a collaboration space, the module folder, and the archive
 // sub-item that meeting material goes in.
 type meetingArchiveFixture struct {
-	wsID       string
-	project    string
-	module     string
-	node       string
-	root       string
-	moduleDir  string
-	archiveDir string
+	directoryHandler *Handler
+	wsID             string
+	project          string
+	module           string
+	node             string
+	root             string
+	moduleDir        string
+	archiveDir       string
 }
 
 func newMeetingArchiveFixture(t *testing.T, name string, makeArchiveDir bool) meetingArchiveFixture {
@@ -1644,13 +1646,14 @@ func newMeetingArchiveFixture(t *testing.T, name string, makeArchiveDir bool) me
 	dbfx.Cleanup(t, "DELETE FROM activity_log WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
 	dbfx.Cleanup(t, "DELETE FROM inbox_item WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
 	dbfx.Cleanup(t, "DELETE FROM issue_subscriber WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id = $1)", f.wsID)
+	f.directoryHandler, _ = directoryHTTPHandler(t, f.wsID, f.root, true)
 	return f
 }
 
 func (f meetingArchiveFixture) provision(t *testing.T, meetingID string, body map[string]any) CockpitMeetingProvisionResponse {
 	t.Helper()
 	var resp CockpitMeetingProvisionResponse
-	testutil.Call(t, cockpitHandler(testHandler.ProvisionCockpitMeeting),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ProvisionCockpitMeeting),
 		testutil.WithURLParams(
 			cockpitRequest(http.MethodPost, "/api/cockpit/meetings/"+meetingID+"/provision", f.wsID, body),
 			"meetingId", meetingID,
@@ -1803,7 +1806,7 @@ func TestCockpitMeetingImportFlagsWhatItGuessed(t *testing.T) {
 	}
 
 	var resp CockpitMeetingImportResponse
-	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ImportCockpitMeetingFolders),
 		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
 			"project_id": f.project, "module_id": f.module, "node_id": f.node,
 			"create_task": true,
@@ -1844,7 +1847,7 @@ func TestCockpitMeetingImportFlagsWhatItGuessed(t *testing.T) {
 
 	// Running the import again over the same folder must not file it twice.
 	var again CockpitMeetingImportResponse
-	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ImportCockpitMeetingFolders),
 		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
 			"project_id": f.project, "module_id": f.module, "node_id": f.node,
 			"items": []map[string]any{{"name": present, "meet_date": "2026-09-20", "title": "可信连接器"}},
@@ -1874,7 +1877,7 @@ func TestCockpitMeetingImportNumbersUnnumberedFolders(t *testing.T) {
 	}
 
 	var resp CockpitMeetingImportResponse
-	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ImportCockpitMeetingFolders),
 		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
 			"project_id": f.project, "module_id": f.module, "node_id": f.node,
 			"items": []map[string]any{
@@ -1914,7 +1917,7 @@ func TestCockpitMeetingImportGivesAdoptedFoldersTheirDrawers(t *testing.T) {
 	}
 
 	var resp CockpitMeetingImportResponse
-	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ImportCockpitMeetingFolders),
 		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
 			"project_id": f.project, "module_id": f.module, "node_id": f.node,
 			"items": []map[string]any{
@@ -1943,7 +1946,7 @@ func TestCockpitMeetingImportRefusesToLeaveTheArchiveFolder(t *testing.T) {
 	f := newMeetingArchiveFixture(t, "Cockpit meeting import escape", true)
 
 	var resp CockpitMeetingImportResponse
-	testutil.Call(t, cockpitHandler(testHandler.ImportCockpitMeetingFolders),
+	testutil.Call(t, cockpitHandler(f.directoryHandler.ImportCockpitMeetingFolders),
 		cockpitRequest(http.MethodPost, "/api/cockpit/meetings/import", f.wsID, map[string]any{
 			"project_id": f.project, "module_id": f.module, "node_id": f.node,
 			"items": []map[string]any{

@@ -22,6 +22,7 @@ type CockpitSurfaceQuery struct {
 	MeetingLifecycleAvailable                 bool `json:"-"`
 	MeetingTemplatesAvailable                 bool `json:"-"`
 	MeetingDispositionAvailable               bool `json:"-"`
+	MeetingDirectoryAvailable                 bool `json:"-"`
 }
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
@@ -32,11 +33,12 @@ type CockpitSurfaceScope struct {
 
 // Availability describes implemented services, not a user's write authority.
 type CockpitSurfaceCapabilities struct {
-	MeetingLifecycle   bool `json:"meeting_lifecycle"`
-	MeetingTemplates   bool `json:"meeting_templates"`
-	MeetingDisposition bool `json:"meeting_disposition"`
-	Artifacts          bool `json:"artifacts"`
-	Acceptance         bool `json:"acceptance"`
+	MeetingLifecycle            bool `json:"meeting_lifecycle"`
+	MeetingTemplates            bool `json:"meeting_templates"`
+	MeetingDisposition          bool `json:"meeting_disposition"`
+	MeetingDirectoryPreparation bool `json:"meeting_directory_preparation"`
+	Artifacts                   bool `json:"artifacts"`
+	Acceptance                  bool `json:"acceptance"`
 }
 type CockpitSurfaceContext struct {
 	WorkspaceID           string                     `json:"workspace_id"`
@@ -45,6 +47,7 @@ type CockpitSurfaceContext struct {
 	Actor                 CockpitOverviewActor       `json:"actor"`
 	HasMeetingLifecycle   bool                       `json:"has_meeting_lifecycle"`
 	HasMeetingPreparation bool                       `json:"has_meeting_preparation"`
+	HasDirectoryHistory   bool                       `json:"has_directory_history"`
 	HasMeetingWorkflows   bool                       `json:"has_meeting_workflows"`
 	HasStableBindings     bool                       `json:"has_stable_bindings"`
 	Capabilities          CockpitSurfaceCapabilities `json:"capabilities"`
@@ -90,11 +93,19 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	out.WorkspaceID = util.UUIDToString(p.WorkspaceID)
 	out.Scope = CockpitSurfaceScope{ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID)}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(p.ActorID), Role: member.Role, IsHuman: p.Human}
-	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable}
+	out.Capabilities = CockpitSurfaceCapabilities{Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable, MeetingDirectoryPreparation: p.MeetingDirectoryAvailable}
 	out.HasMeetingPreparation, err = q.HasCockpitMeetingPreparation(ctx, p.WorkspaceID)
 	if err != nil {
 		return out, err
 	}
+	directoryHistory, err := q.HasCockpitDirectoryWorkspaceHistory(ctx, p.WorkspaceID)
+	if err != nil {
+		return out, err
+	}
+	if !directoryHistory.Valid {
+		return out, fmt.Errorf("directory history could not be confirmed")
+	}
+	out.HasDirectoryHistory = directoryHistory.Bool
 	if p.ProjectID.Valid {
 		project, err := q.GetCockpitOverviewProject(ctx, db.GetCockpitOverviewProjectParams{WorkspaceID: p.WorkspaceID, ID: p.ProjectID})
 		if err != nil {

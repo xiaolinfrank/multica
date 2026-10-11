@@ -284,19 +284,20 @@ type CockpitPreparationControlInput struct {
 }
 
 type CockpitPreparationCommandReceipt struct {
-	OperationID           string                           `json:"operation_id"`
-	Kind                  string                           `json:"kind"`
-	Revision              int64                            `json:"revision"`
-	State                 string                           `json:"state"`
-	EffectIDs             []string                         `json:"effect_ids"`
-	EffectID              *string                          `json:"effect_id"`
-	Reason                string                           `json:"reason"`
-	RequestHash           string                           `json:"request_hash"`
-	Occurrence            *CockpitOccurrenceView           `json:"occurrence"`
-	ContextToken          string                           `json:"context_token"`
-	TemplateVersionID     *string                          `json:"template_version_id"`
-	Authorization         *CockpitPreparationAuthorization `json:"authorization"`
-	PreviousAuthorization *CockpitPreparationAuthorization `json:"previous_authorization"`
+	DirectoryEffect       *CockpitDirectoryCancellationEffect `json:"directory_effect"`
+	OperationID           string                              `json:"operation_id"`
+	Kind                  string                              `json:"kind"`
+	Revision              int64                               `json:"revision"`
+	State                 string                              `json:"state"`
+	EffectIDs             []string                            `json:"effect_ids"`
+	EffectID              *string                             `json:"effect_id"`
+	Reason                string                              `json:"reason"`
+	RequestHash           string                              `json:"request_hash"`
+	Occurrence            *CockpitOccurrenceView              `json:"occurrence"`
+	ContextToken          string                              `json:"context_token"`
+	TemplateVersionID     *string                             `json:"template_version_id"`
+	Authorization         *CockpitPreparationAuthorization    `json:"authorization"`
+	PreviousAuthorization *CockpitPreparationAuthorization    `json:"previous_authorization"`
 }
 
 type CockpitPreparationCommandResult struct {

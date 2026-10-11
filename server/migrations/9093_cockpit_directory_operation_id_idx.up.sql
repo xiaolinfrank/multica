@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_directory_operation_id_idx ON cockpit_meeting_directory_operation(id);

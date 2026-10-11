@@ -313,6 +313,60 @@ func (q *Queries) ListCockpitDispositionRuns(ctx context.Context, arg ListCockpi
 	return items, nil
 }
 
+const pauseCockpitDirectoriesForCancellation = `-- name: PauseCockpitDirectoriesForCancellation :one
+WITH selected AS MATERIALIZED (
+ SELECT d.id FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=$1 AND d.meeting_id=$2 AND d.state='active' AND d.finished_at IS NULL ORDER BY d.id FOR UPDATE OF d
+), paused AS (
+ UPDATE cockpit_meeting_directory_operation o SET state='paused',revision=o.revision+1,updated_at=now()
+ FROM selected s WHERE o.workspace_id=$1 AND o.meeting_id=$2 AND o.id=s.id RETURNING o.id,o.revision
+), unscheduled AS (
+ UPDATE cockpit_meeting_directory_step s SET next_attempt_at=NULL,revision=s.revision+1,updated_at=now()
+ FROM paused p WHERE s.workspace_id=$1 AND s.meeting_id=$2 AND s.operation_id=p.id
+ AND s.state IN ('pending','retry_wait') AND s.next_attempt_at IS NOT NULL
+)
+SELECT jsonb_build_object(
+ 'paused_total',(SELECT count(*) FROM paused),
+ 'sample_operation_ids',COALESCE((SELECT jsonb_agg(sample.id ORDER BY sample.id) FROM (SELECT id FROM paused ORDER BY id LIMIT 100) sample),'[]'::jsonb),
+ 'facts_hash',(SELECT encode(sha256(convert_to(COALESCE(string_agg(id::text||':'||revision::text,',' ORDER BY id),''),'UTF8')),'hex') FROM paused)
+)::jsonb AS effects
+`
+
+type PauseCockpitDirectoriesForCancellationParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+}
+
+func (q *Queries) PauseCockpitDirectoriesForCancellation(ctx context.Context, arg PauseCockpitDirectoriesForCancellationParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, pauseCockpitDirectoriesForCancellation, arg.WorkspaceID, arg.MeetingID)
+	var effects []byte
+	err := row.Scan(&effects)
+	return effects, err
+}
+
+const readCockpitCancellationDirectoryFacts = `-- name: ReadCockpitCancellationDirectoryFacts :one
+WITH active AS MATERIALIZED (
+ SELECT d.id,d.revision FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=$1 AND d.meeting_id=$2 AND d.state='active' AND d.finished_at IS NULL
+)
+SELECT jsonb_build_object(
+ 'unfinished_total',(SELECT count(*) FROM cockpit_meeting_directory_operation d WHERE d.workspace_id=$1 AND d.meeting_id=$2 AND d.finished_at IS NULL),
+ 'will_pause_total',(SELECT count(*) FROM active),
+ 'sample_operation_ids',COALESCE((SELECT jsonb_agg(sample.id ORDER BY sample.id) FROM (SELECT id FROM active ORDER BY id LIMIT 100) sample),'[]'::jsonb),
+ 'facts_hash',(SELECT encode(sha256(convert_to(COALESCE(string_agg(id::text||':'||revision::text,',' ORDER BY id),''),'UTF8')),'hex') FROM active)
+)::jsonb AS facts
+`
+
+type ReadCockpitCancellationDirectoryFactsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+}
+
+func (q *Queries) ReadCockpitCancellationDirectoryFacts(ctx context.Context, arg ReadCockpitCancellationDirectoryFactsParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, readCockpitCancellationDirectoryFacts, arg.WorkspaceID, arg.MeetingID)
+	var facts []byte
+	err := row.Scan(&facts)
+	return facts, err
+}
+
 const readCockpitDispositionAutomationFacts = `-- name: ReadCockpitDispositionAutomationFacts :many
 WITH requested AS (SELECT i.id,i.parent_issue_id FROM issue i WHERE i.workspace_id=$2 AND i.id=ANY($4::uuid[]))
 SELECT r.id,r.parent_issue_id,
