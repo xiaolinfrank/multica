@@ -56,9 +56,9 @@ test("applies a human preparation template across bounded pages, reconciles an u
     const preview = dialog.getByRole("region", { name: "Review the planned changes", exact: true });
     await expect(preview.getByText("27 selected items", { exact: true })).toBeVisible();
     await expect(preview.getByText("26 new objects", { exact: true })).toBeVisible(); await expect(preview.getByText("1 links to existing objects", { exact: true })).toBeVisible();
-    await expect(preview.locator("ul").last().locator(":scope > li")).toHaveCount(25);
+    await expect(preview.locator(":scope > ul > li")).toHaveCount(25);
     await preview.getByRole("button", { name: "Next page", exact: true }).click();
-    await expect(preview.locator("ul").last().locator(":scope > li")).toHaveCount(2);
+    await expect(preview.locator(":scope > ul > li")).toHaveCount(2);
 
     // Reopening keeps only user choices; the reviewer explicitly refreshes the preview.
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -68,11 +68,15 @@ test("applies a human preparation template across bounded pages, reconciles an u
     await page.getByRole("button", { name: "继续模板设置", exact: true }).click();
     await dialog.getByRole("button", { name: "核对将执行的变更", exact: true }).click();
     const chinesePreview = dialog.getByRole("region", { name: "核对将执行的变更", exact: true }); await expect(chinesePreview).toBeVisible();
-    await expect(chinesePreview.locator("ul").last().locator(":scope > li")).toHaveCount(25);
+    await expect(chinesePreview.locator(":scope > ul > li")).toHaveCount(25);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("meeting-preparation-preview-390-zh-dark.png"), animations: "disabled" });
+    const paginationBefore = await chinesePreview.getByRole("button", { name: "下一页", exact: true }).boundingBox();
+    const confirmationBefore = await dialog.getByRole("checkbox").boundingBox(); expect(paginationBefore).not.toBeNull(); expect(confirmationBefore).not.toBeNull();
     await chinesePreview.getByRole("button", { name: "下一页", exact: true }).click();
-    await expect(chinesePreview.locator("ul").last().locator(":scope > li")).toHaveCount(2);
+    await expect(chinesePreview.locator(":scope > ul > li")).toHaveCount(2);
+    await expect.poll(async () => Math.abs((await chinesePreview.getByRole("button", { name: "下一页", exact: true }).boundingBox())!.y - paginationBefore!.y)).toBeLessThan(2);
+    await expect.poll(async () => Math.abs((await dialog.getByRole("checkbox").boundingBox())!.y - confirmationBefore!.y)).toBeLessThan(2);
     await page.screenshot({ path: testInfo.outputPath("meeting-preparation-preview-page-two-390-zh-dark.png"), animations: "disabled" });
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.evaluate(() => { localStorage.setItem("e2e-preparation-locale", "en"); document.cookie = "multica-locale=en; path=/"; });
@@ -116,6 +120,7 @@ test("applies a human preparation template across bounded pages, reconciles an u
     expect(await api.getWorkspaceAgentRunCount()).toBe(0); expect((await api.getOwnedMeetingLifecycle(meeting.id)).materials).toBeNull();
 
     // Cancellation and subsequent disposition are distinct explicit confirmations.
+    const cancelledIssueId = createdIssues.find((effect) => effect.label === "Prepare evidence 01")!.receipt!.issue_id!;
     await page.getByRole("button", { name: "Meeting actions", exact: true }).click();
     await expect(dialog.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
     await dialog.getByRole("button", { name: "Cancel meeting", exact: true }).click();
@@ -123,14 +128,14 @@ test("applies a human preparation template across bounded pages, reconciles an u
     const impact = dialog.getByRole("region", { name: "Preparation affected by cancellation", exact: true });
     for (let i = 1; i <= 25; i++) {
       const title = `Prepare evidence ${String(i).padStart(2, "0")}`;
-      await impact.getByRole("textbox", { name: "Search L3 issues", exact: true }).fill(title);
+      await impact.getByRole("textbox", { name: "Search preparation issues", exact: true }).fill(title);
       const row = impact.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(title) }) });
       await choose(page, row.getByRole("combobox"), i === 1 ? "Cancel preparation issue" : "Change preparation deadline");
-      if (i !== 1) await row.getByLabel("Due date", { exact: true }).fill("2027-01-15");
+      if (i !== 1) await row.getByLabel(/^Due date/).fill("2027-01-15");
     }
-    await impact.getByRole("textbox", { name: "Search L3 issues", exact: true }).fill(source.title);
+    await impact.getByRole("textbox", { name: "Search preparation issues", exact: true }).fill(source.title);
     const sourceRow = impact.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(source.title) }) });
-    await choose(page, sourceRow.getByRole("combobox"), "Change preparation deadline"); await sourceRow.getByLabel("Due date", { exact: true }).fill("2027-01-15");
+    await choose(page, sourceRow.getByRole("combobox"), "Change preparation deadline"); await sourceRow.getByLabel(/^Due date/).fill("2027-01-15");
     const cancellationWrites: typeof writes = []; let changedEffectId = "", forceChange = true;
     await page.route(effectPattern, async (route) => {
       if (route.request().method() !== "POST") { await route.continue(); return; }
@@ -141,7 +146,13 @@ test("applies a human preparation template across bounded pages, reconciles an u
       }
       const response = await route.fetch(); cancellationWrites.push({ effectId, status: response.status(), body: route.request().postDataJSON() }); await route.fulfill({ response });
     });
+    const cancellationPreviewRead = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === `/api/cockpit/meetings/${meeting.id}/cancellation/preview`);
     await dialog.getByRole("button", { name: "Preview cancellation", exact: true }).click();
+    const cancellationPreviewResponse = await cancellationPreviewRead; expect(cancellationPreviewResponse.ok()).toBe(true);
+    const cancellationPreview = await cancellationPreviewResponse.json();
+    const cancellationEffect = cancellationPreview.effects.find((effect: { kind: string; issue_impact: { issue: { id: string }; cancel_status: string | null } | null }) => effect.kind === "cancel_issue" && effect.issue_impact?.issue.id === cancelledIssueId);
+    const observedCancelStatus = cancellationEffect?.issue_impact?.cancel_status;
+    if (typeof observedCancelStatus !== "string" || !observedCancelStatus) throw new Error("Cancellation preview did not acknowledge an exact issue status key");
     await dialog.getByRole("checkbox", { name: "Record this cancellation and only the dispositions shown above.", exact: true }).check();
     await dialog.getByRole("button", { name: "Cancel meeting", exact: true }).click(); await expect(dialog).toBeHidden();
     await expect.poll(async () => (await api.getOwnedMeetingLifecycle(meeting.id)).occurrence.state).toBe("cancelled");
@@ -167,15 +178,14 @@ test("applies a human preparation template across bounded pages, reconciles an u
     expect(retry[1]!.body.authorization_revision).toBeGreaterThan(retry[0]!.body.authorization_revision);
     expect((await api.getIssue(source.id)).due_date).toBe("2027-01-15"); await page.unroute(effectPattern);
 
-    const cancelledIssueId = createdIssues.find((effect) => effect.label === "Prepare evidence 01")!.receipt!.issue_id!;
-    expect((await api.getIssue(cancelledIssueId)).status_category).toBe("closed");
+    expect(await api.getIssue(cancelledIssueId)).toMatchObject({ status: observedCancelStatus, status_category: "cancelled" });
     await page.getByRole("button", { name: "Meeting actions", exact: true }).first().click();
     await dialog.getByRole("button", { name: "Handle remaining preparation", exact: true }).click();
     await dialog.getByRole("textbox", { name: "Reason", exact: true }).fill("Retain the remaining evidence with an explicit later deadline.");
-    await impact.getByRole("textbox", { name: "Search L3 issues", exact: true }).fill("Prepare evidence 02");
+    await impact.getByRole("textbox", { name: "Search preparation issues", exact: true }).fill("Prepare evidence 02");
     const dueRow = impact.getByRole("listitem").filter({ has: page.getByRole("link", { name: /Prepare evidence 02/ }) });
-    await choose(page, dueRow.getByRole("combobox"), "Change preparation deadline"); await dueRow.getByLabel("Due date", { exact: true }).fill("2027-02-15");
-    await dialog.getByRole("button", { name: "Preview cancellation", exact: true }).click();
+    await choose(page, dueRow.getByRole("combobox"), "Change preparation deadline"); await dueRow.getByLabel(/^Due date/).fill("2027-02-15");
+    await dialog.getByRole("button", { name: "Preview preparation changes", exact: true }).click();
     await dialog.getByRole("checkbox", { name: "Apply only these preparation changes. Keep the existing cancellation record.", exact: true }).check();
     await dialog.getByRole("button", { name: "Handle remaining preparation", exact: true }).click(); await expect(dialog).toBeHidden();
     await expect.poll(() => { const id = new URL(page.url()).searchParams.get("preparation"); return Boolean(id && id !== cancellationOperation); }).toBe(true);

@@ -44,6 +44,14 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       .getByText("Confirm the required input materials are ready. A folder alone does not indicate readiness.", { exact: true })).toBeVisible();
     const publishedBadge = () => page.getByRole("region", { name: "Current minutes version", exact: true })
       .getByText("Published", { exact: true }).first();
+    const expectMeetingDeletionProtected = async () => {
+      await page.getByRole("button", { name: "Meeting actions", exact: true }).first().click();
+      const actions = page.getByRole("dialog", { name: "Meeting actions", exact: true });
+      await expect(actions.getByText("Deletion is unavailable. If permitted, archive the meeting to organize the register and preserve its history.", { exact: true })).toBeVisible();
+      await expect(actions.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
+      await actions.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(actions).toBeHidden();
+    };
     const reloadWithWorkflowRead = async () => {
       // Wait for the new document's workflow read, not merely its HTML.
       // The visual assertions still use their normal timeout after hydration.
@@ -70,7 +78,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
       await page.getByRole("button", { name: "Enable work package", exact: true }).click();
       await expect(page.getByRole("link", { name: "Agenda & preparation", exact: true })).toBeVisible();
       await expectMaterialsUnconfirmed();
-      await expect(page.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
+      await expectMeetingDeletionProtected();
 
       const workflow = await api.getMeetingWorkflow(meeting.id);
       expect(workflow).toMatchObject({
@@ -266,7 +274,7 @@ test("requires readiness and a human decision before publishing a fixed minutes 
     await test.step("keep the published workbench usable on a narrower window", async () => {
       await page.setViewportSize({ width: 1100, height: 900 });
       await expect(publishedBadge()).toBeVisible();
-      await expect(page.getByRole("button", { name: `Delete meeting ${meeting.title}`, exact: true })).toBeDisabled();
+      await expectMeetingDeletionProtected();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath("minutes-workbench-narrow.png"), animations: "disabled" });
     });
