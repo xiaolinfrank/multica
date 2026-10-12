@@ -1,5 +1,7 @@
 # 会议生命周期：议题、准备与发生事实
 
+> **2026-10-12 总纲修订**：§2/§3/§5 中「确认结束不可重开、release 后 readiness 冻结、单版本结论一次性写入的终态语义」被原则 2 取代（切片 R1/R2：reopen、投影替代 released_at）；correct_times、议题软移除与命令台账是总纲范本，保留。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
+
 状态：本批已完成 agent 3 功能、规模与最终浏览器验收，并部署到常驻测试环境；独立 `multica_test` 与常驻均为 9075，账本分别 761 与 764。详见[验证记录](implementation/agent3-meeting-lifecycle-validation.json)及[部署记录](implementation/agent3-meeting-lifecycle-resident-deployment.json)。日期：2026-10-11。现有产品依据为后端 `b2f191fc0` 及其已冻结客户端。本批保留此前已发布的任务操作依据与恢复路径。
 
 ## 1. 本次交付

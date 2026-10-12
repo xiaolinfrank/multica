@@ -1,5 +1,7 @@
 # 会议行动与 L3 任务跟进
 
+> **2026-10-12 总纲修订**：「resolution/status 终态不可改、dismissed 无路径变为 create/reuse」被原则 2 取代（切片 R2：revise_resolution，旧 resolution 进历史）；creation_key 幂等语义保留。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
+
 本批从已发布纪要形成可确认的行动，并复用现有 Issue 执行。一个 L3 可承接大量任务；会议、行动、任务选择器和历史入口同样按大量数据设计。本批不修改 NAS 写入合同。
 
 ## 业务与规模边界
