@@ -58,7 +58,9 @@ func (h *Handler) beginCockpitHistory(r *http.Request, cc cockpitContext, meetin
 	if err != nil {
 		return fail(err)
 	}
-	if workRow.MinutesIssueID.Valid {
+	// R1: keep the work view alive while any minutes state exists, even with
+	// a cleared focus pointer (all bindings unbound but versions remain).
+	if workRow.MinutesIssueID.Valid || workRow.Revision > 1 || workRow.CurrentVersionID.Valid || workRow.PublishedVersionID.Valid {
 		work := minutesProjectionFromSnapshot(cc.workspaceID, meetingID, workRow)
 		read.work = &work
 	}

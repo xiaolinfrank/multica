@@ -18,7 +18,7 @@ vi.mock("@multica/core/api", async (importOriginal) => ({
     getCockpitMeetingWorkflowSummary: vi.fn(), commandCockpitMeetingWorkflow: vi.fn(), getCockpitMinutesVersion: vi.fn(), getCockpitMinutesVersions: vi.fn(), getCockpitReviewerHandoffs: vi.fn(), getCockpitNasExports: vi.fn(),
     getCockpitMeetingWorkflow: vi.fn(), enableCockpitMeetingWorkflow: vi.fn(), updateCockpitMeetingReadiness: vi.fn(),
     releaseCockpitMeetingWorkflow: vi.fn(), submitCockpitMinutesVersion: vi.fn(), reviewCockpitMinutesVersion: vi.fn(),
-    publishCockpitMinutesVersion: vi.fn(), reassignCockpitMeetingReviewer: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(),
+    publishCockpitMinutesVersion: vi.fn(), reassignCockpitMeetingReviewer: vi.fn(), bindCockpitMinutesIssue: vi.fn(), unbindCockpitMinutesIssue: vi.fn(), focusCockpitMinutesIssue: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(),
     getIssue: vi.fn(), searchIssues: vi.fn(), listCockpitMeetingActions: vi.fn(), listIssueStatuses: vi.fn(), searchCockpitAssignees: vi.fn(), searchCockpitScopeMembers: vi.fn(), getCockpitContext: vi.fn(), searchCockpitScopes: vi.fn(),
   },
 }));
@@ -102,6 +102,9 @@ beforeEach(() => {
       case "reviewed": result = await api.reviewCockpitMinutesVersion(meetingId, command.version_id, command.body); break;
       case "published": result = await api.publishCockpitMinutesVersion(meetingId, command.version_id, command.body.expected_revision, command.body.nas_export); break;
       case "reviewer_reassigned": result = await api.reassignCockpitMeetingReviewer(meetingId, command.body); break;
+      case "bound": result = await api.bindCockpitMinutesIssue(meetingId, command.body.issue_id, command.body.expected_revision); break;
+      case "unbound": result = await api.unbindCockpitMinutesIssue(meetingId, command.issue_id, command.expected_revision); break;
+      case "focused": result = await api.focusCockpitMinutesIssue(meetingId, command.body.issue_id, command.body.expected_revision); break;
       default: throw new Error("Unexpected workflow command");
     }
     return compactWorkflow(result, command);
@@ -122,6 +125,19 @@ beforeEach(() => {
   vi.mocked(api.getIssue).mockResolvedValue(adoptedIssue as Awaited<ReturnType<typeof api.getIssue>>);
   vi.mocked(api.listIssueStatuses).mockResolvedValue({ statuses: [], categories: [], total: 0 });
   vi.mocked(api.listProjects).mockResolvedValue({ projects: [{ id: "p1", title: "Project" }], total: 1 } as Awaited<ReturnType<typeof api.listProjects>>);
+  vi.mocked(api.bindCockpitMinutesIssue).mockImplementation(async (_meetingId, issueId) => {
+    server = { ...server, revision: server.revision + 1, minutes_issues: [...server.minutes_issues, { issue: { id: issueId, identifier: `BIO-${issueId.slice(0, 2)}`, title: "Second writer", status: "backlog", assignee_type: "member", assignee_id: "reviewer-1" }, is_focus: false, roles: ["minutes"] }] };
+    return structuredClone(server);
+  });
+  vi.mocked(api.unbindCockpitMinutesIssue).mockImplementation(async (_meetingId, issueId) => {
+    server = { ...server, revision: server.revision + 1, minutes_issues: server.minutes_issues.filter((b) => b.issue?.id !== issueId) };
+    return structuredClone(server);
+  });
+  vi.mocked(api.focusCockpitMinutesIssue).mockImplementation(async (_meetingId, issueId) => {
+    server = { ...server, revision: server.revision + 1, minutes_issue: server.minutes_issues.find((b) => b.issue?.id === issueId)?.issue ?? server.minutes_issue,
+      minutes_issues: server.minutes_issues.map((b) => ({ ...b, is_focus: b.issue?.id === issueId })) };
+    return structuredClone(server);
+  });
   vi.mocked(api.listModules).mockResolvedValue({ modules: [{ id: "m1", project_id: "p1", title: "Module" }], total: 1 } as Awaited<ReturnType<typeof api.listModules>>);
   vi.mocked(api.enableCockpitMeetingWorkflow).mockImplementation(async (_meetingId, body) => {
     server = workflowFixture({ reviewer_id: body.reviewer_id });
@@ -649,4 +665,25 @@ describe("meeting work package workflow", () => {
     expect(api.releaseCockpitMeetingWorkflow).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Publish version" })).toBeNull();
   });
+});
+
+it("lists minutes bindings with focus and unbind actions", async () => {
+  const second = { id: "minutes-2", identifier: "BIO-9", title: "Second writer", status: "backlog", assignee_type: "member", assignee_id: "reviewer-1" };
+  server = workflowFixture({ minutes_issues: [
+    { issue: { id: "minutes-1", identifier: "BIO-1", title: "Write minutes", status: "backlog", assignee_type: "member", assignee_id: "writer-1" }, is_focus: true, roles: ["minutes"] },
+    { issue: second, is_focus: false, roles: ["minutes"] },
+  ] });
+  const rendered = setup();
+  const list = await rendered.findByRole("region", { name: enCockpit.workflow.bindings_title });
+  expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+  expect(within(list).getByText(enCockpit.workflow.focus_badge)).toBeInTheDocument();
+  // The focused row offers unbind only; the other row also offers set-focus.
+  expect(within(list).getAllByRole("button", { name: enCockpit.workflow.set_focus })).toHaveLength(1);
+  expect(within(list).getAllByRole("button", { name: enCockpit.workflow.unbind })).toHaveLength(2);
+  const focusRevision = server.revision;
+  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.set_focus })[0]);
+  await waitFor(() => expect(api.focusCockpitMinutesIssue).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, "minutes-2", focusRevision));
+  const unbindRevision = server.revision;
+  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.unbind })[1]);
+  await waitFor(() => expect(api.unbindCockpitMinutesIssue).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, "minutes-2", unbindRevision));
 });

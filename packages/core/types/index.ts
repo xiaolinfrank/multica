@@ -252,6 +252,7 @@ export type {
   CockpitMeetingDestination,
   CockpitMeetingProvision,
   CockpitMeetingProvisionResult,
+  CockpitMinutesBinding,
   CockpitWorkflowIssue,
   CockpitMinutesVersion,
   CockpitMeetingWorkflow,

@@ -10,6 +10,7 @@ import {
   setCockpitMinutesDraftContent, useCockpitMinutesDraftStore,
   useEnableCockpitMeetingWorkflow, useUpdateCockpitMeetingReadiness,
   useReleaseCockpitMeetingWorkflow, useSubmitCockpitMinutesVersion,
+  useBindCockpitMinutesIssue, useUnbindCockpitMinutesIssue, useFocusCockpitMinutesIssue,
   useReviewCockpitMinutesVersion, usePublishCockpitMinutesVersion, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
 import type {
@@ -101,9 +102,14 @@ export function CockpitMeetingWorkflowPanel({
   const adoptedIssue = adopted.data?.id === adoptedIssueId && adopted.data.workspace_id === wsId ? adopted.data : null;
   const adoptionConfirmed = !adopted.isError && !adopted.isFetching && adoptedIssue?.status === "backlog";
   const enable = useEnableCockpitMeetingWorkflow(wsId);
+  const [bindIssueId, setBindIssueId] = useState("");
+  const bindIssue = useQuery({ ...issueDetailOptions(wsId, bindIssueId), enabled: bindIssueId !== "" }).data ?? null;
   const readiness = useUpdateCockpitMeetingReadiness(wsId);
   const release = useReleaseCockpitMeetingWorkflow(wsId);
   const submit = useSubmitCockpitMinutesVersion(wsId);
+  const bind = useBindCockpitMinutesIssue(wsId);
+  const unbind = useUnbindCockpitMinutesIssue(wsId);
+  const focus = useFocusCockpitMinutesIssue(wsId);
   const review = useReviewCockpitMinutesVersion(wsId);
   const publish = usePublishCockpitMinutesVersion(wsId);
   const draft = useCockpitMinutesDraftStore((state) => state.draft.byMeeting[meetingId] ?? EMPTY_COCKPIT_MINUTES_DRAFT);
@@ -245,6 +251,36 @@ export function CockpitMeetingWorkflowPanel({
       <p>{t(($) => $.workflow.refresh_failed)}</p>
       <Button type="button" variant="outline" size="sm" onClick={onReload}>{t(($) => $.binding.retry)}</Button>
     </div>}
+    {workflow.minutes_issues.length > 0 && <section className="space-y-3 rounded-lg border border-border p-4" aria-label={t(($) => $.workflow.bindings_title)}>
+      <h3 className="text-title-sm font-medium">{t(($) => $.workflow.bindings_title)}</h3>
+      <ul className="space-y-2">
+        {workflow.minutes_issues.map((binding) => (
+          <li key={binding.issue?.id ?? "binding-unknown"} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
+              {binding.is_focus && <span className="rounded bg-secondary px-1.5 py-0.5 text-caption-xs text-secondary-foreground">{t(($) => $.workflow.focus_badge)}</span>}
+              {binding.issue
+                ? <AppLink href={paths.issueDetail(binding.issue.id)} className="truncate text-primary underline">{binding.issue.identifier} {binding.issue.title}</AppLink>
+                : <span className="text-muted-foreground">{t(($) => $.workflow.binding_missing)}</span>}
+              {binding.issue && <span className="text-muted-foreground">{binding.issue.status}</span>}
+            </span>
+            {!readOnly && actions.canManage && binding.issue && <span className="flex items-center gap-1">
+              {!binding.is_focus && <Button type="button" variant="outline" size="xs" disabled={commandBusy}
+                onClick={() => void runCommand(() => focus.mutateAsync({ meetingId, issueId: binding.issue!.id, revision: workflow.revision }))}>
+                {t(($) => $.workflow.set_focus)}</Button>}
+              <Button type="button" variant="ghost" size="xs" disabled={commandBusy}
+                onClick={() => void runCommand(() => unbind.mutateAsync({ meetingId, issueId: binding.issue!.id, revision: workflow.revision }))}>
+                {t(($) => $.workflow.unbind)}</Button>
+            </span>}
+          </li>
+        ))}
+      </ul>
+      {!readOnly && actions.canManage && <div className="space-y-2">
+        <CockpitIssueChoice wsId={wsId} selected={bindIssue} onSelect={(issue) => setBindIssueId(issue.id)} disabled={commandBusy} />
+        {bindIssueId && <Button type="button" variant="outline" size="sm" disabled={commandBusy}
+          onClick={() => void runCommand(async () => { await bind.mutateAsync({ meetingId, issueId: bindIssueId, revision: workflow.revision }); setBindIssueId(""); })}>
+          {t(($) => $.workflow.bind_issue)}</Button>}
+      </div>}
+    </section>}
     <section className="space-y-3 rounded-lg border border-border p-4" aria-label={t(($) => $.workflow.readiness)}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.workflow.readiness)}</h3>
         <span className="text-caption text-muted-foreground">{workflow.released_at ? t(($) => $.workflow.released) : t(($) => $.workflow.awaiting_release)}</span></div>
@@ -262,7 +298,7 @@ export function CockpitMeetingWorkflowPanel({
             onClick={() => void runCommand(() => readiness.mutateAsync({ meetingId, body: { expected_revision: workflow.revision, ended: true } }))}>
             {t(($) => $.workflow.mark_ended)}</Button>}
         <label className="flex items-center gap-2 text-caption"><Checkbox checked={workflow.materials_ready}
-          disabled={readOnly || !actions.canManage || commandBusy || Boolean(workflow.released_at)}
+          disabled={readOnly || !actions.canManage || commandBusy}
           onCheckedChange={(checked) => void runCommand(() => readiness.mutateAsync({ meetingId, body: { expected_revision: workflow.revision, materials_ready: checked === true } }))} />
           {t(($) => $.workflow.materials_ready)}</label>
       </div>

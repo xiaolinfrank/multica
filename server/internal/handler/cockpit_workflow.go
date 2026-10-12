@@ -58,6 +58,7 @@ type CockpitMeetingWorkflowResponse struct {
 	ReleaseTaskID        *string                          `json:"release_task_id"`
 	ReviewerID           *string                          `json:"reviewer_id"`
 	MinutesIssue         *CockpitWorkflowIssueResponse    `json:"minutes_issue"`
+	MinutesIssues        []CockpitMinutesBindingResponse `json:"minutes_issues"`
 	CurrentVersionID     *string                          `json:"current_version_id"`
 	PublishedVersionID   *string                          `json:"published_version_id"`
 	Versions             []CockpitMinutesVersionResponse  `json:"versions"`
@@ -181,9 +182,15 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	if err != nil {
 		return out, err
 	}
-	if !workRow.MinutesIssueID.Valid {
-		out.CanManage = !isMachineCredentialActor(r)
-		return out, nil
+	// R1: the focus pointer is nullable (unbinding the focus task clears it);
+	// "configured" is any minutes state, not just a live focus.
+	if workRow.Revision <= 1 && !workRow.MinutesIssueID.Valid && !workRow.ReviewerID.Valid && !workRow.CurrentVersionID.Valid && !workRow.PublishedVersionID.Valid {
+		if links, lerr := q.ListCockpitMinutesIssueLinks(r.Context(), db.ListCockpitMinutesIssueLinksParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID}); lerr == nil && len(links) == 0 {
+			out.CanManage = !isMachineCredentialActor(r)
+			return out, nil
+		} else if lerr != nil {
+			return out, lerr
+		}
 	}
 	work := minutesProjectionFromForRead(cc.workspaceID, meetingID, workRow)
 	if err != nil {
@@ -215,6 +222,13 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 		return out, err
 	}
 	ids := []pgtype.UUID{work.MinutesIssueID}
+	if bindingLinks, blErr := q.ListCockpitMinutesIssueLinks(r.Context(), db.ListCockpitMinutesIssueLinksParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID}); blErr == nil {
+		for _, link := range bindingLinks {
+			ids = append(ids, link.IssueID)
+		}
+	} else {
+		return out, blErr
+	}
 	for _, version := range versions {
 		ids = append(ids, version.ReviewIssueID)
 	}
@@ -265,6 +279,14 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	out.ReleaseTaskID = uuidToPtr(work.ReleaseTaskID)
 	out.ReviewerID = uuidToPtr(work.ReviewerID)
 	out.MinutesIssue = cards[work.MinutesIssueID]
+	if links, lerr := q.ListCockpitMinutesIssueLinks(r.Context(), db.ListCockpitMinutesIssueLinksParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID}); lerr == nil {
+		out.MinutesIssues = make([]CockpitMinutesBindingResponse, 0, len(links))
+		for _, link := range links {
+			out.MinutesIssues = append(out.MinutesIssues, CockpitMinutesBindingResponse{Issue: cards[link.IssueID], IsFocus: link.IssueID == work.MinutesIssueID, Roles: link.Roles})
+		}
+	} else {
+		return out, lerr
+	}
 	out.CurrentVersionID = uuidToPtr(work.CurrentVersionID)
 	out.PublishedVersionID = uuidToPtr(work.PublishedVersionID)
 	out.CanManage = !isMachineCredentialActor(r) && cockpitWorkflowManagedBy(work, cc.member)

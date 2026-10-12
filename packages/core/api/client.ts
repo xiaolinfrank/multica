@@ -3282,12 +3282,16 @@ export class ApiClient {
     const suffix = command.action === "released" ? "/release" : command.action === "submitted" ? "/versions"
       : command.action === "reviewed" ? `${versionPath}/review` : command.action === "published" ? `${versionPath}/publish`
         : command.action === "reviewer_reassigned" ? "/reviewer" : command.action === "nas_export_queued" ? `${versionPath}/nas-export`
-          : command.action === "nas_export_retried" ? `/exports/${encodeURIComponent(command.operation.id)}/retry` : "";
+          : command.action === "nas_export_retried" ? `/exports/${encodeURIComponent(command.operation.id)}/retry`
+          : command.action === "bound" ? "/bindings" : command.action === "focused" ? "/focus"
+          : command.action === "unbound" ? `/bindings/${encodeURIComponent(command.issue_id)}` : "";
     const body = command.action === "nas_export_retried" ? { expected_revision: command.operation.revision }
       : command.action === "submitted" ? { ...command.body, content: command.body.content.trim() }
-        : command.action === "reviewer_reassigned" ? { ...command.body, reason: command.body.reason.trim() } : command.body;
-    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}?response=compact`, {
-      method: command.action === "readiness" ? "PATCH" : "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body),
+        : command.action === "reviewer_reassigned" ? { ...command.body, reason: command.body.reason.trim() }
+        : command.action === "unbound" ? {} : command.body;
+    const extraQuery = command.action === "unbound" ? `&expected_revision=${command.expected_revision}` : "";
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow${suffix}?response=compact${extraQuery}`, {
+      method: command.action === "readiness" ? "PATCH" : command.action === "unbound" ? "DELETE" : "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body),
     });
     const result = parseWithFallback<CockpitWorkflowCommandResponse | null>(raw, CockpitWorkflowCommandResponseSchema, null, { endpoint: "Cockpit compact workflow command" });
     if (!result || result.workspace_id !== wsId || result.meeting_id !== meetingId || result.workflow.workspace_id !== wsId || result.workflow.meeting_id !== meetingId

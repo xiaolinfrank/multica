@@ -79,5 +79,8 @@ export type CockpitWorkflowCommand =
   | { action: "reviewed"; version_id: string; body: CockpitMinutesReview }
   | { action: "published"; version_id: string; body: { expected_revision: number; nas_export?: CockpitNasDestination } }
   | { action: "reviewer_reassigned"; body: CockpitReviewerHandoffCommand }
+  | { action: "bound"; body: { issue_id: string; expected_revision: number } }
+  | { action: "unbound"; issue_id: string; expected_revision: number }
+  | { action: "focused"; body: { issue_id: string; expected_revision: number } }
   | { action: "nas_export_queued"; version_id: string; body: CockpitNasDestination }
   | { action: "nas_export_retried"; operation: CockpitWorkflowNasExport };

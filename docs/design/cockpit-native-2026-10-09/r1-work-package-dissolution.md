@@ -48,3 +48,13 @@
 **验证**（协调机隔离库 multica_multica_cockpit_native_624，迁移 9100→9146 全部应用成功、9145 数据搬迁核验：表已删、roles 回填 2 行）：`go build ./...` 与 `go vet` 全绿；service/handler/migrate 的 `TestCockpit*` 定向组通过（handler 与 migrate 全绿；service 除 TestCockpitArtifactRuntimeReviewerHandoffKeepsAuthoritativeReverseContext——**已证明为测试库 collation 环境差异而非回归**：en_US.UTF-8(libc) 下 `artifact_version` 排序必然先于 `artifact:`，该测试所用 SQL/生成代码/测试文件本轮零改动，纯 SQL 复现于空库；需在 agent 3（C collation 或与历史验收一致的库）复验）。**未做**：全量 service/handler 测试（按环境约定应在 agent 3）、core/views 前端适配（R1b）、真实浏览器验收、生产部署。
 
 **坑（后续注意）**：sqlc 静默跳过 BEGIN/COMMIT 块内语句（DDL 必须裸写或拆文件）；本机 `go test` 未设 DATABASE_URL 时默认连 `localhost:5432/multica`——**那是生产库**，必须显式设隔离库；测试库 collation 影响排序断言。
+
+## R1b 前端适配（2026-10-12）
+
+**Server 补充**：绑定/解绑/焦点命令一等化——`POST /workflow/bindings`（绑定，幂等并入 roles；无焦点时自动设焦点）、`DELETE /workflow/bindings/{issueId}?expected_revision=N`（解绑；解绑焦点任务时自动回落到最早剩余绑定，流程不中断）、`POST /workflow/focus`（移动焦点指针）。全部走 human + manager 守卫与既有 workflow 命令回执协议。full/compact 响应的「已配置」判定放宽为「任一 minutes 状态存在」（焦点指针可空），响应新增 `minutes_issues` 绑定数组（含焦点标记），`minutes_issue` 兼容保留。
+
+**core**：`CockpitMinutesBinding` 类型与 zod schema（default [] 兼容旧端）、命令联合与回执确认扩展、`useBindCockpitMinutesIssue/useUnbindCockpitMinutesIssue/useFocusCockpitMinutesIssue`。
+
+**views**：材料确认解除「release 后冻结」（总纲：确认始终双向）；工作流面板新增「纪要任务」绑定列表（焦点徽标 + 设为焦点/解绑 + 绑定新任务入口），四语文案。
+
+**验证**：server 三包 TestCockpit\*（handler/migrate 全绿；service 仅既证 collation 环境差异）；views workflow 组件 31/31（新增绑定列表用例）；core tsc 零新错（workflow-mutations 两个失败为基线预存在，stash 对照已证）；语言包 parity 203 全过；eslint 干净。未做：agent 3 全量与浏览器验收、生产部署。

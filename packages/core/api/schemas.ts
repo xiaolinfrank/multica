@@ -2183,6 +2183,11 @@ export const CockpitMeetingWorkflowSchema = z.object({
   release_task_id: z.string().nullable().default(null),
   reviewer_id: z.string().nullable().default(null),
   minutes_issue: CockpitWorkflowIssueSchema.nullable().default(null),
+  minutes_issues: z.array(z.object({
+    issue: CockpitWorkflowIssueSchema.nullable().default(null),
+    is_focus: z.boolean().default(false),
+    roles: z.array(z.string()).default([]),
+  }).loose()).default([]),
   current_version_id: z.string().nullable().default(null),
   published_version_id: z.string().nullable().default(null),
   versions: z.array(CockpitMinutesVersionSchema).default([]),

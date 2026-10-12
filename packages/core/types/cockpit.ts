@@ -601,6 +601,14 @@ export interface CockpitMinutesVersion {
   published_at: string | null;
 }
 
+/** R1 (design-principles-2026-10-12): a minutes binding is an association;
+ * several may exist per meeting; is_focus marks the current focus pointer. */
+export interface CockpitMinutesBinding {
+  issue: CockpitWorkflowIssue | null;
+  is_focus: boolean;
+  roles: string[];
+}
+
 export interface CockpitMeetingWorkflow {
   enabled: boolean;
   meeting_id: string;
@@ -611,6 +619,8 @@ export interface CockpitMeetingWorkflow {
   release_task_id: string | null;
   reviewer_id: string | null;
   minutes_issue: CockpitWorkflowIssue | null;
+  /** R1: every minutes binding (associations); minutes_issue is the focus pointer. */
+  minutes_issues: CockpitMinutesBinding[];
   current_version_id: string | null;
   published_version_id: string | null;
   versions: CockpitMinutesVersion[];

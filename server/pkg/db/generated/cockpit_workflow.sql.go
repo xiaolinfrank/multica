@@ -79,6 +79,60 @@ func (q *Queries) AttachCockpitMinutesIssueLink(ctx context.Context, arg AttachC
 	return result.RowsAffected(), nil
 }
 
+const clearCockpitMinutesFocusIfIssue = `-- name: ClearCockpitMinutesFocusIfIssue :one
+UPDATE cockpit_meeting SET minutes_focus_issue_id=NULL,
+ minutes_revision=minutes_revision+1, updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_focus_issue_id=$3 AND minutes_revision=$4
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
+`
+
+type ClearCockpitMinutesFocusIfIssueParams struct {
+	WorkspaceID         pgtype.UUID `json:"workspace_id"`
+	ID                  pgtype.UUID `json:"id"`
+	MinutesFocusIssueID pgtype.UUID `json:"minutes_focus_issue_id"`
+	MinutesRevision     int64       `json:"minutes_revision"`
+}
+
+type ClearCockpitMinutesFocusIfIssueRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) ClearCockpitMinutesFocusIfIssue(ctx context.Context, arg ClearCockpitMinutesFocusIfIssueParams) (ClearCockpitMinutesFocusIfIssueRow, error) {
+	row := q.db.QueryRow(ctx, clearCockpitMinutesFocusIfIssue,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.MinutesFocusIssueID,
+		arg.MinutesRevision,
+	)
+	var i ClearCockpitMinutesFocusIfIssueRow
+	err := row.Scan(
+		&i.MeetingID,
+		&i.Revision,
+		&i.MinutesIssueID,
+		&i.ReviewerID,
+		&i.MaterialsReady,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
+	)
+	return i, err
+}
+
 const cockpitIssueExecutionBlocked = `-- name: CockpitIssueExecutionBlocked :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l
  JOIN cockpit_meeting m ON m.workspace_id=l.workspace_id AND m.id=l.meeting_id

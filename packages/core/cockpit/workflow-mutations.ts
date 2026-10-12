@@ -43,6 +43,21 @@ export function useEnableCockpitMeetingWorkflow(wsId: string) {
     api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "enabled", body }));
 }
 
+export function useBindCockpitMinutesIssue(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, issueId, revision }: { meetingId: string; issueId: string; revision: number }) =>
+    api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "bound", body: { issue_id: issueId, expected_revision: revision } }));
+}
+
+export function useUnbindCockpitMinutesIssue(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, issueId, revision }: { meetingId: string; issueId: string; revision: number }) =>
+    api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "unbound", issue_id: issueId, expected_revision: revision }));
+}
+
+export function useFocusCockpitMinutesIssue(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, issueId, revision }: { meetingId: string; issueId: string; revision: number }) =>
+    api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "focused", body: { issue_id: issueId, expected_revision: revision } }));
+}
+
 export function useReassignCockpitMeetingReviewer(wsId: string) {
   return useWorkflowMutation(wsId, ({ meetingId, body }: { meetingId: string; body: CockpitReviewerHandoffCommand }) =>
     api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "reviewer_reassigned", body }));

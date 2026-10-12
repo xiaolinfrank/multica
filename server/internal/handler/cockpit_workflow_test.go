@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strconv"
 	"net/http"
 	"testing"
 
@@ -241,4 +242,40 @@ func TestCockpitWorkflowHTTPTaskScopedSubmission(t *testing.T) {
 	if state.CanManage || state.CanReview || state.CanPublish {
 		t.Fatal("machine submission granted human control capabilities")
 	}
+}
+
+func TestCockpitWorkflowHTTPMinutesBindings(t *testing.T) {
+	ws, meeting := newCockpitWorkflowHTTPFixture(t)
+	var state CockpitMeetingWorkflowResponse
+	callCockpitWorkflow(t, testHandler.EnableCockpitMeetingWorkflow, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"reviewer_id": testUserID}).Want(http.StatusOK).JSON(&state)
+	first := state.MinutesIssue.ID
+	second := dbfx.Issue(t, "Second minutes writer", testutil.Cols{"workspace_id": ws, "status": "backlog"})
+
+	// Bind a second task: associations, not exclusivity.
+	callCockpitWorkflow(t, testHandler.BindCockpitMeetingMinutesIssue, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "issue_id": second}).Want(http.StatusOK).JSON(&state)
+	if len(state.MinutesIssues) != 2 || state.MinutesIssue.ID != first {
+		t.Fatalf("second binding did not keep the focus pointer: %+v", state.MinutesIssues)
+	}
+
+	// Focus moves; the minutes_issue pointer follows.
+	callCockpitWorkflow(t, testHandler.FocusCockpitMeetingMinutesIssue, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "issue_id": second}).Want(http.StatusOK).JSON(&state)
+	if state.MinutesIssue.ID != second || len(state.MinutesIssues) != 2 {
+		t.Fatalf("focus did not move: %+v", state.MinutesIssue)
+	}
+
+	// Unbinding the focus task clears the pointer; the other binding survives.
+	req := cockpitRequest(http.MethodDelete, "/api/cockpit/meetings/"+meeting.ID+"/workflow/bindings/"+second+"?expected_revision="+
+		strconv.FormatInt(state.Revision, 10), ws, nil)
+	testutil.Call(t, cockpitHandler(testHandler.UnbindCockpitMeetingMinutesIssue), testutil.WithURLParams(req, "meetingId", meeting.ID, "issueId", second)).Want(http.StatusOK).JSON(&state)
+	if len(state.MinutesIssues) != 1 || state.MinutesIssue == nil || state.MinutesIssue.ID != first {
+		t.Fatalf("unbinding the focus task did not fall back cleanly: %+v", state.MinutesIssues)
+	}
+
+	// Unbinding a task that is not bound conflicts.
+	testutil.Call(t, cockpitHandler(testHandler.UnbindCockpitMeetingMinutesIssue), testutil.WithURLParams(
+		cockpitRequest(http.MethodDelete, "/api/cockpit/meetings/"+meeting.ID+"/workflow/bindings/"+second+"?expected_revision="+strconv.FormatInt(state.Revision, 10), ws, nil),
+		"meetingId", meeting.ID, "issueId", second)).Want(http.StatusConflict)
 }
