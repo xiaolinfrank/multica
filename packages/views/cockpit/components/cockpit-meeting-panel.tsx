@@ -133,6 +133,7 @@ export function CockpitMeetingPanel({
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
   const directoryOperationId = destination.meetingId === meeting.id ? destination.directoryOperationId : null;
+  const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
   const lifecycleQuery = useQuery({ ...cockpitMeetingLifecycleOptions(wsId, meeting.id), enabled: lifecycleAvailable });
   const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
     refetchInterval: (query) => {
@@ -179,7 +180,6 @@ export function CockpitMeetingPanel({
       ),
     [vocabulary.parties],
   );
-  const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
   const workflowEnabled = workflowQuery.data?.enabled === true;
   const workflowUnknown = workflowQuery.isPending || workflowQuery.isError || workflowQuery.data?.meeting_id !== meeting.id;
   const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
