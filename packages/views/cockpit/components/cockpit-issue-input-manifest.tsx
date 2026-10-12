@@ -11,7 +11,7 @@ import {
 } from "@multica/core/cockpit";
 import type { CockpitInputManifestHeader, CockpitInputManifestItem } from "@multica/core/types/cockpit-input";
 import { Button } from "@multica/ui/components/ui/button";
-import { Input } from "@multica/ui/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { toast } from "sonner";
@@ -106,6 +106,8 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
   const selectedTitle = (version: { inputId: string; filename: string; source: { artifactTitle: string } }) => selectedHeaders.data?.items.find((item) => item.id === version.inputId)?.title || version.filename || version.source.artifactTitle || t(($) => $.input_materials.material_detail);
   const suggested = selected.data?.items.find((item) => item.id === suggestedVersionId);
   const priorVersion = suggested && selected.data?.items.find((item) => item.inputId === suggested.inputId && item.id !== suggested.id && ids.includes(item.id));
+  const purposeNames: Record<string, string> = { material: t(($) => $.input_materials.purpose_material), recording: t(($) => $.input_materials.purpose_recording), supporting: t(($) => $.input_materials.purpose_supporting) };
+  const validPurposes = draft.manifestItems.every((item) => Object.hasOwn(purposeNames, item.purpose));
   const changed = Boolean(header && draft.observedRevision !== header.revision);
   const locked = request.busy || Boolean(request.pending);
   const allowed = header?.canEdit === true && draft.observedRevision !== null;
@@ -113,7 +115,7 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
   const maxPage = Math.max(0, Math.ceil(ids.length / 25) - 1); const currentPage = Math.min(page, maxPage);
   const update = (patch: Partial<CockpitInputFormDraft>) => setCockpitInputForm(key, { ...draft, ...patch });
   async function submit(mode: "submit" | "lookup") {
-    if (request.busy || !request.pending && (!allowed || changed || !allReady || selected.isFetching)) return;
+    if (request.busy || !request.pending && (!allowed || changed || !allReady || !validPurposes || selected.isFetching)) return;
     setCockpitInputForm(key, draft);
     const result = mode === "lookup" ? await request.verify() : await request.run(request.pending ?? { kind: "manifest", issueId,
       body: { commandKey: crypto.randomUUID(), expectedRevision: draft.observedRevision!, items: draft.manifestItems, note: draft.note } });
@@ -125,11 +127,11 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
       {suggested && <p className="break-words">{selectedTitle(suggested)} · {t(($) => $.workflow.version, { number: suggested.versionNumber })}</p>}
       {priorVersion && <p className="text-muted-foreground">{t(($) => $.input_materials.manifest_other_version)}</p>}
       {ids.includes(suggestedVersionId) ? <Button type="button" size="sm" variant="outline" onClick={() => { setPicking(false); setPage(Math.floor(ids.indexOf(suggestedVersionId) / 25)); }}>{t(($) => $.input_materials.manifest_locate_selected)}</Button>
-        : <Button type="button" size="sm" variant="outline" disabled={locked || !allowed || selected.isError || selected.isFetching || ids.length >= 200 || !suggested?.canReference || suggested.captureState !== "ready"} onClick={() => { update({ manifestItems: [...draft.manifestItems, { inputVersionId: suggestedVersionId, purpose: "", required: true }] }); setPage(Math.floor(ids.length / 25)); }}>{t(($) => $.input_materials.manifest_add_suggested)}</Button>}
+        : <Button type="button" size="sm" variant="outline" disabled={locked || !allowed || selected.isError || selected.isFetching || ids.length >= 200 || !suggested?.canReference || suggested.captureState !== "ready"} onClick={() => { update({ manifestItems: [...draft.manifestItems, { inputVersionId: suggestedVersionId, purpose: "material", required: true }] }); setPage(Math.floor(ids.length / 25)); }}>{t(($) => $.input_materials.manifest_add_suggested)}</Button>}
       {!suggested && !selected.isFetching && <p>{ids.length >= 200 ? t(($) => $.input_materials.selection_limit, { limit: 200 }) : t(($) => $.input_materials.manifest_missing)}</p>}
     </div>}
     {picking ? <CockpitInputVersionPicker wsId={wsId} selectedVersionIds={ids} disabled={locked || !allowed} onClose={() => setPicking(false)} onInspect={onInspect}
-      onSelect={(version) => { if (ids.includes(version.id) || ids.length >= 200) return; update({ manifestItems: [...draft.manifestItems, { inputVersionId: version.id, purpose: "", required: true }] }); }} /> : <>
+      onSelect={(version) => { if (ids.includes(version.id) || ids.length >= 200) return; update({ manifestItems: [...draft.manifestItems, { inputVersionId: version.id, purpose: "material", required: true }] }); }} /> : <>
       <Button type="button" variant="outline" disabled={locked || !allowed || ids.length >= 200} onClick={() => setPicking(true)}>{t(($) => $.input_materials.manifest_choose)}</Button>
       {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}
       {selectedHeaders.isError && <CockpitFlowError onRetry={() => void selectedHeaders.refetch()} />}
@@ -139,7 +141,14 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
         return <li key={item.inputVersionId} className="space-y-2 rounded-lg border border-border p-3">
           <div className="flex flex-wrap justify-between gap-2"><p className="min-w-0 break-words text-caption font-medium [overflow-wrap:anywhere]">{index + 1}. {version ? `${selectedTitle(version)} · ${t(($) => $.workflow.version, { number: version.versionNumber })}` : t(($) => $.input_materials.manifest_missing)}</p>
             {version && <Button type="button" variant="ghost" size="xs" onClick={() => onInspect(version.inputId, version.id)}>{t(($) => $.input_materials.manifest_inspect)}</Button>}</div>
-          <label className="block space-y-1 text-caption">{t(($) => $.input_materials.manifest_purpose)}<Input value={item.purpose} maxLength={2000} disabled={locked || !allowed} onChange={(event) => update({ manifestItems: draft.manifestItems.map((entry, n) => n === index ? { ...entry, purpose: event.target.value } : entry) })} /></label>
+          <label className="block space-y-1 text-caption"><span>{t(($) => $.input_materials.manifest_purpose)}</span>
+            <Select value={Object.hasOwn(purposeNames, item.purpose) ? item.purpose : null} disabled={locked || !allowed} items={purposeNames}
+              onValueChange={(purpose) => { if (purpose && Object.hasOwn(purposeNames, purpose)) update({ manifestItems: draft.manifestItems.map((entry, n) => n === index ? { ...entry, purpose } : entry) }); }}>
+              <SelectTrigger className="w-full" aria-label={t(($) => $.input_materials.manifest_purpose)}><SelectValue placeholder={t(($) => $.input_materials.manifest_purpose)} /></SelectTrigger>
+              <SelectContent>{Object.entries(purposeNames).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+            </Select>
+          </label>
+          {!Object.hasOwn(purposeNames, item.purpose) && <p role="alert" className="break-words text-caption text-destructive">{t(($) => $.input_materials.unknown_purpose)}{item.purpose ? ` · ${item.purpose}` : ""}</p>}
           <label className="flex items-center gap-2 text-caption"><input type="checkbox" checked={item.required} disabled={locked || !allowed} onChange={(event) => update({ manifestItems: draft.manifestItems.map((entry, n) => n === index ? { ...entry, required: event.target.checked } : entry) })} />{t(($) => $.input_materials.manifest_required)}</label>
           {version && version.availability !== "available" && <p className="text-caption text-muted-foreground">{t(($) => $.input_materials.manifest_missing)}</p>}
           <div className="flex flex-wrap gap-1"><Button type="button" size="xs" variant="outline" disabled={locked || !allowed || index === 0} onClick={() => move(-1)}>{t(($) => $.input_materials.manifest_move_up)}</Button>
@@ -158,6 +167,6 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
     <CockpitInputCommandRecovery pending={Boolean(request.pending)} busy={request.busy} canRetry={request.canRetry} onVerify={() => void submit("lookup")} onRetry={() => void submit("submit")} />
     {request.error && <div role="alert" className="space-y-2 text-caption text-destructive"><p className="break-words">{request.error}</p><Button type="button" size="sm" variant="outline" onClick={onReload}>{t(($) => $.input_materials.refresh_version)}</Button></div>}
     <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" onClick={onDone}>{t(($) => $.input_materials.manifest_close)}</Button>
-      <Button type="button" disabled={locked || !allowed || changed || !allReady || selected.isFetching} onClick={() => void submit("submit")}>{t(($) => $.input_materials.manifest_save)}</Button></div>
+      <Button type="button" disabled={locked || !allowed || changed || !allReady || !validPurposes || selected.isFetching} onClick={() => void submit("submit")}>{t(($) => $.input_materials.manifest_save)}</Button></div>
   </section>;
 }

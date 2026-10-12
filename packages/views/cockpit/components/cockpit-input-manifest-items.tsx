@@ -17,6 +17,7 @@ export function CockpitInputManifestItems({ wsId, version, onInspect }: {
 }) {
   const { t } = useT("cockpit");
   const [cursors, setCursors] = useState([""]);
+  const purposeNames: Record<string, string> = { material: t(($) => $.input_materials.purpose_material), recording: t(($) => $.input_materials.purpose_recording), supporting: t(($) => $.input_materials.purpose_supporting) };
   const query = useQuery(cockpitInputManifestItemsOptions(wsId, version.issueId, version.id, { pageSize: 25, cursor: cursors.at(-1) || undefined }));
   const page = query.data;
   if (query.isPending) return <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p>;
@@ -26,7 +27,7 @@ export function CockpitInputManifestItems({ wsId, version, onInspect }: {
       <div className="flex min-w-0 items-start justify-between gap-2"><p className="min-w-0 break-words text-caption font-medium [overflow-wrap:anywhere]">{item.inputTitle || item.filename} · {t(($) => $.workflow.version, { number: item.inputVersionNumber })}</p>
         <Button type="button" variant="ghost" size="xs" onClick={() => onInspect(item.inputId, item.inputVersionId)}>{t(($) => $.input_materials.manifest_inspect)}</Button></div>
       <p className="text-caption text-muted-foreground">{item.required ? t(($) => $.input_materials.manifest_required) : t(($) => $.input_materials.manifest_optional)} · {item.availability === "available" ? t(($) => $.input_materials.available) : item.availability === "unavailable" ? t(($) => $.input_materials.unavailable) : t(($) => $.input_materials.unknown_availability)}</p>
-      {item.purpose && <p className="break-words text-caption [overflow-wrap:anywhere]">{item.purpose}</p>}
+      <p className="break-words text-caption [overflow-wrap:anywhere]">{Object.hasOwn(purposeNames, item.purpose) ? purposeNames[item.purpose] : t(($) => $.input_materials.unknown_purpose)}</p>
       {item.unavailableReason && <CockpitInputProblem codes={[item.unavailableReason]} />}
     </li>)}</ul>
     {page.items.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.input_materials.manifest_empty)}</p>}

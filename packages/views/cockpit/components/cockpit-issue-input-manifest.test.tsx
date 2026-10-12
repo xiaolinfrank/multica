@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
-import { cockpitInputDraftKey, useCockpitInputDraftStore } from "@multica/core/cockpit";
+import { cockpitInputDraftKey, emptyCockpitInputForm, setCockpitInputForm, useCockpitInputDraftStore } from "@multica/core/cockpit";
 import type { CockpitInputIssueSummary, CockpitInputManifestHeader, CockpitInputManifestItem, CockpitInputManifestVersionMetadata } from "@multica/core/types/cockpit-input";
 import { CockpitIssueInputManifestPanel } from "./cockpit-issue-input-manifest";
 import { inputHeader, inputVersion, INPUT_ID, INPUT_MEMBER, INPUT_TIME, INPUT_WS } from "./input-test-fixtures";
@@ -22,7 +23,7 @@ const issue: CockpitInputIssueSummary = { id: issueId, identifier: "PMO-1", titl
 const meta: CockpitInputManifestVersionMetadata = { workspaceId: INPUT_WS, issueId, id: manifestId, versionNumber: 1, commandKey: manifestId, manifestHash: "a".repeat(64), itemTotal: 127, requiredTotal: 127, createdBy: INPUT_MEMBER, createdByName: "Owner", createdAt: INPUT_TIME, hasNote: false };
 const items: CockpitInputManifestItem[] = Array.from({ length: 127 }, (_, index) => ({ position: index, inputId: INPUT_ID, inputTitle: `Material ${index + 1}`,
   inputVersionId: `b3000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`, inputVersionNumber: index + 1, payloadKind: "file", filename: `file-${index + 1}.txt`, contentType: "text/plain", sizeBytes: 6,
-  contentHash: "a".repeat(64), purpose: `Purpose ${index + 1}`, required: true, availability: "available", unavailableReason: "" }));
+  contentHash: "a".repeat(64), purpose: index % 2 ? "supporting" : "material", required: true, availability: "available", unavailableReason: "" }));
 let header: CockpitInputManifestHeader;
 beforeEach(() => {
   vi.clearAllMocks(); useCockpitInputDraftStore.getState().clearDraft();
@@ -38,9 +39,9 @@ beforeEach(() => {
   vi.mocked(api.saveCockpitIssueInputManifest).mockImplementation(async (_ws, _issue, body) => ({ workspaceId: INPUT_WS, commandKey: body.commandKey, action: "input_manifest_save", replayed: false, current: null,
     receipt: { ...body, issueId, manifestVersionId: "b2000000-0000-4000-8000-000000000003", versionNumber: 2, revision: body.expectedRevision + 1, requestHash: "b".repeat(64), manifestHash: "c".repeat(64), createdBy: INPUT_MEMBER, createdAt: INPUT_TIME } }));
 });
-function show() {
+function show(suggestedVersionId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const view = render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitIssueInputManifestPanel wsId={INPUT_WS} accountId={INPUT_MEMBER} issueId={issueId} /></I18nProvider></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitIssueInputManifestPanel wsId={INPUT_WS} accountId={INPUT_MEMBER} issueId={issueId} suggestedVersionId={suggestedVersionId} /></I18nProvider></QueryClientProvider>);
   return { ...view, client };
 }
 describe("Issue fixed input manifest editing", () => {
@@ -54,8 +55,8 @@ describe("Issue fixed input manifest editing", () => {
       fireEvent.click(save);
       await waitFor(() => expect(api.saveCockpitIssueInputManifest).toHaveBeenCalledTimes(1));
       const body = vi.mocked(api.saveCockpitIssueInputManifest).mock.calls[0]![2];
-      expect(body.items).toHaveLength(127); expect(body.items[0]).toEqual({ inputVersionId: items[0]!.inputVersionId, purpose: "Purpose 1", required: false });
-      expect(body.items[126]).toEqual({ inputVersionId: items[126]!.inputVersionId, purpose: "Purpose 127", required: true });
+      expect(body.items).toHaveLength(127); expect(body.items[0]).toEqual({ inputVersionId: items[0]!.inputVersionId, purpose: "material", required: false });
+      expect(body.items[126]).toEqual({ inputVersionId: items[126]!.inputVersionId, purpose: "material", required: true });
       expect(api.getCockpitInputManifestItems).toHaveBeenCalledWith(INPUT_WS, issueId, manifestId, { pageSize: 100, cursor: "100" }, expect.any(AbortSignal));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       expect(useCockpitInputDraftStore.getState().draft.forms[cockpitInputDraftKey(INPUT_WS, INPUT_MEMBER, "manifest", issueId)]).toBeUndefined();
@@ -71,4 +72,44 @@ describe("Issue fixed input manifest editing", () => {
       expect(api.saveCockpitIssueInputManifest).not.toHaveBeenCalled();
     } finally { view.unmount(); view.client.clear(); }
   });
+});
+
+
+it("gives a suggested fixed version a valid purpose and preserves explicit selection before saving", async () => {
+  header = { ...header, revision: 0, currentVersion: null, counts: { total: 0, required: 0, availableRequired: 0, unavailableRequired: 0, unknownRequired: 0 } };
+  const id = items[0]!.inputVersionId;
+  const user = userEvent.setup();
+  const view = show(id);
+  try {
+    const dialog = await screen.findByRole("dialog");
+    const add = await within(dialog).findByRole("button", { name: enCockpit.input_materials.manifest_add_suggested });
+    await waitFor(() => expect(add).toBeEnabled()); await user.click(add);
+    const purpose = within(dialog).getByRole("combobox", { name: enCockpit.input_materials.manifest_purpose });
+    expect(purpose).toHaveTextContent(enCockpit.input_materials.purpose_material);
+    expect(api.saveCockpitIssueInputManifest).not.toHaveBeenCalled();
+    await user.click(purpose);
+    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_recording, exact: true }));
+    await waitFor(() => expect(purpose).toHaveTextContent(enCockpit.input_materials.purpose_recording));
+    await user.click(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save }));
+    await waitFor(() => expect(api.saveCockpitIssueInputManifest).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.saveCockpitIssueInputManifest).mock.calls[0]![2].items).toEqual([{ inputVersionId: id, purpose: "recording", required: true }]);
+  } finally { view.unmount(); view.client.clear(); }
+});
+
+it("retains a draft with an invalid purpose and requires choosing a supported purpose before saving", async () => {
+  const key = cockpitInputDraftKey(INPUT_WS, INPUT_MEMBER, "manifest", issueId);
+  setCockpitInputForm(key, { ...emptyCockpitInputForm(crypto.randomUUID()), observedRevision: 1,
+    manifestItems: [{ inputVersionId: items[0]!.inputVersionId, purpose: "old free text", required: true }] });
+  const user = userEvent.setup();
+  const view = show();
+  try {
+    await user.click(await screen.findByRole("button", { name: enCockpit.input_materials.resume_saved }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("button", { name: enCockpit.input_materials.manifest_inspect });
+    expect(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save })).toBeDisabled();
+    expect(useCockpitInputDraftStore.getState().draft.forms[key]?.manifestItems[0]?.purpose).toBe("old free text");
+    await user.click(within(dialog).getByRole("combobox", { name: enCockpit.input_materials.manifest_purpose }));
+    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_supporting, exact: true }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save })).toBeEnabled());
+  } finally { view.unmount(); view.client.clear(); }
 });
