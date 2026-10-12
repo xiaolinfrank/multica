@@ -680,7 +680,8 @@ export class TestApiClient {
 
   async ownedMeetingLifecycleCommand(meetingId: string, suffix: string, body: Record<string, unknown>, method: "POST" | "PATCH" = "POST"): Promise<TestMeetingLifecycleCommand> {
     this.assertOwnedMeeting(meetingId);
-    if (!/^\/(?:lifecycle\/(?:occurrence|materials)|agenda(?:\/[0-9a-f-]{36})?)$/.test(suffix)) throw new Error("Unsupported owned lifecycle fixture command");
+    if (!/^\/(?:lifecycle\/(?:occurrence|materials)|agenda(?:\/[0-9a-f-]{36}(?:\/preparation-issues)?)?)$/.test(suffix)) throw new Error("Unsupported owned lifecycle fixture command");
+    if (suffix.endsWith("/preparation-issues") && method !== "POST") throw new Error("Preparation issue fixture requires creation");
     const response = await this.authedFetch(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}${suffix}`, { method, body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`Meeting lifecycle fixture command failed: ${response.status} ${await response.text()}`);
     const data = await response.json() as TestMeetingLifecycleCommand;

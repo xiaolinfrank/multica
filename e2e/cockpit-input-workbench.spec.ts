@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CockpitInputTestClient } from "./helpers/cockpit-input-client";
-import zh from "../packages/views/locales/zh-Hans/cockpit.json";
+import zh from "../packages/views/locales/zh-Hans/cockpit.json" with { type: "json" };
 
 const words = zh.input_materials;
 test.use({ viewport: { width: 1500, height: 1050 }, locale: "zh-CN", timezoneId: "Asia/Shanghai", contextOptions: { reducedMotion: "reduce" }, screenshot: "only-on-failure", trace: "retain-on-failure" });
@@ -110,7 +110,7 @@ test("uses real fixed inputs without L3, recovers a lost receipt, preserves topi
     let lifecycle = await api.getOwnedMeetingLifecycle(meeting.id);
     for (let index = 1; index <= 30; index++) {
       const result = await api.ownedMeetingLifecycleCommand(meeting.id, "/agenda", { command_key: crypto.randomUUID(), expected_revision: lifecycle.agenda_revision,
-        title: `分页讨论议题 ${String(index).padStart(2, "0")}`, purposes: ["problem_definition"], desired_outcome: "逐项核对输入", notes: "" });
+        title: `分页讨论议题 ${String(index).padStart(2, "0")}`, purposes: ["question_clarification"], desired_outcome: "逐项核对输入", notes: "" });
       lifecycle = result.current; await fixture.reference(meeting.id, versionId!, result.receipt.agenda_id!);
     }
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -124,6 +124,9 @@ test("uses real fixed inputs without L3, recovers a lost receipt, preserves topi
     await expect(materials()).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("zh-inputs-page-two-narrow.png"), animations: "disabled" });
     expect((await api.getMeetingWorkflow(meeting.id)).materials_ready).toBe(false); expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+  } catch (error) {
+    await page.screenshot({ path: testInfo.outputPath("failure-before-cleanup.png"), animations: "disabled" });
+    throw error;
   } finally { await fixture.cleanup(); }
 });
 
@@ -159,6 +162,7 @@ test("fixes an owned shared-folder file and ends a changed-source registration w
     };
     const first = await choose(filesystem.names.stable);
     await first.getByRole("button", { name: words.register_selection, exact: true }).click();
+    await expect(first.getByRole("button", { name: words.finish_batch, exact: true })).toBeEnabled();
     await first.getByRole("button", { name: words.open_registered, exact: true }).click();
     const detail = page.getByRole("dialog", { name: words.material_detail, exact: true });
     await expect(detail.getByRole("button", { name: words.download_version, exact: true })).toBeEnabled({ timeout: 45_000 });
