@@ -437,4 +437,4 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 - 验收中修复：compact 回执 action switch 补 bound/unbound/focused；compact summary 补 minutes_issues；lifecycle CanConfirmMaterials 解除 release 冻结（总纲第二处冻结）；manifest 删除清单去掉已 DROP 表条目。
 - 生产未动。
 
-- R2 四命令全栈完成（reopen/revise_resolution/revoke_approval/unpublish；迁移 9147；协调机定向测试全绿），见 [R2 实施合同](./r2-reversibility-commands.md)。待 agent 3 验收。
+- R2 四命令全栈完成并 agent 3 验收通过（832a4b152；迁移 9147）：server `832a4b152-r2` + web 新构建；agent 3 双包 TestCockpit\* 全绿（0 失败，含 C collation 环境）；浏览器验证 reopen UI（ended 态「更正结束确认」按钮+必填原因对话框）与 API 端到端（ended→scheduled、台账 previous_occurrence 快照、key 复用 409、恢复 end 双向往返），投影贯通 DB→API→UI。坑：HTTP 环境 crypto.randomUUID 不可用（secure context 限制，前端既有模式，生产 HTTPS 无碍——dev 前端命令提交受限属环境限制非回归）。演示数据已恢复。生产未动。
