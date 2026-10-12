@@ -48,6 +48,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components
 import { CockpitMeetingInputs } from "./cockpit-meeting-inputs";
 import { CockpitMeetingAgenda } from "./cockpit-meeting-agenda";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
+import { CockpitMeetingStageStrip } from "./cockpit-meeting-stage";
+import { meetingStageDefaultSection } from "./meeting-stage";
+import { cockpitMeetingLifecycleOptions } from "@multica/core/cockpit";
 
 export interface CockpitMeetingPanelProps {
   wsId: string;
@@ -129,8 +132,26 @@ export function CockpitMeetingPanel({
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
-  const section = destination.meetingId === meeting.id ? destination.meetingView ?? "workflow" : "workflow";
   const directoryOperationId = destination.meetingId === meeting.id ? destination.directoryOperationId : null;
+  const lifecycleQuery = useQuery({ ...cockpitMeetingLifecycleOptions(wsId, meeting.id), enabled: lifecycleAvailable });
+  const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
+    refetchInterval: (query) => {
+      const now = Date.now();
+      if (nasPoll.current.meetingId !== meeting.id) nasPoll.current = { meetingId: meeting.id, active: false, deadline: 0 };
+      const active = cockpitWorkflowSummaryPollInterval(query.state.data, Infinity, now) !== false;
+      if (active && !nasPoll.current.active) nasPoll.current.deadline = now + 5 * 60_000;
+      nasPoll.current.active = active;
+      return cockpitWorkflowSummaryPollInterval(query.state.data, nasPoll.current.deadline, now);
+    },
+    refetchIntervalInBackground: false,
+  });
+  const reloadWorkflow = () => {
+    nasPoll.current.deadline = Date.now() + 5 * 60_000;
+    void workflowQuery.refetch();
+  };
+  const stageDefault = meetingStageDefaultSection(lifecycleQuery.data?.occurrence.state, workflowQuery.data);
+  const section = destination.meetingId === meeting.id && destination.meetingView ? destination.meetingView : stageDefault;
+  const openSection = (value: "agenda" | "workflow" | "resources" | "details") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
   const [agendaOpened, setAgendaOpened] = useState(section === "agenda");
   useEffect(() => { if (section === "agenda") setAgendaOpened(true); }, [section]);
   const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "agenda");
@@ -159,21 +180,6 @@ export function CockpitMeetingPanel({
     [vocabulary.parties],
   );
   const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
-  const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
-    refetchInterval: (query) => {
-      const now = Date.now();
-      if (nasPoll.current.meetingId !== meeting.id) nasPoll.current = { meetingId: meeting.id, active: false, deadline: 0 };
-      const active = cockpitWorkflowSummaryPollInterval(query.state.data, Infinity, now) !== false;
-      if (active && !nasPoll.current.active) nasPoll.current.deadline = now + 5 * 60_000;
-      nasPoll.current.active = active;
-      return cockpitWorkflowSummaryPollInterval(query.state.data, nasPoll.current.deadline, now);
-    },
-    refetchIntervalInBackground: false,
-  });
-  const reloadWorkflow = () => {
-    nasPoll.current.deadline = Date.now() + 5 * 60_000;
-    void workflowQuery.refetch();
-  };
   const workflowEnabled = workflowQuery.data?.enabled === true;
   const workflowUnknown = workflowQuery.isPending || workflowQuery.isError || workflowQuery.data?.meeting_id !== meeting.id;
   const legacyReadOnly = readOnly || workflowEnabled || workflowUnknown;
@@ -252,6 +258,7 @@ export function CockpitMeetingPanel({
       <Tabs value={section} onValueChange={(value) => {
         if (value === "workflow" || value === "resources" || value === "details" || value === "agenda") navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
+        <CockpitMeetingStageStrip occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} onOpenSection={openSection} />
         <TabsList variant="line" className="min-h-11 h-auto w-full shrink-0 flex-wrap border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
           {lifecycleAvailable && <TabsTrigger value="agenda">{t(($) => $.meeting_lifecycle.title)}</TabsTrigger>}
           <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
@@ -512,8 +519,10 @@ export function CockpitMeetingPanel({
         </div>
 
 
-            <section className="mt-4 space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
-              <h3 className="text-title-sm font-medium">{t(($) => $.workflow.legacy_records)}</h3>
+            {/* R4: legacy free-text records live in the collapsed auxiliary area —
+                the fact layer on the agenda tab is where occurrence facts are read now. */}
+            <details className="mt-4 space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
+              <summary className="cursor-pointer text-title-sm font-medium text-muted-foreground">{t(($) => $.workflow.legacy_records)}</summary>
               <p className="text-caption text-muted-foreground">{t(($) => $.workflow.legacy_records_hint)}</p>
         <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
           <EditableTextArea
@@ -545,7 +554,7 @@ export function CockpitMeetingPanel({
             rows={3}
           />
         </CockpitField>
-            </section>
+            </details>
           </TabsContent>
         </div>
       </Tabs>

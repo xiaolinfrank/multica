@@ -755,7 +755,7 @@
   "workflow": {
     "title": "Minutes workflow",
     "sections": "Meeting workspace sections",
-    "tab_workflow": "Workflow",
+    "tab_workflow": "Minutes",
     "tab_resources": "Links & materials",
     "tab_details": "Details",
     "setup_title": "Set up the minutes work package",
@@ -2344,5 +2344,16 @@
     "registration_read_unavailable": "The registered material is currently unreadable. Its original link is retained.",
     "open_registration_topic": "Open the associated topic",
     "related_tasks_hint": "To hand fixed material to a task, open its details and choose “Hand to a linked issue”. Save the task’s input list to use it for new runs."
+  },
+  "meeting_stage": {
+    "strip": "Meeting stages",
+    "preparation": "Preparation",
+    "recording": "Meeting record",
+    "minutes_review": "Minutes confirmation",
+    "followup": "Action follow-up",
+    "action_check_materials": "Check materials",
+    "action_end_meeting": "End the meeting",
+    "action_minutes": "Minutes task",
+    "action_followup": "Open actions"
   }
 }

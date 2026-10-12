@@ -755,7 +755,7 @@
   "workflow": {
     "title": "纪要工作流",
     "sections": "会议工作台分区",
-    "tab_workflow": "工作流",
+    "tab_workflow": "纪要",
     "tab_resources": "关联与资料",
     "tab_details": "基本信息",
     "setup_title": "设置纪要工作包",
@@ -2344,5 +2344,16 @@
     "registration_read_unavailable": "当前无法读取已登记的资料，原访问入口仍保留。",
     "open_registration_topic": "前往所属议题",
     "related_tasks_hint": "固定资料可在详情中“交给关联任务”；保存该任务的输入清单后，供新运行使用。"
+  },
+  "meeting_stage": {
+    "strip": "会议阶段",
+    "preparation": "准备",
+    "recording": "会议记录",
+    "minutes_review": "纪要确认",
+    "followup": "行动跟进",
+    "action_check_materials": "检查材料",
+    "action_end_meeting": "结束会议",
+    "action_minutes": "纪要任务",
+    "action_followup": "未完成行动"
   }
 }
