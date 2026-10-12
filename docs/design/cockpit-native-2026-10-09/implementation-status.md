@@ -438,3 +438,11 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 - 生产未动。
 
 - R2 四命令全栈完成并 agent 3 验收通过（832a4b152；迁移 9147）：server `832a4b152-r2` + web 新构建；agent 3 双包 TestCockpit\* 全绿（0 失败，含 C collation 环境）；浏览器验证 reopen UI（ended 态「更正结束确认」按钮+必填原因对话框）与 API 端到端（ended→scheduled、台账 previous_occurrence 快照、key 复用 409、恢复 end 双向往返），投影贯通 DB→API→UI。坑：HTTP 环境 crypto.randomUUID 不可用（secure context 限制，前端既有模式，生产 HTTPS 无碍——dev 前端命令提交受限属环境限制非回归）。演示数据已恢复。生产未动。
+
+## 2026-10-13 R3 棘轮释放 + R3b HTTP 环境 + R4 第一刀（均 agent 3 验收通过）
+
+- **R3（05b9c48dc，迁移 9148）**：取消放宽到 in_progress（触发器 + 预览 + operation basis 三处）；`unstart`（in_progress→scheduled，清开始确认与 actual_started_at——撤哪步清哪步，与 reopen 对称）与 `unschedule`（scheduled→unconfirmed）两逆向命令；header 能力位补 can_reopen/can_unstart/can_unschedule（顺手修正 R2 的 can_reopen 借用债）；schema refine 矩阵补三个逆向 action（**修复 R2 遗留缺口：reopen 回执会被客户端 ack 拒绝**——R2 验收时 HTTP 环境未暴露）。
+  - agent 3：双包 TestCockpit\* 全绿（C collation）；API 全链路 8/8（schedule→start→取消预览放行→无理由 400→unstart（含台账 prev 快照）→unschedule→旧 revision 409→台账四条）；ended 取消拦截带 `meeting_ended_reopen_first`（preview + basis 双通道）；浏览器验证按钮/对话框/投影回落。演示数据已恢复。
+- **R3b（c3f1f0b3d）**：`crypto.randomUUID` HTTP 非 secure context 不可用——38 处直调改走 core 既有 `createSafeId()` 回退。agent 3 浏览器实测：unstart 对话框填写→提交→投影实时回落全链路走通（此前同操作 TypeError 静默失败）。生产 HTTPS 与 dev HTTP 均可用。
+- **R4 第一刀（371fc38f8 + 370c42a12）**：阶段条（准备→会议记录→纪要确认→行动跟进，纯投影不落库）+ 每阶段一个主动作 + 阶段感知默认落位（ended 落纪要 tab）+ 「工作流」tab 更名「纪要」（四语）+ 历史记录默认折叠。agent 3 浏览器验证：unconfirmed 会议（准备高亮/检查材料/落议题与准备）与 ended 会议（纪要确认高亮/纪要任务/落纪要 tab）双场景通过；TDZ 引入-发现-修复闭环（nasPoll ref 声明顺序）。
+- 生产未动。剩 R4 第二刀（三栏工作台/全幅布局）、R5（呈现层+词汇）、R6（决议对象）。
