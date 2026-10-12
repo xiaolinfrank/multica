@@ -108,7 +108,11 @@
     "size_error": "Check the field lengths before saving.",
     "refresh_first": "Refresh agenda from the first page",
     "reopen": "Correct end confirmation",
-    "reopen_hint": "Withdraw the end confirmation: the meeting returns to scheduled and can still be cancelled or rescheduled. The original confirmation and your reason stay in the confirmation history."
+    "reopen_hint": "Withdraw the end confirmation: the meeting returns to scheduled and can still be cancelled or rescheduled. The original confirmation and your reason stay in the confirmation history.",
+    "unstart": "Correct start confirmation",
+    "unstart_hint": "Withdraw the start confirmation: the meeting returns to scheduled and the actual start time recorded with it is cleared. For a meeting that genuinely began, correct the times or confirm the end instead.",
+    "unschedule": "Correct schedule confirmation",
+    "unschedule_hint": "Withdraw the schedule confirmation: the meeting returns to not yet confirmed, so times or the plan can be reworked. The reason stays in the confirmation history."
   },
   "header": {
     "title": "Project Cockpit",
@@ -1925,7 +1929,8 @@
     "responsible_unknown": "Name unavailable",
     "run_forbidden": "You do not currently have permission to view this run.",
     "run_unavailable": "This run is no longer available.",
-    "review_again_required": "Review a fresh preview before confirming again."
+    "review_again_required": "Review a fresh preview before confirming again.",
+    "reason_ended_reopen": "This meeting is confirmed ended. Correct the end confirmation first, then cancel."
   },
   "meeting_directory": {
     "title": "Directory preparation",

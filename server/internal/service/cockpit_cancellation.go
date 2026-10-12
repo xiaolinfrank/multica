@@ -105,9 +105,12 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 	if !plan.View.CanConfirm {
 		plan.View.BlockedReasons = append(plan.View.BlockedReasons, "workflow_manager_required")
 	}
-	if x.meeting.OccurrenceState != "unconfirmed" && x.meeting.OccurrenceState != "scheduled" && x.meeting.OccurrenceState != "cancelled" {
+	// R3: a meeting confirmed started may still be cancelled mid-meeting;
+	// only a confirmed end must be reopened first (it carries minutes
+	// conclusions covered by the R2 reverse path).
+	if x.meeting.OccurrenceState == "ended" {
 		plan.View.CanConfirm = false
-		plan.View.BlockedReasons = append(plan.View.BlockedReasons, "meeting_already_started")
+		plan.View.BlockedReasons = append(plan.View.BlockedReasons, "meeting_ended_reopen_first")
 	}
 	var e error
 	plan.View.AffectedIssueTotal, e = q.CountCockpitDispositionIssues(ctx, db.CountCockpitDispositionIssuesParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})

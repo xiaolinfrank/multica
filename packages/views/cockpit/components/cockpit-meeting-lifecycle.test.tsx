@@ -62,7 +62,7 @@ describe("meeting occurrence and material confirmation", () => {
     const plain = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={lifecycleFixture()} refresh={vi.fn()} />));
     expect(plain.queryByRole("button", { name: "Correct end confirmation" })).toBeNull();
     plain.unmount();
-    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, occurrence: { ...lifecycleFixture().occurrence, state: "ended", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", ended_at: "2026-10-11T02:00:00Z", ended_by: "user-1", ended_source: "human_confirmation", actual_started_at: "2026-10-11T01:00:00Z", actual_ended_at: "2026-10-11T02:00:00Z" } });
+    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, can_reopen: true, occurrence: { ...lifecycleFixture().occurrence, state: "ended", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", ended_at: "2026-10-11T02:00:00Z", ended_by: "user-1", ended_source: "human_confirmation", actual_started_at: "2026-10-11T01:00:00Z", actual_ended_at: "2026-10-11T02:00:00Z" } });
     const after = lifecycleFixture({ lifecycle_revision: 2, can_end: true, occurrence: { ...lifecycleFixture().occurrence, state: "scheduled", actual_started_at: "2026-10-11T01:00:00Z" } });
     vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, "reopen-1", "reopen", { reason: "The meeting continues tomorrow.", occurrence: after.occurrence, previous_occurrence: before.occurrence }));
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={before} refresh={vi.fn()} />, client(), reopenCockpitCopy));
@@ -78,6 +78,24 @@ describe("meeting occurrence and material confirmation", () => {
     expect(body).toMatchObject({ transition: "reopen", expected_revision: 1, reason: "The meeting continues tomorrow." });
     expect("actual_started_at" in body).toBe(false);
     expect("actual_ended_at" in body).toBe(false);
+  });
+  it("withdraws a mistaken start through unstart with a reason and no time fields", async () => {
+    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, can_unstart: true, occurrence: { ...lifecycleFixture().occurrence, state: "in_progress", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", actual_started_at: "2026-10-11T01:00:00Z" } });
+    const after = lifecycleFixture({ lifecycle_revision: 2, can_start: true, occurrence: { ...lifecycleFixture().occurrence, state: "scheduled" } });
+    vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, "unstart-1", "unstart", { reason: "Pressed by accident.", occurrence: after.occurrence, previous_occurrence: before.occurrence }));
+    render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={before} refresh={vi.fn()} />));
+    fireEvent.click(screen.getByRole("button", { name: "Correct start confirmation" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.queryByLabelText("Actual start (optional)")).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    expect(dialog.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    fireEvent.change(dialog.getByLabelText(enCockpit.meeting_lifecycle.reason), { target: { value: "Pressed by accident." } });
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Confirm" })).toBeEnabled());
+    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(api.recordCockpitOccurrence).toHaveBeenCalled());
+    const body = vi.mocked(api.recordCockpitOccurrence).mock.calls.at(-1)?.[2] ?? {};
+    expect(body).toMatchObject({ transition: "unstart", expected_revision: 1, reason: "Pressed by accident." });
+    expect("actual_started_at" in body).toBe(false);
   });
   it("does not silently rebase an open occurrence confirmation and keeps entered times after a concurrent change", async () => {
     const header = lifecycleFixture(); const cache = client(); const view = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />, cache));

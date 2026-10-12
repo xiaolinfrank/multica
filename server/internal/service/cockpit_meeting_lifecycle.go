@@ -76,7 +76,7 @@ func lifecycleHeader(ctx context.Context, q *db.Queries, x lifecycleState, p Coc
 	}
 	manager := lifecycleManager(ctx, q, x, p)
 	state := x.meeting.OccurrenceState
-	h := CockpitMeetingLifecycleHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), LifecycleRevision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Occurrence: lifecycleOccurrence(x.meeting), Materials: lifecycleMaterials(x.work), WorkflowEnabled: x.work != nil, AgendaTotal: total, CanSchedule: manager && state == "unconfirmed", CanStart: manager && (state == "unconfirmed" || state == "scheduled"), CanEnd: manager && (state == "unconfirmed" || state == "scheduled" || state == "in_progress"), CanCorrectTimes: manager && (state == "in_progress" || state == "ended"), CanEditAgenda: p.Human && state != "cancelled" && !x.meeting.ArchivedAt.Valid, Archive: lifecycleArchive(x.meeting), CanConfirmMaterials: manager && x.work != nil && state != "cancelled", BlockedReasons: []CockpitLifecycleBlock{}}
+	h := CockpitMeetingLifecycleHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), LifecycleRevision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Occurrence: lifecycleOccurrence(x.meeting), Materials: lifecycleMaterials(x.work), WorkflowEnabled: x.work != nil, AgendaTotal: total, CanSchedule: manager && state == "unconfirmed", CanStart: manager && (state == "unconfirmed" || state == "scheduled"), CanEnd: manager && (state == "unconfirmed" || state == "scheduled" || state == "in_progress"), CanCorrectTimes: manager && (state == "in_progress" || state == "ended"), CanEditAgenda: p.Human && state != "cancelled" && !x.meeting.ArchivedAt.Valid, Archive: lifecycleArchive(x.meeting), CanConfirmMaterials: manager && x.work != nil && state != "cancelled", CanReopen: manager && state == "ended", CanUnstart: manager && state == "in_progress", CanUnschedule: manager && state == "scheduled" && !x.meeting.StartedConfirmedAt.Valid && !x.meeting.EndedAt.Valid, BlockedReasons: []CockpitLifecycleBlock{}}
 	if !p.Human {
 		h.BlockedReasons = append(h.BlockedReasons, CockpitLifecycleBlock{Action: "write", Code: "human_required"})
 	} else if !manager {
@@ -312,6 +312,10 @@ func optionalLifecycleTime(raw json.RawMessage, old pgtype.Timestamptz) (pgtype.
 // "reopen" is the explicit reverse of "end": it restores scheduled and clears the
 // ended facts (including actual_ended_at, keeping actual_started_at) while both
 // receipts stay in the command ledger (meeting-lifecycle-contract R2).
+// "unstart" and "unschedule" (R3) are the reverses of "start" and "schedule":
+// each withdraws only the confirmation it undoes — unstart clears the started
+// facts and the actual start time recorded under that confirmation; unschedule
+// withdraws the schedule confirmation alone and leaves recorded facts alone.
 func applyMeetingOccurrence(ctx context.Context, q *db.Queries, p CockpitLifecycleRead, m db.GetCockpitMeetingLifecycleRow, in CockpitOccurrenceInput) (db.GetCockpitMeetingLifecycleRow, error) {
 	if m.OccurrenceState == "cancelled" {
 		return m, fmt.Errorf("%w: explicitly reschedule this cancelled meeting first", ErrCockpitWorkflowConflict)
@@ -372,6 +376,35 @@ func applyMeetingOccurrence(ctx context.Context, q *db.Queries, p CockpitLifecyc
 		m.EndedBy = pgtype.UUID{}
 		m.EndedSource = pgtype.Text{}
 		m.ActualEndedAt = pgtype.Timestamptz{}
+	case "unstart":
+		// R3 reversibility: the reverse of start. A mistaken start confirmation
+		// withdraws the started facts together with the actual start time
+		// captured under them (symmetric to reopen clearing actual_ended_at);
+		// the meeting returns to scheduled so cancel or a fresh start stay
+		// reachable. If the meeting genuinely began, correct_times or end are
+		// the honest paths, not unstart.
+		if m.OccurrenceState != "in_progress" {
+			return m, ErrCockpitWorkflowConflict
+		}
+		if strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 16000 {
+			return m, fmt.Errorf("%w: a reason is required to withdraw the start confirmation", ErrCockpitWorkflowInput)
+		}
+		m.OccurrenceState = "scheduled"
+		m.StartedConfirmedAt = pgtype.Timestamptz{}
+		m.StartedConfirmedBy = pgtype.UUID{}
+		m.ActualStartedAt = pgtype.Timestamptz{}
+	case "unschedule":
+		// R3 reversibility: the reverse of schedule. Only the schedule
+		// confirmation is withdrawn; recorded facts (actual times kept by
+		// reopen) survive untouched. Requires the started facts to be absent,
+		// so a meeting that already began must unstart first.
+		if m.OccurrenceState != "scheduled" || m.StartedConfirmedAt.Valid || m.EndedAt.Valid {
+			return m, ErrCockpitWorkflowConflict
+		}
+		if strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 16000 {
+			return m, fmt.Errorf("%w: a reason is required to withdraw the schedule confirmation", ErrCockpitWorkflowInput)
+		}
+		m.OccurrenceState = "unconfirmed"
 	default:
 		return m, ErrCockpitWorkflowInput
 	}

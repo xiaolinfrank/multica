@@ -22,11 +22,13 @@ export const CockpitMeetingLifecycleHeaderSchema = z.object({
   workflow_enabled: z.boolean(), agenda_total: count,
   can_schedule: capability, can_start: capability, can_end: capability,
   can_correct_times: capability, can_edit_agenda: capability, can_confirm_materials: capability,
+  can_reopen: capability, can_unstart: capability, can_unschedule: capability,
   blocked_reasons: z.array(z.object({ action: z.string(), code: z.string() })).default([]),
   archive: CockpitMeetingArchiveSchema.optional(),
 }).refine((value) => value.workflow_enabled === (value.materials !== null), "Materials confirmation requires the same meeting work package")
   .transform((value) => occurrenceStates.has(value.occurrence.state) ? value : {
     ...value, can_schedule: false, can_start: false, can_end: false, can_correct_times: false,
+    can_reopen: false, can_unstart: false, can_unschedule: false,
   });
 
 export const CockpitAgendaMetadataSchema = z.object({
@@ -62,7 +64,7 @@ export const CockpitAgendaReferencePageSchema = z.object({
   && page.items.every((item) => item.workspace_id === page.workspace_id && item.meeting_id === page.meeting_id && item.agenda_id === page.agenda_id
     && (page.include_removed || item.removed_at === null)), "Agenda reference page does not match its scope or filter");
 
-export const CockpitLifecycleActionSchema = z.enum(["schedule", "start", "end", "correct_times", "reopen", "materials",
+export const CockpitLifecycleActionSchema = z.enum(["schedule", "start", "end", "correct_times", "reopen", "unstart", "unschedule", "materials",
   "agenda_create", "agenda_update", "agenda_remove", "reference_attach", "reference_remove", "preparation_issue_create", "reinstate", "archive", "unarchive"]);
 export const CockpitLifecycleReceiptSchema = z.object({
   revision, agenda_revision: revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(),
@@ -84,6 +86,9 @@ export const CockpitLifecycleCommandResultSchema = z.object({
     || receipt.reference.workspace_id !== result.workspace_id || receipt.reference.meeting_id !== result.meeting_id)) return false;
   if (["schedule", "start", "end", "correct_times"].includes(action)) return receipt.occurrence !== null
     && (action !== "correct_times" || Boolean(receipt.reason.trim() && receipt.previous_occurrence));
+  // Every reverse transition carries a reason and the withdrawn before-fact.
+  if (["reopen", "unstart", "unschedule"].includes(action)) return receipt.occurrence !== null
+    && Boolean(receipt.reason.trim() && receipt.previous_occurrence);
   if (action === "archive" || action === "unarchive") return Boolean(receipt.archive && receipt.previous_archive && receipt.reason.trim())
     && (action === "archive" ? receipt.archive?.archived_at !== null : receipt.archive?.archived_at === null);
   if (action === "reinstate") return receipt.occurrence?.state === "scheduled" && receipt.previous_occurrence?.state === "cancelled" && Boolean(receipt.reason.trim());

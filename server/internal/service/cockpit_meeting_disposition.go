@@ -127,8 +127,9 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 		out.Unarchive = denied
 	}
 	state := x.meeting.OccurrenceState
-	if state != "unconfirmed" && state != "scheduled" {
-		out.Cancel = operationField("blocked", "meeting_already_started")
+	// R3: in_progress may still cancel; ended must reopen first (R2 reverse).
+	if state == "ended" {
+		out.Cancel = operationField("blocked", "meeting_ended_reopen_first")
 	}
 	if state != "cancelled" {
 		out.AppendDisposition = operationField("blocked", "meeting_not_cancelled")

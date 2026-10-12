@@ -9,14 +9,14 @@ const agendaFields = { title: z.string().optional(), purposes: z.array(purposes)
 const agendaDraft = z.object({ observedRevision: revision, title: z.string(), purposes: z.array(purposes), desiredOutcome: z.string(), notes: z.string(), facilitatorId: z.string(), nodeId: z.string() });
 const preparationFields = z.object({ title: z.string(), description: z.string(), assignee_type: z.enum(["member", "agent", "squad"]).nullable(), assignee_id: z.string().nullable(), priority: z.enum(["none", "urgent", "high", "medium", "low"]), due_date: z.string().nullable(), project_id: z.string().nullable(), module_id: z.string().nullable() });
 const formSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("occurrence"), observedRevision: revision, transition: z.enum(["schedule", "start", "end", "correct_times", "reopen"]), start: z.string(), end: z.string(), reason: z.string() }),
+  z.object({ kind: z.literal("occurrence"), observedRevision: revision, transition: z.enum(["schedule", "start", "end", "correct_times", "reopen", "unstart", "unschedule"]), start: z.string(), end: z.string(), reason: z.string() }),
   z.object({ kind: z.literal("preparation"), observedRevision: revision, primaryNodeId: z.string().nullable(), fields: preparationFields }),
   z.object({ kind: z.literal("reference"), observedRevision: revision, referenceKind: z.enum(["issue", "artifact_reference"]), targetId: z.string(), purpose: z.enum(["preparation", "material"]) }),
   z.object({ kind: z.literal("remove"), observedRevision: revision, reason: z.string() }),
 ]);
 export type CockpitMeetingFormDraft = z.infer<typeof formSchema>;
 const commandSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("occurrence"), body: z.object({ ...common, transition: z.enum(["schedule", "start", "end", "correct_times", "reopen"]), actual_started_at: z.string().nullable().optional(), actual_ended_at: z.string().nullable().optional(), reason: z.string().optional() }) }),
+  z.object({ kind: z.literal("occurrence"), body: z.object({ ...common, transition: z.enum(["schedule", "start", "end", "correct_times", "reopen", "unstart", "unschedule"]), actual_started_at: z.string().nullable().optional(), actual_ended_at: z.string().nullable().optional(), reason: z.string().optional() }) }),
   z.object({ kind: z.literal("materials"), body: z.object({ ...common, materials_ready: z.boolean() }) }),
   z.object({ kind: z.literal("agenda_create"), body: z.object({ ...common, ...agendaFields }) }),
   z.object({ kind: z.literal("agenda_update"), agendaId: z.string(), body: z.object({ ...common, ...agendaFields }) }),

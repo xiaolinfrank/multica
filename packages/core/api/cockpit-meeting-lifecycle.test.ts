@@ -20,7 +20,7 @@ function occurrence(patch: Partial<CockpitOccurrenceView> = {}): CockpitOccurren
 function header(patch: Partial<CockpitMeetingLifecycleHeader> = {}): CockpitMeetingLifecycleHeader {
   return { workspace_id: WS, meeting_id: MEETING, lifecycle_revision: 5, agenda_revision: 9, generated_at: TIME, occurrence: occurrence(),
     materials: null, workflow_enabled: false, agenda_total: 1, can_schedule: true, can_start: true, can_end: true,
-    can_correct_times: false, can_edit_agenda: true, can_confirm_materials: false, blocked_reasons: [], ...patch };
+    can_correct_times: false, can_edit_agenda: true, can_confirm_materials: false, can_reopen: false, can_unstart: false, can_unschedule: false, blocked_reasons: [], ...patch };
 }
 function agenda(patch: Partial<CockpitAgendaDetail> = {}): CockpitAgendaDetail {
   return { id: AGENDA, workspace_id: WS, meeting_id: MEETING, revision: 2, title: "Check the boundary", purposes: ["boundary_confirmation"],
@@ -168,6 +168,23 @@ describe("meeting lifecycle API boundaries", () => {
     await expect(second.client.recordCockpitOccurrence(WS, MEETING, { ...body, actual_started_at: null, actual_ended_at: null })).resolves.toEqual(empty);
     expect(JSON.parse(second.fetchMock.mock.calls[0]?.[1].body)).toMatchObject({ actual_started_at: null, actual_ended_at: null });
     await expect(reply(value).client.recordCockpitOccurrence(WS, MEETING, { ...body, actual_started_at: "2026-10-11T09:00:00+08:00" })).resolves.toEqual(value);
+  });
+  it("acknowledges the reverse transitions by their target state and a matching reason", async () => {
+    const running = occurrence({ state: "in_progress", started_confirmed_at: TIME, started_confirmed_by: USER, actual_started_at: "2026-10-11T01:00:00Z" });
+    const unstart = result("unstart", { previous_occurrence: running, occurrence: occurrence({ state: "scheduled" }), reason: "Wrong meeting" });
+    const unstartBody = { ...command, transition: "unstart" as const, reason: "  Wrong meeting  " };
+    const unstartReply = reply(unstart);
+    await expect(unstartReply.client.recordCockpitOccurrence(WS, MEETING, unstartBody)).resolves.toEqual(unstart);
+    expect(JSON.parse(unstartReply.fetchMock.mock.calls[0]?.[1].body)).toMatchObject({ transition: "unstart" });
+    for (const bad of [{ ...unstart, receipt: { ...unstart.receipt, reason: "Other reason" } },
+      { ...unstart, receipt: { ...unstart.receipt, occurrence: occurrence({ state: "in_progress" }) } }]) {
+      await expect(reply(bad).client.recordCockpitOccurrence(WS, MEETING, unstartBody)).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
+    }
+    const scheduled = occurrence({ state: "scheduled" });
+    const unschedule = result("unschedule", { previous_occurrence: scheduled, occurrence: occurrence(), reason: "Rework the plan" });
+    await expect(reply(unschedule).client.recordCockpitOccurrence(WS, MEETING, { ...command, transition: "unschedule", reason: "Rework the plan" })).resolves.toEqual(unschedule);
+    await expect(reply({ ...unschedule, receipt: { ...unschedule.receipt, occurrence: scheduled } }).client.recordCockpitOccurrence(WS, MEETING,
+      { ...command, transition: "unschedule", reason: "Rework the plan" })).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);
   });
   it("requires correction reasons and the preserved before-fact rather than substituting current metadata", async () => {
     const ended = occurrence({ state: "ended", ended_at: TIME, actual_ended_at: "2026-10-11T01:00:00Z" });

@@ -18,7 +18,7 @@ export function CockpitPreparationReasons({ codes, targets = [] }: { codes: stri
     preparation_responsible_required: t(($) => $.meeting_preparation.reason_responsible), preparation_needs_attention: t(($) => $.meeting_preparation.reason_attention),
     context_changed: t(($) => $.meeting_preparation.reason_context), meeting_preparation_closed: t(($) => $.meeting_preparation.reason_closed),
     target_meeting_preparation_closed: t(($) => $.meeting_preparation.reason_target_closed), issue_revision_changed: t(($) => $.meeting_preparation.reason_issue_changed),
-    run_already_ended: t(($) => $.meeting_preparation.reason_run_ended), meeting_already_started: t(($) => $.meeting_preparation.reason_started),
+    run_already_ended: t(($) => $.meeting_preparation.reason_run_ended), meeting_already_started: t(($) => $.meeting_preparation.reason_started), meeting_ended_reopen_first: t(($) => $.meeting_preparation.reason_ended_reopen),
     meeting_preparation_history: t(($) => $.meeting_preparation.reason_preparation_history), workflow_history: t(($) => $.meeting_preparation.reason_workflow_history),
     target_unavailable: t(($) => $.meeting_preparation.reason_target_unavailable), forbidden: t(($) => $.meeting_preparation.reason_forbidden),
   };

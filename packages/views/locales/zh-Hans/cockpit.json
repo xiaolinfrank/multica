@@ -108,7 +108,11 @@
     "size_error": "请缩短超出限制的字段后保存。",
     "refresh_first": "从首页重新读取议题",
     "reopen": "更正结束确认",
-    "reopen_hint": "撤销结束确认：会议回到已排期状态，仍可取消或改期；原确认与本次原因保留在确认历史中。"
+    "reopen_hint": "撤销结束确认：会议回到已排期状态，仍可取消或改期；原确认与本次原因保留在确认历史中。",
+    "unstart": "更正开始确认",
+    "unstart_hint": "撤销开始确认：会议回到已排期状态，随之记录的实际开始时间一并清除。若会议确实已开始，请改用更正时间或确认结束。",
+    "unschedule": "更正安排确认",
+    "unschedule_hint": "撤销安排确认：会议回到未确认状态，可重新调整时间或安排。原因保留在确认历史中。"
   },
   "header": {
     "title": "项目驾驶舱",
@@ -1925,7 +1929,8 @@
     "responsible_unknown": "姓名暂不可用",
     "run_forbidden": "当前无权查看此运行。",
     "run_unavailable": "此运行已不可用。",
-    "review_again_required": "请重新预览并核对，再次明确确认。"
+    "review_again_required": "请重新预览并核对，再次明确确认。",
+    "reason_ended_reopen": "该会议已确认结束。请先更正结束确认，再取消会议。"
   },
   "meeting_directory": {
     "title": "目录准备",

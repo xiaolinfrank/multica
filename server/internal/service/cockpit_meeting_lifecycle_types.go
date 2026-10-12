@@ -106,6 +106,9 @@ type CockpitMeetingLifecycleHeader struct {
 	CanStart            bool                      `json:"can_start"`
 	CanEnd              bool                      `json:"can_end"`
 	CanCorrectTimes     bool                      `json:"can_correct_times"`
+	CanReopen           bool                      `json:"can_reopen"`
+	CanUnstart          bool                      `json:"can_unstart"`
+	CanUnschedule       bool                      `json:"can_unschedule"`
 	CanEditAgenda       bool                      `json:"can_edit_agenda"`
 	CanConfirmMaterials bool                      `json:"can_confirm_materials"`
 	BlockedReasons      []CockpitLifecycleBlock   `json:"blocked_reasons"`

@@ -1,6 +1,6 @@
 # 会议生命周期：议题、准备与发生事实
 
-> **2026-10-12 总纲修订**：§2/§3/§5 中「确认结束不可重开、release 后 readiness 冻结、单版本结论一次性写入的终态语义」被原则 2 取代（切片 R1/R2：reopen、投影替代 released_at）；correct_times、议题软移除与命令台账是总纲范本，保留。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
+> **2026-10-12 总纲修订**：§2/§3/§5 中「确认结束不可重开、release 后 readiness 冻结、单版本结论一次性写入的终态语义、started 不可取消、schedule/start 无回退」被原则 2 取代（切片 R1/R2/R3：reopen/unstart/unschedule、取消放宽、投影替代 released_at）；correct_times、议题软移除与命令台账是总纲范本，保留。 详见[设计总纲](./design-principles-2026-10-12.md)、[评审记录](./review-2026-10-12.md)与 [R3 合同](./r3-ratchet-release.md)。
 
 状态：本批已完成 agent 3 功能、规模与最终浏览器验收，并部署到常驻测试环境；独立 `multica_test` 与常驻均为 9075，账本分别 761 与 764。详见[验证记录](implementation/agent3-meeting-lifecycle-validation.json)及[部署记录](implementation/agent3-meeting-lifecycle-resident-deployment.json)。日期：2026-10-11。现有产品依据为后端 `b2f191fc0` 及其已冻结客户端。本批保留此前已发布的任务操作依据与恢复路径。
 
@@ -80,6 +80,9 @@
 | `schedule` | `unconfirmed → scheduled`，确认已有安排；不根据日期自动执行，修改原计划日期仍使用原基本资料入口 |
 | `start` | `unconfirmed/scheduled → in_progress`；记录 server 确认时间，可提交实际开始时间；不要求先有纪要工作包 |
 | `end` | `unconfirmed/scheduled/in_progress → ended`；支持补记线下会议，不造缺失的开始事实；唯一 ended_at 写 server 确认时间，可附实际结束时间 |
+| `unstart`（R3） | `in_progress → scheduled`；撤回开始确认，清 started 确认与随之记录的 actual_started_at；reason 必填；已真正开始的会议用 `correct_times`/`end` 而非本命令 |
+| `unschedule`（R3） | `scheduled → unconfirmed`（要求 started/ended 确认均为空）；仅撤回安排确认，不动已记录事实；reason 必填 |
+| `cancel` 前置修订（R3） | 取消允许 `unconfirmed/scheduled/in_progress`（原为不含 in_progress）；`ended` 仍须先 `reopen`（R2），因为 ended 承载纪要结论层 |
 | `correct_times` | 明确修正/清空可选实际起止，必须给 1–16,000 字节原因并记录前后值；不清除 ended_at、不重开会议、不撤销 release/历史纪要 |
 
 实际时间用带时区 RFC3339，存 UTC；不得晚于提交时的数据库时间。两个实际值同时存在时须开始不晚于结束，只有已结束才可有 actual_ended_at。`end` 可同时明确补充实际开始时间；省略字段维持已存值，显式 null 表示未知。计划时间调整不更改实际时间或已结束事实。
