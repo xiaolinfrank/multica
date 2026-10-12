@@ -4,7 +4,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg(workspace_id) AND w.meeting_id=sqlc.arg(meeting_id)
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE (sqlc.arg(query)::text='' OR i.title ILIKE '%'||sqlc.arg(query)||'%' OR i.number::text=sqlc.arg(query))
@@ -16,7 +16,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg(workspace_id) AND w.meeting_id=sqlc.arg(meeting_id)
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE (sqlc.arg(query)::text='' OR i.title ILIKE '%'||sqlc.arg(query)||'%' OR i.number::text=sqlc.arg(query));
@@ -27,7 +27,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg(workspace_id) AND w.meeting_id=sqlc.arg(meeting_id)
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT EXISTS(SELECT 1 FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id) WHERE i.id=sqlc.arg(issue_id));
 
@@ -37,7 +37,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg(workspace_id) AND w.meeting_id=sqlc.arg(meeting_id)
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM agent_task_queue t JOIN preparation_issues p ON p.id=t.issue_id
 WHERE t.chat_session_id IS NULL AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory');
@@ -77,7 +77,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg(workspace_id) AND w.meeting_id=sqlc.arg(meeting_id)
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE i.id=ANY(sqlc.arg(issue_ids)::uuid[]);

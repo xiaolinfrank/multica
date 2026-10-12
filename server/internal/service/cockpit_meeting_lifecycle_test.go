@@ -109,7 +109,7 @@ func TestCockpitLifecycleLegacyReadinessSharesEndAuthority(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if f.work(t).Revision != 2 {
+	if f.work(t).Revision != 3 {
 		t.Fatal("occurrence did not invalidate the legacy workflow revision")
 	}
 	f.ready(t)
@@ -332,7 +332,7 @@ func TestCockpitLifecycleNewAndLegacyEndSerialize(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if h.LifecycleRevision != 2 || h.Materials.WorkflowRevision != 2 || h.Occurrence.EndedAt == nil || h.Occurrence.ActualEndedAt != nil {
+	if h.LifecycleRevision != 2 || h.Materials.WorkflowRevision != 3 || h.Occurrence.EndedAt == nil || h.Occurrence.ActualEndedAt != nil {
 		t.Fatalf("racing end split authority: %+v", h)
 	}
 }

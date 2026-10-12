@@ -2,7 +2,10 @@
 SELECT id,cockpit_id,nas_dir,ended_at FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2;
 
 -- name: GetCockpitWorkflowSnapshot :one
-SELECT * FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2;
+SELECT m.minutes_revision AS revision, m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready, m.minutes_current_version_id AS current_version_id,
+ m.minutes_published_version_id AS published_version_id
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2;
 
 -- name: CountCockpitWorkflowHistory :one
 SELECT

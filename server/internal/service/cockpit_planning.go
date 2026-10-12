@@ -49,7 +49,7 @@ func normalizeActionText(title, description, quote string) (string, string, stri
 	}
 	return title, description, quote, nil
 }
-func checkActionSource(work db.CockpitMeetingWorkPackage, version db.CockpitMinutesVersion, quote string, current bool) error {
+func checkActionSource(work cockpitMinutesState, version db.CockpitMinutesVersion, quote string, current bool) error {
 	if minutesContentHash(version.Content) != version.ContentHash {
 		return fmt.Errorf("%w: fixed source content does not match its fingerprint", ErrCockpitWorkflowConflict)
 	}
@@ -140,7 +140,7 @@ func (s *IssueService) UpdateCockpitMeetingAction(ctx context.Context, p Cockpit
 	s.planningChanged(p.WorkspaceID, p.ActorID, "meeting_actions", map[string]any{"meeting_id": util.UUIDToString(p.MeetingID), "action_id": util.UUIDToString(row.ID)})
 	return row, nil
 }
-func loadPlanningAction(ctx context.Context, q *db.Queries, work db.CockpitMeetingWorkPackage, actionID, actor pgtype.UUID) (db.CockpitMeetingAction, db.CockpitMinutesVersion, error) {
+func loadPlanningAction(ctx context.Context, q *db.Queries, work cockpitMinutesState, actionID, actor pgtype.UUID) (db.CockpitMeetingAction, db.CockpitMinutesVersion, error) {
 	a, err := q.LockCockpitMeetingAction(ctx, db.LockCockpitMeetingActionParams{WorkspaceID: work.WorkspaceID, MeetingID: work.MeetingID, ID: actionID})
 	if err != nil {
 		return a, db.CockpitMinutesVersion{}, planningError(err)

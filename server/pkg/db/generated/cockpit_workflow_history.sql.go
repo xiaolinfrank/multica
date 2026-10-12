@@ -130,33 +130,36 @@ func (q *Queries) GetCockpitWorkflowMeetingIdentity(ctx context.Context, arg Get
 }
 
 const getCockpitWorkflowSnapshot = `-- name: GetCockpitWorkflowSnapshot :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
+SELECT m.minutes_revision AS revision, m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready, m.minutes_current_version_id AS current_version_id,
+ m.minutes_published_version_id AS published_version_id
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2
 `
 
 type GetCockpitWorkflowSnapshotParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ID          pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpitWorkflowSnapshotParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, getCockpitWorkflowSnapshot, arg.WorkspaceID, arg.MeetingID)
-	var i CockpitMeetingWorkPackage
+type GetCockpitWorkflowSnapshotRow struct {
+	Revision           int64       `json:"revision"`
+	MinutesIssueID     pgtype.UUID `json:"minutes_issue_id"`
+	ReviewerID         pgtype.UUID `json:"reviewer_id"`
+	MaterialsReady     bool        `json:"materials_ready"`
+	CurrentVersionID   pgtype.UUID `json:"current_version_id"`
+	PublishedVersionID pgtype.UUID `json:"published_version_id"`
+}
+
+func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpitWorkflowSnapshotParams) (GetCockpitWorkflowSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, getCockpitWorkflowSnapshot, arg.WorkspaceID, arg.ID)
+	var i GetCockpitWorkflowSnapshotRow
 	err := row.Scan(
-		&i.WorkspaceID,
-		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.MaterialsConfirmedAt,
-		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }

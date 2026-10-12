@@ -259,7 +259,7 @@ func TestCockpitOverviewReadinessDoesNotReleaseFutureMeetings(t *testing.T) {
 	if err != nil || out.Attention.Items[0].Reason != "release_ready" {
 		t.Fatalf("ready next step missing: %+v/%v", out, err)
 	}
-	if f.work(t).ReleasedAt.Valid || f.Count(t, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", f.work(t).MinutesIssueID) != 0 {
+	if f.work(t).Released || f.Count(t, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", f.work(t).MinutesIssueID) != 0 {
 		t.Fatal("read model dispatched work")
 	}
 }

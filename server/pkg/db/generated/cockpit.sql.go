@@ -147,7 +147,7 @@ INSERT INTO cockpit_meeting (
     $22::bool,
     $23::text
 )
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by
 `
 
 type CreateCockpitMeetingParams struct {
@@ -249,6 +249,15 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		&i.ArchivedBy,
 		&i.ArchivedReason,
 		&i.NasDirRevision,
+		&i.MinutesReviewerID,
+		&i.MinutesFocusIssueID,
+		&i.MinutesCurrentVersionID,
+		&i.MinutesPublishedVersionID,
+		&i.MinutesRevision,
+		&i.MinutesMaterialsReady,
+		&i.MinutesMaterialsConfirmedAt,
+		&i.MinutesMaterialsConfirmedBy,
+		&i.MinutesConfiguredBy,
 	)
 	return i, err
 }
@@ -1235,7 +1244,7 @@ func (q *Queries) GetCockpitDirectoryEntrySource(ctx context.Context, arg GetCoc
 }
 
 const getCockpitMeeting = `-- name: GetCockpitMeeting :one
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by FROM cockpit_meeting
 WHERE id = $1::uuid
   AND workspace_id = $2::uuid
 `
@@ -1294,6 +1303,15 @@ func (q *Queries) GetCockpitMeeting(ctx context.Context, arg GetCockpitMeetingPa
 		&i.ArchivedBy,
 		&i.ArchivedReason,
 		&i.NasDirRevision,
+		&i.MinutesReviewerID,
+		&i.MinutesFocusIssueID,
+		&i.MinutesCurrentVersionID,
+		&i.MinutesPublishedVersionID,
+		&i.MinutesRevision,
+		&i.MinutesMaterialsReady,
+		&i.MinutesMaterialsConfirmedAt,
+		&i.MinutesMaterialsConfirmedBy,
+		&i.MinutesConfiguredBy,
 	)
 	return i, err
 }
@@ -1625,7 +1643,7 @@ const listCockpitMeetingIssues = `-- name: ListCockpitMeetingIssues :many
 SELECT
     l.meeting_id, l.issue_id, l.role, l.roles, l.position,
     array_remove(ARRAY[
-      CASE WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=l.workspace_id AND w.meeting_id=l.meeting_id AND w.minutes_issue_id=l.issue_id) THEN 'minutes' END,
+      CASE WHEN 'minutes'=ANY(l.roles) THEN 'minutes' END,
       CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=l.workspace_id AND v.meeting_id=l.meeting_id AND v.review_issue_id=l.issue_id)
         OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=l.workspace_id AND h.meeting_id=l.meeting_id AND (h.from_review_issue_id=l.issue_id OR h.to_review_issue_id=l.issue_id)) THEN 'review' END
     ]::text[],NULL)::text[] AS required_roles,
@@ -1725,7 +1743,7 @@ func (q *Queries) ListCockpitMeetingNodes(ctx context.Context, cockpitID pgtype.
 }
 
 const listCockpitMeetings = `-- name: ListCockpitMeetings :many
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by FROM cockpit_meeting
 WHERE cockpit_id = $1::uuid
 ORDER BY meet_date DESC NULLS LAST, start_time DESC NULLS LAST, time_range DESC
 `
@@ -1788,6 +1806,15 @@ func (q *Queries) ListCockpitMeetings(ctx context.Context, cockpitID pgtype.UUID
 			&i.ArchivedBy,
 			&i.ArchivedReason,
 			&i.NasDirRevision,
+			&i.MinutesReviewerID,
+			&i.MinutesFocusIssueID,
+			&i.MinutesCurrentVersionID,
+			&i.MinutesPublishedVersionID,
+			&i.MinutesRevision,
+			&i.MinutesMaterialsReady,
+			&i.MinutesMaterialsConfirmedAt,
+			&i.MinutesMaterialsConfirmedBy,
+			&i.MinutesConfiguredBy,
 		); err != nil {
 			return nil, err
 		}
@@ -2371,7 +2398,7 @@ UPDATE cockpit_meeting SET
     updated_at = now()
 WHERE id = $25::uuid
   AND workspace_id = $26::uuid
-RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision
+RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by
 `
 
 type UpdateCockpitMeetingParams struct {
@@ -2479,6 +2506,15 @@ func (q *Queries) UpdateCockpitMeeting(ctx context.Context, arg UpdateCockpitMee
 		&i.ArchivedBy,
 		&i.ArchivedReason,
 		&i.NasDirRevision,
+		&i.MinutesReviewerID,
+		&i.MinutesFocusIssueID,
+		&i.MinutesCurrentVersionID,
+		&i.MinutesPublishedVersionID,
+		&i.MinutesRevision,
+		&i.MinutesMaterialsReady,
+		&i.MinutesMaterialsConfirmedAt,
+		&i.MinutesMaterialsConfirmedBy,
+		&i.MinutesConfiguredBy,
 	)
 	return i, err
 }

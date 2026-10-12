@@ -747,10 +747,10 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		if _, err := h.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID}); err == nil {
+		if wp, werr := h.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, ID: meeting.ID}); werr == nil && wp.MinutesIssueID.Valid {
 			writeError(w, http.StatusConflict, "this meeting has a work package; use its minutes task and workflow")
 			return
-		} else if !errors.Is(err, pgx.ErrNoRows) {
+		} else if werr != nil && !errors.Is(werr, pgx.ErrNoRows) {
 			writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
 			return
 		}

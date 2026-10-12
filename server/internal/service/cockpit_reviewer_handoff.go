@@ -31,7 +31,7 @@ func sameCockpitReviewerHandoff(existing db.CockpitReviewerHandoff, p CockpitRev
 	return nil
 }
 
-func checkCockpitReviewerHandoff(ctx context.Context, q *db.Queries, work db.CockpitMeetingWorkPackage, p CockpitReviewerHandoff) (bool, error) {
+func checkCockpitReviewerHandoff(ctx context.Context, q *db.Queries, work cockpitMinutesState, p CockpitReviewerHandoff) (bool, error) {
 	if err := requireCockpitWorkflowManager(ctx, q, work, p.ActorID); err != nil {
 		return false, err
 	}
@@ -62,11 +62,11 @@ func (s *IssueService) ChangeCockpitMeetingReviewer(ctx context.Context, p Cockp
 	if !p.HandoffKey.Valid || !p.ReviewerID.Valid || p.ExpectedRevision < 1 || p.Reason == "" || len(p.Reason) > 16000 {
 		return fmt.Errorf("%w: handoff requires UUID key, reviewer, positive revision and 1–16000 bytes of reason", ErrCockpitWorkflowInput)
 	}
-	initial, err := s.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	initial, err := s.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if err != nil {
 		return cockpitWorkflowError(err)
 	}
-	if err := requireCockpitWorkflowManager(ctx, s.Queries, initial, p.ActorID); err != nil {
+	if err := requireCockpitWorkflowManager(ctx, s.Queries, minutesStateFromGet(p.WorkspaceID, initial), p.ActorID); err != nil {
 		return err
 	}
 	prior, err := s.Queries.GetCockpitReviewerHandoff(ctx, db.GetCockpitReviewerHandoffParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, HandoffKey: p.HandoffKey})
@@ -111,7 +111,7 @@ func (s *IssueService) ChangeCockpitMeetingReviewer(ctx context.Context, p Cockp
 			return ErrCockpitWorkflowConflict
 		}
 	}
-	updated, err := q.SetCockpitDefaultReviewer(ctx, db.SetCockpitDefaultReviewerParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ReviewerID: p.ReviewerID, Revision: p.ExpectedRevision})
+	updated, err := q.SetCockpitDefaultReviewer(ctx, db.SetCockpitDefaultReviewerParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, MinutesReviewerID: p.ReviewerID, MinutesRevision: p.ExpectedRevision})
 	if err != nil {
 		return err
 	}
@@ -128,11 +128,11 @@ func prepareCockpitReviewerHandoffIssue(ctx context.Context, q *db.Queries, p *I
 	if err != nil {
 		return nil, err
 	}
-	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID})
+	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID})
 	if err != nil {
 		return nil, cockpitWorkflowError(err)
 	}
-	replay, err := checkCockpitReviewerHandoff(ctx, q, work, in)
+	replay, err := checkCockpitReviewerHandoff(ctx, q, minutesStateFromLock(in.WorkspaceID, work), in)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func prepareCockpitReviewerHandoffIssue(ctx context.Context, q *db.Queries, p *I
 	if err := q.SetCockpitWorkflowActor(ctx, in.ActorID); err != nil {
 		return nil, err
 	}
-	hook.work = work
+	hook.work = minutesStateFromLock(in.WorkspaceID, work)
 	hook.handoffVersion = version
 	p.WorkspaceID = in.WorkspaceID
 	p.CreatorType = "member"
@@ -188,7 +188,7 @@ func linkCockpitReviewerHandoffIssue(ctx context.Context, q *db.Queries, p Issue
 	hook := p.CockpitWorkflow
 	in := *hook.Handoff
 	version := hook.handoffVersion
-	updated, err := q.SetCockpitDefaultReviewer(ctx, db.SetCockpitDefaultReviewerParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, ReviewerID: in.ReviewerID, Revision: in.ExpectedRevision})
+	updated, err := q.SetCockpitDefaultReviewer(ctx, db.SetCockpitDefaultReviewerParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID, MinutesReviewerID: in.ReviewerID, MinutesRevision: in.ExpectedRevision})
 	if err != nil {
 		return err
 	}

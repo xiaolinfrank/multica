@@ -113,8 +113,8 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  WHERE (x.project IS NOT NULL OR x.module IS NOT NULL) AND l.workspace_id=x.ws
  AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
  UNION
- SELECT w.meeting_id FROM cockpit_meeting_work_package w CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=w.minutes_issue_id
- WHERE (x.project IS NOT NULL OR x.module IS NOT NULL) AND w.workspace_id=x.ws
+ SELECT l.meeting_id FROM cockpit_meeting_issue l CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=l.issue_id
+ WHERE (x.project IS NOT NULL OR x.module IS NOT NULL) AND l.workspace_id=x.ws AND 'minutes'=ANY(l.roles)
  AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
  UNION
  SELECT a.meeting_id FROM cockpit_meeting_action a CROSS JOIN args x JOIN issue i ON i.workspace_id=x.ws AND i.id=a.issue_id
@@ -133,18 +133,19 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
 ), party_tokens AS (
  SELECT id,btrim(string_agg(ch,'' ORDER BY pos)) AS value FROM party_chars GROUP BY id,segment
 ), workflow_facts AS MATERIALIZED (
- SELECT w.meeting_id,
- CASE WHEN w.released_at IS NULL THEN CASE WHEN m.ended_at IS NULL THEN 'waiting_meeting' WHEN w.materials_ready AND i.status='backlog' THEN 'release_ready' WHEN w.materials_ready THEN 'restore_backlog' ELSE 'materials_needed' END
- WHEN v.decision='pending' THEN CASE WHEN EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=w.workspace_id AND u.user_id=v.reviewer_id) THEN 'review_pending' ELSE 'reviewer_missing' END
+ SELECT m.id AS meeting_id,
+ CASE WHEN NOT (i.status IN ('todo','in_progress','in_review','blocked')) THEN CASE WHEN m.ended_at IS NULL THEN 'waiting_meeting' WHEN m.minutes_materials_ready AND i.status='backlog' THEN 'release_ready' WHEN m.minutes_materials_ready THEN 'restore_backlog' ELSE 'materials_needed' END
+ WHEN v.decision='pending' THEN CASE WHEN EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=m.workspace_id AND u.user_id=v.reviewer_id) THEN 'review_pending' ELSE 'reviewer_missing' END
  WHEN v.decision='approved' AND v.published_at IS NULL THEN 'publish_ready'
- WHEN v.published_at IS NOT NULL AND w.published_version_id=v.id THEN 'published'
- WHEN NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=w.workspace_id AND u.user_id=w.reviewer_id) THEN 'reviewer_missing'
+ WHEN v.published_at IS NOT NULL AND m.minutes_published_version_id=v.id THEN 'published'
+ WHEN NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=m.workspace_id AND u.user_id=m.minutes_reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision IN ('changes_requested','rejected') THEN 'minutes_rework' ELSE 'minutes_needed' END AS workflow_stage
- FROM cockpit_meeting_work_package w CROSS JOIN args x
- JOIN cockpit_meeting m ON m.workspace_id=w.workspace_id AND m.id=w.meeting_id
- LEFT JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id
- LEFT JOIN cockpit_minutes_version v ON v.workspace_id=w.workspace_id AND v.meeting_id=w.meeting_id AND v.id=w.current_version_id
- WHERE w.workspace_id=x.ws
+ FROM cockpit_meeting m CROSS JOIN args x
+ LEFT JOIN issue i ON i.workspace_id=m.workspace_id AND i.id=m.minutes_focus_issue_id
+ LEFT JOIN cockpit_minutes_version v ON v.workspace_id=m.workspace_id AND v.meeting_id=m.id AND v.id=m.minutes_current_version_id
+ WHERE m.workspace_id=x.ws
+ AND (m.minutes_focus_issue_id IS NOT NULL OR m.minutes_current_version_id IS NOT NULL
+   OR m.minutes_published_version_id IS NOT NULL OR m.minutes_reviewer_id IS NOT NULL)
 ), candidates AS (
  SELECT m.id,m.meet_date,
  (wf.meeting_id IS NOT NULL)::bool AS workflow_enabled,
@@ -221,7 +222,7 @@ WITH args AS (
  SELECT mi.issue_id,COALESCE(l.position,0)::double precision,0::numeric,jsonb_build_object('meeting_id',x.object_id,'issue_id',mi.issue_id,'position',COALESCE(l.position,0),
  'role',COALESCE(l.role,''),'roles',COALESCE(l.roles,ARRAY['preparation']::text[]),'has_direct_reference',l.issue_id IS NOT NULL,'has_agenda_reference',ar.issue_id IS NOT NULL,'agenda_id',ar.agenda_id,'agenda_total',COALESCE(ar.agenda_total,0),'issue_number',i.number,'issue_identifier',ws.issue_prefix||'-'||i.number::text,'issue_title',i.title,'issue_status',i.status,
  'required_roles',array_remove(ARRAY[
- CASE WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=x.ws AND w.meeting_id=x.object_id AND w.minutes_issue_id=mi.issue_id) THEN 'minutes' END,
+ CASE WHEN 'minutes'=ANY(COALESCE(l.roles,ARRAY[]::text[])) THEN 'minutes' END,
  CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=x.ws AND v.meeting_id=x.object_id AND v.review_issue_id=mi.issue_id)
  OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=x.ws AND h.meeting_id=x.object_id AND (h.from_review_issue_id=mi.issue_id OR h.to_review_issue_id=mi.issue_id)) THEN 'review' END
  ]::text[],NULL)::text[])
@@ -258,8 +259,8 @@ WITH RECURSIVE meeting_nodes AS (
  SELECT i.project_id,i.module_id FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
  WHERE l.workspace_id=sqlc.arg('workspace_id')::uuid AND l.meeting_id=sqlc.arg('meeting_id')::uuid
  UNION ALL
- SELECT i.project_id,i.module_id FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id
- WHERE w.workspace_id=sqlc.arg('workspace_id')::uuid AND w.meeting_id=sqlc.arg('meeting_id')::uuid
+ SELECT i.project_id,i.module_id FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+ WHERE l.workspace_id=sqlc.arg('workspace_id')::uuid AND l.meeting_id=sqlc.arg('meeting_id')::uuid AND 'minutes'=ANY(l.roles)
  UNION ALL
  SELECT i.project_id,i.module_id FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id
  WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND a.meeting_id=sqlc.arg('meeting_id')::uuid AND a.status='accepted'

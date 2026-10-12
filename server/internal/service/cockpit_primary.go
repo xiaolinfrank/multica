@@ -264,11 +264,11 @@ func prepareCockpitPlanningIssue(ctx context.Context, q *db.Queries, p *IssueCre
 		if _, err := lockCockpitWorkflowMeeting(ctx, q, in.WorkspaceID, in.MeetingID); err != nil {
 			return nil, err
 		}
-		work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID})
+		work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID})
 		if err != nil {
 			return nil, planningError(err)
 		}
-		a, v, err := loadPlanningAction(ctx, q, work, in.ActionID, in.ActorID)
+		a, v, err := loadPlanningAction(ctx, q, minutesStateFromLock(in.WorkspaceID, work), in.ActionID, in.ActorID)
 		if err != nil {
 			return nil, err
 		}
@@ -282,7 +282,7 @@ func prepareCockpitPlanningIssue(ctx context.Context, q *db.Queries, p *IssueCre
 			}
 			return &issue, nil
 		}
-		if err := checkActionSource(work, v, a.SourceQuote, true); err != nil {
+		if err := checkActionSource(minutesStateFromLock(in.WorkspaceID, work), v, a.SourceQuote, true); err != nil {
 			return nil, err
 		}
 		hook.row = a

@@ -117,7 +117,7 @@ func (s *IssueService) ExportCockpitMeetingMinutes(ctx context.Context, p Cockpi
 	return row, nil
 }
 
-func authorizeCockpitMinutesExport(ctx context.Context, q *db.Queries, work db.CockpitMeetingWorkPackage, version db.CockpitMinutesVersion, actor pgtype.UUID) error {
+func authorizeCockpitMinutesExport(ctx context.Context, q *db.Queries, work cockpitMinutesState, version db.CockpitMinutesVersion, actor pgtype.UUID) error {
 	if version.ReviewerID != actor {
 		if err := requireCockpitWorkflowManager(ctx, q, work, actor); err != nil {
 			return err

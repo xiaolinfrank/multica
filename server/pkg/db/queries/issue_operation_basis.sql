@@ -34,8 +34,11 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
 ), retained AS MATERIALIZED (SELECT DISTINCT issue_id FROM artifact_edges), primary_edges AS MATERIALIZED (
  SELECT p.issue_id,p.node_id FROM cockpit_issue_primary p JOIN related r ON r.id=p.issue_id WHERE p.workspace_id=(SELECT ws FROM args) AND p.node_id IS NOT NULL
 ), meeting_edges AS MATERIALIZED (
- SELECT w.minutes_issue_id AS issue_id,w.meeting_id,NULL::uuid AS action_id,'meeting_workflow'::text AS purpose,(w.released_at IS NULL) AS blocks_execution
- FROM cockpit_meeting_work_package w JOIN requested r ON r.id=w.minutes_issue_id WHERE w.workspace_id=(SELECT ws FROM args)
+ SELECT l.issue_id,l.meeting_id,NULL::uuid AS action_id,'meeting_workflow'::text AS purpose,
+   EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=l.workspace_id AND m.id=l.meeting_id
+     AND (m.ended_at IS NULL OR NOT m.minutes_materials_ready)) AS blocks_execution
+ FROM cockpit_meeting_issue l JOIN requested r ON r.id=l.issue_id
+ WHERE l.workspace_id=(SELECT ws FROM args) AND 'minutes'=ANY(l.roles)
  UNION
  SELECT v.source_issue_id,v.meeting_id,NULL::uuid,'meeting_workflow',false FROM cockpit_minutes_version v JOIN requested r ON r.id=v.source_issue_id WHERE v.workspace_id=(SELECT ws FROM args)
  UNION

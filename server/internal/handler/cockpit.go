@@ -828,7 +828,7 @@ func (h *Handler) GetCockpit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
 		return
 	}
-	hasWorkflows, err := h.Queries.HasCockpitWorkPackagesForBoard(ctx, db.HasCockpitWorkPackagesForBoardParams{
+	hasWorkflows, err := h.Queries.HasCockpitMinutesLinksForBoard(ctx, db.HasCockpitMinutesLinksForBoardParams{
 		WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID,
 	})
 	if err != nil {
@@ -2127,10 +2127,10 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	if _, minutes := raw["minutes"]; minutes || req.Decisions != nil || req.Actions != nil {
-		if _, err := q.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err == nil {
+		if wp, werr := q.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, ID: id}); werr == nil && wp.MinutesIssueID.Valid {
 			writeError(w, http.StatusConflict, "this meeting uses versioned minutes; submit a workflow version instead")
 			return
-		} else if !errors.Is(err, pgx.ErrNoRows) {
+		} else if werr != nil && !errors.Is(werr, pgx.ErrNoRows) {
 			writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
 			return
 		}
@@ -2214,11 +2214,14 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if _, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err == nil {
-		writeError(w, http.StatusConflict, "meetings with a work package cannot be deleted individually")
-		return
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	// R1 (design-principles-2026-10-12): minutes bindings are associations;
+	// deleting a meeting sweeps them. Only submitted minutes versions carry
+	// formal history and retain the meeting.
+	if versions, err := q.CountCockpitMinutesVersions(ctx, db.CountCockpitMinutesVersionsParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
+		return
+	} else if versions > 0 {
+		writeError(w, http.StatusConflict, "meetings with submitted minutes versions cannot be deleted individually")
 		return
 	}
 	if retained, err := q.HasCockpitArtifactMeeting(ctx, db.HasCockpitArtifactMeetingParams{WorkspaceID: cc.workspaceID, SourceMeetingID: id}); err != nil {
@@ -2620,7 +2623,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 	}
 
-	protectedWorkflow, workflowErr := qtx.HasCockpitWorkPackagesForBoard(ctx, db.HasCockpitWorkPackagesForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+	protectedWorkflow, workflowErr := qtx.HasCockpitMinutesLinksForBoard(ctx, db.HasCockpitMinutesLinksForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
 	if workflowErr != nil {
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to check meeting workflows"}
 	}

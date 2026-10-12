@@ -22,7 +22,7 @@ type cockpitHistoryRead struct {
 	meetingID pgtype.UUID
 	nasDir    string
 	endedAt   pgtype.Timestamptz
-	work      *db.CockpitMeetingWorkPackage
+	work      *handlerCockpitMinutesState
 	human     bool
 }
 
@@ -54,11 +54,13 @@ func (h *Handler) beginCockpitHistory(r *http.Request, cc cockpitContext, meetin
 	}
 	read.nasDir = meeting.NasDir
 	read.endedAt = meeting.EndedAt
-	work, err := read.q.GetCockpitWorkflowSnapshot(ctx, db.GetCockpitWorkflowSnapshotParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
-	if err == nil {
-		read.work = &work
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	workRow, err := read.q.GetCockpitWorkflowSnapshot(ctx, db.GetCockpitWorkflowSnapshotParams{WorkspaceID: cc.workspaceID, ID: meetingID})
+	if err != nil {
 		return fail(err)
+	}
+	if workRow.MinutesIssueID.Valid {
+		work := minutesProjectionFromSnapshot(cc.workspaceID, meetingID, workRow)
+		read.work = &work
 	}
 	return read, nil
 }

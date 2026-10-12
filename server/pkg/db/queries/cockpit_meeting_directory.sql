@@ -133,7 +133,7 @@ SELECT * FROM task_token WHERE id=$1 AND workspace_id=$2 AND expires_at>clock_ti
 
 -- name: GetCockpitDirectoryPreparationRelation :one
 WITH relations AS (
- SELECT 'work_package'::text AS kind,NULL::uuid AS agenda_reference_id,0 AS rank FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$2 AND w.minutes_issue_id=$3
+ SELECT 'work_package'::text AS kind,NULL::uuid AS agenda_reference_id,0 AS rank FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND 'minutes'=ANY(l.roles)
  UNION ALL SELECT 'agenda_preparation',r.id,1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id
  WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.target_id=$3 AND r.purpose='preparation' AND r.removed_at IS NULL AND a.removed_at IS NULL
  UNION ALL SELECT CASE WHEN l.role='task' THEN 'legacy_task' ELSE 'direct_preparation' END,NULL::uuid,2 FROM cockpit_meeting_issue l

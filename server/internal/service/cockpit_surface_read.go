@@ -142,7 +142,7 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 		return out, err
 	}
 	out.Cockpit = &board
-	out.HasMeetingWorkflows, err = q.HasCockpitWorkPackagesForBoard(ctx, db.HasCockpitWorkPackagesForBoardParams{WorkspaceID: p.WorkspaceID, CockpitID: board.ID})
+	out.HasMeetingWorkflows, err = q.HasCockpitMinutesLinksForBoard(ctx, db.HasCockpitMinutesLinksForBoardParams{WorkspaceID: p.WorkspaceID, CockpitID: board.ID})
 	if err != nil {
 		return out, err
 	}

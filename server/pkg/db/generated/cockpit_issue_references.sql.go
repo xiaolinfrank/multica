@@ -81,7 +81,7 @@ WITH args AS NOT MATERIALIZED (
  LEFT JOIN agenda_refs ar ON ar.meeting_id=p.id
  LEFT JOIN cockpit_meeting m ON m.workspace_id=x.ws AND m.id=p.id
  CROSS JOIN LATERAL (SELECT array_remove(ARRAY[
- CASE WHEN EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=x.ws AND w.meeting_id=p.id AND w.minutes_issue_id=x.issue_id) THEN 'minutes' END,
+ CASE WHEN 'minutes'=ANY(l.roles) THEN 'minutes' END,
  CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=x.ws AND v.meeting_id=p.id AND v.review_issue_id=x.issue_id)
  OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=x.ws AND h.meeting_id=p.id AND (h.from_review_issue_id=x.issue_id OR h.to_review_issue_id=x.issue_id)) THEN 'review' END
  ]::text[],NULL)::text[] AS roles) required WHERE x.kind='meetings'

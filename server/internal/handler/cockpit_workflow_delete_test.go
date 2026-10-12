@@ -57,7 +57,7 @@ func TestCockpitWorkflowDeleteRaceDoesNotCancelReleasedWork(t *testing.T) {
 				if err := testHandler.IssueService.EnableCockpitMeetingWorkPackage(ctx, init, service.IssueCreateOpts{}); err != nil {
 					return err
 				}
-				work, err := testHandler.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: wsID, MeetingID: init.MeetingID})
+				work, err := testHandler.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: wsID, ID: init.MeetingID})
 				if err != nil {
 					return err
 				}
@@ -77,7 +77,7 @@ func TestCockpitWorkflowDeleteRaceDoesNotCancelReleasedWork(t *testing.T) {
 			} else {
 				testutil.Call(t, h.DeleteIssue, testutil.WithURLParams(cockpitRequest(http.MethodDelete, "/api/issues/"+minutes, ws, nil), "id", minutes)).Want(http.StatusConflict)
 			}
-			work, err := testHandler.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: wsID, MeetingID: parseUUID(meeting.ID)})
+			work, err := testHandler.Queries.GetCockpitMeetingWorkPackageForRead(ctx, db.GetCockpitMeetingWorkPackageForReadParams{WorkspaceID: wsID, ID: parseUUID(meeting.ID)})
 			if err != nil {
 				t.Fatal(err)
 			}

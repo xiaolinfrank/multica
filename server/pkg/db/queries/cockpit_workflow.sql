@@ -1,44 +1,103 @@
+-- R1 (design-principles-2026-10-12): the work package is dissolved. Minutes
+-- state lives on cockpit_meeting (minutes_* columns); the minutes binding is
+-- a cockpit_meeting_issue roles entry ('minutes'), so a meeting can bind
+-- several minutes tasks and unbind any of them at will. "released" is a
+-- projection (a minutes task left backlog), not a stored terminal fact.
+
 -- name: GetCockpitMeetingWorkPackage :one
-SELECT * FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2;
+SELECT m.id AS meeting_id, m.minutes_revision AS revision,
+ m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready,
+ m.minutes_materials_confirmed_at AS materials_confirmed_at, m.minutes_materials_confirmed_by AS materials_confirmed_by,
+ m.minutes_current_version_id AS current_version_id, m.minutes_published_version_id AS published_version_id,
+ m.minutes_configured_by AS configured_by,
+ EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+  WHERE l.workspace_id=m.workspace_id AND l.meeting_id=m.id AND 'minutes'=ANY(l.roles) AND i.status IN ('todo','in_progress','in_review','blocked'))::bool AS released
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2;
 
 -- name: LockCockpitMeetingWorkPackage :one
-SELECT * FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2 FOR UPDATE;
+SELECT m.id AS meeting_id, m.minutes_revision AS revision,
+ m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready,
+ m.minutes_materials_confirmed_at AS materials_confirmed_at, m.minutes_materials_confirmed_by AS materials_confirmed_by,
+ m.minutes_current_version_id AS current_version_id, m.minutes_published_version_id AS published_version_id,
+ m.minutes_configured_by AS configured_by,
+ EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+  WHERE l.workspace_id=m.workspace_id AND l.meeting_id=m.id AND 'minutes'=ANY(l.roles) AND i.status IN ('todo','in_progress','in_review','blocked'))::bool AS released
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2 FOR UPDATE;
 
--- name: CreateCockpitMeetingWorkPackage :one
-INSERT INTO cockpit_meeting_work_package(workspace_id,meeting_id,minutes_issue_id,reviewer_id,created_by)
-VALUES($1,$2,$3,$4,$5) RETURNING *;
+-- name: ListCockpitMinutesIssueLinks :many
+SELECT l.issue_id, l.role, l.roles, i.status
+FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
+ORDER BY l.position, l.created_at;
+
+-- name: AttachCockpitMinutesIssueLink :execrows
+INSERT INTO cockpit_meeting_issue(workspace_id,meeting_id,issue_id,role,roles)
+VALUES($1,$2,$3,'',ARRAY['minutes'])
+ON CONFLICT (meeting_id,issue_id) DO UPDATE SET roles=array_append(cockpit_meeting_issue.roles,'minutes')
+WHERE NOT ('minutes'=ANY(cockpit_meeting_issue.roles));
+
+-- name: DetachCockpitMinutesIssueLink :execrows
+UPDATE cockpit_meeting_issue SET roles=array_remove(roles,'minutes')
+WHERE workspace_id=$1 AND meeting_id=$2 AND issue_id=$3 AND 'minutes'=ANY(roles);
+
+-- name: SetCockpitMinutesSetup :one
+UPDATE cockpit_meeting SET minutes_focus_issue_id=sqlc.arg('focus_issue_id')::uuid,
+ minutes_reviewer_id=sqlc.arg('reviewer_id')::uuid,
+ minutes_configured_by=COALESCE(minutes_configured_by,sqlc.arg('actor_id')::uuid),
+ minutes_revision=minutes_revision+1, updated_at=now()
+WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND id=sqlc.arg('meeting_id')::uuid
+ AND minutes_revision=sqlc.arg('expected_revision')::bigint
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
 
 -- name: SetCockpitMeetingReadiness :one
-UPDATE cockpit_meeting_work_package SET
- materials_confirmed_at=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN now() ELSE materials_confirmed_at END,
- materials_confirmed_by=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN sqlc.arg('actor_id')::uuid ELSE materials_confirmed_by END,
- materials_ready=COALESCE(sqlc.narg('materials_ready')::bool,materials_ready),
- revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=sqlc.arg('expected_revision')::bigint RETURNING *;
-
--- name: ReleaseCockpitMeetingWorkPackage :one
-UPDATE cockpit_meeting_work_package SET released_at=now(),revision=revision+1,updated_at=now()
-WHERE cockpit_meeting_work_package.workspace_id=$1 AND cockpit_meeting_work_package.meeting_id=$2 AND cockpit_meeting_work_package.revision=$3 AND cockpit_meeting_work_package.released_at IS NULL
- AND EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=cockpit_meeting_work_package.workspace_id AND m.id=cockpit_meeting_work_package.meeting_id AND m.ended_at IS NOT NULL) AND materials_ready RETURNING *;
-
--- name: SetCockpitMeetingReleaseTask :exec
-UPDATE cockpit_meeting_work_package SET release_task_id=$3 WHERE workspace_id=$1 AND meeting_id=$2;
-
--- name: SetCockpitCurrentMinutesVersion :one
-UPDATE cockpit_meeting_work_package SET current_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING *;
+UPDATE cockpit_meeting SET
+ minutes_materials_confirmed_at=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN now() ELSE minutes_materials_confirmed_at END,
+ minutes_materials_confirmed_by=CASE WHEN sqlc.narg('materials_ready')::bool IS NOT NULL THEN sqlc.arg('actor_id')::uuid ELSE minutes_materials_confirmed_by END,
+ minutes_materials_ready=COALESCE(sqlc.narg('materials_ready')::bool,minutes_materials_ready),
+ minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=sqlc.arg('expected_revision')::bigint
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
 
 -- name: AdvanceCockpitWorkflowRevision :one
-UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 RETURNING *;
+UPDATE cockpit_meeting SET minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$3
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
+
+-- name: SetCockpitCurrentMinutesVersion :one
+UPDATE cockpit_meeting SET minutes_current_version_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
+
+-- name: SetCockpitPublishedMinutesVersion :one
+UPDATE cockpit_meeting SET minutes_published_version_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4 AND minutes_current_version_id=$3
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
 
 -- name: PublishCockpitMinutesVersion :one
 UPDATE cockpit_minutes_version SET published_by=$4,published_at=now()
 WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='approved' AND published_at IS NULL RETURNING *;
-
--- name: SetCockpitPublishedMinutesVersion :one
-UPDATE cockpit_meeting_work_package SET published_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 AND current_version_id=$3 RETURNING *;
 
 -- name: ListCockpitMinutesVersions :many
 SELECT * FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY version_number DESC;
@@ -58,29 +117,20 @@ UPDATE cockpit_minutes_version SET decision=$4,feedback=$5,reviewed_by=$6,review
 WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='pending' RETURNING *;
 
 -- name: CockpitIssueExecutionBlocked :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=sqlc.arg('issue_id')::uuid AND w.released_at IS NULL
+SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l
+ JOIN cockpit_meeting m ON m.workspace_id=l.workspace_id AND m.id=l.meeting_id
+ WHERE l.issue_id=sqlc.arg('issue_id')::uuid AND 'minutes'=ANY(l.roles)
+   AND (m.ended_at IS NULL OR NOT m.minutes_materials_ready)
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue(sqlc.arg('issue_id')::uuid))::bool AS blocked;
 
 -- name: CockpitIssueHasWorkflow :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=sqlc.arg('issue_id')::uuid
+SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l WHERE l.issue_id=sqlc.arg('issue_id')::uuid AND 'minutes'=ANY(l.roles)
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=sqlc.arg('issue_id')::uuid
  UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue(sqlc.arg('issue_id')::uuid))::bool AS linked;
 
 -- name: DeleteCockpitMinutesVersionsByWorkspace :exec
 DELETE FROM cockpit_minutes_version WHERE workspace_id=$1;
 
--- name: DeleteCockpitWorkPackagesByWorkspace :exec
-DELETE FROM cockpit_meeting_work_package WHERE workspace_id=$1;
-
--- name: HasCockpitWorkPackagesForBoard :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN cockpit_meeting m ON m.id=w.meeting_id AND m.workspace_id=w.workspace_id WHERE m.cockpit_id=$1 AND w.workspace_id=$2)::bool;
-
--- name: CockpitWorkflowReferencesIssue :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=sqlc.arg('workspace_id')::uuid AND w.minutes_issue_id=sqlc.arg('issue_id')::uuid
- UNION ALL SELECT 1 FROM cockpit_meeting_action a WHERE a.workspace_id=sqlc.arg('workspace_id')::uuid AND a.issue_id=sqlc.arg('issue_id')::uuid
- UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=sqlc.arg('workspace_id')::uuid AND (v.review_issue_id=sqlc.arg('issue_id')::uuid OR v.source_issue_id=sqlc.arg('issue_id')::uuid)
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg('workspace_id')::uuid AND (h.from_review_issue_id=sqlc.arg('issue_id')::uuid OR h.to_review_issue_id=sqlc.arg('issue_id')::uuid) UNION ALL SELECT 1 WHERE cockpit_artifact_references_issue(sqlc.arg('workspace_id')::uuid,sqlc.arg('issue_id')::uuid))::bool AS linked;
-
--- name: CockpitWorkflowIssueHasActiveTask :one
-SELECT EXISTS(SELECT 1 FROM agent_task_queue WHERE issue_id=$1 AND status IN ('queued','deferred','dispatched','running','waiting_local_directory'))::bool;
+-- name: DeleteCockpitMinutesLinksByWorkspace :exec
+DELETE FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles);

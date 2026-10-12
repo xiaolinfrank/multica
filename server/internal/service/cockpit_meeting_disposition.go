@@ -196,7 +196,7 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 			out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "resources", Label: meetings[0].Title, Purpose: "meeting_input_references"})
 		}
 	}
-	counts, e := q.ReadCockpitMeetingPendingCounts(ctx, db.ReadCockpitMeetingPendingCountsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	counts, e := q.ReadCockpitMeetingPendingCounts(ctx, db.ReadCockpitMeetingPendingCountsParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if e != nil {
 		return out, e
 	}

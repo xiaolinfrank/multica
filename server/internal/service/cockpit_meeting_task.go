@@ -32,10 +32,10 @@ func beginCockpitMeetingTask(ctx context.Context, q *db.Queries, workspaceID pgt
 	if err != nil {
 		return nil, fmt.Errorf("lock meeting for provisioning: %w", err)
 	}
-	if _, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: workspaceID, MeetingID: meeting.ID}); err == nil {
+	if wp, werr := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: workspaceID, ID: meeting.ID}); werr == nil && wp.MinutesIssueID.Valid {
 		return nil, fmt.Errorf("%w: this meeting uses a work package; prepare its directory without creating a legacy task", ErrCockpitWorkflowConflict)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
+	} else if werr != nil {
+		return nil, werr
 	}
 	if task.NodeID.Valid {
 		node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: task.NodeID, WorkspaceID: workspaceID})

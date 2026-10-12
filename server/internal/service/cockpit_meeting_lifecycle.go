@@ -25,7 +25,7 @@ func (e *CockpitAgendaReferenceExistsError) Error() string {
 
 type lifecycleState struct {
 	meeting db.GetCockpitMeetingLifecycleRow
-	work    *db.CockpitMeetingWorkPackage
+	work    *cockpitMinutesState
 }
 type lifecycleCommand struct {
 	CockpitLifecycleRead
@@ -45,11 +45,11 @@ func lifecycleTime(t pgtype.Timestamptz) *string {
 func lifecycleOccurrence(m db.GetCockpitMeetingLifecycleRow) CockpitOccurrenceView {
 	return CockpitOccurrenceView{State: m.OccurrenceState, StartedConfirmedAt: lifecycleTime(m.StartedConfirmedAt), StartedConfirmedBy: planningUUID(m.StartedConfirmedBy), EndedAt: lifecycleTime(m.EndedAt), EndedBy: planningUUID(m.EndedBy), EndedSource: planningText(m.EndedSource), ActualStartedAt: lifecycleTime(m.ActualStartedAt), ActualEndedAt: lifecycleTime(m.ActualEndedAt), CancelledAt: lifecycleTime(m.CancelledAt), CancelledBy: planningUUID(m.CancelledBy), CancelledReason: m.CancelledReason}
 }
-func lifecycleMaterials(w *db.CockpitMeetingWorkPackage) *CockpitMaterialsView {
+func lifecycleMaterials(w *cockpitMinutesState) *CockpitMaterialsView {
 	if w == nil {
 		return nil
 	}
-	return &CockpitMaterialsView{WorkflowRevision: w.Revision, Ready: w.MaterialsReady, ConfirmedAt: lifecycleTime(w.MaterialsConfirmedAt), ConfirmedBy: planningUUID(w.MaterialsConfirmedBy), Released: w.ReleasedAt.Valid}
+	return &CockpitMaterialsView{WorkflowRevision: w.Revision, Ready: w.MaterialsReady, ConfirmedAt: lifecycleTime(w.MaterialsConfirmedAt), ConfirmedBy: planningUUID(w.MaterialsConfirmedBy), Released: w.Released}
 }
 func readLifecycleState(ctx context.Context, q *db.Queries, p CockpitLifecycleRead) (lifecycleState, error) {
 	m, e := q.GetCockpitMeetingLifecycle(ctx, db.GetCockpitMeetingLifecycleParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
@@ -57,11 +57,12 @@ func readLifecycleState(ctx context.Context, q *db.Queries, p CockpitLifecycleRe
 		return lifecycleState{}, cockpitWorkflowError(e)
 	}
 	x := lifecycleState{meeting: m}
-	w, e := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
-	if e == nil {
-		x.work = &w
-	} else if !errors.Is(e, pgx.ErrNoRows) {
+	w, e := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
+	if e != nil {
 		return x, e
+	}
+	if w.MinutesIssueID.Valid {
+		x.work = ptr(minutesStateFromGet(p.WorkspaceID, w))
 	}
 	return x, nil
 }
@@ -75,7 +76,7 @@ func lifecycleHeader(ctx context.Context, q *db.Queries, x lifecycleState, p Coc
 	}
 	manager := lifecycleManager(ctx, q, x, p)
 	state := x.meeting.OccurrenceState
-	h := CockpitMeetingLifecycleHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), LifecycleRevision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Occurrence: lifecycleOccurrence(x.meeting), Materials: lifecycleMaterials(x.work), WorkflowEnabled: x.work != nil, AgendaTotal: total, CanSchedule: manager && state == "unconfirmed", CanStart: manager && (state == "unconfirmed" || state == "scheduled"), CanEnd: manager && (state == "unconfirmed" || state == "scheduled" || state == "in_progress"), CanCorrectTimes: manager && (state == "in_progress" || state == "ended"), CanEditAgenda: p.Human && state != "cancelled" && !x.meeting.ArchivedAt.Valid, Archive: lifecycleArchive(x.meeting), CanConfirmMaterials: manager && x.work != nil && !x.work.ReleasedAt.Valid && state != "cancelled", BlockedReasons: []CockpitLifecycleBlock{}}
+	h := CockpitMeetingLifecycleHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), LifecycleRevision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Occurrence: lifecycleOccurrence(x.meeting), Materials: lifecycleMaterials(x.work), WorkflowEnabled: x.work != nil, AgendaTotal: total, CanSchedule: manager && state == "unconfirmed", CanStart: manager && (state == "unconfirmed" || state == "scheduled"), CanEnd: manager && (state == "unconfirmed" || state == "scheduled" || state == "in_progress"), CanCorrectTimes: manager && (state == "in_progress" || state == "ended"), CanEditAgenda: p.Human && state != "cancelled" && !x.meeting.ArchivedAt.Valid, Archive: lifecycleArchive(x.meeting), CanConfirmMaterials: manager && x.work != nil && !x.work.Released && state != "cancelled", BlockedReasons: []CockpitLifecycleBlock{}}
 	if !p.Human {
 		h.BlockedReasons = append(h.BlockedReasons, CockpitLifecycleBlock{Action: "write", Code: "human_required"})
 	} else if !manager {
@@ -83,7 +84,7 @@ func lifecycleHeader(ctx context.Context, q *db.Queries, x lifecycleState, p Coc
 	}
 	if x.work == nil {
 		h.BlockedReasons = append(h.BlockedReasons, CockpitLifecycleBlock{Action: "materials", Code: "workflow_required"})
-	} else if x.work.ReleasedAt.Valid {
+	} else if x.work.Released {
 		h.BlockedReasons = append(h.BlockedReasons, CockpitLifecycleBlock{Action: "materials", Code: "readiness_fixed_after_release"})
 	}
 	return h, nil
@@ -234,11 +235,11 @@ func (s *IssueService) beginLifecycleWrite(ctx context.Context, c lifecycleComma
 		return fail(e)
 	}
 	if x.work != nil {
-		w, e := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: c.WorkspaceID, MeetingID: c.MeetingID})
+		w, e := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: c.WorkspaceID, ID: c.MeetingID})
 		if e != nil {
 			return fail(e)
 		}
-		x.work = &w
+		x.work = ptr(minutesStateFromLock(c.WorkspaceID, w))
 	}
 	return tx, q, x, nil, nil
 }
@@ -388,7 +389,7 @@ func (s *IssueService) ChangeCockpitMeetingOccurrence(ctx context.Context, p Coc
 	if e != nil {
 		return CockpitLifecycleCommandResult{}, e
 	}
-	if e = q.BumpCockpitWorkflowRevisionForOccurrence(ctx, db.BumpCockpitWorkflowRevisionForOccurrenceParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID}); e != nil {
+	if e = q.BumpCockpitWorkflowRevisionForOccurrence(ctx, db.BumpCockpitWorkflowRevisionForOccurrenceParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID}); e != nil {
 		return CockpitLifecycleCommandResult{}, e
 	}
 	o := lifecycleOccurrence(m)
@@ -420,12 +421,13 @@ func (s *IssueService) ConfirmCockpitMeetingMaterials(ctx context.Context, p Coc
 	if !lifecycleManager(ctx, q, x, p) {
 		return CockpitLifecycleCommandResult{}, ErrCockpitWorkflowForbidden
 	}
-	if x.work.ReleasedAt.Valid || x.work.Revision != in.ExpectedRevision {
+	if x.work.Released || x.work.Revision != in.ExpectedRevision {
 		return CockpitLifecycleCommandResult{}, ErrCockpitWorkflowConflict
 	}
-	w, e := q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ActorID: p.ActorID, MaterialsReady: pgtype.Bool{Bool: *in.MaterialsReady, Valid: true}, ExpectedRevision: in.ExpectedRevision})
+	w, e := q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, ActorID: p.ActorID, MaterialsReady: pgtype.Bool{Bool: *in.MaterialsReady, Valid: true}, ExpectedRevision: in.ExpectedRevision})
 	if e != nil {
 		return CockpitLifecycleCommandResult{}, cockpitWorkflowError(e)
 	}
-	return s.finishLifecycleWrite(ctx, tx, q, c, CockpitLifecycleReceipt{Revision: w.Revision, AgendaRevision: x.meeting.AgendaRevision, Materials: lifecycleMaterials(&w)})
+	state := minutesStateFromReadiness(p.WorkspaceID, w)
+	return s.finishLifecycleWrite(ctx, tx, q, c, CockpitLifecycleReceipt{Revision: w.Revision, AgendaRevision: x.meeting.AgendaRevision, Materials: lifecycleMaterials(&state)})
 }

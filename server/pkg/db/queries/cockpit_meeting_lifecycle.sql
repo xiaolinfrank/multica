@@ -17,7 +17,7 @@ RETURNING lifecycle_revision;
 UPDATE cockpit_meeting SET agenda_revision=agenda_revision+1 WHERE workspace_id=$1 AND id=$2 RETURNING agenda_revision;
 
 -- name: BumpCockpitWorkflowRevisionForOccurrence :exec
-UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now() WHERE workspace_id=$1 AND meeting_id=$2;
+UPDATE cockpit_meeting SET minutes_revision=minutes_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2;
 
 -- name: GetCockpitLifecycleCommand :one
 SELECT * FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1 AND meeting_id=$2 AND command_key=$3;

@@ -210,7 +210,7 @@ func TestCockpitHistoryScopeAndInvalidRepresentationDoNotWrite(t *testing.T) {
 		t.Fatal("empty summary invented workflow")
 	}
 	callWorkflowHistory(t, testHandler.EnableCockpitMeetingWorkflow, "POST", ws, meeting.ID, "/workflow?response=unexpected", map[string]any{"reviewer_id": testUserID}).Want(400)
-	if dbfx.Count(t, "SELECT count(*) FROM cockpit_meeting_work_package WHERE workspace_id=$1", ws) != 0 || dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1", ws) != 0 {
+	if dbfx.Count(t, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)", ws) != 0 || dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1", ws) != 0 {
 		t.Fatal("invalid response mode still performed business command")
 	}
 	callWorkflowHistory(t, testHandler.ListCockpitMinutesVersionHistory, "GET", ws, meeting.ID, "/versions?page_size=101", nil).Want(400)

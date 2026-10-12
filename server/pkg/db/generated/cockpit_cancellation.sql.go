@@ -17,7 +17,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$3
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT EXISTS(SELECT 1 FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1 WHERE i.id=$2)
 `
@@ -41,7 +41,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$3
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE ($2::text='' OR i.title ILIKE '%'||$2||'%' OR i.number::text=$2)
@@ -83,7 +83,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$2
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM agent_task_queue t JOIN preparation_issues p ON p.id=t.issue_id
 WHERE t.chat_session_id IS NULL AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory')
@@ -107,7 +107,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$3
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE i.id=ANY($2::uuid[])
@@ -204,7 +204,7 @@ WITH preparation_issues AS MATERIALIZED (
  JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
  WHERE r.workspace_id=$1 AND r.meeting_id=$5 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
  UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT w.minutes_issue_id FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1 AND w.meeting_id=$5
+ UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE ($2::text='' OR i.title ILIKE '%'||$2||'%' OR i.number::text=$2)

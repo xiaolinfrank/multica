@@ -193,7 +193,7 @@ func directoryPrincipalWithRetainedPlan(ctx context.Context, q *db.Queries, p Co
 		if !allowed {
 			return out, directoryError("permission_revoked", "The run's authorizing member can no longer invoke this Agent.")
 		}
-		relation, err := q.GetCockpitDirectoryPreparationRelation(ctx, db.GetCockpitDirectoryPreparationRelationParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, MinutesIssueID: run.IssueID})
+		relation, err := q.GetCockpitDirectoryPreparationRelation(ctx, db.GetCockpitDirectoryPreparationRelationParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, IssueID: run.IssueID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return out, directoryError("delegation_unavailable", "The source Issue is not an active preparation task for this meeting.")
 		}

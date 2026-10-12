@@ -33,7 +33,6 @@ func newCockpitWorkflowFixture(t *testing.T) cockpitWorkflowFixture {
 	f.Cleanup(t, "DELETE FROM agent_task_queue WHERE issue_id IN (SELECT id FROM issue WHERE workspace_id=$1)", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_meeting_issue WHERE workspace_id=$1", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_node_issue WHERE workspace_id=$1", ws)
-	f.Cleanup(t, "DELETE FROM cockpit_meeting_work_package WHERE workspace_id=$1", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_minutes_version WHERE workspace_id=$1", ws)
 	f.Cleanup(t, "DELETE FROM cockpit_reviewer_handoff WHERE workspace_id=$1", ws)
 	svc := NewIssueService(f.q, f.Pool, f.svc.Bus, nil, f.svc.TaskSvc)
@@ -50,13 +49,13 @@ func (f cockpitWorkflowFixture) init(t *testing.T, agent string) {
 		t.Fatal(err)
 	}
 }
-func (f cockpitWorkflowFixture) work(t *testing.T) db.CockpitMeetingWorkPackage {
+func (f cockpitWorkflowFixture) work(t *testing.T) cockpitMinutesState {
 	t.Helper()
-	w, e := f.q.GetCockpitMeetingWorkPackage(context.Background(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: f.ws, MeetingID: f.meeting})
+	w, e := f.q.GetCockpitMeetingWorkPackage(context.Background(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: f.ws, ID: f.meeting})
 	if e != nil {
 		t.Fatal(e)
 	}
-	return w
+	return minutesStateFromGet(f.ws, w)
 }
 func (f cockpitWorkflowFixture) command(t *testing.T) CockpitWorkPackageCommand {
 	return CockpitWorkPackageCommand{WorkspaceID: f.ws, MeetingID: f.meeting, ActorID: f.owner, ExpectedRevision: f.work(t).Revision}
@@ -99,7 +98,7 @@ func TestCockpitWorkflowHumanReviewAndPublication(t *testing.T) {
 	if e := f.issues.ReleaseCockpitMeetingMinutes(ctx, release); e != nil {
 		t.Fatal("release retry:", e)
 	}
-	if f.work(t).ReleaseTaskID.Valid {
+	if f.Count(t, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", f.work(t).MinutesIssueID) != 0 {
 		t.Fatal("member executor unexpectedly created a Run")
 	}
 	submission := CockpitMinutesSubmission{CockpitWorkPackageCommand: f.command(t), SubmissionKey: dbid.NewV7(), Content: "Agreed scope and next steps.", ActorType: "member", AuthorID: f.owner}
@@ -193,9 +192,6 @@ func TestCockpitWorkflowConcurrentInitAndRelease(t *testing.T) {
 	cmd := f.command(t)
 	runTogether(func() error { return f.issues.ReleaseCockpitMeetingMinutes(ctx, cmd) })
 	work = f.work(t)
-	if !work.ReleaseTaskID.Valid {
-		t.Fatal("release has no task")
-	}
 	if e := f.Pool.QueryRow(ctx, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", work.MinutesIssueID).Scan(&count); e != nil || count != 1 {
 		t.Fatalf("release count %d: %v", count, e)
 	}
@@ -239,7 +235,7 @@ func TestCockpitWorkflowRejectsDeferredAdoptionAndRollsBack(t *testing.T) {
 		t.Fatalf("deferred adoption = %v", e)
 	}
 	var count int
-	if e := f.Pool.QueryRow(ctx, "SELECT count(*) FROM cockpit_meeting_work_package WHERE workspace_id=$1", f.ws).Scan(&count); e != nil || count != 0 {
+	if e := f.Pool.QueryRow(ctx, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)", f.ws).Scan(&count); e != nil || count != 0 {
 		t.Fatalf("partial work package count %d: %v", count, e)
 	}
 	// Failure after canonical issue creation must roll back its issue too.
@@ -353,7 +349,7 @@ func TestCockpitWorkflowReleaseCommitFailureRollsBackEverything(t *testing.T) {
 		t.Fatalf("release error = %v", err)
 	}
 	after := f.work(t)
-	if after.ReleasedAt.Valid || after.ReleaseTaskID.Valid || after.Revision != before.Revision {
+	if after.Released || after.Revision != before.Revision {
 		t.Fatalf("release ledger escaped rollback: %+v", after)
 	}
 	issue, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: before.MinutesIssueID, WorkspaceID: f.ws})
@@ -489,7 +485,7 @@ func TestCockpitWorkflowConcurrentAdoptionAndEnqueueCannotBothWin(t *testing.T) 
 			}
 			adoptErr, queueErr := <-adopted, <-queued
 			var packages, tasks int
-			if err := f.Pool.QueryRow(ctx, "SELECT count(*) FROM cockpit_meeting_work_package WHERE workspace_id=$1", f.ws).Scan(&packages); err != nil {
+			if err := f.Pool.QueryRow(ctx, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)", f.ws).Scan(&packages); err != nil {
 				t.Fatal(err)
 			}
 			if err := f.Pool.QueryRow(ctx, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", id).Scan(&tasks); err != nil {
@@ -706,7 +702,11 @@ func TestCockpitWorkflowReleaseHandoffConnectsAdoptedMinutesToSubmission(t *test
 			if err := f.issues.ReleaseCockpitMeetingMinutes(ctx, f.command(t)); err != nil {
 				t.Fatal(err)
 			}
-			task, err := f.q.GetAgentTask(ctx, f.work(t).ReleaseTaskID)
+			var taskID pgtype.UUID
+			if e := f.Pool.QueryRow(ctx, "SELECT id FROM agent_task_queue WHERE issue_id=$1 ORDER BY created_at DESC LIMIT 1", f.work(t).MinutesIssueID).Scan(&taskID); e != nil {
+				t.Fatal(e)
+			}
+			task, err := f.q.GetAgentTask(ctx, taskID)
 			if err != nil {
 				t.Fatal(err)
 			}

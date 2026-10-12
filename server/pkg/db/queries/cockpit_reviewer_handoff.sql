@@ -15,8 +15,9 @@ INSERT INTO cockpit_reviewer_handoff (
 RETURNING *;
 
 -- name: SetCockpitDefaultReviewer :one
-UPDATE cockpit_meeting_work_package SET reviewer_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING *;
+UPDATE cockpit_meeting SET minutes_reviewer_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4
+RETURNING id AS meeting_id,minutes_revision AS revision,minutes_focus_issue_id AS minutes_issue_id,minutes_reviewer_id AS reviewer_id,minutes_materials_ready AS materials_ready,minutes_materials_confirmed_at AS materials_confirmed_at,minutes_materials_confirmed_by AS materials_confirmed_by,minutes_current_version_id AS current_version_id,minutes_published_version_id AS published_version_id;
 
 -- name: TransferCockpitPendingReview :one
 UPDATE cockpit_minutes_version SET reviewer_id=sqlc.arg('reviewer_id')::uuid,review_issue_id=sqlc.arg('review_issue_id')::uuid

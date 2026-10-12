@@ -112,7 +112,7 @@ func (q *Queries) GetCockpitMeetingTaskIssue(ctx context.Context, arg GetCockpit
 }
 
 const lockCockpitMeetingForWork = `-- name: LockCockpitMeetingForWork :one
-SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision FROM cockpit_meeting
+SELECT id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by FROM cockpit_meeting
 WHERE id = $1::uuid AND workspace_id = $2::uuid
 FOR UPDATE
 `
@@ -171,6 +171,15 @@ func (q *Queries) LockCockpitMeetingForWork(ctx context.Context, arg LockCockpit
 		&i.ArchivedBy,
 		&i.ArchivedReason,
 		&i.NasDirRevision,
+		&i.MinutesReviewerID,
+		&i.MinutesFocusIssueID,
+		&i.MinutesCurrentVersionID,
+		&i.MinutesPublishedVersionID,
+		&i.MinutesRevision,
+		&i.MinutesMaterialsReady,
+		&i.MinutesMaterialsConfirmedAt,
+		&i.MinutesMaterialsConfirmedBy,
+		&i.MinutesConfiguredBy,
 	)
 	return i, err
 }

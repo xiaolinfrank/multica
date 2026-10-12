@@ -74,8 +74,10 @@ func TestCockpitWorkflowHTTPReviewAndPublication(t *testing.T) {
 	}
 	callCockpitWorkflow(t, testHandler.ReleaseCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
 		map[string]any{"expected_revision": releaseRevision}).Want(http.StatusOK)
+	// R1 (design-principles-2026-10-12): materials confirmation stays
+	// two-way after release; the execution gate is a continuous projection.
 	callCockpitWorkflow(t, testHandler.UpdateCockpitMeetingReadiness, http.MethodPatch, ws, meeting.ID, "", "",
-		map[string]any{"expected_revision": state.Revision, "materials_ready": false}).Want(http.StatusConflict)
+		map[string]any{"expected_revision": state.Revision, "materials_ready": false}).Want(http.StatusOK).JSON(&state)
 	key := uuid.NewString()
 	submit := map[string]any{"expected_revision": state.Revision, "submission_key": key, "content": "  First phase excludes historical backfill.  "}
 	callCockpitWorkflow(t, testHandler.SubmitCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "", submit).Want(http.StatusOK).JSON(&state)
@@ -113,7 +115,7 @@ func TestCockpitWorkflowHTTPReviewAndPublication(t *testing.T) {
 	}
 	// Whole-workspace teardown is the explicit history removal boundary.
 	testutil.Call(t, testHandler.DeleteWorkspace, testutil.WithURLParams(cockpitRequest(http.MethodDelete, "/api/workspaces/"+ws, ws, nil), "id", ws)).Want(http.StatusNoContent)
-	if dbfx.Count(t, "SELECT count(*) FROM cockpit_meeting_work_package WHERE workspace_id=$1", ws) != 0 ||
+	if dbfx.Count(t, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)", ws) != 0 ||
 		dbfx.Count(t, "SELECT count(*) FROM cockpit_minutes_version WHERE workspace_id=$1", ws) != 0 {
 		t.Fatal("workspace deletion left workflow history or an execution gate behind")
 	}
@@ -167,6 +169,14 @@ func TestCockpitWorkflowHTTPProtectsHistoryAndRelations(t *testing.T) {
 	callCockpitWorkflow(t, testHandler.EnableCockpitMeetingWorkflow, http.MethodPost, ws, meeting.ID, "", "",
 		map[string]any{"reviewer_id": testUserID}).Want(http.StatusOK).JSON(&state)
 	issueID := state.MinutesIssue.ID
+	// R1: deleting sweeps bare bindings; a submitted version is the formal
+	// history that retains the meeting. Create one before asserting protection.
+	callCockpitWorkflow(t, testHandler.UpdateCockpitMeetingReadiness, http.MethodPatch, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "ended": true, "materials_ready": true}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.ReleaseCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.SubmitCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "submission_key": uuid.NewString(), "content": "Protected history"}).Want(http.StatusOK).JSON(&state)
 	testutil.Call(t, cockpitHandler(testHandler.ProvisionCockpitMeeting), testutil.WithURLParams(cockpitRequest(http.MethodPost, "/provision", ws,
 		map[string]any{"create_task": true, "create_dir": false}), "meetingId", meeting.ID)).Want(http.StatusConflict)
 	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitMeeting), testutil.WithURLParams(cockpitRequest(http.MethodPatch, "/meeting", ws,
@@ -181,7 +191,7 @@ func TestCockpitWorkflowHTTPProtectsHistoryAndRelations(t *testing.T) {
 	if count := dbfx.Count(t, "SELECT count(*) FROM issue WHERE id=$1", issueID); count != 1 {
 		t.Fatal("a protected issue was removed")
 	}
-	if len(getBoard(t, ws).MeetingIssues) != 1 {
+	if len(getBoard(t, ws).MeetingIssues) < 2 {
 		t.Fatal("a protected workflow relationship was removed")
 	}
 }

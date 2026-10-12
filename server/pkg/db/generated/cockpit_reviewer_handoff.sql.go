@@ -155,41 +155,48 @@ func (q *Queries) ListCockpitReviewerHandoffs(ctx context.Context, arg ListCockp
 }
 
 const setCockpitDefaultReviewer = `-- name: SetCockpitDefaultReviewer :one
-UPDATE cockpit_meeting_work_package SET reviewer_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
+UPDATE cockpit_meeting SET minutes_reviewer_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4
+RETURNING id AS meeting_id,minutes_revision AS revision,minutes_focus_issue_id AS minutes_issue_id,minutes_reviewer_id AS reviewer_id,minutes_materials_ready AS materials_ready,minutes_materials_confirmed_at AS materials_confirmed_at,minutes_materials_confirmed_by AS materials_confirmed_by,minutes_current_version_id AS current_version_id,minutes_published_version_id AS published_version_id
 `
 
 type SetCockpitDefaultReviewerParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	ReviewerID  pgtype.UUID `json:"reviewer_id"`
-	Revision    int64       `json:"revision"`
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	ID                pgtype.UUID `json:"id"`
+	MinutesReviewerID pgtype.UUID `json:"minutes_reviewer_id"`
+	MinutesRevision   int64       `json:"minutes_revision"`
 }
 
-func (q *Queries) SetCockpitDefaultReviewer(ctx context.Context, arg SetCockpitDefaultReviewerParams) (CockpitMeetingWorkPackage, error) {
+type SetCockpitDefaultReviewerRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+}
+
+func (q *Queries) SetCockpitDefaultReviewer(ctx context.Context, arg SetCockpitDefaultReviewerParams) (SetCockpitDefaultReviewerRow, error) {
 	row := q.db.QueryRow(ctx, setCockpitDefaultReviewer,
 		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.ReviewerID,
-		arg.Revision,
+		arg.ID,
+		arg.MinutesReviewerID,
+		arg.MinutesRevision,
 	)
-	var i CockpitMeetingWorkPackage
+	var i SetCockpitDefaultReviewerRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
 	)
 	return i, err
 }

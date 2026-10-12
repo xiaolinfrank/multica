@@ -90,43 +90,45 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
  WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
- SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at,m.archived_at
+ SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at,m.archived_at,
+ m.minutes_configured_by AS created_by,m.minutes_focus_issue_id,m.minutes_reviewer_id,m.minutes_materials_ready,m.minutes_current_version_id,m.minutes_published_version_id
  FROM cockpit_meeting m CROSS JOIN args x
  WHERE m.workspace_id=x.ws AND (x.project IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_project=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_project=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.project_id=x.project)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.project_id=x.project))
  AND (x.module IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_module=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_module=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.module_id=x.module)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN issue i ON i.workspace_id=w.workspace_id AND i.id=w.minutes_issue_id WHERE w.workspace_id=x.ws AND w.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.module_id=x.module))
 ), workflow AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at,w.minutes_issue_id,w.reviewer_id AS default_reviewer,w.created_by,w.materials_ready,w.released_at,
- w.current_version_id,w.published_version_id,v.version_number,v.reviewer_id,v.review_issue_id,v.decision,v.published_at,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at, m.created_by, m.minutes_focus_issue_id, m.minutes_reviewer_id, m.minutes_materials_ready, m.minutes_current_version_id, m.minutes_published_version_id,m.minutes_focus_issue_id AS minutes_issue_id,m.minutes_reviewer_id AS default_reviewer,m.created_by,m.minutes_materials_ready AS materials_ready,
+ (i.status IN ('todo','in_progress','in_review','blocked'))::bool AS released,
+ m.minutes_current_version_id AS current_version_id,m.minutes_published_version_id AS published_version_id,v.version_number,v.reviewer_id,v.review_issue_id,v.decision,v.published_at,
  i.status AS minutes_status,i.assignee_type,i.assignee_id,
- (x.actor_role IN ('owner','admin') OR w.created_by=x.actor)::bool AS manager,
+ (x.actor_role IN ('owner','admin') OR m.created_by=x.actor)::bool AS manager,
  CASE
- WHEN w.released_at IS NULL THEN CASE
-  WHEN m.ended_at IS NOT NULL AND w.materials_ready AND i.status='backlog' THEN 'release_ready'
-  WHEN m.ended_at IS NOT NULL AND w.materials_ready THEN 'restore_backlog'
+ WHEN NOT (i.status IN ('todo','in_progress','in_review','blocked')) THEN CASE
+  WHEN m.ended_at IS NOT NULL AND m.minutes_materials_ready AND i.status='backlog' THEN 'release_ready'
+  WHEN m.ended_at IS NOT NULL AND m.minutes_materials_ready THEN 'restore_backlog'
   WHEN m.ended_at IS NOT NULL THEN 'materials_needed'
   WHEN m.meet_date<x.as_of THEN 'readiness_needed' ELSE '' END
  WHEN v.decision='pending' AND NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=x.ws AND u.user_id=v.reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision='pending' THEN 'review_pending'
  WHEN v.decision='approved' AND v.published_at IS NULL THEN 'publish_ready'
- WHEN v.published_at IS NOT NULL AND w.published_version_id=v.id THEN ''
- WHEN NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=x.ws AND u.user_id=w.reviewer_id) THEN 'reviewer_missing'
+ WHEN v.published_at IS NOT NULL AND m.minutes_published_version_id=v.id THEN ''
+ WHEN NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=x.ws AND u.user_id=m.minutes_reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision IN ('changes_requested','rejected') THEN 'minutes_rework'
  ELSE 'minutes_needed' END::text AS reason
- FROM meetings m CROSS JOIN args x JOIN cockpit_meeting_work_package w ON w.workspace_id=x.ws AND w.meeting_id=m.id
- JOIN issue i ON i.workspace_id=x.ws AND i.id=w.minutes_issue_id
- LEFT JOIN cockpit_minutes_version v ON v.workspace_id=x.ws AND v.meeting_id=m.id AND v.id=w.current_version_id
+ FROM meetings m CROSS JOIN args x
+ LEFT JOIN issue i ON i.workspace_id=x.ws AND i.id=m.minutes_focus_issue_id
+ LEFT JOIN cockpit_minutes_version v ON v.workspace_id=x.ws AND v.meeting_id=m.id AND v.id=m.minutes_current_version_id
+ WHERE (m.minutes_focus_issue_id IS NOT NULL OR m.minutes_current_version_id IS NOT NULL
+   OR m.minutes_published_version_id IS NOT NULL OR m.minutes_reviewer_id IS NOT NULL)
 ), attention AS (
  SELECT w.id,'workflow'::text AS kind,w.reason,w.title,w.created_at,NULL::date AS due_date,
  CASE WHEN w.reason='review_pending' THEN 'formal_reviewer'
@@ -146,21 +148,21 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  NULL::uuid AS action_id,NULL::uuid AS export_id,ARRAY[]::text[] AS flags,1 AS rank
  FROM workflow w CROSS JOIN args x WHERE w.reason<>''
  UNION ALL
- SELECT a.id,'action',CASE WHEN a.version_id=w.published_version_id THEN 'action_pending' ELSE 'action_superseded' END,a.title,a.created_at,NULL::date,
- 'team_management',NULL::text,NULL::uuid,FALSE,x.human AND (x.actor_role IN ('owner','admin') OR w.created_by=x.actor OR v.reviewer_id=x.actor),
- CASE WHEN a.version_id=w.published_version_id THEN 'resolve_action' ELSE 'dismiss_superseded_action' END,
+ SELECT a.id,'action',CASE WHEN a.version_id=w.minutes_published_version_id THEN 'action_pending' ELSE 'action_superseded' END,a.title,a.created_at,NULL::date,
+ 'team_management',NULL::text,NULL::uuid,FALSE,x.human AND (x.actor_role IN ('owner','admin') OR w.minutes_configured_by=x.actor OR v.reviewer_id=x.actor),
+ CASE WHEN a.version_id=w.minutes_published_version_id THEN 'resolve_action' ELSE 'dismiss_superseded_action' END,
  a.meeting_id,a.version_id,a.version_number,NULL::uuid,NULL::uuid,a.id,NULL::uuid,
- CASE WHEN a.version_id=w.published_version_id THEN ARRAY[]::text[] ELSE ARRAY['source_superseded']::text[] END,2
+ CASE WHEN a.version_id=w.minutes_published_version_id THEN ARRAY[]::text[] ELSE ARRAY['source_superseded']::text[] END,2
  FROM cockpit_meeting_action a CROSS JOIN args x JOIN meetings m ON m.id=a.meeting_id
- JOIN cockpit_meeting_work_package w ON w.workspace_id=x.ws AND w.meeting_id=a.meeting_id
+ JOIN cockpit_meeting w ON w.workspace_id=x.ws AND w.id=a.meeting_id AND (w.minutes_focus_issue_id IS NOT NULL OR w.minutes_published_version_id IS NOT NULL)
  JOIN cockpit_minutes_version v ON v.workspace_id=x.ws AND v.meeting_id=a.meeting_id AND v.id=a.version_id AND v.decision='approved' AND v.published_at IS NOT NULL
  WHERE a.workspace_id=x.ws AND a.status='draft'
  UNION ALL
  SELECT e.id,'nas',e.status,m.title,e.created_at,NULL::date,'team_management',NULL::text,NULL::uuid,FALSE,
- x.human AND (x.actor_role IN ('owner','admin') OR w.created_by=x.actor OR v.reviewer_id=x.actor),'inspect_nas',
+ x.human AND (x.actor_role IN ('owner','admin') OR w.minutes_configured_by=x.actor OR v.reviewer_id=x.actor),'inspect_nas',
  e.meeting_id,e.version_id,e.version_number,NULL::uuid,e.source_issue_id,NULL::uuid,e.id,ARRAY[e.last_error_code]::text[],3
  FROM cockpit_minutes_export e CROSS JOIN args x JOIN meetings m ON m.id=e.meeting_id
- JOIN cockpit_meeting_work_package w ON w.workspace_id=x.ws AND w.meeting_id=e.meeting_id
+ JOIN cockpit_meeting w ON w.workspace_id=x.ws AND w.id=e.meeting_id AND (w.minutes_focus_issue_id IS NOT NULL OR w.minutes_published_version_id IS NOT NULL)
  JOIN cockpit_minutes_version v ON v.workspace_id=x.ws AND v.meeting_id=e.meeting_id AND v.id=e.version_id AND v.decision='approved' AND v.published_at IS NOT NULL
  WHERE e.workspace_id=x.ws AND e.status IN ('retry_wait','needs_attention')
  UNION ALL
@@ -171,7 +173,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  array_remove(ARRAY[CASE WHEN p.overdue THEN 'overdue' END,CASE WHEN p.blocked THEN 'blocked' END,CASE WHEN p.assignee_id IS NULL THEN 'unassigned' END,CASE WHEN p.category='unknown' THEN 'unknown_status' END],NULL),4
  FROM primary_facts p CROSS JOIN args x
  WHERE p.category NOT IN ('done','closed')
- AND NOT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=x.ws AND w.minutes_issue_id=p.id)
+ AND NOT EXISTS(SELECT 1 FROM cockpit_meeting_issue l WHERE l.workspace_id=x.ws AND l.issue_id=p.id AND 'minutes'=ANY(l.roles))
  AND NOT EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=x.ws AND v.review_issue_id=p.id)
  AND NOT EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=x.ws AND (h.from_review_issue_id=p.id OR h.to_review_issue_id=p.id))
 ), attention_filtered AS (
@@ -208,13 +210,13 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  'module_id',e.module_id,'module_title',e.module_title,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
  'issue_counts',COALESCE(c.counts,jsonb_build_object('total',0,'active',0,'unstarted',0,'started',0,'done',0,'closed',0,'unknown',0,'overdue',0,'blocked',0,'unassigned',0))) AS card FROM execution_page e LEFT JOIN execution_counts c ON c.node_id=e.id
 ), recent AS (
- SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
- CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN w.released_at IS NULL THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
+ SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at, m.created_by, m.minutes_focus_issue_id, m.minutes_reviewer_id, m.minutes_materials_ready, m.minutes_current_version_id, m.minutes_published_version_id,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,
+ CASE WHEN w.id IS NULL THEN 'not_enabled' WHEN w.reason<>'' THEN w.reason WHEN NOT w.released THEN 'waiting_meeting' ELSE 'published' END::text AS workflow_stage,
  m.meet_date::text||':'||m.id::text AS sort_key
  FROM meetings m CROSS JOIN args x LEFT JOIN workflow w ON w.id=m.id
  WHERE m.archived_at IS NULL AND m.meet_date BETWEEN x.as_of-(x.days-1) AND x.as_of+7
 ), recent_page AS (
- SELECT r.id, r.code, r.title, r.meet_date, r.time_range, r.status, r.created_at, r.ended_at, r.archived_at, r.minutes_issue_id, r.current_version_id, r.version_number, r.published_version_id, r.workflow_stage, r.sort_key FROM recent r CROSS JOIN args x WHERE x.section IN ('overview','meetings') AND (x.cursor_key='' OR r.sort_key<x.cursor_key)
+ SELECT r.id, r.code, r.title, r.meet_date, r.time_range, r.status, r.created_at, r.ended_at, r.archived_at, r.created_by, r.minutes_focus_issue_id, r.minutes_reviewer_id, r.minutes_materials_ready, r.minutes_current_version_id, r.minutes_published_version_id, r.minutes_issue_id, r.current_version_id, r.version_number, r.published_version_id, r.workflow_stage, r.sort_key FROM recent r CROSS JOIN args x WHERE x.section IN ('overview','meetings') AND (x.cursor_key='' OR r.sort_key<x.cursor_key)
  ORDER BY r.sort_key DESC LIMIT (SELECT CASE WHEN section='overview' THEN 7 ELSE page_size+1 END FROM args)
 ), recent_cards AS (
  SELECT r.sort_key,jsonb_build_object('id',r.id,'code',r.code,'title',r.title,'meet_date',r.meet_date,'time_range',r.time_range,'meeting_status',r.status,

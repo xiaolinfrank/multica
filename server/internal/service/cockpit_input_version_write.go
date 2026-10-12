@@ -54,7 +54,7 @@ func inputInitialTarget(ctx context.Context, q *db.Queries, p CockpitInputRead, 
 		return inputError(reasons[0], "Restore this meeting or agenda before adding preparation material.")
 	}
 	if p.ActorSource != "human" {
-		_, err = q.GetCockpitDirectoryPreparationRelation(ctx, db.GetCockpitDirectoryPreparationRelationParams{WorkspaceID: p.WorkspaceID, MeetingID: meetingID, MinutesIssueID: a.Run.IssueID})
+		_, err = q.GetCockpitDirectoryPreparationRelation(ctx, db.GetCockpitDirectoryPreparationRelationParams{WorkspaceID: p.WorkspaceID, MeetingID: meetingID, IssueID: a.Run.IssueID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return inputError("permission_revoked", "This task is not a direct preparation source for the selected meeting.")
 		}

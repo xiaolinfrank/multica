@@ -1101,51 +1101,60 @@ type CockpitIssuePrimary struct {
 }
 
 type CockpitMeeting struct {
-	ID                 pgtype.UUID        `json:"id"`
-	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
-	CockpitID          pgtype.UUID        `json:"cockpit_id"`
-	MeetDate           pgtype.Date        `json:"meet_date"`
-	TimeRange          string             `json:"time_range"`
-	Title              string             `json:"title"`
-	Attendees          string             `json:"attendees"`
-	MeetNo             string             `json:"meet_no"`
-	Link               string             `json:"link"`
-	Note               string             `json:"note"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	Code               string             `json:"code"`
-	Kind               string             `json:"kind"`
-	Status             string             `json:"status"`
-	Parties            string             `json:"parties"`
-	Organizer          string             `json:"organizer"`
-	Location           string             `json:"location"`
-	StartTime          pgtype.Time        `json:"start_time"`
-	EndTime            pgtype.Time        `json:"end_time"`
-	Minutes            string             `json:"minutes"`
-	Decisions          string             `json:"decisions"`
-	Actions            string             `json:"actions"`
-	NasDir             string             `json:"nas_dir"`
-	Detected           bool               `json:"detected"`
-	Track              string             `json:"track"`
-	LifecycleRevision  int64              `json:"lifecycle_revision"`
-	AgendaRevision     int64              `json:"agenda_revision"`
-	OccurrenceState    string             `json:"occurrence_state"`
-	StartedConfirmedAt pgtype.Timestamptz `json:"started_confirmed_at"`
-	StartedConfirmedBy pgtype.UUID        `json:"started_confirmed_by"`
-	EndedAt            pgtype.Timestamptz `json:"ended_at"`
-	EndedBy            pgtype.UUID        `json:"ended_by"`
-	EndedSource        pgtype.Text        `json:"ended_source"`
-	ActualStartedAt    pgtype.Timestamptz `json:"actual_started_at"`
-	ActualEndedAt      pgtype.Timestamptz `json:"actual_ended_at"`
-	LifecycleUpdatedAt pgtype.Timestamptz `json:"lifecycle_updated_at"`
-	LifecycleUpdatedBy pgtype.UUID        `json:"lifecycle_updated_by"`
-	CancelledAt        pgtype.Timestamptz `json:"cancelled_at"`
-	CancelledBy        pgtype.UUID        `json:"cancelled_by"`
-	CancelledReason    string             `json:"cancelled_reason"`
-	ArchivedAt         pgtype.Timestamptz `json:"archived_at"`
-	ArchivedBy         pgtype.UUID        `json:"archived_by"`
-	ArchivedReason     string             `json:"archived_reason"`
-	NasDirRevision     int64              `json:"nas_dir_revision"`
+	ID                          pgtype.UUID        `json:"id"`
+	WorkspaceID                 pgtype.UUID        `json:"workspace_id"`
+	CockpitID                   pgtype.UUID        `json:"cockpit_id"`
+	MeetDate                    pgtype.Date        `json:"meet_date"`
+	TimeRange                   string             `json:"time_range"`
+	Title                       string             `json:"title"`
+	Attendees                   string             `json:"attendees"`
+	MeetNo                      string             `json:"meet_no"`
+	Link                        string             `json:"link"`
+	Note                        string             `json:"note"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                   pgtype.Timestamptz `json:"updated_at"`
+	Code                        string             `json:"code"`
+	Kind                        string             `json:"kind"`
+	Status                      string             `json:"status"`
+	Parties                     string             `json:"parties"`
+	Organizer                   string             `json:"organizer"`
+	Location                    string             `json:"location"`
+	StartTime                   pgtype.Time        `json:"start_time"`
+	EndTime                     pgtype.Time        `json:"end_time"`
+	Minutes                     string             `json:"minutes"`
+	Decisions                   string             `json:"decisions"`
+	Actions                     string             `json:"actions"`
+	NasDir                      string             `json:"nas_dir"`
+	Detected                    bool               `json:"detected"`
+	Track                       string             `json:"track"`
+	LifecycleRevision           int64              `json:"lifecycle_revision"`
+	AgendaRevision              int64              `json:"agenda_revision"`
+	OccurrenceState             string             `json:"occurrence_state"`
+	StartedConfirmedAt          pgtype.Timestamptz `json:"started_confirmed_at"`
+	StartedConfirmedBy          pgtype.UUID        `json:"started_confirmed_by"`
+	EndedAt                     pgtype.Timestamptz `json:"ended_at"`
+	EndedBy                     pgtype.UUID        `json:"ended_by"`
+	EndedSource                 pgtype.Text        `json:"ended_source"`
+	ActualStartedAt             pgtype.Timestamptz `json:"actual_started_at"`
+	ActualEndedAt               pgtype.Timestamptz `json:"actual_ended_at"`
+	LifecycleUpdatedAt          pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	LifecycleUpdatedBy          pgtype.UUID        `json:"lifecycle_updated_by"`
+	CancelledAt                 pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy                 pgtype.UUID        `json:"cancelled_by"`
+	CancelledReason             string             `json:"cancelled_reason"`
+	ArchivedAt                  pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy                  pgtype.UUID        `json:"archived_by"`
+	ArchivedReason              string             `json:"archived_reason"`
+	NasDirRevision              int64              `json:"nas_dir_revision"`
+	MinutesReviewerID           pgtype.UUID        `json:"minutes_reviewer_id"`
+	MinutesFocusIssueID         pgtype.UUID        `json:"minutes_focus_issue_id"`
+	MinutesCurrentVersionID     pgtype.UUID        `json:"minutes_current_version_id"`
+	MinutesPublishedVersionID   pgtype.UUID        `json:"minutes_published_version_id"`
+	MinutesRevision             int64              `json:"minutes_revision"`
+	MinutesMaterialsReady       bool               `json:"minutes_materials_ready"`
+	MinutesMaterialsConfirmedAt pgtype.Timestamptz `json:"minutes_materials_confirmed_at"`
+	MinutesMaterialsConfirmedBy pgtype.UUID        `json:"minutes_materials_confirmed_by"`
+	MinutesConfiguredBy         pgtype.UUID        `json:"minutes_configured_by"`
 }
 
 type CockpitMeetingAction struct {
@@ -1426,24 +1435,6 @@ type CockpitMeetingTemplateVersion struct {
 	Receipt      []byte             `json:"receipt"`
 	CreatedBy    pgtype.UUID        `json:"created_by"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-}
-
-type CockpitMeetingWorkPackage struct {
-	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
-	MeetingID            pgtype.UUID        `json:"meeting_id"`
-	Revision             int64              `json:"revision"`
-	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
-	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
-	MaterialsReady       bool               `json:"materials_ready"`
-	ReleasedAt           pgtype.Timestamptz `json:"released_at"`
-	ReleaseTaskID        pgtype.UUID        `json:"release_task_id"`
-	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
-	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
-	CreatedBy            pgtype.UUID        `json:"created_by"`
-	CreatedAt            pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
-	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
 }
 
 type CockpitMilestone struct {

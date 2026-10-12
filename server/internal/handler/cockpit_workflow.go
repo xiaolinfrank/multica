@@ -1,16 +1,15 @@
 package handler
 
 import (
+	"fmt"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/logger"
@@ -126,8 +125,8 @@ func cockpitWorkflowTime(value pgtype.Timestamptz) *string {
 	return &stamp
 }
 
-func cockpitWorkflowManagedBy(work db.CockpitMeetingWorkPackage, member db.Member) bool {
-	return work.CreatedBy == member.UserID || member.Role == "owner" || member.Role == "admin"
+func cockpitWorkflowManagedBy(work handlerCockpitMinutesState, member db.Member) bool {
+	return work.ConfiguredBy == member.UserID || member.Role == "owner" || member.Role == "admin"
 }
 
 // Human-only operations keep a handler backstop as well as the router guard.
@@ -147,8 +146,8 @@ func (h *Handler) cockpitWorkflowContext(w http.ResponseWriter, r *http.Request,
 	return cc, meeting, ok
 }
 
-func (h *Handler) canSubmitCockpitMinutes(r *http.Request, q *db.Queries, cc cockpitContext, work db.CockpitMeetingWorkPackage, issue *CockpitWorkflowIssueResponse) bool {
-	if !work.ReleasedAt.Valid || issue == nil {
+func (h *Handler) canSubmitCockpitMinutes(r *http.Request, q *db.Queries, cc cockpitContext, work handlerCockpitMinutesState, issue *CockpitWorkflowIssueResponse) bool {
+	if !work.Released || issue == nil {
 		return false
 	}
 	if !isMachineCredentialActor(r) {
@@ -178,11 +177,15 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 	}
 	defer tx.Rollback(r.Context())
 	q := h.Queries.WithTx(tx)
-	work, err := q.GetCockpitMeetingWorkPackageForRead(r.Context(), db.GetCockpitMeetingWorkPackageForReadParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID})
-	if errors.Is(err, pgx.ErrNoRows) {
+	workRow, err := q.GetCockpitMeetingWorkPackageForRead(r.Context(), db.GetCockpitMeetingWorkPackageForReadParams{WorkspaceID: cc.workspaceID, ID: meetingID})
+	if err != nil {
+		return out, err
+	}
+	if !workRow.MinutesIssueID.Valid {
 		out.CanManage = !isMachineCredentialActor(r)
 		return out, nil
 	}
+	work := minutesProjectionFromForRead(cc.workspaceID, meetingID, workRow)
 	if err != nil {
 		return out, err
 	}
@@ -544,14 +547,14 @@ func (h *Handler) SubmitCockpitMeetingMinutes(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	work, err := h.Queries.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID})
+	work, err := h.Queries.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, ID: meeting.ID})
 	if err != nil {
 		h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "", service.ErrCockpitWorkflowNotFound)
 		return
 	}
 	issue, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{WorkspaceID: cc.workspaceID, ID: work.MinutesIssueID})
 	card := &CockpitWorkflowIssueResponse{AssigneeType: textToPtr(issue.AssigneeType), AssigneeID: uuidToPtr(issue.AssigneeID)}
-	if err != nil || !h.canSubmitCockpitMinutes(r, h.Queries, cc, work, card) {
+	if err != nil || !h.canSubmitCockpitMinutes(r, h.Queries, cc, minutesProjectionFromGet(cc.workspaceID, work), card) {
 		h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "", service.ErrCockpitWorkflowForbidden)
 		return
 	}

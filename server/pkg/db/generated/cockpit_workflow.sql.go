@@ -12,41 +12,78 @@ import (
 )
 
 const advanceCockpitWorkflowRevision = `-- name: AdvanceCockpitWorkflowRevision :one
-UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
+UPDATE cockpit_meeting SET minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$3
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
 `
 
 type AdvanceCockpitWorkflowRevisionParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	Revision    int64       `json:"revision"`
+	WorkspaceID     pgtype.UUID `json:"workspace_id"`
+	ID              pgtype.UUID `json:"id"`
+	MinutesRevision int64       `json:"minutes_revision"`
 }
 
-func (q *Queries) AdvanceCockpitWorkflowRevision(ctx context.Context, arg AdvanceCockpitWorkflowRevisionParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, advanceCockpitWorkflowRevision, arg.WorkspaceID, arg.MeetingID, arg.Revision)
-	var i CockpitMeetingWorkPackage
+type AdvanceCockpitWorkflowRevisionRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) AdvanceCockpitWorkflowRevision(ctx context.Context, arg AdvanceCockpitWorkflowRevisionParams) (AdvanceCockpitWorkflowRevisionRow, error) {
+	row := q.db.QueryRow(ctx, advanceCockpitWorkflowRevision, arg.WorkspaceID, arg.ID, arg.MinutesRevision)
+	var i AdvanceCockpitWorkflowRevisionRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
 	)
 	return i, err
 }
 
+const attachCockpitMinutesIssueLink = `-- name: AttachCockpitMinutesIssueLink :execrows
+INSERT INTO cockpit_meeting_issue(workspace_id,meeting_id,issue_id,role,roles)
+VALUES($1,$2,$3,'',ARRAY['minutes'])
+ON CONFLICT (meeting_id,issue_id) DO UPDATE SET roles=array_append(cockpit_meeting_issue.roles,'minutes')
+WHERE NOT ('minutes'=ANY(cockpit_meeting_issue.roles))
+`
+
+type AttachCockpitMinutesIssueLinkParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+}
+
+func (q *Queries) AttachCockpitMinutesIssueLink(ctx context.Context, arg AttachCockpitMinutesIssueLinkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, attachCockpitMinutesIssueLink, arg.WorkspaceID, arg.MeetingID, arg.IssueID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cockpitIssueExecutionBlocked = `-- name: CockpitIssueExecutionBlocked :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=$1::uuid AND w.released_at IS NULL
+SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l
+ JOIN cockpit_meeting m ON m.workspace_id=l.workspace_id AND m.id=l.meeting_id
+ WHERE l.issue_id=$1::uuid AND 'minutes'=ANY(l.roles)
+   AND (m.ended_at IS NULL OR NOT m.minutes_materials_ready)
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=$1::uuid
  UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue($1::uuid))::bool AS blocked
 `
@@ -59,7 +96,7 @@ func (q *Queries) CockpitIssueExecutionBlocked(ctx context.Context, issueID pgty
 }
 
 const cockpitIssueHasWorkflow = `-- name: CockpitIssueHasWorkflow :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.minutes_issue_id=$1::uuid
+SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l WHERE l.issue_id=$1::uuid AND 'minutes'=ANY(l.roles)
  UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.review_issue_id=$1::uuid
  UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.from_review_issue_id=$1::uuid OR h.to_review_issue_id=$1::uuid UNION ALL SELECT 1 WHERE cockpit_artifact_is_review_issue($1::uuid))::bool AS linked
 `
@@ -69,78 +106,6 @@ func (q *Queries) CockpitIssueHasWorkflow(ctx context.Context, issueID pgtype.UU
 	var linked bool
 	err := row.Scan(&linked)
 	return linked, err
-}
-
-const cockpitWorkflowIssueHasActiveTask = `-- name: CockpitWorkflowIssueHasActiveTask :one
-SELECT EXISTS(SELECT 1 FROM agent_task_queue WHERE issue_id=$1 AND status IN ('queued','deferred','dispatched','running','waiting_local_directory'))::bool
-`
-
-func (q *Queries) CockpitWorkflowIssueHasActiveTask(ctx context.Context, issueID pgtype.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, cockpitWorkflowIssueHasActiveTask, issueID)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const cockpitWorkflowReferencesIssue = `-- name: CockpitWorkflowReferencesIssue :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w WHERE w.workspace_id=$1::uuid AND w.minutes_issue_id=$2::uuid
- UNION ALL SELECT 1 FROM cockpit_meeting_action a WHERE a.workspace_id=$1::uuid AND a.issue_id=$2::uuid
- UNION ALL SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=$1::uuid AND (v.review_issue_id=$2::uuid OR v.source_issue_id=$2::uuid)
- UNION ALL SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$1::uuid AND (h.from_review_issue_id=$2::uuid OR h.to_review_issue_id=$2::uuid) UNION ALL SELECT 1 WHERE cockpit_artifact_references_issue($1::uuid,$2::uuid))::bool AS linked
-`
-
-type CockpitWorkflowReferencesIssueParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	IssueID     pgtype.UUID `json:"issue_id"`
-}
-
-func (q *Queries) CockpitWorkflowReferencesIssue(ctx context.Context, arg CockpitWorkflowReferencesIssueParams) (bool, error) {
-	row := q.db.QueryRow(ctx, cockpitWorkflowReferencesIssue, arg.WorkspaceID, arg.IssueID)
-	var linked bool
-	err := row.Scan(&linked)
-	return linked, err
-}
-
-const createCockpitMeetingWorkPackage = `-- name: CreateCockpitMeetingWorkPackage :one
-INSERT INTO cockpit_meeting_work_package(workspace_id,meeting_id,minutes_issue_id,reviewer_id,created_by)
-VALUES($1,$2,$3,$4,$5) RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
-`
-
-type CreateCockpitMeetingWorkPackageParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	MinutesIssueID pgtype.UUID `json:"minutes_issue_id"`
-	ReviewerID     pgtype.UUID `json:"reviewer_id"`
-	CreatedBy      pgtype.UUID `json:"created_by"`
-}
-
-func (q *Queries) CreateCockpitMeetingWorkPackage(ctx context.Context, arg CreateCockpitMeetingWorkPackageParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, createCockpitMeetingWorkPackage,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.MinutesIssueID,
-		arg.ReviewerID,
-		arg.CreatedBy,
-	)
-	var i CockpitMeetingWorkPackage
-	err := row.Scan(
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.MinutesIssueID,
-		&i.ReviewerID,
-		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.MaterialsConfirmedAt,
-		&i.MaterialsConfirmedBy,
-	)
-	return i, err
 }
 
 const createCockpitMinutesVersion = `-- name: CreateCockpitMinutesVersion :one
@@ -201,6 +166,15 @@ func (q *Queries) CreateCockpitMinutesVersion(ctx context.Context, arg CreateCoc
 	return i, err
 }
 
+const deleteCockpitMinutesLinksByWorkspace = `-- name: DeleteCockpitMinutesLinksByWorkspace :exec
+DELETE FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)
+`
+
+func (q *Queries) DeleteCockpitMinutesLinksByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMinutesLinksByWorkspace, workspaceID)
+	return err
+}
+
 const deleteCockpitMinutesVersionsByWorkspace = `-- name: DeleteCockpitMinutesVersionsByWorkspace :exec
 DELETE FROM cockpit_minutes_version WHERE workspace_id=$1
 `
@@ -210,43 +184,77 @@ func (q *Queries) DeleteCockpitMinutesVersionsByWorkspace(ctx context.Context, w
 	return err
 }
 
-const deleteCockpitWorkPackagesByWorkspace = `-- name: DeleteCockpitWorkPackagesByWorkspace :exec
-DELETE FROM cockpit_meeting_work_package WHERE workspace_id=$1
+const detachCockpitMinutesIssueLink = `-- name: DetachCockpitMinutesIssueLink :execrows
+UPDATE cockpit_meeting_issue SET roles=array_remove(roles,'minutes')
+WHERE workspace_id=$1 AND meeting_id=$2 AND issue_id=$3 AND 'minutes'=ANY(roles)
 `
 
-func (q *Queries) DeleteCockpitWorkPackagesByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCockpitWorkPackagesByWorkspace, workspaceID)
-	return err
+type DetachCockpitMinutesIssueLinkParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+}
+
+func (q *Queries) DetachCockpitMinutesIssueLink(ctx context.Context, arg DetachCockpitMinutesIssueLinkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachCockpitMinutesIssueLink, arg.WorkspaceID, arg.MeetingID, arg.IssueID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getCockpitMeetingWorkPackage = `-- name: GetCockpitMeetingWorkPackage :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2
+
+SELECT m.id AS meeting_id, m.minutes_revision AS revision,
+ m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready,
+ m.minutes_materials_confirmed_at AS materials_confirmed_at, m.minutes_materials_confirmed_by AS materials_confirmed_by,
+ m.minutes_current_version_id AS current_version_id, m.minutes_published_version_id AS published_version_id,
+ m.minutes_configured_by AS configured_by,
+ EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+  WHERE l.workspace_id=m.workspace_id AND l.meeting_id=m.id AND 'minutes'=ANY(l.roles) AND i.status IN ('todo','in_progress','in_review','blocked'))::bool AS released
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2
 `
 
 type GetCockpitMeetingWorkPackageParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ID          pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) GetCockpitMeetingWorkPackage(ctx context.Context, arg GetCockpitMeetingWorkPackageParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, getCockpitMeetingWorkPackage, arg.WorkspaceID, arg.MeetingID)
-	var i CockpitMeetingWorkPackage
+type GetCockpitMeetingWorkPackageRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+	Released             bool               `json:"released"`
+}
+
+// R1 (design-principles-2026-10-12): the work package is dissolved. Minutes
+// state lives on cockpit_meeting (minutes_* columns); the minutes binding is
+// a cockpit_meeting_issue roles entry ('minutes'), so a meeting can bind
+// several minutes tasks and unbind any of them at will. "released" is a
+// projection (a minutes task left backlog), not a stored terminal fact.
+func (q *Queries) GetCockpitMeetingWorkPackage(ctx context.Context, arg GetCockpitMeetingWorkPackageParams) (GetCockpitMeetingWorkPackageRow, error) {
+	row := q.db.QueryRow(ctx, getCockpitMeetingWorkPackage, arg.WorkspaceID, arg.ID)
+	var i GetCockpitMeetingWorkPackageRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
+		&i.Released,
 	)
 	return i, err
 }
@@ -325,20 +333,48 @@ func (q *Queries) GetCockpitMinutesVersion(ctx context.Context, arg GetCockpitMi
 	return i, err
 }
 
-const hasCockpitWorkPackagesForBoard = `-- name: HasCockpitWorkPackagesForBoard :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_work_package w JOIN cockpit_meeting m ON m.id=w.meeting_id AND m.workspace_id=w.workspace_id WHERE m.cockpit_id=$1 AND w.workspace_id=$2)::bool
+const listCockpitMinutesIssueLinks = `-- name: ListCockpitMinutesIssueLinks :many
+SELECT l.issue_id, l.role, l.roles, i.status
+FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
+ORDER BY l.position, l.created_at
 `
 
-type HasCockpitWorkPackagesForBoardParams struct {
-	CockpitID   pgtype.UUID `json:"cockpit_id"`
+type ListCockpitMinutesIssueLinksParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
 }
 
-func (q *Queries) HasCockpitWorkPackagesForBoard(ctx context.Context, arg HasCockpitWorkPackagesForBoardParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasCockpitWorkPackagesForBoard, arg.CockpitID, arg.WorkspaceID)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
+type ListCockpitMinutesIssueLinksRow struct {
+	IssueID pgtype.UUID `json:"issue_id"`
+	Role    string      `json:"role"`
+	Roles   []string    `json:"roles"`
+	Status  string      `json:"status"`
+}
+
+func (q *Queries) ListCockpitMinutesIssueLinks(ctx context.Context, arg ListCockpitMinutesIssueLinksParams) ([]ListCockpitMinutesIssueLinksRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitMinutesIssueLinks, arg.WorkspaceID, arg.MeetingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitMinutesIssueLinksRow{}
+	for rows.Next() {
+		var i ListCockpitMinutesIssueLinksRow
+		if err := rows.Scan(
+			&i.IssueID,
+			&i.Role,
+			&i.Roles,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listCockpitMinutesVersions = `-- name: ListCockpitMinutesVersions :many
@@ -391,33 +427,51 @@ func (q *Queries) ListCockpitMinutesVersions(ctx context.Context, arg ListCockpi
 }
 
 const lockCockpitMeetingWorkPackage = `-- name: LockCockpitMeetingWorkPackage :one
-SELECT workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by FROM cockpit_meeting_work_package WHERE workspace_id=$1 AND meeting_id=$2 FOR UPDATE
+SELECT m.id AS meeting_id, m.minutes_revision AS revision,
+ m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+ m.minutes_materials_ready AS materials_ready,
+ m.minutes_materials_confirmed_at AS materials_confirmed_at, m.minutes_materials_confirmed_by AS materials_confirmed_by,
+ m.minutes_current_version_id AS current_version_id, m.minutes_published_version_id AS published_version_id,
+ m.minutes_configured_by AS configured_by,
+ EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id
+  WHERE l.workspace_id=m.workspace_id AND l.meeting_id=m.id AND 'minutes'=ANY(l.roles) AND i.status IN ('todo','in_progress','in_review','blocked'))::bool AS released
+FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2 FOR UPDATE
 `
 
 type LockCockpitMeetingWorkPackageParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ID          pgtype.UUID `json:"id"`
 }
 
-func (q *Queries) LockCockpitMeetingWorkPackage(ctx context.Context, arg LockCockpitMeetingWorkPackageParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, lockCockpitMeetingWorkPackage, arg.WorkspaceID, arg.MeetingID)
-	var i CockpitMeetingWorkPackage
+type LockCockpitMeetingWorkPackageRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+	Released             bool               `json:"released"`
+}
+
+func (q *Queries) LockCockpitMeetingWorkPackage(ctx context.Context, arg LockCockpitMeetingWorkPackageParams) (LockCockpitMeetingWorkPackageRow, error) {
+	row := q.db.QueryRow(ctx, lockCockpitMeetingWorkPackage, arg.WorkspaceID, arg.ID)
+	var i LockCockpitMeetingWorkPackageRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
+		&i.Released,
 	)
 	return i, err
 }
@@ -462,41 +516,6 @@ func (q *Queries) PublishCockpitMinutesVersion(ctx context.Context, arg PublishC
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
-	)
-	return i, err
-}
-
-const releaseCockpitMeetingWorkPackage = `-- name: ReleaseCockpitMeetingWorkPackage :one
-UPDATE cockpit_meeting_work_package SET released_at=now(),revision=revision+1,updated_at=now()
-WHERE cockpit_meeting_work_package.workspace_id=$1 AND cockpit_meeting_work_package.meeting_id=$2 AND cockpit_meeting_work_package.revision=$3 AND cockpit_meeting_work_package.released_at IS NULL
- AND EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=cockpit_meeting_work_package.workspace_id AND m.id=cockpit_meeting_work_package.meeting_id AND m.ended_at IS NOT NULL) AND materials_ready RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
-`
-
-type ReleaseCockpitMeetingWorkPackageParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	Revision    int64       `json:"revision"`
-}
-
-func (q *Queries) ReleaseCockpitMeetingWorkPackage(ctx context.Context, arg ReleaseCockpitMeetingWorkPackageParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, releaseCockpitMeetingWorkPackage, arg.WorkspaceID, arg.MeetingID, arg.Revision)
-	var i CockpitMeetingWorkPackage
-	err := row.Scan(
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.MinutesIssueID,
-		&i.ReviewerID,
-		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.MaterialsConfirmedAt,
-		&i.MaterialsConfirmedBy,
 	)
 	return i, err
 }
@@ -550,142 +569,227 @@ func (q *Queries) ReviewCockpitMinutesVersion(ctx context.Context, arg ReviewCoc
 }
 
 const setCockpitCurrentMinutesVersion = `-- name: SetCockpitCurrentMinutesVersion :one
-UPDATE cockpit_meeting_work_package SET current_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
+UPDATE cockpit_meeting SET minutes_current_version_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
 `
 
 type SetCockpitCurrentMinutesVersionParams struct {
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	MeetingID        pgtype.UUID `json:"meeting_id"`
-	CurrentVersionID pgtype.UUID `json:"current_version_id"`
-	Revision         int64       `json:"revision"`
+	WorkspaceID             pgtype.UUID `json:"workspace_id"`
+	ID                      pgtype.UUID `json:"id"`
+	MinutesCurrentVersionID pgtype.UUID `json:"minutes_current_version_id"`
+	MinutesRevision         int64       `json:"minutes_revision"`
 }
 
-func (q *Queries) SetCockpitCurrentMinutesVersion(ctx context.Context, arg SetCockpitCurrentMinutesVersionParams) (CockpitMeetingWorkPackage, error) {
+type SetCockpitCurrentMinutesVersionRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) SetCockpitCurrentMinutesVersion(ctx context.Context, arg SetCockpitCurrentMinutesVersionParams) (SetCockpitCurrentMinutesVersionRow, error) {
 	row := q.db.QueryRow(ctx, setCockpitCurrentMinutesVersion,
 		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.CurrentVersionID,
-		arg.Revision,
+		arg.ID,
+		arg.MinutesCurrentVersionID,
+		arg.MinutesRevision,
 	)
-	var i CockpitMeetingWorkPackage
+	var i SetCockpitCurrentMinutesVersionRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
 	)
 	return i, err
 }
 
 const setCockpitMeetingReadiness = `-- name: SetCockpitMeetingReadiness :one
-UPDATE cockpit_meeting_work_package SET
- materials_confirmed_at=CASE WHEN $3::bool IS NOT NULL THEN now() ELSE materials_confirmed_at END,
- materials_confirmed_by=CASE WHEN $3::bool IS NOT NULL THEN $4::uuid ELSE materials_confirmed_by END,
- materials_ready=COALESCE($3::bool,materials_ready),
- revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$5::bigint RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
+UPDATE cockpit_meeting SET
+ minutes_materials_confirmed_at=CASE WHEN $3::bool IS NOT NULL THEN now() ELSE minutes_materials_confirmed_at END,
+ minutes_materials_confirmed_by=CASE WHEN $3::bool IS NOT NULL THEN $4::uuid ELSE minutes_materials_confirmed_by END,
+ minutes_materials_ready=COALESCE($3::bool,minutes_materials_ready),
+ minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$5::bigint
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
 `
 
 type SetCockpitMeetingReadinessParams struct {
 	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	MeetingID        pgtype.UUID `json:"meeting_id"`
+	ID               pgtype.UUID `json:"id"`
 	MaterialsReady   pgtype.Bool `json:"materials_ready"`
 	ActorID          pgtype.UUID `json:"actor_id"`
 	ExpectedRevision int64       `json:"expected_revision"`
 }
 
-func (q *Queries) SetCockpitMeetingReadiness(ctx context.Context, arg SetCockpitMeetingReadinessParams) (CockpitMeetingWorkPackage, error) {
+type SetCockpitMeetingReadinessRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) SetCockpitMeetingReadiness(ctx context.Context, arg SetCockpitMeetingReadinessParams) (SetCockpitMeetingReadinessRow, error) {
 	row := q.db.QueryRow(ctx, setCockpitMeetingReadiness,
 		arg.WorkspaceID,
-		arg.MeetingID,
+		arg.ID,
 		arg.MaterialsReady,
 		arg.ActorID,
 		arg.ExpectedRevision,
 	)
-	var i CockpitMeetingWorkPackage
+	var i SetCockpitMeetingReadinessRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
 	)
 	return i, err
 }
 
-const setCockpitMeetingReleaseTask = `-- name: SetCockpitMeetingReleaseTask :exec
-UPDATE cockpit_meeting_work_package SET release_task_id=$3 WHERE workspace_id=$1 AND meeting_id=$2
+const setCockpitMinutesSetup = `-- name: SetCockpitMinutesSetup :one
+UPDATE cockpit_meeting SET minutes_focus_issue_id=$1::uuid,
+ minutes_reviewer_id=$2::uuid,
+ minutes_configured_by=COALESCE(minutes_configured_by,$3::uuid),
+ minutes_revision=minutes_revision+1, updated_at=now()
+WHERE workspace_id=$4::uuid AND id=$5::uuid
+ AND minutes_revision=$6::bigint
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
 `
 
-type SetCockpitMeetingReleaseTaskParams struct {
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
-	MeetingID     pgtype.UUID `json:"meeting_id"`
-	ReleaseTaskID pgtype.UUID `json:"release_task_id"`
+type SetCockpitMinutesSetupParams struct {
+	FocusIssueID     pgtype.UUID `json:"focus_issue_id"`
+	ReviewerID       pgtype.UUID `json:"reviewer_id"`
+	ActorID          pgtype.UUID `json:"actor_id"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	MeetingID        pgtype.UUID `json:"meeting_id"`
+	ExpectedRevision int64       `json:"expected_revision"`
 }
 
-func (q *Queries) SetCockpitMeetingReleaseTask(ctx context.Context, arg SetCockpitMeetingReleaseTaskParams) error {
-	_, err := q.db.Exec(ctx, setCockpitMeetingReleaseTask, arg.WorkspaceID, arg.MeetingID, arg.ReleaseTaskID)
-	return err
+type SetCockpitMinutesSetupRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
 }
 
-const setCockpitPublishedMinutesVersion = `-- name: SetCockpitPublishedMinutesVersion :one
-UPDATE cockpit_meeting_work_package SET published_version_id=$3,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND revision=$4 AND current_version_id=$3 RETURNING workspace_id, meeting_id, revision, minutes_issue_id, reviewer_id, materials_ready, released_at, release_task_id, current_version_id, published_version_id, created_by, created_at, updated_at, materials_confirmed_at, materials_confirmed_by
-`
-
-type SetCockpitPublishedMinutesVersionParams struct {
-	WorkspaceID        pgtype.UUID `json:"workspace_id"`
-	MeetingID          pgtype.UUID `json:"meeting_id"`
-	PublishedVersionID pgtype.UUID `json:"published_version_id"`
-	Revision           int64       `json:"revision"`
-}
-
-func (q *Queries) SetCockpitPublishedMinutesVersion(ctx context.Context, arg SetCockpitPublishedMinutesVersionParams) (CockpitMeetingWorkPackage, error) {
-	row := q.db.QueryRow(ctx, setCockpitPublishedMinutesVersion,
+func (q *Queries) SetCockpitMinutesSetup(ctx context.Context, arg SetCockpitMinutesSetupParams) (SetCockpitMinutesSetupRow, error) {
+	row := q.db.QueryRow(ctx, setCockpitMinutesSetup,
+		arg.FocusIssueID,
+		arg.ReviewerID,
+		arg.ActorID,
 		arg.WorkspaceID,
 		arg.MeetingID,
-		arg.PublishedVersionID,
-		arg.Revision,
+		arg.ExpectedRevision,
 	)
-	var i CockpitMeetingWorkPackage
+	var i SetCockpitMinutesSetupRow
 	err := row.Scan(
-		&i.WorkspaceID,
 		&i.MeetingID,
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
 		&i.MaterialsReady,
-		&i.ReleasedAt,
-		&i.ReleaseTaskID,
-		&i.CurrentVersionID,
-		&i.PublishedVersionID,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.MaterialsConfirmedAt,
 		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
+	)
+	return i, err
+}
+
+const setCockpitPublishedMinutesVersion = `-- name: SetCockpitPublishedMinutesVersion :one
+UPDATE cockpit_meeting SET minutes_published_version_id=$3,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_revision=$4 AND minutes_current_version_id=$3
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
+`
+
+type SetCockpitPublishedMinutesVersionParams struct {
+	WorkspaceID               pgtype.UUID `json:"workspace_id"`
+	ID                        pgtype.UUID `json:"id"`
+	MinutesPublishedVersionID pgtype.UUID `json:"minutes_published_version_id"`
+	MinutesRevision           int64       `json:"minutes_revision"`
+}
+
+type SetCockpitPublishedMinutesVersionRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) SetCockpitPublishedMinutesVersion(ctx context.Context, arg SetCockpitPublishedMinutesVersionParams) (SetCockpitPublishedMinutesVersionRow, error) {
+	row := q.db.QueryRow(ctx, setCockpitPublishedMinutesVersion,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.MinutesPublishedVersionID,
+		arg.MinutesRevision,
+	)
+	var i SetCockpitPublishedMinutesVersionRow
+	err := row.Scan(
+		&i.MeetingID,
+		&i.Revision,
+		&i.MinutesIssueID,
+		&i.ReviewerID,
+		&i.MaterialsReady,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
 	)
 	return i, err
 }

@@ -72,16 +72,16 @@ func (q *Queries) BumpCockpitAgendaRevision(ctx context.Context, arg BumpCockpit
 }
 
 const bumpCockpitWorkflowRevisionForOccurrence = `-- name: BumpCockpitWorkflowRevisionForOccurrence :exec
-UPDATE cockpit_meeting_work_package SET revision=revision+1,updated_at=now() WHERE workspace_id=$1 AND meeting_id=$2
+UPDATE cockpit_meeting SET minutes_revision=minutes_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2
 `
 
 type BumpCockpitWorkflowRevisionForOccurrenceParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
+	ID          pgtype.UUID `json:"id"`
 }
 
 func (q *Queries) BumpCockpitWorkflowRevisionForOccurrence(ctx context.Context, arg BumpCockpitWorkflowRevisionForOccurrenceParams) error {
-	_, err := q.db.Exec(ctx, bumpCockpitWorkflowRevisionForOccurrence, arg.WorkspaceID, arg.MeetingID)
+	_, err := q.db.Exec(ctx, bumpCockpitWorkflowRevisionForOccurrence, arg.WorkspaceID, arg.ID)
 	return err
 }
 

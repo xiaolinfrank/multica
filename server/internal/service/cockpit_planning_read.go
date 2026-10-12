@@ -111,7 +111,7 @@ func timestamp(value pgtype.Timestamptz) *string {
 	v := value.Time.UTC().Format(time.RFC3339Nano)
 	return &v
 }
-func planningActionView(row db.CockpitMeetingAction, work db.CockpitMeetingWorkPackage, facts map[pgtype.UUID]CockpitIssueSummary, actor, reviewer pgtype.UUID, role string, human, validSource bool) CockpitActionView {
+func planningActionView(row db.CockpitMeetingAction, work cockpitMinutesState, facts map[pgtype.UUID]CockpitIssueSummary, actor, reviewer pgtype.UUID, role string, human, validSource bool) CockpitActionView {
 	var resolution *string
 	if row.Resolution != "" {
 		v := row.Resolution
@@ -121,7 +121,7 @@ func planningActionView(row db.CockpitMeetingAction, work db.CockpitMeetingWorkP
 	if value, ok := facts[row.IssueID]; ok {
 		issue = &value
 	}
-	allowed := human && validSource && (actor == work.CreatedBy || actor == reviewer || role == "owner" || role == "admin")
+	allowed := human && validSource && (actor == work.ConfiguredBy || actor == reviewer || role == "owner" || role == "admin")
 	superseded := row.VersionID != work.PublishedVersionID
 	return CockpitActionView{ID: util.UUIDToString(row.ID), MeetingID: util.UUIDToString(row.MeetingID), VersionID: util.UUIDToString(row.VersionID), VersionNumber: row.VersionNumber,
 		SourceContentHash: row.SourceContentHash, SourceQuote: row.SourceQuote, Title: row.Title, Description: row.Description, Status: row.Status, Resolution: resolution, Revision: row.Revision,
@@ -139,7 +139,7 @@ func (s *IssueService) GetCockpitMeetingAction(ctx context.Context, p CockpitAct
 	if err != nil {
 		return CockpitActionView{}, planningError(err)
 	}
-	w, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	w, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if err != nil {
 		return CockpitActionView{}, planningError(err)
 	}
@@ -159,7 +159,7 @@ func (s *IssueService) GetCockpitMeetingAction(ctx context.Context, p CockpitAct
 	if err != nil {
 		return CockpitActionView{}, err
 	}
-	return planningActionView(a, w, facts, p.ActorID, v.ReviewerID, member.Role, p.Human, v.PublishedAt.Valid && v.Decision == "approved"), nil
+	return planningActionView(a, minutesStateFromGet(p.WorkspaceID, w), facts, p.ActorID, v.ReviewerID, member.Role, p.Human, v.PublishedAt.Valid && v.Decision == "approved"), nil
 }
 func (s *IssueService) ListCockpitMeetingActions(ctx context.Context, p CockpitActionList) (CockpitActionPage, error) {
 	p.Query = strings.TrimSpace(p.Query)
@@ -184,7 +184,7 @@ func (s *IssueService) ListCockpitMeetingActions(ctx context.Context, p CockpitA
 		return CockpitActionPage{}, planningError(err)
 	}
 	out := CockpitActionPage{MeetingID: util.UUIDToString(p.MeetingID), Items: []CockpitActionView{}}
-	w, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	w, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, nil
 	}
@@ -200,7 +200,7 @@ func (s *IssueService) ListCockpitMeetingActions(ctx context.Context, p CockpitA
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return out, err
 		}
-		out.CanAdd = err == nil && p.Human && v.PublishedAt.Valid && v.Decision == "approved" && (p.ActorID == w.CreatedBy || p.ActorID == v.ReviewerID || member.Role == "owner" || member.Role == "admin")
+		out.CanAdd = err == nil && p.Human && v.PublishedAt.Valid && v.Decision == "approved" && (p.ActorID == w.ConfiguredBy || p.ActorID == v.ReviewerID || member.Role == "owner" || member.Role == "admin")
 	}
 	counts, err := q.CountCockpitMeetingActions(ctx, db.CountCockpitMeetingActionsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, VersionID: p.VersionID, Status: p.Status, Query: p.Query})
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *IssueService) ListCockpitMeetingActions(ctx context.Context, p CockpitA
 	}
 	for _, a := range rows {
 		v := byVersion[a.VersionID]
-		out.Items = append(out.Items, planningActionView(a, w, facts, p.ActorID, v.ReviewerID, member.Role, p.Human, v.PublishedAt.Valid && v.Decision == "approved"))
+		out.Items = append(out.Items, planningActionView(a, minutesStateFromGet(p.WorkspaceID, w), facts, p.ActorID, v.ReviewerID, member.Role, p.Human, v.PublishedAt.Valid && v.Decision == "approved"))
 	}
 	return out, nil
 }

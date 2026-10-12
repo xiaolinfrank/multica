@@ -12,14 +12,18 @@ import (
 
 func (s *IssueService) ReleaseCockpitMeetingMinutes(ctx context.Context, p CockpitWorkPackageCommand) error {
 	// Compute optional external overlays without holding business row locks.
-	initial, err := s.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	initialRow, err := s.Queries.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if err != nil {
 		return cockpitWorkflowError(err)
+	}
+	initial := minutesStateFromGet(p.WorkspaceID, initialRow)
+	if !initial.MinutesIssueID.Valid {
+		return fmt.Errorf("%w: bind a minutes task before release", ErrCockpitWorkflowConflict)
 	}
 	if err := requireCockpitWorkflowManager(ctx, s.Queries, initial, p.ActorID); err != nil {
 		return err
 	}
-	if initial.ReleasedAt.Valid {
+	if initial.Released {
 		return nil
 	}
 	if err := cockpitWorkflowRevision(initial, p.ExpectedRevision); err != nil {
@@ -76,7 +80,7 @@ func (s *IssueService) ReleaseCockpitMeetingMinutes(ctx context.Context, p Cockp
 	if err := requireCockpitWorkflowManager(ctx, q, work, p.ActorID); err != nil {
 		return err
 	}
-	if work.ReleasedAt.Valid {
+	if work.Released {
 		return nil
 	}
 	if err := cockpitWorkflowRevision(work, p.ExpectedRevision); err != nil {
@@ -99,7 +103,7 @@ func (s *IssueService) ReleaseCockpitMeetingMinutes(ctx context.Context, p Cockp
 	if issue.AssigneeType != source.AssigneeType || issue.AssigneeID != source.AssigneeID {
 		return ErrCockpitWorkflowConflict
 	}
-	if _, err = q.ReleaseCockpitMeetingWorkPackage(ctx, db.ReleaseCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, Revision: p.ExpectedRevision}); err != nil {
+	if _, err = q.AdvanceCockpitWorkflowRevision(ctx, db.AdvanceCockpitWorkflowRevisionParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, MinutesRevision: p.ExpectedRevision}); err != nil {
 		return err
 	}
 	// Use the canonical status SQL (position, revision, source events) and the
@@ -138,9 +142,6 @@ func (s *IssueService) ReleaseCockpitMeetingMinutes(ctx context.Context, p Cockp
 			return ErrCockpitWorkflowConflict
 		}
 		if err != nil {
-			return err
-		}
-		if err = q.SetCockpitMeetingReleaseTask(ctx, db.SetCockpitMeetingReleaseTaskParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ReleaseTaskID: task.ID}); err != nil {
 			return err
 		}
 	}

@@ -63,7 +63,7 @@ type CockpitWorkflowIssue struct {
 	handoffCancelledWakeups []db.AgentTaskQueue
 	Init                    *CockpitWorkPackageInit
 	Submission              *CockpitMinutesSubmission
-	work                    db.CockpitMeetingWorkPackage
+	work                    cockpitMinutesState
 	versionID               pgtype.UUID
 }
 
@@ -82,7 +82,7 @@ func cockpitWorkflowMember(ctx context.Context, q *db.Queries, ws, actor pgtype.
 	}
 	if _, err := q.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: actor, WorkspaceID: ws}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrCockpitWorkflowForbidden
+				return ErrCockpitWorkflowForbidden
 		}
 		return err
 	}
@@ -98,19 +98,19 @@ func lockCockpitWorkflowMeeting(ctx context.Context, q *db.Queries, ws, meeting 
 	m, err := q.LockCockpitMeetingForWork(ctx, db.LockCockpitMeetingForWorkParams{ID: meeting, WorkspaceID: ws})
 	return m, cockpitWorkflowError(err)
 }
-func (s *IssueService) beginCockpitWorkflow(ctx context.Context, c CockpitWorkPackageCommand) (pgx.Tx, *db.Queries, db.CockpitMeetingWorkPackage, error) {
+func (s *IssueService) beginCockpitWorkflow(ctx context.Context, c CockpitWorkPackageCommand) (pgx.Tx, *db.Queries, cockpitMinutesState, error) {
 	tx, err := s.TxStarter.Begin(ctx)
 	if err != nil {
-		return nil, nil, db.CockpitMeetingWorkPackage{}, err
+		return nil, nil, cockpitMinutesState{}, err
 	}
 	if _, err := tx.Exec(ctx, `SELECT set_config('multica.actor_type','member',true),set_config('multica.actor_id',$1,true),set_config('multica.source_task_id','',true)`, util.UUIDToString(c.ActorID)); err != nil {
 		_ = tx.Rollback(ctx)
-		return nil, nil, db.CockpitMeetingWorkPackage{}, err
+		return nil, nil, cockpitMinutesState{}, err
 	}
 	q := s.Queries.WithTx(tx)
-	fail := func(e error) (pgx.Tx, *db.Queries, db.CockpitMeetingWorkPackage, error) {
+	fail := func(e error) (pgx.Tx, *db.Queries, cockpitMinutesState, error) {
 		_ = tx.Rollback(ctx)
-		return nil, nil, db.CockpitMeetingWorkPackage{}, e
+		return nil, nil, cockpitMinutesState{}, e
 	}
 	if err := cockpitWorkflowMember(ctx, q, c.WorkspaceID, c.ActorID); err != nil {
 		return fail(err)
@@ -118,13 +118,13 @@ func (s *IssueService) beginCockpitWorkflow(ctx context.Context, c CockpitWorkPa
 	if _, err := lockCockpitWorkflowMeeting(ctx, q, c.WorkspaceID, c.MeetingID); err != nil {
 		return fail(err)
 	}
-	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: c.WorkspaceID, MeetingID: c.MeetingID})
+	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: c.WorkspaceID, ID: c.MeetingID})
 	if err != nil {
 		return fail(cockpitWorkflowError(err))
 	}
-	return tx, q, work, nil
+	return tx, q, minutesStateFromLock(c.WorkspaceID, work), nil
 }
-func cockpitWorkflowRevision(work db.CockpitMeetingWorkPackage, expected int64) error {
+func cockpitWorkflowRevision(work cockpitMinutesState, expected int64) error {
 	if expected < 1 {
 		return fmt.Errorf("%w: expected_revision must be positive", ErrCockpitWorkflowInput)
 	}
@@ -186,8 +186,12 @@ func (s *IssueService) EnableCockpitMeetingWorkPackage(ctx context.Context, p Co
 	if _, err := lockCockpitWorkflowMeeting(ctx, q, p.WorkspaceID, p.MeetingID); err != nil {
 		return err
 	}
-	existing, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
-	if err == nil {
+	existingRow, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
+	if err != nil {
+		return cockpitWorkflowError(err)
+	}
+	existing := minutesStateFromGet(p.WorkspaceID, existingRow)
+	if existing.MinutesIssueID.Valid {
 		if err := requireCockpitWorkflowManager(ctx, q, existing, p.ActorID); err != nil {
 			return err
 		}
@@ -199,9 +203,6 @@ func (s *IssueService) EnableCockpitMeetingWorkPackage(ctx context.Context, p Co
 			return cockpitWorkflowError(err)
 		}
 		return validateCockpitWorkflowInitRetry(ctx, q, p, issue, nil)
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return err
 	}
 	if err := RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, p.MeetingID); err != nil {
 		return err
@@ -227,7 +228,7 @@ func (s *IssueService) EnableCockpitMeetingWorkPackage(ctx context.Context, p Co
 	if linked {
 		return fmt.Errorf("%w: issue already belongs to a work package", ErrCockpitWorkflowConflict)
 	}
-	if err := createCockpitWorkPackageForIssue(ctx, q, p, issue); err != nil {
+	if err := createCockpitWorkPackageForIssue(ctx, q, p, issue, existing.Revision); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -249,8 +250,13 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 		if _, err := lockCockpitWorkflowMeeting(ctx, q, in.WorkspaceID, in.MeetingID); err != nil {
 			return nil, err
 		}
-		existing, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID})
-		if err == nil {
+		existingRow, err := q.GetCockpitMeetingWorkPackage(ctx, db.GetCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID})
+		if err != nil {
+			return nil, cockpitWorkflowError(err)
+		}
+		existing := minutesStateFromGet(in.WorkspaceID, existingRow)
+		hook.work = existing
+		if existing.MinutesIssueID.Valid {
 			if err := requireCockpitWorkflowManager(ctx, q, existing, in.ActorID); err != nil {
 				return nil, err
 			}
@@ -282,7 +288,7 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 	if err != nil {
 		return nil, err
 	}
-	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID})
+	work, err := q.LockCockpitMeetingWorkPackage(ctx, db.LockCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID})
 	if err != nil {
 		return nil, cockpitWorkflowError(err)
 	}
@@ -297,13 +303,14 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	if err := cockpitWorkflowRevision(work, in.ExpectedRevision); err != nil {
+	workState := minutesStateFromLock(in.WorkspaceID, work)
+	if err := cockpitWorkflowRevision(workState, in.ExpectedRevision); err != nil {
 		return nil, err
 	}
-	if !work.ReleasedAt.Valid {
+	if !workState.Released {
 		return nil, fmt.Errorf("%w: minutes work has not been released", ErrCockpitWorkflowConflict)
 	}
-	if work.CurrentVersionID.Valid {
+	if workState.CurrentVersionID.Valid {
 		current, err := q.GetCockpitMinutesVersion(ctx, db.GetCockpitMinutesVersionParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, ID: work.CurrentVersionID})
 		if err != nil {
 			return nil, err
@@ -312,17 +319,17 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 			return nil, fmt.Errorf("%w: complete the current review before submitting another version", ErrCockpitWorkflowConflict)
 		}
 	}
-	if err := cockpitWorkflowMember(ctx, q, in.WorkspaceID, work.ReviewerID); err != nil {
+	if err := cockpitWorkflowMember(ctx, q, in.WorkspaceID, workState.ReviewerID); err != nil {
 		return nil, fmt.Errorf("%w: reviewer is no longer a workspace member", ErrCockpitWorkflowConflict)
 	}
-	source, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: work.MinutesIssueID, WorkspaceID: in.WorkspaceID})
+	source, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: workState.MinutesIssueID, WorkspaceID: in.WorkspaceID})
 	if err != nil {
 		return nil, cockpitWorkflowError(err)
 	}
-	if in.ActorType == "member" && requireCockpitWorkflowManager(ctx, q, work, in.ActorID) != nil && !(source.AssigneeType.String == "member" && source.AssigneeID == in.ActorID) {
+	if in.ActorType == "member" && requireCockpitWorkflowManager(ctx, q, workState, in.ActorID) != nil && !(source.AssigneeType.String == "member" && source.AssigneeID == in.ActorID) {
 		return nil, ErrCockpitWorkflowForbidden
 	}
-	hook.work = work
+	hook.work = workState
 	hook.versionID = dbid.NewV7()
 	p.Title = "Review meeting minutes: " + meeting.Title
 	p.Description = cockpitMinutesReviewDescription(hook.versionID, in.Content)
@@ -356,8 +363,11 @@ func linkCockpitWorkflowPurpose(ctx context.Context, q *db.Queries, ws, meeting,
 	_, err = q.UpdateCockpitMeetingIssueRoles(ctx, db.UpdateCockpitMeetingIssueRolesParams{WorkspaceID: ws, MeetingID: meeting, IssueID: issue, Roles: roles})
 	return err
 }
-func createCockpitWorkPackageForIssue(ctx context.Context, q *db.Queries, in CockpitWorkPackageInit, issue db.Issue) error {
-	if _, err := q.CreateCockpitMeetingWorkPackage(ctx, db.CreateCockpitMeetingWorkPackageParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, MinutesIssueID: issue.ID, ReviewerID: in.ReviewerID, CreatedBy: in.ActorID}); err != nil {
+func createCockpitWorkPackageForIssue(ctx context.Context, q *db.Queries, in CockpitWorkPackageInit, issue db.Issue, revision int64) error {
+	if _, err := q.AttachCockpitMinutesIssueLink(ctx, db.AttachCockpitMinutesIssueLinkParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, IssueID: issue.ID}); err != nil {
+		return err
+	}
+	if _, err := q.SetCockpitMinutesSetup(ctx, db.SetCockpitMinutesSetupParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, FocusIssueID: issue.ID, ReviewerID: in.ReviewerID, ActorID: in.ActorID, ExpectedRevision: revision}); err != nil {
 		return err
 	}
 	if in.NodeID.Valid {
@@ -387,7 +397,7 @@ func linkCockpitWorkflowCreatedIssue(ctx context.Context, q *db.Queries, p Issue
 		return linkCockpitReviewerHandoffIssue(ctx, q, p, issue)
 	}
 	if hook.Init != nil {
-		return createCockpitWorkPackageForIssue(ctx, q, *hook.Init, issue)
+		return createCockpitWorkPackageForIssue(ctx, q, *hook.Init, issue, hook.work.Revision)
 	}
 	in := hook.Submission
 	version, err := q.CreateCockpitMinutesVersion(ctx, db.CreateCockpitMinutesVersionParams{
@@ -398,7 +408,7 @@ func linkCockpitWorkflowCreatedIssue(ctx context.Context, q *db.Queries, p Issue
 	if err != nil {
 		return err
 	}
-	if _, err = q.SetCockpitCurrentMinutesVersion(ctx, db.SetCockpitCurrentMinutesVersionParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, CurrentVersionID: version.ID, Revision: hook.work.Revision}); err != nil {
+	if _, err = q.SetCockpitCurrentMinutesVersion(ctx, db.SetCockpitCurrentMinutesVersionParams{WorkspaceID: in.WorkspaceID, ID: in.MeetingID, MinutesCurrentVersionID: version.ID, MinutesRevision: hook.work.Revision}); err != nil {
 		return cockpitWorkflowError(err)
 	}
 	return linkCockpitWorkflowPurpose(ctx, q, in.WorkspaceID, in.MeetingID, issue.ID, "review")
@@ -433,9 +443,6 @@ func (s *IssueService) SetCockpitMeetingReadiness(ctx context.Context, p Cockpit
 	if err := cockpitWorkflowRevision(work, p.ExpectedRevision); err != nil {
 		return err
 	}
-	if work.ReleasedAt.Valid {
-		return fmt.Errorf("%w: readiness is fixed after release", ErrCockpitWorkflowConflict)
-	}
 	ready := pgtype.Bool{}
 	if p.MaterialsReady != nil {
 		ready = pgtype.Bool{Bool: *p.MaterialsReady, Valid: true}
@@ -446,7 +453,7 @@ func (s *IssueService) SetCockpitMeetingReadiness(ctx context.Context, p Cockpit
 			return err
 		}
 	}
-	_, err = q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ActorID: p.ActorID, MaterialsReady: ready, ExpectedRevision: p.ExpectedRevision})
+	_, err = q.SetCockpitMeetingReadiness(ctx, db.SetCockpitMeetingReadinessParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, ActorID: p.ActorID, MaterialsReady: ready, ExpectedRevision: p.ExpectedRevision})
 	if err != nil {
 		return err
 	}
@@ -531,7 +538,7 @@ func (s *IssueService) ReviewCockpitMeetingMinutes(ctx context.Context, p Cockpi
 	if _, err = q.ReviewCockpitMinutesVersion(ctx, db.ReviewCockpitMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: p.VersionID, Decision: p.Decision, Feedback: p.Feedback, ReviewedBy: p.ActorID}); err != nil {
 		return err
 	}
-	if _, err = q.AdvanceCockpitWorkflowRevision(ctx, db.AdvanceCockpitWorkflowRevisionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, Revision: p.ExpectedRevision}); err != nil {
+	if _, err = q.AdvanceCockpitWorkflowRevision(ctx, db.AdvanceCockpitWorkflowRevisionParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, MinutesRevision: p.ExpectedRevision}); err != nil {
 		return err
 	}
 	issue, err := q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{ID: version.ReviewIssueID, WorkspaceID: p.WorkspaceID, Status: "done"})
@@ -597,7 +604,7 @@ func (s *IssueService) PublishCockpitMeetingMinutes(ctx context.Context, p Cockp
 	if _, err = q.PublishCockpitMinutesVersion(ctx, db.PublishCockpitMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: p.VersionID, PublishedBy: p.ActorID}); err != nil {
 		return err
 	}
-	if _, err = q.SetCockpitPublishedMinutesVersion(ctx, db.SetCockpitPublishedMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, PublishedVersionID: p.VersionID, Revision: p.ExpectedRevision}); err != nil {
+	if _, err = q.SetCockpitPublishedMinutesVersion(ctx, db.SetCockpitPublishedMinutesVersionParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID, MinutesPublishedVersionID: p.VersionID, MinutesRevision: p.ExpectedRevision}); err != nil {
 		return err
 	}
 	if p.NASExport != nil {
@@ -620,7 +627,7 @@ func (s *IssueService) publishCockpitWorkflowIssueUpdate(ctx context.Context, is
 	s.Bus.Publish(events.Event{Type: protocol.EventIssueUpdated, WorkspaceID: util.UUIDToString(issue.WorkspaceID), ActorType: "member", ActorID: util.UUIDToString(actor), Payload: map[string]any{"issue": IssueToMapResolved(ctx, s.Queries, issue, workspace.IssuePrefix), "status_changed": issue.Status != previousStatus, "prev_status": previousStatus}})
 }
 
-func requireCockpitWorkflowManager(ctx context.Context, q *db.Queries, work db.CockpitMeetingWorkPackage, actor pgtype.UUID) error {
+func requireCockpitWorkflowManager(ctx context.Context, q *db.Queries, work cockpitMinutesState, actor pgtype.UUID) error {
 	member, err := q.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: actor, WorkspaceID: work.WorkspaceID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -628,7 +635,7 @@ func requireCockpitWorkflowManager(ctx context.Context, q *db.Queries, work db.C
 		}
 		return err
 	}
-	if work.CreatedBy == actor || member.Role == "owner" || member.Role == "admin" {
+	if work.ConfiguredBy == actor || member.Role == "owner" || member.Role == "admin" {
 		return nil
 	}
 	return ErrCockpitWorkflowForbidden
