@@ -22,6 +22,7 @@ import {
 } from "@multica/ui/lib/motion";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import { useIssueSurfaceSelection } from "../surface/selection-context";
+import { createSafeId } from "@multica/core/utils";
 
 export function BatchActionToolbar({
   issues,
@@ -137,7 +138,7 @@ export function BatchActionToolbar({
 
   const handleBatchUpdate = (updates: Partial<UpdateIssueRequest>) => {
     if (loading || ids.length === 0) return;
-    const intent: IssueBatchIntent = { key: crypto.randomUUID(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "update", updates: { ...updates } };
+    const intent: IssueBatchIntent = { key: createSafeId(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "update", updates: { ...updates } };
     const revisions: Record<string, number> = {};
     const available = ids.every((id) => {
       const basis = policy.byIssue.get(id);
@@ -246,7 +247,7 @@ export function BatchActionToolbar({
           variant="ghost"
           size="sm"
           disabled={loading}
-          onClick={() => setReview({ intent: { key: crypto.randomUUID(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "delete" } })}
+          onClick={() => setReview({ intent: { key: createSafeId(), workspaceId: wsId, ids: [...ids], issueLabels: selectedIssues.map(({ id, identifier, title }) => ({ id, identifier, title })), kind: "delete" } })}
           className="text-destructive hover:text-destructive"
         >
           <Trash2 className="size-3.5 mr-1" />

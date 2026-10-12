@@ -22,6 +22,7 @@ import { AppLink } from "../../navigation";
 import { settingsHref } from "../../settings/components/settings-navigation";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import type { CockpitMember } from "./cockpit-people";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitReviewerHandoffControl({ wsId, workflow, members, canTransfer, disabled, onReload }: {
   wsId: string;
@@ -58,7 +59,7 @@ export function CockpitReviewerHandoffControl({ wsId, workflow, members, canTran
     lock.current = true;
     setBusy(true);
     setError("");
-    const body = prepareCockpitReviewerHandoff(meetingId, revision, draft.handoff_key || crypto.randomUUID());
+    const body = prepareCockpitReviewerHandoff(meetingId, revision, draft.handoff_key || createSafeId());
     try {
       const result = await transfer.mutateAsync({ meetingId, body });
       acknowledgeCockpitCompactReviewerHandoff(meetingId, result);

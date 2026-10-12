@@ -28,6 +28,7 @@ import { useCockpitInputRequest, type CockpitInputAcknowledgement } from "./use-
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { CockpitInputEndRegistration } from "./cockpit-input-end-registration";
 import { CockpitInputProblem } from "./cockpit-input-problem";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInput, recoveryVersion, agendaId = null, projectId = null, originIssueId = null, targetLabel, capabilities, canAdd, onOpenVersion, onCancel }: {
   wsId: string;
@@ -49,7 +50,7 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
   const key = recoveryVersion ? cockpitInputDraftKey(wsId, accountId, "recover-input-version", recoveryVersion.inputId, recoveryVersion.id)
     : existingInput ? cockpitInputDraftKey(wsId, accountId, "input-version", existingInput.id) : cockpitInputDraftKey(wsId, accountId, "upload", meetingId || "", agendaId || "");
   const initial = useRef<{ key: string; value: CockpitInputFormDraft } | null>(null);
-  if (!initial.current || initial.current.key !== key) initial.current = { key, value: { ...emptyCockpitInputForm(crypto.randomUUID(), agendaId),
+  if (!initial.current || initial.current.key !== key) initial.current = { key, value: { ...emptyCockpitInputForm(createSafeId(), agendaId),
     ...(existingInput ? { inputId: existingInput.id, inputRevision: existingInput.revision, title: existingInput.title, description: existingInput.description } : {}),
     ...(recoveryVersion ? { inputId: recoveryVersion.inputId, versionId: recoveryVersion.id, transferId: recoveryVersion.latestTransferId,
       declaration: recoveryVersion.sizeBytes !== null || recoveryVersion.declaredSizeBytes !== null
@@ -123,7 +124,7 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
     if (!stillCurrent()) return;
     if (current.canFinalize && current.state === "awaiting_finalize" && current.contentHash) {
       const ack = await request.run({ kind: "finalize", inputId: value.inputId, versionId: value.versionId, transferId: value.transferId,
-        body: { commandKey: crypto.randomUUID(), expectedRevision: current.revision, expectedContentHash: current.contentHash } });
+        body: { commandKey: createSafeId(), expectedRevision: current.revision, expectedContentHash: current.contentHash } });
       if (ack?.acknowledged.kind === "finalize") openFixed(value, ack.stillCurrent, true);
     } else if (current.state === "verified") openFixed(value, stillCurrent);
   }
@@ -143,14 +144,14 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
     setCockpitInputForm(key, value);
     try {
       if (!value.inputId) {
-        const ack = await request.run({ kind: "create", body: { commandKey: crypto.randomUUID(), title: value.title.trim(), description: value.description, projectId, originIssueId } });
+        const ack = await request.run({ kind: "create", body: { commandKey: createSafeId(), title: value.title.trim(), description: value.description, projectId, originIssueId } });
         if (!ack) return;
         value = record(ack, value);
         if (!ack.stillCurrent()) return;
       }
       if (!value.versionId && value.inputId && value.inputRevision !== null && value.source) {
-        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: crypto.randomUUID(), expectedRevision: value.inputRevision,
-          source: value.source, initialReference: meetingId ? { referenceKey: crypto.randomUUID(), meetingId, agendaId: value.agendaId, purpose: value.purpose } : null } });
+        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: createSafeId(), expectedRevision: value.inputRevision,
+          source: value.source, initialReference: meetingId ? { referenceKey: createSafeId(), meetingId, agendaId: value.agendaId, purpose: value.purpose } : null } });
         if (!ack) return;
         value = record(ack, value);
         if (!ack.stillCurrent()) return;
@@ -189,7 +190,7 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
       if (!stillCurrent()) return;
       if (!latest.version.allowedRestartModes.includes(mode) || latest.version.latestTransferId !== draft.transferId) { setError(t(($) => $.input_materials.error_transfer_changed)); return; }
       const ack = await request.run({ kind: "restart", inputId: draft.inputId, versionId: draft.versionId,
-        body: { commandKey: crypto.randomUUID(), expectedRevision: latest.version.revision, previousTransferId: draft.transferId,
+        body: { commandKey: createSafeId(), expectedRevision: latest.version.revision, previousTransferId: draft.transferId,
           mode, reason: "" } });
       if (!ack) return;
       const next = record(ack, draft);
@@ -210,7 +211,7 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
       if (!stillCurrent()) return;
       if (!current.canAbandon) { setError(t(($) => $.input_materials.error_transfer_changed)); return; }
       const ack = await request.run({ kind: "abandon", inputId: draft.inputId, versionId: draft.versionId, transferId: draft.transferId,
-        body: { commandKey: crypto.randomUUID(), expectedRevision: current.revision, reason: draft.note.trim() } });
+        body: { commandKey: createSafeId(), expectedRevision: current.revision, reason: draft.note.trim() } });
       if (ack?.acknowledged.kind === "abandon" && ack.stillCurrent()) setStopping(false);
     } catch (cause) {
       if (stillCurrent()) setError(cause instanceof Error ? cause.message : t(($) => $.input_materials.error_unknown));

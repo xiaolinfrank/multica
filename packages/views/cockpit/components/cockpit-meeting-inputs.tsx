@@ -24,6 +24,7 @@ import { CockpitInputReferenceForm, CockpitInputReferenceRemove } from "./cockpi
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { CockpitInputEndedRegistrations } from "./cockpit-input-ended-registrations";
 import { CockpitInputProblem } from "./cockpit-input-problem";
+import { createSafeId } from "@multica/core/utils";
 
 type InputWorkspaceMode = { scope: string } & (
   | { kind: "upload" | "nas" | "nas-review" | "library" | "source" }
@@ -54,7 +55,7 @@ export function CockpitMeetingInputs({ wsId, accountId, meetingId, agendaId = nu
     close(); navigation.push(cockpitInputContextPath(navigation.pathname, navigation.searchParams, inputId, versionId));
   };
   const open = (kind: "upload" | "nas" | "library" | "source") => {
-    if (kind === "nas" && !nas) setCockpitInputForm(nasKey, emptyCockpitInputForm(crypto.randomUUID(), agendaId));
+    if (kind === "nas" && !nas) setCockpitInputForm(nasKey, emptyCockpitInputForm(createSafeId(), agendaId));
     setSelectedMode({ scope: viewKey, kind: kind === "nas" && nas?.batch ? "nas-review" : kind });
   };
   function resume(entry: CockpitMeetingInputDraftEntry) {

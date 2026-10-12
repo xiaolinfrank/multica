@@ -22,6 +22,7 @@ import { ArtifactStatus } from "./cockpit-artifact-status";
 import { CockpitAssigneePicker } from "./cockpit-assignee-picker";
 import { CockpitScopePicker } from "./cockpit-scope-control";
 import { useCockpitSelectedNodeIssueOption } from "./cockpit-node-issue-picker";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const status = useStatusLabel(wsId); const client = useQueryClient();
@@ -72,7 +73,7 @@ function CockpitAgendaAttachForm({ wsId, meetingId, agenda, kind, resourcesHref,
   const changed = revision !== agenda.revision; const locked = command.busy || Boolean(original);
   const save = async () => { if (command.busy || !original && (!target || changed || !agenda.can_edit || canAddPreparation === false || Boolean(agenda.removed_at))) return;
     setCockpitMeetingFormDraft(formKey, value);
-    const response = await command.run(original ?? { kind: "reference_attach", agendaId: agenda.id, body: { command_key: crypto.randomUUID(), expected_revision: revision, kind, target_id: target, purpose } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
+    const response = await command.run(original ?? { kind: "reference_attach", agendaId: agenda.id, body: { command_key: createSafeId(), expected_revision: revision, kind, target_id: target, purpose } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
   return <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{kind === "issue" ? t(($) => $.meeting_lifecycle.attach_issue) : t(($) => $.meeting_lifecycle.attach_artifact)}</DialogTitle></DialogHeader>
     {kind === "issue" ? <CockpitIssueChoice wsId={wsId} selected={selectedIssue.data ?? issue} disabled={locked} onSelect={(value) => { setIssue(value); change({ targetId: value.id }); }} /> : <div className="space-y-3">
       <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.fixed_hint)}</p><AppLink target="_blank" rel="noopener noreferrer" href={resourcesHref} className={buttonVariants({ size: "sm", variant: "outline" })}>{t(($) => $.meeting_lifecycle.open_materials)} {t(($) => $.action_flow.new_tab)}</AppLink>
@@ -94,7 +95,7 @@ function CockpitAgendaUnlink({ wsId, meetingId, agenda, reference, disabled }: {
   const { t } = useT("cockpit"); const command = useCockpitMeetingCommand(wsId, meetingId, cockpitMeetingAgendaDraftKey(wsId, meetingId, `unlink:${reference.id}`));
   const [open, setOpen] = useState(false); const [revision, setRevision] = useState(agenda.revision);
   const save = async () => { if (command.busy || !command.pending && (disabled || !reference.can_remove || revision !== agenda.revision)) return;
-    const response = await command.run(command.pending ?? { kind: "reference_remove", agendaId: agenda.id, referenceId: reference.id, body: { command_key: crypto.randomUUID(), expected_revision: revision } }); if (response?.stillCurrent()) setOpen(false); };
+    const response = await command.run(command.pending ?? { kind: "reference_remove", agendaId: agenda.id, referenceId: reference.id, body: { command_key: createSafeId(), expected_revision: revision } }); if (response?.stillCurrent()) setOpen(false); };
   return <Dialog open={open} onOpenChange={(value) => { if (value || !command.busy) setOpen(value); if (value) setRevision(agenda.revision); }}><DialogTrigger render={<Button variant="ghost" size="xs" disabled={!command.pending && (disabled || !reference.can_remove || Boolean(reference.removed_at))} />}>{t(($) => $.meeting_lifecycle.unlink)}</DialogTrigger>
     <DialogContent><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.unlink)}</DialogTitle><DialogDescription>{reference.label}</DialogDescription></DialogHeader>
       {revision !== agenda.revision && !command.pending && <p role="alert" className="text-caption">{t(($) => $.meeting_lifecycle.changed)}</p>}{command.error && <p role="alert" className="break-words text-caption text-destructive">{command.error}</p>}
@@ -122,7 +123,7 @@ function CockpitPreparationIssueForm({ wsId, meetingId, agenda, canAddPreparatio
   const invalid = !fields.title.trim() || changed || invalidPlacement || invalidAssignee || !agenda.can_edit || canAddPreparation === false || Boolean(agenda.removed_at);
   const save = async () => { if (command.busy || !original && invalid) return;
     setCockpitMeetingFormDraft(formKey, value);
-    const response = await command.run(original ?? { kind: "preparation_issue_create", agendaId: agenda.id, body: { command_key: crypto.randomUUID(), expected_revision: revision, primary_node_id: selectedNodeId,
+    const response = await command.run(original ?? { kind: "preparation_issue_create", agendaId: agenda.id, body: { command_key: createSafeId(), expected_revision: revision, primary_node_id: selectedNodeId,
       new_issue: { ...fields, title: fields.title.trim(), project_id: selectedNodeId ? node.option?.project_id ?? null : fields.project_id, module_id: selectedNodeId ? node.option?.module_id ?? null : fields.module_id } } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
   return <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.create_preparation)}</DialogTitle><DialogDescription>{t(($) => $.meeting_lifecycle.create_hint)}</DialogDescription></DialogHeader>
     <label className="space-y-1 text-caption">{t(($) => $.task_flow.title)}<Input value={fields.title} disabled={locked} onChange={(event) => setFields({ ...fields, title: event.target.value })} /></label>

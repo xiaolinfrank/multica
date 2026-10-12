@@ -16,6 +16,7 @@ import { useT } from "../../i18n";
 import { AppLink, useNavigation } from "../../navigation";
 import { useCockpitPreparationRequest } from "./use-cockpit-preparation-request";
 import { CockpitPreparationReasons } from "./cockpit-preparation-preview";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitMeetingPendingResponsibilities({ basis }: { basis: CockpitMeetingOperationBasis }) {
   const { t } = useT("cockpit"); const navigation = useNavigation(); const paths = useWorkspacePaths();
@@ -41,7 +42,7 @@ export function CockpitMeetingDispositionForm({ wsId, basis, transition, disable
     if (request.busy || !permitted || pending && !request.canRetry || !pending && (!value.reason.trim() || changed)) return;
     setCockpitPreparationForm(key, value);
     const result = await request.run(pending ?? { kind: "disposition", meetingId: basis.meeting_id,
-      body: { command_key: crypto.randomUUID(), expected_revision: value.observedRevision, transition, reason: value.reason.trim() } }, async (command) => {
+      body: { command_key: createSafeId(), expected_revision: value.observedRevision, transition, reason: value.reason.trim() } }, async (command) => {
       if (command.kind !== "disposition") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return mutation.mutateAsync(command.body);
     });
     if (result) { clearCockpitPreparationForm(key, value); if (result.stillCurrent()) onDone(); }

@@ -10,12 +10,13 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useT } from "../../i18n";
 import { CockpitInputProblem } from "./cockpit-input-problem";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputMetadataEditor({ wsId, accountId, input, onDone, onRefresh }: {
   wsId: string; accountId: string; input: CockpitInputHeader; onDone: () => void; onRefresh: () => void;
 }) {
   const { t } = useT("cockpit"); const key = cockpitInputDraftKey(wsId, accountId, "input-metadata", input.id);
-  const initial = useRef<CockpitInputFormDraft>({ ...emptyCockpitInputForm(crypto.randomUUID()), inputId: input.id, title: input.title, description: input.description, observedRevision: input.revision });
+  const initial = useRef<CockpitInputFormDraft>({ ...emptyCockpitInputForm(createSafeId()), inputId: input.id, title: input.title, description: input.description, observedRevision: input.revision });
   const stored = useCockpitInputDraftStore((state) => state.draft.forms[key]); const draft = stored ?? initial.current;
   const save = useEditCockpitInput(wsId, input.id); const capture = useCockpitCommandContext(key); const lock = useRef(false);
   const [error, setError] = useState("");

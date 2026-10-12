@@ -16,6 +16,7 @@ import { CockpitInputManifestItems } from "./cockpit-input-manifest-items";
 import { CockpitPreparationRun } from "./cockpit-preparation-run";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputRunLaunch({ wsId, accountId, header, hasDraft, onRefresh, onInspect }: {
   wsId: string; accountId: string; header: CockpitInputManifestHeader; hasDraft: boolean; onRefresh: () => void; onInspect: (inputId: string, versionId: string) => void;
@@ -34,7 +35,7 @@ export function CockpitInputRunLaunch({ wsId, accountId, header, hasDraft, onRef
   const canLaunch = issueOperationAllowed(basis, "execution") && header.issue.assigneeType === "agent" && Boolean(header.issue.assigneeId) && !hasDraft;
   async function submit() {
     if (lock.current || !confirming || changed || !canLaunch || unresolved && !additional) return;
-    const next = { attemptId: crypto.randomUUID(), manifestVersionId: confirming.id, startedAt: new Date().toISOString() };
+    const next = { attemptId: createSafeId(), manifestVersionId: confirming.id, startedAt: new Date().toISOString() };
     if (!beginCockpitInputRunLaunch(key, next, intent ?? null, additional)) return;
     lock.current = true; setError(""); const current = capture();
     try {

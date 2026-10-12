@@ -14,6 +14,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
 import { useCockpitPreparationRequest } from "./use-cockpit-preparation-request";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitPreparationControl({ wsId, header, effect, disabled, onResumed }: {
   wsId: string; header: CockpitPreparationOperationHeader; effect?: CockpitPreparationEffect; disabled?: boolean; onResumed?: () => void;
@@ -46,7 +47,7 @@ function ControlForm({ wsId, header, effect, transition, draftKey, permitted, on
     if (request.busy || !permitted || original && !request.canRetry || !original && (!value.reason.trim() || changed)) return;
     setCockpitPreparationForm(draftKey, value);
     const result = await request.run(original ?? { kind: "control", meetingId: header.meeting_id, operationId: header.id,
-      body: { command_key: crypto.randomUUID(), expected_revision: value.observedRevision, transition: value.transition, effect_id: value.effectId, reason: value.reason.trim() } }, async (command) => {
+      body: { command_key: createSafeId(), expected_revision: value.observedRevision, transition: value.transition, effect_id: value.effectId, reason: value.reason.trim() } }, async (command) => {
       if (command.kind !== "control") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return mutation.mutateAsync(command.body);
     });
     if (result) { clearCockpitPreparationForm(draftKey, value); if (result.stillCurrent()) onDone(transition === "resume"); }

@@ -13,6 +13,7 @@ import { useLocale, useT } from "../../i18n";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 import { CockpitInputCandidates, CockpitInputSelectionSummary, type CockpitInputCandidate } from "./cockpit-input-candidates";
 import { CockpitInputProblem } from "./cockpit-input-problem";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputNASPicker({ wsId, draft, selectionLimit = 50, disabled, onChange, onReview }: {
   wsId: string;
@@ -101,7 +102,7 @@ export function CockpitInputNASPicker({ wsId, draft, selectionLimit = 50, disabl
                     if (!checked && original) { onChange({ sourceSelections: selected.filter((item) => item.selectionId !== original.selectionId) }); return; }
                     const entry = page.items.find((item) => item.relativePath === path);
                     if (original || !entry || entry.kind !== "file" || !entry.canSelect || !entry.observationToken || selected.length >= selectionLimit) return;
-                    onChange({ sourceSelections: [...selected, { selectionId: crypto.randomUUID(), rootId: browse.rootId, relativePath: entry.relativePath, observationToken: entry.observationToken,
+                    onChange({ sourceSelections: [...selected, { selectionId: createSafeId(), rootId: browse.rootId, relativePath: entry.relativePath, observationToken: entry.observationToken,
                       filename: entry.name, sizeBytes: entry.sizeBytes, modifiedAt: entry.modifiedAt }] });
                   }} />
                 <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total ?? undefined} hasNext={page.hasMore && Boolean(page.nextCursor)} busy={entries.isFetching || Boolean(disabled)}

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { useT } from "../../i18n";
 import { CockpitFlowPaging } from "./cockpit-task-flow";
+import { createSafeId } from "@multica/core/utils";
 
 type Slot = CockpitTemplateEditorDraft["config"]["slots"][number];
 const purposes = ["planning", "goal_review", "boundary_confirmation", "question_clarification", "solution_discussion", "direction_decision"] as const;
@@ -51,7 +52,7 @@ export function CockpitMeetingTemplateFields({ value, onChange, disabled }: {
   const patch = (update: Partial<Slot>) => { if (current && !disabled) changeSlots(slots.map((slot) => slot.slot_id === current.slot_id ? { ...slot, ...update } : slot)); };
   const add = (kind: Slot["kind"]) => {
     if (disabled || slots.length >= 50 || kind !== "agenda" && agendas.length === 0) return;
-    const next: Slot = { slot_id: crypto.randomUUID(), kind, label: "", agenda_slot_id: kind === "agenda" ? null : current?.kind === "agenda" ? current.slot_id : current?.agenda_slot_id ?? agendas[0]!.slot_id,
+    const next: Slot = { slot_id: createSafeId(), kind, label: "", agenda_slot_id: kind === "agenda" ? null : current?.kind === "agenda" ? current.slot_id : current?.agenda_slot_id ?? agendas[0]!.slot_id,
       agenda: kind === "agenda" ? { title: "", purposes: [], desired_outcome: "", notes: "" } : null,
       new_issue: kind === "preparation_issue" ? { title: "", description: "", priority: "none" } : null,
       purpose: kind === "issue_reference" ? "preparation" : kind === "material_reference" ? "material" : "" };

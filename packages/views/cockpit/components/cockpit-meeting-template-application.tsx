@@ -18,6 +18,7 @@ import { CockpitMeetingTemplateBrowser } from "./cockpit-meeting-templates";
 import { CockpitMeetingTemplateBindings, emptyMeetingTemplateBinding } from "./cockpit-meeting-template-bindings";
 import { CockpitPreparationPreview } from "./cockpit-preparation-preview";
 import { useCockpitPreparationRequest, useCockpitPreparationConfirmation } from "./use-cockpit-preparation-request";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitMeetingTemplateApplication({ wsId, meetingId, resourcesHref, disabled, onCreated }: {
   wsId: string; meetingId: string; resourcesHref: string; disabled: boolean; onCreated: (operationId: string, autoStart: boolean) => void;
@@ -59,7 +60,7 @@ function ApplicationForm({ wsId, meetingId, resourcesHref, disabled, onBusy, onC
   const save = async () => {
     if (busy || !value || pending && (!request.canRetry || disabled) || !pending && (disabled || lifecycle.isError || !confirmed || !preview.data?.can_confirm || preview.data.lifecycle_revision !== lifecycle.data?.lifecycle_revision)) return;
     const proposal = preview.data;
-    const response = await request.run(pending ?? { kind: "application", meetingId, body: { command_key: crypto.randomUUID(), expected_revision: proposal!.lifecycle_revision,
+    const response = await request.run(pending ?? { kind: "application", meetingId, body: { command_key: createSafeId(), expected_revision: proposal!.lifecycle_revision,
       template_version_id: value.template_version_id, bindings: value.bindings, context_token: proposal!.context_token } }, async (command) => {
       if (command.kind !== "application") throw new Error("meeting_preparation_command_scope_changed"); return apply.mutateAsync(command.body);
     });

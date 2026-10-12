@@ -17,6 +17,7 @@ import { CockpitPreparationPreview, CockpitPreparationReasons } from "./cockpit-
 import { CockpitMeetingPendingResponsibilities } from "./cockpit-meeting-disposition";
 import { CockpitDirectoryCancellationPreview } from "./cockpit-directory-cancellation";
 import { useCockpitPreparationRequest, useCockpitPreparationConfirmation } from "./use-cockpit-preparation-request";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCreated, append = false }: {
   wsId: string; basis: CockpitMeetingOperationBasis; disabled: boolean; append?: boolean; onBusy: (busy: boolean) => void; onCreated: (operationId: string, autoStart: boolean) => void;
@@ -42,7 +43,7 @@ export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCr
   const save = async () => {
     if (busy || !permitted || pending && !request.canRetry || !pending && (!confirmed || !preview.data?.can_confirm || preview.data.lifecycle_revision !== basis.lifecycle_revision)) return;
     setCockpitPreparationForm(key, value);
-    const result = await request.run(pending ?? { kind: commandKind, meetingId, body: { command_key: crypto.randomUUID(), expected_revision: preview.data!.lifecycle_revision,
+    const result = await request.run(pending ?? { kind: commandKind, meetingId, body: { command_key: createSafeId(), expected_revision: preview.data!.lifecycle_revision,
       context_token: preview.data!.context_token, reason: value.reason.trim(), issues: value.issues, run_ids: value.run_ids } }, async (command) => {
       if (command.kind !== "cancellation" && command.kind !== "append_disposition") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return command.kind === "append_disposition" ? appendDisposition.mutateAsync(command.body) : cancel.mutateAsync(command.body);
     });

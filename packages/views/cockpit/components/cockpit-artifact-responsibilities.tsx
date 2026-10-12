@@ -19,6 +19,7 @@ import { CockpitFlowError, CockpitFlowPaging, CockpitIssueChoice } from "./cockp
 import { CockpitArtifactReviewerTransfer } from "./cockpit-artifact-reviewer-transfer";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitTaskFields, cockpitTaskFieldsValue, type CockpitTaskFieldsValue } from "./cockpit-task-fields";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitArtifactResponsibilities({ wsId, artifact, scope, currentUserId, disabled }: { wsId: string; artifact: CockpitArtifactHeader; scope: CockpitScope; currentUserId: string; disabled: boolean }) {
   const { t } = useT("cockpit"); const [history, setHistory] = useState(false);
@@ -58,7 +59,7 @@ function ProducerTransfer({ wsId, artifact, disabled, scope, currentUserId }: { 
   async function submit() {
     if (lock.current || disabled || stale || (!pending && (artifact.archived_at || !artifact.can_assign_producer || !valid))) return;
     const priority = (["none", "low", "medium", "high", "urgent"] as const).find((value) => value === fields.priority) ?? "none";
-    const base = { expected_revision: observed, command_key: crypto.randomUUID(), reason: text.trim() };
+    const base = { expected_revision: observed, command_key: createSafeId(), reason: text.trim() };
     const body: CockpitArtifactProducerCommand = effectiveMode === "new" ? { ...base, new_issue: { title: title.trim(), description: description.trim(),
       assignee_type: fields.assigneeType, assignee_id: fields.assigneeId, priority, ...(fields.dueDate ? { due_date: fields.dueDate } : {}) } } : { ...base, issue_id: selectedId };
     const command = prepareCockpitArtifactCommand(key, { kind: "producer", artifactId: artifact.id, body });

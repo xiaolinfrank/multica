@@ -21,6 +21,7 @@ import { CockpitScopePicker } from "./cockpit-scope-control";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, defaultKind = "project" }: {
   wsId: string; scope: CockpitScope; disabled?: boolean; defaultKind?: "project" | "module" | "task"; onCreated: (id: string) => void;
@@ -48,7 +49,7 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
   const choices = [{ value: "project", label: t(($) => $.plan_structure.project) }, { value: "module", label: t(($) => $.plan_structure.module) }, { value: "task", label: t(($) => $.plan_structure.task) }];
   const submit = async () => {
     if (lock.current || disabled || (!draft.pending && (!parentValid || !scopeValid || !canAddChild || !draft.name.trim()))) return;
-    const command = draft.pending ?? { creation_key: crypto.randomUUID(), auto_code: true as const, name: draft.name.trim(), parent_id: parentId,
+    const command = draft.pending ?? { creation_key: createSafeId(), auto_code: true as const, name: draft.name.trim(), parent_id: parentId,
       project_id: draft.kind === "task" ? null : draft.projectId || null, module_id: draft.kind === "module" ? draft.moduleId || null : null, status: "" };
     const sent = { ...draft, pending: command }; updateCockpitPlanNodeDraft(key, sent);
     const isCurrent = captureContext(); lock.current = true; setError(""); setCreationGone(false); setExistingId(null);

@@ -20,6 +20,7 @@ import { CockpitMeetingPicker } from "./cockpit-meeting-picker";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { ArtifactStatus } from "./cockpit-artifact-status";
+import { createSafeId } from "@multica/core/utils";
 
 const purposes: CockpitArtifactReferencePurpose[] = ["input", "output", "evidence", "reference"];
 function isPurpose(value: string): value is CockpitArtifactReferencePurpose { return value === "input" || value === "output" || value === "evidence" || value === "reference"; }
@@ -77,7 +78,7 @@ function ReferenceCreate({ wsId, artifact, kind, scope, disabled, fixedMeetingId
   const label = kind === "node" ? t(($) => $.artifact_runtime.add_node_reference) : t(($) => $.artifact_runtime.add_meeting_reference);
   async function submit() {
     if (lock.current || disabled || (!pending && (!valid || !artifact.can_reference || artifact.archived_at))) return;
-    const common = { reference_key: crypto.randomUUID(), version_id: chosenVersion, purpose: chosenPurpose };
+    const common = { reference_key: createSafeId(), version_id: chosenVersion, purpose: chosenPurpose };
     const command = prepareCockpitArtifactCommand(key, kind === "node" ? { kind: "node_reference", artifactId: artifact.id, body: { ...common, node_id: chosenTarget } }
       : { kind: "meeting_reference", artifactId: artifact.id, body: { ...common, meeting_id: chosenTarget } });
     const stillCurrent = capture(); lock.current = true; setError("");

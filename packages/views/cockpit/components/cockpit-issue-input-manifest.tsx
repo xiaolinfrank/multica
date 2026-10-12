@@ -26,6 +26,7 @@ import { CockpitInputCommandRecovery } from "./cockpit-input-command-recovery";
 import { useCockpitInputRequest } from "./use-cockpit-input-request";
 import { CockpitInputRunLaunch } from "./cockpit-input-run-launch";
 import { CockpitInputProblem } from "./cockpit-input-problem";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitIssueInputManifest({ issueId }: { issueId: string }) {
   const wsId = useWorkspaceId();
@@ -93,7 +94,7 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
 }) {
   const { t } = useT("cockpit");
   const key = cockpitInputDraftKey(wsId, accountId, "manifest", issueId);
-  const initial = useRef<CockpitInputFormDraft>({ ...emptyCockpitInputForm(crypto.randomUUID()), observedRevision: header?.revision ?? null,
+  const initial = useRef<CockpitInputFormDraft>({ ...emptyCockpitInputForm(createSafeId()), observedRevision: header?.revision ?? null,
     manifestItems: initialItems.map((item) => ({ inputVersionId: item.inputVersionId, purpose: item.purpose, required: item.required })) });
   const stored = useCockpitInputDraftStore((state) => state.draft.forms[key]);
   const draft = stored ?? initial.current;
@@ -118,7 +119,7 @@ function CockpitManifestEditor({ wsId, accountId, issueId, suggestedVersionId, h
     if (request.busy || !request.pending && (!allowed || changed || !allReady || !validPurposes || selected.isFetching)) return;
     setCockpitInputForm(key, draft);
     const result = mode === "lookup" ? await request.verify() : await request.run(request.pending ?? { kind: "manifest", issueId,
-      body: { commandKey: crypto.randomUUID(), expectedRevision: draft.observedRevision!, items: draft.manifestItems, note: draft.note } });
+      body: { commandKey: createSafeId(), expectedRevision: draft.observedRevision!, items: draft.manifestItems, note: draft.note } });
     if (result?.acknowledged.kind === "manifest") { clearCockpitInputForm(key, draft); if (result.stillCurrent()) { toast.success(t(($) => $.input_materials.manifest_saved)); onDone(); } }
   }
   return <section className="space-y-4">

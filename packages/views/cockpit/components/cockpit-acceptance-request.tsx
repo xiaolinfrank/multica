@@ -19,6 +19,7 @@ import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { CockpitAcceptanceEvidencePicker, approvedAcceptanceEvidence } from "./cockpit-acceptance-evidence-picker";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 const EMPTY_REQUEST: CockpitAcceptanceRequestDraft = { criteriaRevision: 0, reviewerId: "", note: "", evidence: {}, supersedesRequestId: "", pending: null };
 
@@ -63,7 +64,7 @@ export function CockpitAcceptanceRequestForm({ wsId, header, definition, scope, 
   const locked = disabled || create.isPending || Boolean(draft.pending);
   async function save() {
     if (lock.current || disabled || !valid) return;
-    const body = prepareCockpitAcceptanceRequest(key, crypto.randomUUID()); if (!body) return;
+    const body = prepareCockpitAcceptanceRequest(key, createSafeId()); if (!body) return;
     const stillCurrent = captureContext(); lock.current = true; setError("");
     try {
       const result = await create.mutateAsync({ nodeId: header.node_id, body });

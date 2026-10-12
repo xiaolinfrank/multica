@@ -12,6 +12,7 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 type Target = { kind: "artifact_reviewer"; artifactId: string } | { kind: "acceptance_reviewer"; nodeId: string; requestId: string };
 
@@ -36,7 +37,7 @@ export function CockpitArtifactReviewerTransfer({ wsId, target, revision, signat
   const stale = !pending && (observed.signature !== signature || observed.revision !== revision);
   async function submit() {
     if (lock.current || disabled || stale || (!pending && (!canTransfer || !valid))) return;
-    const input = { expected_revision: observed.revision, handoff_key: crypto.randomUUID(), reviewer_id: chosen, reason: text.trim() };
+    const input = { expected_revision: observed.revision, handoff_key: createSafeId(), reviewer_id: chosen, reason: text.trim() };
     const command = prepareCockpitArtifactCommand(key, target.kind === "artifact_reviewer"
       ? { kind: target.kind, artifactId: target.artifactId, body: input }
       : { kind: target.kind, nodeId: target.nodeId, requestId: target.requestId, body: input });

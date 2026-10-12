@@ -12,6 +12,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useT } from "../../i18n";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitAcceptanceCriteriaEditor({ wsId, definition, disabled }: { wsId: string; definition: CockpitAcceptanceCriteriaView; disabled: boolean }) {
   const { t } = useT("cockpit"); const [open, setOpen] = useState(false); const [error, setError] = useState(""); const lock = useRef(false);
@@ -54,7 +55,7 @@ export function CockpitAcceptanceCriteriaEditor({ wsId, definition, disabled }: 
           <label className="block space-y-1 text-caption"><span>{t(($) => $.acceptance.criterion_title)}</span><Input value={item.title} maxLength={500} disabled={save.isPending} onChange={(event) => patch(item.id, { title: event.target.value })} /></label>
           <label className="block space-y-1 text-caption"><span>{t(($) => $.artifacts.description)}</span><Textarea rows={2} value={item.description} disabled={save.isPending} onChange={(event) => patch(item.id, { description: event.target.value })} /></label>
         </li>)}</ol>
-        <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" size="sm" disabled={save.isPending || items.length >= definition.max_items} onClick={() => change([...items, { id: crypto.randomUUID(), title: "", description: "" }])}><Plus className="size-3.5" />{t(($) => $.acceptance.add_criterion)}</Button><span className="text-caption text-muted-foreground">{t(($) => $.acceptance.criteria_limit, { count: items.length, max: definition.max_items })}</span></div>
+        <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" size="sm" disabled={save.isPending || items.length >= definition.max_items} onClick={() => change([...items, { id: createSafeId(), title: "", description: "" }])}><Plus className="size-3.5" />{t(($) => $.acceptance.add_criterion)}</Button><span className="text-caption text-muted-foreground">{t(($) => $.acceptance.criteria_limit, { count: items.length, max: definition.max_items })}</span></div>
         {!valid && <p role="alert" className="text-caption text-destructive">{t(($) => $.acceptance.criteria_invalid)}</p>}
         {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       </div><DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={save.isPending} />}>{t(($) => $.task_create.cancel)}</DialogClose>

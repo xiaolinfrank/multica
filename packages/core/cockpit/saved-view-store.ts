@@ -4,6 +4,7 @@ import { defaultStorage } from "../platform/storage";
 import type { StorageAdapter } from "../types/storage";
 import { registerDraftCleanup } from "../drafts/cleanup-registry";
 import { CockpitSavedViewDefinitionSchema, type CockpitSavedViewDefinition } from "./saved-views";
+import { createSafeId } from "../utils";
 
 export const COCKPIT_SAVED_VIEW_LIMIT = 30;
 const entry = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(80), definition: CockpitSavedViewDefinitionSchema, updatedAt: z.string().datetime() });
@@ -46,7 +47,7 @@ export function createCockpitSavedViewStore(storage: StorageAdapter) {
         } catch { set((state) => ({ namespaces: { ...state.namespaces, [key]: { items: [], loadFailed: true } } })); }
       },
       save: (userId, wsId, name, definition, id) => {
-        const { key, items } = current(userId, wsId); const parsed = entry.safeParse({ id: id ?? crypto.randomUUID(), name, definition, updatedAt: new Date().toISOString() });
+        const { key, items } = current(userId, wsId); const parsed = entry.safeParse({ id: id ?? createSafeId(), name, definition, updatedAt: new Date().toISOString() });
         if (!parsed.success || (id && !items.some((item) => item.id === id))) throw new CockpitSavedViewError("invalid");
         if (items.some((item) => item.id !== id && item.name.toLowerCase() === parsed.data.name.toLowerCase())) throw new CockpitSavedViewError("duplicate");
         if (!id && items.length >= COCKPIT_SAVED_VIEW_LIMIT) throw new CockpitSavedViewError("limit");

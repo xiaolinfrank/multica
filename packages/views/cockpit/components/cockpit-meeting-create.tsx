@@ -53,6 +53,7 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, useNavigation } from "../../navigation";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
+import { createSafeId } from "@multica/core/utils";
 
 /** A picker inside this form reads as a form control, not as a table cell. */
 const FIELD_TRIGGER =
@@ -269,7 +270,7 @@ export function CockpitMeetingCreate({
     if (submitLock.current || submitDisabled) return;
     const command = prepareCockpitMeetingCreation(draftKey, {
       meeting: pending?.meeting ?? {
-        creation_key: crypto.randomUUID(), node_id: nodeId || null, meet_date: date,
+        creation_key: createSafeId(), node_id: nodeId || null, meet_date: date,
         start_time: startTime.trim(), end_time: endTime.trim(), kind: kind.trim(), status: status.trim(), track: track.trim(),
         parties: parties.trim(), organizer: organizer.trim(), attendees: attendees.trim(), location: location.trim(), title: subject.trim(),
       },

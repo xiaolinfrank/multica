@@ -13,6 +13,7 @@ import { CockpitFlowError } from "./cockpit-task-flow";
 import { CockpitInputCommandRecovery } from "./cockpit-input-command-recovery";
 import { useCockpitInputRequest } from "./use-cockpit-input-request";
 import { CockpitInputProblem } from "./cockpit-input-problem";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputReferenceForm({ wsId, accountId, meetingId, agendaId = null, versionId, targetLabel, canAdd, onDone, onCancel }: {
   wsId: string; accountId: string; meetingId: string; agendaId?: string | null; versionId: string; targetLabel: string; canAdd: boolean;
@@ -21,7 +22,7 @@ export function CockpitInputReferenceForm({ wsId, accountId, meetingId, agendaId
   const { t } = useT("cockpit");
   const key = cockpitInputDraftKey(wsId, accountId, "reference", meetingId, agendaId || "", versionId);
   const initial = useRef<{ key: string; value: CockpitInputFormDraft } | null>(null);
-  if (!initial.current || initial.current.key !== key) initial.current = { key, value: { ...emptyCockpitInputForm(crypto.randomUUID(), agendaId), selectedVersionIds: [versionId] } };
+  if (!initial.current || initial.current.key !== key) initial.current = { key, value: { ...emptyCockpitInputForm(createSafeId(), agendaId), selectedVersionIds: [versionId] } };
   const stored = useCockpitInputDraftStore((state) => state.draft.forms[key]);
   const draft = stored ?? initial.current.value;
   const request = useCockpitInputRequest(wsId, key);
@@ -34,7 +35,7 @@ export function CockpitInputReferenceForm({ wsId, accountId, meetingId, agendaId
     if (request.busy || !request.pending && !eligible) return;
     setCockpitInputForm(key, draft);
     const result = mode === "lookup" ? await request.verify() : await request.run(request.pending ?? { kind: "reference", meetingId,
-      body: { commandKey: crypto.randomUUID(), agendaId: draft.agendaId, inputVersionId: versionId, purpose: draft.purpose } });
+      body: { commandKey: createSafeId(), agendaId: draft.agendaId, inputVersionId: versionId, purpose: draft.purpose } });
     if (!result || result.acknowledged.kind !== "reference") return;
     clearCockpitInputForm(key, draft);
     if (result.stillCurrent()) { toast.success(t(($) => $.input_materials.reference_added)); onDone(); }
@@ -71,9 +72,9 @@ export function CockpitInputReferenceRemove({ wsId, accountId, meetingId, refere
   const request = useCockpitInputRequest(wsId, key);
   const stored = useCockpitInputDraftStore((state) => state.draft.forms[key]);
   async function submit(mode: "submit" | "lookup") {
-    const draft = stored ?? { ...emptyCockpitInputForm(crypto.randomUUID(), agendaId), description: label, inputId: inputId || null, versionId: versionId || null };
+    const draft = stored ?? { ...emptyCockpitInputForm(createSafeId(), agendaId), description: label, inputId: inputId || null, versionId: versionId || null };
     if (!stored && !request.pending) setCockpitInputForm(key, draft);
-    const result = mode === "lookup" ? await request.verify() : await request.run(request.pending ?? { kind: "remove_reference", meetingId, referenceId, body: { commandKey: crypto.randomUUID() } });
+    const result = mode === "lookup" ? await request.verify() : await request.run(request.pending ?? { kind: "remove_reference", meetingId, referenceId, body: { commandKey: createSafeId() } });
     if (result?.acknowledged.kind === "remove_reference") { clearCockpitInputForm(key, draft); if (result.stillCurrent()) onDone(); }
   }
   return <section className="space-y-4" aria-label={t(($) => $.input_materials.remove_reference)}>

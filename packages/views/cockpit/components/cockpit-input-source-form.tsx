@@ -20,6 +20,7 @@ import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitInputEndRegistration } from "./cockpit-input-end-registration";
 import { CockpitInputProblem } from "./cockpit-input-problem";
 import { CockpitFlowError } from "./cockpit-task-flow";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputSourceForm({ wsId, accountId, meetingId, agendaId = null, targetLabel, capabilities, canAdd, onOpenVersion, onCancel }: {
   wsId: string; accountId: string; meetingId: string; agendaId?: string | null; targetLabel: string; capabilities: CockpitInputCapabilities; canAdd: boolean;
@@ -27,7 +28,7 @@ export function CockpitInputSourceForm({ wsId, accountId, meetingId, agendaId = 
 }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths();
   const key = cockpitInputDraftKey(wsId, accountId, "source-input", meetingId, agendaId || "");
-  const initial = useRef(emptyCockpitInputForm(crypto.randomUUID(), agendaId));
+  const initial = useRef(emptyCockpitInputForm(createSafeId(), agendaId));
   const stored = useCockpitInputDraftStore((state) => state.draft.forms[key]); const draft = stored ?? initial.current;
   const request = useCockpitInputRequest(wsId, key); const capture = useCockpitCommandContext(key);
   const [busy, setBusy] = useState(false); const lock = useRef(false); const [picking, setPicking] = useState(false);
@@ -62,13 +63,13 @@ export function CockpitInputSourceForm({ wsId, accountId, meetingId, agendaId = 
     let value = draft; setCockpitInputForm(key, value);
     try {
       if (!value.inputId) {
-        const ack = await request.run({ kind: "create", body: { commandKey: crypto.randomUUID(), title: value.title.trim(), description: value.description, projectId: null, originIssueId: null } });
+        const ack = await request.run({ kind: "create", body: { commandKey: createSafeId(), title: value.title.trim(), description: value.description, projectId: null, originIssueId: null } });
         if (!ack || !current()) return; const next = record(ack, value); if (!next) return; value = next;
         if (ack.acknowledged.kind === "create" && !ack.acknowledged.result.current) return;
       }
       if (!value.versionId && value.inputId && value.inputRevision !== null && value.source) {
-        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: crypto.randomUUID(), expectedRevision: value.inputRevision, source: value.source,
-          initialReference: { referenceKey: crypto.randomUUID(), meetingId, agendaId: value.agendaId, purpose: value.purpose } } });
+        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: createSafeId(), expectedRevision: value.inputRevision, source: value.source,
+          initialReference: { referenceKey: createSafeId(), meetingId, agendaId: value.agendaId, purpose: value.purpose } } });
         if (!ack || !current()) return; const next = record(ack, value); if (!next) return; value = next;
       }
       if (current()) open(value);

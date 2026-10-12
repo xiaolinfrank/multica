@@ -17,6 +17,7 @@ import { useT } from "../../i18n";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 import { CockpitMeetingTemplateFields, CockpitTemplateSlotText, useMeetingTemplateKindLabel } from "./cockpit-meeting-template-fields";
 import { useCockpitPreparationRequest } from "./use-cockpit-preparation-request";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitMeetingTemplates({ wsId, readOnly, onSelect }: {
   wsId: string; readOnly?: boolean; onSelect?: (template: CockpitMeetingTemplateHeader, version: CockpitMeetingTemplateVersionDetail) => void;
@@ -107,7 +108,7 @@ function TemplateEditor({ wsId, templateId, readOnly, onBusy, onBack, onSaved }:
   const save = async () => {
     if (!value || request.busy || pending && (!request.canRetry || !writable) || !pending && (!writable || changed || invalid)) return;
     setCockpitPreparationForm(key, value);
-    const response = await request.run(pending ?? { kind: "template", templateId, body: { command_key: crypto.randomUUID(), expected_revision: value.observedRevision,
+    const response = await request.run(pending ?? { kind: "template", templateId, body: { command_key: createSafeId(), expected_revision: value.observedRevision,
       title: value.title.trim(), description: value.description, active: value.active, config: { ...value.config, slots: value.config.slots.map((slot) => ({ ...slot, label: slot.label.trim(), agenda: slot.agenda ? { ...slot.agenda, title: slot.agenda.title.trim() } : null, new_issue: slot.new_issue ? { ...slot.new_issue, title: slot.new_issue.title.trim() } : null })) } } },
     async (command) => { if (command.kind !== "template") throw new Error("meeting_preparation_command_scope_changed"); return mutation.mutateAsync(command.body); });
     if (response) { clearCockpitPreparationForm(key, value); if (response.stillCurrent()) onSaved(response.result.template_id); }

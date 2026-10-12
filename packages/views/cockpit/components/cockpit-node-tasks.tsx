@@ -24,6 +24,7 @@ import { useNavigation, AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitFlowError, CockpitFlowPaging, CockpitIssueChoice, CockpitTaskRows, useCockpitSearch } from "./cockpit-task-flow";
 import { CockpitTaskFields, cockpitTaskFieldsBody, cockpitTaskFieldsValue } from "./cockpit-task-fields";
+import { createSafeId } from "@multica/core/utils";
 
 function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: CockpitNode; userId: string; disabled: boolean }) {
   const { t } = useT("cockpit");
@@ -41,7 +42,7 @@ function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: 
   const create = useCreateCockpitNodeTask(wsId);
   async function submit() {
     if (lock.current || disabled || (!pending && (!executor.available || !fields.assigneeId || !title.trim()))) return;
-    const body: CockpitTaskCreate = pending?.body ?? { creation_key: crypto.randomUUID(), title: title.trim(), description: description.trim(), ...cockpitTaskFieldsBody(fields) };
+    const body: CockpitTaskCreate = pending?.body ?? { creation_key: createSafeId(), title: title.trim(), description: description.trim(), ...cockpitTaskFieldsBody(fields) };
     rememberCockpitActionCommand(scope, { kind: "task", node_id: node.id, body });
     lock.current = true; setError("");
     try { await create.mutateAsync({ nodeId: node.id, body }); clearCockpitActionCommand(scope); setOpen(false); }

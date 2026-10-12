@@ -24,6 +24,7 @@ import { AppLink, useNavigation } from "../../navigation";
 import { CockpitFlowError, CockpitIssueChoice, CockpitTaskRows } from "./cockpit-task-flow";
 import { CockpitNodeIssuePicker, useCockpitSelectedNodeIssueOption } from "./cockpit-node-issue-picker";
 import { CockpitTaskFields, cockpitTaskFieldsBody, cockpitTaskFieldsValue } from "./cockpit-task-fields";
+import { createSafeId } from "@multica/core/utils";
 
 function SourceMinutes({ version, quote }: { version: CockpitMinutesVersion | undefined; quote: string }) {
   const { t } = useT("cockpit");
@@ -66,7 +67,7 @@ export function CockpitActionCreate({ wsId, workflow, disabled }: { wsId: string
     if (lock.current || disabled || stale || quoteInvalid || !version || source.isFetching || source.isError) return;
     lock.current = true; setError("");
     const command = pending ?? { kind: "proposal" as const, meeting_id: workflow.meeting_id, version_id: versionId,
-      body: { proposal_key: crypto.randomUUID(), title: title.trim(), description: description.trim(), source_quote: sourceQuote } };
+      body: { proposal_key: createSafeId(), title: title.trim(), description: description.trim(), source_quote: sourceQuote } };
     rememberCockpitActionCommand(scope, command);
     try { await create.mutateAsync({ meetingId: command.meeting_id, versionId: command.version_id, body: command.body }); clearCockpitActionCommand(scope); clearCockpitActionFormDraft(formKey); setOpen(false); }
     catch (cause) {
@@ -204,7 +205,7 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   async function confirm() {
     if (lock.current || !canResolve) return;
     lock.current = true; onBusyChange(true); setError("");
-    const body: CockpitActionResolution = pending?.body ?? { expected_revision: observedRevision, decision_key: crypto.randomUUID(), outcome,
+    const body: CockpitActionResolution = pending?.body ?? { expected_revision: observedRevision, decision_key: createSafeId(), outcome,
       ...(outcome === "dismiss" ? { reason: reason.trim() } : { node_id: node?.node_id,
         ...(outcome === "reuse" ? { issue_id: selected?.id } : cockpitTaskFieldsBody(fields)) }) };
     const command = pending ?? { kind: "decision" as const, meeting_id: action.meeting_id, action_id: action.id, version_id: action.version_id, source_content_hash: action.source_content_hash, body };
@@ -218,7 +219,7 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   async function confirmRevise() {
     if (lock.current || !canRevise) return;
     lock.current = true; onBusyChange(true); setError("");
-    const body: CockpitActionResolution = revisePending?.body ?? { expected_revision: observedRevision, decision_key: crypto.randomUUID(), outcome, reason: reason.trim(),
+    const body: CockpitActionResolution = revisePending?.body ?? { expected_revision: observedRevision, decision_key: createSafeId(), outcome, reason: reason.trim(),
       ...(outcome === "dismiss" ? {} : { node_id: node?.node_id, ...(outcome === "reuse" ? { issue_id: selected?.id } : cockpitTaskFieldsBody(fields)) }) };
     const command = revisePending ?? { kind: "decision" as const, meeting_id: action.meeting_id, action_id: action.id, version_id: action.version_id, source_content_hash: action.source_content_hash, body };
     rememberCockpitActionCommand(reviseScope, command);

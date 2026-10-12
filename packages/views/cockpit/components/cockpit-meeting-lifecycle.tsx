@@ -18,6 +18,7 @@ import { CockpitMeetingCommandRecovery } from "./cockpit-meeting-command-recover
 import { CockpitDirectoryTargetView, CockpitDirectoryPrincipalView } from "./cockpit-directory-parts";
 import { CockpitPreparationImpactComparison } from "./cockpit-preparation-reauthorization";
 import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
+import { createSafeId } from "@multica/core/utils";
 
 const knownStates = new Set(["unconfirmed", "scheduled", "in_progress", "ended"]);
 const localInput = (value: string | null | undefined) => {
@@ -87,7 +88,7 @@ function CockpitOccurrenceForm({ wsId, header, transition, onDone, refresh, read
   const reasonRequired = currentTransition === "correct_times" || currentTransition === "reopen" || currentTransition === "unstart" || currentTransition === "unschedule";
   const save = async () => {
     if (command.busy || !original && (changed || invalidTime || readOnly || !permitted || !knownStates.has(header.occurrence.state) || reasonRequired && !reason.trim())) return;
-    const body = original ?? { expected_revision: observed, command_key: crypto.randomUUID(), transition: currentTransition,
+    const body = original ?? { expected_revision: observed, command_key: createSafeId(), transition: currentTransition,
       ...(currentTransition !== "schedule" && currentTransition !== "reopen" && currentTransition !== "unstart" && currentTransition !== "unschedule" ? { actual_started_at: start === localInput(header.occurrence.actual_started_at) ? header.occurrence.actual_started_at : start ? new Date(start).toISOString() : null } : {}),
       ...(currentTransition === "end" || currentTransition === "correct_times" && header.occurrence.state === "ended" ? { actual_ended_at: end === localInput(header.occurrence.actual_ended_at) ? header.occurrence.actual_ended_at : end ? new Date(end).toISOString() : null } : {}),
       ...(reasonRequired ? { reason: reason.trim() } : {}) };
@@ -112,7 +113,7 @@ export function CockpitMeetingMaterialsConfirmation({ wsId, header, resourcesHre
   const { t } = useT("cockpit"); const command = useCockpitMeetingCommand(wsId, header.meeting_id, cockpitMeetingAgendaDraftKey(wsId, header.meeting_id, "materials"));
   const ready = header.materials?.ready === true;
   const save = () => { if (command.busy || !command.pending && (readOnly || !header.can_confirm_materials || !header.materials)) return;
-    void command.run(command.pending ?? { kind: "materials", body: { command_key: crypto.randomUUID(), expected_revision: header.materials?.workflow_revision ?? 0, materials_ready: !ready } }); };
+    void command.run(command.pending ?? { kind: "materials", body: { command_key: createSafeId(), expected_revision: header.materials?.workflow_revision ?? 0, materials_ready: !ready } }); };
   return <section className="space-y-3 rounded-lg border border-border p-3" aria-label={t(($) => $.meeting_lifecycle.materials)}>
     <h3 className="text-body font-medium">{t(($) => $.meeting_lifecycle.materials)}</h3><p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.materials_hint)}</p>
     <div className="flex flex-wrap gap-2"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={resourcesHref}>{t(($) => $.meeting_lifecycle.open_materials)}</AppLink><AppLink className={buttonVariants({ variant: "ghost", size: "sm" })} href={workflowHref}>{t(($) => $.meeting_lifecycle.open_workflow)}</AppLink></div>

@@ -22,6 +22,7 @@ import { CockpitFlowError } from "./cockpit-task-flow";
 import { CockpitArtifactInputManifest } from "./cockpit-artifact-input-manifest";
 import { CockpitArtifactSourceMeeting } from "./cockpit-artifact-source-meeting";
 import { CockpitArtifactAvailabilityReason } from "./cockpit-artifact-availability";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitArtifactSubmitForm({ wsId, artifact, scope, disabled }: {
   wsId: string; artifact: CockpitArtifactHeader; scope: CockpitScope; disabled: boolean;
@@ -50,7 +51,7 @@ export function CockpitArtifactSubmitForm({ wsId, artifact, scope, disabled }: {
   async function save() {
     if (lock.current || disabled || stale || !canSubmit || (!draft.pending && (!valid || fileUnavailable || !inputSourceValid))) return;
     const stillCurrent = captureContext();
-    const body = prepareCockpitArtifactSubmission(key, context, crypto.randomUUID());
+    const body = prepareCockpitArtifactSubmission(key, context, createSafeId());
     lock.current = true; setError("");
     try {
       const result = await submit.mutateAsync({ artifactId: artifact.id, body });

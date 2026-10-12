@@ -21,6 +21,7 @@ import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitInputCommandRecovery } from "./cockpit-input-command-recovery";
 import { CockpitInputEndRegistration } from "./cockpit-input-end-registration";
 import { CockpitInputVersionSummary } from "./cockpit-input-version-summary";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitInputNASBatch({ wsId, accountId, meetingId, draftKey, canAdd, targetLabel, onOpenVersion, onRepair, onBack, onFinished }: {
   wsId: string;
@@ -93,12 +94,12 @@ export function CockpitInputNASBatch({ wsId, accountId, meetingId, draftKey, can
     let child = useCockpitInputDraftStore.getState().draft.forms[childKey];
     if (!child || child.versionId || child.batchItem?.skipped || child.registrationEnd || useCockpitInputDraftStore.getState().draft.commands[childKey]) return;
     if (!child.inputId) {
-      if (!await perform(childKey, { kind: "create", body: { commandKey: crypto.randomUUID(), title: child.title, description: child.description, projectId: null, originIssueId: null } }, "submit", stillCurrent)) return;
+      if (!await perform(childKey, { kind: "create", body: { commandKey: createSafeId(), title: child.title, description: child.description, projectId: null, originIssueId: null } }, "submit", stillCurrent)) return;
       child = useCockpitInputDraftStore.getState().draft.forms[childKey];
     }
     if (!stillCurrent() || lock.current?.stop || !child?.inputId || child.inputRevision === null || child.source?.kind !== "nas_file") return;
-    await perform(childKey, { kind: "version", inputId: child.inputId, body: { commandKey: crypto.randomUUID(), expectedRevision: child.inputRevision, source: child.source,
-      initialReference: { referenceKey: crypto.randomUUID(), meetingId, agendaId: child.agendaId, purpose: child.purpose } } }, "submit", stillCurrent);
+    await perform(childKey, { kind: "version", inputId: child.inputId, body: { commandKey: createSafeId(), expectedRevision: child.inputRevision, source: child.source,
+      initialReference: { referenceKey: createSafeId(), meetingId, agendaId: child.agendaId, purpose: child.purpose } } }, "submit", stillCurrent);
   }
 
   async function run(onlyKey?: string, mode?: "submit" | "lookup") {
@@ -127,7 +128,7 @@ export function CockpitInputNASBatch({ wsId, accountId, meetingId, draftKey, can
 
   function finishBatch(startAnother: boolean) {
     if (!parent || busy) return;
-    try { completeCockpitInputNASBatch(draftKey, parent.generation, crypto.randomUUID()); if (startAnother) onBack(); else onFinished(); }
+    try { completeCockpitInputNASBatch(draftKey, parent.generation, createSafeId()); if (startAnother) onBack(); else onFinished(); }
     catch (cause) { setState((value) => ({ ...value, generation, error: cause instanceof Error ? cause.message : t(($) => $.input_materials.error_unknown) })); }
   }
 

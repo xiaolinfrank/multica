@@ -30,6 +30,7 @@ import { CockpitPreparationOperation } from "./cockpit-preparation-operation";
 import { CockpitMeetingInputs } from "./cockpit-meeting-inputs";
 import { CockpitPreparationHistory } from "./cockpit-preparation-history";
 import { CockpitPreparationReasons } from "./cockpit-preparation-preview";
+import { createSafeId } from "@multica/core/utils";
 
 const purposes: CockpitAgendaPurpose[] = ["planning", "goal_review", "boundary_confirmation", "question_clarification", "solution_discussion", "direction_decision"];
 const isPurpose = (value: string): value is CockpitAgendaPurpose => purposes.some((purpose) => purpose === value);
@@ -120,7 +121,7 @@ function CockpitAgendaEditor({ wsId, meetingId, agenda, header, readOnly, onSave
   const change = (patch: Partial<Omit<CockpitAgendaDraft, "observedRevision">>) => updateCockpitAgendaDraft(key, initial, patch);
   const save = async () => {
     if (command.busy || !command.pending && (!writable || changed || invalid || invalidSelection)) return;
-    const body = { command_key: crypto.randomUUID(), expected_revision: value.observedRevision, title: value.title.trim(), purposes: value.purposes, desired_outcome: value.desiredOutcome, notes: value.notes, facilitator_user_id: value.facilitatorId || null, node_id: value.nodeId || null };
+    const body = { command_key: createSafeId(), expected_revision: value.observedRevision, title: value.title.trim(), purposes: value.purposes, desired_outcome: value.desiredOutcome, notes: value.notes, facilitator_user_id: value.facilitatorId || null, node_id: value.nodeId || null };
     const response = await command.run(command.pending ?? (agenda ? { kind: "agenda_update", agendaId: agenda.id, body } : { kind: "agenda_create", body }));
     if (response) { clearCockpitAgendaDraft(key, value); if (response.stillCurrent() && response.result.receipt.agenda_id) onSaved?.(response.result.receipt.agenda_id); }
   };
@@ -169,7 +170,7 @@ function AgendaRemoveForm({ wsId, meetingId, agenda, onDone, onBusyChange }: { w
   const setReason = (reason: string) => setCockpitMeetingFormDraft(formKey, { ...value, reason });
   const save = async () => { if (command.busy || !pending && (!reason.trim() || revision !== agenda.revision)) return;
     setCockpitMeetingFormDraft(formKey, value);
-    const response = await command.run(pending ?? { kind: "agenda_remove", agendaId: agenda.id, body: { command_key: crypto.randomUUID(), expected_revision: revision, reason: reason.trim() } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
+    const response = await command.run(pending ?? { kind: "agenda_remove", agendaId: agenda.id, body: { command_key: createSafeId(), expected_revision: revision, reason: reason.trim() } }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); } };
   return <DialogContent><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.remove)}</DialogTitle><DialogDescription>{t(($) => $.meeting_lifecycle.remove_hint)}</DialogDescription></DialogHeader>
     <label className="space-y-1 text-caption">{t(($) => $.meeting_lifecycle.reason)}<Textarea className="max-h-56 resize-y overflow-y-auto" value={reason} disabled={Boolean(pending) || command.busy} onChange={(event) => setReason(event.target.value)} /></label>
     {revision !== agenda.revision && !pending && <div role="alert" className="space-y-2 text-caption"><p>{t(($) => $.meeting_lifecycle.changed)}</p><Button size="sm" variant="outline" onClick={() => setCockpitMeetingFormDraft(formKey, { ...value, observedRevision: agenda.revision })}>{t(($) => $.meeting_lifecycle.rebase)}</Button></div>}{command.error && <p role="alert" className="break-words text-caption text-destructive">{command.error}</p>}

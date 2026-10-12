@@ -38,6 +38,7 @@ import { CockpitMeetingHistory } from "./cockpit-meeting-history";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitMeetingActions } from "./cockpit-meeting-actions";
 import { CockpitFlowError, CockpitIssueChoice } from "./cockpit-task-flow";
+import { createSafeId } from "@multica/core/utils";
 
 const NEW_ISSUE = "__new_minutes_issue__";
 const ADOPT_ISSUE = "__adopt_minutes_issue__";
@@ -230,7 +231,7 @@ export function CockpitMeetingWorkflowPanel({
   const memberReadUnconfirmed = memberQuery.isPending || memberQuery.isFetching || memberQuery.isError || !memberQuery.data;
   const pendingReviewerMissing = current?.decision === "pending" && currentReviewerMissing;
   const submitVersion = async () => {
-    const body = prepareCockpitMinutesSubmission(meetingId, workflow.revision, draft.submission_key || crypto.randomUUID());
+    const body = prepareCockpitMinutesSubmission(meetingId, workflow.revision, draft.submission_key || createSafeId());
     const result = await submit.mutateAsync({ meetingId, body });
     if (result.receipt.version) acknowledgeCockpitMinutesSubmission(meetingId, [result.receipt.version]);
   };

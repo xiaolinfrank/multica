@@ -18,6 +18,7 @@ import { useT } from "../../i18n";
 import { CockpitFlowError, CockpitIssueChoice } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
+import { createSafeId } from "@multica/core/utils";
 
 export function CockpitArtifactCreate({ wsId, nodeId, nodeLabel, projectId, moduleId, scope, disabled }: {
   wsId: string; nodeId: string; nodeLabel: string; projectId: string; moduleId: string; scope: CockpitScope; disabled: boolean;
@@ -38,7 +39,7 @@ export function CockpitArtifactCreate({ wsId, nodeId, nodeLabel, projectId, modu
   async function save() {
     if (lock.current || disabled || (!draft.pending && !valid)) return;
     const stillCurrent = captureContext();
-    const body = prepareCockpitArtifactCreation(key, nodeId, crypto.randomUUID());
+    const body = prepareCockpitArtifactCreation(key, nodeId, createSafeId());
     lock.current = true; setError("");
     try {
       const result = await create.mutateAsync(body);

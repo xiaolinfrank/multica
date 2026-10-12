@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { MessageSquarePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { isImeComposing } from "@multica/core/utils";
+import { createSafeId, isImeComposing } from "@multica/core/utils";
 import { Button } from "@multica/ui/components/ui/button";
 import { useCommentDraftStore, type CommentDraftKey } from "@multica/core/issues/stores";
 import { MAX_ANNOTATION_QUOTE_LENGTH, MAX_REPLY_ANNOTATIONS, type ReplyAnnotation } from "@multica/core/drafts/reply-annotation";
@@ -196,7 +196,7 @@ export function useCommentAnnotations({ draftKey, sources, enabled, onAdded, edi
     }
     setSelection(captured);
     const next = duplicate ?? {
-      id: crypto.randomUUID(), sourceCommentId, sourceActorName: source.name,
+      id: createSafeId(), sourceCommentId, sourceActorName: source.name,
       sourceRevision: source.revision, quote, start, prefix, suffix, note: "",
     };
     pendingFocusId.current = next.id;

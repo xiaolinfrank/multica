@@ -13,6 +13,7 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useT } from "../../i18n";
 import { CockpitDirectoryReasons, knownDirectoryStates } from "./cockpit-directory-parts";
 import { useCockpitDirectoryCommand } from "./use-cockpit-directory-command";
+import { createSafeId } from "@multica/core/utils";
 
 type Transition = "pause" | "resume" | "claim" | "abandon";
 export function CockpitDirectoryControl({ wsId, header, transition, readOnly, refresh }: {
@@ -32,7 +33,7 @@ export function CockpitDirectoryControl({ wsId, header, transition, readOnly, re
     if (!permitted || request.busy || pending && !request.canRetry || !pending && (changed || needsReason && !value.reason.trim() || new TextEncoder().encode(value.reason.trim()).length > 16000)) return;
     setCockpitDirectoryForm(key, value);
     const response = await request.run(pending ?? { kind: "control", meetingId: header.meeting_id, operationId: header.id,
-      body: { command_key: crypto.randomUUID(), expected_revision: value.observedRevision, transition, reason: value.reason.trim() } });
+      body: { command_key: createSafeId(), expected_revision: value.observedRevision, transition, reason: value.reason.trim() } });
     if (response) { clearCockpitDirectoryForm(key, value); if (response.stillCurrent()) setOpen(false); }
   };
   const verify = async () => { const response = await request.verify(); if (response) { clearCockpitDirectoryForm(key, value); if (response.stillCurrent()) setOpen(false); } };

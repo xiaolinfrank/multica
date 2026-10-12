@@ -18,6 +18,7 @@ import { CockpitFlowError } from "./cockpit-task-flow";
 import { CockpitDirectoryReasons, CockpitDirectoryPreviewView, supportsDirectoryPreview } from "./cockpit-directory-parts";
 import { useCockpitDirectoryCommand } from "./use-cockpit-directory-command";
 import { useCockpitPreparationConfirmation } from "./use-cockpit-preparation-request";
+import { createSafeId } from "@multica/core/utils";
 
 const partitions = ["会议纪要与录音转写", "会议材料", "照片"];
 type RepairContext = { operationId: string; selection: CockpitDirectoryRepairSelection | null };
@@ -72,7 +73,7 @@ function PrepareForm({ wsId, summary, mode, repair, draftKey, readOnly, onBusy, 
     if (request.busy || !allowed || !summary.capabilities.can_create || pending && !request.canRetry || !pending && (!confirmed || changed || !preview.data?.can_confirm || !supportsDirectoryPreview(preview.data.steps))) return;
     const result = await request.run(pending ?? { kind: "prepare", meetingId: summary.meeting_id, body: { mode: value.mode, root_id: value.rootId,
       relative_directory: preview.data!.target.relative_directory, partitions: value.partitions, observed_nas_dir: value.observedNasDir, observed_binding_revision: value.observedBindingRevision,
-      bind_after_base: value.bindAfterBase, command_key: crypto.randomUUID(), expected_revision: value.observedBindingRevision, context_token: preview.data!.context_token } });
+      bind_after_base: value.bindAfterBase, command_key: createSafeId(), expected_revision: value.observedBindingRevision, context_token: preview.data!.context_token } });
     if (result) { clearCockpitDirectoryForm(draftKey, value); if (result.stillCurrent()) onCreated(result.receipt.directory_operation_id); }
   };
   const verify = async () => { const result = await request.verify(); if (result) { clearCockpitDirectoryForm(draftKey, value); if (result.stillCurrent()) onCreated(result.receipt.directory_operation_id); } };
