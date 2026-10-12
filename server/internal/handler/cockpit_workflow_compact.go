@@ -117,6 +117,9 @@ func (h *Handler) cockpitCompactResult(r *http.Request, cc cockpitContext, meeti
 		if out.Receipt.NASExport == nil {
 			return out, fmt.Errorf("missing export command receipt")
 		}
+	case "bound", "unbound", "focused":
+		// Association commands confirm through the resulting workflow state;
+		// no dedicated receipt object beyond the action name.
 	default:
 		return out, fmt.Errorf("unsupported compact command receipt")
 	}

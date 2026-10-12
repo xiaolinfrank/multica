@@ -56,7 +56,7 @@
     "open_materials": "Open links & materials",
     "open_workflow": "Open minutes workflow",
     "workflow_needed": "Enable a minutes workflow to record materials confirmation.",
-    "released": "Minutes work has been released; this materials confirmation is fixed.",
+    "released": "The minutes task is released; this confirmation can still be changed at any time.",
     "manager_required": "The workflow manager must confirm this fact.",
     "human_required": "A workspace member must confirm this fact.",
     "history": "Confirmation history",

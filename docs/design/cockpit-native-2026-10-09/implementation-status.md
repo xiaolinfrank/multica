@@ -426,3 +426,13 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 迁移 9144–9146 + SQL/service/handler 适配完成，细节与验证边界见 [R1 实施合同](./r1-work-package-dissolution.md)实施状态节。协调机隔离库定向测试绿（1 项 collation 环境差异已论证非回归，待 agent 3 复验）；未跑全量、未动前端、未部署。
 
 - R1b 前端适配同日完成：绑定/解绑/焦点命令 + 绑定列表 UI + 材料解冻；本地定向测试全绿（详见 R1 实施合同 R1b 节）。待 agent 3 验收。
+
+
+## 2026-10-12 R1/R1b agent 3 验收（fosun_agent_3, ~/var/multica-dev）
+
+- 迁移：dev 库与 multica_test 均应用 9144–9146（9145 搬迁核验：work_package 表已删、roles 回填一致）。
+- 部署：server `125e29f61-r1b4`（pid 对账）、web 全新构建重启（旧 next-server 未被重启脚本杀死的坑：进程名 `next-server (v16.3.4)` 与 pkill 模式错配，须按 pid 杀）。
+- 全量：`go test ./internal/service` **全绿**；`./internal/handler` 除两项外全绿——`TestWorkspaceDeletionManifestCoversPublicSchema`（R1 引入，已修复）；`TestIssueBatchReceiptExpectedRevisionAndAtomicDelete`（**基线预存在**：stash 对照同款 500，非 R1 引入，另案跟进）。collation 复验：agent 3 测试库为 C collation，原 TestCockpitArtifactRuntimeReviewerHandoff 通过，与此前「环境差异非回归」结论一致。
+- 浏览器（Playwright，fixedcode-test + dev 固定码）：绑定列表渲染与焦点徽标；绑定第二个任务（BIO-272）→ 两行；设为焦点 → 徽标移动；解绑焦点 → **自动回落最早剩余绑定**；启动纪要任务后 restore_backlog 投影正确；**材料解冻**（release 后 checkbox 无 disabled，文案改为「纪要任务已启动；本次资料确认仍可随时更改」）。
+- 验收中修复：compact 回执 action switch 补 bound/unbound/focused；compact summary 补 minutes_issues；lifecycle CanConfirmMaterials 解除 release 冻结（总纲第二处冻结）；manifest 删除清单去掉已 DROP 表条目。
+- 生产未动。

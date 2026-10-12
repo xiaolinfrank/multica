@@ -56,7 +56,7 @@
     "open_materials": "打开关联与材料",
     "open_workflow": "打开纪要工作包",
     "workflow_needed": "启用纪要工作包后可记录资料确认。",
-    "released": "纪要任务已释放，此次资料确认已固定。",
+    "released": "纪要任务已启动；本次资料确认仍可随时更改。",
     "manager_required": "请由纪要工作包管理人确认此事实。",
     "human_required": "此事实需要工作区成员本人确认。",
     "history": "确认记录",

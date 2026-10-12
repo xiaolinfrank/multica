@@ -41,6 +41,7 @@ type CockpitWorkflowSummaryResponse struct {
 	ReleaseTaskID        *string                        `json:"release_task_id"`
 	ReviewerID           *string                        `json:"reviewer_id"`
 	MinutesIssue         *CockpitWorkflowIssueResponse  `json:"minutes_issue"`
+	MinutesIssues        []CockpitMinutesBindingResponse `json:"minutes_issues"`
 	CurrentVersionID     *string                        `json:"current_version_id"`
 	PublishedVersionID   *string                        `json:"published_version_id"`
 	CurrentVersion       *CockpitMinutesVersionMetadata `json:"current_version"`

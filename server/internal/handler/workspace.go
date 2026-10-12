@@ -1367,7 +1367,7 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 			run:  func() error { return qtx.DeleteCockpitMinutesVersionsByWorkspace(ctx, requester.WorkspaceID) },
 		},
 		{
-			name: "delete meeting work packages",
+			name: "delete meeting minutes links",
 			run:  func() error { return qtx.DeleteCockpitMinutesLinksByWorkspace(ctx, requester.WorkspaceID) },
 		},
 		{

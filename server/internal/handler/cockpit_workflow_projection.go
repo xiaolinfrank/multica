@@ -24,6 +24,8 @@ type cockpitHistoryRead struct {
 	endedAt   pgtype.Timestamptz
 	work      *handlerCockpitMinutesState
 	human     bool
+
+	bindingLinks []db.ListCockpitMinutesIssueLinksRow
 }
 
 func historyError(err error) error {
@@ -243,7 +245,14 @@ func (h *Handler) cockpitHistorySummary(r *http.Request, x *cockpitHistoryRead) 
 		return out, err
 	}
 	out.HistoryCounts = CockpitWorkflowHistoryCounts{Versions: counts.Versions, ReviewerHandoffs: counts.ReviewerHandoffs, NASExports: counts.NasExports, NASActive: counts.NasActive}
-	cards, err := x.cards([]pgtype.UUID{w.MinutesIssueID})
+	bindingIDs := []pgtype.UUID{w.MinutesIssueID}
+	if links, lerr := x.q.ListCockpitMinutesIssueLinks(x.ctx, db.ListCockpitMinutesIssueLinksParams{WorkspaceID: x.cc.workspaceID, MeetingID: x.meetingID}); lerr == nil {
+		for _, link := range links {
+			bindingIDs = append(bindingIDs, link.IssueID)
+		}
+		x.bindingLinks = links
+	}
+	cards, err := x.cards(bindingIDs)
 	if err != nil {
 		return out, err
 	}
@@ -273,6 +282,10 @@ func (h *Handler) cockpitHistorySummary(r *http.Request, x *cockpitHistoryRead) 
 	out.ReleaseTaskID = uuidToPtr(w.ReleaseTaskID)
 	out.ReviewerID = uuidToPtr(w.ReviewerID)
 	out.MinutesIssue = cards[w.MinutesIssueID]
+	out.MinutesIssues = make([]CockpitMinutesBindingResponse, 0, len(x.bindingLinks))
+	for _, link := range x.bindingLinks {
+		out.MinutesIssues = append(out.MinutesIssues, CockpitMinutesBindingResponse{Issue: cards[link.IssueID], IsFocus: link.IssueID == w.MinutesIssueID, Roles: link.Roles})
+	}
 	out.CurrentVersionID = uuidToPtr(w.CurrentVersionID)
 	out.PublishedVersionID = uuidToPtr(w.PublishedVersionID)
 	out.CanManage = x.human && x.manager()
