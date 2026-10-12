@@ -20,8 +20,10 @@ func TestCockpitInputStartRetainsCredentialOwnerAcrossRuntimeChanges(t *testing.
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 			defer cancel()
 			manifest := inputManifestSaveEmpty(t, s, q, 0)
-			runtime, agent := inputManifestTaskAgent(t, f, q.CockpitInputRead, q.IssueID)
+			// Create the replacement owner before rows that will reference it so
+			// fixture cleanup removes the runtime before deleting this user.
 			other := parseTestUUID(t, f.member(t, "new-runtime-credential-owner"))
+			runtime, agent := inputManifestTaskAgent(t, f, q.CockpitInputRead, q.IssueID)
 			// Public runtimes keep the original Agent/originator relationship valid;
 			// the rejected fact must be the captured caller's credential ownership.
 			if _, err := f.Pool.Exec(ctx, "UPDATE agent_runtime SET visibility='public' WHERE id=$1", runtime); err != nil {

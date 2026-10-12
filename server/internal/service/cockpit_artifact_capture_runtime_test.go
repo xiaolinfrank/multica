@@ -181,8 +181,28 @@ func TestCockpitArtifactRuntimeCaptureReusesVerifiedCopyAfterReviewerRecovery(t 
 func TestCockpitArtifactRuntimeDeletionRetainsLateUploadCleanup(t *testing.T) {
 	f := newArtifactFixture(t)
 	ctx := context.Background()
+	// The cleanup worker claims globally. Keep retained attempts from earlier
+	// test runs out of this in-memory provider without changing their history.
+	isolation, err := f.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer isolation.Rollback(ctx)
+	rows, err := isolation.Query(ctx, "SELECT id FROM cockpit_artifact_capture_attempt WHERE workspace_id<>$1 FOR UPDATE", f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	entered := make(chan string, 1)
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
 	store := &artifactMemoryStore{objects: map[string][]byte{}, onUpload: func(key string) { entered <- key; <-release }}
 	_, _ = f.fileSubmission(t, store)
 	done := make(chan error, 1)
@@ -194,7 +214,7 @@ func TestCockpitArtifactRuntimeDeletionRetainsLateUploadCleanup(t *testing.T) {
 	if processed, err := f.issues.ProcessNextCockpitArtifactObjectCleanup(ctx); err != nil || processed {
 		t.Fatalf("unfinished I/O falsely claimed cleaned: %v %v", processed, err)
 	}
-	close(release)
+	unblock()
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}

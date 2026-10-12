@@ -135,8 +135,10 @@ func TestCockpitInputHTTPDeadlineInterruptsPartialUploadAndReleasesSpools(t *tes
 		t.Fatal("partial HTTP body ignored the connection deadline")
 	}
 	row, err := f.h.Queries.GetCockpitInputTransfer(t.Context(), db.GetCockpitInputTransferParams{WorkspaceID: q.WorkspaceID, InputID: q.InputID, VersionID: q.VersionID, ID: q.TransferID})
-	if err != nil || row.State != "failed" || row.IoFinishedAt.Valid {
-		t.Fatalf("stalled upload retained a live lease or claimed stored bytes: %+v %v", row, err)
+	if err != nil || row.State != "failed" || !row.IoFinishedAt.Valid || row.IoOutcome.String != "not_started" ||
+		row.LeaseToken.Valid || row.LeaseExpiresAt.Valid || row.ContentPinAt.Valid || row.ContentHash.Valid || row.PinnedSizeBytes.Valid {
+		t.Fatalf("stalled upload retained a lease or claimed stored content: state=%s outcome=%s finished=%t lease=%t hash=%t err=%v",
+			row.State, row.IoOutcome.String, row.IoFinishedAt.Valid, row.LeaseToken.Valid, row.ContentHash.Valid, err)
 	}
 	files, err := os.ReadDir(f.spool)
 	if err != nil || len(files) != 0 || f.store.closed.Load() != 0 {
