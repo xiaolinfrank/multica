@@ -106,7 +106,9 @@
     "fixed_hint": "请选择本会议已关联的固定成果；新增会议成果引用请先到“关联与材料”。",
     "create_hint": "创建待规划任务，不会自动启动智能体；可以暂不分派。",
     "size_error": "请缩短超出限制的字段后保存。",
-    "refresh_first": "从首页重新读取议题"
+    "refresh_first": "从首页重新读取议题",
+    "reopen": "更正结束确认",
+    "reopen_hint": "撤销结束确认：会议回到已排期状态，仍可取消或改期；原确认与本次原因保留在确认历史中。"
   },
   "header": {
     "title": "项目驾驶舱",
@@ -862,7 +864,12 @@
     "members_loading": "工作区成员尚不可用，请等待成员加载后选择评审人。",
     "no_reviewers": "暂无可作为评审人的工作区成员。",
     "open_members": "打开工作区设置（新标签）",
-    "adopt_existing": "接管已有任务"
+    "adopt_existing": "接管已有任务",
+    "unpublish": "下线正式纪要",
+    "unpublish_description": "将此版本从正式纪要指针下线。已写入 NAS 的副本保持不变，之后可重新发布同一或另一已通过的版本。",
+    "unpublish_reason": "原因",
+    "unpublish_reason_hint": "下线原因会随版本历史留痕。",
+    "unpublish_confirm": "下线"
   },
   "nas": {
     "not_configured": "此工作区尚未配置允许的 NAS 导出位置。需要部署管理员配置导出根目录，仅创建会议文件夹无法解决。",
@@ -1043,7 +1050,12 @@
     "review": "查看与处置",
     "review_action": "查看与处置行动 {{title}}",
     "empty": "暂无行动建议。",
-    "issue_sources": "会议行动来源"
+    "issue_sources": "会议行动来源",
+    "revise": "修改处置",
+    "revise_hint": "改判保留旧决议留痕；此前创建的任务不会被删除。",
+    "revise_reason": "改判理由",
+    "confirm_revise": "确认改判",
+    "retry_revise": "重试修改处置"
   },
   "work_overview": {
     "work": "工作总览",
@@ -1365,7 +1377,12 @@
     "superseded_hint": "此请求已被替代，固定证据和原有结论仍保留，不再接受评审。",
     "packet_changed": "当前定义或已批准证据与此请求不同，请按最新上下文发起新请求。",
     "read_evidence": "阅读证据版本 {{number}}",
-    "submit_review": "提交验收结论"
+    "submit_review": "提交验收结论",
+    "revoke_approval": "撤销通过",
+    "revoke_hint": "撤销后该 L3 回到待验收状态；原通过结论与撤销原因保留在案，可重新发起验收。",
+    "revoke_confirm": "确认撤销通过",
+    "revoke_reason_required": "请填写撤销原因（1–16000 字符）。",
+    "approval_revoked": "验收通过已撤销；该 L3 需要重新验收，历史通过结论保留在案。"
   },
   "acceptance_request": {
     "start": "发起验收",

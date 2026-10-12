@@ -209,15 +209,10 @@ func (h *Handler) cockpitActionIssueInput(w http.ResponseWriter, r *http.Request
 	return input, true
 }
 
-func (h *Handler) ResolveCockpitMeetingAction(w http.ResponseWriter, r *http.Request) {
-	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
-	if !ok {
-		return
-	}
-	actionID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "actionId"), "action_id")
-	if !ok {
-		return
-	}
+// decodeCockpitActionResolution decodes the shared resolve/revise command
+// body. resolve demands a reason only for dismiss; revise demands one for
+// every outcome (the revision motive, design-principles-2026-10-12).
+func (h *Handler) decodeCockpitActionResolution(w http.ResponseWriter, r *http.Request, cc cockpitContext, requireReason bool) (service.CockpitActionResolution, bool) {
 	var req struct {
 		cockpitWorkflowRevisionRequest
 		cockpitActionIssueFields
@@ -229,29 +224,32 @@ func (h *Handler) ResolveCockpitMeetingAction(w http.ResponseWriter, r *http.Req
 	}
 	raw, ok := decodeCockpitBody(w, r, &req)
 	if !ok {
-		return
+		return service.CockpitActionResolution{}, false
 	}
 	if req.ExpectedRevision == nil || *req.ExpectedRevision < 1 || (req.Outcome != "create" && req.Outcome != "reuse" && req.Outcome != "dismiss") {
 		writeError(w, http.StatusBadRequest, "positive expected_revision and create/reuse/dismiss outcome are required")
-		return
+		return service.CockpitActionResolution{}, false
 	}
 	key, ok := parseUUIDOrBadRequest(w, req.DecisionKey, "decision_key")
 	if !ok {
-		return
+		return service.CockpitActionResolution{}, false
 	}
-	input := service.CockpitActionResolution{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, ActionID: actionID, ActorID: cc.member.UserID,
-		ExpectedRevision: *req.ExpectedRevision, DecisionKey: key, Outcome: req.Outcome, Reason: req.Reason}
+	input := service.CockpitActionResolution{ExpectedRevision: *req.ExpectedRevision, DecisionKey: key, Outcome: req.Outcome, Reason: req.Reason}
+	if requireReason && strings.TrimSpace(req.Reason) == "" {
+		writeError(w, http.StatusBadRequest, "a reason is required to revise a resolution")
+		return service.CockpitActionResolution{}, false
+	}
 	if req.Outcome != "create" {
 		for _, field := range []string{"assignee_type", "assignee_id", "priority", "due_date"} {
 			if _, present := raw[field]; present {
 				writeError(w, http.StatusBadRequest, "reuse and dismiss preserve existing issue fields")
-				return
+				return service.CockpitActionResolution{}, false
 			}
 		}
 	} else {
 		input.NewIssue, ok = h.cockpitActionIssueInput(w, r, cc, req.cockpitActionIssueFields)
 		if !ok {
-			return
+			return service.CockpitActionResolution{}, false
 		}
 	}
 	if req.Outcome == "dismiss" {
@@ -259,33 +257,74 @@ func (h *Handler) ResolveCockpitMeetingAction(w http.ResponseWriter, r *http.Req
 		_, hasIssue := raw["issue_id"]
 		if hasNode || hasIssue || strings.TrimSpace(req.Reason) == "" {
 			writeError(w, http.StatusBadRequest, "dismiss requires a reason and cannot assign a node or issue")
-			return
+			return service.CockpitActionResolution{}, false
 		}
 	} else {
 		if req.NodeID == nil {
 			writeError(w, http.StatusBadRequest, "node_id is required")
-			return
+			return service.CockpitActionResolution{}, false
 		}
 		input.NodeID, ok = parseUUIDOrBadRequest(w, *req.NodeID, "node_id")
 		if !ok {
-			return
+			return service.CockpitActionResolution{}, false
 		}
 	}
 	if req.Outcome == "reuse" {
 		if req.IssueID == nil || strings.TrimSpace(*req.IssueID) == "" {
 			writeError(w, http.StatusBadRequest, "issue_id is required for reuse")
-			return
+			return service.CockpitActionResolution{}, false
 		}
 		issue, ok := h.loadIssueForUser(w, r, *req.IssueID)
 		if !ok {
-			return
+			return service.CockpitActionResolution{}, false
 		}
 		input.IssueID = issue.ID
 	} else if _, present := raw["issue_id"]; present {
 		writeError(w, http.StatusBadRequest, "issue_id is only valid for reuse")
+		return service.CockpitActionResolution{}, false
+	}
+	return input, true
+}
+
+func (h *Handler) ResolveCockpitMeetingAction(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
 		return
 	}
+	actionID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "actionId"), "action_id")
+	if !ok {
+		return
+	}
+	input, ok := h.decodeCockpitActionResolution(w, r, cc, false)
+	if !ok {
+		return
+	}
+	input.WorkspaceID, input.MeetingID, input.ActionID, input.ActorID = cc.workspaceID, meeting.ID, actionID, cc.member.UserID
 	action, err := h.IssueService.ResolveCockpitMeetingAction(r.Context(), input, service.IssueCreateOpts{ActorID: uuidToString(cc.member.UserID)})
+	if !writeCockpitActionError(w, r, err) {
+		h.writeCockpitMeetingAction(w, r, cc, meeting.ID, action.ID)
+	}
+}
+
+// ReviseCockpitMeetingActionResolution rewrites the decision written on an
+// accepted or dismissed action (R2, design-principles-2026-10-12): the same
+// command shape and idempotency protocol as resolve, with a mandatory
+// revision reason; previously created issues are never deleted by it.
+func (h *Handler) ReviseCockpitMeetingActionResolution(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
+		return
+	}
+	actionID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "actionId"), "action_id")
+	if !ok {
+		return
+	}
+	input, ok := h.decodeCockpitActionResolution(w, r, cc, true)
+	if !ok {
+		return
+	}
+	input.WorkspaceID, input.MeetingID, input.ActionID, input.ActorID = cc.workspaceID, meeting.ID, actionID, cc.member.UserID
+	action, err := h.IssueService.ReviseCockpitMeetingActionResolution(r.Context(), input, service.IssueCreateOpts{ActorID: uuidToString(cc.member.UserID)})
 	if !writeCockpitActionError(w, r, err) {
 		h.writeCockpitMeetingAction(w, r, cc, meeting.ID, action.ID)
 	}

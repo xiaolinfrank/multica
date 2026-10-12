@@ -436,3 +436,5 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 - 浏览器（Playwright，fixedcode-test + dev 固定码）：绑定列表渲染与焦点徽标；绑定第二个任务（BIO-272）→ 两行；设为焦点 → 徽标移动；解绑焦点 → **自动回落最早剩余绑定**；启动纪要任务后 restore_backlog 投影正确；**材料解冻**（release 后 checkbox 无 disabled，文案改为「纪要任务已启动；本次资料确认仍可随时更改」）。
 - 验收中修复：compact 回执 action switch 补 bound/unbound/focused；compact summary 补 minutes_issues；lifecycle CanConfirmMaterials 解除 release 冻结（总纲第二处冻结）；manifest 删除清单去掉已 DROP 表条目。
 - 生产未动。
+
+- R2 四命令全栈完成（reopen/revise_resolution/revoke_approval/unpublish；迁移 9147；协调机定向测试全绿），见 [R2 实施合同](./r2-reversibility-commands.md)。待 agent 3 验收。

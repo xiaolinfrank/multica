@@ -7,7 +7,7 @@ import { issueDetailOptions } from "@multica/core/issues/queries";
 import { useWorkspacePaths } from "@multica/core/paths";
 import {
   clearCockpitActionCommand, cockpitMeetingActionOptions, cockpitPrimaryNodeOptions, cockpitMinutesVersionOptions, rememberCockpitActionCommand,
-  useCockpitActionCommandStore, useCreateCockpitMeetingAction, useResolveCockpitMeetingAction, useUpdateCockpitMeetingAction, CockpitUnconfirmedWriteError,
+  useCockpitActionCommandStore, useCreateCockpitMeetingAction, useResolveCockpitMeetingAction, useReviseCockpitMeetingAction, useUpdateCockpitMeetingAction, CockpitUnconfirmedWriteError,
   cockpitActionFormKey, clearCockpitActionFormDraft, saveCockpitActionFormDraft, useCockpitActionFormDraftStore, cockpitScope, cockpitSurfacePath, cockpitObjectPath,
   type CockpitActionProposalDraft, type CockpitActionDecisionDraft, useCockpitAssigneeAvailability,
 } from "@multica/core/cockpit";
@@ -124,6 +124,13 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   const scope = `action:${action.id}`;
   const saved = useCockpitActionCommandStore((state) => state.draft.commands[scope]);
   const pending = saved?.kind === "decision" ? saved : undefined;
+  // R2 (design-principles-2026-10-12): a written decision is a value. The
+  // revise command keeps its own retry channel so an uncertain revision
+  // replays the exact remembered body, never a fresh decision key.
+  const reviseScope = `action:${action.id}:revise`;
+  const savedRevise = useCockpitActionCommandStore((state) => state.draft.commands[reviseScope]);
+  const revisePending = savedRevise?.kind === "decision" ? savedRevise : undefined;
+  const [revising, setRevising] = useState(() => Boolean(revisePending));
   const source = useQuery(cockpitMinutesVersionOptions(wsId, workflow.meeting_id, action.version_id));
   const version = source.data?.version;
   const paths = useWorkspacePaths();
@@ -133,6 +140,18 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   const newForm = (): CockpitActionDecisionDraft => ({ kind: "decision", versionId: action.version_id, sourceHash: action.source_content_hash,
     revision: action.revision, editing: false, title: action.title, description: action.description, sourceQuote: action.source_quote,
     outcome: action.source_superseded ? "dismiss" : "create", nodeId: "", issueId: "", reason: "", fields: cockpitTaskFieldsValue(userId) });
+  const decided = action.status === "accepted" || action.status === "dismissed";
+  // A revision starts from the decision as written; a superseded source can
+  // no longer justify create or reuse, so those revisions start at dismiss.
+  // An uncertain remembered revision reopens with its exact submitted body.
+  const reviseForm = (): CockpitActionDecisionDraft => revisePending ? { kind: "decision", versionId: action.version_id, sourceHash: action.source_content_hash,
+    revision: revisePending.body.expected_revision, editing: false, title: action.title, description: action.description, sourceQuote: action.source_quote,
+    outcome: revisePending.body.outcome, nodeId: revisePending.body.node_id ?? "", issueId: revisePending.body.issue_id ?? "",
+    reason: revisePending.body.reason ?? "", fields: cockpitTaskFieldsValue(userId, revisePending.body) }
+    : { kind: "decision", versionId: action.version_id, sourceHash: action.source_content_hash,
+      revision: action.revision, editing: false, title: action.title, description: action.description, sourceQuote: action.source_quote,
+      outcome: action.source_superseded || (action.resolution !== "create" && action.resolution !== "reuse" && action.resolution !== "dismiss") ? "dismiss" : action.resolution,
+      nodeId: action.node_id ?? "", issueId: action.issue?.id ?? "", reason: "", fields: cockpitTaskFieldsValue(userId) };
   const [form, setForm] = useState<CockpitActionDecisionDraft>(() => {
     const draft = useCockpitActionFormDraftStore.getState().draft.forms[formKey];
     const base = draft?.kind === "decision" ? draft : newForm();
@@ -143,18 +162,20 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
     const next = { ...form, ...patch }; setForm(next); saveCockpitActionFormDraft(formKey, next);
   };
   const { revision: observedRevision, editing, title, description, sourceQuote: quote, outcome, fields, reason } = form;
-  const executor = useCockpitAssigneeAvailability(wsId, outcome === "create" && !pending ? fields.assigneeType : null, outcome === "create" && !pending ? fields.assigneeId : null);
-  const nodeQuery = useCockpitSelectedNodeIssueOption(outcome === "dismiss" ? "" : pending?.body.node_id ?? form.nodeId);
+  const lockedCommand = revising ? revisePending : pending;
+  const executor = useCockpitAssigneeAvailability(wsId, outcome === "create" && !lockedCommand ? fields.assigneeType : null, outcome === "create" && !lockedCommand ? fields.assigneeId : null);
+  const nodeQuery = useCockpitSelectedNodeIssueOption(outcome === "dismiss" ? "" : lockedCommand?.body.node_id ?? form.nodeId);
   const node = nodeQuery.option;
-  const selectedQuery = useQuery({ ...issueDetailOptions(wsId, form.issueId), enabled: outcome === "reuse" && !pending && Boolean(form.issueId) });
+  const selectedQuery = useQuery({ ...issueDetailOptions(wsId, form.issueId), enabled: outcome === "reuse" && !lockedCommand && Boolean(form.issueId) });
   const selected = selectedQuery.data?.id === form.issueId && selectedQuery.data.workspace_id === wsId ? selectedQuery.data : null;
-  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, outcome === "reuse" && !pending ? form.issueId : ""));
+  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, outcome === "reuse" && !lockedCommand ? form.issueId : ""));
   const [error, setError] = useState("");
   const lock = useRef(false);
   const resolve = useResolveCockpitMeetingAction(wsId);
+  const revise = useReviseCockpitMeetingAction(wsId);
   const update = useUpdateCockpitMeetingAction(wsId);
-  const busy = resolve.isPending || update.isPending;
-  const stale = !pending && (action.revision !== observedRevision || action.version_id !== form.versionId || action.source_content_hash !== form.sourceHash);
+  const busy = resolve.isPending || revise.isPending || update.isPending;
+  const stale = !lockedCommand && (action.revision !== observedRevision || action.version_id !== form.versionId || action.source_content_hash !== form.sourceHash);
   const authorized = Boolean(userId && !readOnly && (workflow.can_manage || version?.reviewer_id === userId));
   const oldSource = action.source_superseded || workflow.published_version_id !== action.version_id
     || !version?.published_at || version.decision !== "approved" || version.content_hash !== action.source_content_hash;
@@ -162,15 +183,23 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
   const selectedNode = node;
   const scopeMatches = Boolean(node && selected && primary.data?.issue_id === selected.id && primary.data.project_id === node.project_id && primary.data.module_id === node.module_id);
   const reuseConflict = Boolean(node && selected && primary.data && (!scopeMatches || (primary.data.node_id && primary.data.node_id !== node.node_id)));
-  const canResolve = authorized && !busy && !refreshing && !stale && (Boolean(pending) || (action.status === "draft" && action.can_resolve
-    && (outcome === "dismiss" ? Boolean(reason.trim()) : !oldSource && !source.isError && !source.isFetching && Boolean(node) && !nodeQuery.isError && !nodeQuery.isFetching && !nodeQuery.isPending
-      && (outcome === "create" ? executor.available : scopeMatches && primary.data?.issue_id === selected?.id && !primary.isError && !primary.isFetching && !selectedQuery.isError && !selectedQuery.isFetching && !reuseConflict))));
+  const outcomeReady = outcome === "dismiss" ? Boolean(reason.trim()) : !oldSource && !source.isError && !source.isFetching && Boolean(node) && !nodeQuery.isError && !nodeQuery.isFetching && !nodeQuery.isPending
+    && (outcome === "create" ? executor.available : scopeMatches && primary.data?.issue_id === selected?.id && !primary.isError && !primary.isFetching && !selectedQuery.isError && !selectedQuery.isFetching && !reuseConflict);
+  const canResolve = authorized && !busy && !refreshing && !stale && (Boolean(pending) || (action.status === "draft" && action.can_resolve && outcomeReady));
+  // Revising always demands a stated reason, in every direction; a remembered
+  // command already carries one and retries as a whole.
+  const canRevise = authorized && !busy && !refreshing && !stale && (Boolean(revisePending) || (decided && Boolean(reason.trim()) && outcomeReady));
 
   useEffect(() => {
     if (pending && action.decision_key === pending.body.decision_key && action.resolution === pending.body.outcome && action.resolved_at) {
       clearCockpitActionCommand(scope); clearCockpitActionFormDraft(formKey); onDone();
     }
   }, [action, pending, scope, formKey, onDone]);
+  useEffect(() => {
+    if (revisePending && action.decision_key === revisePending.body.decision_key && action.resolution === revisePending.body.outcome && action.revision > revisePending.body.expected_revision) {
+      clearCockpitActionCommand(reviseScope); clearCockpitActionFormDraft(formKey); setRevising(false); onDone();
+    }
+  }, [action, revisePending, reviseScope, formKey, onDone]);
 
   async function confirm() {
     if (lock.current || !canResolve) return;
@@ -183,6 +212,19 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
     try { await resolve.mutateAsync({ meetingId: command.meeting_id, action: { id: command.action_id, meeting_id: command.meeting_id, version_id: command.version_id, source_content_hash: command.source_content_hash }, body: command.body }); clearCockpitActionCommand(scope); clearCockpitActionFormDraft(formKey); onDone(); }
     catch (cause) {
       if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) clearCockpitActionCommand(scope);
+      setError(cause instanceof CockpitUnconfirmedWriteError ? t(($) => $.task_flow.unconfirmed) : cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
+    } finally { lock.current = false; onBusyChange(false); }
+  }
+  async function confirmRevise() {
+    if (lock.current || !canRevise) return;
+    lock.current = true; onBusyChange(true); setError("");
+    const body: CockpitActionResolution = revisePending?.body ?? { expected_revision: observedRevision, decision_key: crypto.randomUUID(), outcome, reason: reason.trim(),
+      ...(outcome === "dismiss" ? {} : { node_id: node?.node_id, ...(outcome === "reuse" ? { issue_id: selected?.id } : cockpitTaskFieldsBody(fields)) }) };
+    const command = revisePending ?? { kind: "decision" as const, meeting_id: action.meeting_id, action_id: action.id, version_id: action.version_id, source_content_hash: action.source_content_hash, body };
+    rememberCockpitActionCommand(reviseScope, command);
+    try { await revise.mutateAsync({ meetingId: command.meeting_id, action: { id: command.action_id, meeting_id: command.meeting_id, version_id: command.version_id, source_content_hash: command.source_content_hash }, body: command.body }); clearCockpitActionCommand(reviseScope); clearCockpitActionFormDraft(formKey); setRevising(false); onDone(); }
+    catch (cause) {
+      if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) clearCockpitActionCommand(reviseScope);
       setError(cause instanceof CockpitUnconfirmedWriteError ? t(($) => $.task_flow.unconfirmed) : cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
     } finally { lock.current = false; onBusyChange(false); }
   }
@@ -208,43 +250,50 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
       <Button type="button" size="sm" variant="outline" disabled={busy || refreshing} onClick={() => { clearCockpitActionFormDraft(formKey); setForm(newForm()); setError(""); }}>{t(($) => $.action_flow.discard_stale)}</Button></div>}
     {action.issue && <CockpitTaskRows wsId={wsId} items={[action.issue]} />}
     {action.reason && <p className="whitespace-pre-wrap break-words text-caption">{action.reason}</p>}
-    {!editing && (action.status === "draft" || pending) && <>
-      {oldSource && !pending && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.old_source)}</p>}
-      <label className="block space-y-1 text-caption">{t(($) => $.meeting_actions.outcome)}<Select value={outcome} disabled={busy || Boolean(pending) || !authorized}
+    {!editing && decided && !pending && !revisePending && authorized &&
+      <Button type="button" variant="outline" size="sm" disabled={busy || refreshing || stale} onClick={() => { setForm(reviseForm()); setRevising(true); setError(""); }}>{t(($) => $.meeting_actions.revise)}</Button>}
+    {!editing && (action.status === "draft" || pending || revising) && <>
+      {oldSource && !lockedCommand && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.old_source)}</p>}
+      {revising && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.revise_hint)}</p>}
+      <label className="block space-y-1 text-caption">{t(($) => $.meeting_actions.outcome)}<Select value={outcome} disabled={busy || Boolean(lockedCommand) || !authorized}
         onValueChange={(value) => { if (value === "create" || value === "reuse" || value === "dismiss") changeForm({ outcome: value }); }}
         items={[{ value: "create", label: t(($) => $.meeting_actions.create) }, { value: "reuse", label: t(($) => $.meeting_actions.reuse) }, { value: "dismiss", label: t(($) => $.meeting_actions.dismiss) }]}>
         <SelectTrigger className="w-full" aria-label={t(($) => $.meeting_actions.outcome)}><SelectValue /></SelectTrigger><SelectContent>
           <SelectItem value="create" disabled={oldSource}>{t(($) => $.meeting_actions.create)}</SelectItem><SelectItem value="reuse" disabled={oldSource}>{t(($) => $.meeting_actions.reuse)}</SelectItem><SelectItem value="dismiss">{t(($) => $.meeting_actions.dismiss)}</SelectItem>
         </SelectContent></Select></label>
       {outcome !== "dismiss" && <div className="space-y-2"><p className="text-caption">{t(($) => $.meeting_actions.primary_node)}</p>
-        {pending ? <p className="text-caption">{selectedNode?.label || pending.body.node_id}</p> : <CockpitNodeIssuePicker value={node} onUpdate={(value) => changeForm({ nodeId: value?.node_id ?? "" })} disabled={busy || !authorized}
+        {lockedCommand ? <p className="text-caption">{selectedNode?.label || lockedCommand.body.node_id}</p> : <CockpitNodeIssuePicker value={node} onUpdate={(value) => changeForm({ nodeId: value?.node_id ?? "" })} disabled={busy || !authorized}
           triggerRender={<Button type="button" variant="outline" size="sm" aria-label={t(($) => $.meeting_actions.primary_node)} />} />}
-        {!pending && (nodeQuery.isError ? <CockpitFlowError onRetry={() => void nodeQuery.refetch()} />
+        {!lockedCommand && (nodeQuery.isError ? <CockpitFlowError onRetry={() => void nodeQuery.refetch()} />
           : nodeQuery.isPending ? <p role="status" className="text-caption text-muted-foreground">{t(($) => $.workflow.loading)}</p>
             : form.nodeId && !node ? <p role="alert" className="text-caption text-destructive">{t(($) => $.action_flow.node_unavailable)}</p> : null)}
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           <ActionRepairLink href={cockpitSurfacePath(paths.cockpit(), "plan", routeScope, "gantt")}>{t(($) => $.action_flow.open_plan)}</ActionRepairLink>
-          {(pending?.body.node_id || form.nodeId) && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: pending?.body.node_id || form.nodeId, view: "details" }, routeScope)}>{t(($) => $.action_flow.configure_node)}</ActionRepairLink>}
+          {(lockedCommand?.body.node_id || form.nodeId) && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: lockedCommand?.body.node_id || form.nodeId, view: "details" }, routeScope)}>{t(($) => $.action_flow.configure_node)}</ActionRepairLink>}
         </div>
       </div>}
-      {outcome === "create" && <><CockpitTaskFields wsId={wsId} value={fields} onChange={(fields) => changeForm({ fields })} disabled={busy || Boolean(pending) || !authorized} />
+      {outcome === "create" && <><CockpitTaskFields wsId={wsId} value={fields} onChange={(fields) => changeForm({ fields })} disabled={busy || Boolean(lockedCommand) || !authorized} />
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.create_hint)}</p></>}
       {outcome === "reuse" && <>
-        {pending ? <p className="text-caption">{t(($) => $.task_flow.selected_issue, { name: pending.body.issue_id })}</p>
+        {lockedCommand ? <p className="text-caption">{t(($) => $.task_flow.selected_issue, { name: lockedCommand.body.issue_id })}</p>
           : <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => changeForm({ issueId: issue.id })} disabled={busy || !authorized} />}
-        {form.issueId && !pending && (selectedQuery.isError || (!selectedQuery.isPending && !selected) || primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => { void selectedQuery.refetch(); void primary.refetch(); }} />}
-        {(pending?.body.issue_id || form.issueId) && <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <ActionRepairLink href={paths.issueDetail(pending?.body.issue_id || selected?.identifier || form.issueId)}>{t(($) => $.action_flow.open_issue_materials)}</ActionRepairLink>
-          {!pending && primary.data?.node_id && primary.data.issue_id === form.issueId && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primary.data.node_id, view: "details" }, routeScope)}>{t(($) => $.action_flow.open_primary)}</ActionRepairLink>}
+        {form.issueId && !lockedCommand && (selectedQuery.isError || (!selectedQuery.isPending && !selected) || primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => { void selectedQuery.refetch(); void primary.refetch(); }} />}
+        {(lockedCommand?.body.issue_id || form.issueId) && <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <ActionRepairLink href={paths.issueDetail(lockedCommand?.body.issue_id || selected?.identifier || form.issueId)}>{t(($) => $.action_flow.open_issue_materials)}</ActionRepairLink>
+          {!lockedCommand && primary.data?.node_id && primary.data.issue_id === form.issueId && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primary.data.node_id, view: "details" }, routeScope)}>{t(($) => $.action_flow.open_primary)}</ActionRepairLink>}
         </div>}
         {reuseConflict && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_actions.reuse_conflict)}</p>}
         <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.reuse_hint)}</p>
       </>}
-      {outcome === "dismiss" && <label className="block space-y-1 text-caption">{t(($) => $.meeting_actions.reason)}<Textarea value={reason} rows={3} disabled={busy || Boolean(pending) || !authorized} onChange={(event) => changeForm({ reason: event.target.value })} /></label>}
-      {pending && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.pending_request)}</p>}
+      {(revising || outcome === "dismiss") && <label className="block space-y-1 text-caption">{revising ? t(($) => $.meeting_actions.revise_reason) : t(($) => $.meeting_actions.reason)}<Textarea value={reason} rows={3} disabled={busy || Boolean(lockedCommand) || !authorized} onChange={(event) => changeForm({ reason: event.target.value })} /></label>}
+      {lockedCommand && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.pending_request)}</p>}
       {!authorized && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_actions.no_permission)}</p>}
-      <Button type="button" disabled={!canResolve} aria-busy={resolve.isPending} onClick={() => void confirm()}>{resolve.isPending && <Spinner />}
-        {pending ? t(($) => $.meeting_actions.retry_decision) : t(($) => $.meeting_actions.confirm)}</Button>
+      <div className="flex flex-wrap gap-2">
+        {revising && !revisePending && <Button type="button" variant="outline" disabled={busy} onClick={() => { setRevising(false); setForm(newForm()); setError(""); }}>{t(($) => $.action_flow.discard_edits)}</Button>}
+        <Button type="button" disabled={revising ? !canRevise : !canResolve} aria-busy={resolve.isPending || revise.isPending} onClick={() => void (revising ? confirmRevise() : confirm())}>{(resolve.isPending || revise.isPending) && <Spinner />}
+          {revising ? (revisePending ? t(($) => $.meeting_actions.retry_revise) : t(($) => $.meeting_actions.confirm_revise))
+            : (pending ? t(($) => $.meeting_actions.retry_decision) : t(($) => $.meeting_actions.confirm))}</Button>
+      </div>
     </>}
     {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
   </div>;

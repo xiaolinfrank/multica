@@ -28,7 +28,7 @@ func (q *Queries) CountCockpitAcceptanceRequests(ctx context.Context, arg CountC
 }
 
 const createCockpitAcceptanceDefinition = `-- name: CreateCockpitAcceptanceDefinition :one
-INSERT INTO cockpit_acceptance_definition(workspace_id,node_id,created_by,last_updated_by,last_request_hash) VALUES($1,$2,$3,$3,$4) RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at
+INSERT INTO cockpit_acceptance_definition(workspace_id,node_id,created_by,last_updated_by,last_request_hash) VALUES($1,$2,$3,$3,$4) RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason
 `
 
 type CreateCockpitAcceptanceDefinitionParams struct {
@@ -57,6 +57,9 @@ func (q *Queries) CreateCockpitAcceptanceDefinition(ctx context.Context, arg Cre
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }
@@ -176,7 +179,7 @@ func (q *Queries) CreateCockpitAcceptanceRequestCriterion(ctx context.Context, a
 }
 
 const getCockpitAcceptanceDefinition = `-- name: GetCockpitAcceptanceDefinition :one
-SELECT workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at FROM cockpit_acceptance_definition WHERE workspace_id=$1 AND node_id=$2
+SELECT workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason FROM cockpit_acceptance_definition WHERE workspace_id=$1 AND node_id=$2
 `
 
 type GetCockpitAcceptanceDefinitionParams struct {
@@ -198,6 +201,9 @@ func (q *Queries) GetCockpitAcceptanceDefinition(ctx context.Context, arg GetCoc
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }
@@ -551,7 +557,7 @@ func (q *Queries) ListCockpitAcceptanceVersionSources(ctx context.Context, arg L
 }
 
 const lockCockpitAcceptanceDefinition = `-- name: LockCockpitAcceptanceDefinition :one
-SELECT workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at FROM cockpit_acceptance_definition WHERE workspace_id=$1 AND node_id=$2 FOR UPDATE
+SELECT workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason FROM cockpit_acceptance_definition WHERE workspace_id=$1 AND node_id=$2 FOR UPDATE
 `
 
 type LockCockpitAcceptanceDefinitionParams struct {
@@ -573,6 +579,9 @@ func (q *Queries) LockCockpitAcceptanceDefinition(ctx context.Context, arg LockC
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }
@@ -641,8 +650,54 @@ func (q *Queries) ReviewCockpitAcceptanceRequest(ctx context.Context, arg Review
 	return i, err
 }
 
+const revokeCockpitAcceptanceApproval = `-- name: RevokeCockpitAcceptanceApproval :one
+UPDATE cockpit_acceptance_definition SET
+ last_approved_request_id=NULL,
+ approval_revoked_at=now(), approval_revoked_by=$1::uuid, approval_revoked_reason=$2::text,
+ updated_at=now()
+WHERE workspace_id=$3::uuid AND node_id=$4::uuid
+ AND last_approved_request_id=$5::uuid RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason
+`
+
+type RevokeCockpitAcceptanceApprovalParams struct {
+	ActorID     pgtype.UUID `json:"actor_id"`
+	Reason      string      `json:"reason"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	NodeID      pgtype.UUID `json:"node_id"`
+	RequestID   pgtype.UUID `json:"request_id"`
+}
+
+// R2: revoking an approval is a re-decision on the definition; the historical
+// request rows keep their recorded decisions.
+func (q *Queries) RevokeCockpitAcceptanceApproval(ctx context.Context, arg RevokeCockpitAcceptanceApprovalParams) (CockpitAcceptanceDefinition, error) {
+	row := q.db.QueryRow(ctx, revokeCockpitAcceptanceApproval,
+		arg.ActorID,
+		arg.Reason,
+		arg.WorkspaceID,
+		arg.NodeID,
+		arg.RequestID,
+	)
+	var i CockpitAcceptanceDefinition
+	err := row.Scan(
+		&i.WorkspaceID,
+		&i.NodeID,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.LastUpdatedBy,
+		&i.LastRequestHash,
+		&i.CurrentRequestID,
+		&i.LastApprovedRequestID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
+	)
+	return i, err
+}
+
 const setCockpitAcceptanceApprovedRequest = `-- name: SetCockpitAcceptanceApprovedRequest :one
-UPDATE cockpit_acceptance_definition SET last_approved_request_id=$3,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at
+UPDATE cockpit_acceptance_definition SET last_approved_request_id=$3,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason
 `
 
 type SetCockpitAcceptanceApprovedRequestParams struct {
@@ -665,12 +720,15 @@ func (q *Queries) SetCockpitAcceptanceApprovedRequest(ctx context.Context, arg S
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }
 
 const setCockpitAcceptanceCurrentRequest = `-- name: SetCockpitAcceptanceCurrentRequest :one
-UPDATE cockpit_acceptance_definition SET current_request_id=$3,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at
+UPDATE cockpit_acceptance_definition SET current_request_id=$3,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason
 `
 
 type SetCockpitAcceptanceCurrentRequestParams struct {
@@ -693,6 +751,9 @@ func (q *Queries) SetCockpitAcceptanceCurrentRequest(ctx context.Context, arg Se
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }
@@ -790,7 +851,7 @@ func (q *Queries) SupersedeCockpitAcceptanceRequest(ctx context.Context, arg Sup
 }
 
 const updateCockpitAcceptanceDefinition = `-- name: UpdateCockpitAcceptanceDefinition :one
-UPDATE cockpit_acceptance_definition SET revision=revision+1,last_updated_by=$3,last_request_hash=$4,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at
+UPDATE cockpit_acceptance_definition SET revision=revision+1,last_updated_by=$3,last_request_hash=$4,updated_at=now() WHERE workspace_id=$1 AND node_id=$2 RETURNING workspace_id, node_id, revision, created_by, last_updated_by, last_request_hash, current_request_id, last_approved_request_id, created_at, updated_at, approval_revoked_at, approval_revoked_by, approval_revoked_reason
 `
 
 type UpdateCockpitAcceptanceDefinitionParams struct {
@@ -819,6 +880,9 @@ func (q *Queries) UpdateCockpitAcceptanceDefinition(ctx context.Context, arg Upd
 		&i.LastApprovedRequestID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ApprovalRevokedAt,
+		&i.ApprovalRevokedBy,
+		&i.ApprovalRevokedReason,
 	)
 	return i, err
 }

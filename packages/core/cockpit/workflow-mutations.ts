@@ -73,6 +73,11 @@ export function useReleaseCockpitMeetingWorkflow(wsId: string) {
     api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "released", body: { expected_revision: revision } }));
 }
 
+export function useUnpublishCockpitMinutesVersion(wsId: string) {
+  return useWorkflowMutation(wsId, ({ meetingId, versionId, revision, reason }: { meetingId: string; versionId: string; revision: number; reason: string }) =>
+    api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "unpublished", version_id: versionId, body: { expected_revision: revision, reason } }));
+}
+
 export function useSubmitCockpitMinutesVersion(wsId: string) {
   return useWorkflowMutation(wsId, ({ meetingId, body }: { meetingId: string; body: CockpitMinutesSubmission }) =>
     api.commandCockpitMeetingWorkflow(wsId, meetingId, { action: "submitted", body }));

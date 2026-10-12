@@ -106,7 +106,9 @@
     "fixed_hint": "Choose a fixed artifact already linked to this meeting. Add new meeting references in Links & materials first.",
     "create_hint": "Creates a backlog issue. It will not start an agent run. No assignee is required.",
     "size_error": "Check the field lengths before saving.",
-    "refresh_first": "Refresh agenda from the first page"
+    "refresh_first": "Refresh agenda from the first page",
+    "reopen": "Correct end confirmation",
+    "reopen_hint": "Withdraw the end confirmation: the meeting returns to scheduled and can still be cancelled or rescheduled. The original confirmation and your reason stay in the confirmation history."
   },
   "header": {
     "title": "Project Cockpit",
@@ -862,7 +864,12 @@
     "members_loading": "Workspace members are not available yet. Wait for them to load before choosing a reviewer.",
     "no_reviewers": "No workspace member is available as a reviewer.",
     "open_members": "Open workspace settings (new tab)",
-    "adopt_existing": "Use an existing issue"
+    "adopt_existing": "Use an existing issue",
+    "unpublish": "Unpublish official minutes",
+    "unpublish_description": "Withdraws this version from the official minutes pointer. NAS copies already written stay untouched, and an approved version can be published again afterwards.",
+    "unpublish_reason": "Reason",
+    "unpublish_reason_hint": "The reason is recorded with the version's withdrawal history.",
+    "unpublish_confirm": "Unpublish"
   },
   "nas": {
     "not_configured": "No permitted NAS destination is configured. A deployment administrator must configure this workspace’s export root; creating a meeting folder alone is not enough.",
@@ -1043,7 +1050,12 @@
     "review": "Review",
     "review_action": "Review action {{title}}",
     "empty": "No action suggestions yet.",
-    "issue_sources": "Meeting action sources"
+    "issue_sources": "Meeting action sources",
+    "revise": "Revise resolution",
+    "revise_hint": "Revising keeps the previous decision on record. Issues created earlier are not deleted.",
+    "revise_reason": "Reason for this revision",
+    "confirm_revise": "Confirm revision",
+    "retry_revise": "Retry resolution revision"
   },
   "work_overview": {
     "work": "Work overview",
@@ -1365,7 +1377,12 @@
     "superseded_hint": "This request was superseded. Its fixed evidence and original decision are kept; it cannot be reviewed again.",
     "packet_changed": "The current definition or approved evidence differs from this request. Create a new request using the latest context.",
     "read_evidence": "Read evidence version {{number}}",
-    "submit_review": "Submit acceptance decision"
+    "submit_review": "Submit acceptance decision",
+    "revoke_approval": "Revoke approval",
+    "revoke_hint": "Revoking returns this L3 to awaiting acceptance. The prior approval and its revocation reason stay on record, and a new acceptance request can be raised.",
+    "revoke_confirm": "Confirm revocation",
+    "revoke_reason_required": "A revocation reason of 1-16000 characters is required.",
+    "approval_revoked": "The approval was revoked; this L3 needs a fresh acceptance. Historical decisions are retained."
   },
   "acceptance_request": {
     "start": "Request acceptance",

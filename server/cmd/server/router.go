@@ -2244,6 +2244,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.With(handler.RequireHumanActor).Post("/acceptance/requests", h.CreateCockpitAcceptanceRequest)
 					r.Get("/acceptance/requests/{requestId}", h.GetCockpitAcceptanceRequest)
 					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/review", h.ReviewCockpitAcceptanceRequest)
+					r.With(handler.RequireHumanActor).Post("/acceptance/revoke", h.RevokeCockpitAcceptanceApproval)
 					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/reviewer", h.ReassignCockpitAcceptanceReviewer)
 					r.Get("/acceptance/reviewer-handoffs", h.ListCockpitAcceptanceReviewerHandoffs)
 					r.Get("/", h.GetCockpitSurfaceNode)
@@ -2374,6 +2375,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/workflow/versions", h.SubmitCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/review", h.ReviewCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/publish", h.PublishCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/unpublish", h.UnpublishCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/nas-export", h.ExportCockpitMeetingMinutes)
 					r.With(handler.RequireHumanActor).Post("/workflow/exports/{exportId}/retry", h.RetryCockpitMinutesExport)
 					r.Get("/workflow/actions", h.ListCockpitMeetingActions)
@@ -2381,6 +2383,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/actions", h.CreateCockpitMeetingAction)
 					r.With(handler.RequireHumanActor).Patch("/workflow/actions/{actionId}", h.UpdateCockpitMeetingAction)
 					r.With(handler.RequireHumanActor).Post("/workflow/actions/{actionId}/resolve", h.ResolveCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/actions/{actionId}/revise", h.ReviseCockpitMeetingActionResolution)
 				})
 			})
 

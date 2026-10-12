@@ -57,6 +57,11 @@ beforeEach(() => {
   vi.mocked(api.getCockpitNasExports).mockImplementation(async () => ({ workspace_id: "ws-1", meeting_id: server.meeting_id, workflow_revision: server.revision,
     version_id: null, status: "", items: historyNasJobs(server), total: server.nas_exports.length, next_cursor: null }));
   vi.mocked(api.commandCockpitMeetingWorkflow).mockImplementation(async (_ws, meetingId, command) => {
+    if (command.action === "unpublished") {
+      // Feed back the settled row: the pointer is gone and the revision moved.
+      server = { ...server, revision: server.revision + 1, published_version_id: null };
+      return compactWorkflow(server, command);
+    }
     const result = command.action === "nas_export_queued" ? await api.exportCockpitMinutesToNas(meetingId, command.version_id, command.body)
       : command.action === "nas_export_retried" ? await api.retryCockpitNasExport(meetingId, command.operation) : null;
     if (!result) throw new Error("Unexpected command");
@@ -315,5 +320,54 @@ describe("minutes NAS publishing and recovery", () => {
     setupCopies(true);
     await screen.findByText("Waiting to retry");
     expect(screen.queryByRole("button", { name: "Retry NAS export" })).toBeNull();
+  });
+
+  // The unpublish copy is not yet in the shared locale file; i18next echoes the key.
+  const unpublishKeys = { trigger: enCockpit.workflow.unpublish, reason: enCockpit.workflow.unpublish_reason, confirm: enCockpit.workflow.unpublish_confirm };
+
+  it("withdraws the official minutes with a trimmed required reason and confirms through the workflow state", async () => {
+    setupCopies();
+    fireEvent.click(await screen.findByRole("button", { name: unpublishKeys.trigger }));
+    const field = await screen.findByLabelText(unpublishKeys.reason);
+    expect(screen.getByRole("button", { name: unpublishKeys.confirm })).toBeDisabled();
+    fireEvent.change(field, { target: { value: "  Superseded by a corrected circulation.  " } });
+    const revision = server.revision;
+    fireEvent.click(screen.getByRole("button", { name: unpublishKeys.confirm }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.commandCockpitMeetingWorkflow).toHaveBeenCalledWith("ws-1", WORKFLOW_MEETING_ID,
+      { action: "unpublished", version_id: "version-1", body: { expected_revision: revision, reason: "Superseded by a corrected circulation." } });
+    // The official pointer is gone and no NAS export history keeps the section.
+    await waitFor(() => expect(screen.queryByRole("region", { name: enCockpit.nas.title })).toBeNull());
+    expect(api.exportCockpitMinutesToNas).not.toHaveBeenCalled();
+  });
+
+  it("keeps the reason and the error visible when the withdrawal is not acknowledged", async () => {
+    const { client } = setupCopies();
+    vi.mocked(api.commandCockpitMeetingWorkflow).mockRejectedValueOnce(new Error("Meeting workflow changed; refresh and retry"));
+    fireEvent.click(await screen.findByRole("button", { name: unpublishKeys.trigger }));
+    fireEvent.change(await screen.findByLabelText(unpublishKeys.reason), { target: { value: "Retry me" } });
+    fireEvent.click(screen.getByRole("button", { name: unpublishKeys.confirm }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Meeting workflow changed; refresh and retry");
+    expect(screen.getByRole("button", { name: unpublishKeys.confirm })).toBeEnabled();
+    // The workflow reload keeps the official version; the dialog stays usable.
+    await act(async () => { await client.invalidateQueries({ queryKey: cockpitKeys.workflow("ws-1", WORKFLOW_MEETING_ID) }); });
+    expect(await screen.findByText("Official minutes · version 1")).toBeVisible();
+    expect(api.commandCockpitMeetingWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the withdrawal control in read-only meetings and from non-managers", async () => {
+    setupCopies(true);
+    await screen.findByRole("region", { name: enCockpit.nas.title });
+    expect(screen.queryByRole("button", { name: unpublishKeys.trigger })).toBeNull();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Managerless() {
+      const query = useQuery(cockpitMeetingWorkflowOptions("ws-1", WORKFLOW_MEETING_ID));
+      return query.data ? <CockpitMinutesNasCopies resourcesHref={resourcesHref} wsId="ws-1" workflow={query.data} userId="reviewer-1"
+        disabled={false} onReload={() => void query.refetch()} onOpenHistory={vi.fn()} /> : null;
+    }
+    server = { ...server, can_manage: false };
+    render(<QueryClientProvider client={client}>{shell(<Managerless />)}</QueryClientProvider>);
+    await screen.findAllByRole("region", { name: enCockpit.nas.title });
+    expect(screen.queryByRole("button", { name: unpublishKeys.trigger })).toBeNull();
   });
 });

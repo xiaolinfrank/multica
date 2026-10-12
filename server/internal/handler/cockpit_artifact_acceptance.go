@@ -162,6 +162,28 @@ func (h *Handler) ReviewCockpitAcceptanceRequest(w http.ResponseWriter, r *http.
 		h.writeCockpitAcceptanceRequest(w, r, p)
 	}
 }
+func (h *Handler) RevokeCockpitAcceptanceApproval(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.cockpitAcceptanceRead(w, r, true)
+	if !ok {
+		return
+	}
+	var req struct {
+		RequestID string `json:"request_id"`
+		Reason    string `json:"reason"`
+	}
+	if !decodeCockpitArtifactBody(w, r, &req) {
+		return
+	}
+	input := service.CockpitAcceptanceApprovalRevoke{WorkspaceID: p.WorkspaceID, ActorID: p.ActorID, NodeID: p.NodeID, Human: p.Human, Reason: req.Reason}
+	input.RequestID, ok = parseUUIDOrBadRequest(w, req.RequestID, "request_id")
+	if !ok {
+		return
+	}
+	err := h.IssueService.RevokeCockpitAcceptanceApproval(r.Context(), input)
+	if !writeCockpitArtifactError(w, r, err) {
+		writeJSON(w, http.StatusOK, map[string]any{"revoked": true, "request_id": uuidToString(input.RequestID)})
+	}
+}
 func (h *Handler) ReassignCockpitAcceptanceReviewer(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.cockpitAcceptanceRead(w, r, true)
 	if !ok {

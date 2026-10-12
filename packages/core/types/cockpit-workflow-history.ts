@@ -82,5 +82,6 @@ export type CockpitWorkflowCommand =
   | { action: "bound"; body: { issue_id: string; expected_revision: number } }
   | { action: "unbound"; issue_id: string; expected_revision: number }
   | { action: "focused"; body: { issue_id: string; expected_revision: number } }
+  | { action: "unpublished"; version_id: string; body: { expected_revision: number; reason: string } }
   | { action: "nas_export_queued"; version_id: string; body: CockpitNasDestination }
   | { action: "nas_export_retried"; operation: CockpitWorkflowNasExport };

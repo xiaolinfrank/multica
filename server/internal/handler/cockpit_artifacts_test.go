@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
@@ -171,6 +172,71 @@ func TestCockpitArtifactHTTPAcceptanceKeepsFixedEvidenceAndHumanAuthority(t *tes
 	f.call(t, f.h.ListCockpitIssueArtifactContexts, "GET", "/issue/artifacts", nil, "issueId", acceptance.Request.ReviewIssue.ID).Want(200).JSON(&reverse)
 	if reverse.Total != 1 || reverse.Items[0].RequestID == nil || *reverse.Items[0].RequestID != acceptance.Request.ID || reverse.Items[0].IsCurrentReview {
 		t.Fatalf("completed review reverse context lost exact request: %+v", reverse)
+	}
+}
+
+func TestCockpitArtifactHTTPAcceptanceApprovalRevocationIsBidirectional(t *testing.T) {
+	f := newArtifactHTTPFixture(t)
+	a := f.create(t)
+	v := f.submit(t, a)
+	f.call(t, f.h.ReviewCockpitArtifactVersion, "POST", "/review", map[string]any{"expected_revision": v.Version.Version.Revision, "decision": "approved", "feedback": ""}, "artifactId", a.ID, "versionId", v.Version.Version.ID).Want(200).JSON(&v)
+	criterionID := uuid.NewString()
+	var criteria service.CockpitAcceptanceCriteriaView
+	f.call(t, f.h.SaveCockpitAcceptanceCriteria, "PUT", "/criteria", map[string]any{"expected_revision": 0, "criteria": []map[string]any{{"id": criterionID, "title": "Scope is verified", "description": "Use the reviewed report"}}}, "id", f.node).Want(200).JSON(&criteria)
+	request := func(key string) service.CockpitAcceptanceRequestDetail {
+		var acceptance service.CockpitAcceptanceRequestDetail
+		f.call(t, f.h.CreateCockpitAcceptanceRequest, "POST", "/acceptance", map[string]any{"request_key": key, "expected_criteria_revision": criteria.Revision, "reviewer_id": testUserID, "evidence": []map[string]any{{"criterion_id": criterionID, "version_ids": []string{v.Version.Version.ID}}}, "note": "Please accept the fixed report"}, "id", f.node).Want(200).JSON(&acceptance)
+		return acceptance
+	}
+	approve := func(acceptance service.CockpitAcceptanceRequestDetail) service.CockpitAcceptanceRequestDetail {
+		f.call(t, f.h.ReviewCockpitAcceptanceRequest, "POST", "/acceptance/review", map[string]any{"expected_revision": acceptance.Request.Revision, "decision": "approved", "feedback": ""}, "id", f.node, "requestId", acceptance.Request.ID).Want(200).JSON(&acceptance)
+		return acceptance
+	}
+	first := approve(request(uuid.NewString()))
+	var header service.CockpitAcceptanceHeaderView
+	f.call(t, f.h.GetCockpitAcceptance, "GET", "/acceptance", nil, "id", f.node).Want(200).JSON(&header)
+	if header.LastApprovedRequest == nil || header.LastApprovedRequest.ID != first.Request.ID || !header.CanRevokeApproval || header.ApprovalRevoked != nil {
+		t.Fatalf("approval in force did not offer revocation: %+v", header)
+	}
+	machine := testutil.WithURLParams(cockpitRequest("POST", "/acceptance/revoke", f.ws, map[string]any{"request_id": first.Request.ID, "reason": "Audit finding"}), "id", f.node)
+	machine.Header.Set("X-Actor-Source", "task_token")
+	machine.Header.Set("X-Agent-ID", uuid.NewString())
+	machine.Header.Set("X-Task-ID", uuid.NewString())
+	testutil.Call(t, cockpitHandler(f.h.RevokeCockpitAcceptanceApproval), machine).Want(403)
+	f.call(t, f.h.RevokeCockpitAcceptanceApproval, "POST", "/acceptance/revoke", map[string]any{"request_id": first.Request.ID, "reason": "  "}, "id", f.node).Want(400)
+	var receipt map[string]any
+	f.call(t, f.h.RevokeCockpitAcceptanceApproval, "POST", "/acceptance/revoke", map[string]any{"request_id": first.Request.ID, "reason": "Scope narrowed after the boundary audit"}, "id", f.node).Want(200).JSON(&receipt)
+	if receipt["revoked"] != true || receipt["request_id"] != first.Request.ID {
+		t.Fatalf("revoke receipt mismatched the request: %+v", receipt)
+	}
+	var approved pgtype.UUID
+	var reason, revokedBy string
+	var revokedAt pgtype.Timestamptz
+	dbfx.QueryRow(t, "SELECT last_approved_request_id, approval_revoked_at, approval_revoked_by::text, approval_revoked_reason FROM cockpit_acceptance_definition WHERE workspace_id=$1 AND node_id=$2", f.ws, f.node).Scan(&approved, &revokedAt, &revokedBy, &reason)
+	if approved.Valid || !revokedAt.Valid || reason != "Scope narrowed after the boundary audit" || revokedBy != testUserID {
+		t.Fatalf("revocation did not record the re-decision: approved=%v revoked=%v by=%s reason=%q", approved.Valid, revokedAt.Valid, revokedBy, reason)
+	}
+	f.call(t, f.h.GetCockpitAcceptance, "GET", "/acceptance", nil, "id", f.node).Want(200).JSON(&header)
+	if header.LastApprovedRequest != nil || !header.NeedsReacceptance || header.CanRevokeApproval || header.ApprovalRevoked == nil || header.ApprovalRevoked.Reason != "Scope narrowed after the boundary audit" {
+		t.Fatalf("revoked approval was not presented as needing reacceptance: %+v", header)
+	}
+	// Repeating the revoke, or revoking anything but the pointer, is a
+	// conflict, not a silent success.
+	f.call(t, f.h.RevokeCockpitAcceptanceApproval, "POST", "/acceptance/revoke", map[string]any{"request_id": first.Request.ID, "reason": "Scope narrowed after the boundary audit"}, "id", f.node).Want(409)
+	f.call(t, f.h.RevokeCockpitAcceptanceApproval, "POST", "/acceptance/revoke", map[string]any{"request_id": uuid.NewString(), "reason": "Not the approval in force"}, "id", f.node).Want(409)
+	// The historical request keeps its recorded decision.
+	if got := dbfx.Count(t, "SELECT count(*) FROM cockpit_acceptance_request WHERE workspace_id=$1 AND id=$2 AND decision='approved'", f.ws, first.Request.ID); got != 1 {
+		t.Fatal("revocation rewrote the historical request decision")
+	}
+	// A fresh acceptance request re-approves the L3 and moves the pointer
+	// forward, clearing the revoked presentation.
+	second := approve(request(uuid.NewString()))
+	f.call(t, f.h.GetCockpitAcceptance, "GET", "/acceptance", nil, "id", f.node).Want(200).JSON(&header)
+	if header.LastApprovedRequest == nil || header.LastApprovedRequest.ID != second.Request.ID || header.NeedsReacceptance || header.ApprovalRevoked != nil {
+		t.Fatalf("re-acceptance did not clear the revoked presentation: %+v", header)
+	}
+	if first.Request.ID == second.Request.ID {
+		t.Fatal("re-acceptance replayed the revoked request")
 	}
 }
 

@@ -614,6 +614,9 @@ type CockpitAcceptanceDefinition struct {
 	LastApprovedRequestID pgtype.UUID        `json:"last_approved_request_id"`
 	CreatedAt             pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	ApprovalRevokedAt     pgtype.Timestamptz `json:"approval_revoked_at"`
+	ApprovalRevokedBy     pgtype.UUID        `json:"approval_revoked_by"`
+	ApprovalRevokedReason pgtype.Text        `json:"approval_revoked_reason"`
 }
 
 type CockpitAcceptanceEvidence struct {
@@ -1158,33 +1161,34 @@ type CockpitMeeting struct {
 }
 
 type CockpitMeetingAction struct {
-	ID                pgtype.UUID        `json:"id"`
-	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
-	MeetingID         pgtype.UUID        `json:"meeting_id"`
-	VersionID         pgtype.UUID        `json:"version_id"`
-	VersionNumber     int32              `json:"version_number"`
-	SourceContentHash string             `json:"source_content_hash"`
-	ProposalKey       pgtype.UUID        `json:"proposal_key"`
-	ProposalHash      string             `json:"proposal_hash"`
-	Title             string             `json:"title"`
-	Description       string             `json:"description"`
-	SourceQuote       string             `json:"source_quote"`
-	Status            string             `json:"status"`
-	Resolution        string             `json:"resolution"`
-	Revision          int64              `json:"revision"`
-	NodeID            pgtype.UUID        `json:"node_id"`
-	NodeCode          string             `json:"node_code"`
-	NodeName          string             `json:"node_name"`
-	IssueID           pgtype.UUID        `json:"issue_id"`
-	Reason            string             `json:"reason"`
-	DecisionKey       pgtype.UUID        `json:"decision_key"`
-	DecisionHash      string             `json:"decision_hash"`
-	DecisionRevision  pgtype.Int8        `json:"decision_revision"`
-	CreatedBy         pgtype.UUID        `json:"created_by"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	ResolvedBy        pgtype.UUID        `json:"resolved_by"`
-	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	MeetingID           pgtype.UUID        `json:"meeting_id"`
+	VersionID           pgtype.UUID        `json:"version_id"`
+	VersionNumber       int32              `json:"version_number"`
+	SourceContentHash   string             `json:"source_content_hash"`
+	ProposalKey         pgtype.UUID        `json:"proposal_key"`
+	ProposalHash        string             `json:"proposal_hash"`
+	Title               string             `json:"title"`
+	Description         string             `json:"description"`
+	SourceQuote         string             `json:"source_quote"`
+	Status              string             `json:"status"`
+	Resolution          string             `json:"resolution"`
+	Revision            int64              `json:"revision"`
+	NodeID              pgtype.UUID        `json:"node_id"`
+	NodeCode            string             `json:"node_code"`
+	NodeName            string             `json:"node_name"`
+	IssueID             pgtype.UUID        `json:"issue_id"`
+	Reason              string             `json:"reason"`
+	DecisionKey         pgtype.UUID        `json:"decision_key"`
+	DecisionHash        string             `json:"decision_hash"`
+	DecisionRevision    pgtype.Int8        `json:"decision_revision"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ResolvedBy          pgtype.UUID        `json:"resolved_by"`
+	ResolvedAt          pgtype.Timestamptz `json:"resolved_at"`
+	PreviousResolutions []byte             `json:"previous_resolutions"`
 }
 
 type CockpitMeetingAgenda struct {
@@ -1510,25 +1514,28 @@ type CockpitMinutesExportAttempt struct {
 }
 
 type CockpitMinutesVersion struct {
-	ID              pgtype.UUID        `json:"id"`
-	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
-	MeetingID       pgtype.UUID        `json:"meeting_id"`
-	VersionNumber   int32              `json:"version_number"`
-	SubmissionKey   pgtype.UUID        `json:"submission_key"`
-	Content         string             `json:"content"`
-	ContentHash     string             `json:"content_hash"`
-	SourceIssueID   pgtype.UUID        `json:"source_issue_id"`
-	ReviewIssueID   pgtype.UUID        `json:"review_issue_id"`
-	ReviewerID      pgtype.UUID        `json:"reviewer_id"`
-	Decision        string             `json:"decision"`
-	Feedback        string             `json:"feedback"`
-	SubmittedByType string             `json:"submitted_by_type"`
-	SubmittedByID   pgtype.UUID        `json:"submitted_by_id"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	ReviewedBy      pgtype.UUID        `json:"reviewed_by"`
-	ReviewedAt      pgtype.Timestamptz `json:"reviewed_at"`
-	PublishedBy     pgtype.UUID        `json:"published_by"`
-	PublishedAt     pgtype.Timestamptz `json:"published_at"`
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	VersionNumber     int32              `json:"version_number"`
+	SubmissionKey     pgtype.UUID        `json:"submission_key"`
+	Content           string             `json:"content"`
+	ContentHash       string             `json:"content_hash"`
+	SourceIssueID     pgtype.UUID        `json:"source_issue_id"`
+	ReviewIssueID     pgtype.UUID        `json:"review_issue_id"`
+	ReviewerID        pgtype.UUID        `json:"reviewer_id"`
+	Decision          string             `json:"decision"`
+	Feedback          string             `json:"feedback"`
+	SubmittedByType   string             `json:"submitted_by_type"`
+	SubmittedByID     pgtype.UUID        `json:"submitted_by_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ReviewedBy        pgtype.UUID        `json:"reviewed_by"`
+	ReviewedAt        pgtype.Timestamptz `json:"reviewed_at"`
+	PublishedBy       pgtype.UUID        `json:"published_by"`
+	PublishedAt       pgtype.Timestamptz `json:"published_at"`
+	UnpublishedAt     pgtype.Timestamptz `json:"unpublished_at"`
+	UnpublishedBy     pgtype.UUID        `json:"unpublished_by"`
+	UnpublishedReason pgtype.Text        `json:"unpublished_reason"`
 }
 
 type CockpitNode struct {

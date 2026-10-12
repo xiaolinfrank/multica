@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"strconv"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -122,6 +122,68 @@ func TestCockpitWorkflowHTTPReviewAndPublication(t *testing.T) {
 	}
 }
 
+func TestCockpitWorkflowHTTPUnpublish(t *testing.T) {
+	ws, meeting := newCockpitWorkflowHTTPFixture(t)
+	reviewer := dbfx.User(t, "Unpublish reviewer", "unpublish-review-"+uuid.NewString()+"@example.com")
+	dbfx.Member(t, ws, reviewer, "member")
+	var state CockpitMeetingWorkflowResponse
+	callCockpitWorkflow(t, testHandler.EnableCockpitMeetingWorkflow, http.MethodPost, ws, meeting.ID, "", "", map[string]any{"reviewer_id": reviewer}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.UpdateCockpitMeetingReadiness, http.MethodPatch, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "ended": true, "materials_ready": true}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.ReleaseCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.SubmitCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "submission_key": uuid.NewString(), "content": "Withdrawable decision record."}).Want(http.StatusOK).JSON(&state)
+	official := state.Versions[0]
+	callCockpitWorkflow(t, testHandler.ReviewCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, reviewer, official.ID,
+		map[string]any{"expected_revision": state.Revision, "decision": "approved"}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.PublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusOK).JSON(&state)
+	if state.PublishedVersionID == nil || *state.PublishedVersionID != official.ID {
+		t.Fatalf("official version was not published: %+v", state)
+	}
+	// R2: withdrawal is two-way but manager-only and always reasoned.
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusBadRequest)
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision, "reason": " \t "}).Want(http.StatusBadRequest)
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, reviewer, official.ID,
+		map[string]any{"expected_revision": state.Revision, "reason": "Reviewer cannot withdraw"}).Want(http.StatusForbidden)
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision + 1, "reason": "Stale revision"}).Want(http.StatusConflict)
+	// An approved but unpublished version is not the official one.
+	callCockpitWorkflow(t, testHandler.SubmitCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
+		map[string]any{"expected_revision": state.Revision, "submission_key": uuid.NewString(), "content": "Second round."}).Want(http.StatusOK).JSON(&state)
+	candidate := state.Versions[0]
+	callCockpitWorkflow(t, testHandler.ReviewCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, reviewer, candidate.ID,
+		map[string]any{"expected_revision": state.Revision, "decision": "approved"}).Want(http.StatusOK).JSON(&state)
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", candidate.ID,
+		map[string]any{"expected_revision": state.Revision, "reason": "Not the official version"}).Want(http.StatusConflict)
+	var compact CockpitWorkflowCompactResponse
+	callWorkflowHistory(t, testHandler.UnpublishCockpitMeetingMinutes, "POST", ws, meeting.ID,
+		"/versions/"+official.ID+"/unpublish?response=compact",
+		map[string]any{"expected_revision": state.Revision, "reason": "Corrected circulation replaces this version."},
+		"versionId", official.ID).Want(http.StatusOK).JSON(&compact)
+	if compact.Receipt.Action != "unpublished" || compact.Receipt.Version != nil || compact.Workflow.PublishedVersionID != nil || compact.Workflow.CurrentVersionID == nil {
+		t.Fatalf("withdrawal compact receipt: %+v", compact)
+	}
+	callCockpitWorkflow(t, testHandler.GetCockpitMeetingWorkflow, http.MethodGet, ws, meeting.ID, "", "", nil).Want(http.StatusOK).JSON(&state)
+	if state.PublishedVersionID != nil || state.Versions[1].PublishedAt == nil {
+		t.Fatalf("withdrawal lost the pointer or the publication history: %+v", state)
+	}
+	// Retrying the completed withdrawal is acknowledged, not a conflict.
+	callCockpitWorkflow(t, testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision, "reason": "Retry of the same withdrawal"}).Want(http.StatusOK).JSON(&state)
+	// The same version returns to official duty after re-publication.
+	callCockpitWorkflow(t, testHandler.PublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", official.ID,
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusConflict)
+	callCockpitWorkflow(t, testHandler.PublishCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", candidate.ID,
+		map[string]any{"expected_revision": state.Revision}).Want(http.StatusOK).JSON(&state)
+	if state.PublishedVersionID == nil || *state.PublishedVersionID != candidate.ID {
+		t.Fatalf("re-publication did not move the pointer: %+v", state)
+	}
+}
+
 func TestCockpitWorkflowHTTPMachineGuardsAndConflicts(t *testing.T) {
 	ws, meeting := newCockpitWorkflowHTTPFixture(t)
 	var state CockpitMeetingWorkflowResponse
@@ -137,6 +199,7 @@ func TestCockpitWorkflowHTTPMachineGuardsAndConflicts(t *testing.T) {
 			{testHandler.ReleaseCockpitMeetingMinutes, http.MethodPost},
 			{testHandler.ReviewCockpitMeetingMinutes, http.MethodPost},
 			{testHandler.PublishCockpitMeetingMinutes, http.MethodPost},
+			{testHandler.UnpublishCockpitMeetingMinutes, http.MethodPost},
 			{testHandler.ChangeCockpitMeetingReviewer, http.MethodPost},
 			{testHandler.ExportCockpitMeetingMinutes, http.MethodPost},
 			{testHandler.RetryCockpitMinutesExport, http.MethodPost},

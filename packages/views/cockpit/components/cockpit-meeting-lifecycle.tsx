@@ -48,7 +48,7 @@ export function CockpitMeetingOccurrence({ wsId, header, refresh, readOnly }: { 
   return <Dialog open={open} onOpenChange={(next) => { if (next || !dialogBusy.current) setOpen(next); }}><section aria-label={t(($) => $.meeting_lifecycle.occurrence)} className="space-y-3 rounded-lg border border-border p-3">
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-body font-medium">{stateLabel}</h3>
         <div className="flex flex-wrap gap-2">{command.pending?.kind === "occurrence" ? <DialogTrigger render={<Button size="sm" variant="outline" />} onClick={() => setTransition(command.pending?.kind === "occurrence" ? command.pending.body.transition : "schedule")}>{t(($) => $.meeting_lifecycle.retry_command)}</DialogTrigger>
-          : ([{ action: "schedule", permitted: header.can_schedule }, { action: "start", permitted: header.can_start }, { action: "end", permitted: header.can_end }] as const)
+          : ([{ action: "schedule", permitted: header.can_schedule }, { action: "start", permitted: header.can_start }, { action: "end", permitted: header.can_end }, { action: "reopen", permitted: header.can_correct_times && value.state === "ended" }] as const)
             .filter((entry) => allowed && entry.permitted || hasDraft(entry.action)).map((entry) => <DialogTrigger key={entry.action} render={<Button size="sm" variant={entry.action === "end" ? "default" : "outline"} />} onClick={() => setTransition(entry.action)}>{allowed && entry.permitted ? t(($) => $.meeting_lifecycle[entry.action]) : t(($) => $.meeting_lifecycle.resume_draft, { action: t(($) => $.meeting_lifecycle[entry.action]) })}</DialogTrigger>)}
         </div>
         {open && <CockpitOccurrenceForm key={`${header.meeting_id}:${transition}`} wsId={wsId} header={header} transition={transition} onDone={() => setOpen(false)} refresh={refresh} readOnly={readOnly} onBusyChange={(value) => { dialogBusy.current = value; }} />}
@@ -83,27 +83,28 @@ function CockpitOccurrenceForm({ wsId, header, transition, onDone, refresh, read
   const currentTransition = original?.transition ?? transition;
   const startTime = start ? new Date(start).getTime() : null; const endTime = end ? new Date(end).getTime() : null;
   const invalidTime = startTime !== null && (!Number.isFinite(startTime) || startTime > Date.now()) || endTime !== null && (!Number.isFinite(endTime) || endTime > Date.now()) || startTime !== null && endTime !== null && startTime > endTime;
-  const permitted = knownStates.has(header.occurrence.state) && (currentTransition === "schedule" ? header.can_schedule : currentTransition === "start" ? header.can_start : currentTransition === "end" ? header.can_end : header.can_correct_times);
+  const permitted = knownStates.has(header.occurrence.state) && (currentTransition === "schedule" ? header.can_schedule : currentTransition === "start" ? header.can_start : currentTransition === "end" ? header.can_end : currentTransition === "reopen" ? header.can_correct_times && header.occurrence.state === "ended" : header.can_correct_times);
+  const reasonRequired = currentTransition === "correct_times" || currentTransition === "reopen";
   const save = async () => {
-    if (command.busy || !original && (changed || invalidTime || readOnly || !permitted || !knownStates.has(header.occurrence.state) || currentTransition === "correct_times" && !reason.trim())) return;
+    if (command.busy || !original && (changed || invalidTime || readOnly || !permitted || !knownStates.has(header.occurrence.state) || reasonRequired && !reason.trim())) return;
     const body = original ?? { expected_revision: observed, command_key: crypto.randomUUID(), transition: currentTransition,
-      ...(currentTransition !== "schedule" ? { actual_started_at: start === localInput(header.occurrence.actual_started_at) ? header.occurrence.actual_started_at : start ? new Date(start).toISOString() : null } : {}),
+      ...(currentTransition !== "schedule" && currentTransition !== "reopen" ? { actual_started_at: start === localInput(header.occurrence.actual_started_at) ? header.occurrence.actual_started_at : start ? new Date(start).toISOString() : null } : {}),
       ...(currentTransition === "end" || currentTransition === "correct_times" && header.occurrence.state === "ended" ? { actual_ended_at: end === localInput(header.occurrence.actual_ended_at) ? header.occurrence.actual_ended_at : end ? new Date(end).toISOString() : null } : {}),
-      ...(currentTransition === "correct_times" ? { reason: reason.trim() } : {}) };
+      ...(reasonRequired ? { reason: reason.trim() } : {}) };
     setCockpitMeetingFormDraft(formKey, value);
     const response = await command.run({ kind: "occurrence", body }); if (response) { clearCockpitMeetingFormDraft(formKey, value); if (response.stillCurrent()) onDone(); }
   };
-  return <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle[currentTransition])}</DialogTitle><DialogDescription>{t(($) => $.meeting_lifecycle.occurrence_hint)}</DialogDescription></DialogHeader>
+  return <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle[currentTransition])}</DialogTitle><DialogDescription>{currentTransition === "reopen" ? t(($) => $.meeting_lifecycle.reopen_hint) : t(($) => $.meeting_lifecycle.occurrence_hint)}</DialogDescription></DialogHeader>
     <CockpitMeetingCommandRecovery command={command} onConfirmed={() => clearCockpitMeetingFormDraft(formKey, value)} onCurrentConfirmed={onDone} />
-    {currentTransition !== "schedule" && <div className="space-y-3"><p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.time_hint)}</p>
+    {currentTransition !== "schedule" && currentTransition !== "reopen" && <div className="space-y-3"><p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.time_hint)}</p>
       <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.actual_started)}<Input type="datetime-local" value={start} disabled={Boolean(original) || command.busy} onChange={(event) => change({ start: event.target.value })} /></label>
       {(currentTransition === "end" || currentTransition === "correct_times" && header.occurrence.state === "ended") && <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.actual_ended)}<Input type="datetime-local" value={end} disabled={Boolean(original) || command.busy} onChange={(event) => change({ end: event.target.value })} /></label>}
       {invalidTime && !original && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_lifecycle.time_invalid)}</p>}
     </div>}
-    {currentTransition === "correct_times" && <label className="space-y-1 text-caption">{t(($) => $.meeting_lifecycle.reason)}<Textarea className="max-h-56 resize-y overflow-y-auto" value={reason} disabled={Boolean(original) || command.busy} onChange={(event) => change({ reason: event.target.value })} /></label>}
+    {reasonRequired && <label className="space-y-1 text-caption">{t(($) => $.meeting_lifecycle.reason)}<Textarea className="max-h-56 resize-y overflow-y-auto" value={reason} disabled={Boolean(original) || command.busy} onChange={(event) => change({ reason: event.target.value })} /></label>}
     {changed && !original && <div role="alert" className="space-y-2 text-caption"><p>{t(($) => $.meeting_lifecycle.changed)}</p><CockpitOccurrenceTimes value={header.occurrence} /><Button variant="outline" size="sm" onClick={refresh}>{t(($) => $.meeting_lifecycle.refresh)}</Button><Button variant="outline" size="sm" disabled={!permitted || readOnly} onClick={() => change({ observedRevision: header.lifecycle_revision })}>{t(($) => $.meeting_lifecycle.rebase)}</Button></div>}
     {command.error && <p role="alert" className="break-words text-caption text-destructive">{command.error}</p>}
-    <DialogFooter><DialogClose render={<Button variant="outline" disabled={command.busy} />}>{t(($) => $.task_create.cancel)}</DialogClose><Button onClick={() => void save()} disabled={command.busy || !original && (changed || invalidTime || readOnly || !permitted || currentTransition === "correct_times" && !reason.trim())} aria-busy={command.busy}>{command.busy && <Spinner />}{original ? t(($) => $.meeting_lifecycle.retry_command) : t(($) => $.meeting_lifecycle.confirm)}</Button></DialogFooter>
+    <DialogFooter><DialogClose render={<Button variant="outline" disabled={command.busy} />}>{t(($) => $.task_create.cancel)}</DialogClose><Button onClick={() => void save()} disabled={command.busy || !original && (changed || invalidTime || readOnly || !permitted || reasonRequired && !reason.trim())} aria-busy={command.busy}>{command.busy && <Spinner />}{original ? t(($) => $.meeting_lifecycle.retry_command) : t(($) => $.meeting_lifecycle.confirm)}</Button></DialogFooter>
   </DialogContent>;
 }
 
@@ -130,7 +131,7 @@ function useMeetingCommandLabel() {
   const labels: Record<string, string> = {
     directory_prepare: t(($) => $.meeting_directory.prepare), directory_retry: t(($) => $.meeting_directory.retry),
     directory_pause: t(($) => $.meeting_directory.pause), directory_resume: t(($) => $.meeting_directory.resume), directory_claim: t(($) => $.meeting_directory.claim), directory_abandon: t(($) => $.meeting_directory.abandon),
-    schedule: t(($) => $.meeting_lifecycle.schedule), start: t(($) => $.meeting_lifecycle.start), end: t(($) => $.meeting_lifecycle.end), correct_times: t(($) => $.meeting_lifecycle.correct_times),
+    schedule: t(($) => $.meeting_lifecycle.schedule), start: t(($) => $.meeting_lifecycle.start), end: t(($) => $.meeting_lifecycle.end), correct_times: t(($) => $.meeting_lifecycle.correct_times), reopen: t(($) => $.meeting_lifecycle.reopen),
     materials: t(($) => $.meeting_lifecycle.materials), agenda_create: t(($) => $.meeting_lifecycle.add), agenda_update: t(($) => $.meeting_lifecycle.save), agenda_remove: t(($) => $.meeting_lifecycle.remove),
     reference_attach: t(($) => $.meeting_lifecycle.attach), reference_remove: t(($) => $.meeting_lifecycle.unlink), preparation_issue_create: t(($) => $.meeting_lifecycle.create_preparation),
     preparation_dispose: t(($) => $.meeting_disposition.append_disposition), template_apply: t(($) => $.meeting_preparation.template_application), cancel: t(($) => $.meeting_disposition.cancel),

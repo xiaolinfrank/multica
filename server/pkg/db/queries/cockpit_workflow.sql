@@ -96,8 +96,14 @@ RETURNING id AS meeting_id, minutes_revision AS revision,
  minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
 
 -- name: PublishCockpitMinutesVersion :one
-UPDATE cockpit_minutes_version SET published_by=$4,published_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='approved' AND published_at IS NULL RETURNING *;
+UPDATE cockpit_minutes_version SET published_by=$4,published_at=now(),unpublished_at=NULL,unpublished_by=NULL,unpublished_reason=NULL
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='approved' AND (published_at IS NULL OR unpublished_at IS NOT NULL) RETURNING *;
+
+-- name: UnpublishCockpitMinutesVersion :one
+-- R2: unpublishing clears the pointer value; the version keeps its
+-- publication history and re-publication stays possible.
+UPDATE cockpit_minutes_version SET unpublished_at=now(),unpublished_by=$4,unpublished_reason=$5
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND published_at IS NOT NULL AND unpublished_at IS NULL RETURNING *;
 
 -- name: ListCockpitMinutesVersions :many
 SELECT * FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY version_number DESC;
@@ -139,6 +145,15 @@ DELETE FROM cockpit_meeting_issue WHERE workspace_id=$1 AND 'minutes'=ANY(roles)
 UPDATE cockpit_meeting SET minutes_focus_issue_id=NULL,
  minutes_revision=minutes_revision+1, updated_at=now()
 WHERE workspace_id=$1 AND id=$2 AND minutes_focus_issue_id=$3 AND minutes_revision=$4
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by;
+
+-- name: ClearCockpitPublishedMinutesVersion :one
+UPDATE cockpit_meeting SET minutes_published_version_id=NULL,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_published_version_id=$3 AND minutes_revision=$4
 RETURNING id AS meeting_id, minutes_revision AS revision,
  minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
  minutes_materials_ready AS materials_ready,

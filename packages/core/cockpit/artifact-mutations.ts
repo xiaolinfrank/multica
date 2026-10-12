@@ -105,6 +105,13 @@ export function useCreateCockpitAcceptanceRequest(wsId: string) {
     return result;
   }, onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
 }
+export function useRevokeCockpitAcceptanceApproval(wsId: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: ({ nodeId, requestId, reason }: { nodeId: string; requestId: string; reason: string }) =>
+    api.revokeCockpitAcceptanceApproval(wsId, nodeId, requestId, reason),
+    onSettled: () => invalidateCockpitArtifactFacts(client, wsId) });
+}
+
 export function useReviewCockpitAcceptanceRequest(wsId: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: async ({ nodeId, requestId, body }: { nodeId: string; requestId: string; body: CockpitArtifactReview }) => {

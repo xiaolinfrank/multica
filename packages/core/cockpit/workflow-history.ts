@@ -67,6 +67,7 @@ export function acknowledgedCockpitWorkflowCommand(result: CockpitWorkflowComman
       && workflow.minutes_issues.some((b) => b.is_focus);
     case "unbound": return !workflow.minutes_issues.some((b) => b.issue?.id === command.issue_id || b.issue?.identifier === command.issue_id);
     case "focused": return workflow.minutes_issue?.id === command.body.issue_id || workflow.minutes_issue?.identifier === command.body.issue_id;
+    case "unpublished": return workflow.revision >= command.body.expected_revision && !workflow.published_version_id;
     case "reviewer_reassigned": return Boolean(handoff && handoff.handoff_key === command.body.handoff_key && handoff.to_reviewer_id === command.body.reviewer_id
       && handoff.reason === command.body.reason.trim() && handoff.revision === command.body.expected_revision + 1 && handoff.revision <= workflow.revision
       && handoff.from_reviewer_id !== handoff.to_reviewer_id && (handoff.version_id === null

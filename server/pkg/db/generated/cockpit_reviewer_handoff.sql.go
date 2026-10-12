@@ -218,7 +218,7 @@ WHERE workspace_id=$3::uuid AND meeting_id=$4::uuid
  AND id=$5::uuid AND decision='pending'
  AND reviewer_id=$6::uuid
  AND review_issue_id=$7::uuid
-RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at
+RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason
 `
 
 type TransferCockpitPendingReviewParams struct {
@@ -262,6 +262,9 @@ func (q *Queries) TransferCockpitPendingReview(ctx context.Context, arg Transfer
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }

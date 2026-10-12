@@ -4,12 +4,15 @@ import { useRef, useState } from "react";
 import {
   cockpitNasDestination, cockpitNasWriteMode, cockpitWorkflowNasExportValid,
   CockpitUnconfirmedWriteError, sameCockpitNasDestination, useExportCockpitMinutesToNas, useRetryCockpitNasExport,
+  useUnpublishCockpitMinutesVersion,
 } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflowSummary, CockpitNasDestination, CockpitWorkflowNasExport } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@multica/ui/components/ui/collapsible";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Textarea } from "@multica/ui/components/ui/textarea";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { LocalPathLink } from "../../common/local-path-link";
 import { AppLink } from "../../navigation";
@@ -212,6 +215,55 @@ export function CockpitNasExportList({ wsId, workflow, jobs, userId, readOnly, d
   </div>;
 }
 
+/** R2 (design-principles-2026-10-12): withdrawing the official minutes is a
+ * re-decision, not a deletion; the reason stays in the version's history. */
+function OfficialMinutesWithdrawal({ wsId, workflow, disabled }: {
+  wsId: string; workflow: CockpitMeetingWorkflowSummary; disabled: boolean;
+}) {
+  const { t } = useT("cockpit");
+  const unpublish = useUnpublishCockpitMinutesVersion(wsId);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  const published = workflow.published_version;
+  const trimmed = reason.trim();
+  async function withdraw() {
+    if (lock.current || !published || !trimmed) return;
+    lock.current = true; setError("");
+    try {
+      await unpublish.mutateAsync({ meetingId: workflow.meeting_id, versionId: published.id, revision: workflow.revision, reason: trimmed });
+      setOpen(false); setReason("");
+    } catch (cause) {
+      setError(cause instanceof CockpitUnconfirmedWriteError ? t(($) => $.workflow.unconfirmed)
+        : cause instanceof Error ? cause.message : t(($) => $.workflow.command_failed));
+    } finally { lock.current = false; }
+  }
+  return <Dialog open={open} onOpenChange={(next) => {
+    if (unpublish.isPending) return;
+    setOpen(next);
+    if (!next) setError("");
+  }}>
+    <DialogTrigger render={<Button type="button" size="sm" variant="outline" disabled={disabled} />}>{t(($) => $.workflow.unpublish)}</DialogTrigger>
+    <DialogContent className="sm:max-w-lg" showCloseButton={!unpublish.isPending}><DialogHeader>
+      <DialogTitle>{t(($) => $.workflow.unpublish)}</DialogTitle>
+      <DialogDescription>{t(($) => $.workflow.unpublish_description)}</DialogDescription>
+    </DialogHeader>
+      {published && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.version, { number: published.version_number })}</p>}
+      <label className="space-y-1 text-caption">{t(($) => $.workflow.unpublish_reason)}
+        <Textarea value={reason} rows={3} disabled={unpublish.isPending} onChange={(event) => setReason(event.target.value)} /></label>
+      <p className="text-caption text-muted-foreground">{t(($) => $.workflow.unpublish_reason_hint)}</p>
+      {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+      <DialogFooter>
+        <DialogClose render={<Button type="button" variant="outline" disabled={unpublish.isPending} />}>{t(($) => $.binding.cancel)}</DialogClose>
+        <Button type="button" disabled={!trimmed || unpublish.isPending} aria-busy={unpublish.isPending} onClick={() => void withdraw()}>
+          {unpublish.isPending && <Spinner />}{t(($) => $.workflow.unpublish_confirm)}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
 export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disabled, onReload, onOpenHistory, resourcesHref }: {
   wsId: string; workflow: CockpitMeetingWorkflowSummary; userId: string; readOnly?: boolean; disabled: boolean; onReload: () => void; onOpenHistory: () => void; resourcesHref: string;
 }) {
@@ -234,7 +286,10 @@ export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disa
   if (!published && workflow.history_counts.nas_exports === 0) return null;
   return <section className="space-y-3 rounded-lg border border-border p-4" aria-label={t(($) => $.nas.title)}>
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.nas.title)}</h3>
-      <Button type="button" size="sm" variant="ghost" disabled={request.isPending} onClick={onReload}>{t(($) => $.nas.refresh)}</Button></div>
+      <div className="flex flex-wrap items-center gap-2">
+        {published && workflow.can_manage && !readOnly && <OfficialMinutesWithdrawal wsId={wsId} workflow={workflow} disabled={disabled || request.isPending} />}
+        <Button type="button" size="sm" variant="ghost" disabled={request.isPending} onClick={onReload}>{t(($) => $.nas.refresh)}</Button>
+      </div></div>
     {published && !existing && <p className="text-caption font-medium">{t(($) => $.nas.official_version, { number: published.version_number })}</p>}
     {published && !destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} resourcesHref={resourcesHref} />}
     {published && destination && !existing && <div className="space-y-2"><p className="text-caption text-muted-foreground">{t(($) => $.nas.configured_destination)}</p>

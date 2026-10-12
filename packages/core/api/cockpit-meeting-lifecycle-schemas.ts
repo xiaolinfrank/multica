@@ -62,7 +62,7 @@ export const CockpitAgendaReferencePageSchema = z.object({
   && page.items.every((item) => item.workspace_id === page.workspace_id && item.meeting_id === page.meeting_id && item.agenda_id === page.agenda_id
     && (page.include_removed || item.removed_at === null)), "Agenda reference page does not match its scope or filter");
 
-export const CockpitLifecycleActionSchema = z.enum(["schedule", "start", "end", "correct_times", "materials",
+export const CockpitLifecycleActionSchema = z.enum(["schedule", "start", "end", "correct_times", "reopen", "materials",
   "agenda_create", "agenda_update", "agenda_remove", "reference_attach", "reference_remove", "preparation_issue_create", "reinstate", "archive", "unarchive"]);
 export const CockpitLifecycleReceiptSchema = z.object({
   revision, agenda_revision: revision, agenda_id: id.nullable(), reference_id: id.nullable(), issue_id: id.nullable(),

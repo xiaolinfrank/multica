@@ -27,11 +27,12 @@ export function cockpitLifecycleAcknowledged(result: { command_key: string; acti
   if ("transition" in body) {
     const occurrence = receipt.occurrence;
     if (!occurrence || action !== body.transition) return false;
-    const target = { schedule: "scheduled", start: "in_progress", end: "ended", correct_times: null }[body.transition];
+    const target = { schedule: "scheduled", start: "in_progress", end: "ended", correct_times: null, reopen: "scheduled" }[body.transition];
     if (target && occurrence.state !== target) return false;
     if (body.actual_started_at !== undefined && !sameTime(occurrence.actual_started_at, body.actual_started_at)) return false;
     if (body.actual_ended_at !== undefined && !sameTime(occurrence.actual_ended_at, body.actual_ended_at)) return false;
     if (body.transition === "correct_times" && receipt.reason !== body.reason?.trim()) return false;
+    if (body.transition === "reopen" && receipt.reason !== body.reason?.trim()) return false;
     return true;
   }
   if ("materials_ready" in body) return receipt.materials?.ready === body.materials_ready;

@@ -681,9 +681,9 @@ it("lists minutes bindings with focus and unbind actions", async () => {
   expect(within(list).getAllByRole("button", { name: enCockpit.workflow.set_focus })).toHaveLength(1);
   expect(within(list).getAllByRole("button", { name: enCockpit.workflow.unbind })).toHaveLength(2);
   const focusRevision = server.revision;
-  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.set_focus })[0]);
+  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.set_focus })[0]!);
   await waitFor(() => expect(api.focusCockpitMinutesIssue).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, "minutes-2", focusRevision));
   const unbindRevision = server.revision;
-  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.unbind })[1]);
+  fireEvent.click(within(list).getAllByRole("button", { name: enCockpit.workflow.unbind })[1]!);
   await waitFor(() => expect(api.unbindCockpitMinutesIssue).toHaveBeenCalledWith(WORKFLOW_MEETING_ID, "minutes-2", unbindRevision));
 });

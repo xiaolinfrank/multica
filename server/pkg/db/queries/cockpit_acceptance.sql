@@ -75,3 +75,13 @@ SELECT v.id,v.artifact_id,v.content_hash,v.capture_status,v.decision,v.payload_k
  (a.owner_node_id=sqlc.arg(node_id) OR EXISTS(SELECT 1 FROM cockpit_artifact_node_reference r WHERE r.workspace_id=v.workspace_id AND r.node_id=sqlc.arg(node_id) AND r.version_id=v.id AND r.removed_at IS NULL))::boolean AS eligible
 FROM cockpit_artifact_version v JOIN cockpit_artifact a ON a.workspace_id=v.workspace_id AND a.id=v.artifact_id
 WHERE v.workspace_id=sqlc.arg(workspace_id) AND v.id=ANY(sqlc.arg(version_ids)::uuid[]);
+
+-- name: RevokeCockpitAcceptanceApproval :one
+-- R2: revoking an approval is a re-decision on the definition; the historical
+-- request rows keep their recorded decisions.
+UPDATE cockpit_acceptance_definition SET
+ last_approved_request_id=NULL,
+ approval_revoked_at=now(), approval_revoked_by=sqlc.arg('actor_id')::uuid, approval_revoked_reason=sqlc.arg('reason')::text,
+ updated_at=now()
+WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND node_id=sqlc.arg('node_id')::uuid
+ AND last_approved_request_id=sqlc.arg('request_id')::uuid RETURNING *;

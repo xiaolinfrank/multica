@@ -56,22 +56,43 @@ func (s *IssueService) GetCockpitAcceptanceCriteria(ctx context.Context, p Cockp
 	}
 	return out, tx.Commit(ctx)
 }
-func (s *IssueService) GetCockpitAcceptance(ctx context.Context, p CockpitAcceptanceRead) (CockpitAcceptanceHeader, error) {
+
+// CockpitAcceptanceApprovalRevocation presents the R2 reverse decision that
+// withdrew an in-force approval. The request rows keep their recorded
+// decisions; a later approval clears this presentation.
+type CockpitAcceptanceApprovalRevocation struct {
+	RevokedAt string `json:"revoked_at"`
+	RevokedBy string `json:"revoked_by"`
+	Reason    string `json:"reason"`
+}
+
+// CockpitAcceptanceHeaderView extends the stable acceptance contract with the
+// revocation projection. The embedded contract marshals inline, so the JSON
+// stays a superset of CockpitAcceptanceHeader and parses loose on clients
+// that do not know the new fields yet.
+type CockpitAcceptanceHeaderView struct {
+	CockpitAcceptanceHeader
+	ApprovalRevoked   *CockpitAcceptanceApprovalRevocation `json:"approval_revoked"`
+	CanRevokeApproval bool                                 `json:"can_revoke_approval"`
+}
+
+func (s *IssueService) GetCockpitAcceptance(ctx context.Context, p CockpitAcceptanceRead) (CockpitAcceptanceHeaderView, error) {
 	tx, q, err := s.beginPlanningRead(ctx)
 	if err != nil {
-		return CockpitAcceptanceHeader{}, err
+		return CockpitAcceptanceHeaderView{}, err
 	}
 	defer tx.Rollback(ctx)
 	m, d, err := acceptanceReadContext(ctx, q, p)
 	if err != nil {
-		return CockpitAcceptanceHeader{}, err
+		return CockpitAcceptanceHeaderView{}, err
 	}
 	_, eligibility, err := executionLeaf(ctx, q, p.WorkspaceID, p.NodeID)
 	if err != nil {
-		return CockpitAcceptanceHeader{}, err
+		return CockpitAcceptanceHeaderView{}, err
 	}
 	manager := acceptanceManager(d, p.ActorID, m.Role, p.Human) && eligibility.Eligible
-	out := CockpitAcceptanceHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), NodeID: util.UUIDToString(p.NodeID), CriteriaRevision: d.Revision, CanEditCriteria: manager}
+	out := CockpitAcceptanceHeaderView{CockpitAcceptanceHeader: CockpitAcceptanceHeader{WorkspaceID: util.UUIDToString(p.WorkspaceID), NodeID: util.UUIDToString(p.NodeID), CriteriaRevision: d.Revision, CanEditCriteria: manager}}
+	out.CanRevokeApproval = acceptanceManager(d, p.ActorID, m.Role, p.Human) && d.LastApprovedRequestID.Valid
 	rows := []db.CockpitAcceptanceRequest{}
 	ids := []pgtype.UUID{}
 	for _, id := range []pgtype.UUID{d.CurrentRequestID, d.LastApprovedRequestID} {
@@ -106,6 +127,13 @@ func (s *IssueService) GetCockpitAcceptance(ctx context.Context, p CockpitAccept
 				return out, err
 			}
 		}
+	}
+	if !d.LastApprovedRequestID.Valid && d.ApprovalRevokedAt.Valid {
+		// R2: the in-force approval was withdrawn, so the L3 presents as
+		// needing a fresh acceptance decision while the request rows keep
+		// their recorded approvals.
+		out.ApprovalRevoked = &CockpitAcceptanceApprovalRevocation{RevokedAt: d.ApprovalRevokedAt.Time.UTC().Format(time.RFC3339Nano), RevokedBy: util.UUIDToString(d.ApprovalRevokedBy), Reason: d.ApprovalRevokedReason.String}
+		out.NeedsReacceptance = true
 	}
 	out.RequestCount, err = q.CountCockpitAcceptanceRequests(ctx, db.CountCockpitAcceptanceRequestsParams{WorkspaceID: p.WorkspaceID, NodeID: p.NodeID})
 	if err != nil {

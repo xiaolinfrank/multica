@@ -147,6 +147,89 @@ func TestCockpitWorkflowHumanReviewAndPublication(t *testing.T) {
 	}
 }
 
+func TestCockpitWorkflowUnpublishAndRepublication(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	f.init(t, "")
+	f.ready(t)
+	if e := f.issues.ReleaseCockpitMeetingMinutes(ctx, f.command(t)); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.issues.SubmitCockpitMeetingMinutes(ctx, CockpitMinutesSubmission{CockpitWorkPackageCommand: f.command(t), SubmissionKey: dbid.NewV7(),
+		Content: "Agreed scope and next steps.", ActorType: "member", AuthorID: f.owner}, IssueCreateOpts{}); e != nil {
+		t.Fatal(e)
+	}
+	v := f.versions(t)[0]
+	base := CockpitMinutesVersionCommand{CockpitWorkPackageCommand: f.command(t), VersionID: v.ID}
+	if e := f.issues.ReviewCockpitMeetingMinutes(ctx, CockpitMinutesReview{CockpitMinutesVersionCommand: base, Decision: "approved"}); e != nil {
+		t.Fatal(e)
+	}
+	base.CockpitWorkPackageCommand = f.command(t)
+	withdrawal := CockpitMinutesUnpublish{CockpitMinutesVersionCommand: base, Reason: "  	  "}
+	if e := f.issues.UnpublishCockpitMeetingMinutes(ctx, withdrawal); !errors.Is(e, ErrCockpitWorkflowInput) {
+		t.Fatalf("blank reason = %v", e)
+	}
+	stranger := f.command(t)
+	stranger.ActorID = parseTestUUID(t, f.member(t, "unpublish bystander"))
+	withdrawal.CockpitMinutesVersionCommand.CockpitWorkPackageCommand = stranger
+	withdrawal.Reason = "Not my call"
+	if e := f.issues.UnpublishCockpitMeetingMinutes(ctx, withdrawal); !errors.Is(e, ErrCockpitWorkflowForbidden) {
+		t.Fatalf("non-manager withdrawal = %v", e)
+	}
+	withdrawal.CockpitMinutesVersionCommand.CockpitWorkPackageCommand = f.command(t)
+	if e := f.issues.UnpublishCockpitMeetingMinutes(ctx, withdrawal); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("unpublished an unapproved-to-publish version: %v", e)
+	}
+	if e := f.issues.PublishCockpitMeetingMinutes(ctx, base); e != nil {
+		t.Fatal(e)
+	}
+	action := func(key pgtype.UUID) CockpitActionDraft {
+		return CockpitActionDraft{WorkspaceID: f.ws, MeetingID: f.meeting, VersionID: v.ID, ActorID: f.owner, ProposalKey: key,
+			Title: "Follow up", Description: "Carry the decision into work."}
+	}
+	if _, e := f.issues.CreateCockpitMeetingAction(ctx, action(dbid.NewV7())); e != nil {
+		t.Fatal(e)
+	}
+	withdrawal.CockpitWorkPackageCommand = f.command(t)
+	withdrawal.Reason = "Superseded by a corrected circulation."
+	if e := f.issues.UnpublishCockpitMeetingMinutes(ctx, withdrawal); e != nil {
+		t.Fatal(e)
+	}
+	if work := f.work(t); work.PublishedVersionID != (pgtype.UUID{}) {
+		t.Fatalf("withdrawal left the published pointer: %+v", work.PublishedVersionID)
+	}
+	if _, e := f.issues.CreateCockpitMeetingAction(ctx, action(dbid.NewV7())); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("draft action survived its withdrawn source: %v", e)
+	}
+	row := f.versions(t)[0]
+	if !row.PublishedAt.Valid || !row.UnpublishedAt.Valid || row.UnpublishedBy != f.owner || row.UnpublishedReason.String != withdrawal.Reason {
+		t.Fatalf("withdrawal audit = published %v unpublished %v by %v reason %q", row.PublishedAt, row.UnpublishedAt, row.UnpublishedBy, row.UnpublishedReason.String)
+	}
+	// Retrying a completed withdrawal is a no-op, even with a stale revision.
+	stale := f.command(t)
+	stale.ExpectedRevision--
+	withdrawal.CockpitWorkPackageCommand = stale
+	if e := f.issues.UnpublishCockpitMeetingMinutes(ctx, withdrawal); e != nil {
+		t.Fatal(e)
+	}
+	if again := f.versions(t)[0]; again.UnpublishedReason.String != row.UnpublishedReason.String || !again.UnpublishedAt.Time.Equal(row.UnpublishedAt.Time) {
+		t.Fatal("retry overwrote the original withdrawal audit")
+	}
+	base.CockpitWorkPackageCommand = f.command(t)
+	if e := f.issues.PublishCockpitMeetingMinutes(ctx, base); e != nil {
+		t.Fatal(e)
+	}
+	if work := f.work(t); work.PublishedVersionID != v.ID {
+		t.Fatalf("re-publication did not restore the pointer: %+v", work.PublishedVersionID)
+	}
+	if again := f.versions(t)[0]; again.UnpublishedAt.Valid || !again.PublishedAt.Valid {
+		t.Fatalf("re-publication kept withdrawal flags: %+v", again)
+	}
+	if _, e := f.issues.CreateCockpitMeetingAction(ctx, action(dbid.NewV7())); e != nil {
+		t.Fatalf("action source did not return after re-publication: %v", e)
+	}
+}
+
 func TestCockpitWorkflowConcurrentInitAndRelease(t *testing.T) {
 	f := newCockpitWorkflowFixture(t)
 	ctx := context.Background()

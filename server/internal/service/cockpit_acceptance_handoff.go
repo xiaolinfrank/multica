@@ -63,7 +63,7 @@ func (s *IssueService) ReassignCockpitAcceptanceReviewer(ctx context.Context, p 
 	if err = enrichAcceptanceHandoffs(ctx, s.Queries, items); err != nil {
 		return CockpitAcceptanceHandoffResponse{}, err
 	}
-	return CockpitAcceptanceHandoffResponse{WorkspaceID: util.UUIDToString(p.WorkspaceID), Acceptance: header, Request: request, Handoff: items[0]}, nil
+	return CockpitAcceptanceHandoffResponse{WorkspaceID: util.UUIDToString(p.WorkspaceID), Acceptance: header.CockpitAcceptanceHeader, Request: request, Handoff: items[0]}, nil
 }
 func prepareCockpitAcceptanceReviewerIssue(ctx context.Context, q *db.Queries, p *IssueCreateParams) (*db.Issue, error) {
 	h := p.CockpitArtifact

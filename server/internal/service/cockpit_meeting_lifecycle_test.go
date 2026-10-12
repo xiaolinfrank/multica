@@ -474,3 +474,90 @@ func TestCockpitLifecycleCommandHistoryNewestFirstWithTimestampTies(t *testing.T
 		seen[key] = true
 	}
 }
+func TestCockpitLifecycleReopen(t *testing.T) {
+	f := preparationFixture(t)
+	ctx := context.Background()
+	p := lifecycleRead(f)
+	// A reopen before any end is a state conflict, not an input error.
+	h, e := f.issues.GetCockpitMeetingLifecycle(ctx, p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	reopen := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "reopen", Reason: "The end was recorded by mistake."}
+	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, reopen); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("unconfirmed reopen: %v", e)
+	}
+	endInput := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "end"}
+	ended, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, endInput)
+	if e != nil {
+		t.Fatal(e)
+	}
+	started, _ := json.Marshal(time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339Nano))
+	finished, _ := json.Marshal(time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano))
+	corrected, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(ended.Current.LifecycleRevision), Transition: "correct_times", ActualStartedAt: started, ActualEndedAt: finished, Reason: "Record both actual times from the offline notes."})
+	if e != nil {
+		t.Fatal(e)
+	}
+	// While ended, cancellation stays gated behind an explicit reopen.
+	blocked, e := f.issues.PreviewCockpitMeetingCancellation(ctx, p, CockpitCancellationPreviewInput{Reason: "Cancel after correcting the end."})
+	if e != nil || blocked.CanConfirm {
+		t.Fatalf("ended meeting cancelled without reopen: %+v %v", blocked, e)
+	}
+	// A reason is mandatory; the surrounding trim happens before validation.
+	reopen.CockpitLifecycleCommandInput = lifecycleInput(corrected.Current.LifecycleRevision)
+	reopen.Reason = "   "
+	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, reopen); !errors.Is(e, ErrCockpitWorkflowInput) {
+		t.Fatalf("reason-less reopen: %v", e)
+	}
+	reopen.Reason = "The end was recorded by mistake."
+	reopened, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, reopen)
+	if e != nil {
+		t.Fatal(e)
+	}
+	o, previous := reopened.Receipt.Occurrence, reopened.Receipt.PreviousOccurrence
+	if reopened.Current.Occurrence.State != "scheduled" || o == nil || previous == nil {
+		t.Fatalf("reopen lost its occurrence facts: %+v", reopened)
+	}
+	if o.State != "scheduled" || o.EndedAt != nil || o.EndedBy != nil || o.EndedSource != nil || o.ActualEndedAt != nil {
+		t.Fatalf("reopen kept an ended fact: %+v", o)
+	}
+	if o.ActualStartedAt == nil || previous.State != "ended" || previous.EndedAt == nil || previous.ActualStartedAt == nil || previous.ActualEndedAt == nil {
+		t.Fatalf("reopen dropped the recorded history: %+v", previous)
+	}
+	if reopened.Current.CanCorrectTimes || !reopened.Current.CanEnd {
+		t.Fatalf("reopen left stale capabilities: %+v", reopened.Current)
+	}
+	// Both the original confirmation and the reopen stay in the command ledger.
+	key, _ := util.ParseUUID(reopen.CommandKey)
+	detail, e := f.issues.GetCockpitMeetingLifecycleCommand(ctx, p, key)
+	if e != nil || detail.Action != "reopen" || detail.Receipt.Reason != reopen.Reason || detail.Receipt.Occurrence.EndedAt != nil || detail.Receipt.PreviousOccurrence.EndedAt == nil {
+		t.Fatalf("reopen ledger detail: %+v %v", detail, e)
+	}
+	endKey, _ := util.ParseUUID(endInput.CommandKey)
+	endDetail, e := f.issues.GetCockpitMeetingLifecycleCommand(ctx, p, endKey)
+	if e != nil || endDetail.Action != "end" || endDetail.Receipt.Occurrence.EndedAt == nil {
+		t.Fatalf("original confirmation left the ledger: %+v %v", endDetail, e)
+	}
+	replay, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, reopen)
+	if e != nil || !replay.Replayed || replay.Receipt.Revision != reopened.Receipt.Revision || replay.Current.Occurrence.State != "scheduled" {
+		t.Fatalf("reopen replay: %+v %v", replay, e)
+	}
+	// A second reopen from scheduled is refused; the reopened meeting can still be cancelled.
+	again := reopen
+	again.CockpitLifecycleCommandInput = lifecycleInput(reopened.Current.LifecycleRevision)
+	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, again); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("scheduled reopen: %v", e)
+	}
+	input := CockpitCancellationPreviewInput{Reason: "Cancel after correcting the mistaken end."}
+	plan, e := f.issues.PreviewCockpitMeetingCancellation(ctx, p, input)
+	if e != nil || !plan.CanConfirm || plan.Intent != "cancel" {
+		t.Fatalf("reopened meeting cannot be cancelled: %+v %v", plan, e)
+	}
+	if _, e = f.issues.CancelCockpitMeeting(ctx, p, CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(plan.LifecycleRevision), CockpitCancellationPreviewInput: input, ContextToken: plan.ContextToken}); e != nil {
+		t.Fatal(e)
+	}
+	final, e := f.issues.GetCockpitMeetingLifecycle(ctx, p)
+	if e != nil || final.Occurrence.State != "cancelled" || final.Occurrence.EndedAt != nil || final.CanCorrectTimes {
+		t.Fatalf("cancel after reopen: %+v %v", final, e)
+	}
+}

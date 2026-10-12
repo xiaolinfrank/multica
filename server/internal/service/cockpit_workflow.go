@@ -48,6 +48,10 @@ type CockpitMinutesVersionCommand struct {
 	VersionID pgtype.UUID
 	NASExport *CockpitMinutesExportTarget
 }
+type CockpitMinutesUnpublish struct {
+	CockpitMinutesVersionCommand
+	Reason string
+}
 type CockpitMinutesReview struct {
 	CockpitMinutesVersionCommand
 	Decision, Feedback string
@@ -82,7 +86,7 @@ func cockpitWorkflowMember(ctx context.Context, q *db.Queries, ws, actor pgtype.
 	}
 	if _, err := q.GetMemberByUserAndWorkspace(ctx, db.GetMemberByUserAndWorkspaceParams{UserID: actor, WorkspaceID: ws}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-				return ErrCockpitWorkflowForbidden
+			return ErrCockpitWorkflowForbidden
 		}
 		return err
 	}
@@ -613,6 +617,50 @@ func (s *IssueService) PublishCockpitMeetingMinutes(ctx context.Context, p Cockp
 		if _, err = s.enqueueCockpitMinutesExport(ctx, q, version, p.ActorID, *p.NASExport); err != nil {
 			return err
 		}
+	}
+	return tx.Commit(ctx)
+}
+func (s *IssueService) UnpublishCockpitMeetingMinutes(ctx context.Context, p CockpitMinutesUnpublish) error {
+	p.Reason = strings.TrimSpace(p.Reason)
+	if p.Reason == "" {
+		return fmt.Errorf("%w: unpublished_reason is required", ErrCockpitWorkflowInput)
+	}
+	if len(p.Reason) > 16000 {
+		return fmt.Errorf("%w: unpublished_reason exceeds 16000 bytes", ErrCockpitWorkflowInput)
+	}
+	tx, q, work, err := s.beginCockpitWorkflow(ctx, p.CockpitWorkPackageCommand)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := requireCockpitWorkflowManager(ctx, q, work, p.ActorID); err != nil {
+		return err
+	}
+	version, err := q.GetCockpitMinutesVersion(ctx, db.GetCockpitMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: p.VersionID})
+	if err != nil {
+		return cockpitWorkflowError(err)
+	}
+	if version.UnpublishedAt.Valid && work.PublishedVersionID != p.VersionID {
+		// Retry after a completed withdrawal: the pointer already moved off
+		// this version, so the command's outcome has been reached.
+		return nil
+	}
+	if err := cockpitWorkflowRevision(work, p.ExpectedRevision); err != nil {
+		return err
+	}
+	if work.PublishedVersionID != p.VersionID || !version.PublishedAt.Valid || version.UnpublishedAt.Valid {
+		return fmt.Errorf("%w: only the currently published version can be unpublished", ErrCockpitWorkflowConflict)
+	}
+	// Unpublish writes the withdrawal audit on the version, keeping its
+	// publication history; written NAS copies and retained files stay as they
+	// are (design-principles-2026-10-12 principle 2).
+	if _, err = q.UnpublishCockpitMinutesVersion(ctx, db.UnpublishCockpitMinutesVersionParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: p.VersionID,
+		UnpublishedBy: p.ActorID, UnpublishedReason: pgtype.Text{String: p.Reason, Valid: true}}); err != nil {
+		return err
+	}
+	if _, err = q.ClearCockpitPublishedMinutesVersion(ctx, db.ClearCockpitPublishedMinutesVersionParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID,
+		MinutesPublishedVersionID: p.VersionID, MinutesRevision: p.ExpectedRevision}); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

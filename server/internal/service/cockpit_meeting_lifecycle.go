@@ -309,6 +309,9 @@ func optionalLifecycleTime(raw json.RawMessage, old pgtype.Timestamptz) (pgtype.
 }
 
 // applyMeetingOccurrence is the single ended-fact writer, including legacy readiness.
+// "reopen" is the explicit reverse of "end": it restores scheduled and clears the
+// ended facts (including actual_ended_at, keeping actual_started_at) while both
+// receipts stay in the command ledger (meeting-lifecycle-contract R2).
 func applyMeetingOccurrence(ctx context.Context, q *db.Queries, p CockpitLifecycleRead, m db.GetCockpitMeetingLifecycleRow, in CockpitOccurrenceInput) (db.GetCockpitMeetingLifecycleRow, error) {
 	if m.OccurrenceState == "cancelled" {
 		return m, fmt.Errorf("%w: explicitly reschedule this cancelled meeting first", ErrCockpitWorkflowConflict)
@@ -351,6 +354,24 @@ func applyMeetingOccurrence(ctx context.Context, q *db.Queries, p CockpitLifecyc
 		if (m.OccurrenceState != "in_progress" && m.OccurrenceState != "ended") || strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 16000 || len(in.ActualStartedAt)+len(in.ActualEndedAt) == 0 {
 			return m, fmt.Errorf("%w: explicit times and a reason are required", ErrCockpitWorkflowInput)
 		}
+	case "reopen":
+		// R2 reversibility: the reverse of end. Withdraw a mistaken end
+		// confirmation, return the occurrence to scheduled so cancellation or
+		// rescheduling stays reachable, and leave the original end receipt in
+		// the command ledger. actual_ended_at is cleared together with the end
+		// facts so the "actual end requires a confirmed end" rule keeps
+		// holding; the actual start time survives as a recorded fact.
+		if m.OccurrenceState != "ended" {
+			return m, ErrCockpitWorkflowConflict
+		}
+		if strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 16000 {
+			return m, fmt.Errorf("%w: a reason is required to reopen an ended meeting", ErrCockpitWorkflowInput)
+		}
+		m.OccurrenceState = "scheduled"
+		m.EndedAt = pgtype.Timestamptz{}
+		m.EndedBy = pgtype.UUID{}
+		m.EndedSource = pgtype.Text{}
+		m.ActualEndedAt = pgtype.Timestamptz{}
 	default:
 		return m, ErrCockpitWorkflowInput
 	}

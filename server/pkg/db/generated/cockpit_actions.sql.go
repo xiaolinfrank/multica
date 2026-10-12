@@ -48,7 +48,7 @@ func (q *Queries) CountCockpitMeetingActions(ctx context.Context, arg CountCockp
 const createCockpitMeetingAction = `-- name: CreateCockpitMeetingAction :one
 INSERT INTO cockpit_meeting_action(id,workspace_id,meeting_id,version_id,version_number,source_content_hash,
  proposal_key,proposal_hash,title,description,source_quote,created_by)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions
 `
 
 type CreateCockpitMeetingActionParams struct {
@@ -110,12 +110,13 @@ func (q *Queries) CreateCockpitMeetingAction(ctx context.Context, arg CreateCock
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }
 
 const getCockpitActionProposal = `-- name: GetCockpitActionProposal :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND version_id=$3 AND proposal_key=$4
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND version_id=$3 AND proposal_key=$4
 `
 
 type GetCockpitActionProposalParams struct {
@@ -161,6 +162,7 @@ func (q *Queries) GetCockpitActionProposal(ctx context.Context, arg GetCockpitAc
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }
@@ -196,7 +198,7 @@ func (q *Queries) GetCockpitActionVersionFact(ctx context.Context, arg GetCockpi
 }
 
 const getCockpitMeetingAction = `-- name: GetCockpitMeetingAction :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
 `
 
 type GetCockpitMeetingActionParams struct {
@@ -236,6 +238,7 @@ func (q *Queries) GetCockpitMeetingAction(ctx context.Context, arg GetCockpitMee
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }
@@ -284,7 +287,7 @@ func (q *Queries) ListCockpitActionVersionFacts(ctx context.Context, arg ListCoc
 }
 
 const listCockpitMeetingActionsPage = `-- name: ListCockpitMeetingActionsPage :many
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at FROM cockpit_meeting_action
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions FROM cockpit_meeting_action
 WHERE workspace_id=$1::uuid AND meeting_id=$2::uuid
  AND ($3::uuid IS NULL OR version_id=$3::uuid)
  AND ($4::text='' OR status=$4::text)
@@ -348,6 +351,7 @@ func (q *Queries) ListCockpitMeetingActionsPage(ctx context.Context, arg ListCoc
 			&i.UpdatedAt,
 			&i.ResolvedBy,
 			&i.ResolvedAt,
+			&i.PreviousResolutions,
 		); err != nil {
 			return nil, err
 		}
@@ -360,7 +364,7 @@ func (q *Queries) ListCockpitMeetingActionsPage(ctx context.Context, arg ListCoc
 }
 
 const lockCockpitMeetingAction = `-- name: LockCockpitMeetingAction :one
-SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 FOR UPDATE
+SELECT id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions FROM cockpit_meeting_action WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 FOR UPDATE
 `
 
 type LockCockpitMeetingActionParams struct {
@@ -400,6 +404,7 @@ func (q *Queries) LockCockpitMeetingAction(ctx context.Context, arg LockCockpitM
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }
@@ -412,7 +417,7 @@ UPDATE cockpit_meeting_action SET status=$1::text,resolution=$2::text,
  decision_revision=$10::bigint,resolved_by=$11::uuid,resolved_at=now(),
  revision=revision+1,updated_at=now()
 WHERE workspace_id=$12::uuid AND meeting_id=$13::uuid AND id=$14::uuid
- AND revision=$10::bigint AND status='draft' RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at
+ AND revision=$10::bigint AND status='draft' RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions
 `
 
 type ResolveCockpitMeetingActionParams struct {
@@ -478,13 +483,101 @@ func (q *Queries) ResolveCockpitMeetingAction(ctx context.Context, arg ResolveCo
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
+	)
+	return i, err
+}
+
+const reviseCockpitMeetingActionResolution = `-- name: ReviseCockpitMeetingActionResolution :one
+UPDATE cockpit_meeting_action SET
+ previous_resolutions = previous_resolutions || jsonb_build_object(
+   'status', status, 'resolution', resolution, 'issue_id', issue_id, 'node_id', node_id,
+   'node_code', node_code, 'node_name', node_name, 'reason', reason,
+   'resolved_by', resolved_by, 'resolved_at', resolved_at, 'decision_key', decision_key),
+ status=$1::text, resolution=$2::text,
+ issue_id=$3::uuid, node_id=$4::uuid,
+ node_code=$5::text, node_name=$6::text,
+ reason=$7::text, decision_key=$8::uuid, decision_hash=$9::text,
+ decision_revision=$10::bigint, resolved_by=$11::uuid, resolved_at=now(),
+ revision=revision+1, updated_at=now()
+WHERE workspace_id=$12::uuid AND meeting_id=$13::uuid AND id=$14::uuid
+ AND revision=$10::bigint AND status IN ('accepted','dismissed') RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions
+`
+
+type ReviseCockpitMeetingActionResolutionParams struct {
+	Status           string      `json:"status"`
+	Resolution       string      `json:"resolution"`
+	IssueID          pgtype.UUID `json:"issue_id"`
+	NodeID           pgtype.UUID `json:"node_id"`
+	NodeCode         string      `json:"node_code"`
+	NodeName         string      `json:"node_name"`
+	Reason           string      `json:"reason"`
+	DecisionKey      pgtype.UUID `json:"decision_key"`
+	DecisionHash     string      `json:"decision_hash"`
+	ExpectedRevision int64       `json:"expected_revision"`
+	ActorID          pgtype.UUID `json:"actor_id"`
+	WorkspaceID      pgtype.UUID `json:"workspace_id"`
+	MeetingID        pgtype.UUID `json:"meeting_id"`
+	ID               pgtype.UUID `json:"id"`
+}
+
+// R2 (design-principles-2026-10-12): a resolution is a value, not a terminal
+// fact. Revising appends the previous resolution to the trail and writes the
+// new one; tasks created by an earlier decision stay untouched.
+func (q *Queries) ReviseCockpitMeetingActionResolution(ctx context.Context, arg ReviseCockpitMeetingActionResolutionParams) (CockpitMeetingAction, error) {
+	row := q.db.QueryRow(ctx, reviseCockpitMeetingActionResolution,
+		arg.Status,
+		arg.Resolution,
+		arg.IssueID,
+		arg.NodeID,
+		arg.NodeCode,
+		arg.NodeName,
+		arg.Reason,
+		arg.DecisionKey,
+		arg.DecisionHash,
+		arg.ExpectedRevision,
+		arg.ActorID,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.ID,
+	)
+	var i CockpitMeetingAction
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.VersionID,
+		&i.VersionNumber,
+		&i.SourceContentHash,
+		&i.ProposalKey,
+		&i.ProposalHash,
+		&i.Title,
+		&i.Description,
+		&i.SourceQuote,
+		&i.Status,
+		&i.Resolution,
+		&i.Revision,
+		&i.NodeID,
+		&i.NodeCode,
+		&i.NodeName,
+		&i.IssueID,
+		&i.Reason,
+		&i.DecisionKey,
+		&i.DecisionHash,
+		&i.DecisionRevision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ResolvedBy,
+		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }
 
 const updateCockpitMeetingAction = `-- name: UpdateCockpitMeetingAction :one
 UPDATE cockpit_meeting_action SET title=$4,description=$5,source_quote=$6,revision=revision+1,updated_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND revision=$7 AND status='draft' RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND revision=$7 AND status='draft' RETURNING id, workspace_id, meeting_id, version_id, version_number, source_content_hash, proposal_key, proposal_hash, title, description, source_quote, status, resolution, revision, node_id, node_code, node_name, issue_id, reason, decision_key, decision_hash, decision_revision, created_by, created_at, updated_at, resolved_by, resolved_at, previous_resolutions
 `
 
 type UpdateCockpitMeetingActionParams struct {
@@ -536,6 +629,7 @@ func (q *Queries) UpdateCockpitMeetingAction(ctx context.Context, arg UpdateCock
 		&i.UpdatedAt,
 		&i.ResolvedBy,
 		&i.ResolvedAt,
+		&i.PreviousResolutions,
 	)
 	return i, err
 }

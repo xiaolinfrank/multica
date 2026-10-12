@@ -15,7 +15,10 @@ vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () 
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { recordCockpitOccurrence: vi.fn(), confirmCockpitMaterials: vi.fn(), getCockpitLifecycleCommands: vi.fn(), getCockpitLifecycleCommand: vi.fn() } }));
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
-function shell(children: React.ReactNode, cache = client()) { return <QueryClientProvider client={cache}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>{children}</I18nProvider></QueryClientProvider>; }
+// Reopen copy is pending in packages/views/locales (reported separately); the
+// test injects the exact strings so assertions survive the final wording.
+const reopenCockpitCopy = { ...enCockpit, meeting_lifecycle: { ...enCockpit.meeting_lifecycle, reopen: "Correct end confirmation", reopen_hint: "Withdraw the end confirmation: the meeting returns to scheduled and can still be cancelled or rescheduled. The original confirmation and your reason stay in the confirmation history." } };
+function shell(children: React.ReactNode, cache = client(), copy: typeof enCockpit = enCockpit) { return <QueryClientProvider client={cache}><I18nProvider locale="en" resources={{ en: { cockpit: copy } }}>{children}</I18nProvider></QueryClientProvider>; }
 beforeEach(() => { vi.clearAllMocks(); useCockpitMeetingAgendaDraftStore.getState().clearDraft(); navigation.searchParams = new URLSearchParams("meeting=meeting-1&meeting_view=agenda"); });
 
 describe("meeting occurrence and material confirmation", () => {
@@ -54,6 +57,27 @@ describe("meeting occurrence and material confirmation", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Retry the same request" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull()); expect(vi.mocked(api.recordCockpitOccurrence).mock.calls[1]![2]).toEqual(body);
     expect(api.confirmCockpitMaterials).not.toHaveBeenCalled();
+  });
+  it("corrects a mistaken end confirmation through reopen with a mandatory reason and no actual times", async () => {
+    const plain = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={lifecycleFixture()} refresh={vi.fn()} />));
+    expect(plain.queryByRole("button", { name: "Correct end confirmation" })).toBeNull();
+    plain.unmount();
+    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, occurrence: { ...lifecycleFixture().occurrence, state: "ended", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", ended_at: "2026-10-11T02:00:00Z", ended_by: "user-1", ended_source: "human_confirmation", actual_started_at: "2026-10-11T01:00:00Z", actual_ended_at: "2026-10-11T02:00:00Z" } });
+    const after = lifecycleFixture({ lifecycle_revision: 2, can_end: true, occurrence: { ...lifecycleFixture().occurrence, state: "scheduled", actual_started_at: "2026-10-11T01:00:00Z" } });
+    vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, "reopen-1", "reopen", { reason: "The meeting continues tomorrow.", occurrence: after.occurrence, previous_occurrence: before.occurrence }));
+    render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={before} refresh={vi.fn()} />, client(), reopenCockpitCopy));
+    fireEvent.click(screen.getByRole("button", { name: "Correct end confirmation" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.queryByLabelText("Actual start (optional)")).toBeNull();
+    expect(dialog.queryByLabelText("Actual end (optional)")).toBeNull();
+    expect(dialog.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await userEvent.type(dialog.getByLabelText("Reason"), "The meeting continues tomorrow.");
+    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const body = vi.mocked(api.recordCockpitOccurrence).mock.calls[0]![2];
+    expect(body).toMatchObject({ transition: "reopen", expected_revision: 1, reason: "The meeting continues tomorrow." });
+    expect("actual_started_at" in body).toBe(false);
+    expect("actual_ended_at" in body).toBe(false);
   });
   it("does not silently rebase an open occurrence confirmation and keeps entered times after a concurrent change", async () => {
     const header = lifecycleFixture(); const cache = client(); const view = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />, cache));

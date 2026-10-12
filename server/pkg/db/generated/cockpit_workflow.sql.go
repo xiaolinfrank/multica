@@ -133,6 +133,59 @@ func (q *Queries) ClearCockpitMinutesFocusIfIssue(ctx context.Context, arg Clear
 	return i, err
 }
 
+const clearCockpitPublishedMinutesVersion = `-- name: ClearCockpitPublishedMinutesVersion :one
+UPDATE cockpit_meeting SET minutes_published_version_id=NULL,minutes_revision=minutes_revision+1,updated_at=now()
+WHERE workspace_id=$1 AND id=$2 AND minutes_published_version_id=$3 AND minutes_revision=$4
+RETURNING id AS meeting_id, minutes_revision AS revision,
+ minutes_focus_issue_id AS minutes_issue_id, minutes_reviewer_id AS reviewer_id,
+ minutes_materials_ready AS materials_ready,
+ minutes_materials_confirmed_at AS materials_confirmed_at, minutes_materials_confirmed_by AS materials_confirmed_by,
+ minutes_current_version_id AS current_version_id, minutes_published_version_id AS published_version_id, minutes_configured_by AS configured_by
+`
+
+type ClearCockpitPublishedMinutesVersionParams struct {
+	WorkspaceID               pgtype.UUID `json:"workspace_id"`
+	ID                        pgtype.UUID `json:"id"`
+	MinutesPublishedVersionID pgtype.UUID `json:"minutes_published_version_id"`
+	MinutesRevision           int64       `json:"minutes_revision"`
+}
+
+type ClearCockpitPublishedMinutesVersionRow struct {
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	Revision             int64              `json:"revision"`
+	MinutesIssueID       pgtype.UUID        `json:"minutes_issue_id"`
+	ReviewerID           pgtype.UUID        `json:"reviewer_id"`
+	MaterialsReady       bool               `json:"materials_ready"`
+	MaterialsConfirmedAt pgtype.Timestamptz `json:"materials_confirmed_at"`
+	MaterialsConfirmedBy pgtype.UUID        `json:"materials_confirmed_by"`
+	CurrentVersionID     pgtype.UUID        `json:"current_version_id"`
+	PublishedVersionID   pgtype.UUID        `json:"published_version_id"`
+	ConfiguredBy         pgtype.UUID        `json:"configured_by"`
+}
+
+func (q *Queries) ClearCockpitPublishedMinutesVersion(ctx context.Context, arg ClearCockpitPublishedMinutesVersionParams) (ClearCockpitPublishedMinutesVersionRow, error) {
+	row := q.db.QueryRow(ctx, clearCockpitPublishedMinutesVersion,
+		arg.WorkspaceID,
+		arg.ID,
+		arg.MinutesPublishedVersionID,
+		arg.MinutesRevision,
+	)
+	var i ClearCockpitPublishedMinutesVersionRow
+	err := row.Scan(
+		&i.MeetingID,
+		&i.Revision,
+		&i.MinutesIssueID,
+		&i.ReviewerID,
+		&i.MaterialsReady,
+		&i.MaterialsConfirmedAt,
+		&i.MaterialsConfirmedBy,
+		&i.CurrentVersionID,
+		&i.PublishedVersionID,
+		&i.ConfiguredBy,
+	)
+	return i, err
+}
+
 const cockpitIssueExecutionBlocked = `-- name: CockpitIssueExecutionBlocked :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_issue l
  JOIN cockpit_meeting m ON m.workspace_id=l.workspace_id AND m.id=l.meeting_id
@@ -164,7 +217,7 @@ func (q *Queries) CockpitIssueHasWorkflow(ctx context.Context, issueID pgtype.UU
 
 const createCockpitMinutesVersion = `-- name: CreateCockpitMinutesVersion :one
 INSERT INTO cockpit_minutes_version(id,workspace_id,meeting_id,version_number,submission_key,content,content_hash,source_issue_id,review_issue_id,reviewer_id,submitted_by_type,submitted_by_id)
-VALUES($1,$2,$3,(SELECT COALESCE(MAX(version_number),0)+1 FROM cockpit_minutes_version WHERE workspace_id=$2 AND meeting_id=$3),$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at
+VALUES($1,$2,$3,(SELECT COALESCE(MAX(version_number),0)+1 FROM cockpit_minutes_version WHERE workspace_id=$2 AND meeting_id=$3),$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason
 `
 
 type CreateCockpitMinutesVersionParams struct {
@@ -216,6 +269,9 @@ func (q *Queries) CreateCockpitMinutesVersion(ctx context.Context, arg CreateCoc
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }
@@ -314,7 +370,7 @@ func (q *Queries) GetCockpitMeetingWorkPackage(ctx context.Context, arg GetCockp
 }
 
 const getCockpitMinutesSubmission = `-- name: GetCockpitMinutesSubmission :one
-SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 AND submission_key=$3
+SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 AND submission_key=$3
 `
 
 type GetCockpitMinutesSubmissionParams struct {
@@ -346,12 +402,15 @@ func (q *Queries) GetCockpitMinutesSubmission(ctx context.Context, arg GetCockpi
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }
 
 const getCockpitMinutesVersion = `-- name: GetCockpitMinutesVersion :one
-SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
+SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
 `
 
 type GetCockpitMinutesVersionParams struct {
@@ -383,6 +442,9 @@ func (q *Queries) GetCockpitMinutesVersion(ctx context.Context, arg GetCockpitMi
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }
@@ -432,7 +494,7 @@ func (q *Queries) ListCockpitMinutesIssueLinks(ctx context.Context, arg ListCock
 }
 
 const listCockpitMinutesVersions = `-- name: ListCockpitMinutesVersions :many
-SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY version_number DESC
+SELECT id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason FROM cockpit_minutes_version WHERE workspace_id=$1 AND meeting_id=$2 ORDER BY version_number DESC
 `
 
 type ListCockpitMinutesVersionsParams struct {
@@ -469,6 +531,9 @@ func (q *Queries) ListCockpitMinutesVersions(ctx context.Context, arg ListCockpi
 			&i.ReviewedAt,
 			&i.PublishedBy,
 			&i.PublishedAt,
+			&i.UnpublishedAt,
+			&i.UnpublishedBy,
+			&i.UnpublishedReason,
 		); err != nil {
 			return nil, err
 		}
@@ -531,8 +596,8 @@ func (q *Queries) LockCockpitMeetingWorkPackage(ctx context.Context, arg LockCoc
 }
 
 const publishCockpitMinutesVersion = `-- name: PublishCockpitMinutesVersion :one
-UPDATE cockpit_minutes_version SET published_by=$4,published_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='approved' AND published_at IS NULL RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at
+UPDATE cockpit_minutes_version SET published_by=$4,published_at=now(),unpublished_at=NULL,unpublished_by=NULL,unpublished_reason=NULL
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='approved' AND (published_at IS NULL OR unpublished_at IS NOT NULL) RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason
 `
 
 type PublishCockpitMinutesVersionParams struct {
@@ -570,13 +635,16 @@ func (q *Queries) PublishCockpitMinutesVersion(ctx context.Context, arg PublishC
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }
 
 const reviewCockpitMinutesVersion = `-- name: ReviewCockpitMinutesVersion :one
 UPDATE cockpit_minutes_version SET decision=$4,feedback=$5,reviewed_by=$6,reviewed_at=now()
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='pending' RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND decision='pending' RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason
 `
 
 type ReviewCockpitMinutesVersionParams struct {
@@ -618,6 +686,9 @@ func (q *Queries) ReviewCockpitMinutesVersion(ctx context.Context, arg ReviewCoc
 		&i.ReviewedAt,
 		&i.PublishedBy,
 		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }
@@ -844,6 +915,57 @@ func (q *Queries) SetCockpitPublishedMinutesVersion(ctx context.Context, arg Set
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,
 		&i.ConfiguredBy,
+	)
+	return i, err
+}
+
+const unpublishCockpitMinutesVersion = `-- name: UnpublishCockpitMinutesVersion :one
+UPDATE cockpit_minutes_version SET unpublished_at=now(),unpublished_by=$4,unpublished_reason=$5
+WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND published_at IS NOT NULL AND unpublished_at IS NULL RETURNING id, workspace_id, meeting_id, version_number, submission_key, content, content_hash, source_issue_id, review_issue_id, reviewer_id, decision, feedback, submitted_by_type, submitted_by_id, created_at, reviewed_by, reviewed_at, published_by, published_at, unpublished_at, unpublished_by, unpublished_reason
+`
+
+type UnpublishCockpitMinutesVersionParams struct {
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	MeetingID         pgtype.UUID `json:"meeting_id"`
+	ID                pgtype.UUID `json:"id"`
+	UnpublishedBy     pgtype.UUID `json:"unpublished_by"`
+	UnpublishedReason pgtype.Text `json:"unpublished_reason"`
+}
+
+// R2: unpublishing clears the pointer value; the version keeps its
+// publication history and re-publication stays possible.
+func (q *Queries) UnpublishCockpitMinutesVersion(ctx context.Context, arg UnpublishCockpitMinutesVersionParams) (CockpitMinutesVersion, error) {
+	row := q.db.QueryRow(ctx, unpublishCockpitMinutesVersion,
+		arg.WorkspaceID,
+		arg.MeetingID,
+		arg.ID,
+		arg.UnpublishedBy,
+		arg.UnpublishedReason,
+	)
+	var i CockpitMinutesVersion
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MeetingID,
+		&i.VersionNumber,
+		&i.SubmissionKey,
+		&i.Content,
+		&i.ContentHash,
+		&i.SourceIssueID,
+		&i.ReviewIssueID,
+		&i.ReviewerID,
+		&i.Decision,
+		&i.Feedback,
+		&i.SubmittedByType,
+		&i.SubmittedByID,
+		&i.CreatedAt,
+		&i.ReviewedBy,
+		&i.ReviewedAt,
+		&i.PublishedBy,
+		&i.PublishedAt,
+		&i.UnpublishedAt,
+		&i.UnpublishedBy,
+		&i.UnpublishedReason,
 	)
 	return i, err
 }

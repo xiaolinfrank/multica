@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -148,6 +149,66 @@ func TestCockpitActionHTTPRejectsUnintendedFieldsAndKeepsDismissalDistinct(t *te
 	}
 }
 
+func TestCockpitActionHTTPRevisesWrittenResolutions(t *testing.T) {
+	ws, meeting, version, node := cockpitActionHTTPFixture(t)
+	var action service.CockpitActionView
+	callCockpitAction(t, testHandler.CreateCockpitMeetingAction, "POST", "/actions", ws, meeting.ID, version.ID, "",
+		map[string]any{"proposal_key": uuid.NewString(), "title": "Confirm then reconsider"}).Want(200).JSON(&action)
+	callCockpitAction(t, testHandler.ResolveCockpitMeetingAction, "POST", "/resolve", ws, meeting.ID, "", action.ID,
+		map[string]any{"expected_revision": action.Revision, "decision_key": uuid.NewString(), "outcome": "create", "node_id": node.ID}).Want(200).JSON(&action)
+	createdIssue := action.Issue.ID
+	// A revision without a reason never reaches the service layer.
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", action.ID,
+		map[string]any{"expected_revision": action.Revision, "decision_key": uuid.NewString(), "outcome": "dismiss"}).Want(400)
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", action.ID,
+		map[string]any{"expected_revision": action.Revision, "decision_key": uuid.NewString(), "outcome": "dismiss", "reason": "Tracked by the delivery stream", "issue_id": createdIssue}).Want(400)
+	revise := map[string]any{"expected_revision": action.Revision, "decision_key": uuid.NewString(), "outcome": "dismiss", "reason": "Tracked by the delivery stream"}
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", action.ID, revise).Want(200).JSON(&action)
+	if action.Status != "dismissed" || action.Reason != "Tracked by the delivery stream" || action.Issue != nil || action.Resolution == nil || *action.Resolution != "dismiss" {
+		t.Fatalf("revision did not rewrite the decision: %+v", action)
+	}
+	if dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1 AND id=$2", ws, createdIssue) != 1 {
+		t.Fatal("revision deleted the issue the outgoing decision created")
+	}
+	trail := func() []map[string]any {
+		var raw string
+		dbfx.QueryRow(t, "SELECT previous_resolutions::text FROM cockpit_meeting_action WHERE id=$1", action.ID).Scan(&raw)
+		var entries []map[string]any
+		if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+			t.Fatalf("previous_resolutions is not a JSON trail: %v (%s)", err, raw)
+		}
+		return entries
+	}
+	if entries := trail(); len(entries) != 1 || entries[0]["resolution"] != "create" || entries[0]["issue_id"] != createdIssue {
+		t.Fatalf("outgoing decision missing from the trail: %+v", entries)
+	}
+	// Replaying the same revision command is idempotent over HTTP.
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", action.ID, revise).Want(200).JSON(&action)
+	if action.Status != "dismissed" || len(trail()) != 1 {
+		t.Fatalf("revision replay appended history: %+v", action)
+	}
+	// dismissed -> create: the revision builds ordinary backlog work again.
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", action.ID,
+		map[string]any{"expected_revision": action.Revision, "decision_key": uuid.NewString(), "outcome": "create", "node_id": node.ID, "priority": "high", "reason": "Scope returned to this meeting"}).Want(200).JSON(&action)
+	if action.Status != "accepted" || action.Issue == nil || action.Issue.ID == createdIssue || action.Issue.Priority != "high" {
+		t.Fatalf("recreate revision = %+v", action)
+	}
+	if entries := trail(); len(entries) != 2 || entries[1]["resolution"] != "dismiss" || entries[1]["reason"] != "Tracked by the delivery stream" {
+		t.Fatalf("dismissal missing from the trail: %+v", entries)
+	}
+	// A pending suggestion is confirmed, never revised.
+	var pending service.CockpitActionView
+	callCockpitAction(t, testHandler.CreateCockpitMeetingAction, "POST", "/actions", ws, meeting.ID, version.ID, "",
+		map[string]any{"proposal_key": uuid.NewString(), "title": "Still pending"}).Want(200).JSON(&pending)
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", pending.ID,
+		map[string]any{"expected_revision": pending.Revision, "decision_key": uuid.NewString(), "outcome": "dismiss", "reason": "No decision exists"}).Want(409)
+	callCockpitAction(t, testHandler.ReviseCockpitMeetingActionResolution, "POST", "/revise", ws, meeting.ID, "", pending.ID,
+		map[string]any{"expected_revision": pending.Revision, "decision_key": uuid.NewString(), "outcome": "create", "node_id": node.ID, "reason": "No decision exists"}).Want(409)
+	if action.Issue.Status != "backlog" {
+		t.Fatalf("recreated issue lost its backlog state: %+v", action.Issue)
+	}
+}
+
 func TestCockpitActionHTTPHumanAndWorkspaceBoundaries(t *testing.T) {
 	ws, meeting, version, node := cockpitActionHTTPFixture(t)
 	for _, source := range []string{"task_token", "cloud_pat"} {
@@ -156,7 +217,7 @@ func TestCockpitActionHTTPHumanAndWorkspaceBoundaries(t *testing.T) {
 			method  string
 		}{
 			{testHandler.CreateCockpitMeetingAction, "POST"}, {testHandler.UpdateCockpitMeetingAction, "PATCH"},
-			{testHandler.ResolveCockpitMeetingAction, "POST"}, {testHandler.CreateCockpitNodeTask, "POST"}, {testHandler.SetCockpitIssuePrimaryNode, "PUT"},
+			{testHandler.ResolveCockpitMeetingAction, "POST"}, {testHandler.ReviseCockpitMeetingActionResolution, "POST"}, {testHandler.CreateCockpitNodeTask, "POST"}, {testHandler.SetCockpitIssuePrimaryNode, "PUT"},
 		} {
 			req := testutil.WithURLParams(cockpitRequest(endpoint.method, "/actions", ws, map[string]any{}), "meetingId", meeting.ID, "versionId", version.ID, "actionId", uuid.NewString(), "id", node.ID)
 			req.Header.Set("X-Actor-Source", source)

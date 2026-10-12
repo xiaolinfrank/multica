@@ -52,7 +52,7 @@ import type { CockpitIssueNodeReference, CockpitIssueMeetingReference, CockpitIs
 import { CockpitNodeCreateResponseSchema, CockpitMeetingCreateResponseSchema } from "./schemas";
 import type { CockpitAssigneeSelectorQuery, CockpitAssigneeChoicePage } from "../types/cockpit-scope-selectors";
 import { CockpitAssigneeChoicePageSchema } from "./cockpit-scope-selector-schemas";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import type { CockpitNodeSelectorQuery, CockpitNodeChoicePage, CockpitMemberSelectorQuery, CockpitMemberChoicePage } from "../types/cockpit-scope-selectors";
 import { CockpitNodeChoicePageSchema, CockpitMemberChoicePageSchema } from "./cockpit-scope-selector-schemas";
 import type {
@@ -3284,6 +3284,7 @@ export class ApiClient {
         : command.action === "reviewer_reassigned" ? "/reviewer" : command.action === "nas_export_queued" ? `${versionPath}/nas-export`
           : command.action === "nas_export_retried" ? `/exports/${encodeURIComponent(command.operation.id)}/retry`
           : command.action === "bound" ? "/bindings" : command.action === "focused" ? "/focus"
+          : command.action === "unpublished" ? `${versionPath}/unpublish`
           : command.action === "unbound" ? `/bindings/${encodeURIComponent(command.issue_id)}` : "";
     const body = command.action === "nas_export_retried" ? { expected_revision: command.operation.revision }
       : command.action === "submitted" ? { ...command.body, content: command.body.content.trim() }
@@ -3328,6 +3329,42 @@ export class ApiClient {
         : result.status !== "accepted" || !result.issue?.id || result.node_id !== body.node_id
           || (body.outcome === "reuse" && result.issue.id !== body.issue_id && result.issue.identifier !== body.issue_id))) throw new CockpitUnconfirmedWriteError();
     return result;
+  }
+
+  async bindCockpitMinutesIssue(meetingId: string, issueId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
+    return this.writeCockpitMeetingWorkflow(meetingId, "/bindings", "POST", { issue_id: issueId, expected_revision: expectedRevision });
+  }
+
+  async unbindCockpitMinutesIssue(meetingId: string, issueId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/meetings/${encodeURIComponent(meetingId)}/workflow/bindings/${encodeURIComponent(issueId)}?expected_revision=${expectedRevision}`, {
+      method: "DELETE", body: "{}",
+    });
+    const result = parseWithFallback<CockpitMeetingWorkflow>(raw, CockpitMeetingWorkflowWriteSchema, EMPTY_COCKPIT_MEETING_WORKFLOW, {
+      endpoint: "DELETE /api/cockpit/meetings/:id/workflow/bindings/:issueId",
+    });
+    if (result.meeting_id !== meetingId || result.minutes_issues.some((b) => b.issue?.id === issueId || b.issue?.identifier === issueId)) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  async focusCockpitMinutesIssue(meetingId: string, issueId: string, expectedRevision: number): Promise<CockpitMeetingWorkflow> {
+    return this.writeCockpitMeetingWorkflow(meetingId, "/focus", "POST", { issue_id: issueId, expected_revision: expectedRevision });
+  }
+
+  async reviseCockpitMeetingAction(action: Pick<CockpitMeetingAction, "id" | "meeting_id" | "version_id" | "source_content_hash">, body: CockpitActionResolution): Promise<CockpitMeetingAction> {
+    const result = await this.writeCockpitMeetingAction(action.meeting_id, `actions/${encodeURIComponent(action.id)}/revise`, "POST", body);
+    if (result.id !== action.id || result.version_id !== action.version_id || result.source_content_hash !== action.source_content_hash
+      || result.decision_key !== body.decision_key || result.resolution !== body.outcome || result.revision <= body.expected_revision) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  async revokeCockpitAcceptanceApproval(wsId: string, nodeId: string, requestId: string, reason: string): Promise<void> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/acceptance/revoke`, {
+      method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify({ request_id: requestId, reason: reason.trim() }),
+    });
+    const result = parseWithFallback<{ revoked: boolean; request_id: string } | null>(raw, z.object({ revoked: z.boolean(), request_id: z.string() }).loose(), null, { endpoint: "Cockpit acceptance revoke" });
+    if (!result?.revoked || result.request_id !== requestId) throw new CockpitUnconfirmedWriteError();
   }
 
   private async writeCockpitMeetingWorkflow(

@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"fmt"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -58,7 +58,7 @@ type CockpitMeetingWorkflowResponse struct {
 	ReleaseTaskID        *string                          `json:"release_task_id"`
 	ReviewerID           *string                          `json:"reviewer_id"`
 	MinutesIssue         *CockpitWorkflowIssueResponse    `json:"minutes_issue"`
-	MinutesIssues        []CockpitMinutesBindingResponse `json:"minutes_issues"`
+	MinutesIssues        []CockpitMinutesBindingResponse  `json:"minutes_issues"`
 	CurrentVersionID     *string                          `json:"current_version_id"`
 	PublishedVersionID   *string                          `json:"published_version_id"`
 	Versions             []CockpitMinutesVersionResponse  `json:"versions"`
@@ -646,6 +646,33 @@ func (h *Handler) PublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Re
 	}
 	err := h.IssueService.PublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID, NASExport: target})
 	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "published", err, cockpitWorkflowReceiptRef{VersionID: versionID, ExportTarget: target})
+}
+
+func (h *Handler) UnpublishCockpitMeetingMinutes(w http.ResponseWriter, r *http.Request) {
+	cc, meeting, ok := h.cockpitWorkflowContext(w, r, true)
+	if !ok {
+		return
+	}
+	var req struct {
+		cockpitWorkflowRevisionRequest
+		Reason string `json:"reason"`
+	}
+	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	command, ok := cockpitWorkflowCommand(w, cc, meeting.ID, req.ExpectedRevision)
+	if !ok {
+		return
+	}
+	versionID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "versionId"), "version_id")
+	if !ok {
+		return
+	}
+	err := h.IssueService.UnpublishCockpitMeetingMinutes(r.Context(), service.CockpitMinutesUnpublish{
+		CockpitMinutesVersionCommand: service.CockpitMinutesVersionCommand{CockpitWorkPackageCommand: command, VersionID: versionID}, Reason: strings.TrimSpace(req.Reason)})
+	// The withdrawal is confirmed through workflow state (published pointer
+	// cleared); the version itself keeps its history, so no receipt object.
+	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "unpublished", err)
 }
 
 type cockpitNASExportRequest struct {

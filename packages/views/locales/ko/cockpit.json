@@ -106,7 +106,9 @@
     "fixed_hint": "이 회의에 이미 연결된 고정 산출물을 선택하세요. 새 회의 참조는 연결 및 자료에서 먼저 추가하세요.",
     "create_hint": "백로그 태스크를 만듭니다. 에이전트를 실행하지 않으며 담당자는 선택 사항입니다.",
     "size_error": "저장 전에 입력 길이를 확인하세요.",
-    "refresh_first": "첫 페이지부터 안건 새로 고침"
+    "refresh_first": "첫 페이지부터 안건 새로 고침",
+    "reopen": "종료 확인 정정",
+    "reopen_hint": "종료 확인을 철회하면 회의가 예정 상태로 돌아가며 계속 취소하거나 일정을 변경할 수 있습니다. 원래 확인과 이번 사유는 확인 이력에 남습니다."
   },
   "header": {
     "title": "프로젝트 콕핏",
@@ -862,7 +864,12 @@
     "members_loading": "워크스페이스 멤버를 불러온 뒤 검토자를 선택하세요.",
     "no_reviewers": "검토자로 선택할 워크스페이스 멤버가 없습니다.",
     "open_members": "워크스페이스 설정 열기 (새 탭)",
-    "adopt_existing": "기존 이슈 사용"
+    "adopt_existing": "기존 이슈 사용",
+    "unpublish": "공식 회의록 게시 취소",
+    "unpublish_description": "이 버전을 공식 회의록 포인터에서 내립니다. NAS에 기록된 사본은 그대로 유지되며, 승인된 버전은 이후 다시 게시할 수 있습니다.",
+    "unpublish_reason": "사유",
+    "unpublish_reason_hint": "게시 취소 사유는 버전 이력에 기록됩니다.",
+    "unpublish_confirm": "게시 취소"
   },
   "nas": {
     "not_configured": "이 워크스페이스에 허용된 NAS 내보내기 위치가 설정되지 않았습니다. 배포 관리자가 내보내기 루트를 설정해야 하며 회의 폴더만 만드는 것으로 해결되지 않습니다.",
@@ -1043,7 +1050,12 @@
     "review": "검토",
     "review_action": "실행 항목 검토: {{title}}",
     "empty": "아직 실행 제안이 없습니다.",
-    "issue_sources": "회의 실행 항목 출처"
+    "issue_sources": "회의 실행 항목 출처",
+    "revise": "처분 변경",
+    "revise_hint": "변경해도 이전 결정은 기록에 남습니다. 이전에 생성된 작업은 삭제되지 않습니다.",
+    "revise_reason": "변경 사유",
+    "confirm_revise": "변경 확인",
+    "retry_revise": "처분 변경 재시도"
   },
   "work_overview": {
     "work": "업무 개요",
@@ -1365,7 +1377,12 @@
     "superseded_hint": "이 요청은 대체되었습니다. 고정 증거와 원래 결론을 유지하며 다시 검토할 수 없습니다.",
     "packet_changed": "현재 정의나 승인된 증거가 이 요청과 다릅니다. 최신 내용으로 새 요청을 만드세요.",
     "read_evidence": "증거 버전 {{number}} 읽기",
-    "submit_review": "인수 결론 제출"
+    "submit_review": "인수 결론 제출",
+    "revoke_approval": "승인 철회",
+    "revoke_hint": "철회하면 이 L3는 승인 대기 상태로 돌아갑니다. 이전 승인과 철회 사유는 기록에 남으며 새 승인 요청을 만들 수 있습니다.",
+    "revoke_confirm": "철회 확인",
+    "revoke_reason_required": "철회 사유(1~16000자)를 입력하세요.",
+    "approval_revoked": "승인이 철회되었습니다. 이 L3는 재승인이 필요하며 과거 결정은 기록에 남습니다."
   },
   "acceptance_request": {
     "start": "검수 요청",

@@ -120,6 +120,9 @@ func (h *Handler) cockpitCompactResult(r *http.Request, cc cockpitContext, meeti
 	case "bound", "unbound", "focused":
 		// Association commands confirm through the resulting workflow state;
 		// no dedicated receipt object beyond the action name.
+	case "unpublished":
+		// A withdrawal confirms through workflow state: the published pointer
+		// is cleared. The version keeps its retained history without a receipt.
 	default:
 		return out, fmt.Errorf("unsupported compact command receipt")
 	}

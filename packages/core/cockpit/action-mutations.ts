@@ -36,6 +36,11 @@ export function useResolveCockpitMeetingAction(wsId: string) {
     api.resolveCockpitMeetingAction(action, body));
 }
 
+export function useReviseCockpitMeetingAction(wsId: string) {
+  return useActionMutation(wsId, ({ action, body }: { meetingId: string; action: Pick<CockpitMeetingAction, "id" | "meeting_id" | "version_id" | "source_content_hash">; body: CockpitActionResolution }) =>
+    api.reviseCockpitMeetingAction(action, body));
+}
+
 export function useCreateCockpitNodeTask(wsId: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: ({ nodeId, body }: { nodeId: string; body: CockpitTaskCreate }) => api.createCockpitNodeTask(nodeId, body),

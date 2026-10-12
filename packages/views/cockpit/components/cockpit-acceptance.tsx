@@ -20,6 +20,7 @@ import { useT } from "../../i18n";
 import { ArtifactStatus, useArtifactStatusLabel } from "./cockpit-artifact-status";
 import { CockpitAcceptanceCriteriaEditor } from "./cockpit-acceptance-criteria";
 import { CockpitAcceptanceRequestForm } from "./cockpit-acceptance-request";
+import { CockpitAcceptanceRevoke } from "./cockpit-acceptance-revoke";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { WorkflowIssueLink } from "./cockpit-workflow-issue-link";
 import { CockpitArtifactReviewerTransfer } from "./cockpit-artifact-reviewer-transfer";
@@ -42,10 +43,11 @@ export function CockpitAcceptance({ wsId, nodeId, scope, currentUserId, readOnly
     <div className="flex items-start gap-3"><CheckCheck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden /><div><h2 className="text-title-sm font-semibold">{t(($) => $.acceptance.title)}</h2><p className="mt-1 text-caption text-muted-foreground">{t(($) => $.acceptance.basis)}</p></div></div>
     {query.isPending ? <div role="status" className="flex gap-2 text-caption"><Spinner />{t(($) => $.workflow.loading)}</div> : !data ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
       {query.isError && <div className="space-y-2 rounded-lg bg-warning-subtle p-3 text-caption"><p>{t(($) => $.work_overview.refresh_failed)}</p><CockpitFlowError onRetry={() => void query.refetch()} /></div>}
-      {data.needs_reacceptance && <p role="status" className="rounded-lg bg-warning-subtle p-3 text-caption">{t(($) => $.acceptance.changed_since_approval)}</p>}
-      <div className="grid gap-3 sm:grid-cols-2">{([[t(($) => $.acceptance.current_request), data.current_request], [t(($) => $.acceptance.last_approved), data.last_approved_request]] as const).map(([title, request]) => <section key={title} className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label={title}>
+      {data.needs_reacceptance && <p role="status" className="rounded-lg bg-warning-subtle p-3 text-caption">{data.last_approved_request ? t(($) => $.acceptance.changed_since_approval) : t(($) => $.acceptance.approval_revoked)}</p>}
+      <div className="grid gap-3 sm:grid-cols-2">{([[t(($) => $.acceptance.current_request), data.current_request, false], [t(($) => $.acceptance.last_approved), data.last_approved_request, true]] as const).map(([title, request, approvalSlot]) => <section key={title} className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label={title}>
         <h3 className="text-caption font-medium text-muted-foreground">{title}</h3>{request ? <><ArtifactStatus status={request.decision} /><p className="text-micro text-muted-foreground">{t(($) => $.acceptance.definition_revision, { revision: request.criteria_revision })}</p>
-          <AppLink href={requestHref(request.id)} className="text-caption text-primary hover:underline">{t(($) => $.acceptance.read_request)}</AppLink></> : <p className="text-caption text-muted-foreground">{t(($) => $.acceptance.no_request)}</p>}
+          <AppLink href={requestHref(request.id)} className="text-caption text-primary hover:underline">{t(($) => $.acceptance.read_request)}</AppLink>
+          {approvalSlot && data.can_edit_criteria && <CockpitAcceptanceRevoke wsId={wsId} nodeId={nodeId} requestId={request.id} disabled={readOnly || query.isFetching || query.isError} />}</> : <p className="text-caption text-muted-foreground">{t(($) => $.acceptance.no_request)}</p>}
       </section>)}</div>
       <section id="cockpit-acceptance-criteria" className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label={t(($) => $.acceptance.criteria)}>
         <div className="flex flex-wrap items-center gap-3"><h3 className="mr-auto text-caption font-medium">{t(($) => $.acceptance.criteria)}</h3>

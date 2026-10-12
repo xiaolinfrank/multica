@@ -396,6 +396,57 @@ func (s *IssueService) finalizeAcceptanceRetired(ctx context.Context, h *cockpit
 		s.TaskService.FinalizeIssueTaskCancellations(ctx, util.UUIDToString(ws), h.cancelled)
 	}
 }
+
+// CockpitAcceptanceApprovalRevoke is the R2 reverse command for a recorded
+// acceptance approval: it withdraws the definition's approved pointer and
+// records the re-decision, while the historical request rows keep their
+// formal decisions.
+type CockpitAcceptanceApprovalRevoke struct {
+	WorkspaceID, ActorID, NodeID, RequestID pgtype.UUID
+	Human                                   bool
+	Reason                                  string
+}
+
+func (s *IssueService) RevokeCockpitAcceptanceApproval(ctx context.Context, p CockpitAcceptanceApprovalRevoke) error {
+	if !p.Human {
+		return ErrCockpitWorkflowForbidden
+	}
+	reason, err := artifactReason(p.Reason)
+	if err != nil {
+		return err
+	}
+	tx, err := s.TxStarter.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := s.Queries.WithTx(tx)
+	m, err := lockArtifactWorkspace(ctx, q, p.WorkspaceID, p.ActorID)
+	if err != nil {
+		return err
+	}
+	d, err := q.LockCockpitAcceptanceDefinition(ctx, db.LockCockpitAcceptanceDefinitionParams{WorkspaceID: p.WorkspaceID, NodeID: p.NodeID})
+	if err != nil {
+		return cockpitWorkflowError(err)
+	}
+	if !acceptanceManager(d, p.ActorID, m.Role, p.Human) {
+		return ErrCockpitWorkflowForbidden
+	}
+	// The guarded UPDATE is the compare-and-swap: zero rows mean the request
+	// is not the approval currently in force (already revoked, superseded by a
+	// later approval, or never approved).
+	if _, err = q.RevokeCockpitAcceptanceApproval(ctx, db.RevokeCockpitAcceptanceApprovalParams{WorkspaceID: p.WorkspaceID, NodeID: p.NodeID, RequestID: p.RequestID, ActorID: p.ActorID, Reason: reason}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return artifactConflict("the request is not the acceptance approval currently in force")
+		}
+		return err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.acceptanceChanged(p.WorkspaceID, p.NodeID, p.ActorID)
+	return nil
+}
 func (s *IssueService) ReviewCockpitAcceptanceRequest(ctx context.Context, p CockpitAcceptanceReview) error {
 	if !p.Human {
 		return ErrCockpitWorkflowForbidden
