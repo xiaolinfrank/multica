@@ -112,7 +112,8 @@
     "unstart": "Correct start confirmation",
     "unstart_hint": "Withdraw the start confirmation: the meeting returns to scheduled and the actual start time recorded with it is cleared. For a meeting that genuinely began, correct the times or confirm the end instead.",
     "unschedule": "Correct schedule confirmation",
-    "unschedule_hint": "Withdraw the schedule confirmation: the meeting returns to not yet confirmed, so times or the plan can be reworked. The reason stays in the confirmation history."
+    "unschedule_hint": "Withdraw the schedule confirmation: the meeting returns to not yet confirmed, so times or the plan can be reworked. The reason stays in the confirmation history.",
+    "recording_hint": "In session: pick a topic and record against it; facts and the end confirmation stay on top."
   },
   "header": {
     "title": "Project Cockpit",
