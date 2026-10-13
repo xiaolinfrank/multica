@@ -40,7 +40,7 @@ func RequireCockpitMeetingPreparationOpen(ctx context.Context, q *db.Queries, wo
 
 func (s *IssueService) ChangeCockpitMeetingDisposition(ctx context.Context, p CockpitLifecycleRead, in CockpitMeetingDispositionInput) (CockpitLifecycleCommandResult, error) {
 	in.Reason = strings.TrimSpace(in.Reason)
-	if in.Reason == "" || !templateText(in.Reason, 16000) {
+	if in.Reason == "" || !preparationText(in.Reason, 16000) {
 		return CockpitLifecycleCommandResult{}, ErrCockpitWorkflowInput
 	}
 	switch in.Transition {
@@ -48,7 +48,7 @@ func (s *IssueService) ChangeCockpitMeetingDisposition(ctx context.Context, p Co
 	default:
 		return CockpitLifecycleCommandResult{}, ErrCockpitWorkflowInput
 	}
-	c, e := newLifecycleCommand(p, in.CockpitLifecycleCommandInput, in.Transition, pgtype.UUID{}, pgtype.UUID{}, in)
+	c, e := newLifecycleCommand(p, in.CockpitLifecycleCommandInput, in.Transition, in)
 	if e != nil {
 		return CockpitLifecycleCommandResult{}, e
 	}
@@ -99,7 +99,7 @@ func (s *IssueService) ChangeCockpitMeetingDisposition(ctx context.Context, p Co
 	}
 	occurrence := lifecycleOccurrence(m)
 	archive := lifecycleArchive(m)
-	return s.finishLifecycleWrite(ctx, tx, q, c, CockpitLifecycleReceipt{Revision: rev, AgendaRevision: m.AgendaRevision, Reason: in.Reason, PreviousOccurrence: &previousOccurrence, Occurrence: &occurrence, PreviousArchive: &previousArchive, Archive: &archive})
+	return s.finishLifecycleWrite(ctx, tx, q, c, CockpitLifecycleReceipt{Revision: rev, Reason: in.Reason, PreviousOccurrence: &previousOccurrence, Occurrence: &occurrence, PreviousArchive: &previousArchive, Archive: &archive})
 }
 
 func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p CockpitLifecycleRead) (CockpitMeetingOperationBasis, error) {
@@ -112,11 +112,10 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 	allow := operationField("allowed")
 	manager := lifecycleManager(ctx, q, x, p)
 	out = CockpitMeetingOperationBasis{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), SchemaVersion: 1, GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Availability: "available", LifecycleRevision: &x.meeting.LifecycleRevision,
-		Delete: allow, Cancel: allow, AppendDisposition: allow, Reinstate: allow, Archive: allow, Unarchive: allow, AddPreparation: allow, ApplyTemplate: allow, CanAddPreparation: p.Human, Targets: []IssueOperationTarget{}}
+		Delete: allow, Cancel: allow, AppendDisposition: allow, Reinstate: allow, Archive: allow, Unarchive: allow, AddPreparation: allow, CanAddPreparation: p.Human, Targets: []IssueOperationTarget{}}
 	if !p.Human {
 		out.Delete = operationField("blocked", "human_required")
 		out.AddPreparation = operationField("blocked", "human_required")
-		out.ApplyTemplate = out.AddPreparation
 	}
 	if !manager {
 		denied := operationField("blocked", "workflow_manager_required")
@@ -138,13 +137,11 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 	if x.meeting.ArchivedAt.Valid {
 		out.Archive = operationField("blocked", "meeting_archived")
 		out.AddPreparation = operationField("blocked", "meeting_archived")
-		out.ApplyTemplate = out.AddPreparation
 	} else {
 		out.Unarchive = operationField("blocked", "meeting_not_archived")
 	}
 	if state == "cancelled" {
 		out.AddPreparation = operationField("blocked", "meeting_cancelled")
-		out.ApplyTemplate = out.AddPreparation
 	}
 	out.CanAddPreparation = out.AddPreparation.State == "allowed"
 	if x.work != nil {
@@ -175,7 +172,7 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 		if r.OperationID.Valid {
 			out.Delete = operationField("blocked", "meeting_preparation_history")
 			if len(out.Targets) < 3 {
-				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "agenda", OperationID: util.UUIDToString(r.OperationID), Label: r.Label, Purpose: r.Purpose})
+				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "preparation", OperationID: util.UUIDToString(r.OperationID), Label: r.Label, Purpose: r.Purpose})
 			}
 		}
 	}
@@ -194,8 +191,15 @@ func (s *IssueService) GetCockpitMeetingOperationBasis(ctx context.Context, p Co
 			if len(meetings) != 1 {
 				return out, ErrCockpitWorkflowNotFound
 			}
-			out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "resources", Label: meetings[0].Title, Purpose: "meeting_input_references"})
+			out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: out.MeetingID, View: "preparation", Label: meetings[0].Title, Purpose: "meeting_input_references"})
 		}
+	}
+	history, e := q.HasCockpitMeetingPreparationHistory(ctx, db.HasCockpitMeetingPreparationHistoryParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
+	if e != nil {
+		return out, e
+	}
+	if history && out.Delete.State != "blocked" {
+		out.Delete = operationField("blocked", "meeting_preparation_history")
 	}
 	counts, e := q.ReadCockpitMeetingPendingCounts(ctx, db.ReadCockpitMeetingPendingCountsParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
 	if e != nil {

@@ -5,10 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/service"
 )
 
@@ -85,11 +83,6 @@ func writeCockpitLifecycleError(w http.ResponseWriter, r *http.Request, e error)
 		writeJSON(w, http.StatusGone, map[string]string{"error": e.Error(), "code": "command_target_gone"})
 		return true
 	}
-	var ref *service.CockpitAgendaReferenceExistsError
-	if errors.As(e, &ref) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": e.Error(), "code": "reference_exists", "existing_reference_id": ref.ReferenceID})
-		return true
-	}
 	return writeCockpitActionError(w, r, e)
 }
 func (h *Handler) GetCockpitMeetingLifecycle(w http.ResponseWriter, r *http.Request) {
@@ -139,161 +132,7 @@ func (h *Handler) cockpitLifecycleList(w http.ResponseWriter, r *http.Request) (
 	if !ok {
 		return service.CockpitLifecycleList{}, false
 	}
-	out := service.CockpitLifecycleList{CockpitLifecycleRead: p, PageSize: size, Query: r.URL.Query().Get("q"), Cursor: r.URL.Query().Get("cursor")}
-	if v := r.URL.Query().Get("include_removed"); v != "" {
-		b, e := strconv.ParseBool(v)
-		if e != nil {
-			writeError(w, http.StatusBadRequest, "include_removed must be boolean")
-			return out, false
-		}
-		out.IncludeRemoved = b
-	}
-	if v := chi.URLParam(r, "agendaId"); v != "" {
-		out.AgendaID, ok = parseUUIDOrBadRequest(w, v, "agenda id")
-		if !ok {
-			return out, false
-		}
-	}
-	return out, true
-}
-func (h *Handler) ListCockpitMeetingAgenda(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleList(w, r)
-	if !ok {
-		return
-	}
-	out, e := h.IssueService.ListCockpitMeetingAgenda(r.Context(), p)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) GetCockpitMeetingAgenda(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, false)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "agendaId"), "agenda id")
-	if !ok {
-		return
-	}
-	out, e := h.IssueService.GetCockpitMeetingAgenda(r.Context(), p, id)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) SaveCockpitMeetingAgenda(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, true)
-	if !ok {
-		return
-	}
-	var id pgtype.UUID
-	if raw := chi.URLParam(r, "agendaId"); raw != "" {
-		id, ok = parseUUIDOrBadRequest(w, raw, "agenda id")
-		if !ok {
-			return
-		}
-	}
-	var in service.CockpitAgendaInput
-	if !decodeCockpitLifecycleBody(w, r, &in) || !lifecycleCommandID(w, in.CockpitLifecycleCommandInput) || !lifecycleRawUUID(w, in.NodeID, "node_id") || !lifecycleRawUUID(w, in.FacilitatorUserID, "facilitator_user_id") {
-		return
-	}
-	out, e := h.IssueService.SaveCockpitMeetingAgenda(r.Context(), p, id, in)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) RemoveCockpitMeetingAgenda(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, true)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "agendaId"), "agenda id")
-	if !ok {
-		return
-	}
-	var in service.CockpitAgendaRemoveInput
-	if !decodeCockpitLifecycleBody(w, r, &in) || !lifecycleCommandID(w, in.CockpitLifecycleCommandInput) {
-		return
-	}
-	out, e := h.IssueService.RemoveCockpitMeetingAgenda(r.Context(), p, id, in)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) ListCockpitMeetingAgendaReferences(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleList(w, r)
-	if !ok {
-		return
-	}
-	out, e := h.IssueService.ListCockpitMeetingAgendaReferences(r.Context(), p)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) AttachCockpitAgendaReference(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, true)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "agendaId"), "agenda id")
-	if !ok {
-		return
-	}
-	var in service.CockpitAgendaReferenceInput
-	if !decodeCockpitLifecycleBody(w, r, &in) || !lifecycleCommandID(w, in.CockpitLifecycleCommandInput) {
-		return
-	}
-	if _, ok = parseUUIDOrBadRequest(w, in.TargetID, "target_id"); !ok {
-		return
-	}
-	out, e := h.IssueService.AttachCockpitAgendaReference(r.Context(), p, id, in)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) RemoveCockpitAgendaReference(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, true)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "agendaId"), "agenda id")
-	if !ok {
-		return
-	}
-	ref, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "referenceId"), "reference id")
-	if !ok {
-		return
-	}
-	var in service.CockpitLifecycleCommandInput
-	if !decodeCockpitLifecycleBody(w, r, &in) || !lifecycleCommandID(w, in) {
-		return
-	}
-	out, e := h.IssueService.RemoveCockpitAgendaReference(r.Context(), p, id, ref, in)
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
-func (h *Handler) CreateCockpitMeetingPreparationIssue(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitLifecycleRead(w, r, true)
-	if !ok {
-		return
-	}
-	id, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "agendaId"), "agenda id")
-	if !ok {
-		return
-	}
-	var in service.CockpitPreparationIssueInput
-	if !decodeCockpitLifecycleBody(w, r, &in) || !lifecycleCommandID(w, in.CockpitLifecycleCommandInput) {
-		return
-	}
-	for field, value := range map[string]*string{"primary_node_id": in.PrimaryNodeID, "new_issue.project_id": in.NewIssue.ProjectID, "new_issue.module_id": in.NewIssue.ModuleID, "new_issue.assignee_id": in.NewIssue.AssigneeID} {
-		if !lifecycleOptionalUUID(w, value, field) {
-			return
-		}
-	}
-	out, e := h.IssueService.CreateCockpitMeetingPreparationIssue(r.Context(), p, id, in, service.IssueCreateOpts{ActorID: uuidToString(p.ActorID)})
-	if !writeCockpitLifecycleError(w, r, e) {
-		writeJSON(w, http.StatusOK, out)
-	}
+	return service.CockpitLifecycleList{CockpitLifecycleRead: p, PageSize: size, Query: r.URL.Query().Get("q"), Cursor: r.URL.Query().Get("cursor")}, true
 }
 func (h *Handler) ListCockpitMeetingLifecycleCommands(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.cockpitLifecycleList(w, r)

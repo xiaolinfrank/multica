@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { CockpitMeetingIssueLink, Issue } from "@multica/core/types";
-import { cockpitMeetingHasDirectReference, cockpitObjectPath, COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
+import { cockpitMeetingHasDirectReference, COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -162,7 +162,6 @@ export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSave
               {cockpitMeetingHasDirectReference(link) && <CockpitMeetingRoleLabels link={{ ...link, roles: [...new Set([...(link.roles ?? []), ...(requiredRolesByIssue?.get(link.issue_id) ?? [])])] }} />}
               {!disabled && cockpitMeetingHasDirectReference(link) && onSaveRoles && <MeetingIssueRolePicker link={link} onSave={onSaveRoles} requiredRoles={requiredRolesByIssue?.get(link.issue_id)} canAddPreparation={canAddPreparation} />}
             </div>
-            {link.has_agenda_reference && <div className="flex flex-wrap gap-2 text-caption text-muted-foreground"><span>{t(($) => $.meeting_lifecycle.agenda_source, { count: link.agenda_total ?? 1 })}</span>{link.agenda_id && <AppLink className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: link.meeting_id, view: "agenda", agendaId: link.agenda_id })}>{t(($) => $.meeting_lifecycle.open_agenda)}</AppLink>}</div>}
             {requiredRolesByIssue?.has(link.issue_id) && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
           </li>
         ))}

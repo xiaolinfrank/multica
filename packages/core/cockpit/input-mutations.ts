@@ -6,10 +6,10 @@ import type * as Input from "../types/cockpit-input";
 import type { CockpitInputPendingCommand } from "./input-draft-store";
 import {
   cockpitInputCreateAcknowledged, cockpitInputVersionAcknowledged, cockpitInputTransferAcknowledged,
-  cockpitInputReferenceAcknowledged, cockpitInputManifestAcknowledged,
+  cockpitInputManifestAcknowledged,
 } from "./input-commands";
 import { CockpitUnconfirmedWriteError } from "./errors";
-import { invalidateCockpitInputs, invalidateCockpitInputReferenceContext } from "./input-queries";
+import { invalidateCockpitInputs } from "./input-queries";
 
 /** Lookup never falls through to a POST, including a 404 or malformed receipt. */
 export async function executeCockpitInputCommand(wsId: string, command: CockpitInputPendingCommand, mode: "submit" | "lookup" = "submit") {
@@ -38,17 +38,6 @@ export async function executeCockpitInputCommand(wsId: string, command: CockpitI
       if (!result || !cockpitInputTransferAcknowledged(result, command.inputId, command.versionId, command.body, command.transferId)) throw new CockpitUnconfirmedWriteError();
       return { kind: command.kind, result };
     }
-    case "reference": {
-      const result = lookup ? await api.getCockpitInputReferenceCommand(wsId, command.meetingId, command.body.commandKey) : await api.createCockpitInputReference(wsId, command.meetingId, command.body);
-      if (!result || !cockpitInputReferenceAcknowledged(result, command.meetingId, command.body)) throw new CockpitUnconfirmedWriteError();
-      return { kind: command.kind, result };
-    }
-    case "remove_reference": {
-      const result = lookup ? await api.getCockpitInputReferenceCommand(wsId, command.meetingId, command.body.commandKey) : await api.removeCockpitInputReference(wsId, command.meetingId, command.referenceId, command.body);
-      if (!result || result.action !== "input_reference_remove" || result.receipt.meetingId !== command.meetingId
-        || result.receipt.referenceId !== command.referenceId || !result.receipt.removed || result.commandKey !== command.body.commandKey) throw new CockpitUnconfirmedWriteError();
-      return { kind: command.kind, result };
-    }
     case "manifest": {
       const result = lookup ? await api.getCockpitInputManifestCommand(wsId, command.issueId, command.body.commandKey) : await api.saveCockpitIssueInputManifest(wsId, command.issueId, command.body);
       if (!result || !cockpitInputManifestAcknowledged(result, command.issueId, command.body)) throw new CockpitUnconfirmedWriteError();
@@ -61,11 +50,8 @@ export function useCockpitInputCommand(wsId: string) {
   const client = useQueryClient();
   return useMutation({ mutationKey: ["cockpit-input-command", wsId], retry: false,
     mutationFn: ({ command, mode }: { command: CockpitInputPendingCommand; mode?: "submit" | "lookup" }) => executeCockpitInputCommand(wsId, command, mode),
-    onSettled: async (_data, _error, { command }) => {
+    onSettled: async (_data, _error) => {
       await invalidateCockpitInputs(client, wsId);
-      const meetingId = command.kind === "reference" || command.kind === "remove_reference" ? command.meetingId
-        : command.kind === "version" ? command.body.initialReference?.meetingId : undefined;
-      if (meetingId) await invalidateCockpitInputReferenceContext(client, wsId, meetingId);
     },
   });
 }

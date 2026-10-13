@@ -209,8 +209,7 @@ func directoryPrincipalWithRetainedPlan(ctx context.Context, q *db.Queries, p Co
 		out.IssueID = planningUUID(run.IssueID)
 		out.AgentID = planningUUID(agent.ID)
 		out.RuntimeID = planningUUID(run.RuntimeID)
-		out.RelationKind = relation.Kind
-		out.AgendaReferenceID = planningUUID(relation.AgendaReferenceID)
+		out.RelationKind = relation
 	}
 	authorizing, _ := util.ParseUUID(out.AuthorizingUserID)
 	users, err := q.GetUsersByIDs(ctx, []pgtype.UUID{p.CredentialOwnerID, authorizing})
@@ -390,7 +389,7 @@ func directoryRequestHash(p CockpitDirectoryRead, action string, body any) strin
 }
 func directoryTrimReason(reason string) (string, error) {
 	reason = strings.TrimSpace(reason)
-	if !templateText(reason, 16000) {
+	if !preparationText(reason, 16000) {
 		return "", directoryError("invalid_input", "The reason must fit within 16000 UTF-8 bytes.")
 	}
 	return reason, nil

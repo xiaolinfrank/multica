@@ -1334,17 +1334,6 @@ func (h *Handler) SetCockpitMeetingIssues(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if req.Replace {
-		for _, issueID := range resolved {
-			if _, exists := markers[issueID]; !exists {
-				if err := service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meeting.ID); err != nil {
-					writeError(w, http.StatusConflict, err.Error())
-					return
-				}
-				break
-			}
-		}
-	}
-	if req.Replace {
 		if err := q.DeleteCockpitMeetingIssuesExcept(ctx, db.DeleteCockpitMeetingIssuesExceptParams{
 			MeetingID: meeting.ID, WorkspaceID: cc.workspaceID, IssueIds: resolved,
 		}); err != nil {
@@ -1492,19 +1481,6 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if req.Replace {
-		for _, nodeID := range resolved {
-			if _, err := q.GetCockpitMeetingNodeLink(ctx, db.GetCockpitMeetingNodeLinkParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, NodeID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
-				if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meeting.ID); err != nil {
-					writeError(w, http.StatusConflict, err.Error())
-					return
-				}
-			} else if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to check existing meeting reference")
-				return
-			}
-		}
-	}
 	if req.Replace {
 		if err := q.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
 			MeetingID:   meeting.ID,
@@ -2131,15 +2107,15 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			continue
 		}
 		created, err := h.createCockpitMeetingRecord(ctx, db.CreateCockpitMeetingParams{
-			WorkspaceID: cc.workspaceID,
-			CockpitID:   cc.cockpit.ID,
-			MeetDate:    meetDate,
-			Title:       title,
-			Code:        code,
-			Parties:     strings.TrimSpace(item.Parties),
-			Kind:        strings.TrimSpace(item.Kind),
-			NasDir:      path,
-			Detected:    true,
+			WorkspaceID:     cc.workspaceID,
+			CockpitID:       cc.cockpit.ID,
+			MeetDate:        meetDate,
+			Title:           title,
+			Code:            code,
+			Parties:         strings.TrimSpace(item.Parties),
+			Kind:            strings.TrimSpace(item.Kind),
+			NasDir:          path,
+			Detected:        true,
 			OccurrenceState: "unconfirmed",
 		}, true, pgtype.UUID{}, &cockpitCreationCommand{WorkspaceID: cc.workspaceID, ActorID: cc.member.UserID, Kind: "meeting"})
 		if errors.Is(err, errCockpitMeetingDirectoryRecorded) {

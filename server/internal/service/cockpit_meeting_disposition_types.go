@@ -15,7 +15,6 @@ type CockpitDispositionIssue struct {
 	UnstartedWakeupRunCount int64                  `json:"unstarted_wakeup_run_count"`
 	OtherQueuedRunCount     int64                  `json:"other_queued_run_count"`
 	ActiveRunCount          int64                  `json:"active_run_count"`
-	AgendaTotal             int64                  `json:"agenda_total"`
 	Targets                 []IssueOperationTarget `json:"targets"`
 	TargetsTotal            int64                  `json:"targets_total"`
 	ParentIssueID           *string                `json:"parent_issue_id"`
@@ -62,7 +61,6 @@ type CockpitCancellationIssueChoice struct {
 	CancelStatus     *string `json:"cancel_status"`
 	DueDate          *string `json:"due_date"`
 	TargetMeetingID  *string `json:"target_meeting_id"`
-	TargetAgendaID   *string `json:"target_agenda_id"`
 }
 
 type CockpitCancellationPreviewInput struct {
@@ -133,7 +131,6 @@ type CockpitMeetingOperationBasis struct {
 	Archive           IssueOperationField                `json:"archive"`
 	Unarchive         IssueOperationField                `json:"unarchive"`
 	AddPreparation    IssueOperationField                `json:"add_preparation"`
-	ApplyTemplate     IssueOperationField                `json:"apply_template"`
 	CanAddPreparation bool                               `json:"can_add_preparation"`
 	Pending           CockpitMeetingPendingCounts        `json:"pending"`
 	CurrentOperation  *CockpitPreparationOperationHeader `json:"current_operation"`

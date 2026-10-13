@@ -5,56 +5,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strconv"
 
 	"github.com/multica-ai/multica/server/internal/cli"
 	"github.com/spf13/cobra"
 )
-
-func newCockpitMeetingArtifactReferencesCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "artifact-references <meeting-id>", Args: exactArgs(1), Short: "Read fixed artifact versions explicitly referenced by a meeting",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			meetingID, err := cockpitWorkflowUUID(args[0], "meeting-id")
-			if err != nil {
-				return err
-			}
-			query, size, err := cockpitArtifactCLIQuery(cmd, cockpitArtifactOperation{page: true})
-			if err != nil {
-				return err
-			}
-			includeRemoved, _ := cmd.Flags().GetBool("include-removed")
-			query.Set("include_removed", strconv.FormatBool(includeRemoved))
-			client, err := newAPIClient(cmd)
-			if err != nil {
-				return err
-			}
-			ctx, cancel := cli.APIContext(context.Background())
-			defer cancel()
-			var result map[string]any
-			if err = client.GetJSON(ctx, "/api/cockpit/meetings/"+url.PathEscape(meetingID)+"/artifact-references?"+query.Encode(), &result); err != nil {
-				return err
-			}
-			items, ok := result["items"].([]any)
-			cursor, hasCursor := result["next_cursor"]
-			next, stringCursor := cursor.(string)
-			valid := result["workspace_id"] == client.WorkspaceID && result["meeting_id"] == meetingID && result["include_removed"] == includeRemoved && ok && len(items) <= size && cockpitReceiptNumber(result["total"], float64(len(items))) && hasCursor && (cursor == nil || stringCursor && next != "" && next != query.Get("cursor"))
-			seen := map[string]bool{}
-			for _, raw := range items {
-				item := artifactCLIMap(raw)
-				id := cockpitNASReceiptUUID(item["id"])
-				valid = valid && id != "" && !seen[id] && item["meeting_id"] == meetingID && item["node_id"] == nil && cockpitNASReceiptUUID(item["artifact_id"]) != "" && cockpitNASReceiptUUID(item["version_id"]) != "" && cockpitReceiptNumber(item["version_number"], 1) && artifactCLIHash(item["content_hash"]) && (includeRemoved || item["removed_at"] == nil)
-				seen[id] = true
-			}
-			if !valid {
-				return fmt.Errorf("meeting artifact response does not confirm fixed references, scope or page bounds")
-			}
-			return cli.PrintJSON(os.Stdout, result)
-		}}
-	cmd.Flags().Int("page-size", 25, "One page of 1-100 fixed references")
-	cmd.Flags().String("cursor", "", "Opaque continuation for this meeting, history filter and page size")
-	cmd.Flags().Bool("include-removed", false, "Include the history of explicitly removed references")
-	return cmd
-}
 
 func newCockpitIssueArtifactsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "artifacts <issue>", Args: exactArgs(1), Short: "Read one page of production, review and acceptance context for an Issue",

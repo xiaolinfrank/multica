@@ -7,7 +7,7 @@ import {
   cockpitMeetingWorkflowOptions, cockpitScopeMembersOptions, cockpitRelationViewKey, cockpitMeetingOperationBasisOptions, cockpitMeetingPreparationPath,
   useCockpitScopeViewStore, EMPTY_COCKPIT_RELATION_PAGE, cockpitObjectPath, cockpitSurfacePath,
   useAppendCockpitMeetingIssue, useAppendCockpitMeetingNode, useDeleteCockpitMeetingIssue, useDeleteCockpitMeetingNode,
-  useSetCockpitMeetingIssueRolesCompact, useUpdateCockpitMeeting, useSaveCockpitMeetingMaterials, useProvisionCockpitMeeting,
+  useSetCockpitMeetingIssueRolesCompact, useSaveCockpitMeetingMaterials, useUpdateCockpitMeeting ,
   useDeleteCockpitMeeting, useUpsertCockpitDirectoryCompact, useDeleteCockpitDirectoryCompact, type CockpitScope,
 } from "@multica/core/cockpit";
 import type { CockpitDirectoryEntry } from "@multica/core/types";
@@ -19,7 +19,6 @@ import { toast } from "sonner";
 import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitMeetingPanel } from "./cockpit-meeting-panel";
-import { CockpitMeetingArtifactReferences } from "./cockpit-meeting-artifact-references";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
@@ -35,9 +34,9 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const close = () => { if (stillCurrent()) onClose(); };
   const query = useQuery(cockpitMeetingDetailOptions(wsId, meetingId, scope));
   const detail = query.data;
-  const preparationAvailable = detail?.capabilities?.meeting_templates === true || detail?.capabilities?.meeting_disposition === true || detail?.capabilities?.meeting_directory_preparation === true;
+  const preparationAvailable = detail?.capabilities?.meeting_disposition === true || detail?.capabilities?.meeting_directory_preparation === true;
   const basis = useQuery({ ...cockpitMeetingOperationBasisOptions(wsId, meetingId), enabled: preparationAvailable });
-  const [actionsOpen, setActionsOpen] = useState(false); const [authorizedPreparationId, setAuthorizedPreparationId] = useState<string | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const workflow = useQuery(cockpitMeetingWorkflowOptions(wsId, meetingId));
   const actorId = detail?.actor.user_id ?? "";
   const memberIds = [...new Set([actorId, workflow.data?.reviewer_id, workflow.data?.current_version?.reviewer_id,
@@ -54,7 +53,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const appendIssue = useAppendCockpitMeetingIssue(wsId), appendNode = useAppendCockpitMeetingNode(wsId);
   const unlinkIssue = useDeleteCockpitMeetingIssue(wsId), unlinkNode = useDeleteCockpitMeetingNode(wsId);
   const roles = useSetCockpitMeetingIssueRolesCompact(wsId), update = useUpdateCockpitMeeting(wsId);
-  const saveMaterials = useSaveCockpitMeetingMaterials(wsId), provision = useProvisionCockpitMeeting(wsId);
+  const saveMaterial = useSaveCockpitMeetingMaterials(wsId);
   const remove = useDeleteCockpitMeeting(wsId), upsertDirectory = useUpsertCockpitDirectoryCompact(wsId), deleteContact = useDeleteCockpitDirectoryCompact(wsId);
   const [deleting, setDeleting] = useState(false), [deleteError, setDeleteError] = useState(""); const deleteLock = useRef(false);
   const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
@@ -63,12 +62,11 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   };
   const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(detail?.node_index ?? []), [detail?.node_index]);
   const labels = new Map((nodePage?.items ?? []).map((link) => [link.node_id, `${codes.get(link.node_id) ?? link.code} ${link.name}`.trim()]));
-  if (!detail) return <aside className={navigation.searchParams.get("meeting") === meetingId && navigation.searchParams.get("meeting_focus") === "1" ? "flex w-full max-w-full flex-col space-y-4 bg-card p-4" : "w-[min(46rem,65vw)] max-w-full space-y-4 border-l bg-card p-4 max-xl:w-full"}>
+  if (!detail) return <aside className="w-[min(46rem,65vw)] max-w-full space-y-4 border-l bg-card p-4 max-xl:w-full">
     <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={t(($) => $.panel.close)}><X className="size-4" /></Button>
     {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} onClose={close} /> : <Spinner />}
   </aside>;
   const readOnly = !detail.actor.is_human || !detail.scope_match || query.isError;
-  const canAddPreparation = !preparationAvailable || !basis.isError && basis.data?.availability === "available" && basis.data.can_add_preparation;
   const defaults = detail.cockpit;
   const projectId = scope.projectId ?? defaults?.meeting_project_id ?? null;
   const moduleId = scope.moduleId ?? (!scope.projectId || scope.projectId === defaults?.meeting_project_id ? defaults?.meeting_module_id ?? null : null);
@@ -84,29 +82,22 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
     </div>;
   };
   return <><CockpitMeetingPanel wsId={wsId} currentUserId={actorId} meeting={detail.meeting}
-    inputsAvailable={detail.capabilities?.inputs === true} inputManifestAvailable={detail.capabilities?.run_input_manifests === true}
     lifecycleAvailable={detail.capabilities?.meeting_lifecycle === true}
-    templatesAvailable={detail.capabilities?.meeting_templates === true} canAddPreparation={canAddPreparation} dispositionAvailable={detail.capabilities?.meeting_disposition === true}
     directoryPreparationAvailable={detail.capabilities?.meeting_directory_preparation === true} onManageMeeting={() => setActionsOpen(true)}
-    artifactReferences={detail.capabilities?.artifacts === true ? <CockpitMeetingArtifactReferences key={`${wsId}:${meetingId}`} wsId={wsId} meetingId={meetingId} readOnly={readOnly || !canAddPreparation} /> : undefined}
-    meetingActions={<CockpitMeetingOperationsMenu wsId={wsId} meeting={detail.meeting} open={actionsOpen} onOpenChange={setActionsOpen} available={preparationAvailable} dispositionAvailable={detail.capabilities?.meeting_disposition === true} readOnly={readOnly} legacyDeleteAllowed={workflow.data?.enabled === false && !workflow.isError} onDelete={() => { setDeleteError(""); setDeleting(true); }} onPrepared={(id, advance) => { setAuthorizedPreparationId(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(navigation.pathname, meetingId, id, navigation.searchParams)); }} />}
-    authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={() => setAuthorizedPreparationId(null)}
+    meetingActions={<CockpitMeetingOperationsMenu wsId={wsId} meeting={detail.meeting} open={actionsOpen} onOpenChange={setActionsOpen} available={preparationAvailable} dispositionAvailable={detail.capabilities?.meeting_disposition === true} readOnly={readOnly} legacyDeleteAllowed={workflow.data?.enabled === false && !workflow.isError} onDelete={() => { setDeleteError(""); setDeleting(true); }} onPrepared={(id) => { navigation.push(cockpitMeetingPreparationPath(navigation.pathname, meetingId, id, navigation.searchParams)); }} />}
     meetings={[detail.meeting]} members={people}
     defaultPlacement={{ project_id: projectId, module_id: moduleId, node_id: defaultNodeId }}
     defaultAssigneeType={defaults?.meeting_assignee_type || null} defaultAssigneeId={defaults?.meeting_assignee_id ?? null}
     issueLinks={issuePage?.items ?? []} nodeLinks={nodePage?.items ?? []} nodeLabels={labels} nodeCodes={codes} issuePaging={pager("issues")} nodePaging={pager("nodes")} issuePageReady={Boolean(issuePage)} nodePageReady={Boolean(nodePage)}
+    onSaveDirectory={(nas_dir) => saveMaterial.mutateAsync({ id: meetingId, patch: { nas_dir } }).then(() => undefined)}
     readOnly={readOnly} onClose={close} onOpenNode={onOpenNode} onPatch={(patch) => update.mutate({ id: meetingId, patch }, { onError: fail })}
-    onLinkIssue={(issueId) => canAddPreparation ? appendIssue.mutateAsync({ meetingId, issueId }) : Promise.reject(new Error(t(($) => $.meeting_disposition.preparation_blocked)))}
+    onLinkIssue={(issueId) => appendIssue.mutateAsync({ meetingId, issueId })}
     onUnlinkIssue={(issueId) => unlinkIssue.mutate({ meetingId, issueId }, { onError: fail })}
     onSaveIssueRoles={(issueId, nextRoles) => roles.mutateAsync({ meetingId, issueId, roles: nextRoles })}
-    onLinkNode={(nodeId) => canAddPreparation ? appendNode.mutateAsync({ meetingId, nodeId }) : Promise.reject(new Error(t(($) => $.meeting_disposition.preparation_blocked)))}
+    onLinkNode={(nodeId) => appendNode.mutateAsync({ meetingId, nodeId })}
     onUnlinkNode={(nodeId) => unlinkNode.mutate({ meetingId, nodeId }, { onError: fail })}
     onSaveDirectoryEntry={(entry) => saveContacts([entry])} onAutoSaveDirectory={(entries) => upsertDirectory.mutate({ entries: entries.map(({ party, name, position }) => ({ party, name, position })), only_unknown_names: true }, { onError: fail })}
     onDeleteDirectoryEntry={async (entry) => { try { await deleteContact.mutateAsync(entry); return true; } catch { toast.error(t(($) => $.meetings.directory_delete_failed)); return false; } }}
-    onSaveMaterialPatch={async (patch) => { await saveMaterials.mutateAsync({ id: meetingId, patch }); }}
-    onPrepareDirectory={async () => { const result = await provision.mutateAsync({ id: meetingId, body: { create_task: false, create_dir: true, remember: true } });
-      if (result.dir_error) throw new Error(result.dir_error);
-      if (result.meeting.id !== meetingId || !result.meeting.nas_dir?.trim()) throw new Error(t(($) => $.workflow.unconfirmed)); }}
     onDelete={() => { setDeleteError(""); setDeleting(true); }}
     notice={!detail.scope_match || query.isError || detail.meeting.archived_at || detail.meeting.occurrence_state === "cancelled" ? <>{!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "meeting", id: meetingId }, { projectId: null, moduleId: null })} className="text-primary underline">{t(($) => $.shell.clear_scope)}</AppLink></div>
       : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} /> : null}<CockpitMeetingRetentionNotice meeting={detail.meeting} basis={basis.data} onManage={() => setActionsOpen(true)} /></> : undefined} />

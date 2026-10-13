@@ -33,7 +33,7 @@ func TestCockpitDirectoryRuntimeRequiresCompleteDependenciesButNotConfiguredRoot
 	if !enableCockpitMeetingDirectoryRuntime(h, nil, "prepare_configuration_invalid") || s.CockpitDirectoryConfigurationError != "prepare_configuration_invalid" || s.CockpitDirectoryPreparer != nil {
 		t.Fatal("invalid root configuration hid retained history or fabricated a provider")
 	}
-	if s.CockpitArtifactBackendReady || s.CockpitMeetingTemplatesBackendReady || s.CockpitMeetingDispositionBackendReady {
+	if s.CockpitArtifactBackendReady || s.CockpitMeetingDispositionBackendReady {
 		t.Fatal("directory setup advertised unrelated capabilities")
 	}
 }

@@ -1,78 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitMeetingDirectoryPath, cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingFocusPath, cockpitMeetingAgendaPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
-  it("keeps directory plans distinct from preparation instances and prevents cross-meeting carryover", () => {
-    const source = new URLSearchParams("meeting=m1&agenda=a1&preparation=p1&project=pr1&meeting_archive=all&from=2026-10-01");
-    const opened = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m1", "d1", source), "https://example.test");
-    expect(cockpitDestination(opened.searchParams)).toMatchObject({ meetingId: "m1", meetingView: "resources", directoryOperationId: "d1", preparationId: "p1", agendaId: "a1" });
-    expect(cockpitDestination(opened.searchParams).key).toBe(cockpitDestination(source).key);
-    const agenda = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", cockpitScope(source), opened.searchParams, "agenda"), "https://example.test");
-    expect(agenda.searchParams.get("directory_operation")).toBe("d1");
-    const closed = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m1", null, opened.searchParams), "https://example.test");
-    expect(closed.searchParams.has("directory_operation")).toBe(false);
-    expect(closed.searchParams.get("preparation")).toBe("p1");
-    expect(closed.searchParams.get("meeting_archive")).toBe("all");
-    expect(closed.searchParams.get("from")).toBe("2026-10-01");
-    const other = new URL(cockpitMeetingDirectoryPath("/acme/cockpit", "m2", "d2", opened.searchParams), "https://example.test");
-    expect(other.searchParams.has("agenda")).toBe(false); expect(other.searchParams.has("preparation")).toBe(false);
-    for (const path of [cockpitMeetingAgendaPath("/acme/cockpit", "m2", "a2", opened.searchParams), cockpitMeetingPreparationPath("/acme/cockpit", "m2", "p2", opened.searchParams)]) {
-      expect(new URL(path, "https://example.test").searchParams.has("directory_operation")).toBe(false);
-    }
-    expect(cockpitDestination(new URLSearchParams("directory_operation=orphan")).directoryOperationId).toBeNull();
-    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", directoryOperationId: "d1" })).toBe("/acme/cockpit?meeting=m1&directory_operation=d1&meeting_view=resources");
-  });
-  it("returns from a preparation instance to its topic without transferring it to another meeting", () => {
-    const source = new URLSearchParams("meeting=m1&agenda=topic-1&action=a1&project=p1&from=2026-10-01&custom_filter=kept");
+  it("opens and closes maintenance operations in details without changing the meeting or register context", () => {
+    const source = new URLSearchParams("meeting=m1&meeting_view=recording&action=a1&project=p1&from=2026-10-01");
     const opened = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m1", "operation-1", source), "https://example.test");
-    const destination = cockpitDestination(opened.searchParams);
-    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "topic-1", preparationId: "operation-1", meetingView: "preparation" });
-    expect(destination.key).toBe(cockpitDestination(source).key);
-    const materials = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", cockpitScope(source), opened.searchParams, "resources"), "https://example.test");
-    expect(materials.searchParams.get("preparation")).toBe("operation-1");
+    expect(cockpitDestination(opened.searchParams)).toMatchObject({ meetingId: "m1", preparationId: "operation-1", meetingView: "details", actionId: "a1" });
+    expect(opened.searchParams.get("project")).toBe("p1");
+    expect(opened.searchParams.get("from")).toBe("2026-10-01");
     const closed = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m1", null, opened.searchParams), "https://example.test");
-    expect(closed.searchParams.has("preparation")).toBe(false);
-    expect(closed.searchParams.get("agenda")).toBe("topic-1");
-    expect(closed.searchParams.get("custom_filter")).toBe("kept");
-    const topic = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "topic-2", opened.searchParams), "https://example.test");
-    expect(topic.searchParams.has("preparation")).toBe(false);
-    const other = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m2", "operation-2", opened.searchParams), "https://example.test");
-    expect(other.searchParams.has("agenda")).toBe(false); expect(other.searchParams.has("action")).toBe(false);
-    expect(cockpitDestination(new URLSearchParams("preparation=orphan")).preparationId).toBeNull();
-  });
-  it("opens and closes an agenda topic without losing filters or recreating the meeting workspace", () => {
-    const source = new URLSearchParams("meeting=m1&action=a1&project=p1&meeting_nodes=n1,n2&from=2026-10-01&custom_filter=kept&artifact=old&node=old");
-    const opened = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "agenda-1", source), "https://example.test");
-    const destination = cockpitDestination(opened.searchParams);
-    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "agenda-1", meetingView: "preparation", actionId: "a1", nodeId: null });
-    expect(destination.key).toBe(cockpitDestination(new URLSearchParams("meeting=m1")).key);
-    expect(opened.searchParams.get("custom_filter")).toBe("kept");
-    expect(opened.searchParams.has("artifact")).toBe(false);
-    const closed = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", null, opened.searchParams), "https://example.test");
-    expect(closed.searchParams.has("agenda")).toBe(false);
-    expect(closed.searchParams.get("meeting")).toBe("m1");
-    expect(closed.searchParams.get("from")).toBe("2026-10-01");
-    const other = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m2", "agenda-2", opened.searchParams), "https://example.test");
-    expect(other.searchParams.has("action")).toBe(false);
-    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", agendaId: "agenda-1" })).toBe("/acme/cockpit?meeting=m1&agenda=agenda-1&meeting_view=preparation");
-  });
-  it("keeps a full-width meeting focused across stage and topic navigation, then restores its panel", () => {
-    const scope = { projectId: "project", moduleId: "module" };
-    const source = new URLSearchParams("meeting=m1&meeting_view=recording&agenda=a1&meeting_nodes=n1,n2&from=2026-10-01");
-    const focused = new URL(cockpitMeetingFocusPath("/acme/cockpit", "m1", scope, source, true), "https://example.test");
-    expect(focused.searchParams.get("meeting_focus")).toBe("1");
-    expect(focused.searchParams.get("meeting_view")).toBe("recording");
-    expect(focused.searchParams.get("agenda")).toBe("a1");
-    const minutes = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", scope, focused.searchParams, "minutes_review"), "https://example.test");
-    expect(minutes.searchParams.get("meeting_focus")).toBe("1");
-    const topic = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "a2", focused.searchParams), "https://example.test");
-    expect(topic.searchParams.get("meeting_focus")).toBe("1");
-    const panel = new URL(cockpitMeetingFocusPath("/acme/cockpit", "m1", scope, focused.searchParams, false), "https://example.test");
-    expect(panel.searchParams.has("meeting_focus")).toBe(false);
-    expect(panel.searchParams.get("meeting_view")).toBe("recording");
-    const closed = new URL(cockpitMeetingContextPath("/acme/cockpit", null, scope, focused.searchParams), "https://example.test");
-    expect(closed.searchParams.has("meeting_focus")).toBe(false);
+    expect(cockpitDestination(closed.searchParams)).toMatchObject({ meetingId: "m1", preparationId: null, meetingView: "details", actionId: "a1" });
+    const other = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m2", "operation-2", source), "https://example.test");
+    expect(cockpitDestination(other.searchParams)).toMatchObject({ meetingId: "m2", preparationId: "operation-2", meetingView: "details", actionId: null });
   });
   it("returns to the original acceptance scope after opening an externally owned artifact", () => {
     const origin = { projectId: "target-project", moduleId: "target-module" };
@@ -164,3 +104,17 @@ describe("unified cockpit destinations", () => {
     const closed = new URL(cockpitMeetingContextPath("/acme/cockpit", null, scope, resources.searchParams), "https://example.test");
     expect(closed.searchParams.get("tab")).toBe("meetings"); expect(closed.searchParams.get("from")).toBe("2026-10-01"); expect(closed.searchParams.get("module")).toBe("module"); expect(closed.searchParams.has("meeting")).toBe(false); expect(closed.searchParams.has("action")).toBe(false);
   });
+
+it("makes chat the cockpit home while explicit overviews and object deep links keep their meaning", () => {
+  expect(cockpitShellDestination(new URLSearchParams())).toMatchObject({ surface: "chat" });
+  expect(cockpitShellDestination(new URLSearchParams("tab=work"))).toMatchObject({ surface: "work" });
+  expect(cockpitShellDestination(new URLSearchParams("tab=overview"))).toMatchObject({ surface: "work" });
+  expect(cockpitShellDestination(new URLSearchParams("session=s1&meeting=m1"))).toMatchObject({ surface: "meetings" });
+  expect(cockpitSurfacePath("/acme/cockpit", "chat", { projectId: "p1", moduleId: "m1" })).toBe("/acme/cockpit?project=p1&module=m1");
+  expect(cockpitSurfacePath("/acme/cockpit", "work")).toBe("/acme/cockpit?tab=work");
+});
+it("starts a fresh chat when the cockpit scope changes without losing a same-scope session", () => {
+  const search = new URLSearchParams("project=p1&module=m1&session=s1");
+  expect(cockpitScopedPath("/acme/cockpit", search, { projectId: "p1", moduleId: "m1" })).toContain("session=s1");
+  expect(cockpitScopedPath("/acme/cockpit", search, { projectId: "p1", moduleId: "m2" })).not.toContain("session=");
+});

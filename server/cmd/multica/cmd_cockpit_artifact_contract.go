@@ -51,8 +51,8 @@ func validateCockpitArtifactCLICommand(action string, acceptance bool, body map[
 		"edit":   "expected_revision title description", "submit": "expected_revision submission_key producer_issue_id payload source_meeting_id source_minutes_version_id",
 		"review": "expected_revision decision feedback", "retry-capture": "expected_revision", "archive": "expected_revision", "unarchive": "expected_revision",
 		"assign-producer": "expected_revision command_key reason issue_id new_issue", "reassign-reviewer": "expected_revision handoff_key reviewer_id reason",
-		"reference-node": "reference_key version_id node_id purpose", "reference-meeting": "reference_key version_id meeting_id purpose",
-		"save-criteria": "expected_revision criteria",
+		"reference-node": "reference_key version_id node_id purpose",
+		"save-criteria":  "expected_revision criteria",
 	}
 	if acceptance && action == "submit" {
 		fields[action] = "request_key expected_criteria_revision reviewer_id evidence note supersedes_request_id"
@@ -115,9 +115,6 @@ func validateCockpitArtifactCLICommand(action string, acceptance bool, body map[
 	}
 	if strings.HasPrefix(action, "reference-") {
 		target := "node_id"
-		if action == "reference-meeting" {
-			target = "meeting_id"
-		}
 		if !slices.Contains([]string{"input", "output", "evidence", "reference"}, strVal(body, "purpose")) {
 			return fmt.Errorf("purpose must be input, output, evidence or reference")
 		}
@@ -387,9 +384,6 @@ func confirmCockpitArtifactCLIReceipt(op cockpitArtifactOperation, acceptance bo
 			return reference["id"] == ids[1] && cockpitHistoryTimestamp(reference["removed_at"])
 		}
 		target := "node_id"
-		if op.name == "reference-meeting" {
-			target = "meeting_id"
-		}
 		return reference["reference_key"] == body["reference_key"] && reference["version_id"] == body["version_id"] && reference[target] == body[target] && reference["purpose"] == body["purpose"] && artifactCLIHash(reference["content_hash"])
 	}
 	if op.name == "download-link" {

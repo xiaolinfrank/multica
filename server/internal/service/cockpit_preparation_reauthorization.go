@@ -30,106 +30,7 @@ func preparationReauthorization(ctx context.Context, q *db.Queries, p CockpitPre
 	missing := false
 	deny := func(code string) { out.CanConfirm = false; out.BlockedReasons = append(out.BlockedReasons, code) }
 	next = old
-	if o.Kind == "apply_template" {
-		if x.meeting.OccurrenceState == "cancelled" {
-			deny("meeting_cancelled")
-		}
-		if x.meeting.ArchivedAt.Valid {
-			deny("meeting_archived")
-		}
-	}
-	if r.DependencyID.Valid {
-		dep, err := q.GetCockpitPreparationEffect(ctx, db.GetCockpitPreparationEffectParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, OperationID: o.ID, ID: r.DependencyID})
-		if err != nil {
-			return out, next, false, cockpitWorkflowError(err)
-		}
-		if dep.State != "applied" || !dep.AgendaID.Valid {
-			deny("prerequisite_agenda_required")
-		} else {
-			a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: dep.AgendaID})
-			if errors.Is(err, pgx.ErrNoRows) || (err == nil && a.RemovedAt.Valid) {
-				missing = true
-				deny("target_unavailable")
-			} else if err != nil {
-				return out, next, false, err
-			}
-			if err == nil && r.Kind == "preparation_issue" {
-				expected, _ := preparationUUID(intent.NodeID)
-				if a.NodeID != expected {
-					deny("fixed_scope_changed")
-				}
-			}
-		}
-	}
 	switch r.Kind {
-	case "agenda", "preparation_issue":
-		node, project, module := intent.NodeID, intent.ProjectID, intent.ModuleID
-		if node != nil {
-			id, _ := preparationUUID(node)
-			n, pr, mo, err := requireExecutionLeaf(ctx, q, p.WorkspaceID, id)
-			if err != nil {
-				code, unknown := templateTargetError(err)
-				if unknown != nil {
-					return out, next, false, unknown
-				}
-				deny(code)
-				missing = missing || errors.Is(err, ErrCockpitWorkflowNotFound)
-			} else {
-				project, module = planningUUID(pr), planningUUID(mo)
-				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "node", NodeID: *node, View: "details", Label: n.Name, Purpose: "preparation"})
-			}
-		}
-		scope, err := readPreparationScope(ctx, q, p.WorkspaceID, node, project, module)
-		if err != nil {
-			code, unknown := templateTargetError(err)
-			if unknown != nil {
-				return out, next, false, unknown
-			}
-			deny(code)
-			missing = missing || errors.Is(err, ErrCockpitWorkflowNotFound)
-		} else {
-			out.CurrentScope = scope
-			next.Scope = scope
-		}
-		if intent.Binding.FacilitatorUserID != nil {
-			id, _ := preparationUUID(intent.Binding.FacilitatorUserID)
-			if err := cockpitWorkflowMember(ctx, q, p.WorkspaceID, id); err != nil {
-				if !errors.Is(err, ErrCockpitWorkflowForbidden) {
-					return out, next, false, err
-				}
-				deny("facilitator_unavailable")
-			}
-		}
-		if intent.Binding.AssigneeID != nil {
-			id, _ := preparationUUID(intent.Binding.AssigneeID)
-			if err := validateArtifactProducerAssignee(ctx, q, p.WorkspaceID, p.ActorID, *intent.Binding.AssigneeType, id); err != nil {
-				code, unknown := templateTargetError(err)
-				if unknown != nil {
-					return out, next, false, unknown
-				}
-				deny(code)
-			}
-		}
-		next.FactsHash = planningHash([]any{node, project, module, intent.Binding.FacilitatorUserID, intent.Binding.AssigneeType, intent.Binding.AssigneeID})
-	case "issue_reference", "material_reference":
-		kind := "issue"
-		id, _ := preparationUUID(intent.Binding.IssueID)
-		if r.Kind == "material_reference" {
-			kind = "artifact_reference"
-			id, _ = preparationUUID(intent.Binding.MaterialReferenceID)
-		}
-		if err := validateAgendaReferenceTarget(ctx, q, p.CockpitLifecycleRead, kind, id); err != nil {
-			code, unknown := templateTargetError(err)
-			if unknown != nil {
-				return out, next, false, unknown
-			}
-			deny(code)
-			missing = true
-		}
-		if kind == "issue" {
-			out.Targets = append(out.Targets, IssueOperationTarget{Kind: "issue", IssueID: util.UUIDToString(id), Label: r.Label, Purpose: "preparation"})
-		}
-		next.FactsHash = planningHash([]any{r.Kind, id})
 	case "cancel_issue", "change_due_date", "link_meeting", "stop_run":
 		excluded := []pgtype.UUID{}
 		for _, raw := range intent.SelectedRunIDs {
@@ -161,7 +62,6 @@ func preparationReauthorization(ctx context.Context, q *db.Queries, p CockpitPre
 			}
 			if r.Kind == "link_meeting" && intent.IssueChoice != nil {
 				target, _ := preparationUUID(intent.IssueChoice.TargetMeetingID)
-				agenda, _ := preparationUUID(intent.IssueChoice.TargetAgendaID)
 				m, err := q.GetCockpitMeetingLifecycle(ctx, db.GetCockpitMeetingLifecycleParams{WorkspaceID: p.WorkspaceID, ID: target})
 				if errors.Is(err, pgx.ErrNoRows) {
 					missing = true
@@ -171,14 +71,7 @@ func preparationReauthorization(ctx context.Context, q *db.Queries, p CockpitPre
 				} else if requireMeetingPreparationOpen(m) != nil {
 					deny("target_meeting_preparation_closed")
 				}
-				a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: target, ID: agenda})
-				if errors.Is(err, pgx.ErrNoRows) || (err == nil && a.RemovedAt.Valid) {
-					missing = true
-					deny("target_unavailable")
-				} else if err != nil {
-					return out, next, false, err
-				}
-				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: util.UUIDToString(target), View: "agenda", Label: "Target meeting", Purpose: "preparation"})
+				out.Targets = append(out.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: util.UUIDToString(target), View: "preparation", Label: "Target meeting", Purpose: "preparation"})
 			}
 		}
 		if r.Kind == "stop_run" {
@@ -239,10 +132,10 @@ func (s *IssueService) PreviewCockpitPreparationReauthorization(ctx context.Cont
 func (s *IssueService) ReauthorizeCockpitPreparationEffect(ctx context.Context, p CockpitPreparationQuery, in CockpitPreparationReauthorizationInput) (CockpitPreparationCommandResult, error) {
 	var out CockpitPreparationCommandResult
 	in.Reason = strings.TrimSpace(in.Reason)
-	if in.Reason == "" || !templateText(in.Reason, 16000) {
+	if in.Reason == "" || !preparationText(in.Reason, 16000) {
 		return out, ErrCockpitWorkflowInput
 	}
-	c, err := newLifecycleCommand(p.CockpitLifecycleRead, in.CockpitLifecycleCommandInput, "preparation_reauthorize", pgtype.UUID{}, pgtype.UUID{}, []any{p.OperationID, p.EffectID, in})
+	c, err := newLifecycleCommand(p.CockpitLifecycleRead, in.CockpitLifecycleCommandInput, "preparation_reauthorize", []any{p.OperationID, p.EffectID, in})
 	if err != nil {
 		return out, err
 	}
@@ -296,8 +189,8 @@ func (s *IssueService) ReauthorizeCockpitPreparationEffect(ctx context.Context, 
 	if err != nil {
 		return out, err
 	}
-	receipt := CockpitPreparationCommandReceipt{OperationID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, EffectIDs: []string{util.UUIDToString(r.ID)}, EffectID: planningUUID(r.ID), Reason: in.Reason, RequestHash: c.hash, ContextToken: in.ContextToken, TemplateVersionID: planningUUID(o.TemplateVersionID), Authorization: &next.CockpitPreparationAuthorization, PreviousAuthorization: &preview.PreviousAuthorization}
-	if err = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, RequestHash: c.hash, Reason: in.Reason, Preparation: &receipt}); err != nil {
+	receipt := CockpitPreparationCommandReceipt{OperationID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, EffectIDs: []string{util.UUIDToString(r.ID)}, EffectID: planningUUID(r.ID), Reason: in.Reason, RequestHash: c.hash, ContextToken: in.ContextToken, Authorization: &next.CockpitPreparationAuthorization, PreviousAuthorization: &preview.PreviousAuthorization}
+	if err = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, RequestHash: c.hash, Reason: in.Reason, Preparation: &receipt}); err != nil {
 		return out, err
 	}
 	h, err := preparationHeader(ctx, q, p.CockpitLifecycleRead, o)

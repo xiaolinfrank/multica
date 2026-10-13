@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { cockpitObjectPath, cockpitArtifactPath, cockpitMeetingPreparationPath, cockpitMeetingDirectoryPath, EMPTY_COCKPIT_SCOPE, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
+import { cockpitMeetingPreparationPath, cockpitMeetingDirectoryPath, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
 import type { CockpitMeetingLifecycleHeader, CockpitOccurrenceTransition, CockpitOccurrenceView, CockpitLifecycleCommandDetail } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
@@ -16,7 +16,6 @@ import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
 import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { CockpitMeetingCommandRecovery } from "./cockpit-meeting-command-recovery";
 import { CockpitDirectoryTargetView, CockpitDirectoryPrincipalView } from "./cockpit-directory-parts";
-import { CockpitPreparationImpactComparison } from "./cockpit-preparation-reauthorization";
 import { useCockpitMeetingCommand } from "./use-cockpit-meeting-command";
 import { createSafeId } from "@multica/core/utils";
 
@@ -109,14 +108,14 @@ function CockpitOccurrenceForm({ wsId, header, transition, onDone, refresh, read
   </DialogContent>;
 }
 
-export function CockpitMeetingMaterialsConfirmation({ wsId, header, resourcesHref, workflowHref, readOnly }: { wsId: string; header: CockpitMeetingLifecycleHeader; resourcesHref: string; workflowHref: string; readOnly?: boolean }) {
+export function CockpitMeetingMaterialsConfirmation({ wsId, header, resourcesHref, readOnly }: { wsId: string; header: CockpitMeetingLifecycleHeader; resourcesHref: string; readOnly?: boolean }) {
   const { t } = useT("cockpit"); const command = useCockpitMeetingCommand(wsId, header.meeting_id, cockpitMeetingAgendaDraftKey(wsId, header.meeting_id, "materials"));
   const ready = header.materials?.ready === true;
   const save = () => { if (command.busy || !command.pending && (readOnly || !header.can_confirm_materials || !header.materials)) return;
     void command.run(command.pending ?? { kind: "materials", body: { command_key: createSafeId(), expected_revision: header.materials?.workflow_revision ?? 0, materials_ready: !ready } }); };
   return <section className="space-y-3 rounded-lg border border-border p-3" aria-label={t(($) => $.meeting_lifecycle.materials)}>
     <h3 className="text-body font-medium">{t(($) => $.meeting_lifecycle.materials)}</h3><p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.materials_hint)}</p>
-    <div className="flex flex-wrap gap-2"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={resourcesHref}>{t(($) => $.meeting_lifecycle.open_materials)}</AppLink><AppLink className={buttonVariants({ variant: "ghost", size: "sm" })} href={workflowHref}>{t(($) => $.meeting_lifecycle.open_workflow)}</AppLink></div>
+    <div className="flex flex-wrap gap-2"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={resourcesHref}>{t(($) => $.meeting_lifecycle.open_directory)}</AppLink></div>
     {!header.materials ? <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.workflow_needed)}</p> : <>
       <label className="flex items-start gap-2 text-caption"><input type="checkbox" checked={ready} disabled={command.busy || Boolean(command.pending) || readOnly || !header.can_confirm_materials} onChange={save} className="mt-0.5 size-4 accent-primary" />{t(($) => $.meeting_lifecycle.materials_ready)}</label>
       {header.materials.released && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.released)}</p>}
@@ -169,32 +168,21 @@ function CockpitMeetingCommandHistory({ wsId, meetingId }: { wsId: string; meeti
 function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetail }) {
   const locale = useLocale();
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const occurrenceLabel = useMeetingOccurrenceLabel();
-  const receipt = detail.receipt, reference = receipt.reference;
-  const agendaHref = receipt.agenda_id ? cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: detail.meeting_id, view: "agenda", agendaId: receipt.agenda_id }) : null;
-  const issue = reference?.issue;
-  const targetHref = reference?.kind === "artifact_reference" && reference.artifact_id && reference.version_id ? cockpitArtifactPath(paths.cockpit(), reference.artifact_id, EMPTY_COCKPIT_SCOPE, reference.version_id)
-    : issue ? paths.issueDetail(issue.identifier || issue.id) : receipt.issue_id ? paths.issueDetail(receipt.issue_id) : reference?.kind === "issue" ? paths.issueDetail(reference.target_id) : null;
-  const targetLabel = issue ? `${issue.identifier} ${issue.title}` : reference?.label || receipt.issue_id || reference?.target_id;
+  const receipt = detail.receipt;
+  const targetHref = receipt.issue_id ? paths.issueDetail(receipt.issue_id) : null;
+  const targetLabel = receipt.issue_id;
   return <div className="space-y-3 text-caption">
     {receipt.occurrence && <div className="space-y-1"><p>{occurrenceLabel(receipt.occurrence.state)}</p>{receipt.occurrence.ended_at ? <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(receipt.occurrence.ended_at, locale) })}</p> : receipt.occurrence.started_confirmed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(receipt.occurrence.started_confirmed_at, locale) })}</p>}</div>}
     {receipt.occurrence?.cancelled_at && <p className="text-muted-foreground">{t(($) => $.meeting_disposition.cancelled_at, { time: displayTime(receipt.occurrence.cancelled_at, locale) })}</p>}
     {receipt.archive && <p>{receipt.archive.archived_at ? t(($) => $.meeting_disposition.archived) : t(($) => $.meeting_disposition.unarchived)}</p>}
     {receipt.preparation && <div className="space-y-2">{(detail.action === "template_apply" || detail.action === "cancel" || detail.action === "preparation_dispose") && <p>{t(($) => $.meeting_preparation.authorized_count, { count: receipt.preparation.effect_ids.length })}</p>}
       <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={cockpitMeetingPreparationPath(paths.cockpit(), detail.meeting_id, receipt.preparation.operation_id, navigation.searchParams)}>{t(($) => $.meeting_preparation.title)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}
-    {detail.action === "preparation_reauthorize" && receipt.preparation && <CockpitPreparationImpactComparison wsId={detail.workspace_id}
-      previous={receipt.preparation.previous_authorization?.impact ?? null} current={receipt.preparation.authorization?.impact ?? null}
-      previousRun={receipt.preparation.previous_authorization?.selected_run} currentRun={receipt.preparation.authorization?.selected_run}
-      previousScope={receipt.preparation.previous_authorization?.scope} currentScope={receipt.preparation.authorization?.scope} />}
     {receipt.directory && <div className="space-y-2"><CockpitDirectoryTargetView value={receipt.directory.target} openable={false} /><CockpitDirectoryPrincipalView value={receipt.directory.principal} />
       {(detail.action === "directory_prepare" || detail.action === "directory_retry") && <p>{t(($) => $.meeting_directory.authorized_steps, { count: receipt.directory.directory_step_ids.length })}</p>}
       <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={cockpitMeetingDirectoryPath(paths.cockpit(), detail.meeting_id, receipt.directory.directory_operation_id, navigation.searchParams)}>{t(($) => $.meeting_directory.open_operation)} {t(($) => $.action_flow.new_tab)}</AppLink>
     </div>}
     {receipt.materials && <p>{receipt.materials.ready ? t(($) => $.meeting_lifecycle.materials_confirmed) : t(($) => $.meeting_lifecycle.materials_cleared)}</p>}
-    {receipt.agenda && <div className="space-y-1"><p className="break-words font-medium">{receipt.agenda.title}</p>{receipt.agenda.removed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.removed)}</p>}</div>}
     {targetLabel && <div className="space-y-1">{targetHref ? <AppLink href={targetHref} target="_blank" rel="noopener noreferrer" className="break-words text-primary underline">{targetLabel} {t(($) => $.action_flow.new_tab)}</AppLink> : <p className="break-words">{targetLabel}</p>}
-      {reference?.kind === "artifact_reference" && reference.version_number !== null && <p className="text-muted-foreground">{t(($) => $.workflow.version, { number: reference.version_number })}</p>}
-      {reference?.removed_at && <p className="text-muted-foreground">{t(($) => $.artifact_runtime.reference_removed)}</p>}
     </div>}
-    {agendaHref && <AppLink href={agendaHref} target="_blank" rel="noopener noreferrer" className="inline-block text-primary underline">{t(($) => $.meeting_lifecycle.open_current_agenda)} {t(($) => $.action_flow.new_tab)}</AppLink>}
   </div>;
 }

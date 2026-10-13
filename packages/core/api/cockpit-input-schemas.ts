@@ -446,30 +446,15 @@ export const CockpitInputVersionPageSchema = CockpitInputVersionPageWire.transfo
   nextCursor: value.next_cursor,
 })).refine((p) => p.pageSize >= 1 && p.pageSize <= 100 && p.items.length <= p.pageSize && p.total >= p.items.length).refine((p) => p.items.every((i) => i.workspaceId === p.workspaceId)).refine((p) => p.items.every((i) => i.inputId === p.inputId));
 
-const CockpitInputInitialReferenceWire = z.object({
-  reference_key: id,
-  meeting_id: id,
-  agenda_id: id.nullable(),
-  purpose: z.string(),
-});
-export const CockpitInputInitialReferenceSchema = CockpitInputInitialReferenceWire.transform((value) => ({
-  referenceKey: value.reference_key,
-  meetingId: value.meeting_id,
-  agendaId: value.agenda_id,
-  purpose: value.purpose,
-}));
-
 const CockpitInputVersionSubmitInputWire = z.object({
   command_key: id,
   expected_revision: count,
   source: CockpitInputSourceInputSchema,
-  initial_reference: CockpitInputInitialReferenceSchema.nullable(),
 });
 export const CockpitInputVersionSubmitInputSchema = CockpitInputVersionSubmitInputWire.transform((value) => ({
   commandKey: value.command_key,
   expectedRevision: value.expected_revision,
   source: value.source,
-  initialReference: value.initial_reference,
 }));
 
 const CockpitInputReferenceReceiptWire = z.object({
@@ -511,7 +496,6 @@ const CockpitInputVersionReceiptWire = z.object({
   payload_kind: z.string(),
   capture_state: z.string(),
   transfer_id: id.nullable(),
-  initial_reference: CockpitInputReferenceReceiptSchema.nullable(),
   principal: CockpitInputPrincipalSchema,
   accepted_at: z.string().datetime({ offset: true }),
 });
@@ -527,7 +511,6 @@ export const CockpitInputVersionReceiptSchema = CockpitInputVersionReceiptWire.t
   payloadKind: value.payload_kind,
   captureState: value.capture_state,
   transferId: value.transfer_id,
-  initialReference: value.initial_reference,
   principal: value.principal,
   acceptedAt: value.accepted_at,
 })).refine((r) => (r.transferId === null) === (r.transferRevision === null));
@@ -744,127 +727,6 @@ export const CockpitInputUploadResultSchema = CockpitInputUploadResultWire.trans
   current: value.current,
 })).refine((r) => r.current.workspaceId === r.workspaceId && r.current.inputId === r.inputId && r.current.versionId === r.versionId && r.current.id === r.transferId);
 
-const CockpitInputReferenceWire = z.object({
-  workspace_id: id,
-  id: id,
-  reference_key: id,
-  meeting_id: id,
-  meeting_title: z.string(),
-  agenda_id: id.nullable(),
-  agenda_title: z.string(),
-  input_id: id,
-  input_title: z.string(),
-  version: CockpitInputVersionMetadataSchema,
-  purpose: z.string(),
-  created_by: CockpitInputPrincipalSchema,
-  created_at: z.string().datetime({ offset: true }),
-  removed_at: z.string().datetime({ offset: true }).nullable(),
-  can_remove: capability,
-});
-export const CockpitInputReferenceSchema = CockpitInputReferenceWire.transform((value) => ({
-  workspaceId: value.workspace_id,
-  id: value.id,
-  referenceKey: value.reference_key,
-  meetingId: value.meeting_id,
-  meetingTitle: value.meeting_title,
-  agendaId: value.agenda_id,
-  agendaTitle: value.agenda_title,
-  inputId: value.input_id,
-  inputTitle: value.input_title,
-  version: value.version,
-  purpose: value.purpose,
-  createdBy: value.created_by,
-  createdAt: value.created_at,
-  removedAt: value.removed_at,
-  canRemove: value.can_remove,
-})).refine((r) => r.version.workspaceId === r.workspaceId && r.version.inputId === r.inputId).transform((r) => ["material", "recording", "supporting"].includes(r.purpose) ? r : { ...r, canRemove: false });
-
-const CockpitInputReferenceSummaryWire = z.object({
-  available_ready: count,
-  unavailable_ready: count,
-  unknown_ready: count,
-  total: count,
-  ready: count,
-  pending: count,
-  needs_attention: count,
-});
-export const CockpitInputReferenceSummarySchema = CockpitInputReferenceSummaryWire.transform((value) => ({
-  availableReady: value.available_ready,
-  unavailableReady: value.unavailable_ready,
-  unknownReady: value.unknown_ready,
-  total: value.total,
-  ready: value.ready,
-  pending: value.pending,
-  needsAttention: value.needs_attention,
-})).refine((s) => s.total === s.ready + s.pending + s.needsAttention && s.ready === s.availableReady + s.unavailableReady + s.unknownReady);
-
-const CockpitInputReferencePageWire = z.object({
-  q: z.string(),
-  purpose: z.string(),
-  workspace_id: id,
-  meeting_id: id,
-  agenda_id: id.nullable(),
-  include_removed: z.boolean(),
-  page_size: count,
-  items: z.array(CockpitInputReferenceSchema).max(200),
-  total: count,
-  summary: CockpitInputReferenceSummarySchema,
-  next_cursor: z.string().nullable(),
-  can_add: capability,
-  blocked_reasons: z.array(z.string()).max(1000),
-});
-export const CockpitInputReferencePageSchema = CockpitInputReferencePageWire.transform((value) => ({
-  q: value.q,
-  purpose: value.purpose,
-  workspaceId: value.workspace_id,
-  meetingId: value.meeting_id,
-  agendaId: value.agenda_id,
-  includeRemoved: value.include_removed,
-  pageSize: value.page_size,
-  items: value.items,
-  total: value.total,
-  summary: value.summary,
-  nextCursor: value.next_cursor,
-  canAdd: value.can_add,
-  blockedReasons: value.blocked_reasons,
-})).refine((p) => p.pageSize >= 1 && p.pageSize <= 100 && p.items.length <= p.pageSize && p.total >= p.items.length).refine((p) => p.items.every((i) => i.workspaceId === p.workspaceId)).refine((p) => p.items.every((i) => i.meetingId === p.meetingId && (!p.agendaId || i.agendaId === p.agendaId)));
-
-const CockpitInputReferenceCreateInputWire = z.object({
-  command_key: id,
-  agenda_id: id.nullable(),
-  input_version_id: id,
-  purpose: z.string(),
-});
-export const CockpitInputReferenceCreateInputSchema = CockpitInputReferenceCreateInputWire.transform((value) => ({
-  commandKey: value.command_key,
-  agendaId: value.agenda_id,
-  inputVersionId: value.input_version_id,
-  purpose: value.purpose,
-}));
-
-const CockpitInputReferenceRemoveInputWire = z.object({
-  command_key: id,
-});
-export const CockpitInputReferenceRemoveInputSchema = CockpitInputReferenceRemoveInputWire.transform((value) => ({
-  commandKey: value.command_key,
-}));
-
-const CockpitInputReferenceResultWire = z.object({
-  workspace_id: id,
-  command_key: id,
-  action: z.string(),
-  replayed: z.boolean(),
-  receipt: CockpitInputReferenceReceiptSchema,
-  current: CockpitInputReferenceSchema.nullable(),
-});
-export const CockpitInputReferenceResultSchema = CockpitInputReferenceResultWire.transform((value) => ({
-  workspaceId: value.workspace_id,
-  commandKey: value.command_key,
-  action: value.action,
-  replayed: value.replayed,
-  receipt: value.receipt,
-  current: value.current,
-})).refine((r) => r.commandKey === r.receipt.commandKey && (!r.current || r.current.workspaceId === r.workspaceId)).refine((r) => ["input_reference_create", "input_reference_remove"].includes(r.action) && (!r.current || r.current.id === r.receipt.referenceId && r.current.meetingId === r.receipt.meetingId && r.current.agendaId === r.receipt.agendaId && r.current.version.id === r.receipt.inputVersionId && r.current.inputId === r.receipt.inputId));
 
 const CockpitInputDownloadLinkWire = z.object({
   workspace_id: id,

@@ -1,7 +1,7 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { CockpitLifecyclePageQuery } from "../types/cockpit-meeting-lifecycle";
-import type { CockpitMeetingTemplateQuery, CockpitCancellationImpactQuery } from "../types/cockpit-meeting-preparation";
+import type { CockpitCancellationImpactQuery } from "../types/cockpit-meeting-preparation";
 import { cockpitKeys, invalidateCockpitTaskFlow } from "./queries";
 import { cockpitReadKeys } from "./read-queries";
 import { issueKeys } from "../issues/queries";
@@ -11,11 +11,6 @@ import { requireCockpitReadResult } from "./errors";
 
 export const cockpitPreparationKeys = {
   all: (ws: string) => [...cockpitKeys.all(ws), "preparation"] as const,
-  templates: (ws: string) => [...cockpitPreparationKeys.all(ws), "templates"] as const,
-  template: (ws: string, id: string) => [...cockpitPreparationKeys.all(ws), "template", id] as const,
-  versions: (ws: string, id: string) => [...cockpitPreparationKeys.template(ws, id), "versions"] as const,
-  version: (ws: string, id: string, version: string) => [...cockpitPreparationKeys.all(ws), "template-version", id, version] as const,
-  templateCommand: (ws: string, key: string) => [...cockpitPreparationKeys.all(ws), "template-command", key] as const,
   meeting: (ws: string, meeting: string) => [...cockpitPreparationKeys.all(ws), "meeting", meeting] as const,
   operations: (ws: string, meeting: string) => [...cockpitPreparationKeys.meeting(ws, meeting), "operations"] as const,
   operation: (ws: string, meeting: string, op: string) => [...cockpitPreparationKeys.meeting(ws, meeting), "operation", op] as const,
@@ -29,23 +24,6 @@ export const cockpitPreparationKeys = {
 function bounded(query: CockpitLifecyclePageQuery) {
   const size = query.page_size ?? 25;
   return { cursor: query.cursor || undefined, page_size: Number.isInteger(size) ? Math.min(100, Math.max(1, size)) : 25 };
-}
-export function cockpitMeetingTemplatesOptions(ws: string, params: CockpitMeetingTemplateQuery = {}) {
-  const query = { ...bounded(params), q: params.q?.trim() ?? "", include_inactive: params.include_inactive ?? false };
-  return queryOptions({ queryKey: [...cockpitPreparationKeys.templates(ws), query], queryFn: ({ signal }) => api.getCockpitMeetingTemplates(ws, query, signal).then(requireCockpitReadResult), enabled: Boolean(ws), retry: false });
-}
-export function cockpitMeetingTemplateOptions(ws: string, id: string) {
-  return queryOptions({ queryKey: cockpitPreparationKeys.template(ws, id), queryFn: ({ signal }) => api.getCockpitMeetingTemplate(ws, id, signal).then(requireCockpitReadResult), enabled: Boolean(ws && id), retry: false });
-}
-export function cockpitMeetingTemplateVersionsOptions(ws: string, id: string, params: CockpitLifecyclePageQuery = {}) {
-  const query = bounded(params);
-  return queryOptions({ queryKey: [...cockpitPreparationKeys.versions(ws, id), query], queryFn: ({ signal }) => api.getCockpitMeetingTemplateVersions(ws, id, query, signal).then(requireCockpitReadResult), enabled: Boolean(ws && id), retry: false });
-}
-export function cockpitMeetingTemplateVersionOptions(ws: string, id: string, version: string) {
-  return queryOptions({ queryKey: cockpitPreparationKeys.version(ws, id, version), queryFn: ({ signal }) => api.getCockpitMeetingTemplateVersion(ws, id, version, signal).then(requireCockpitReadResult), enabled: Boolean(ws && id && version), retry: false });
-}
-export function cockpitMeetingTemplateCommandOptions(ws: string, key: string) {
-  return queryOptions({ queryKey: cockpitPreparationKeys.templateCommand(ws, key), queryFn: ({ signal }) => api.getCockpitMeetingTemplateCommand(ws, key, signal).then(requireCockpitReadResult), enabled: Boolean(ws && key), retry: false });
 }
 export function cockpitPreparationOperationsOptions(ws: string, meeting: string, params: CockpitLifecyclePageQuery = {}) {
   const query = bounded(params);
@@ -78,8 +56,7 @@ export function cockpitCancellationRunsOptions(ws: string, meeting: string, issu
 
 /** Cancel pre-change reads on both local commands and another member's events. */
 export async function invalidateCockpitPreparationProjections(client: QueryClient, ws: string, meeting?: string) {
-  const filters = { queryKey: meeting ? cockpitPreparationKeys.meeting(ws, meeting) : cockpitPreparationKeys.all(ws),
-    predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[3] !== "template-command" && query.queryKey[3] !== "template-version" };
+  const filters = { queryKey: meeting ? cockpitPreparationKeys.meeting(ws, meeting) : cockpitPreparationKeys.all(ws) };
   await client.cancelQueries(filters);
   await client.invalidateQueries(filters);
 }

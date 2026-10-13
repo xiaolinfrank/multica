@@ -6,10 +6,6 @@ VALUES (sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(input_id),sqlc.arg(version_
 INSERT INTO cockpit_input_transfer (id,workspace_id,input_id,version_id,transfer_number,command_key,request_hash,command_receipt,actor_type,actor_id,credential_owner_user_id,authorizing_user_id,source_agent_id,source_run_id,source_issue_id,source_runtime_id,kind,mode,state,revision,replaces_transfer_id,owned_storage_key,expected_bytes,bytes_received,session_expires_at,next_attempt_at,created_at,updated_at)
 VALUES (sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(input_id),sqlc.arg(version_id),sqlc.arg(transfer_number),sqlc.arg(command_key),sqlc.arg(request_hash),sqlc.arg(command_receipt),sqlc.arg(actor_type),sqlc.arg(actor_id),sqlc.arg(credential_owner_user_id),sqlc.arg(authorizing_user_id),sqlc.narg(source_agent_id),sqlc.narg(source_run_id),sqlc.narg(source_issue_id),sqlc.narg(source_runtime_id),sqlc.arg(kind),sqlc.arg(mode),sqlc.arg(state),sqlc.arg(revision),sqlc.narg(replaces_transfer_id),sqlc.arg(owned_storage_key),sqlc.arg(expected_bytes),sqlc.narg(bytes_received),sqlc.narg(session_expires_at),sqlc.narg(next_attempt_at),sqlc.arg(created_at),sqlc.arg(updated_at)) RETURNING *;
 
--- name: CreateCockpitInputReference :one
-INSERT INTO cockpit_input_reference (id,workspace_id,meeting_id,agenda_id,input_id,input_version_id,purpose,creation_key,request_hash,creation_receipt,actor_type,actor_id,credential_owner_user_id,authorizing_user_id,source_agent_id,source_run_id,source_issue_id,source_runtime_id,created_at)
-VALUES (sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.narg(agenda_id),sqlc.arg(input_id),sqlc.arg(input_version_id),sqlc.arg(purpose),sqlc.arg(creation_key),sqlc.arg(request_hash),sqlc.arg(creation_receipt),sqlc.arg(actor_type),sqlc.arg(actor_id),sqlc.arg(credential_owner_user_id),sqlc.arg(authorizing_user_id),sqlc.narg(source_agent_id),sqlc.narg(source_run_id),sqlc.narg(source_issue_id),sqlc.narg(source_runtime_id),sqlc.arg(created_at)) RETURNING *;
-
 -- name: CreateCockpitInputManifestVersion :one
 INSERT INTO cockpit_issue_input_manifest_version (id,workspace_id,issue_id,version_number,command_key,request_hash,receipt,manifest_hash,note,item_total,required_total,created_by,created_at)
 VALUES (sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(issue_id),sqlc.arg(version_number),sqlc.arg(command_key),sqlc.arg(request_hash),sqlc.arg(receipt),sqlc.arg(manifest_hash),sqlc.arg(note),sqlc.arg(item_total),sqlc.arg(required_total),sqlc.arg(created_by),sqlc.arg(created_at)) RETURNING *;
@@ -28,14 +24,6 @@ WHERE workspace_id=$1 AND id=$2 AND revision=$4 RETURNING *;
 UPDATE cockpit_input_version SET active_transfer_id=$4,capture_state=CASE WHEN ready_at IS NOT NULL THEN 'ready' ELSE sqlc.arg(capture_state)::text END,
 capture_error_code='',capture_error='',revision=revision+1,updated_at=now()
 WHERE workspace_id=$1 AND input_id=$2 AND id=$3 AND revision=sqlc.arg(expected_revision)::bigint RETURNING *;
-
--- name: FindCockpitInputActiveReference :one
-SELECT * FROM cockpit_input_reference WHERE workspace_id=$1 AND meeting_id=$2
-AND agenda_id IS NOT DISTINCT FROM sqlc.narg(agenda_id)::uuid AND input_version_id=$3 AND purpose=$4 AND removed_at IS NULL;
-
--- name: RemoveCockpitInputReference :one
-UPDATE cockpit_input_reference SET removed_at=now(),removed_by=$4,removal_key=$5,removal_hash=$6,removal_receipt=$7
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND removed_at IS NULL RETURNING *;
 
 -- name: CreateCockpitInputManifestHead :one
 INSERT INTO cockpit_issue_input_manifest(workspace_id,issue_id,revision,current_version_id,updated_by)

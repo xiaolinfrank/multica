@@ -20,7 +20,6 @@ type CockpitSurfaceQuery struct {
 	Human                                     bool
 	ArtifactsAvailable                        bool `json:"-"`
 	MeetingLifecycleAvailable                 bool `json:"-"`
-	MeetingTemplatesAvailable                 bool `json:"-"`
 	MeetingDispositionAvailable               bool `json:"-"`
 	MeetingDirectoryAvailable                 bool `json:"-"`
 	InputsAvailable                           bool `json:"-"`
@@ -35,10 +34,10 @@ type CockpitSurfaceScope struct {
 
 // Availability describes implemented services, not a user's write authority.
 type CockpitSurfaceCapabilities struct {
+	MeetingTemplates            bool `json:"meeting_templates"` // Retired; always false for installed clients.
 	Inputs                      bool `json:"inputs"`
 	RunInputManifests           bool `json:"run_input_manifests"`
 	MeetingLifecycle            bool `json:"meeting_lifecycle"`
-	MeetingTemplates            bool `json:"meeting_templates"`
 	MeetingDisposition          bool `json:"meeting_disposition"`
 	MeetingDirectoryPreparation bool `json:"meeting_directory_preparation"`
 	Artifacts                   bool `json:"artifacts"`
@@ -104,7 +103,7 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 	out.WorkspaceID = util.UUIDToString(p.WorkspaceID)
 	out.Scope = CockpitSurfaceScope{ProjectID: planningUUID(p.ProjectID), ModuleID: planningUUID(p.ModuleID)}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(p.ActorID), Role: member.Role, IsHuman: p.Human}
-	out.Capabilities = CockpitSurfaceCapabilities{Inputs: p.InputsAvailable, RunInputManifests: p.RunInputManifestsAvailable, Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingTemplates: p.MeetingTemplatesAvailable, MeetingDisposition: p.MeetingDispositionAvailable, MeetingDirectoryPreparation: p.MeetingDirectoryAvailable}
+	out.Capabilities = CockpitSurfaceCapabilities{Inputs: p.InputsAvailable, RunInputManifests: p.RunInputManifestsAvailable, Artifacts: p.ArtifactsAvailable, Acceptance: p.ArtifactsAvailable, MeetingLifecycle: p.MeetingLifecycleAvailable, MeetingDisposition: p.MeetingDispositionAvailable, MeetingDirectoryPreparation: p.MeetingDirectoryAvailable}
 	out.HasMeetingPreparation, err = q.HasCockpitMeetingPreparation(ctx, p.WorkspaceID)
 	if err != nil {
 		return out, err

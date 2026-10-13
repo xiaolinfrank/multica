@@ -16,17 +16,17 @@ describe("meeting stage projection", () => {
     expect(cockpitMeetingStage("scheduled", {}, { meet_date: "2026-10-13", start_time: null, end_time: null }, NOON)).toBe("recording");
     expect(meetingInsideWindow(WINDOW, new Date("2026-10-13T13:30:00"))).toBe(false);
   });
-  it("splits ended into minutes confirmation and follow-up by the published pointer", () => {
+  it("keeps ended meetings in minutes confirmation, including published versions", () => {
     expect(cockpitMeetingStage("ended", undefined, WINDOW, NOON)).toBe("minutes_review");
     expect(cockpitMeetingStage("ended", {}, WINDOW, NOON)).toBe("minutes_review");
     expect(cockpitMeetingStage("ended", { published_version_id: null }, WINDOW, NOON)).toBe("minutes_review");
-    expect(cockpitMeetingStage("ended", { published_version_id: "v-1" }, WINDOW, NOON)).toBe("followup");
+    expect(cockpitMeetingStage("ended", { published_version_id: "v-1" }, WINDOW, NOON)).toBe("minutes_review");
   });
   it("has no stage line for a cancelled meeting", () => {
     expect(cockpitMeetingStage("cancelled", { published_version_id: "v-1" }, WINDOW, NOON)).toBeNull();
   });
   it("lands each stage on its own working view", () => {
-    expect(meetingStageDefaultView("ended", { published_version_id: "v-1" })).toBe("followup");
+    expect(meetingStageDefaultView("ended", { published_version_id: "v-1" })).toBe("minutes_review");
     expect(meetingStageDefaultView("ended", {})).toBe("minutes_review");
     expect(meetingStageDefaultView("scheduled", {}, WINDOW, NOON)).toBe("recording");
     expect(meetingStageDefaultView("scheduled", {})).toBe("preparation");

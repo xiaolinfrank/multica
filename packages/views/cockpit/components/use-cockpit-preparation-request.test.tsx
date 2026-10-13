@@ -4,12 +4,14 @@ import { ApiError } from "@multica/core/api";
 import { useCockpitMeetingPreparationDraftStore, type CockpitPreparationPendingCommand } from "@multica/core/cockpit";
 import { useCockpitPreparationRequest } from "./use-cockpit-preparation-request";
 
-vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("meeting=m&meeting_view=agenda") }) }));
-const command: CockpitPreparationPendingCommand = { kind: "application", meetingId: "11111111-1111-4111-8111-111111111111", body: { command_key: "22222222-2222-4222-8222-222222222222", expected_revision: 2, template_version_id: "33333333-3333-4333-8333-333333333333", context_token: "context", bindings: [] } };
+vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("meeting=m&meeting_view=details") }) }));
+const command: CockpitPreparationPendingCommand = { kind: "cancellation", meetingId: "11111111-1111-4111-8111-111111111111", body: {
+  command_key: "22222222-2222-4222-8222-222222222222", expected_revision: 2, context_token: "context", reason: "Meeting is no longer needed", issues: [], run_ids: [],
+} };
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 beforeEach(() => useCockpitMeetingPreparationDraftStore.getState().clearDraft());
 
-describe("preparation command UI lifetime", () => {
+describe("cancellation command UI lifetime", () => {
   it("does not let a receipt from A close or unlock a new A request after visiting B", async () => {
     const first = deferred<string>(); const second = deferred<string>(); const hook = renderHook(({ id }) => useCockpitPreparationRequest(id), { initialProps: { id: "A" } });
     let previous!: ReturnType<typeof hook.result.current.run<string>>;

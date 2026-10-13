@@ -1,6 +1,6 @@
 ---
 name: multica-cockpit
-description: "Use when reading or editing the workspace's project cockpit — the programme board of work-breakdown nodes, dates, owners, budget, instalments, milestones, meetings, and the issues each work item is linked to."
+description: "Use when reading or editing the workspace's project cockpit — the project cockpit chat, scoped execution plans, dates, owners, progress, payment records, meetings, linked issues, fixed minutes, human review and NAS copies."
 user-invocable: false
 allowed-tools: Bash(multica *)
 ---
@@ -10,13 +10,21 @@ allowed-tools: Bash(multica *)
 ## Quick start
 
 ```bash
-multica cockpit overview --as-of 2026-10-10 # bounded work overview, viewer's date
-multica cockpit node list --owner 李青娇
-multica cockpit node get L3-01-08 --output json
-multica cockpit node update L3-01-08 --progress 60 --status 进行中
+multica cockpit context --output json
+multica cockpit overview --as-of 2026-10-14 --output json # use the viewer's actual date
+multica cockpit plan --project-id <project-uuid> --output json
+multica cockpit node get <stored-code-or-uuid> --output json
 ```
 
 The cockpit is one shared board per workspace; writes broadcast to open clients.
+Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed).
+The existing overview, execution plan, meeting register, artifacts and governance remain separate tabs.
+A new cockpit chat retains its initial project/module scope in its first visible message; `*` means all.
+Scope is context, not authorization. Changing the scope starts a new compose, not a silent retargeting of an existing conversation.
+
+Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.
+Simple reads and explicitly requested ordinary field edits can be completed in chat; multi-step preparation, minutes writing and repository work belong on an Issue.
+Do not promise a write happened until its server receipt is confirmed. Never use another profile or a human token to bypass a machine permission denial.
 Agents may submit minutes for their own issue, but cannot approve or publish them.
 
 ## Core model
@@ -28,7 +36,9 @@ Agents may submit minutes for their own issue, but cannot approve or publish the
 - **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
 - **Meeting** — the register entry: when, which parties, what was decided, plus the task it opened and the folder holding its material.
 
-**Node addresses** use the existing code (`L3-01-08`) or UUID; focused task commands require UUIDs.
+**Node addresses** use the stored code or UUID; focused task and relationship commands require UUIDs.
+The UI's dotted row number is a projection and can differ from the stored code. Resolve the real ID/code from the scoped plan before writing.
+`node next-code <parent-uuid>` previews the next stored code; it does not reserve it. Never invent or reuse spent codes.
 
 **Node status/category are free text**: match existing values such as `进行中`; workflow decisions use fixed vocabulary.
 Planning labels and ordinary issue statuses never grant approval.
@@ -37,7 +47,9 @@ Planning labels and ordinary issue statuses never grant approval.
 
 ## Reading before writing
 
-Read `multica cockpit show --output json` before changing the plan; never guess IDs or values.
+Start with `multica cockpit context` and the scoped `plan`/`overview` reads before changing the plan; never guess IDs or values.
+Pass the chat's actual `--project-id` and `--module-id` on supported reads; a module requires its project.
+Do not repeatedly fetch the complete workspace board when a bounded read suffices.
 Use [overview queues](references/overview.md) and focused task/action pages for growing collections; avoid repeatedly downloading the board.
 
 ## Editing nodes
@@ -89,7 +101,8 @@ multica cockpit meeting add --title "20260908-01 工作组周例会" --code 2026
 
 Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
 milestone with an `actual_date` reads as done whatever its status label says;
-a meeting's folder and links use the HTTP API — see `references/cockpit.md`.
+meeting associations now have focused CLI commands — see [meeting tasks](references/meeting-tasks.md).
+Folder preparation/recovery uses `meeting directory`, not an invented shell copy operation.
 
 ## Meeting minutes workflow
 
@@ -98,12 +111,20 @@ multica cockpit meeting workflow summary <meeting-id>
 multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md --compact
 ```
 
-Read [agenda and occurrence](references/meeting-lifecycle.md), materials and workflow state before drafting evidence-grounded minutes.
-Use [preparation plans and meeting disposition](references/meeting-preparation.md) for immutable templates, exact preparation effects, cancellation impact and archive recovery. These commands do not grant permission to start an agent or provision NAS directories. For authorized directory preparation and recovery, use [meeting directories](references/meeting-directory.md).
+The meeting panel has three stages: preparation → recording → minutes confirmation.
+Preparation offers one ordinary task creation action; recording offers one ordinary minutes task creation action.
+Both reuse platform Issue creation (backlog, without auto-start), not a special meeting-task form.
+There is no agenda tab, standalone directory tab, template application or separate follow-up stage.
+Linked issues/execution tasks and metadata remain visible outside the stage tabs.
+
+Read [meeting tasks](references/meeting-tasks.md), [meeting records and occurrence](references/meeting-lifecycle.md), the shared directory and workflow state before drafting evidence-grounded minutes.
+Use [meeting disposition](references/meeting-preparation.md) for explicit cancellation effects, impact and archive recovery. Preparation and minutes use linked Issues and the meeting’s shared directory. These commands do not grant permission to start an agent or provision NAS directories. For authorized directory preparation and recovery, use [meeting directories](references/meeting-directory.md).
 Submit using the minutes issue's task credential; retain the submission UUID/file for retries.
 Missing evidence is a blocker to report, not permission to invent outcomes.
 Submitting creates a fixed version and human Review Issue; completing/reassigning it is not approval.
-Enable, readiness, release, review and publication require authorized humans.
+Enable/adoption, formal review and publication require authorized humans.
+Submission and ordinary minutes-issue execution are not gated on confirming meeting end, materials readiness or a release ceremony.
+Legacy fact/release commands remain for installed clients and recorded history; they are not steps in the current UI or prerequisites to submission.
 A human manager may `workflow reassign-reviewer` with a reason and idempotency key:
 it preserves fixed evidence and records responsibility. Machine credentials cannot transfer it.
 See [history](references/history.md) for bounded reads/receipts and `references/cockpit.md` for command permissions.

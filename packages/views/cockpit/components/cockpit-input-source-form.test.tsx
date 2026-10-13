@@ -6,7 +6,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api, ApiError } from "@multica/core/api";
 import { cockpitEndedInputRegistrations, cockpitInputDraftKey, emptyCockpitInputForm, setCockpitInputForm, useCockpitInputDraftStore } from "@multica/core/cockpit";
 import { CockpitInputSourceForm } from "./cockpit-input-source-form";
-import { inputHeader, inputPrincipal, INPUT_ID, INPUT_MEETING, INPUT_MEMBER, INPUT_REFERENCE, INPUT_TIME, INPUT_VERSION, INPUT_WS } from "./input-test-fixtures";
+import { inputHeader, inputPrincipal, INPUT_ID, INPUT_MEETING, INPUT_MEMBER, INPUT_TIME, INPUT_VERSION, INPUT_WS } from "./input-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
 const navigation = { pathname: "/ws/cockpit", searchParams: new URLSearchParams(`meeting=${INPUT_MEETING}`) };
@@ -28,12 +28,10 @@ beforeEach(() => {
       capture_status: "ready", capture_error_code: "", capture_error: "", decision: "pending", reviewer_id: INPUT_MEMBER, review_issue: null,
       submitted_by_type: "member", submitted_by_id: INPUT_MEMBER, created_at: INPUT_TIME, reviewed_at: null, has_feedback: false, can_review: false, can_retry_capture: false } });
   vi.mocked(api.submitCockpitInputVersion).mockImplementation(async (_ws, inputId, body) => {
-    const ref = body.initialReference!;
     return { workspaceId: INPUT_WS, inputId, commandKey: body.commandKey, action: "input_version_submit", replayed: false,
       receipt: { commandKey: body.commandKey, requestHash: "b".repeat(64), inputId, inputRevision: 2, versionId: INPUT_VERSION, versionNumber: 1, source: body.source,
         payloadKind: body.source.kind === "artifact_version" ? "text" : "file", captureState: body.source.kind === "artifact_version" ? "ready" : "queued", transferId: null, transferRevision: null,
-        initialReference: { commandKey: ref.referenceKey, requestHash: "c".repeat(64), referenceId: INPUT_REFERENCE, meetingId: ref.meetingId, agendaId: ref.agendaId, inputId, inputVersionId: INPUT_VERSION,
-          purpose: ref.purpose, removed: false, principal: inputPrincipal(), acceptedAt: INPUT_TIME }, principal: inputPrincipal(), acceptedAt: INPUT_TIME }, current: null, transfer: null };
+        principal: inputPrincipal(), acceptedAt: INPUT_TIME }, current: null, transfer: null };
   });
 });
 describe("existing source registration", () => {
@@ -71,7 +69,7 @@ describe("existing source registration", () => {
     } finally { view.unmount(); client.clear(); }
   });
 
-  it.each(["artifact_version", "attachment"] as const)("registers an independent fixed input from %s and confirms only the immutable reference receipt", async (kind) => {
+  it.each(["artifact_version", "attachment"] as const)("registers an independent fixed input from %s without a meeting reference", async (kind) => {
     const source = { kind, upload: null, nasFile: null, artifactVersion: kind === "artifact_version" ? { artifactId: INPUT_ID, versionId: INPUT_VERSION } : null,
       attachment: kind === "attachment" ? { issueId: INPUT_ID, attachmentId: INPUT_VERSION } : null };
     setCockpitInputForm(key, { ...emptyCockpitInputForm(crypto.randomUUID()), title: "Original source", source });
@@ -81,8 +79,8 @@ describe("existing source registration", () => {
     try {
       const submit = screen.getByRole("button", { name: enCockpit.input_materials.register_source }); await waitFor(() => expect(submit).toBeEnabled()); fireEvent.click(submit);
       await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith(INPUT_ID, INPUT_VERSION));
-      expect(api.submitCockpitInputVersion).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, expect.objectContaining({ expectedRevision: 1, source,
-        initialReference: expect.objectContaining({ meetingId: INPUT_MEETING, purpose: "material" }) }));
+      expect(api.submitCockpitInputVersion).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, expect.objectContaining({ expectedRevision: 1, source }));
+      expect(vi.mocked(api.submitCockpitInputVersion).mock.calls[0]?.[2]).not.toHaveProperty("initialReference");
       expect(api.uploadCockpitInputBytes).not.toHaveBeenCalled();
       expect(useCockpitInputDraftStore.getState().draft.forms[key]).toBeUndefined();
       expect(screen.queryByText("Fixed version ready")).toBeNull();

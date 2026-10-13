@@ -33,7 +33,6 @@ func newCockpitArtifactCommand() *cobra.Command {
 		{"reassign-reviewer", "POST", "/reviewer", 1, false}, {"reviewer-history", "GET", "/reviewer-handoffs", 1, true},
 		{"archive", "POST", "/archive", 1, false}, {"unarchive", "POST", "/unarchive", 1, false},
 		{"node-references", "GET", "/node-references", 1, true}, {"reference-node", "POST", "/node-references", 1, false}, {"remove-node-reference", "DELETE", "/node-references/{1}", 2, false},
-		{"meeting-references", "GET", "/meeting-references", 1, true}, {"reference-meeting", "POST", "/meeting-references", 1, false}, {"remove-meeting-reference", "DELETE", "/meeting-references/{1}", 2, false},
 	} {
 		cmd := cockpitArtifactCLICommand(op, false)
 		if op.name == "list" {

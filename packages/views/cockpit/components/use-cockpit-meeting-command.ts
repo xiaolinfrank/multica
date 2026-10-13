@@ -6,8 +6,6 @@ import {
   cockpitLifecycleCommandOptions, cockpitLifecycleAcknowledged, invalidateCockpitMeetingCommandFacts, CockpitUnconfirmedWriteError,
   isCockpitDefinitiveCommandRejection, prepareCockpitMeetingCommand, settleCockpitMeetingCommand,
   useCockpitMeetingAgendaDraftStore, useCockpitOccurrence, useCockpitMaterialsConfirmation,
-  useCreateCockpitAgenda, useUpdateCockpitAgenda, useRemoveCockpitAgenda,
-  useAttachCockpitAgendaReference, useRemoveCockpitAgendaReference, useCreateCockpitPreparationIssue,
   type CockpitMeetingPendingCommand,
 } from "@multica/core/cockpit";
 import { useNavigation } from "../../navigation";
@@ -18,12 +16,6 @@ export function useCockpitMeetingCommand(wsId: string, meetingId: string, key: s
   const client = useQueryClient();
   const occurrence = useCockpitOccurrence(wsId, meetingId);
   const materials = useCockpitMaterialsConfirmation(wsId, meetingId);
-  const create = useCreateCockpitAgenda(wsId, meetingId);
-  const update = useUpdateCockpitAgenda(wsId, meetingId);
-  const remove = useRemoveCockpitAgenda(wsId, meetingId);
-  const attach = useAttachCockpitAgendaReference(wsId, meetingId);
-  const detach = useRemoveCockpitAgendaReference(wsId, meetingId);
-  const preparation = useCreateCockpitPreparationIssue(wsId, meetingId);
   const pending = useCockpitMeetingAgendaDraftStore((state) => state.draft.commands[key]);
   const capture = useCockpitCommandContext(key); const navigation = useNavigation();
   const signature = JSON.stringify([key, navigation.pathname, navigation.searchParams.toString()]);
@@ -45,12 +37,6 @@ export function useCockpitMeetingCommand(wsId: string, meetingId: string, key: s
     switch (command.kind) {
       case "occurrence": return occurrence.mutateAsync(command.body);
       case "materials": return materials.mutateAsync(command.body);
-      case "agenda_create": return create.mutateAsync(command.body);
-      case "agenda_update": return update.mutateAsync({ agendaId: command.agendaId, body: command.body });
-      case "agenda_remove": return remove.mutateAsync({ agendaId: command.agendaId, body: command.body });
-      case "reference_attach": return attach.mutateAsync({ agendaId: command.agendaId, body: command.body });
-      case "reference_remove": return detach.mutateAsync({ agendaId: command.agendaId, referenceId: command.referenceId, body: command.body });
-      case "preparation_issue_create": return preparation.mutateAsync({ agendaId: command.agendaId, body: command.body });
     }
   };
   const run = async (candidate: CockpitMeetingPendingCommand) => {
@@ -72,9 +58,9 @@ export function useCockpitMeetingCommand(wsId: string, meetingId: string, key: s
     try {
       const result = await client.fetchQuery({ ...cockpitLifecycleCommandOptions(wsId, meetingId, pending.body.command_key), staleTime: 0 });
       const action = pending.kind === "occurrence" ? pending.body.transition : pending.kind;
-      if (!cockpitLifecycleAcknowledged(result, action, pending.body, "agendaId" in pending ? pending.agendaId : undefined, "referenceId" in pending ? pending.referenceId : undefined)) throw new CockpitUnconfirmedWriteError();
+      if (!cockpitLifecycleAcknowledged(result, action, pending.body)) throw new CockpitUnconfirmedWriteError();
       settleCockpitMeetingCommand(key, pending.body.command_key);
-      invalidateCockpitMeetingCommandFacts(client, wsId, meetingId, action);
+      invalidateCockpitMeetingCommandFacts(client, wsId, meetingId);
       return { result, stillCurrent };
     } catch (cause) {
       // A missing read is not proof that an in-flight command will never commit.

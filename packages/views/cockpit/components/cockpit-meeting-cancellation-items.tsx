@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  cockpitCancellationImpactOptions, cockpitCancellationRunsOptions, cockpitMeetingDetailOptions, cockpitAgendaOptions, cockpitAgendaDetailOptions,
+  cockpitCancellationImpactOptions, cockpitCancellationRunsOptions, cockpitMeetingDetailOptions,
   cockpitMeetingContextPath, EMPTY_COCKPIT_SCOPE, type CockpitPreparationFormDraft,
 } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -41,14 +41,13 @@ export function CockpitCancellationItems({ wsId, meetingId, value, onChange, dis
       <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
       <ul className="max-h-[48vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3">{page.items.map((item) => {
         const selected = value.issues.find((choice) => choice.issue_id === item.issue.id);
-        const choice: Choice = selected ?? { issue_id: item.issue.id, expected_revision: item.issue_revision, action: "retain", cancel_status: null, due_date: null, target_meeting_id: null, target_agenda_id: null };
+        const choice: Choice = selected ?? { issue_id: item.issue.id, expected_revision: item.issue_revision, action: "retain", cancel_status: null, due_date: null, target_meeting_id: null };
         const permitted = (action: Choice["action"]) => action === "retain" || action === "cancel" && item.can_cancel && Boolean(item.cancel_status) || action === "change_due_date" && item.can_change_due_date || action === "link_meeting" && item.can_link_meeting;
         return <li key={item.issue.id} className="space-y-2 py-3"><AppLink target="_blank" rel="noopener noreferrer" className="line-clamp-2 block break-words text-body font-medium text-primary underline" title={item.issue.title} href={paths.issueDetail(item.issue.identifier || item.issue.id)}>{item.issue.identifier} {item.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>
-          {item.agenda_total > 1 && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.shared_agendas, { count: item.agenda_total })}</p>}
           <Select value={choice.action} disabled={disabled} items={actions.map((action) => ({ value: action, label: labels[action] }))} onValueChange={(next) => {
             const action = actions.find((action) => action === next); if (!action || !permitted(action)) return;
             update({ ...choice, expected_revision: item.issue_revision, action, cancel_status: action === "cancel" ? item.cancel_status : null,
-              due_date: action === "change_due_date" ? item.issue.due_date : null, target_meeting_id: null, target_agenda_id: null });
+              due_date: action === "change_due_date" ? item.issue.due_date : null, target_meeting_id: null });
           }}><SelectTrigger className="w-full" aria-label={t(($) => $.meeting_disposition.issue_choice, { issue: item.issue.identifier || item.issue.title })}><SelectValue /></SelectTrigger><SelectContent>{actions.map((action) => <SelectItem key={action} value={action} disabled={!permitted(action)}>{labels[action]}</SelectItem>)}</SelectContent></Select>
           {choice.action === "change_due_date" && <label className="block space-y-1 text-caption">{t(($) => $.task_flow.due_date)}<Input type="date" value={choice.due_date ?? ""} disabled={disabled} onChange={(event) => update({ ...choice, due_date: event.target.value || null })} /><span className="text-muted-foreground">{t(($) => $.meeting_disposition.clear_due)}</span></label>}
           {choice.action === "link_meeting" && <CancellationDestination wsId={wsId} sourceMeetingId={meetingId} value={choice} disabled={disabled} onChange={update} />}
@@ -81,28 +80,17 @@ function CancellationRuns({ wsId, meetingId, issueId, value, onChange, disabled 
 }
 
 function CancellationDestination({ wsId, sourceMeetingId, value, onChange, disabled }: { wsId: string; sourceMeetingId: string; value: Choice; onChange: (value: Choice) => void; disabled: boolean }) {
-  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const [text, setText] = useState(""); const q = useCockpitSearch(text); const [cursors, setCursors] = useState([""]);
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation();
   const meeting = useQuery({ ...cockpitMeetingDetailOptions(wsId, value.target_meeting_id ?? "", EMPTY_COCKPIT_SCOPE), enabled: Boolean(value.target_meeting_id) });
-  const agendas = useQuery({ ...cockpitAgendaOptions(wsId, value.target_meeting_id ?? "", { q, page_size: 25, cursor: cursors.at(-1) || undefined }), enabled: Boolean(value.target_meeting_id) }); const page = agendas.data;
-  const selected = useQuery({ ...cockpitAgendaDetailOptions(wsId, value.target_meeting_id ?? "", value.target_agenda_id ?? ""), enabled: Boolean(value.target_meeting_id && value.target_agenda_id) });
   return <section className="space-y-2 rounded-md border border-border p-3">
     <p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.link_meeting_hint)}</p>
     <CockpitMeetingPicker wsId={wsId} disabled={disabled} label={meeting.data ? cockpitMeetingLabel(meeting.data.meeting) : t(($) => $.meeting_disposition.target_meeting)} onSelect={async (id) => {
       if (id === sourceMeetingId) throw new Error(t(($) => $.meeting_disposition.other_meeting));
-      onChange({ ...value, target_meeting_id: id, target_agenda_id: null }); setText(""); setCursors([""]);
+      onChange({ ...value, target_meeting_id: id });
     }} />
     {value.target_meeting_id && <>
       {meeting.isError && <CockpitFlowError onRetry={() => void meeting.refetch()} />}
-      <label className="block space-y-1 text-caption">{t(($) => $.meeting_disposition.target_agenda)}<Input value={text} disabled={disabled} onChange={(event) => { setText(event.target.value); setCursors([""]); }} /></label>
-      {agendas.isPending ? <Spinner /> : agendas.isError || !page ? <CockpitFlowError onRetry={() => void agendas.refetch()} /> : <>
-        <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={agendas.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
-        <ul className="max-h-52 overflow-y-auto">{page.items.map((agenda) => <li key={agenda.id}><Button size="sm" variant={value.target_agenda_id === agenda.id ? "secondary" : "ghost"} aria-pressed={value.target_agenda_id === agenda.id} disabled={disabled || Boolean(agenda.removed_at)} className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => onChange({ ...value, target_agenda_id: agenda.id })}><span className="line-clamp-2 break-words">{agenda.title}</span></Button></li>)}</ul>
-        {page.items.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.empty)}</p>}
-      </>}
-      {cursors.length > 1 && <Button size="sm" variant="outline" onClick={() => setCursors([""])}>{t(($) => $.task_flow.first_page)}</Button>}
-      {value.target_agenda_id && <p className="break-words text-caption">{selected.data?.title ?? value.target_agenda_id}</p>}
-      {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}
-      <AppLink className={buttonVariants({ variant: "outline", size: "sm" })} target="_blank" rel="noopener noreferrer" href={cockpitMeetingContextPath(paths.cockpit(), value.target_meeting_id, EMPTY_COCKPIT_SCOPE, navigation.searchParams, "preparation")}>{t(($) => $.meeting_lifecycle.open_agenda)} {t(($) => $.action_flow.new_tab)}</AppLink>
+      <AppLink className={buttonVariants({ variant: "outline", size: "sm" })} target="_blank" rel="noopener noreferrer" href={cockpitMeetingContextPath(paths.cockpit(), value.target_meeting_id, EMPTY_COCKPIT_SCOPE, navigation.searchParams, "preparation")}>{t(($) => $.meeting_lifecycle.open_meeting)} {t(($) => $.action_flow.new_tab)}</AppLink>
     </>}
   </section>;
 }

@@ -11,66 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const bumpCockpitAgendaItemRevision = `-- name: BumpCockpitAgendaItemRevision :one
-UPDATE cockpit_meeting_agenda SET revision=revision+1,updated_by=$1,updated_at=now()
-WHERE workspace_id=$2 AND meeting_id=$3 AND id=$4 AND revision=$5 AND removed_at IS NULL RETURNING id, workspace_id, meeting_id, revision, title, purposes, desired_outcome, notes, facilitator_user_id, node_id, sort_order, created_by, updated_by, created_at, updated_at, removed_at, removed_by
-`
-
-type BumpCockpitAgendaItemRevisionParams struct {
-	ActorID          pgtype.UUID `json:"actor_id"`
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	MeetingID        pgtype.UUID `json:"meeting_id"`
-	ID               pgtype.UUID `json:"id"`
-	ExpectedRevision int64       `json:"expected_revision"`
-}
-
-func (q *Queries) BumpCockpitAgendaItemRevision(ctx context.Context, arg BumpCockpitAgendaItemRevisionParams) (CockpitMeetingAgenda, error) {
-	row := q.db.QueryRow(ctx, bumpCockpitAgendaItemRevision,
-		arg.ActorID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.ID,
-		arg.ExpectedRevision,
-	)
-	var i CockpitMeetingAgenda
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.DesiredOutcome,
-		&i.Notes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.SortOrder,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
-const bumpCockpitAgendaRevision = `-- name: BumpCockpitAgendaRevision :one
-UPDATE cockpit_meeting SET agenda_revision=agenda_revision+1 WHERE workspace_id=$1 AND id=$2 RETURNING agenda_revision
-`
-
-type BumpCockpitAgendaRevisionParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ID          pgtype.UUID `json:"id"`
-}
-
-func (q *Queries) BumpCockpitAgendaRevision(ctx context.Context, arg BumpCockpitAgendaRevisionParams) (int64, error) {
-	row := q.db.QueryRow(ctx, bumpCockpitAgendaRevision, arg.WorkspaceID, arg.ID)
-	var agenda_revision int64
-	err := row.Scan(&agenda_revision)
-	return agenda_revision, err
-}
-
 const bumpCockpitWorkflowRevisionForOccurrence = `-- name: BumpCockpitWorkflowRevisionForOccurrence :exec
 UPDATE cockpit_meeting SET minutes_revision=minutes_revision+1,updated_at=now() WHERE workspace_id=$1 AND id=$2
 `
@@ -83,54 +23,6 @@ type BumpCockpitWorkflowRevisionForOccurrenceParams struct {
 func (q *Queries) BumpCockpitWorkflowRevisionForOccurrence(ctx context.Context, arg BumpCockpitWorkflowRevisionForOccurrenceParams) error {
 	_, err := q.db.Exec(ctx, bumpCockpitWorkflowRevisionForOccurrence, arg.WorkspaceID, arg.ID)
 	return err
-}
-
-const countCockpitAgenda = `-- name: CountCockpitAgenda :one
-SELECT count(*) FROM cockpit_meeting_agenda WHERE workspace_id=$1 AND meeting_id=$2
- AND ($3::boolean OR removed_at IS NULL)
- AND ($4::text='' OR title ILIKE '%'||$4||'%')
-`
-
-type CountCockpitAgendaParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	IncludeRemoved bool        `json:"include_removed"`
-	Query          string      `json:"query"`
-}
-
-func (q *Queries) CountCockpitAgenda(ctx context.Context, arg CountCockpitAgendaParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCockpitAgenda,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.IncludeRemoved,
-		arg.Query,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countCockpitAgendaReferences = `-- name: CountCockpitAgendaReferences :one
-SELECT count(*) FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1 AND meeting_id=$2 AND agenda_id=$3 AND ($4::boolean OR removed_at IS NULL)
-`
-
-type CountCockpitAgendaReferencesParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	Column4     bool        `json:"column_4"`
-}
-
-func (q *Queries) CountCockpitAgendaReferences(ctx context.Context, arg CountCockpitAgendaReferencesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCockpitAgendaReferences,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.Column4,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
 }
 
 const countCockpitLifecycleCommands = `-- name: CountCockpitLifecycleCommands :one
@@ -149,70 +41,23 @@ func (q *Queries) CountCockpitLifecycleCommands(ctx context.Context, arg CountCo
 	return count, err
 }
 
-const createCockpitAgendaReference = `-- name: CreateCockpitAgendaReference :one
-INSERT INTO cockpit_meeting_agenda_reference(id,workspace_id,meeting_id,agenda_id,kind,target_id,purpose,created_by)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, workspace_id, meeting_id, agenda_id, kind, target_id, purpose, created_by, created_at, removed_at, removed_by
-`
-
-type CreateCockpitAgendaReferenceParams struct {
-	ID          pgtype.UUID `json:"id"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	Kind        string      `json:"kind"`
-	TargetID    pgtype.UUID `json:"target_id"`
-	Purpose     string      `json:"purpose"`
-	ActorID     pgtype.UUID `json:"actor_id"`
-}
-
-func (q *Queries) CreateCockpitAgendaReference(ctx context.Context, arg CreateCockpitAgendaReferenceParams) (CockpitMeetingAgendaReference, error) {
-	row := q.db.QueryRow(ctx, createCockpitAgendaReference,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.Kind,
-		arg.TargetID,
-		arg.Purpose,
-		arg.ActorID,
-	)
-	var i CockpitMeetingAgendaReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.Kind,
-		&i.TargetID,
-		&i.Purpose,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
 const createCockpitLifecycleCommand = `-- name: CreateCockpitLifecycleCommand :exec
-INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,agenda_id,reference_id,issue_id,operation_id,effect_id,receipt)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_id,request_hash,revision,agenda_revision,issue_id,operation_id,effect_id,receipt)
+VALUES($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11)
 `
 
 type CreateCockpitLifecycleCommandParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	CommandKey     pgtype.UUID `json:"command_key"`
-	Kind           string      `json:"kind"`
-	ActorID        pgtype.UUID `json:"actor_id"`
-	RequestHash    string      `json:"request_hash"`
-	Revision       int64       `json:"revision"`
-	AgendaRevision int64       `json:"agenda_revision"`
-	AgendaID       pgtype.UUID `json:"agenda_id"`
-	ReferenceID    pgtype.UUID `json:"reference_id"`
-	IssueID        pgtype.UUID `json:"issue_id"`
-	OperationID    pgtype.UUID `json:"operation_id"`
-	EffectID       pgtype.UUID `json:"effect_id"`
-	Receipt        []byte      `json:"receipt"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MeetingID   pgtype.UUID `json:"meeting_id"`
+	CommandKey  pgtype.UUID `json:"command_key"`
+	Kind        string      `json:"kind"`
+	ActorID     pgtype.UUID `json:"actor_id"`
+	RequestHash string      `json:"request_hash"`
+	Revision    int64       `json:"revision"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+	OperationID pgtype.UUID `json:"operation_id"`
+	EffectID    pgtype.UUID `json:"effect_id"`
+	Receipt     []byte      `json:"receipt"`
 }
 
 func (q *Queries) CreateCockpitLifecycleCommand(ctx context.Context, arg CreateCockpitLifecycleCommandParams) error {
@@ -224,9 +69,6 @@ func (q *Queries) CreateCockpitLifecycleCommand(ctx context.Context, arg CreateC
 		arg.ActorID,
 		arg.RequestHash,
 		arg.Revision,
-		arg.AgendaRevision,
-		arg.AgendaID,
-		arg.ReferenceID,
 		arg.IssueID,
 		arg.OperationID,
 		arg.EffectID,
@@ -235,211 +77,15 @@ func (q *Queries) CreateCockpitLifecycleCommand(ctx context.Context, arg CreateC
 	return err
 }
 
-const createCockpitMeetingAgenda = `-- name: CreateCockpitMeetingAgenda :one
-INSERT INTO cockpit_meeting_agenda(id,workspace_id,meeting_id,title,purposes,desired_outcome,notes,facilitator_user_id,node_id,sort_order,created_by,updated_by)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,
- COALESCE($10::bigint,(SELECT LEAST(COALESCE(max(a.sort_order),0)+1024,9007199254740991)::bigint FROM cockpit_meeting_agenda a WHERE a.workspace_id=$2 AND a.meeting_id=$3)),$11,$11) RETURNING id, workspace_id, meeting_id, revision, title, purposes, desired_outcome, notes, facilitator_user_id, node_id, sort_order, created_by, updated_by, created_at, updated_at, removed_at, removed_by
-`
-
-type CreateCockpitMeetingAgendaParams struct {
-	ID                pgtype.UUID `json:"id"`
-	WorkspaceID       pgtype.UUID `json:"workspace_id"`
-	MeetingID         pgtype.UUID `json:"meeting_id"`
-	Title             string      `json:"title"`
-	Purposes          []string    `json:"purposes"`
-	DesiredOutcome    string      `json:"desired_outcome"`
-	Notes             string      `json:"notes"`
-	FacilitatorUserID pgtype.UUID `json:"facilitator_user_id"`
-	NodeID            pgtype.UUID `json:"node_id"`
-	SortOrder         pgtype.Int8 `json:"sort_order"`
-	ActorID           pgtype.UUID `json:"actor_id"`
-}
-
-func (q *Queries) CreateCockpitMeetingAgenda(ctx context.Context, arg CreateCockpitMeetingAgendaParams) (CockpitMeetingAgenda, error) {
-	row := q.db.QueryRow(ctx, createCockpitMeetingAgenda,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.Title,
-		arg.Purposes,
-		arg.DesiredOutcome,
-		arg.Notes,
-		arg.FacilitatorUserID,
-		arg.NodeID,
-		arg.SortOrder,
-		arg.ActorID,
-	)
-	var i CockpitMeetingAgenda
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.DesiredOutcome,
-		&i.Notes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.SortOrder,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
-const deleteCockpitAgendaByMeeting = `-- name: DeleteCockpitAgendaByMeeting :exec
-WITH refs AS (DELETE FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1 AND meeting_id=$2)
-DELETE FROM cockpit_meeting_agenda a WHERE a.workspace_id=$1 AND a.meeting_id=$2
-`
-
-type DeleteCockpitAgendaByMeetingParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-}
-
-func (q *Queries) DeleteCockpitAgendaByMeeting(ctx context.Context, arg DeleteCockpitAgendaByMeetingParams) error {
-	_, err := q.db.Exec(ctx, deleteCockpitAgendaByMeeting, arg.WorkspaceID, arg.MeetingID)
-	return err
-}
-
 const deleteCockpitLifecycleByWorkspace = `-- name: DeleteCockpitLifecycleByWorkspace :exec
-WITH commands AS (DELETE FROM cockpit_meeting_lifecycle_command WHERE workspace_id=$1),
-refs AS (DELETE FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1)
-DELETE FROM cockpit_meeting_agenda a WHERE a.workspace_id=$1
+WITH commands AS (DELETE FROM cockpit_meeting_lifecycle_command WHERE cockpit_meeting_lifecycle_command.workspace_id=$1),
+refs AS (DELETE FROM cockpit_meeting_agenda_reference WHERE cockpit_meeting_agenda_reference.workspace_id=$1)
+DELETE FROM cockpit_meeting_agenda WHERE cockpit_meeting_agenda.workspace_id=$1
 `
 
 func (q *Queries) DeleteCockpitLifecycleByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteCockpitLifecycleByWorkspace, workspaceID)
 	return err
-}
-
-const getActiveCockpitAgendaReference = `-- name: GetActiveCockpitAgendaReference :one
-SELECT id, workspace_id, meeting_id, agenda_id, kind, target_id, purpose, created_by, created_at, removed_at, removed_by FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1 AND agenda_id=$2 AND kind=$3 AND target_id=$4 AND removed_at IS NULL
-`
-
-type GetActiveCockpitAgendaReferenceParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	Kind        string      `json:"kind"`
-	TargetID    pgtype.UUID `json:"target_id"`
-}
-
-func (q *Queries) GetActiveCockpitAgendaReference(ctx context.Context, arg GetActiveCockpitAgendaReferenceParams) (CockpitMeetingAgendaReference, error) {
-	row := q.db.QueryRow(ctx, getActiveCockpitAgendaReference,
-		arg.WorkspaceID,
-		arg.AgendaID,
-		arg.Kind,
-		arg.TargetID,
-	)
-	var i CockpitMeetingAgendaReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.Kind,
-		&i.TargetID,
-		&i.Purpose,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
-const getCockpitAgendaMetadata = `-- name: GetCockpitAgendaMetadata :one
-SELECT a.id,a.sort_order,a.revision,a.title,a.purposes,a.facilitator_user_id,a.node_id,a.created_at,a.updated_at,a.removed_at,
- COALESCE(u.name,'')::text AS facilitator_name,COALESCE(n.code,'')::text AS node_code,COALESCE(n.name,'')::text AS node_title,
- (SELECT count(*) FROM cockpit_meeting_agenda_reference r WHERE r.workspace_id=a.workspace_id AND r.agenda_id=a.id AND r.removed_at IS NULL)::bigint AS reference_count
-FROM cockpit_meeting_agenda a LEFT JOIN "user" u ON u.id=a.facilitator_user_id
-LEFT JOIN cockpit_node n ON n.workspace_id=a.workspace_id AND n.id=a.node_id
-WHERE a.workspace_id=$1 AND a.meeting_id=$2 AND a.id=$3
-`
-
-type GetCockpitAgendaMetadataParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	ID          pgtype.UUID `json:"id"`
-}
-
-type GetCockpitAgendaMetadataRow struct {
-	ID                pgtype.UUID        `json:"id"`
-	SortOrder         int64              `json:"sort_order"`
-	Revision          int64              `json:"revision"`
-	Title             string             `json:"title"`
-	Purposes          []string           `json:"purposes"`
-	FacilitatorUserID pgtype.UUID        `json:"facilitator_user_id"`
-	NodeID            pgtype.UUID        `json:"node_id"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	RemovedAt         pgtype.Timestamptz `json:"removed_at"`
-	FacilitatorName   string             `json:"facilitator_name"`
-	NodeCode          string             `json:"node_code"`
-	NodeTitle         string             `json:"node_title"`
-	ReferenceCount    int64              `json:"reference_count"`
-}
-
-func (q *Queries) GetCockpitAgendaMetadata(ctx context.Context, arg GetCockpitAgendaMetadataParams) (GetCockpitAgendaMetadataRow, error) {
-	row := q.db.QueryRow(ctx, getCockpitAgendaMetadata, arg.WorkspaceID, arg.MeetingID, arg.ID)
-	var i GetCockpitAgendaMetadataRow
-	err := row.Scan(
-		&i.ID,
-		&i.SortOrder,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.FacilitatorName,
-		&i.NodeCode,
-		&i.NodeTitle,
-		&i.ReferenceCount,
-	)
-	return i, err
-}
-
-const getCockpitAgendaReference = `-- name: GetCockpitAgendaReference :one
-SELECT id, workspace_id, meeting_id, agenda_id, kind, target_id, purpose, created_by, created_at, removed_at, removed_by FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1 AND meeting_id=$2 AND agenda_id=$3 AND id=$4
-`
-
-type GetCockpitAgendaReferenceParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	ID          pgtype.UUID `json:"id"`
-}
-
-func (q *Queries) GetCockpitAgendaReference(ctx context.Context, arg GetCockpitAgendaReferenceParams) (CockpitMeetingAgendaReference, error) {
-	row := q.db.QueryRow(ctx, getCockpitAgendaReference,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.ID,
-	)
-	var i CockpitMeetingAgendaReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.Kind,
-		&i.TargetID,
-		&i.Purpose,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
 }
 
 const getCockpitLifecycleCommand = `-- name: GetCockpitLifecycleCommand :one
@@ -478,43 +124,8 @@ func (q *Queries) GetCockpitLifecycleCommand(ctx context.Context, arg GetCockpit
 	return i, err
 }
 
-const getCockpitMeetingAgenda = `-- name: GetCockpitMeetingAgenda :one
-SELECT id, workspace_id, meeting_id, revision, title, purposes, desired_outcome, notes, facilitator_user_id, node_id, sort_order, created_by, updated_by, created_at, updated_at, removed_at, removed_by FROM cockpit_meeting_agenda WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
-`
-
-type GetCockpitMeetingAgendaParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	ID          pgtype.UUID `json:"id"`
-}
-
-func (q *Queries) GetCockpitMeetingAgenda(ctx context.Context, arg GetCockpitMeetingAgendaParams) (CockpitMeetingAgenda, error) {
-	row := q.db.QueryRow(ctx, getCockpitMeetingAgenda, arg.WorkspaceID, arg.MeetingID, arg.ID)
-	var i CockpitMeetingAgenda
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.DesiredOutcome,
-		&i.Notes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.SortOrder,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
 const getCockpitMeetingLifecycle = `-- name: GetCockpitMeetingLifecycle :one
-SELECT id,workspace_id,cockpit_id,lifecycle_revision,agenda_revision,occurrence_state,
+SELECT id,workspace_id,cockpit_id,lifecycle_revision,occurrence_state,
  started_confirmed_at,started_confirmed_by,ended_at,ended_by,ended_source,actual_started_at,actual_ended_at,cancelled_at,cancelled_by,cancelled_reason,archived_at,archived_by,archived_reason,
  now()::timestamptz AS database_now
 FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2
@@ -530,7 +141,6 @@ type GetCockpitMeetingLifecycleRow struct {
 	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
 	CockpitID          pgtype.UUID        `json:"cockpit_id"`
 	LifecycleRevision  int64              `json:"lifecycle_revision"`
-	AgendaRevision     int64              `json:"agenda_revision"`
 	OccurrenceState    string             `json:"occurrence_state"`
 	StartedConfirmedAt pgtype.Timestamptz `json:"started_confirmed_at"`
 	StartedConfirmedBy pgtype.UUID        `json:"started_confirmed_by"`
@@ -556,7 +166,6 @@ func (q *Queries) GetCockpitMeetingLifecycle(ctx context.Context, arg GetCockpit
 		&i.WorkspaceID,
 		&i.CockpitID,
 		&i.LifecycleRevision,
-		&i.AgendaRevision,
 		&i.OccurrenceState,
 		&i.StartedConfirmedAt,
 		&i.StartedConfirmedBy,
@@ -593,199 +202,8 @@ func (q *Queries) HasCockpitLifecycleForBoard(ctx context.Context, arg HasCockpi
 	return exists, err
 }
 
-const listCockpitAgendaArtifactTargets = `-- name: ListCockpitAgendaArtifactTargets :many
-SELECT r.id,r.artifact_id,r.version_id,r.removed_at,a.title,v.version_number,v.content_hash,v.decision AS version_decision
-FROM cockpit_artifact_meeting_reference r
-JOIN cockpit_artifact a ON a.workspace_id=r.workspace_id AND a.id=r.artifact_id
-JOIN cockpit_artifact_version v ON v.workspace_id=r.workspace_id AND v.id=r.version_id AND v.artifact_id=r.artifact_id
-WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.id=ANY($3::uuid[])
-`
-
-type ListCockpitAgendaArtifactTargetsParams struct {
-	WorkspaceID pgtype.UUID   `json:"workspace_id"`
-	MeetingID   pgtype.UUID   `json:"meeting_id"`
-	Ids         []pgtype.UUID `json:"ids"`
-}
-
-type ListCockpitAgendaArtifactTargetsRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	ArtifactID      pgtype.UUID        `json:"artifact_id"`
-	VersionID       pgtype.UUID        `json:"version_id"`
-	RemovedAt       pgtype.Timestamptz `json:"removed_at"`
-	Title           string             `json:"title"`
-	VersionNumber   int32              `json:"version_number"`
-	ContentHash     pgtype.Text        `json:"content_hash"`
-	VersionDecision string             `json:"version_decision"`
-}
-
-func (q *Queries) ListCockpitAgendaArtifactTargets(ctx context.Context, arg ListCockpitAgendaArtifactTargetsParams) ([]ListCockpitAgendaArtifactTargetsRow, error) {
-	rows, err := q.db.Query(ctx, listCockpitAgendaArtifactTargets, arg.WorkspaceID, arg.MeetingID, arg.Ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListCockpitAgendaArtifactTargetsRow{}
-	for rows.Next() {
-		var i ListCockpitAgendaArtifactTargetsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ArtifactID,
-			&i.VersionID,
-			&i.RemovedAt,
-			&i.Title,
-			&i.VersionNumber,
-			&i.ContentHash,
-			&i.VersionDecision,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCockpitAgendaMetadata = `-- name: ListCockpitAgendaMetadata :many
-SELECT a.id,a.sort_order,a.revision,a.title,a.purposes,a.facilitator_user_id,a.node_id,a.created_at,a.updated_at,a.removed_at,
- COALESCE(u.name,'')::text AS facilitator_name,COALESCE(n.code,'')::text AS node_code,COALESCE(n.name,'')::text AS node_title,
- (SELECT count(*) FROM cockpit_meeting_agenda_reference r WHERE r.workspace_id=a.workspace_id AND r.agenda_id=a.id AND r.removed_at IS NULL)::bigint AS reference_count
-FROM cockpit_meeting_agenda a LEFT JOIN "user" u ON u.id=a.facilitator_user_id
-LEFT JOIN cockpit_node n ON n.workspace_id=a.workspace_id AND n.id=a.node_id
-WHERE a.workspace_id=$1 AND a.meeting_id=$2
- AND ($3::boolean OR a.removed_at IS NULL)
- AND ($4::text='' OR a.title ILIKE '%'||$4||'%')
- AND ($5::uuid IS NULL OR (a.sort_order,a.id)>($6::bigint,$5))
-ORDER BY a.sort_order,a.id LIMIT $7
-`
-
-type ListCockpitAgendaMetadataParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	IncludeRemoved bool        `json:"include_removed"`
-	Query          string      `json:"query"`
-	AfterID        pgtype.UUID `json:"after_id"`
-	AfterOrder     int64       `json:"after_order"`
-	PageLimit      int32       `json:"page_limit"`
-}
-
-type ListCockpitAgendaMetadataRow struct {
-	ID                pgtype.UUID        `json:"id"`
-	SortOrder         int64              `json:"sort_order"`
-	Revision          int64              `json:"revision"`
-	Title             string             `json:"title"`
-	Purposes          []string           `json:"purposes"`
-	FacilitatorUserID pgtype.UUID        `json:"facilitator_user_id"`
-	NodeID            pgtype.UUID        `json:"node_id"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	RemovedAt         pgtype.Timestamptz `json:"removed_at"`
-	FacilitatorName   string             `json:"facilitator_name"`
-	NodeCode          string             `json:"node_code"`
-	NodeTitle         string             `json:"node_title"`
-	ReferenceCount    int64              `json:"reference_count"`
-}
-
-func (q *Queries) ListCockpitAgendaMetadata(ctx context.Context, arg ListCockpitAgendaMetadataParams) ([]ListCockpitAgendaMetadataRow, error) {
-	rows, err := q.db.Query(ctx, listCockpitAgendaMetadata,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.IncludeRemoved,
-		arg.Query,
-		arg.AfterID,
-		arg.AfterOrder,
-		arg.PageLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListCockpitAgendaMetadataRow{}
-	for rows.Next() {
-		var i ListCockpitAgendaMetadataRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.SortOrder,
-			&i.Revision,
-			&i.Title,
-			&i.Purposes,
-			&i.FacilitatorUserID,
-			&i.NodeID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.RemovedAt,
-			&i.FacilitatorName,
-			&i.NodeCode,
-			&i.NodeTitle,
-			&i.ReferenceCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCockpitAgendaReferences = `-- name: ListCockpitAgendaReferences :many
-SELECT id, workspace_id, meeting_id, agenda_id, kind, target_id, purpose, created_by, created_at, removed_at, removed_by FROM cockpit_meeting_agenda_reference WHERE workspace_id=$1 AND meeting_id=$2 AND agenda_id=$3
- AND ($4::boolean OR removed_at IS NULL)
- AND ($5::uuid IS NULL OR id>$5) ORDER BY id LIMIT $6
-`
-
-type ListCockpitAgendaReferencesParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	AgendaID       pgtype.UUID `json:"agenda_id"`
-	IncludeRemoved bool        `json:"include_removed"`
-	AfterID        pgtype.UUID `json:"after_id"`
-	PageLimit      int32       `json:"page_limit"`
-}
-
-func (q *Queries) ListCockpitAgendaReferences(ctx context.Context, arg ListCockpitAgendaReferencesParams) ([]CockpitMeetingAgendaReference, error) {
-	rows, err := q.db.Query(ctx, listCockpitAgendaReferences,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.IncludeRemoved,
-		arg.AfterID,
-		arg.PageLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CockpitMeetingAgendaReference{}
-	for rows.Next() {
-		var i CockpitMeetingAgendaReference
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.MeetingID,
-			&i.AgendaID,
-			&i.Kind,
-			&i.TargetID,
-			&i.Purpose,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.RemovedAt,
-			&i.RemovedBy,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listCockpitLifecycleCommands = `-- name: ListCockpitLifecycleCommands :many
-SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.agenda_revision,c.agenda_id,c.reference_id,c.issue_id,c.operation_id,c.effect_id,c.actor_type,c.directory_operation_id,c.directory_step_id,c.created_at,CASE WHEN c.actor_type='agent' THEN COALESCE(actor_agent.name,'') ELSE COALESCE(u.name,'') END::text AS actor_name
+SELECT c.workspace_id,c.meeting_id,c.command_key,c.kind,c.actor_id,c.revision,c.issue_id,c.operation_id,c.effect_id,c.actor_type,c.directory_operation_id,c.directory_step_id,c.created_at,CASE WHEN c.actor_type='agent' THEN COALESCE(actor_agent.name,'') ELSE COALESCE(u.name,'') END::text AS actor_name
 FROM cockpit_meeting_lifecycle_command c LEFT JOIN "user" u ON u.id=c.actor_id AND c.actor_type='member'
 LEFT JOIN agent actor_agent ON actor_agent.id=c.actor_id AND actor_agent.workspace_id=c.workspace_id AND c.actor_type='agent'
 WHERE c.workspace_id=$1 AND c.meeting_id=$2
@@ -808,9 +226,6 @@ type ListCockpitLifecycleCommandsRow struct {
 	Kind                 string             `json:"kind"`
 	ActorID              pgtype.UUID        `json:"actor_id"`
 	Revision             int64              `json:"revision"`
-	AgendaRevision       int64              `json:"agenda_revision"`
-	AgendaID             pgtype.UUID        `json:"agenda_id"`
-	ReferenceID          pgtype.UUID        `json:"reference_id"`
 	IssueID              pgtype.UUID        `json:"issue_id"`
 	OperationID          pgtype.UUID        `json:"operation_id"`
 	EffectID             pgtype.UUID        `json:"effect_id"`
@@ -843,9 +258,6 @@ func (q *Queries) ListCockpitLifecycleCommands(ctx context.Context, arg ListCock
 			&i.Kind,
 			&i.ActorID,
 			&i.Revision,
-			&i.AgendaRevision,
-			&i.AgendaID,
-			&i.ReferenceID,
 			&i.IssueID,
 			&i.OperationID,
 			&i.EffectID,
@@ -863,88 +275,6 @@ func (q *Queries) ListCockpitLifecycleCommands(ctx context.Context, arg ListCock
 		return nil, err
 	}
 	return items, nil
-}
-
-const removeCockpitAgendaReference = `-- name: RemoveCockpitAgendaReference :one
-UPDATE cockpit_meeting_agenda_reference SET removed_at=now(),removed_by=$5
-WHERE workspace_id=$1 AND meeting_id=$2 AND agenda_id=$3 AND id=$4 AND removed_at IS NULL RETURNING id, workspace_id, meeting_id, agenda_id, kind, target_id, purpose, created_by, created_at, removed_at, removed_by
-`
-
-type RemoveCockpitAgendaReferenceParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	ID          pgtype.UUID `json:"id"`
-	RemovedBy   pgtype.UUID `json:"removed_by"`
-}
-
-func (q *Queries) RemoveCockpitAgendaReference(ctx context.Context, arg RemoveCockpitAgendaReferenceParams) (CockpitMeetingAgendaReference, error) {
-	row := q.db.QueryRow(ctx, removeCockpitAgendaReference,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.ID,
-		arg.RemovedBy,
-	)
-	var i CockpitMeetingAgendaReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.Kind,
-		&i.TargetID,
-		&i.Purpose,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
-}
-
-const removeCockpitMeetingAgenda = `-- name: RemoveCockpitMeetingAgenda :one
-UPDATE cockpit_meeting_agenda SET removed_at=now(),removed_by=$1,revision=revision+1,updated_by=$1,updated_at=now()
-WHERE workspace_id=$2 AND meeting_id=$3 AND id=$4 AND revision=$5 AND removed_at IS NULL RETURNING id, workspace_id, meeting_id, revision, title, purposes, desired_outcome, notes, facilitator_user_id, node_id, sort_order, created_by, updated_by, created_at, updated_at, removed_at, removed_by
-`
-
-type RemoveCockpitMeetingAgendaParams struct {
-	ActorID          pgtype.UUID `json:"actor_id"`
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	MeetingID        pgtype.UUID `json:"meeting_id"`
-	ID               pgtype.UUID `json:"id"`
-	ExpectedRevision int64       `json:"expected_revision"`
-}
-
-func (q *Queries) RemoveCockpitMeetingAgenda(ctx context.Context, arg RemoveCockpitMeetingAgendaParams) (CockpitMeetingAgenda, error) {
-	row := q.db.QueryRow(ctx, removeCockpitMeetingAgenda,
-		arg.ActorID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.ID,
-		arg.ExpectedRevision,
-	)
-	var i CockpitMeetingAgenda
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.DesiredOutcome,
-		&i.Notes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.SortOrder,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
 }
 
 const setCockpitMeetingOccurrence = `-- name: SetCockpitMeetingOccurrence :one
@@ -990,63 +320,4 @@ func (q *Queries) SetCockpitMeetingOccurrence(ctx context.Context, arg SetCockpi
 	var lifecycle_revision int64
 	err := row.Scan(&lifecycle_revision)
 	return lifecycle_revision, err
-}
-
-const updateCockpitMeetingAgenda = `-- name: UpdateCockpitMeetingAgenda :one
-UPDATE cockpit_meeting_agenda SET title=$1,purposes=$2,desired_outcome=$3,notes=$4,
- facilitator_user_id=$5,node_id=$6,sort_order=$7,revision=revision+1,updated_by=$8,updated_at=now()
-WHERE workspace_id=$9 AND meeting_id=$10 AND id=$11 AND revision=$12 AND removed_at IS NULL RETURNING id, workspace_id, meeting_id, revision, title, purposes, desired_outcome, notes, facilitator_user_id, node_id, sort_order, created_by, updated_by, created_at, updated_at, removed_at, removed_by
-`
-
-type UpdateCockpitMeetingAgendaParams struct {
-	Title             string      `json:"title"`
-	Purposes          []string    `json:"purposes"`
-	DesiredOutcome    string      `json:"desired_outcome"`
-	Notes             string      `json:"notes"`
-	FacilitatorUserID pgtype.UUID `json:"facilitator_user_id"`
-	NodeID            pgtype.UUID `json:"node_id"`
-	SortOrder         int64       `json:"sort_order"`
-	ActorID           pgtype.UUID `json:"actor_id"`
-	WorkspaceID       pgtype.UUID `json:"workspace_id"`
-	MeetingID         pgtype.UUID `json:"meeting_id"`
-	ID                pgtype.UUID `json:"id"`
-	ExpectedRevision  int64       `json:"expected_revision"`
-}
-
-func (q *Queries) UpdateCockpitMeetingAgenda(ctx context.Context, arg UpdateCockpitMeetingAgendaParams) (CockpitMeetingAgenda, error) {
-	row := q.db.QueryRow(ctx, updateCockpitMeetingAgenda,
-		arg.Title,
-		arg.Purposes,
-		arg.DesiredOutcome,
-		arg.Notes,
-		arg.FacilitatorUserID,
-		arg.NodeID,
-		arg.SortOrder,
-		arg.ActorID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.ID,
-		arg.ExpectedRevision,
-	)
-	var i CockpitMeetingAgenda
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Revision,
-		&i.Title,
-		&i.Purposes,
-		&i.DesiredOutcome,
-		&i.Notes,
-		&i.FacilitatorUserID,
-		&i.NodeID,
-		&i.SortOrder,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-	)
-	return i, err
 }

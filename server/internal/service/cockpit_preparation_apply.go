@@ -3,17 +3,15 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
-	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 func (s *IssueService) ApplyCockpitPreparationEffect(ctx context.Context, p CockpitPreparationQuery, in CockpitPreparationEffectApplyInput, opts IssueCreateOpts) (CockpitPreparationEffectResult, error) {
@@ -33,17 +31,6 @@ func (s *IssueService) ApplyCockpitPreparationEffect(ctx context.Context, p Cock
 	}
 	e := &cockpitPreparationExecution{service: s, query: p, input: in}
 	switch r.Kind {
-	case "preparation_issue":
-		var intent preparationEffectIntent
-		if err = json.Unmarshal(r.Input, &intent); err != nil {
-			return empty, err
-		}
-		if intent.Slot.NewIssue == nil {
-			return empty, ErrCockpitWorkflowInput
-		}
-		fields := intent.Slot.NewIssue
-		b := intent.Binding
-		_, err = s.createCockpitPreparationIssue(ctx, p.CockpitLifecycleRead, pgtype.UUID{}, CockpitPreparationIssueInput{CockpitLifecycleCommandInput: CockpitLifecycleCommandInput{CommandKey: in.CommandKey, ExpectedRevision: 1}, PrimaryNodeID: intent.NodeID, NewIssue: CockpitPreparationIssueFields{Title: fields.Title, Description: fields.Description, Priority: fields.Priority, AssigneeType: b.AssigneeType, AssigneeID: b.AssigneeID, DueDate: b.DueDate, ProjectID: intent.ProjectID, ModuleID: intent.ModuleID}}, opts, e)
 	case "stop_run":
 		if s.TaskService == nil {
 			return empty, fmt.Errorf("task cancellation service is unavailable")
@@ -103,57 +90,12 @@ func (s *IssueService) applyPreparationDatabaseEffect(ctx context.Context, e *co
 	p := e.query
 	var receipt CockpitPreparationEffectReceipt
 	switch e.effect.Kind {
-	case "agenda":
-		slot := e.intent.Slot
-		if slot.Agenda == nil {
-			return ErrCockpitWorkflowInput
-		}
-		if err = e.validateTemplateScope(ctx, q); err != nil {
-			return err
-		}
-		b := e.intent.Binding
-		facilitator, _ := json.Marshal(b.FacilitatorUserID)
-		node, _ := json.Marshal(e.intent.NodeID)
-		in := CockpitAgendaInput{Title: &slot.Agenda.Title, Purposes: &slot.Agenda.Purposes, DesiredOutcome: &slot.Agenda.DesiredOutcome, Notes: &slot.Agenda.Notes, FacilitatorUserID: facilitator, NodeID: node}
-		a, err := applyAgendaFields(ctx, q, p.CockpitLifecycleRead, db.CockpitMeetingAgenda{}, in)
-		if err != nil {
-			return err
-		}
-		a, err = q.CreateCockpitMeetingAgenda(ctx, db.CreateCockpitMeetingAgendaParams{ID: dbid.NewV7(), WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, Title: a.Title, Purposes: a.Purposes, DesiredOutcome: a.DesiredOutcome, Notes: a.Notes, FacilitatorUserID: a.FacilitatorUserID, NodeID: a.NodeID, ActorID: p.ActorID})
-		if err != nil {
-			return err
-		}
-		if _, err = q.BumpCockpitAgendaRevision(ctx, db.BumpCockpitAgendaRevisionParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID}); err != nil {
-			return err
-		}
-		receipt = CockpitPreparationEffectReceipt{AgendaID: planningUUID(a.ID), Changed: true}
-	case "issue_reference", "material_reference":
-		kind := "issue"
-		target, err := preparationUUID(e.intent.Binding.IssueID)
-		if err != nil {
-			return err
-		}
-		if e.effect.Kind == "material_reference" {
-			kind = "artifact_reference"
-			target, err = preparationUUID(e.intent.Binding.MaterialReferenceID)
-			if err != nil {
-				return err
-			}
-		}
-		receipt, err = e.attachReference(ctx, q, p.MeetingID, e.agenda, kind, target, e.intent.Slot.Purpose)
-		if err != nil {
-			return err
-		}
 	case "link_meeting":
 		if e.intent.IssueChoice == nil {
 			return ErrCockpitWorkflowInput
 		}
 		choice := e.intent.IssueChoice
 		target, err := preparationUUID(choice.TargetMeetingID)
-		if err != nil {
-			return err
-		}
-		agenda, err := preparationUUID(choice.TargetAgendaID)
 		if err != nil {
 			return err
 		}
@@ -167,7 +109,7 @@ func (s *IssueService) applyPreparationDatabaseEffect(ctx context.Context, e *co
 		if err = RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, target); err != nil {
 			return err
 		}
-		receipt, err = e.attachReference(ctx, q, target, agenda, "issue", issue, "preparation")
+		receipt, err = linkPreparationIssueToMeeting(ctx, q, p.WorkspaceID, target, issue, p.ActorID)
 		if err != nil {
 			return err
 		}
@@ -185,91 +127,6 @@ func (s *IssueService) applyPreparationDatabaseEffect(ctx context.Context, e *co
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-func (e *cockpitPreparationExecution) validateTemplateScope(ctx context.Context, q *db.Queries) error {
-	if e.intent.NodeID == nil {
-		return nil
-	}
-	id, err := preparationUUID(e.intent.NodeID)
-	if err != nil {
-		return err
-	}
-	_, project, module, err := requireExecutionLeaf(ctx, q, e.query.WorkspaceID, id)
-	if err != nil {
-		return err
-	}
-	if e.grant.Scope == nil || e.grant.Scope.NodeID == nil || *e.grant.Scope.NodeID != *e.intent.NodeID {
-		return ErrCockpitPreparationContextChanged
-	}
-	expectedProject, _ := preparationUUID(e.grant.Scope.ProjectID)
-	expectedModule, _ := preparationUUID(e.grant.Scope.ModuleID)
-	if project != expectedProject || module != expectedModule {
-		return ErrCockpitPreparationContextChanged
-	}
-	return nil
-}
-
-func (e *cockpitPreparationExecution) attachReference(ctx context.Context, q *db.Queries, meeting, agenda pgtype.UUID, kind string, target pgtype.UUID, purpose string) (CockpitPreparationEffectReceipt, error) {
-	var out CockpitPreparationEffectReceipt
-	p := e.query.CockpitLifecycleRead
-	p.MeetingID = meeting
-	a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: meeting, ID: agenda})
-	if err != nil {
-		return out, cockpitWorkflowError(err)
-	}
-	if a.RemovedAt.Valid {
-		return out, ErrCockpitLifecycleGone
-	}
-	if kind == "issue" {
-		if _, err = q.LockIssueForDescriptionUpdate(ctx, db.LockIssueForDescriptionUpdateParams{WorkspaceID: p.WorkspaceID, ID: target}); err != nil {
-			return out, cockpitWorkflowError(err)
-		}
-	}
-	if err = validateAgendaReferenceTarget(ctx, q, p, kind, target); err != nil {
-		return out, err
-	}
-	if _, err = q.GetActiveCockpitAgendaReference(ctx, db.GetActiveCockpitAgendaReferenceParams{WorkspaceID: p.WorkspaceID, AgendaID: agenda, Kind: kind, TargetID: target}); err == nil {
-		return out, ErrCockpitWorkflowConflict
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return out, err
-	}
-	r, err := q.CreateCockpitAgendaReference(ctx, db.CreateCockpitAgendaReferenceParams{ID: dbid.NewV7(), WorkspaceID: p.WorkspaceID, MeetingID: meeting, AgendaID: agenda, Kind: kind, TargetID: target, Purpose: purpose, ActorID: p.ActorID})
-	if err != nil {
-		return out, err
-	}
-	if _, err = q.BumpCockpitAgendaItemRevision(ctx, db.BumpCockpitAgendaItemRevisionParams{WorkspaceID: p.WorkspaceID, MeetingID: meeting, ID: agenda, ExpectedRevision: a.Revision, ActorID: p.ActorID}); err != nil {
-		return out, err
-	}
-	if _, err = q.BumpCockpitAgendaRevision(ctx, db.BumpCockpitAgendaRevisionParams{WorkspaceID: p.WorkspaceID, ID: meeting}); err != nil {
-		return out, err
-	}
-	out = CockpitPreparationEffectReceipt{AgendaID: planningUUID(agenda), ReferenceID: planningUUID(r.ID), Changed: true}
-	if kind == "issue" {
-		out.IssueID = planningUUID(target)
-	}
-	return out, nil
-}
-
-func (e *cockpitPreparationExecution) currentDispositionFacts(ctx context.Context, q *db.Queries) (dispositionIssueFacts, error) {
-	var empty dispositionIssueFacts
-	ids := []pgtype.UUID{}
-	for _, raw := range e.intent.SelectedRunIDs {
-		id, err := util.ParseUUID(raw)
-		if err != nil {
-			return empty, err
-		}
-		ids = append(ids, id)
-	}
-	facts, err := readDispositionIssues(ctx, q, e.query.CockpitLifecycleRead, []pgtype.UUID{e.effect.IssueID}, ids)
-	if err != nil {
-		return empty, err
-	}
-	f, ok := facts[e.effect.IssueID]
-	if !ok {
-		return empty, ErrCockpitLifecycleGone
-	}
-	return f, nil
 }
 
 func (e *cockpitPreparationExecution) changeIssue(ctx context.Context, q *db.Queries) (CockpitPreparationEffectReceipt, error) {
@@ -357,4 +214,28 @@ func (e *cockpitPreparationExecution) changeIssue(ctx context.Context, q *db.Que
 	out.Issue = &issue
 	out.FactsHash = planningHash([]any{"issue_disposition_effect_v1", out.IssueID, old.Revision, updated.Revision, out.Issue, out.TargetMeetingID, f.Automation.OrdinaryWakeupIdsHash, queueIDs})
 	return out, nil
+}
+
+// linkPreparationIssueToMeeting files the retained preparation issue under the
+// target meeting as an ordinary meeting link — the meeting-issue association
+// is the only meeting↔issue binding after agenda references were removed.
+// The caller holds the target meeting lock in this transaction, so the purpose
+// merge is serialized with ordinary association and purpose edits.
+func linkPreparationIssueToMeeting(ctx context.Context, q *db.Queries, workspace, meeting, issue pgtype.UUID, actor pgtype.UUID) (CockpitPreparationEffectReceipt, error) {
+	if _, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: workspace, ID: issue}); err != nil {
+		return CockpitPreparationEffectReceipt{}, cockpitWorkflowError(err)
+	}
+	if err := q.AppendCockpitMeetingIssue(ctx, db.AppendCockpitMeetingIssueParams{WorkspaceID: workspace, MeetingID: meeting, IssueID: issue}); err != nil {
+		return CockpitPreparationEffectReceipt{}, err
+	}
+	link, err := q.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{WorkspaceID: workspace, MeetingID: meeting, IssueID: issue})
+	if err != nil {
+		return CockpitPreparationEffectReceipt{}, err
+	}
+	if !slices.Contains(link.Roles, "preparation") {
+		if _, err := q.UpdateCockpitMeetingIssueRoles(ctx, db.UpdateCockpitMeetingIssueRolesParams{WorkspaceID: workspace, MeetingID: meeting, IssueID: issue, Roles: append(link.Roles, "preparation")}); err != nil {
+			return CockpitPreparationEffectReceipt{}, err
+		}
+	}
+	return CockpitPreparationEffectReceipt{IssueID: planningUUID(issue), Changed: true}, nil
 }

@@ -56,15 +56,15 @@ function ReauthorizationForm({ wsId, meetingId, effect, draftKey, permitted, onB
     setCockpitPreparationForm(draftKey, value);
     const result = await request.run(original ?? { kind: "reauthorization", meetingId, operationId: effect.operation_id, effectId: effect.id,
       body: { command_key: createSafeId(), expected_revision: preview!.effect_revision, context_token: preview!.context_token, reason: value.reason.trim() } }, async (command) => {
-      if (command.kind !== "reauthorization") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return mutation.mutateAsync({ effectId: command.effectId, body: command.body });
+      if (command.kind !== "reauthorization") throw new Error(t(($) => $.meeting_preparation.check_first)); return mutation.mutateAsync({ effectId: command.effectId, body: command.body });
     });
     if (result) { clearCockpitPreparationForm(draftKey, value); if (result.stillCurrent()) onDone(); }
   };
   const verify = async () => {
     const result = await request.verify(async (command) => {
-      if (command.kind !== "reauthorization") throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (command.kind !== "reauthorization") throw new Error(t(($) => $.meeting_preparation.check_first));
       const detail = await client.fetchQuery({ ...cockpitLifecycleCommandOptions(wsId, meetingId, command.body.command_key), staleTime: 0 });
-      if (!detail || !cockpitPreparationCommandAcknowledged(detail, "preparation_reauthorize", command.body, effect.operation_id, effect.id)) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (!detail || !cockpitPreparationCommandAcknowledged(detail, "preparation_reauthorize", command.body, effect.operation_id, effect.id)) throw new Error(t(($) => $.meeting_preparation.check_first));
       await invalidateCockpitMeetingPreparationFacts(client, wsId, meetingId, effect.operation_id); return detail;
     });
     if (result) { clearCockpitPreparationForm(draftKey, value); if (result.stillCurrent()) onDone(); }
@@ -76,7 +76,7 @@ function ReauthorizationForm({ wsId, meetingId, effect, draftKey, permitted, onB
         <CockpitPreparationReasons codes={preview.blocked_reasons} targets={preview.targets} />
         <label className="flex items-start gap-2 text-caption"><input type="checkbox" checked={confirmed} disabled={busy || Boolean(original) || reviewRequired || !permitted || !preview.can_confirm || Boolean(changed)} onChange={(event) => setConfirmed(event.target.checked)} />{t(($) => $.meeting_preparation.confirm_reauthorization)}</label>
         {changed && <p role="alert" className="text-caption">{t(($) => $.meeting_preparation.changed)}</p>}
-        <Button size="sm" variant="outline" disabled={busy || Boolean(original)} onClick={() => void refreshPreview()}>{t(($) => $.meeting_templates.preview_again)}</Button>
+        <Button size="sm" variant="outline" disabled={busy || Boolean(original)} onClick={() => void refreshPreview()}>{t(($) => $.meeting_lifecycle.refresh)}</Button>
       </>}
       <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.reason)}<Textarea className="max-h-48 resize-y overflow-y-auto" value={value.reason} disabled={busy || Boolean(original)} onChange={(event) => setCockpitPreparationForm(draftKey, { ...value, reason: event.target.value })} /></label>
       {original && <div className="space-y-2 text-caption"><p>{t(($) => $.meeting_lifecycle.pending_hint)}</p><Button variant="outline" size="sm" disabled={request.busy} onClick={() => void verify()}>{t(($) => $.meeting_lifecycle.check_command)}</Button></div>}

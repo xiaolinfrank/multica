@@ -21,7 +21,7 @@ type cockpitInputCLIOperation struct {
 }
 
 func newCockpitInputCommand() *cobra.Command {
-	root := &cobra.Command{Use: "input", Short: "Register fixed materials and inspect their exact meeting, Issue and Run references", Long: "Read one bounded page, register fixed materials, or recover an original command. Keep the same request file and command key after an uncertain response; use the exact command lookup before explicitly retrying. Registration, reference and manifest commands do not dispatch an Agent. A ready file is not a human review decision."}
+	root := &cobra.Command{Use: "input", Short: "Register fixed materials and inspect their exact Issue and Run inputs", Long: "Read one bounded page, register fixed materials, or recover an original command. Keep the same request file and command key after an uncertain response; use the exact command lookup before explicitly retrying. Registration and manifest commands do not dispatch an Agent. A ready file is not a human review decision."}
 	ops := []cockpitInputCLIOperation{
 		{"capabilities", "GET", "/cockpit/inputs/capabilities", "", "", false},
 		{"list", "GET", "/cockpit/inputs", "", "", true}, {"show", "GET", "/cockpit/inputs/{0}", "<input-id>", "", false},
@@ -34,8 +34,6 @@ func newCockpitInputCommand() *cobra.Command {
 		{"finalize", "POST", "/cockpit/inputs/{0}/versions/{1}/transfers/{2}/finalize", "<input-id> <version-id> <transfer-id>", "input_transfer_finalize", false}, {"abandon", "POST", "/cockpit/inputs/{0}/versions/{1}/transfers/{2}/abandon", "<input-id> <version-id> <transfer-id>", "input_transfer_abandon", false},
 		{"session-command", "GET", "/cockpit/inputs/{0}/versions/{1}/transfers/{2}/commands/{3}", "<input-id> <version-id> <transfer-id> <command-key>", "transfer_command", false},
 		{"verify", "POST", "/cockpit/inputs/{0}/versions/{1}/verify", "<input-id> <version-id>", "", false}, {"download-link", "GET", "/cockpit/inputs/{0}/versions/{1}/download-link", "<input-id> <version-id>", "", false},
-		{"references", "GET", "/cockpit/meetings/{0}/input-references", "<meeting-id>", "", true}, {"reference", "POST", "/cockpit/meetings/{0}/input-references", "<meeting-id>", "input_reference_create", false},
-		{"remove-reference", "POST", "/cockpit/meetings/{0}/input-references/{1}/remove", "<meeting-id> <reference-id>", "input_reference_remove", false}, {"reference-command", "GET", "/cockpit/meetings/{0}/input-reference-commands/{1}", "<meeting-id> <command-key>", "reference_command", false},
 		{"attachments", "GET", "/cockpit/issues/{0}/input-attachments", "<issue-id>", "", true},
 		{"manifest", "GET", "/cockpit/issues/{0}/input-manifest", "<issue-id>", "", false}, {"save-manifest", "PUT", "/cockpit/issues/{0}/input-manifest", "<issue-id>", "input_manifest_save", false},
 		{"manifest-command", "GET", "/cockpit/issues/{0}/input-manifest/commands/{1}", "<issue-id> <command-key>", "input_manifest_save", false}, {"manifest-versions", "GET", "/cockpit/issues/{0}/input-manifest/versions", "<issue-id>", "", true},
@@ -54,20 +52,15 @@ func newCockpitInputCommand() *cobra.Command {
 			command.Flags().String("request-file", "", "One UTF-8 JSON object, at most 256 KiB; retain the exact command")
 		}
 		if op.name == "list" {
-			for _, name := range []string{"project-id", "origin-issue-id", "meeting-id", "agenda-id"} {
+			for _, name := range []string{"project-id", "origin-issue-id"} {
 				command.Flags().String(name, "", "Optional exact scope UUID")
 			}
 			command.Flags().String("archive", "active", "active, archived or all")
 			command.Flags().String("source-kind", "", "upload, nas_file, attachment or artifact_version")
 			command.Flags().StringArray("id", nil, "Select an exact input UUID; repeat up to 100 times")
 		}
-		if op.name == "list" || op.name == "references" || op.name == "attachments" {
+		if op.name == "list" || op.name == "attachments" {
 			command.Flags().String("query", "", "Literal title or filename prefix within this scope")
-		}
-		if op.name == "references" {
-			command.Flags().String("agenda-id", "", "Optional exact agenda UUID")
-			command.Flags().String("purpose", "", "material, recording or supporting")
-			command.Flags().Bool("include-removed", false, "Include removed historical references")
 		}
 		root.AddCommand(command)
 	}
@@ -91,7 +84,7 @@ func cockpitInputCLIQuery(cmd *cobra.Command, op cockpitInputCLIOperation) (url.
 			query.Set("cursor", cursor)
 		}
 	}
-	for _, name := range []string{"project-id", "origin-issue-id", "meeting-id", "agenda-id"} {
+	for _, name := range []string{"project-id", "origin-issue-id"} {
 		if cmd.Flags().Lookup(name) != nil && cmd.Flags().Changed(name) {
 			raw, _ := cmd.Flags().GetString(name)
 			id, err := cockpitWorkflowUUID(raw, "--"+name)
@@ -160,6 +153,9 @@ func cockpitInputCLIRequest(cmd *cobra.Command, op cockpitInputCLIOperation) (ma
 	var body map[string]any
 	if len(data) > 256<<10 || !utf8.Valid(data) || json.Unmarshal(data, &body) != nil || body == nil {
 		return nil, fmt.Errorf("input request must contain one UTF-8 JSON object of at most 256 KiB")
+	}
+	if initial, exists := body["initial_reference"]; exists && initial != nil {
+		return nil, fmt.Errorf("meeting input references are no longer supported; use the meeting directory or an Issue input manifest")
 	}
 	if op.action != "" && cockpitNASReceiptUUID(body["command_key"]) == "" {
 		return nil, fmt.Errorf("an original command_key UUID is required")
@@ -251,10 +247,6 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 			if action != "input_transfer_finalize" && action != "input_transfer_abandon" {
 				return false
 			}
-		} else if op.action == "reference_command" {
-			if action != "input_reference_create" && action != "input_reference_remove" {
-				return false
-			}
 		} else if action != op.action {
 			return false
 		}
@@ -274,9 +266,6 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 		if strings.Contains(op.path, "/transfers/{2}/") && receipt["transfer_id"] != ids[2] {
 			return false
 		}
-		if strings.HasPrefix(op.path, "/cockpit/meetings/{0}") && receipt["meeting_id"] != ids[0] {
-			return false
-		}
 		if strings.HasPrefix(op.path, "/cockpit/issues/{0}") && receipt["issue_id"] != ids[0] {
 			return false
 		}
@@ -291,12 +280,7 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 			if !cockpitInputCLISourceMatches(receipt["source"], body["source"]) || cockpitNASReceiptUUID(receipt["version_id"]) == "" {
 				return false
 			}
-			initial, _ := body["initial_reference"].(map[string]any)
-			if initial == nil {
-				return receipt["initial_reference"] == nil
-			}
-			ref, ok := receipt["initial_reference"].(map[string]any)
-			return ok && ref["command_key"] == initial["reference_key"] && ref["meeting_id"] == initial["meeting_id"] && reflect.DeepEqual(ref["agenda_id"], initial["agenda_id"]) && ref["purpose"] == initial["purpose"]
+			return true
 		case "restart":
 			return receipt["mode"] == body["mode"] && reflect.DeepEqual(receipt["replaces_transfer_id"], body["previous_transfer_id"]) && cockpitNASReceiptUUID(receipt["transfer_id"]) != ""
 		case "finalize":
@@ -304,10 +288,6 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 		case "abandon":
 			reason, _ := body["reason"].(string)
 			return receipt["reason"] == strings.TrimSpace(reason) && receipt["state"] == "abandoned"
-		case "reference":
-			return receipt["input_version_id"] == body["input_version_id"] && reflect.DeepEqual(receipt["agenda_id"], body["agenda_id"]) && receipt["purpose"] == body["purpose"] && receipt["removed"] == false
-		case "remove-reference":
-			return receipt["reference_id"] == ids[1] && receipt["removed"] == true
 		case "save-manifest":
 			return cockpitNASReceiptUUID(receipt["manifest_version_id"]) != "" && cockpitPreparationCLIHash(receipt["manifest_hash"]) && reflect.DeepEqual(receipt["items"], body["items"]) && receipt["note"] == cockpitInputCLIText(body["note"])
 		}
@@ -343,9 +323,6 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 			if op.name == "transfers" && row["version_id"] != ids[1] {
 				return false
 			}
-			if op.name == "references" && row["meeting_id"] != ids[0] {
-				return false
-			}
 			if (op.name == "attachments" || op.name == "manifest-versions") && row["issue_id"] != ids[0] {
 				return false
 			}
@@ -378,9 +355,6 @@ func confirmCockpitInputCLI(op cockpitInputCLIOperation, ids []string, body, res
 		}
 	}
 	if op.name == "transfer" && result["id"] != ids[2] {
-		return false
-	}
-	if op.name == "references" && result["meeting_id"] != ids[0] {
 		return false
 	}
 	if strings.HasPrefix(op.path, "/cockpit/issues/{0}") {

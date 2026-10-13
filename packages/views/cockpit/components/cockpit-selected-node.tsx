@@ -75,8 +75,12 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
       : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setPage(key, cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
       {cursors.length > 1 && (pageQuery.isError ? <CockpitFlowError onRetry={() => void pageQuery.refetch()} /> : pageQuery.isPending ? <Spinner /> : null)}</div>;
   };
+  // The breadcrumb quotes the parent's display code like every other surface;
+  // the stored code only names parents the summary tree does not ship.
+  const treeParent = detail.ancestors.find((entry) => entry.id === node.parent_id);
+  const parent = treeParent ? { ...treeParent, code: codes.get(treeParent.id) ?? treeParent.code } : undefined;
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
-    displayCode={codes.get(node.id)} parent={detail.ancestors.find((entry) => entry.id === node.parent_id)} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
+    displayCode={codes.get(node.id)} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
     payments={payments?.items ?? []} paymentTotal={paymentCursors.length === 1 ? detail.payment_total : paymentQuery.data?.payment_total ?? detail.payment_total}
     paymentPaging={relationPager("payments")} meetings={meetings?.items ?? []} meetingPaging={relationPager("meetings")}
     referenceWorkspace={<CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} referenceOnly onCreateReference={createReference} />}

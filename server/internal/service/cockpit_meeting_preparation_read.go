@@ -14,15 +14,6 @@ import (
 
 var ErrCockpitPreparationContextChanged = fmt.Errorf("%w: preparation facts changed; refresh the preview", ErrCockpitWorkflowConflict)
 
-type CockpitPreparationExistsError struct {
-	WorkspaceID, MeetingID, TemplateVersionID, OperationID, CommandKey string
-}
-
-func (e *CockpitPreparationExistsError) Error() string {
-	return "this fixed template already has an application; continue the existing operation"
-}
-func (e *CockpitPreparationExistsError) Unwrap() error { return ErrCockpitWorkflowConflict }
-
 func preparationCapabilities(h *CockpitPreparationOperationHeader, p CockpitLifecycleRead, manager bool, meeting db.GetCockpitMeetingLifecycleRow) {
 	responsible := p.Human && h.ResponsibleUserID == util.UUIDToString(p.ActorID)
 	h.CanContinue = responsible && h.State == "active"
@@ -34,21 +25,6 @@ func preparationCapabilities(h *CockpitPreparationOperationHeader, p CockpitLife
 		h.BlockedReasons = append(h.BlockedReasons, "human_required")
 	} else if !responsible {
 		h.BlockedReasons = append(h.BlockedReasons, "preparation_responsible_required")
-	}
-	if h.Kind == "apply_template" {
-		if meeting.OccurrenceState == "cancelled" {
-			h.CanContinue = false
-			h.CanResume = false
-			h.BlockedReasons = append(h.BlockedReasons, "meeting_cancelled")
-		}
-		if meeting.ArchivedAt.Valid {
-			created, err := time.Parse(time.RFC3339Nano, h.CreatedAt)
-			if err != nil || created.After(meeting.ArchivedAt.Time) {
-				h.CanContinue = false
-				h.CanResume = false
-				h.BlockedReasons = append(h.BlockedReasons, "meeting_archived")
-			}
-		}
 	}
 	if h.State == "needs_attention" {
 		h.BlockedReasons = append(h.BlockedReasons, "preparation_needs_attention")
@@ -87,16 +63,8 @@ func preparationHeader(ctx context.Context, q *db.Queries, p CockpitLifecycleRea
 			return h, e
 		}
 	}
-	h = CockpitPreparationOperationHeader{WorkspaceID: util.UUIDToString(o.WorkspaceID), MeetingID: util.UUIDToString(o.MeetingID), ID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, CommandKey: util.UUIDToString(o.CommandKey), TemplateID: planningUUID(o.TemplateID), TemplateVersionID: planningUUID(o.TemplateVersionID), CreatedBy: util.UUIDToString(o.CreatedBy), CreatedByName: names[o.CreatedBy], ResponsibleUserName: names[o.ResponsibleUserID], ResponsibleUserID: util.UUIDToString(o.ResponsibleUserID), CreatedAt: o.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: o.UpdatedAt.Time.UTC().Format(time.RFC3339Nano), Counts: CockpitPreparationCounts{Total: c.Total, Pending: c.Pending, Applied: c.Applied, NeedsAttention: c.NeedsAttention, Skipped: c.Skipped}}
-	if o.TemplateVersionID.Valid {
-		display, err := q.GetCockpitPreparationTemplateDisplay(ctx, db.GetCockpitPreparationTemplateDisplayParams{WorkspaceID: p.WorkspaceID, ID: o.TemplateVersionID})
-		if err != nil {
-			return h, cockpitWorkflowError(err)
-		}
-		h.TemplateTitle = display.Title
-		h.TemplateVersionNumber = &display.Number
-	}
-	preparationCapabilities(&h, p, templateManager(p.Human, p.ActorID, o.CreatedBy, role), meeting)
+	h = CockpitPreparationOperationHeader{WorkspaceID: util.UUIDToString(o.WorkspaceID), MeetingID: util.UUIDToString(o.MeetingID), ID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, CommandKey: util.UUIDToString(o.CommandKey), CreatedBy: util.UUIDToString(o.CreatedBy), CreatedByName: names[o.CreatedBy], ResponsibleUserName: names[o.ResponsibleUserID], ResponsibleUserID: util.UUIDToString(o.ResponsibleUserID), CreatedAt: o.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: o.UpdatedAt.Time.UTC().Format(time.RFC3339Nano), Counts: CockpitPreparationCounts{Total: c.Total, Pending: c.Pending, Applied: c.Applied, NeedsAttention: c.NeedsAttention, Skipped: c.Skipped}}
+	preparationCapabilities(&h, p, preparationManager(p.Human, p.ActorID, o.CreatedBy, role), meeting)
 	return h, nil
 }
 
@@ -156,15 +124,11 @@ func (s *IssueService) ListCockpitPreparationOperations(ctx context.Context, p C
 		out.NextCursor = encodeLifecycleCursor(lifecycleCursor{Scope: scope, ID: util.UUIDToString(r.ID), Time: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano)})
 	}
 	for _, r := range rows {
-		h := CockpitPreparationOperationHeader{WorkspaceID: out.WorkspaceID, MeetingID: out.MeetingID, ID: util.UUIDToString(r.ID), Kind: r.Kind, Revision: r.Revision, State: r.State, CommandKey: util.UUIDToString(r.CommandKey), TemplateID: planningUUID(r.TemplateID), TemplateVersionID: planningUUID(r.TemplateVersionID), CreatedBy: util.UUIDToString(r.CreatedBy), CreatedByName: r.CreatedByName, ResponsibleUserName: r.ResponsibleUserName, TemplateTitle: r.TemplateTitle, ResponsibleUserID: util.UUIDToString(r.ResponsibleUserID), CreatedAt: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: r.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)}
+		h := CockpitPreparationOperationHeader{WorkspaceID: out.WorkspaceID, MeetingID: out.MeetingID, ID: util.UUIDToString(r.ID), Kind: r.Kind, Revision: r.Revision, State: r.State, CommandKey: util.UUIDToString(r.CommandKey), CreatedBy: util.UUIDToString(r.CreatedBy), CreatedByName: r.CreatedByName, ResponsibleUserName: r.ResponsibleUserName, ResponsibleUserID: util.UUIDToString(r.ResponsibleUserID), CreatedAt: r.CreatedAt.Time.UTC().Format(time.RFC3339Nano), UpdatedAt: r.UpdatedAt.Time.UTC().Format(time.RFC3339Nano)}
 		if e = json.Unmarshal(r.Counts, &h.Counts); e != nil {
 			return out, e
 		}
-		if r.TemplateVersionNumber.Valid {
-			number := r.TemplateVersionNumber.Int32
-			h.TemplateVersionNumber = &number
-		}
-		preparationCapabilities(&h, p.CockpitLifecycleRead, templateManager(p.Human, p.ActorID, r.CreatedBy, role), x.meeting)
+		preparationCapabilities(&h, p.CockpitLifecycleRead, preparationManager(p.Human, p.ActorID, r.CreatedBy, role), x.meeting)
 		out.Items = append(out.Items, h)
 	}
 	return out, nil
@@ -174,21 +138,6 @@ func preparationEffectView(r db.CockpitMeetingPreparationEffect, h CockpitPrepar
 	o := CockpitPreparationEffect{ID: util.UUIDToString(r.ID), OperationID: util.UUIDToString(r.OperationID), SlotID: util.UUIDToString(r.SlotID), Position: r.Position, Kind: r.Kind, Label: r.Label, Revision: r.Revision, State: r.State, CommandKey: util.UUIDToString(r.CommandKey), DependencyID: planningUUID(r.DependencyID), ErrorCode: r.ErrorCode, Reason: r.Reason, Targets: []IssueOperationTarget{}, AuthorizationKey: util.UUIDToString(r.AuthorizationKey), AuthorizationRevision: r.AuthorizationRevision, CanReauthorize: p.Human && h.ResponsibleUserID == util.UUIDToString(p.ActorID) && r.State == "needs_attention", CanApply: h.CanContinue && r.State == "pending", CanSkip: (p.Human && h.ResponsibleUserID == util.UUIDToString(p.ActorID) && h.State != "completed") && r.State != "applied" && r.State != "skipped"}
 	if !dependencyApplied {
 		o.CanApply = false
-	}
-	if h.Kind == "apply_template" {
-		if meeting.OccurrenceState == "cancelled" || meeting.ArchivedAt.Valid {
-			o.CanReauthorize = false
-		}
-		if meeting.ArchivedAt.Valid {
-			grant, err := decodePreparationGrant(r)
-			if err != nil {
-				return o, err
-			}
-			at, err := time.Parse(time.RFC3339Nano, grant.ConfirmedAt)
-			if err != nil || at.After(meeting.ArchivedAt.Time) {
-				o.CanApply = false
-			}
-		}
 	}
 	if r.Receipt != nil {
 		var receipt CockpitPreparationEffectReceipt
@@ -202,13 +151,6 @@ func preparationEffectView(r db.CockpitMeetingPreparationEffect, h CockpitPrepar
 	}
 	if r.IssueID.Valid {
 		o.Targets = append(o.Targets, IssueOperationTarget{Kind: "issue", IssueID: util.UUIDToString(r.IssueID), Label: r.Label, Purpose: "preparation"})
-	}
-	if r.AgendaID.Valid {
-		meeting := r.MeetingID
-		if r.TargetMeetingID.Valid {
-			meeting = r.TargetMeetingID
-		}
-		o.Targets = append(o.Targets, IssueOperationTarget{Kind: "meeting", MeetingID: util.UUIDToString(meeting), View: "agenda", Label: r.Label, Purpose: "preparation"})
 	}
 	return o, nil
 }
@@ -282,7 +224,7 @@ func (s *IssueService) ListCockpitPreparationEffects(ctx context.Context, p Cock
 		out.NextCursor = encodeLifecycleCursor(lifecycleCursor{Scope: scope, ID: util.UUIDToString(r.ID), Order: int64(r.Position)})
 	}
 	for _, r := range rows {
-		v, e := preparationEffectView(db.CockpitMeetingPreparationEffect{ID: r.ID, WorkspaceID: r.WorkspaceID, MeetingID: r.MeetingID, OperationID: r.OperationID, SlotID: r.SlotID, Position: r.Position, Kind: r.Kind, Label: r.Label, CommandKey: r.CommandKey, DependencyID: r.DependencyID, Revision: r.Revision, State: r.State, ErrorCode: r.ErrorCode, Reason: r.Reason, AgendaID: r.AgendaID, ReferenceID: r.ReferenceID, IssueID: r.IssueID, RunID: r.RunID, TargetMeetingID: r.TargetMeetingID, Receipt: r.Receipt, AppliedBy: r.AppliedBy, AppliedAt: r.AppliedAt, AuthorizationKey: r.AuthorizationKey, AuthorizationRevision: r.AuthorizationRevision, AuthorizationHash: r.AuthorizationHash, AuthorizationSnapshot: r.AuthorizationSnapshot}, h, p.CockpitLifecycleRead, x.meeting, r.DependencyApplied)
+		v, e := preparationEffectView(db.CockpitMeetingPreparationEffect{ID: r.ID, WorkspaceID: r.WorkspaceID, MeetingID: r.MeetingID, OperationID: r.OperationID, SlotID: r.SlotID, Position: r.Position, Kind: r.Kind, Label: r.Label, CommandKey: r.CommandKey, DependencyID: r.DependencyID, Revision: r.Revision, State: r.State, ErrorCode: r.ErrorCode, Reason: r.Reason, IssueID: r.IssueID, RunID: r.RunID, TargetMeetingID: r.TargetMeetingID, Receipt: r.Receipt, AppliedBy: r.AppliedBy, AppliedAt: r.AppliedAt, AuthorizationKey: r.AuthorizationKey, AuthorizationRevision: r.AuthorizationRevision, AuthorizationHash: r.AuthorizationHash, AuthorizationSnapshot: r.AuthorizationSnapshot}, h, p.CockpitLifecycleRead, x.meeting, r.DependencyApplied)
 		if e != nil {
 			return out, e
 		}

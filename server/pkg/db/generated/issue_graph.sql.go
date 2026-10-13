@@ -184,7 +184,7 @@ type ListIssueGraphExecNodeMeetingsRow struct {
 	NodeID    pgtype.UUID `json:"node_id"`
 }
 
-// Meeting↔L3-node links (the meeting's agenda rows on the gantt), rendered as
+// Meeting↔L3-node links, rendered as
 // meeting-kind edges from the meeting to the execution node.
 func (q *Queries) ListIssueGraphExecNodeMeetings(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodeMeetingsRow, error) {
 	rows, err := q.db.Query(ctx, listIssueGraphExecNodeMeetings, workspaceID)
@@ -267,15 +267,6 @@ UNION
 SELECT a.meeting_id,a.issue_id,'action'::text AS role
 FROM cockpit_meeting_action a
 WHERE a.workspace_id=$1 AND a.status='accepted' AND a.issue_id IS NOT NULL
-UNION
-SELECT r.meeting_id,r.target_id AS issue_id,'preparation'::text AS role
-FROM cockpit_meeting_agenda_reference r
-JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id
-JOIN cockpit_meeting m ON m.workspace_id=r.workspace_id AND m.id=r.meeting_id
-JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id
-WHERE r.workspace_id=$1 AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL
- AND NOT EXISTS(SELECT 1 FROM cockpit_meeting_issue direct WHERE direct.workspace_id=r.workspace_id AND direct.meeting_id=r.meeting_id AND direct.issue_id=r.target_id)
- AND NOT EXISTS(SELECT 1 FROM cockpit_meeting_action accepted WHERE accepted.workspace_id=r.workspace_id AND accepted.meeting_id=r.meeting_id AND accepted.issue_id=r.target_id AND accepted.status='accepted')
 `
 
 type ListIssueGraphMeetingIssuesRow struct {

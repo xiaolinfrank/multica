@@ -1,6 +1,6 @@
 -- name: CreateCockpitDirectoryOperation :one
-INSERT INTO cockpit_meeting_directory_operation(id,workspace_id,meeting_id,creation_command_key,request_hash,plan_hash,state,root_id,root_path,prepare_subpath,relative_directory,directory,target_hash,root_config_hash,observed_nas_dir,observed_binding_revision,bind_after_base,created_by_type,created_by,credential_owner_user_id,authorizing_user_id,source_run_id,source_issue_id,source_agent_id,source_runtime_id,source_task_token_id,source_relation_kind,source_agenda_reference_id,source_principal,last_grant_command_key,responsible_user_id,input,receipt)
-VALUES(sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(creation_command_key),sqlc.arg(request_hash),sqlc.arg(plan_hash),sqlc.arg(state),sqlc.arg(root_id),sqlc.arg(root_path),sqlc.arg(prepare_subpath),sqlc.arg(relative_directory),sqlc.arg(directory),sqlc.arg(target_hash),sqlc.arg(root_config_hash),sqlc.arg(observed_nas_dir),sqlc.arg(observed_binding_revision),sqlc.arg(bind_after_base),sqlc.arg(created_by_type),sqlc.arg(created_by),sqlc.arg(credential_owner_user_id),sqlc.arg(authorizing_user_id),sqlc.narg(source_run_id),sqlc.narg(source_issue_id),sqlc.narg(source_agent_id),sqlc.narg(source_runtime_id),sqlc.narg(source_task_token_id),sqlc.arg(source_relation_kind),sqlc.narg(source_agenda_reference_id),sqlc.arg(source_principal),sqlc.arg(last_grant_command_key),sqlc.arg(responsible_user_id),sqlc.arg(input),sqlc.arg(receipt)) RETURNING *;
+INSERT INTO cockpit_meeting_directory_operation(id,workspace_id,meeting_id,creation_command_key,request_hash,plan_hash,state,root_id,root_path,prepare_subpath,relative_directory,directory,target_hash,root_config_hash,observed_nas_dir,observed_binding_revision,bind_after_base,created_by_type,created_by,credential_owner_user_id,authorizing_user_id,source_run_id,source_issue_id,source_agent_id,source_runtime_id,source_task_token_id,source_relation_kind,source_principal,last_grant_command_key,responsible_user_id,input,receipt)
+VALUES(sqlc.arg(id),sqlc.arg(workspace_id),sqlc.arg(meeting_id),sqlc.arg(creation_command_key),sqlc.arg(request_hash),sqlc.arg(plan_hash),sqlc.arg(state),sqlc.arg(root_id),sqlc.arg(root_path),sqlc.arg(prepare_subpath),sqlc.arg(relative_directory),sqlc.arg(directory),sqlc.arg(target_hash),sqlc.arg(root_config_hash),sqlc.arg(observed_nas_dir),sqlc.arg(observed_binding_revision),sqlc.arg(bind_after_base),sqlc.arg(created_by_type),sqlc.arg(created_by),sqlc.arg(credential_owner_user_id),sqlc.arg(authorizing_user_id),sqlc.narg(source_run_id),sqlc.narg(source_issue_id),sqlc.narg(source_agent_id),sqlc.narg(source_runtime_id),sqlc.narg(source_task_token_id),sqlc.arg(source_relation_kind),sqlc.arg(source_principal),sqlc.arg(last_grant_command_key),sqlc.arg(responsible_user_id),sqlc.arg(input),sqlc.arg(receipt)) RETURNING *;
 
 -- name: GetCockpitDirectoryOperation :one
 SELECT * FROM cockpit_meeting_directory_operation WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3;
@@ -126,20 +126,18 @@ AND(sqlc.arg(before_number)::integer=0 OR attempt_number<sqlc.arg(before_number)
 
 -- name: CreateCockpitDirectoryCommand :exec
 INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_type,actor_id,request_hash,revision,agenda_revision,directory_operation_id,directory_step_id,receipt)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12);
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11);
 
 -- name: GetLiveCockpitDirectoryTaskToken :one
 SELECT * FROM task_token WHERE id=$1 AND workspace_id=$2 AND expires_at>clock_timestamp() FOR SHARE;
 
 -- name: GetCockpitDirectoryPreparationRelation :one
 WITH relations AS (
- SELECT 'work_package'::text AS kind,NULL::uuid AS agenda_reference_id,0 AS rank FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND 'minutes'=ANY(l.roles)
- UNION ALL SELECT 'agenda_preparation',r.id,1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id
- WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.target_id=$3 AND r.purpose='preparation' AND r.removed_at IS NULL AND a.removed_at IS NULL
- UNION ALL SELECT CASE WHEN l.role='task' THEN 'legacy_task' ELSE 'direct_preparation' END,NULL::uuid,2 FROM cockpit_meeting_issue l
+ SELECT 'work_package'::text AS kind,0 AS rank FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND 'minutes'=ANY(l.roles)
+ UNION ALL SELECT CASE WHEN l.role='task' THEN 'legacy_task' ELSE 'direct_preparation' END,2 FROM cockpit_meeting_issue l
  WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND (l.role='task' OR 'preparation'=ANY(l.roles))
 )
-SELECT kind,agenda_reference_id FROM relations ORDER BY rank,agenda_reference_id LIMIT 1;
+SELECT kind FROM relations ORDER BY rank LIMIT 1;
 
 -- name: HasCockpitDirectoryHistory :one
 SELECT EXISTS(SELECT 1 FROM cockpit_meeting_directory_operation WHERE cockpit_meeting_directory_operation.workspace_id=$1 AND cockpit_meeting_directory_operation.meeting_id=$2)

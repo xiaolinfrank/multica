@@ -1,14 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { cn } from "@multica/ui/lib/utils";
-import { useWorkspacePaths } from "@multica/core/paths";
-import { AppLink } from "../../navigation";
-import type { CockpitPreparationPreviewEffect, CockpitMeetingTemplateSlot, CockpitPreparationResolvedScope, IssueOperationTarget } from "@multica/core/types";
+import type { CockpitPreparationPreviewEffect, CockpitPreparationResolvedScope, IssueOperationTarget } from "@multica/core/types";
 import { useT } from "../../i18n";
 import { IssueOperationTargets, useIssueOperationReasonLabel } from "../../issues/components/issue-operation-restriction";
-import { CockpitFlowPaging } from "./cockpit-task-flow";
-import { CockpitTemplateSlotText, useMeetingTemplateKindLabel } from "./cockpit-meeting-template-fields";
 
 export function CockpitPreparationReasons({ codes, targets = [] }: { codes: string[]; targets?: IssueOperationTarget[] }) {
   const { t } = useT("cockpit"); const issueReason = useIssueOperationReasonLabel();
@@ -29,33 +23,24 @@ export function CockpitPreparationReasons({ codes, targets = [] }: { codes: stri
 }
 
 export function usePreparationEffectLabel() {
-  const { t } = useT("cockpit"); const templateKind = useMeetingTemplateKindLabel();
+  const { t } = useT("cockpit");
   return (kind: string) => kind === "cancel_issue" ? t(($) => $.meeting_disposition.cancel_issue)
     : kind === "change_due_date" ? t(($) => $.meeting_disposition.change_due_date)
       : kind === "link_meeting" ? t(($) => $.meeting_disposition.link_meeting)
-        : kind === "stop_run" ? t(($) => $.meeting_disposition.stop_run) : templateKind(kind);
+        : kind === "stop_run" ? t(($) => $.meeting_disposition.stop_run) : t(($) => $.artifacts.unknown);
 }
 
-export function CockpitPreparationPreview({ effects, selectedTotal, blockedReasons, slots }: {
-  effects: CockpitPreparationPreviewEffect[]; selectedTotal: number; blockedReasons: string[]; slots?: CockpitMeetingTemplateSlot[];
-}) {
-  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const label = usePreparationEffectLabel(); const [page, setPage] = useState(1);
-  const selected = effects.filter((effect) => effect.selected); const currentPage = Math.min(page, Math.max(1, Math.ceil(selected.length / 25))); const shown = selected.slice((currentPage - 1) * 25, currentPage * 25);
-  const created = selected.filter((effect) => effect.kind === "agenda" || effect.kind === "preparation_issue").length;
-  const reused = selected.filter((effect) => effect.kind === "issue_reference" || effect.kind === "material_reference" || effect.kind === "link_meeting").length;
-  return <section aria-label={t(($) => $.meeting_templates.preview)} className="space-y-3">
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption"><p>{t(($) => $.meeting_templates.selected_total, { count: selectedTotal })}</p>{created > 0 && <p>{t(($) => $.meeting_templates.creates_total, { count: created })}</p>}{reused > 0 && <p>{t(($) => $.meeting_templates.links_total, { count: reused })}</p>}</div>
+
+export function CockpitPreparationPreview({ effects, selectedTotal, blockedReasons }: { effects: CockpitPreparationPreviewEffect[]; selectedTotal: number; blockedReasons: string[] }) {
+  const { t } = useT("cockpit");
+  const effectLabel = usePreparationEffectLabel();
+  return <section className="space-y-3">
+    <p className="text-caption text-muted-foreground">{t(($) => $.meeting_preparation.authorized_count, { count: selectedTotal })}</p>
     <CockpitPreparationReasons codes={blockedReasons} />
-    {selected.length > 25 && <CockpitFlowPaging page={currentPage} shown={shown.length} total={selectedTotal} hasNext={currentPage * 25 < selected.length} busy={false} onPrevious={() => setPage(currentPage - 1)} onNext={() => setPage(currentPage + 1)} />}
-    <ul className={cn("max-h-[42vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3", selected.length > 25 && "h-[42vh]")}>{shown.map((effect) => <li key={effect.slot_id} className="space-y-2 py-3"><div className="flex flex-wrap items-start justify-between gap-2"><p className="min-w-0 flex-1 line-clamp-2 break-words text-body font-medium" title={effect.label}>{effect.label}</p><span className="text-caption text-muted-foreground">{label(effect.kind)}</span></div>
-      {slots?.some((slot) => slot.slot_id === effect.slot_id) && <CockpitTemplateSlotText slot={slots.find((slot) => slot.slot_id === effect.slot_id)!} />}
-      {effect.scope && <CockpitPreparationScope value={effect.scope} />}
+    <ul className="space-y-2">{effects.map((effect) => <li key={effect.slot_id} className="space-y-1 rounded-md border border-border p-3 text-caption">
+      <p className="font-medium">{effect.label || effectLabel(effect.kind)}</p>
+      <p className="text-muted-foreground">{effectLabel(effect.kind)}</p>
       <CockpitPreparationReasons codes={effect.reason_codes} targets={effect.targets} />
-      {!effect.allowed && <p className="text-caption text-destructive">{t(($) => $.meeting_templates.item_blocked)}</p>}
-      {effect.kind === "cancel_issue" && effect.issue_impact && <div className="space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.meeting_disposition.cancel_wakeups, { ordinary: effect.issue_impact.ordinary_wakeup_count, system: effect.issue_impact.system_rule_count, queued: effect.issue_impact.unstarted_wakeup_run_count })}</p>
-        {effect.issue_impact.evaluates_parent_rules && <div className="space-y-1"><p>{t(($) => $.meeting_preparation.parent_rules)}</p>{effect.issue_impact.parent_issue_id && <AppLink target="_blank" rel="noopener noreferrer" href={paths.issueDetail(effect.issue_impact.parent_issue_id)} className="text-primary underline">{t(($) => $.meeting_preparation.open_parent)} {t(($) => $.action_flow.new_tab)}</AppLink>}</div>}
-        {effect.issue_impact.active_run_count > 0 && <p>{t(($) => $.meeting_disposition.runs_separate, { count: effect.issue_impact.active_run_count })}</p>}</div>}
-      {effect.kind === "stop_run" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>}
     </li>)}</ul>
   </section>;
 }

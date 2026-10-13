@@ -63,7 +63,6 @@ type IssueService struct {
 	inputIOBudget                         *cockpitInputIOBudget
 	CockpitArtifactBackendReady           bool
 	CockpitMeetingLifecycleBackendReady   bool
-	CockpitMeetingTemplatesBackendReady   bool
 	CockpitMeetingDispositionBackendReady bool
 	CockpitMeetingDirectoryBackendReady   bool
 	CockpitDirectoryPreparer              cockpitnas.Preparation
@@ -115,7 +114,6 @@ type IssueCreateParams struct {
 	// share the canonical Issue transaction, quota and post-commit effects.
 	CockpitPlanning    *cockpitPlanningIssue
 	CockpitArtifact    *cockpitArtifactIssue
-	CockpitPreparation *cockpitPreparationIssue
 	StartDate          pgtype.Date
 	DueDate            pgtype.Date
 	OriginType         pgtype.Text
@@ -312,15 +310,6 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
-	if p.CockpitPreparation != nil {
-		existing, err := prepareCockpitPreparationIssue(ctx, qtx, &p)
-		if err != nil {
-			return IssueCreateResult{}, err
-		}
-		if existing != nil {
-			return IssueCreateResult{Issue: *existing}, nil
-		}
-	}
 	if p.CockpitArtifact != nil {
 		existing, err := prepareCockpitArtifactIssue(ctx, qtx, &p)
 		if err != nil {
@@ -662,11 +651,6 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 
 	if p.CockpitWorkflow != nil {
 		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
-			return IssueCreateResult{}, err
-		}
-	}
-	if p.CockpitPreparation != nil {
-		if err := linkCockpitPreparationIssue(ctx, qtx, p, issue); err != nil {
 			return IssueCreateResult{}, err
 		}
 	}

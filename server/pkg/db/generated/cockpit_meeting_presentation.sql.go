@@ -83,7 +83,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  WHERE m.workspace_id=x.ws AND (x.archive='all' OR (x.archive='active' AND m.archived_at IS NULL) OR (x.archive='archived' AND m.archived_at IS NOT NULL)) AND m.meet_date>=x.date_from AND m.meet_date<=x.date_to
 ), meeting_node_links AS NOT MATERIALIZED (
  SELECT l.workspace_id,l.meeting_id,l.node_id FROM cockpit_meeting_node l,args x WHERE l.workspace_id=x.ws
- UNION SELECT a.workspace_id,a.meeting_id,a.node_id FROM cockpit_meeting_agenda a,args x WHERE a.workspace_id=x.ws AND a.removed_at IS NULL AND a.node_id IS NOT NULL
+
 ), facts AS MATERIALIZED (
  SELECT DISTINCT wanted.row_key,m.id,m.meet_date,m.title,m.code,m.start_time
  FROM matched_nodes wanted CROSS JOIN args x JOIN meeting_node_links l ON l.workspace_id=x.ws AND l.node_id=wanted.node_id

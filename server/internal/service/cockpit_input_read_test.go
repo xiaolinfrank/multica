@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
 	"github.com/multica-ai/multica/server/pkg/dbid"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func TestCockpitInputReadCursorCannotCrossIdentityFilterOrPage(t *testing.T) {
@@ -143,13 +145,33 @@ func TestCockpitInputReadAttachmentsArePagedExistingIssueFacts(t *testing.T) {
 	}
 }
 
+
+func inputReferenceFixture(t *testing.T) (cockpitWorkflowFixture, CockpitInputRead, pgtype.UUID, pgtype.UUID) {
+	t.Helper()
+	f := lifecycleFixture(t)
+	p := CockpitInputRead{WorkspaceID: f.ws, CredentialOwnerID: f.owner, ActorSource: "human"}
+	ctx := context.Background()
+	created, err := f.issues.CreateCockpitInput(ctx, p, CockpitInputCreateInput{CommandKey: util.UUIDToString(dbid.NewV7()), Title: "Meeting materials"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputID := parseTestUUID(t, created.Receipt.InputID)
+	f.Cleanup(t, "DELETE FROM cockpit_input WHERE workspace_id=$1 AND id=$2", f.ws, inputID)
+	versionID, transferID := dbid.NewV7(), dbid.NewV7()
+	now := time.Now().UTC()
+	hash := strings.Repeat("a", 64)
+	f.Insert(t, "cockpit_input_transfer", testutil.Cols{"id": transferID, "workspace_id": f.ws, "input_id": inputID, "version_id": versionID, "transfer_number": 1, "command_key": dbid.NewV7(), "request_hash": hash, "command_receipt": testutil.Raw("'{}'::jsonb"), "actor_type": "member", "actor_id": f.owner, "credential_owner_user_id": f.owner, "authorizing_user_id": f.owner, "kind": "direct_upload", "mode": "initial", "state": "verified", "owned_storage_key": "fixture-only-not-read", "expected_bytes": 4, "bytes_received": 4, "pinned_size_bytes": 4, "content_hash": hash, "content_pin_at": now, "session_expires_at": now.Add(time.Hour), "io_finished_at": now, "io_outcome": "verified", "finished_at": now, "finalize_key": dbid.NewV7(), "finalize_hash": hash, "finalize_receipt": testutil.Raw("'{}'::jsonb")})
+	f.Insert(t, "cockpit_input_version", testutil.Cols{"id": versionID, "workspace_id": f.ws, "input_id": inputID, "version_number": 1, "submission_key": dbid.NewV7(), "request_hash": hash, "submission_receipt": testutil.Raw("'{}'::jsonb"), "actor_type": "member", "actor_id": f.owner, "credential_owner_user_id": f.owner, "authorizing_user_id": f.owner, "source_kind": "upload", "payload_kind": "file", "filename": "evidence.pdf", "content_type": "application/pdf", "declared_size_bytes": 4, "pinned_size_bytes": 4, "content_hash": hash, "pinned_at": now, "capture_state": "ready", "ready_at": now, "accepted_transfer_id": transferID, "current_transfer_id": transferID, "availability": "unavailable"})
+	if _, err = f.q.SetCockpitInputCurrentVersion(ctx, db.SetCockpitInputCurrentVersionParams{WorkspaceID: f.ws, ID: inputID, CurrentVersionID: versionID, Revision: 1}); err != nil {
+		t.Fatal(err)
+	}
+	return f, p, inputID, versionID
+}
+
 func TestCockpitInputExpiredProofIsUnknownAcrossVersionReferenceAndManifestViews(t *testing.T) {
 	f, p, inputID, versionID := inputReferenceFixture(t)
 	ctx := context.Background()
 	if _, err := f.Pool.Exec(ctx, "UPDATE cockpit_input_version SET availability='available',checked_at=now()-interval '10 minutes',proof_expires_at=now()-interval '5 minutes' WHERE workspace_id=$1 AND id=$2", p.WorkspaceID, versionID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.issues.CreateCockpitInputReference(ctx, CockpitInputQuery{CockpitInputRead: p, MeetingID: f.meeting}, CockpitInputReferenceCreateInput{CommandKey: util.UUIDToString(dbid.NewV7()), InputVersionID: util.UUIDToString(versionID), Purpose: "material"}); err != nil {
 		t.Fatal(err)
 	}
 	issueID := parseTestUUID(t, f.Issue(t, "Use a historically verified material"))
@@ -164,10 +186,6 @@ func TestCockpitInputExpiredProofIsUnknownAcrossVersionReferenceAndManifestViews
 	detail, err := f.issues.GetCockpitInputVersion(ctx, CockpitInputQuery{CockpitInputRead: p, InputID: inputID, VersionID: versionID})
 	if err != nil || detail.Version.Availability != "unknown" || detail.Version.CheckedAt == nil || detail.Version.CaptureState != "ready" {
 		t.Fatalf("proof expiry lost fixed facts or claimed current availability: %+v %v", detail, err)
-	}
-	references, err := f.issues.ListCockpitInputReferences(ctx, CockpitInputQuery{CockpitInputRead: p, MeetingID: f.meeting})
-	if err != nil || references.Summary.AvailableReady != 0 || references.Summary.UnknownReady != 1 || references.Items[0].Version.Availability != "unknown" {
-		t.Fatalf("reference counts disagree with version availability: %+v %v", references, err)
 	}
 	manifest, err := f.issues.GetCockpitInputManifest(ctx, CockpitInputQuery{CockpitInputRead: p, IssueID: issueID})
 	if err != nil || manifest.Counts.AvailableRequired != 0 || manifest.Counts.UnknownRequired != 1 {

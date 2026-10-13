@@ -1,6 +1,8 @@
 # Meeting directory preparation
 
-Use `multica cockpit meeting directory` to inspect or prepare a meeting directory in the workspace's deployment-approved NAS root. This is separate from directory contacts, meeting templates, minutes exports, materials readiness and Agent dispatch.
+Use `multica cockpit meeting directory` to inspect or prepare a meeting directory in the workspace's deployment-approved NAS root. This is separate from directory contacts, minutes exports, materials readiness and Agent dispatch.
+
+Meeting creation uses the fixed shared directory and subdirectory layout. These commands are for inspection, explicit recovery and diagnostics, not alternative material-collection methods. Never delete or relocate existing meeting files as part of simplifying the workspace.
 
 ## Read first
 

@@ -27,7 +27,6 @@ import {
   splitCockpitMeetingParties,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
-import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -45,14 +44,12 @@ import { CockpitMemberNamePicker } from "./cockpit-member-name-picker";
 import { CockpitAttendeeField } from "./cockpit-attendees";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cockpit-people";
-import { CockpitAssigneePicker } from "./cockpit-assignee-picker";
 import { CockpitScopePicker } from "./cockpit-scope-control";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, useNavigation } from "../../navigation";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
-import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
 import { createSafeId } from "@multica/core/utils";
 
 /** A picker inside this form reads as a form control, not as a table cell. */
@@ -142,7 +139,7 @@ export function CockpitMeetingCreate({
   const [projectId, setProjectId] = useState(defaultProjectId ?? "");
   const [moduleId, setModuleId] = useState(defaultModuleId ?? "");
   const [nodeId, setNodeId] = useState(defaultNodeId ?? "");
-  const [withTask, setWithTask] = useState(true);
+  const [withTask, setWithTask] = useState(false);
   const [withDir, setWithDir] = useState(true);
   // Null is "the member filing the meeting", which is also what an empty
   // assignee tells the server — not "unassigned", a state that would hand the
@@ -178,7 +175,7 @@ export function CockpitMeetingCreate({
     setProjectId(recovery?.provision.project_id ?? defaultProjectId ?? "");
     setModuleId(recovery?.provision.module_id ?? defaultModuleId ?? "");
     setNodeId(recovery?.meeting.node_id ?? defaultNodeId ?? "");
-    setWithTask(recovery ? Boolean(recovery.workflow) : true);
+    setWithTask(recovery ? Boolean(recovery.workflow) : false);
     setWithDir(recovery?.provision.create_dir ?? true);
     setAssigneeType(recovery?.provision.assignee_type || defaultAssigneeType || null);
     setAssigneeId(recovery?.provision.assignee_id ?? defaultAssigneeId);
@@ -264,8 +261,8 @@ export function CockpitMeetingCreate({
   const canRetry = Boolean(pending && (!pending.meetingId || sameSetupSelections));
   const requestedSetup = withTask && Boolean(projectId && moduleId);
   const invalidNewSetup = requestedSetup && !workflowCreated && (!canFile || !validReviewer || !executor.available);
-  const destinationUnknown = withDir && Boolean(projectId) && (destination.isPending || destination.isError || !destination.data);
-  const submitDisabled = submitting || (!canRetry && ((!savedMeetingId && !validAnchor) || invalidNewSetup || destinationUnknown));
+  const destinationUnknown = withDir && Boolean(projectId) && (selectedScope.isPending || selectedScope.isError || destination.isPending || destination.isError || !destination.data);
+  const submitDisabled = submitting || (!canRetry && (((!canCreateDir || !canFile) && !savedMeetingId) || (!savedMeetingId && !validAnchor) || invalidNewSetup || destinationUnknown));
   const submit = async () => {
     if (submitLock.current || submitDisabled) return;
     const command = prepareCockpitMeetingCreation(draftKey, {
@@ -274,11 +271,10 @@ export function CockpitMeetingCreate({
         start_time: startTime.trim(), end_time: endTime.trim(), kind: kind.trim(), status: status.trim(), track: track.trim(),
         parties: parties.trim(), organizer: organizer.trim(), attendees: attendees.trim(), location: location.trim(), title: subject.trim(),
       },
-      provision: canRetry && pending ? pending.provision : { create_task: false, create_dir: withDir && (canCreateDir || pending?.provision.create_dir === true),
+      provision: canRetry && pending ? pending.provision : { create_task: false, create_dir: true,
         project_id: projectId || undefined, module_id: moduleId || undefined, node_id: nodeId, base_dir: baseDir || pending?.provision.base_dir || undefined,
         assignee_type: assigneeType ?? "", assignee_id: assigneeId ?? "", remember: true },
-      workflow: canRetry && pending ? pending.workflow : withTask && canFile ? { reviewer_id: reviewerId, project_id: projectId, module_id: moduleId,
-        node_id: nodeId || undefined, assignee_type: assigneeType || undefined, assignee_id: assigneeId || undefined } : null,
+      workflow: canRetry && pending ? pending.workflow : null,
       autoSaveEntries: pendingAutoSave.map(({ party, name, position }) => ({ party, name, position })),
     });
     setWithTask(Boolean(command.workflow)); setWithDir(command.provision.create_dir === true);
@@ -499,7 +495,7 @@ export function CockpitMeetingCreate({
             {selectedScope.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void selectedScope.refetch()} /></div>}
             {requestedSetup && selectedScope.isPending && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             {withDir && projectId && destination.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void destination.refetch()} /></div>}
-            {withDir && projectId && destination.isPending && !selectedScope.isPending && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
+            {withDir && projectId && (destination.isPending || selectedScope.isPending) && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             <div className="col-span-2 space-y-1"><Label>{t(($) => $.meetings.destination_node)}</Label>
               <CockpitNodeChoicePicker wsId={wsId} scope={{ projectId: projectId || null, moduleId: moduleId || null }} eligible={false}
                 value={selectedNode.data ? `${buildCockpitDisplayCodesFromIndex(selectedNode.data.node_index).get(selectedNode.data.node.id) ?? selectedNode.data.node.code} ${selectedNode.data.node.name}` : nodeId || t(($) => $.meetings.destination_node_none)}
@@ -512,61 +508,7 @@ export function CockpitMeetingCreate({
               <p className="text-caption text-muted-foreground">{t(($) => $.meetings.destination_node_hint)}</p>
             </div>
 
-            <label className="col-span-2 flex items-start gap-2">
-              <Checkbox
-                checked={withTask && Boolean(projectId && moduleId)}
-                disabled={!projectId || !moduleId || submitting || Boolean(savedMeetingId)}
-                onCheckedChange={(checked) => setWithTask(checked === true)}
-              />
-              <span className="flex min-w-0 flex-col">
-                <span className="text-body">{t(($) => $.workflow.create_package)}</span>
-                <span className="text-caption text-muted-foreground">
-                  {!canFile
-                    ? requestedSetup ? "" : t(($) => $.meetings.with_task_unset)
-                    : destination.data?.node_code
-                      ? t(($) => $.meetings.with_task_hint_numbered, {
-                          project: projectTitle,
-                          module: moduleTitle,
-                          code: destination.data.node_code,
-                        })
-                      : t(($) => $.meetings.with_task_hint, {
-                          project: projectTitle,
-                          module: moduleTitle,
-                        })}
-                </span>
-              </span>
-            </label>
-
-            {/* A workflow creates backlog work first. Readiness and release are separate commands. */}
-            {withTask && canFile && (
-              <div className="col-span-2 space-y-3 pl-6">
-                <p className="text-caption text-muted-foreground">{t(($) => $.workflow.setup_hint)}</p>
-                <div className="flex flex-wrap items-center gap-2">
-                <span className="shrink-0 text-caption text-muted-foreground">
-                  {t(($) => $.workflow.writer)}
-                </span>
-                <CockpitAssigneePicker wsId={wsId}
-                  open={submitting || workflowCreated ? false : undefined}
-                  triggerRender={<Button type="button" variant="outline" size="sm" disabled={submitting || workflowCreated} />}
-                  assigneeType={assigneeType || "member"}
-                  assigneeId={assigneeId || currentUserId}
-                  onUpdate={(update) => {
-                    if (submitting || workflowCreated) return;
-                    setAssigneeType(update.assignee_type ?? null);
-                    setAssigneeId(update.assignee_id ?? null);
-                  }}
-                />
-                </div>
-                <CockpitReviewerSelect wsId={wsId} value={reviewerId} onChange={setReviewerId} disabled={submitting || workflowCreated} />
-              </div>
-            )}
-
-            <label className="col-span-2 flex items-start gap-2">
-              <Checkbox
-                checked={withDir && (canCreateDir || pending?.provision.create_dir === true)}
-                disabled={!canCreateDir || submitting}
-                onCheckedChange={(checked) => setWithDir(checked === true)}
-              />
+            <div className="col-span-2 flex items-start gap-2">
               <span className="flex min-w-0 flex-col">
                 <span className="text-body">{t(($) => $.meetings.with_dir)}</span>
                 <span className="text-caption break-all text-muted-foreground">
@@ -593,7 +535,7 @@ export function CockpitMeetingCreate({
                   </span>
                 )}
               </span>
-            </label>
+            </div>
           </div>
         </fieldset>
 

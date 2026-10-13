@@ -44,9 +44,9 @@ export function result(): D.CockpitDirectoryCommandResult {
 }
 export function history(): CockpitLifecycleCommandDetail {
   return { workspace_id: WS, meeting_id: MEETING, command_key: KEY, action: "directory_prepare", actor_type: "member", actor_id: USER, actor_name: "Coordinator",
-    created_at: TIME, revision: 9, agenda_id: null, reference_id: null, issue_id: null, directory_operation_id: OP, directory_step_id: null,
-    receipt: { revision: 9, agenda_revision: 3, agenda_id: null, reference_id: null, issue_id: null, request_hash: HASH, reason: "",
-      previous_occurrence: null, occurrence: null, materials: null, agenda: null, reference: null, directory: receipt() } };
+    created_at: TIME, revision: 9, issue_id: null, directory_operation_id: OP, directory_step_id: null,
+    receipt: { revision: 9, issue_id: null, request_hash: HASH, reason: "",
+      previous_occurrence: null, occurrence: null, materials: null, directory: receipt() } };
 }
 
 export function summary(): D.CockpitDirectorySummary {

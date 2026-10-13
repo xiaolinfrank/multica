@@ -299,85 +299,6 @@ func (q *Queries) CreateCockpitInputManifestVersion(ctx context.Context, arg Cre
 	return i, err
 }
 
-const createCockpitInputReference = `-- name: CreateCockpitInputReference :one
-INSERT INTO cockpit_input_reference (id,workspace_id,meeting_id,agenda_id,input_id,input_version_id,purpose,creation_key,request_hash,creation_receipt,actor_type,actor_id,credential_owner_user_id,authorizing_user_id,source_agent_id,source_run_id,source_issue_id,source_runtime_id,created_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id, workspace_id, meeting_id, agenda_id, input_id, input_version_id, purpose, creation_key, request_hash, creation_receipt, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, created_at, removed_at, removed_by, removal_key, removal_hash, removal_receipt
-`
-
-type CreateCockpitInputReferenceParams struct {
-	ID                    pgtype.UUID        `json:"id"`
-	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
-	MeetingID             pgtype.UUID        `json:"meeting_id"`
-	AgendaID              pgtype.UUID        `json:"agenda_id"`
-	InputID               pgtype.UUID        `json:"input_id"`
-	InputVersionID        pgtype.UUID        `json:"input_version_id"`
-	Purpose               string             `json:"purpose"`
-	CreationKey           pgtype.UUID        `json:"creation_key"`
-	RequestHash           string             `json:"request_hash"`
-	CreationReceipt       []byte             `json:"creation_receipt"`
-	ActorType             string             `json:"actor_type"`
-	ActorID               pgtype.UUID        `json:"actor_id"`
-	CredentialOwnerUserID pgtype.UUID        `json:"credential_owner_user_id"`
-	AuthorizingUserID     pgtype.UUID        `json:"authorizing_user_id"`
-	SourceAgentID         pgtype.UUID        `json:"source_agent_id"`
-	SourceRunID           pgtype.UUID        `json:"source_run_id"`
-	SourceIssueID         pgtype.UUID        `json:"source_issue_id"`
-	SourceRuntimeID       pgtype.UUID        `json:"source_runtime_id"`
-	CreatedAt             pgtype.Timestamptz `json:"created_at"`
-}
-
-func (q *Queries) CreateCockpitInputReference(ctx context.Context, arg CreateCockpitInputReferenceParams) (CockpitInputReference, error) {
-	row := q.db.QueryRow(ctx, createCockpitInputReference,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.AgendaID,
-		arg.InputID,
-		arg.InputVersionID,
-		arg.Purpose,
-		arg.CreationKey,
-		arg.RequestHash,
-		arg.CreationReceipt,
-		arg.ActorType,
-		arg.ActorID,
-		arg.CredentialOwnerUserID,
-		arg.AuthorizingUserID,
-		arg.SourceAgentID,
-		arg.SourceRunID,
-		arg.SourceIssueID,
-		arg.SourceRuntimeID,
-		arg.CreatedAt,
-	)
-	var i CockpitInputReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.InputID,
-		&i.InputVersionID,
-		&i.Purpose,
-		&i.CreationKey,
-		&i.RequestHash,
-		&i.CreationReceipt,
-		&i.ActorType,
-		&i.ActorID,
-		&i.CredentialOwnerUserID,
-		&i.AuthorizingUserID,
-		&i.SourceAgentID,
-		&i.SourceRunID,
-		&i.SourceIssueID,
-		&i.SourceRuntimeID,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-		&i.RemovalKey,
-		&i.RemovalHash,
-		&i.RemovalReceipt,
-	)
-	return i, err
-}
-
 const createCockpitInputTransfer = `-- name: CreateCockpitInputTransfer :one
 INSERT INTO cockpit_input_transfer (id,workspace_id,input_id,version_id,transfer_number,command_key,request_hash,command_receipt,actor_type,actor_id,credential_owner_user_id,authorizing_user_id,source_agent_id,source_run_id,source_issue_id,source_runtime_id,kind,mode,state,revision,replaces_transfer_id,owned_storage_key,expected_bytes,bytes_received,session_expires_at,next_attempt_at,created_at,updated_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING id, workspace_id, input_id, version_id, transfer_number, command_key, request_hash, command_receipt, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, kind, mode, state, revision, replaces_transfer_id, owned_storage_key, lease_token, lease_expires_at, next_attempt_at, expected_bytes, bytes_received, content_pin_at, pinned_size_bytes, content_hash, source_before_root_identity, source_before_file_identity, source_before_size, source_before_mtime_ns, source_after_file_identity, source_after_size, source_after_mtime_ns, session_expires_at, io_finished_at, io_outcome, error_code, error_message, finalize_key, finalize_hash, finalize_receipt, abort_key, abort_hash, abort_receipt, created_at, updated_at, finished_at, workspace_deleted_at, cleanup_state, cleanup_due_at, cleanup_lease_token, cleanup_lease_expires_at, cleanup_verified_at
@@ -748,57 +669,6 @@ func (q *Queries) FinalizeCockpitInputTransfer(ctx context.Context, arg Finalize
 		&i.CleanupLeaseToken,
 		&i.CleanupLeaseExpiresAt,
 		&i.CleanupVerifiedAt,
-	)
-	return i, err
-}
-
-const findCockpitInputActiveReference = `-- name: FindCockpitInputActiveReference :one
-SELECT id, workspace_id, meeting_id, agenda_id, input_id, input_version_id, purpose, creation_key, request_hash, creation_receipt, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, created_at, removed_at, removed_by, removal_key, removal_hash, removal_receipt FROM cockpit_input_reference WHERE workspace_id=$1 AND meeting_id=$2
-AND agenda_id IS NOT DISTINCT FROM $5::uuid AND input_version_id=$3 AND purpose=$4 AND removed_at IS NULL
-`
-
-type FindCockpitInputActiveReferenceParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	InputVersionID pgtype.UUID `json:"input_version_id"`
-	Purpose        string      `json:"purpose"`
-	AgendaID       pgtype.UUID `json:"agenda_id"`
-}
-
-func (q *Queries) FindCockpitInputActiveReference(ctx context.Context, arg FindCockpitInputActiveReferenceParams) (CockpitInputReference, error) {
-	row := q.db.QueryRow(ctx, findCockpitInputActiveReference,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.InputVersionID,
-		arg.Purpose,
-		arg.AgendaID,
-	)
-	var i CockpitInputReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.InputID,
-		&i.InputVersionID,
-		&i.Purpose,
-		&i.CreationKey,
-		&i.RequestHash,
-		&i.CreationReceipt,
-		&i.ActorType,
-		&i.ActorID,
-		&i.CredentialOwnerUserID,
-		&i.AuthorizingUserID,
-		&i.SourceAgentID,
-		&i.SourceRunID,
-		&i.SourceIssueID,
-		&i.SourceRuntimeID,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-		&i.RemovalKey,
-		&i.RemovalHash,
-		&i.RemovalReceipt,
 	)
 	return i, err
 }
@@ -1223,61 +1093,6 @@ func (q *Queries) ReadCockpitInputLatestTransfer(ctx context.Context, arg ReadCo
 		&i.CleanupLeaseToken,
 		&i.CleanupLeaseExpiresAt,
 		&i.CleanupVerifiedAt,
-	)
-	return i, err
-}
-
-const removeCockpitInputReference = `-- name: RemoveCockpitInputReference :one
-UPDATE cockpit_input_reference SET removed_at=now(),removed_by=$4,removal_key=$5,removal_hash=$6,removal_receipt=$7
-WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND removed_at IS NULL RETURNING id, workspace_id, meeting_id, agenda_id, input_id, input_version_id, purpose, creation_key, request_hash, creation_receipt, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, created_at, removed_at, removed_by, removal_key, removal_hash, removal_receipt
-`
-
-type RemoveCockpitInputReferenceParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	ID             pgtype.UUID `json:"id"`
-	RemovedBy      pgtype.UUID `json:"removed_by"`
-	RemovalKey     pgtype.UUID `json:"removal_key"`
-	RemovalHash    pgtype.Text `json:"removal_hash"`
-	RemovalReceipt []byte      `json:"removal_receipt"`
-}
-
-func (q *Queries) RemoveCockpitInputReference(ctx context.Context, arg RemoveCockpitInputReferenceParams) (CockpitInputReference, error) {
-	row := q.db.QueryRow(ctx, removeCockpitInputReference,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.ID,
-		arg.RemovedBy,
-		arg.RemovalKey,
-		arg.RemovalHash,
-		arg.RemovalReceipt,
-	)
-	var i CockpitInputReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.AgendaID,
-		&i.InputID,
-		&i.InputVersionID,
-		&i.Purpose,
-		&i.CreationKey,
-		&i.RequestHash,
-		&i.CreationReceipt,
-		&i.ActorType,
-		&i.ActorID,
-		&i.CredentialOwnerUserID,
-		&i.AuthorizingUserID,
-		&i.SourceAgentID,
-		&i.SourceRunID,
-		&i.SourceIssueID,
-		&i.SourceRuntimeID,
-		&i.CreatedAt,
-		&i.RemovedAt,
-		&i.RemovedBy,
-		&i.RemovalKey,
-		&i.RemovalHash,
-		&i.RemovalReceipt,
 	)
 	return i, err
 }

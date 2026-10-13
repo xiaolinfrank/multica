@@ -43,7 +43,7 @@ func readDispositionIssues(ctx context.Context, q *db.Queries, p CockpitLifecycl
 	if len(excluded) > 0 {
 		excludedRunIDs = excluded[0]
 	}
-	automation, e := q.ReadCockpitDispositionAutomationFacts(ctx, db.ReadCockpitDispositionAutomationFactsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, IssueIds: ids, ExcludedRunIds: excludedRunIDs})
+	automation, e := q.ReadCockpitDispositionAutomationFacts(ctx, db.ReadCockpitDispositionAutomationFactsParams{WorkspaceID: p.WorkspaceID, IssueIds: ids, ExcludedRunIds: excludedRunIDs})
 	if e != nil {
 		return nil, e
 	}
@@ -62,7 +62,7 @@ func readDispositionIssues(ctx context.Context, q *db.Queries, p CockpitLifecycl
 			continue
 		}
 		v := CockpitDispositionIssue{Issue: issue, IssueRevision: *b.IssueRevision, CanCancel: p.Human && closedValid && b.Status.State == "allowed" && slices.Contains(b.Status.AllowedCategories, "closed") && !a.IsMinutesReview && !slices.Contains(b.Status.ReasonCodes, "formal_review_status"),
-			CanChangeDueDate: p.Human, CanLinkMeeting: p.Human, BlockedReasons: []string{}, OrdinaryWakeupCount: a.OrdinaryWakeupCount, SystemRuleCount: a.SystemRuleCount, UnstartedWakeupRunCount: a.UnstartedWakeupRunCount, OtherQueuedRunCount: a.OtherQueuedRunCount, ActiveRunCount: a.ActiveRunCount, AgendaTotal: a.AgendaTotal, Targets: b.Targets, TargetsTotal: b.TargetsTotal, ParentIssueID: planningUUID(a.ParentIssueID), EvaluatesParentRules: a.ParentIssueID.Valid}
+			CanChangeDueDate: p.Human, CanLinkMeeting: p.Human, BlockedReasons: []string{}, OrdinaryWakeupCount: a.OrdinaryWakeupCount, SystemRuleCount: a.SystemRuleCount, UnstartedWakeupRunCount: a.UnstartedWakeupRunCount, OtherQueuedRunCount: a.OtherQueuedRunCount, ActiveRunCount: a.ActiveRunCount, Targets: b.Targets, TargetsTotal: b.TargetsTotal, ParentIssueID: planningUUID(a.ParentIssueID), EvaluatesParentRules: a.ParentIssueID.Valid}
 		if closedValid {
 			key := closed.Key
 			v.CancelStatus = &key

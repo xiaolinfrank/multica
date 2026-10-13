@@ -1,5 +1,15 @@
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+// jsdom gives the scroll container a zero rect, and the virtualizer then
+// renders no data rows at all — render every row so the assertions read the
+// table content, not the viewport.
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: { count: number; getItemKey?: (index: number) => string | number }) => {
+    const size = 56;
+    const items = Array.from({ length: options.count }, (_, index) => ({ index, start: index * size, end: (index + 1) * size, size, key: options.getItemKey ? options.getItemKey(index) : index }));
+    return { getVirtualItems: () => items, getTotalSize: () => options.count * size, measureElement: () => undefined };
+  },
+}));
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -75,7 +85,10 @@ describe("CockpitTable execution rows", () => {
       nodes: [node({ id: "leaf", code: "01", name: "Complete core fields", progress: 0 })],
       payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
     } });
-    expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("title", expect.stringContaining("Suggested additions: 10"));
+    // Nine suggestions: the eight soft fields plus the unset budget. Linked
+    // issues are suggested only when the server positively reports zero
+    // links — an unknown count (empty taskCounts map) must not nag.
+    expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("title", expect.stringContaining("Suggested additions: 9"));
     expect(screen.getByRole("button", { name: "OK" }).title).not.toContain("Required fields missing");
     expect(screen.queryByText(/Remind/)).not.toBeInTheDocument();
   });
@@ -89,7 +102,7 @@ describe("CockpitTable execution rows", () => {
     } });
     const badge = screen.getByRole("button", { name: /Remind/ });
     expect(badge.title).toContain("Required fields missing: 1: Owner");
-    expect(badge.title).toContain("Suggested additions: 10:");
+    expect(badge.title).toContain("Suggested additions: 9:");
   });
 
   it("does not fall back to unrelated roots when a selected branch is missing", () => {

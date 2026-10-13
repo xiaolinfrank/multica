@@ -27,22 +27,6 @@ func (q *Queries) CountCockpitAcceptanceReviewerHandoffs(ctx context.Context, ar
 	return count, err
 }
 
-const countCockpitArtifactMeetingReferences = `-- name: CountCockpitArtifactMeetingReferences :one
-SELECT count(*) FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND artifact_id=$2
-`
-
-type CountCockpitArtifactMeetingReferencesParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ArtifactID  pgtype.UUID `json:"artifact_id"`
-}
-
-func (q *Queries) CountCockpitArtifactMeetingReferences(ctx context.Context, arg CountCockpitArtifactMeetingReferencesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCockpitArtifactMeetingReferences, arg.WorkspaceID, arg.ArtifactID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const countCockpitArtifactNodeReferences = `-- name: CountCockpitArtifactNodeReferences :one
 SELECT count(*) FROM cockpit_artifact_node_reference WHERE workspace_id=$1 AND artifact_id=$2
 `
@@ -86,23 +70,6 @@ type CountCockpitArtifactReviewerHandoffsParams struct {
 
 func (q *Queries) CountCockpitArtifactReviewerHandoffs(ctx context.Context, arg CountCockpitArtifactReviewerHandoffsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCockpitArtifactReviewerHandoffs, arg.WorkspaceID, arg.ArtifactID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countCockpitMeetingArtifactReferences = `-- name: CountCockpitMeetingArtifactReferences :one
-SELECT count(*) FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND meeting_id=$2 AND ($3::boolean OR removed_at IS NULL)
-`
-
-type CountCockpitMeetingArtifactReferencesParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	Column3     bool        `json:"column_3"`
-}
-
-func (q *Queries) CountCockpitMeetingArtifactReferences(ctx context.Context, arg CountCockpitMeetingArtifactReferencesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCockpitMeetingArtifactReferences, arg.WorkspaceID, arg.MeetingID, arg.Column3)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -163,55 +130,6 @@ func (q *Queries) CreateCockpitAcceptanceReviewerHandoff(ctx context.Context, ar
 		&i.ExpectedRevision,
 		&i.ResultingRevision,
 		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const createCockpitArtifactMeetingReference = `-- name: CreateCockpitArtifactMeetingReference :one
-INSERT INTO cockpit_artifact_meeting_reference(id,workspace_id,artifact_id,version_id,meeting_id,target_label,purpose,reference_key,request_hash,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, workspace_id, artifact_id, version_id, meeting_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at
-`
-
-type CreateCockpitArtifactMeetingReferenceParams struct {
-	ID           pgtype.UUID `json:"id"`
-	WorkspaceID  pgtype.UUID `json:"workspace_id"`
-	ArtifactID   pgtype.UUID `json:"artifact_id"`
-	VersionID    pgtype.UUID `json:"version_id"`
-	MeetingID    pgtype.UUID `json:"meeting_id"`
-	TargetLabel  string      `json:"target_label"`
-	Purpose      string      `json:"purpose"`
-	ReferenceKey pgtype.UUID `json:"reference_key"`
-	RequestHash  string      `json:"request_hash"`
-	CreatedBy    pgtype.UUID `json:"created_by"`
-}
-
-func (q *Queries) CreateCockpitArtifactMeetingReference(ctx context.Context, arg CreateCockpitArtifactMeetingReferenceParams) (CockpitArtifactMeetingReference, error) {
-	row := q.db.QueryRow(ctx, createCockpitArtifactMeetingReference,
-		arg.ID,
-		arg.WorkspaceID,
-		arg.ArtifactID,
-		arg.VersionID,
-		arg.MeetingID,
-		arg.TargetLabel,
-		arg.Purpose,
-		arg.ReferenceKey,
-		arg.RequestHash,
-		arg.CreatedBy,
-	)
-	var i CockpitArtifactMeetingReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ArtifactID,
-		&i.VersionID,
-		&i.MeetingID,
-		&i.TargetLabel,
-		&i.Purpose,
-		&i.ReferenceKey,
-		&i.RequestHash,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedBy,
-		&i.RemovedAt,
 	)
 	return i, err
 }
@@ -377,43 +295,6 @@ func (q *Queries) CreateCockpitArtifactReviewerHandoff(ctx context.Context, arg 
 	return i, err
 }
 
-const getActiveCockpitArtifactMeetingReference = `-- name: GetActiveCockpitArtifactMeetingReference :one
-SELECT id, workspace_id, artifact_id, version_id, meeting_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND version_id=$2 AND meeting_id=$3 AND purpose=$4 AND removed_at IS NULL
-`
-
-type GetActiveCockpitArtifactMeetingReferenceParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	VersionID   pgtype.UUID `json:"version_id"`
-	MeetingID   pgtype.UUID `json:"meeting_id"`
-	Purpose     string      `json:"purpose"`
-}
-
-func (q *Queries) GetActiveCockpitArtifactMeetingReference(ctx context.Context, arg GetActiveCockpitArtifactMeetingReferenceParams) (CockpitArtifactMeetingReference, error) {
-	row := q.db.QueryRow(ctx, getActiveCockpitArtifactMeetingReference,
-		arg.WorkspaceID,
-		arg.VersionID,
-		arg.MeetingID,
-		arg.Purpose,
-	)
-	var i CockpitArtifactMeetingReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ArtifactID,
-		&i.VersionID,
-		&i.MeetingID,
-		&i.TargetLabel,
-		&i.Purpose,
-		&i.ReferenceKey,
-		&i.RequestHash,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedBy,
-		&i.RemovedAt,
-	)
-	return i, err
-}
-
 const getActiveCockpitArtifactNodeReference = `-- name: GetActiveCockpitArtifactNodeReference :one
 SELECT id, workspace_id, artifact_id, version_id, node_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at FROM cockpit_artifact_node_reference WHERE workspace_id=$1 AND version_id=$2 AND node_id=$3 AND purpose=$4 AND removed_at IS NULL
 `
@@ -480,36 +361,6 @@ func (q *Queries) GetCockpitAcceptanceReviewerHandoffByKey(ctx context.Context, 
 		&i.ExpectedRevision,
 		&i.ResultingRevision,
 		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getCockpitArtifactMeetingReferenceByKey = `-- name: GetCockpitArtifactMeetingReferenceByKey :one
-SELECT id, workspace_id, artifact_id, version_id, meeting_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND reference_key=$2
-`
-
-type GetCockpitArtifactMeetingReferenceByKeyParams struct {
-	WorkspaceID  pgtype.UUID `json:"workspace_id"`
-	ReferenceKey pgtype.UUID `json:"reference_key"`
-}
-
-func (q *Queries) GetCockpitArtifactMeetingReferenceByKey(ctx context.Context, arg GetCockpitArtifactMeetingReferenceByKeyParams) (CockpitArtifactMeetingReference, error) {
-	row := q.db.QueryRow(ctx, getCockpitArtifactMeetingReferenceByKey, arg.WorkspaceID, arg.ReferenceKey)
-	var i CockpitArtifactMeetingReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ArtifactID,
-		&i.VersionID,
-		&i.MeetingID,
-		&i.TargetLabel,
-		&i.Purpose,
-		&i.ReferenceKey,
-		&i.RequestHash,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedBy,
-		&i.RemovedAt,
 	)
 	return i, err
 }
@@ -649,56 +500,6 @@ func (q *Queries) ListCockpitAcceptanceReviewerHandoffs(ctx context.Context, arg
 			&i.ExpectedRevision,
 			&i.ResultingRevision,
 			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCockpitArtifactMeetingReferences = `-- name: ListCockpitArtifactMeetingReferences :many
-SELECT id, workspace_id, artifact_id, version_id, meeting_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at FROM cockpit_artifact_meeting_reference WHERE workspace_id=$1 AND artifact_id=$2 AND ($3::uuid IS NULL OR id>$3) ORDER BY id LIMIT $4
-`
-
-type ListCockpitArtifactMeetingReferencesParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ArtifactID  pgtype.UUID `json:"artifact_id"`
-	AfterID     pgtype.UUID `json:"after_id"`
-	PageLimit   int32       `json:"page_limit"`
-}
-
-func (q *Queries) ListCockpitArtifactMeetingReferences(ctx context.Context, arg ListCockpitArtifactMeetingReferencesParams) ([]CockpitArtifactMeetingReference, error) {
-	rows, err := q.db.Query(ctx, listCockpitArtifactMeetingReferences,
-		arg.WorkspaceID,
-		arg.ArtifactID,
-		arg.AfterID,
-		arg.PageLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []CockpitArtifactMeetingReference{}
-	for rows.Next() {
-		var i CockpitArtifactMeetingReference
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.ArtifactID,
-			&i.VersionID,
-			&i.MeetingID,
-			&i.TargetLabel,
-			&i.Purpose,
-			&i.ReferenceKey,
-			&i.RequestHash,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.RemovedBy,
-			&i.RemovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -860,125 +661,6 @@ func (q *Queries) ListCockpitArtifactReviewerHandoffs(ctx context.Context, arg L
 		return nil, err
 	}
 	return items, nil
-}
-
-const listCockpitMeetingArtifactReferences = `-- name: ListCockpitMeetingArtifactReferences :many
-SELECT r.id, r.workspace_id, r.artifact_id, r.version_id, r.meeting_id, r.target_label, r.purpose, r.reference_key, r.request_hash, r.created_by, r.created_at, r.removed_by, r.removed_at,a.title AS artifact_title,v.version_number,v.content_hash,v.decision AS version_decision FROM cockpit_artifact_meeting_reference r
-JOIN cockpit_artifact a ON a.workspace_id=r.workspace_id AND a.id=r.artifact_id
-JOIN cockpit_artifact_version v ON v.workspace_id=r.workspace_id AND v.artifact_id=r.artifact_id AND v.id=r.version_id
-WHERE r.workspace_id=$1 AND r.meeting_id=$2
- AND ($3::boolean OR r.removed_at IS NULL)
- AND ($4::uuid IS NULL OR r.id>$4)
-ORDER BY r.id LIMIT $5
-`
-
-type ListCockpitMeetingArtifactReferencesParams struct {
-	WorkspaceID    pgtype.UUID `json:"workspace_id"`
-	MeetingID      pgtype.UUID `json:"meeting_id"`
-	IncludeRemoved bool        `json:"include_removed"`
-	AfterID        pgtype.UUID `json:"after_id"`
-	PageLimit      int32       `json:"page_limit"`
-}
-
-type ListCockpitMeetingArtifactReferencesRow struct {
-	ID              pgtype.UUID        `json:"id"`
-	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
-	ArtifactID      pgtype.UUID        `json:"artifact_id"`
-	VersionID       pgtype.UUID        `json:"version_id"`
-	MeetingID       pgtype.UUID        `json:"meeting_id"`
-	TargetLabel     string             `json:"target_label"`
-	Purpose         string             `json:"purpose"`
-	ReferenceKey    pgtype.UUID        `json:"reference_key"`
-	RequestHash     string             `json:"request_hash"`
-	CreatedBy       pgtype.UUID        `json:"created_by"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	RemovedBy       pgtype.UUID        `json:"removed_by"`
-	RemovedAt       pgtype.Timestamptz `json:"removed_at"`
-	ArtifactTitle   string             `json:"artifact_title"`
-	VersionNumber   int32              `json:"version_number"`
-	ContentHash     pgtype.Text        `json:"content_hash"`
-	VersionDecision string             `json:"version_decision"`
-}
-
-func (q *Queries) ListCockpitMeetingArtifactReferences(ctx context.Context, arg ListCockpitMeetingArtifactReferencesParams) ([]ListCockpitMeetingArtifactReferencesRow, error) {
-	rows, err := q.db.Query(ctx, listCockpitMeetingArtifactReferences,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.IncludeRemoved,
-		arg.AfterID,
-		arg.PageLimit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListCockpitMeetingArtifactReferencesRow{}
-	for rows.Next() {
-		var i ListCockpitMeetingArtifactReferencesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.WorkspaceID,
-			&i.ArtifactID,
-			&i.VersionID,
-			&i.MeetingID,
-			&i.TargetLabel,
-			&i.Purpose,
-			&i.ReferenceKey,
-			&i.RequestHash,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.RemovedBy,
-			&i.RemovedAt,
-			&i.ArtifactTitle,
-			&i.VersionNumber,
-			&i.ContentHash,
-			&i.VersionDecision,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const removeCockpitArtifactMeetingReference = `-- name: RemoveCockpitArtifactMeetingReference :one
-UPDATE cockpit_artifact_meeting_reference SET removed_at=coalesce(removed_at,now()),removed_by=coalesce(removed_by,$4) WHERE workspace_id=$1 AND artifact_id=$2 AND id=$3 RETURNING id, workspace_id, artifact_id, version_id, meeting_id, target_label, purpose, reference_key, request_hash, created_by, created_at, removed_by, removed_at
-`
-
-type RemoveCockpitArtifactMeetingReferenceParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ArtifactID  pgtype.UUID `json:"artifact_id"`
-	ID          pgtype.UUID `json:"id"`
-	RemovedBy   pgtype.UUID `json:"removed_by"`
-}
-
-func (q *Queries) RemoveCockpitArtifactMeetingReference(ctx context.Context, arg RemoveCockpitArtifactMeetingReferenceParams) (CockpitArtifactMeetingReference, error) {
-	row := q.db.QueryRow(ctx, removeCockpitArtifactMeetingReference,
-		arg.WorkspaceID,
-		arg.ArtifactID,
-		arg.ID,
-		arg.RemovedBy,
-	)
-	var i CockpitArtifactMeetingReference
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ArtifactID,
-		&i.VersionID,
-		&i.MeetingID,
-		&i.TargetLabel,
-		&i.Purpose,
-		&i.ReferenceKey,
-		&i.RequestHash,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.RemovedBy,
-		&i.RemovedAt,
-	)
-	return i, err
 }
 
 const removeCockpitArtifactNodeReference = `-- name: RemoveCockpitArtifactNodeReference :one

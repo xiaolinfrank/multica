@@ -20,7 +20,6 @@ import { CockpitMeetingCards } from "./cockpit-meeting-cards";
 import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
 import { CockpitMeetingTimeline } from "./cockpit-meeting-timeline";
 import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
-import { CockpitMeetingTemplates } from "./cockpit-meeting-templates";
 
 export type CockpitMeetingsView = "list" | "month" | "week" | "agenda" | "timeline";
 const VIEWS: CockpitMeetingsView[] = ["list", "month", "week", "agenda", "timeline"];
@@ -39,7 +38,7 @@ export interface CockpitMeetingsProps {
 }
 
 /** Server-filtered metadata pages. Calendar counts cover the window, never just the first metadata page. */
-export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, templatesAvailable = false, dispositionAvailable = false }: CockpitMeetingsProps) {
+export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, dispositionAvailable = false }: CockpitMeetingsProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const navigation = useNavigation();
@@ -128,7 +127,6 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
       </div>
       {dispositionAvailable && <Select value={state.archive} items={(["active", "archived", "all"] as const).map((value) => ({ value, label: t(($) => $.meeting_disposition[`filter_${value}`]) }))} onValueChange={(archive) => { if (archive === "active" || archive === "archived" || archive === "all") changeArchive(archive); }}><SelectTrigger aria-label={t(($) => $.meeting_disposition.archive_filter)}><SelectValue /></SelectTrigger><SelectContent>{(["active", "archived", "all"] as const).map((value) => <SelectItem key={value} value={value}>{t(($) => $.meeting_disposition[`filter_${value}`])}</SelectItem>)}</SelectContent></Select>}
       <CockpitMeetingFilterBar filter={filter} onChange={changeFilter} meetings={page?.items ?? data?.items ?? []} today={today} />
-      {templatesAvailable && <CockpitMeetingTemplates wsId={wsId} readOnly={readOnly} />}
       {!readOnly && <div className="ml-auto flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={onScan}><ScanSearch className="size-3.5" />{t(($) => $.meetings.scan)}</Button>
         <Button type="button" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button></div>}
     </div>

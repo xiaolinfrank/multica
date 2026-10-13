@@ -144,8 +144,7 @@ test("streams 500 MiB through Next and captures the same retained real SMB sourc
     };
     const uploadedInput = await createInput("500 MiB Next streaming transport source"), uploadKey = randomUUID();
     const submitted = await request(`/api/cockpit/inputs/${uploadedInput}/versions`, { command_key: uploadKey, expected_revision: 1,
-      source: { kind: "upload", upload: { filename, content_type: "application/octet-stream", size_bytes: SIZE, client_sha256: source.sha256 } },
-      initial_reference: { reference_key: randomUUID(), meeting_id: meeting.id, agenda_id: null, purpose: "material" } });
+      source: { kind: "upload", upload: { filename, content_type: "application/octet-stream", size_bytes: SIZE, client_sha256: source.sha256 } } });
     expect(submitted.receipt).toMatchObject({ command_key: uploadKey, input_id: uploadedInput, transfer_revision: 1 });
     const uploadedVersion: string = submitted.receipt.version_id, uploadedTransfer: string = submitted.receipt.transfer_id;
     expect(uploadedVersion).toMatch(UUID); expect(uploadedTransfer).toMatch(UUID);
@@ -206,8 +205,7 @@ test("streams 500 MiB through Next and captures the same retained real SMB sourc
     expect(observed).not.toBeNull();
     const capturedInput = await createInput("Real SMB fixed capture source");
     const captured = await request(`/api/cockpit/inputs/${capturedInput}/versions`, { command_key: randomUUID(), expected_revision: 1,
-      source: { kind: "nas_file", nas_file: { root_id: rootId, relative_path: observed!.relative_path, observation_token: observed!.observation_token } },
-      initial_reference: { reference_key: randomUUID(), meeting_id: meeting.id, agenda_id: null, purpose: "supporting" } });
+      source: { kind: "nas_file", nas_file: { root_id: rootId, relative_path: observed!.relative_path, observation_token: observed!.observation_token } } });
     const capturedVersion: string = captured.receipt.version_id, capturedTransfer: string = captured.receipt.transfer_id;
     expect(capturedVersion).toMatch(UUID); expect(capturedTransfer).toMatch(UUID);
     await expect.poll(async () => (await request(`/api/cockpit/inputs/${capturedInput}/versions/${capturedVersion}`)).version.capture_state, { timeout: 8 * 60_000, intervals: [500, 1000, 2000] }).toBe("ready");
@@ -218,8 +216,9 @@ test("streams 500 MiB through Next and captures the same retained real SMB sourc
     expect(fact.source_before_file_identity).toMatch(/^[0-9a-f]{64}$/); expect(fact.source_after_file_identity).toBe(fact.source_before_file_identity);
     expect(fact.source_before_size).toBe(String(SIZE)); expect(fact.source_after_size).toBe(String(SIZE)); expect(fact.source_before_mtime_ns).toBe(source.info.mtimeNs.toString()); expect(fact.source_after_mtime_ns).toBe(fact.source_before_mtime_ns); expect(fact.io_outcome).toBe("verified");
     evidence.nas_capture = { input_id: capturedInput, version_id: capturedVersion, transfer_id: capturedTransfer, persisted_observation: fact, fixed_download: await download(capturedInput, capturedVersion) };
-    const references = await request(`/api/cockpit/meetings/${meeting.id}/input-references?page_size=25`);
-    expect(references.total).toBe(2); expect(references.items.map((entry: { version: { id: string } }) => entry.version.id).sort()).toEqual([uploadedVersion, capturedVersion].sort());
+    // File capture and run inputs are shared capabilities; retiring the
+    // meeting collection UI does not remove their fixed bytes or proofs.
+    expect(uploadedVersion).not.toBe(capturedVersion);
     expect(await api.getWorkspaceAgentRunCount()).toBe(0); expect((await api.getOwnedMeetingLifecycle(meeting.id)).materials).toBeNull();
     evidence.agent_runs = 0; evidence.materials_not_implicitly_confirmed = true; evidence.workspace_id = ws.id; evidence.meeting_id = meeting.id;
     // Private storage keys are never requested through the public capability.

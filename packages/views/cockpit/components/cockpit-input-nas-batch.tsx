@@ -98,8 +98,7 @@ export function CockpitInputNASBatch({ wsId, accountId, meetingId, draftKey, can
       child = useCockpitInputDraftStore.getState().draft.forms[childKey];
     }
     if (!stillCurrent() || lock.current?.stop || !child?.inputId || child.inputRevision === null || child.source?.kind !== "nas_file") return;
-    await perform(childKey, { kind: "version", inputId: child.inputId, body: { commandKey: createSafeId(), expectedRevision: child.inputRevision, source: child.source,
-      initialReference: { referenceKey: createSafeId(), meetingId, agendaId: child.agendaId, purpose: child.purpose } } }, "submit", stillCurrent);
+    await perform(childKey, { kind: "version", inputId: child.inputId, body: { commandKey: createSafeId(), expectedRevision: child.inputRevision, source: child.source } }, "submit", stillCurrent);
   }
 
   async function run(onlyKey?: string, mode?: "submit" | "lookup") {

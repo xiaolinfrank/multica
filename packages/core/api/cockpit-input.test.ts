@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
 import { setApiInstance } from "./index";
 import {
-  CockpitInputDownloadLinkSchema, CockpitInputNASPageSchema, CockpitInputReferenceSummarySchema,
+  CockpitInputDownloadLinkSchema, CockpitInputNASPageSchema,
   CockpitInputVersionMetadataSchema, CockpitInputTransferDetailSchema,
   CockpitInputVersionBatchSchema, CockpitInputAttachmentPageSchema,
 } from "./cockpit-input-schemas";
@@ -52,11 +52,7 @@ describe("fixed input API boundaries", () => {
     expect(CockpitInputTransferDetailSchema.safeParse({ ...transfer(), content_hash: null, pinned_size_bytes: null }).success).toBe(false);
   });
 
-  it("rejects misleading summary counts and an incomplete NAS continuation receipt", () => {
-    expect(CockpitInputReferenceSummarySchema.safeParse({ total: 4, ready: 2, pending: 1, needs_attention: 1,
-      available_ready: 0, unavailable_ready: 1, unknown_ready: 1 }).success).toBe(true);
-    expect(CockpitInputReferenceSummarySchema.safeParse({ total: 4, ready: 2, pending: 1, needs_attention: 1,
-      available_ready: 2, unavailable_ready: 1, unknown_ready: 1 }).success).toBe(false);
+  it("rejects an incomplete NAS continuation receipt", () => {
     const page = { workspace_id: WS, root_id: INPUT, relative_directory: "meetings", q: "", root_config_hash: HASH,
       observation_token: "directory-proof", page_size: 25, items: [], total: null, has_more: true, next_cursor: null };
     expect(CockpitInputNASPageSchema.safeParse(page).success).toBe(false);

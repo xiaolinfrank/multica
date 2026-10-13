@@ -1,7 +1,7 @@
 import type {
   CockpitInputCreateInput, CockpitInputCreateResult, CockpitInputVersionSubmitInput, CockpitInputVersionResult,
   CockpitInputRestartInput, CockpitInputFinalizeInput, CockpitInputAbandonInput, CockpitInputTransferResult,
-  CockpitInputReferenceCreateInput, CockpitInputReferenceResult, CockpitInputManifestSaveInput, CockpitInputManifestResult,
+  CockpitInputManifestSaveInput, CockpitInputManifestResult,
   CockpitInputSourceInput,
 } from "../types/cockpit-input";
 
@@ -33,11 +33,7 @@ export function cockpitInputVersionAcknowledged(result: CockpitInputVersionResul
   const r = result.receipt;
   if (result.action !== "input_version_submit" || result.commandKey !== body.commandKey || r.commandKey !== body.commandKey
     || r.inputId !== inputId || !sameSource(r.source, body.source) || r.inputRevision !== body.expectedRevision + 1) return false;
-  const ref = body.initialReference;
-  if (!ref) return r.initialReference === null;
-  return Boolean(r.initialReference && r.initialReference.commandKey === ref.referenceKey && r.initialReference.meetingId === ref.meetingId
-    && r.initialReference.agendaId === ref.agendaId && r.initialReference.purpose === ref.purpose && r.initialReference.inputId === inputId
-    && r.initialReference.inputVersionId === r.versionId && !r.initialReference.removed);
+  return true;
 }
 
 export function cockpitInputTransferAcknowledged(result: CockpitInputTransferResult, inputId: string, versionId: string,
@@ -52,11 +48,6 @@ export function cockpitInputTransferAcknowledged(result: CockpitInputTransferRes
   return result.action === "input_transfer_abandon" && r.state === "abandoned" && r.reason === body.reason.trim();
 }
 
-export function cockpitInputReferenceAcknowledged(result: CockpitInputReferenceResult, meetingId: string, body: CockpitInputReferenceCreateInput): boolean {
-  const r = result.receipt;
-  return result.action === "input_reference_create" && result.commandKey === body.commandKey && r.commandKey === body.commandKey
-    && r.meetingId === meetingId && r.agendaId === body.agendaId && r.inputVersionId === body.inputVersionId && r.purpose === body.purpose && !r.removed;
-}
 
 export function cockpitInputManifestAcknowledged(result: CockpitInputManifestResult, issueId: string, body: CockpitInputManifestSaveInput): boolean {
   const r = result.receipt;

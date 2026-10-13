@@ -45,7 +45,7 @@ func TestCockpitCancellationPausesDirectoryPlansWithoutCancellingInflightIO(t *t
 		t.Fatalf("cancellation silently included a plan created after preview: %v", err)
 	}
 	current, err := f.issues.GetCockpitMeetingLifecycle(ctx, lifecycle)
-	if err != nil || current.Occurrence.State != "unconfirmed" {
+	if err != nil || current.Occurrence.State != "scheduled" {
 		t.Fatalf("stale cancellation changed the meeting: %+v %v", current, err)
 	}
 	query := CockpitDirectoryQuery{CockpitDirectoryRead: directoryRead, OperationID: parseTestUUID(t, first.Current.ID)}

@@ -41,31 +41,6 @@ func TestCockpitArtifactCLIDownloadLinkIsExactAndShortLived(t *testing.T) {
 	}
 }
 
-func TestCockpitArtifactCLIMeetingFixedReferenceScope(t *testing.T) {
-	for _, wrong := range []bool{false, true} {
-		t.Run(map[bool]string{false: "fixed reference", true: "other meeting"}[wrong], func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/cockpit/meetings/"+workflowCLIMeeting+"/artifact-references" || r.URL.Query().Get("page_size") != "25" || r.URL.Query().Get("include_removed") != "false" {
-					t.Errorf("wrong scoped request: %s", r.URL)
-				}
-				meetingID := workflowCLIMeeting
-				if wrong {
-					meetingID = workflowCLIExport
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"workspace_id": "ws-1", "meeting_id": workflowCLIMeeting, "include_removed": false, "items": []any{map[string]any{
-					"id": actionCLIKey, "artifact_id": actionCLIAction, "version_id": workflowCLIVersion, "version_number": 1, "content_hash": workflowCLIHash, "meeting_id": meetingID, "artifact_title": "Fixed report", "removed_at": nil,
-				}}, "total": 1, "next_cursor": nil})
-			}))
-			defer srv.Close()
-			configureWorkflowCLIEnv(t, srv.URL)
-			_, err := executeActionCLI(t, newCockpitMeetingArtifactReferencesCommand(), workflowCLIMeeting)
-			if (err != nil) != wrong {
-				t.Fatalf("wrong=%t error=%v", wrong, err)
-			}
-		})
-	}
-}
-
 func artifactCLITestVersion() map[string]any {
 	return map[string]any{"id": workflowCLIVersion, "artifact_id": actionCLIAction, "version_number": 1, "revision": 1, "submission_key": actionCLIKey,
 		"producer_issue_id": actionCLIIssue, "producer_run_id": nil, "source_meeting_id": nil, "source_minutes_version_id": nil,

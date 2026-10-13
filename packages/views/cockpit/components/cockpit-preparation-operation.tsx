@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cockpitPreparationOperationOptions, cockpitPreparationEffectsOptions, cockpitPreparationEffectOptions,
   useApplyCockpitPreparationEffect, cockpitPreparationEffectAcknowledged, invalidateCockpitMeetingPreparationFacts,
-  cockpitMeetingPreparationDraftKey, useCockpitMeetingPreparationDraftStore, cockpitMeetingAgendaPath, cockpitObjectPath, EMPTY_COCKPIT_SCOPE, cockpitPreparationGrantReplaced, settleCockpitPreparationCommand,
+  cockpitMeetingPreparationDraftKey, useCockpitMeetingPreparationDraftStore, cockpitObjectPath, EMPTY_COCKPIT_SCOPE, cockpitPreparationGrantReplaced, settleCockpitPreparationCommand,
 } from "@multica/core/cockpit";
 import type { CockpitPreparationEffect, CockpitPreparationOperationHeader } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -23,7 +23,7 @@ import { CockpitPreparationReauthorization, CockpitPreparationAuthorizationRecor
 import { CockpitDirectoryCancellationReceipt } from "./cockpit-directory-cancellation";
 
 const knownStates = new Set(["active", "paused", "needs_attention", "completed"]);
-const knownKinds = new Set(["agenda", "preparation_issue", "issue_reference", "material_reference", "cancel_issue", "change_due_date", "link_meeting", "stop_run"]);
+const knownKinds = new Set(["cancel_issue", "change_due_date", "link_meeting", "stop_run"]);
 
 export function CockpitPreparationOperation({ wsId, meetingId, operationId, autoStart = false, onAutoStartConsumed, readOnly, directoryPreparationAvailable = false }: {
   wsId: string; meetingId: string; operationId: string; autoStart?: boolean; onAutoStartConsumed?: () => void; readOnly?: boolean; directoryPreparationAvailable?: boolean;
@@ -49,16 +49,16 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
   const problemId = ui.identity === identity ? ui.problemId : ""; const locating = ui.identity === identity && ui.locating;
   const setProblemId = (problemId: string) => updateUi({ problemId });
   const setRunning = (running: boolean) => updateUi({ running }); const setMessage = (message: string) => updateUi({ message }); const setActiveLabel = (activeLabel: string) => updateUi({ activeLabel });
-  const knownOperation = current?.kind === "apply_template" || current?.kind === "cancel_preparation";
+  const knownOperation = current?.kind === "cancel_preparation";
   const allowed = Boolean(!readOnly && knownOperation && current && !header.isError && current.state === "active" && current.can_continue && current.counts.total <= 50);
 
   const lookup = async () => request.verify(async (command) => {
-    if (command.kind !== "effect" || command.operationId !== operationId || command.meetingId !== meetingId) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+    if (command.kind !== "effect" || command.operationId !== operationId || command.meetingId !== meetingId) throw new Error(t(($) => $.meeting_preparation.check_first));
     const detail = await client.fetchQuery({ ...cockpitPreparationEffectOptions(wsId, meetingId, operationId, command.effectId), staleTime: 0 });
-    if (!detail) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+    if (!detail) throw new Error(t(($) => $.meeting_preparation.check_first));
     if (cockpitPreparationGrantReplaced(command, detail)) throw new Error(t(($) => $.meeting_preparation.grant_replaced));
     if (!detail.effect.receipt) throw new CockpitPreparationUnobservedError(t(($) => $.meeting_preparation.not_observed));
-    if (!cockpitPreparationEffectAcknowledged(detail, operationId, command.effectId, command.body.command_key, command.body.authorization_key, command.body.authorization_revision)) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+    if (!cockpitPreparationEffectAcknowledged(detail, operationId, command.effectId, command.body.command_key, command.body.authorization_key, command.body.authorization_revision)) throw new Error(t(($) => $.meeting_preparation.check_first));
     await invalidateCockpitMeetingPreparationFacts(client, wsId, meetingId, operationId); return detail;
   });
   const check = async () => { const result = await lookup(); if (result?.stillCurrent()) setMessage(t(($) => $.meeting_preparation.checked)); };
@@ -67,16 +67,16 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
     const token = Symbol("preparation-sequence"); const stillCurrent = capture(); advancing.current = token; stop.current = false; setRunning(true); setMessage(""); setProblemId("");
     try {
       const fresh = await client.fetchQuery({ ...cockpitPreparationOperationOptions(wsId, meetingId, operationId), staleTime: 0 });
-      if (!stillCurrent() || stop.current || !fresh || !["apply_template", "cancel_preparation"].includes(fresh.kind) || fresh.state !== "active" || !fresh.can_continue || fresh.counts.total > 50) return;
+      if (!stillCurrent() || stop.current || !fresh || fresh.kind !== "cancel_preparation" || fresh.state !== "active" || !fresh.can_continue || fresh.counts.total > 50) return;
       const unresolved = useCockpitMeetingPreparationDraftStore.getState().draft.commands[key];
       if (unresolved) {
         // Continuing never silently retries an unresolved write; the separate check action is read-only.
         if (!request.canRetry || unresolved.kind !== "effect") { if (stillCurrent()) setMessage(t(($) => $.meeting_preparation.check_first)); return; }
         const observed = await client.fetchQuery({ ...cockpitPreparationEffectOptions(wsId, meetingId, operationId, unresolved.effectId), staleTime: 0 });
-        if (!stillCurrent() || !observed || !observed.effect.can_apply || observed.effect.state !== "pending") return;
+        if (!stillCurrent() || !observed || !observed.effect.can_apply || observed.effect.state !== "pending" || !knownKinds.has(observed.effect.kind)) return;
         setActiveLabel(observed.effect.label);
         const result = await request.run(unresolved, async (command) => {
-          if (command.kind !== "effect") throw new Error(t(($) => $.meeting_templates.unconfirmed));
+          if (command.kind !== "effect") throw new Error(t(($) => $.meeting_preparation.check_first));
           return apply.mutateAsync({ effectId: command.effectId, body: command.body });
         });
         if (!result) { setProblemId(unresolved.effectId); const unknown = Boolean(useCockpitMeetingPreparationDraftStore.getState().draft.commands[key]); if (unknown) await lookup(); if (stillCurrent()) setMessage(unknown ? t(($) => $.meeting_preparation.stopped_unknown) : t(($) => $.meeting_preparation.stopped)); return; }
@@ -96,10 +96,10 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
           if (!stillCurrent() || stop.current || !detail) return;
           const effect = detail.effect;
           if (effect.state === "applied" || effect.state === "skipped") continue;
-          if (detail.current.state !== "active" || !detail.current.can_continue || effect.state !== "pending" || !effect.can_apply || !effect.authorization_key || effect.authorization_revision < 1 || !knownKinds.has(effect.kind)) { setMessage(t(($) => $.meeting_preparation.stopped)); return; }
+          if (detail.current.kind !== "cancel_preparation" || detail.current.state !== "active" || !detail.current.can_continue || effect.state !== "pending" || !effect.can_apply || !effect.authorization_key || effect.authorization_revision < 1 || !knownKinds.has(effect.kind)) { setMessage(t(($) => $.meeting_preparation.stopped)); return; }
           setActiveLabel(effect.label); attempts += 1;
           const result = await request.run({ kind: "effect", meetingId, operationId, effectId: effect.id, body: { command_key: effect.command_key, authorization_key: effect.authorization_key, authorization_revision: effect.authorization_revision } }, async (command) => {
-            if (command.kind !== "effect") throw new Error(t(($) => $.meeting_templates.unconfirmed));
+            if (command.kind !== "effect") throw new Error(t(($) => $.meeting_preparation.check_first));
             return apply.mutateAsync({ effectId: command.effectId, body: command.body });
           });
           if (!result) {
@@ -146,14 +146,12 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
     if (allowed && !hasUnresolved) void startLatest.current();
   }, [autoStart, currentId, allowed, hasUnresolved, onAutoStartConsumed]);
 
-  return <section aria-label={t(($) => $.meeting_preparation.title)} className="min-w-0 space-y-3">
+  return <section aria-label={t(($) => $.meeting_preparation.cancellation)} className="min-w-0 space-y-3">
     {header.isPending ? <Spinner /> : header.isError || !current ? <CockpitFlowError onRetry={() => void header.refetch()} /> : <>
-      <div className="space-y-2 rounded-lg border border-border p-3"><h3 className="text-title-sm font-medium">{current.kind === "apply_template" ? t(($) => $.meeting_preparation.template_application) : current.kind === "cancel_preparation" ? t(($) => $.meeting_preparation.cancellation) : t(($) => $.artifacts.unknown)}</h3>
+      <div className="space-y-2 rounded-lg border border-border p-3"><h3 className="text-title-sm font-medium">{current.kind === "cancel_preparation" ? t(($) => $.meeting_preparation.cancellation) : t(($) => $.artifacts.unknown)}</h3>
         <p className="text-caption text-muted-foreground">{current.state === "active" || current.state === "paused" || current.state === "needs_attention" || current.state === "completed" ? t(($) => $.meeting_preparation[`state_${current.state as "active" | "paused" | "needs_attention" | "completed"}`]) : t(($) => $.artifacts.unknown)}</p>
-        {current.template_title && <p className="line-clamp-2 break-words text-body" title={current.template_title}>{current.template_title}{current.template_version_number !== null && <> · {t(($) => $.workflow.version, { number: current.template_version_number })}</>}</p>}
         <p className="break-words text-caption text-muted-foreground">{t(($) => $.meeting_preparation.responsible, { name: current.responsible_user_name || (current.responsible_user_id === current.created_by ? current.created_by_name : "") || t(($) => $.meeting_preparation.responsible_unknown) })} · {Number.isFinite(Date.parse(current.created_at)) ? new Date(current.created_at).toLocaleString(locale) : t(($) => $.common.unset)}</p>
         <PreparationCounts value={current} />
-        {current.kind === "apply_template" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_preparation.registration_only)}</p>}
         {current.kind === "cancel_preparation" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_preparation.cancel_recorded)}</p>}
         {directoryPreparationAvailable && current.kind === "cancel_preparation" && <CockpitDirectoryCancellationReceipt wsId={wsId} meetingId={meetingId} operationId={operationId} commandKey={current.command_key} />}
         {!knownStates.has(current.state) && <p className="text-caption text-muted-foreground">{t(($) => $.artifacts.unknown)}</p>}
@@ -171,7 +169,7 @@ export function CockpitPreparationOperation({ wsId, meetingId, operationId, auto
       {(message || request.error) && <p role="status" className="break-words text-caption">{message || request.error}</p>}
       {effects.isPending ? <Spinner /> : effects.isError || !page ? <CockpitFlowError onRetry={() => void effects.refetch()} /> : <>
         <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={effects.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
-        <ul ref={listRef} className="max-h-[45vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3">{page.items.map((effect) => <PreparationEffectRow key={effect.id} wsId={wsId} meetingId={meetingId} effect={effect} header={current} disabled={readOnly || running || request.busy} />)}</ul>
+        <ul ref={listRef} className="max-h-[45vh] divide-y divide-border overflow-y-auto rounded-lg border border-border px-3">{page.items.map((effect) => <PreparationEffectRow key={effect.id} wsId={wsId} meetingId={meetingId} effect={effect} header={current} disabled={readOnly || running || request.busy || !knownOperation || !knownStates.has(current.state)} />)}</ul>
       </>}
       {cursors.length > 1 && <Button variant="outline" size="sm" onClick={() => setCursors([""])}>{t(($) => $.task_flow.first_page)}</Button>}
     </>}
@@ -184,12 +182,11 @@ function PreparationCounts({ value }: { value: CockpitPreparationOperationHeader
 }
 
 function PreparationEffectRow({ wsId, meetingId, effect, header, disabled }: { wsId: string; meetingId: string; effect: CockpitPreparationEffect; header: CockpitPreparationOperationHeader; disabled?: boolean }) {
-  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const label = usePreparationEffectLabel(); const runStatus = usePreparationRunStatusLabel();
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const label = usePreparationEffectLabel(); const runStatus = usePreparationRunStatusLabel();
   const receipt = effect.receipt; const state = effect.state === "applied" || effect.state === "pending" || effect.state === "needs_attention" || effect.state === "skipped" ? t(($) => $.meeting_preparation[effect.state as "applied" | "pending" | "needs_attention" | "skipped"]) : t(($) => $.artifacts.unknown);
   return <li tabIndex={-1} data-effect-id={effect.id} aria-label={effect.label} className="space-y-2 py-3 text-caption focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex flex-wrap items-start justify-between gap-2"><p className="line-clamp-2 min-w-0 flex-1 break-words font-medium" title={effect.label}>{effect.label}</p><span>{state}</span></div><p className="text-muted-foreground">{label(effect.kind)}</p>
     {receipt?.issue && <AppLink target="_blank" rel="noopener noreferrer" className="break-words text-primary underline" href={paths.issueDetail(receipt.issue.identifier || receipt.issue.id)}>{receipt.issue.identifier} {receipt.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>}
-    {receipt?.agenda_id && effect.kind === "agenda" && <AppLink className="block text-primary underline" href={cockpitMeetingAgendaPath(paths.cockpit(), meetingId, receipt.agenda_id, navigation.searchParams)}>{t(($) => $.meeting_lifecycle.open_current_agenda)}</AppLink>}
-    {effect.kind === "link_meeting" && receipt?.target_meeting_id && <AppLink target="_blank" rel="noopener noreferrer" className="block text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: receipt.target_meeting_id, view: "agenda", agendaId: receipt.agenda_id ?? undefined }, EMPTY_COCKPIT_SCOPE)}>{t(($) => $.meeting_disposition.open_target)} {t(($) => $.action_flow.new_tab)}</AppLink>}
+    {effect.kind === "link_meeting" && receipt?.target_meeting_id && <AppLink target="_blank" rel="noopener noreferrer" className="block text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: receipt.target_meeting_id, view: "preparation" }, EMPTY_COCKPIT_SCOPE)}>{t(($) => $.meeting_disposition.open_target)} {t(($) => $.action_flow.new_tab)}</AppLink>}
     {effect.kind === "stop_run" && receipt && <div className="space-y-2"><p>{runStatus(receipt.run_status ?? "unknown")}</p><p className="text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>{receipt.run_id && <CockpitPreparationRun wsId={wsId} runId={receipt.run_id} issueId={receipt.issue_id} />}</div>}
     {effect.kind === "cancel_issue" && receipt && <p className="text-muted-foreground">{t(($) => $.meeting_preparation.actual_cancellations, { wakeups: receipt.stopped_wakeup_total, queued: receipt.cancelled_queue_total })}</p>}
     <CockpitPreparationReasons codes={effect.error_code ? [effect.error_code] : []} targets={effect.targets.filter((target) => !(receipt?.issue && target.kind === "issue" && target.issue_id === receipt.issue.id))} />

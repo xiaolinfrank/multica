@@ -5,41 +5,19 @@ import type { CockpitPreparationEffectDetail } from "../types/cockpit-meeting-pr
 const id = z.string().uuid();
 const revision = z.number().int().nonnegative();
 const common = { command_key: id, expected_revision: revision };
-const priority = z.enum(["none", "urgent", "high", "medium", "low"]);
-const agendaDefaults = z.object({ title: z.string(), purposes: z.array(z.enum(["planning", "goal_review", "boundary_confirmation", "question_clarification", "solution_discussion", "direction_decision"])), desired_outcome: z.string(), notes: z.string() });
-const issueDefaults = z.object({ title: z.string(), description: z.string(), priority });
-const slot = z.object({
-  slot_id: id, kind: z.enum(["agenda", "preparation_issue", "issue_reference", "material_reference"]), label: z.string(),
-  agenda_slot_id: id.nullable(), agenda: agendaDefaults.nullable(), new_issue: issueDefaults.nullable(), purpose: z.string(),
-}).refine((value) => value.kind === "agenda" ? value.agenda !== null && value.new_issue === null && value.agenda_slot_id === null && value.purpose === ""
-  : value.agenda === null && value.agenda_slot_id !== null && (value.kind === "preparation_issue" ? value.new_issue !== null && value.purpose === ""
-    : value.new_issue === null && (value.kind === "material_reference" ? value.purpose === "material" : value.purpose === "preparation" || value.purpose === "material")));
-const config = z.object({ schema_version: z.literal(1), slots: z.array(slot).max(50) });
-const templateFields = { title: z.string(), description: z.string(), active: z.boolean(), config };
-const binding = z.object({
-  slot_id: id, selected: z.boolean(), node_id: id.nullable(), facilitator_user_id: id.nullable(),
-  project_id: id.nullable(), module_id: id.nullable(), assignee_type: z.enum(["member", "agent", "squad"]).nullable(), assignee_id: id.nullable(),
-  due_date: z.string().nullable(), issue_id: id.nullable(), material_reference_id: id.nullable(),
-});
-const applicationFields = { template_version_id: id, bindings: z.array(binding).max(50) };
 const cancellationChoice = z.object({ issue_id: id, expected_revision: revision, action: z.enum(["retain", "cancel", "change_due_date", "link_meeting"]), cancel_status: z.string().nullable(),
-  due_date: z.string().nullable(), target_meeting_id: id.nullable(), target_agenda_id: id.nullable() });
+  due_date: z.string().nullable(), target_meeting_id: id.nullable() });
 const cancellationFields = { reason: z.string(), issues: z.array(cancellationChoice).max(50), run_ids: z.array(id).max(50) };
 
 const dispositionTransition = z.enum(["reinstate", "archive", "unarchive"]);
 const controlTransition = z.enum(["pause", "resume", "skip", "claim"]);
-const templateForm = z.object({ kind: z.literal("template"), observedRevision: revision, ...templateFields });
 const formSchema = z.discriminatedUnion("kind", [
-  templateForm,
-  z.object({ kind: z.literal("application"), templateId: id, ...applicationFields }),
   z.object({ kind: z.literal("cancellation"), ...cancellationFields }),
   z.object({ kind: z.literal("disposition"), observedRevision: revision, transition: dispositionTransition, reason: z.string() }),
   z.object({ kind: z.literal("control"), observedRevision: revision, transition: controlTransition, effectId: id.nullable(), reason: z.string() }),
   z.object({ kind: z.literal("reauthorization"), observedRevision: revision, effectId: id, reason: z.string() }),
 ]);
 const commandSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("template"), templateId: id.nullable(), body: z.object({ ...common, ...templateFields }) }),
-  z.object({ kind: z.literal("application"), meetingId: id, body: z.object({ ...common, ...applicationFields, context_token: z.string().min(1) }) }),
   z.object({ kind: z.literal("cancellation"), meetingId: id, body: z.object({ ...common, ...cancellationFields, context_token: z.string().min(1) }) }),
   z.object({ kind: z.literal("append_disposition"), meetingId: id, body: z.object({ ...common, ...cancellationFields, context_token: z.string().min(1) }) }),
   z.object({ kind: z.literal("disposition"), meetingId: id, body: z.object({ ...common, transition: dispositionTransition, reason: z.string() }) }),
@@ -50,14 +28,6 @@ const commandSchema = z.discriminatedUnion("kind", [
 const persisted = z.object({ forms: z.record(z.string(), formSchema), commands: z.record(z.string(), commandSchema), instances: z.record(z.string(), id) });
 export type CockpitPreparationFormDraft = z.infer<typeof formSchema>;
 export type CockpitPreparationPendingCommand = z.infer<typeof commandSchema>;
-export type CockpitTemplateEditorDraft = Extract<CockpitPreparationFormDraft, { kind: "template" }>;
-export type CockpitTemplateApplicationDraft = Extract<CockpitPreparationFormDraft, { kind: "application" }>;
-
-/** Newer template schema or kinds remain readable through metadata, but cannot become an editable draft. */
-export function parseCockpitTemplateEditorDraft(value: unknown): CockpitTemplateEditorDraft | null {
-  const result = templateForm.safeParse(value); return result.success ? result.data : null;
-}
-
 /** User-authored fields and exact unresolved commands only; server progress stays in Query. */
 export const useCockpitMeetingPreparationDraftStore = createDraftStore<z.infer<typeof persisted>>({
   storageKey: "multica_cockpit_meeting_preparation_drafts", emptyData: { forms: {}, commands: {}, instances: {} },
@@ -81,7 +51,6 @@ export function clearCockpitPreparationForm(key: string, observed: CockpitPrepar
 }
 
 function commandScope(value: CockpitPreparationPendingCommand) {
-  if (value.kind === "template") return [value.kind, value.templateId];
   return [value.kind, value.meetingId, "operationId" in value ? value.operationId : null, "effectId" in value ? value.effectId : null];
 }
 

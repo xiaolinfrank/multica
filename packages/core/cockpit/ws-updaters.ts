@@ -126,7 +126,7 @@ export function onCockpitChanged(
     void invalidateCockpitMeetingDirectoryFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
     return;
   }
-  if (scope === "meeting_templates" || scope === "meeting_preparation") {
+  if (scope === "meeting_preparation") {
     const meetingId = asRecord(entity)?.["meeting_id"];
     void invalidateCockpitMeetingPreparationFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
     return;

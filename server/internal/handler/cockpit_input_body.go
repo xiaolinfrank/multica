@@ -88,14 +88,6 @@ func validateCockpitInputBody(w http.ResponseWriter, body any) bool {
 		if count != 1 || !matching {
 			return inputBodyError(w, "source must have exactly its declared branch")
 		}
-		if in.InitialReference != nil {
-			ids["reference_key"] = in.InitialReference.ReferenceKey
-			ids["meeting_id"] = in.InitialReference.MeetingID
-			optional["agenda_id"] = in.InitialReference.AgendaID
-			if !inputPurposeValid(in.InitialReference.Purpose) {
-				return inputBodyError(w, "invalid purpose")
-			}
-		}
 	case *service.CockpitInputRestartInput:
 		command = in.CommandKey
 		revision = in.ExpectedRevision

@@ -68,7 +68,7 @@ function matches(node: CockpitNode, query: string, displayCode: string): boolean
     .some((value) => value != null && String(value).toLowerCase().includes(needle));
 }
 
-function formatAmount(value: number): string {
+export function formatAmount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 

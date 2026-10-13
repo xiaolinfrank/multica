@@ -226,18 +226,11 @@ export interface CockpitInputVersionPage {
   nextCursor: string | null;
 }
 
-export interface CockpitInputInitialReference {
-  referenceKey: string;
-  meetingId: string;
-  agendaId: string | null;
-  purpose: string;
-}
 
 export interface CockpitInputVersionSubmitInput {
   commandKey: string;
   expectedRevision: number;
   source: CockpitInputSourceInput;
-  initialReference: CockpitInputInitialReference | null;
 }
 
 export interface CockpitInputVersionReceipt {
@@ -252,7 +245,6 @@ export interface CockpitInputVersionReceipt {
   payloadKind: string;
   captureState: string;
   transferId: string | null;
-  initialReference: CockpitInputReferenceReceipt | null;
   principal: CockpitInputPrincipal;
   acceptedAt: string;
 }
@@ -370,83 +362,6 @@ export interface CockpitInputUploadResult {
   current: CockpitInputTransferMetadata;
 }
 
-export interface CockpitInputReference {
-  workspaceId: string;
-  id: string;
-  referenceKey: string;
-  meetingId: string;
-  meetingTitle: string;
-  agendaId: string | null;
-  agendaTitle: string;
-  inputId: string;
-  inputTitle: string;
-  version: CockpitInputVersionMetadata;
-  purpose: string;
-  createdBy: CockpitInputPrincipal;
-  createdAt: string;
-  removedAt: string | null;
-  canRemove: boolean;
-}
-
-export interface CockpitInputReferenceSummary {
-  availableReady: number;
-  unavailableReady: number;
-  unknownReady: number;
-  total: number;
-  ready: number;
-  pending: number;
-  needsAttention: number;
-}
-
-export interface CockpitInputReferencePage {
-  q: string;
-  purpose: string;
-  workspaceId: string;
-  meetingId: string;
-  agendaId: string | null;
-  includeRemoved: boolean;
-  pageSize: number;
-  items: Array<CockpitInputReference>;
-  total: number;
-  summary: CockpitInputReferenceSummary;
-  nextCursor: string | null;
-  canAdd: boolean;
-  blockedReasons: Array<string>;
-}
-
-export interface CockpitInputReferenceCreateInput {
-  commandKey: string;
-  agendaId: string | null;
-  inputVersionId: string;
-  purpose: string;
-}
-
-export interface CockpitInputReferenceRemoveInput {
-  commandKey: string;
-}
-
-export interface CockpitInputReferenceReceipt {
-  commandKey: string;
-  requestHash: string;
-  referenceId: string;
-  meetingId: string;
-  agendaId: string | null;
-  inputId: string;
-  inputVersionId: string;
-  purpose: string;
-  removed: boolean;
-  principal: CockpitInputPrincipal;
-  acceptedAt: string;
-}
-
-export interface CockpitInputReferenceResult {
-  workspaceId: string;
-  commandKey: string;
-  action: string;
-  replayed: boolean;
-  receipt: CockpitInputReferenceReceipt;
-  current: CockpitInputReference | null;
-}
 
 export interface CockpitInputDownloadLink {
   workspaceId: string;

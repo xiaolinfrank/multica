@@ -54,8 +54,8 @@ func TestCockpitDirectoryReadPagesRetainScopeAndSeparateAttemptBodies(t *testing
 			"responsible_user_id": owner, "input": directoryRaw(CockpitDirectoryPreviewInput{Mode: "prepare", RootID: rootID, RelativeDirectory: relative, Partitions: []string{}, ObservedBindingRevision: 1, BindAfterBase: true}),
 			"receipt": directoryRaw(receipt), "created_at": created.Add(time.Duration(index) * time.Second)})
 		f.InsertNoID(t, "cockpit_meeting_lifecycle_command", testutil.Cols{"workspace_id": f.ws, "meeting_id": f.meeting, "command_key": key,
-			"kind": "directory_prepare", "actor_id": owner, "request_hash": hash, "revision": 1, "agenda_revision": 1, "directory_operation_id": op,
-			"receipt": directoryRaw(CockpitLifecycleReceipt{Revision: 1, AgendaRevision: 1, RequestHash: hash, Directory: &receipt})},
+			"kind": "directory_prepare", "actor_id": owner, "request_hash": hash, "revision": 1, "directory_operation_id": op,
+			"receipt": directoryRaw(CockpitLifecycleReceipt{Revision: 1, RequestHash: hash, Directory: &receipt})},
 			"workspace_id=$1 AND meeting_id=$2 AND command_key=$3", f.ws, f.meeting, key)
 		f.Insert(t, "cockpit_meeting_directory_step", testutil.Cols{"id": step, "workspace_id": f.ws, "meeting_id": f.meeting, "operation_id": op,
 			"position": 0, "kind": "base", "label": fmt.Sprintf("Directory %02d", index), "relative_path": relative, "path_hash": hash,

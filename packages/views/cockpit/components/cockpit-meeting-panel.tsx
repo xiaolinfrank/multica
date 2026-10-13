@@ -1,9 +1,13 @@
 "use client";
 
-// One meeting, in full: what was agreed, what it opened, and where its
-// material lives. The same panel shape as the work-item panel next door, for
-// the same reason — the register and the gantt are two views of one board, and
-// a reader should not have to learn a second layout to read a meeting.
+// One meeting, in full, as three stacked regions. The highlighted stage card
+// on top carries the 准备 → 会议记录 → 纪要确认 timeline and the selected
+// stage's action surface. Below it sit the issues and execution tasks the
+// meeting is linked to. The long fact region at the bottom holds the
+// directory, the schedule, people and the maintenance corners (occurrence,
+// preparation ledger, directory plans). The same panel shape as the
+// work-item panel next door, for the same reason — the register and the
+// gantt are two views of one board.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +19,7 @@ import type {
   CockpitMeetingPatch,
 } from "@multica/core/types";
 import {
-  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitMeetingContextPath, cockpitMeetingFocusPath, cockpitScope,
+  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitMeetingContextPath, cockpitScope,
   cockpitWorkflowSummaryPollInterval,
   type CockpitMeetingVocabularySource,
   cockpitMeetingPeopleOptions,
@@ -23,8 +27,7 @@ import {
   splitCockpitMeetingParties,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
-import { Separator } from "@multica/ui/components/ui/separator";
-import { Check, ExternalLink, Maximize2, Minimize2, ScanSearch, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
   CockpitField,
@@ -38,17 +41,21 @@ import { CockpitContactNamePicker } from "./cockpit-contact-name-picker";
 import { CockpitMemberNamePicker } from "./cockpit-member-name-picker";
 import { CockpitAttendeeField } from "./cockpit-attendees";
 import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cockpit-people";
-import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
-import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
-import { CockpitMeetingMaterials } from "./cockpit-meeting-materials";
 import { CockpitMeetingDirectory } from "./cockpit-meeting-directory";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { AppLink, useNavigation } from "../../navigation";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
-import { CockpitMeetingInputs } from "./cockpit-meeting-inputs";
-import { CockpitMeetingAgenda } from "./cockpit-meeting-agenda";
+import { useNavigation } from "../../navigation";
+import { Tabs, TabsContent, TabsList } from "@multica/ui/components/ui/tabs";
+import { CockpitMeetingPreparation } from "./cockpit-meeting-preparation";
+import { CockpitMeetingRecording } from "./cockpit-meeting-recording";
+import { CockpitPreparationHistory } from "./cockpit-preparation-history";
+import { CockpitPreparationOperation } from "./cockpit-preparation-operation";
+import { CockpitPathField } from "./cockpit-path-field";
+import { LocalPathLink } from "../../common/local-path-link";
+import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
+import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
+import { CockpitMeetingOccurrence } from "./cockpit-meeting-lifecycle";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
-import { CockpitMeetingStageAction, CockpitMeetingStageTabs } from "./cockpit-meeting-stage";
+import { CockpitMeetingStageTabs } from "./cockpit-meeting-stage";
 import { meetingStageDefaultView } from "./meeting-stage";
 import { cockpitMeetingLifecycleOptions } from "@multica/core/cockpit";
 
@@ -87,21 +94,12 @@ export interface CockpitMeetingPanelProps {
   nodePageReady: boolean;
   nodePaging?: React.ReactNode;
   notice?: React.ReactNode;
-  artifactReferences?: React.ReactNode;
-  inputsAvailable?: boolean;
-  inputManifestAvailable?: boolean;
   lifecycleAvailable?: boolean;
-  templatesAvailable?: boolean;
-  canAddPreparation?: boolean;
-  dispositionAvailable?: boolean;
   directoryPreparationAvailable?: boolean;
-  onManageMeeting?: () => void;
   meetingActions?: React.ReactNode;
-  authorizedPreparationId?: string | null;
-  onPreparationAuthorizationConsumed?: () => void;
   onOpenNode: (nodeId: string) => void;
-  onSaveMaterialPatch: (patch: Pick<CockpitMeetingPatch, "note" | "nas_dir">) => Promise<void>;
-  onPrepareDirectory: () => Promise<void>;
+  onManageMeeting?: () => void;
+  onSaveDirectory: (nasDir: string) => Promise<void>;
   readOnly?: boolean;
 }
 
@@ -122,16 +120,15 @@ export function CockpitMeetingPanel({
   onLinkIssue,
   onUnlinkIssue,
   onSaveIssueRoles,
-  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, artifactReferences, inputsAvailable = false, inputManifestAvailable = false, lifecycleAvailable = false, templatesAvailable = false, canAddPreparation, dispositionAvailable = false, directoryPreparationAvailable = false, onManageMeeting, meetingActions, authorizedPreparationId, onPreparationAuthorizationConsumed,
-  onOpenNode,
-  onSaveMaterialPatch,
-  onPrepareDirectory,
+  onLinkNode, onUnlinkNode, issuePaging, nodePaging, issuePageReady, nodePageReady, notice, lifecycleAvailable = false, directoryPreparationAvailable = false, onManageMeeting, meetingActions,
+  onOpenNode, onSaveDirectory,
   readOnly,
 }: CockpitMeetingPanelProps) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
   const destination = cockpitDestination(navigation.searchParams);
+  const preparationId = destination.meetingId === meeting.id ? destination.preparationId : null;
   const directoryOperationId = destination.meetingId === meeting.id ? destination.directoryOperationId : null;
   const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
   const lifecycleQuery = useQuery({ ...cockpitMeetingLifecycleOptions(wsId, meeting.id), enabled: lifecycleAvailable });
@@ -158,26 +155,36 @@ export function CockpitMeetingPanel({
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data, stageTiming, now);
-  const section = destination.meetingId === meeting.id && destination.meetingView && destination.meetingView !== "agenda" && destination.meetingView !== "workflow" ? destination.meetingView : stageDefault;
-  // R4: `meeting_focus=1` is the full-width workbench — the page shell replaces
-  // the register with this panel, and the agenda surfaces go three-column.
-  const focused = destination.meetingId === meeting.id && navigation.searchParams.get("meeting_focus") === "1";
+  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state ?? meeting.occurrence_state, workflowQuery.data, stageTiming, now);
+  const requested = destination.meetingId === meeting.id ? destination.meetingView : null;
+  // Only the three stage views select a surface; legacy directory/details
+  // deep links land on the projected stage while their parameters below
+  // still open the matching maintenance corner.
+  const stage: "preparation" | "recording" | "minutes_review" = requested === "preparation" || requested === "recording" || requested === "minutes_review" ? requested : stageDefault;
   const scope = cockpitScope(navigation.searchParams);
-  const openSection = (value: "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details", options?: { focused?: boolean }) => navigation.push(options?.focused === undefined
-    ? cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, value)
-    : cockpitMeetingFocusPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, options.focused, value));
-  // Each stage view mounts its working surface on first visit; the meeting
-  // keeps state through the stores, not through duplicated early mounts.
-  const [visitedViews, setVisitedViews] = useState<ReadonlySet<string>>(() => new Set([section]));
-  useEffect(() => { setVisitedViews((visited) => visited.has(section) ? visited : new Set(visited).add(section)); }, [section]);
-  const agendaOpened = visitedViews.has("preparation");
-  const recordingOpened = visitedViews.has("recording");
-  const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "preparation");
-  const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
-  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "minutes_review");
+  const openStage = (value: "preparation" | "recording" | "minutes_review") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, value));
+  // Each stage surface mounts on first visit; the meeting keeps state through
+  // the stores, not through duplicated early mounts.
+  const [visitedStages, setVisitedStages] = useState<ReadonlySet<string>>(() => new Set([stage]));
+  useEffect(() => { setVisitedStages((visited) => visited.has(stage) ? visited : new Set(visited).add(stage)); }, [stage]);
+  const preparationOpened = visitedStages.has("preparation");
+  const recordingOpened = visitedStages.has("recording");
+  const recordingHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, "recording");
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
+  // Escape closes the panel, same contract as the work-item panel next door:
+  // editors, pickers, menus and dialogs consume Escape before it reaches us.
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"]')) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable=true]")) return;
+      onClose();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
   const unset = t(($) => $.common.unset);
   const vocabulary = useMemo(() => cockpitMeetingVocabulary(meetings), [meetings]);
   const people = useCockpitPeople(members);
@@ -214,9 +221,7 @@ export function CockpitMeetingPanel({
   }, [workflowQuery.data, meeting.id, issueLinks]);
 
   return (
-    <aside className={focused
-      ? "cockpit-panel-enter flex w-full min-w-0 flex-1 flex-col bg-card"
-      : "cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0"}>
+    <aside className="cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0">
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <EditableText
@@ -238,11 +243,7 @@ export function CockpitMeetingPanel({
             />
           </div>
         </div>
-        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} now={now} materialsReady={lifecycleQuery.data?.materials?.ready === true} onOpenView={openSection} />
-        <Button variant="ghost" size="icon-sm" aria-label={focused ? t(($) => $.meeting_stage.exit_focus) : t(($) => $.meeting_stage.enter_focus)}
-          onClick={() => navigation.push(cockpitMeetingFocusPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, !focused))}>
-          {focused ? <Minimize2 className="size-4" aria-hidden /> : <Maximize2 className="size-4" aria-hidden />}
-        </Button>
+        {meeting.nas_dir ? <LocalPathLink path={meeting.nas_dir} className="shrink-0 text-caption">{t(($) => $.meeting_lifecycle.open_directory)}</LocalPathLink> : null}
         {meetingActions ?? (!readOnly && <Button variant="ghost" size="icon-sm" disabled={workflowEnabled || workflowUnknown} aria-label={t(($) => $.meeting.delete, { title: meeting.title })} onClick={onDelete}><Trash2 className="size-4" /></Button>)}
         <button
           ref={closeButton}
@@ -280,320 +281,319 @@ export function CockpitMeetingPanel({
         </div>
       )}
 
-      <Tabs value={section} onValueChange={(value) => {
-        navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
-      }} className="min-h-0 flex-1 gap-0">
-        <TabsList aria-label={t(($) => $.meeting_stage.strip)} className="h-auto w-full shrink-0 gap-1 rounded-none border-b p-2">
-          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} now={now} />}
-          {!lifecycleAvailable && <TabsTrigger value="preparation" className="h-9 flex-1 px-3 text-body">{t(($) => $.meeting_stage.preparation)}</TabsTrigger>}
-          <TabsTrigger value="resources" className="ml-auto h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_resources)}</TabsTrigger>
-          <TabsTrigger value="details" className="h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_details)}</TabsTrigger>
-        </TabsList>
-        <div className={focused && (section === "preparation" || section === "recording") ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto p-4"}>
-          <TabsContent value="preparation" keepMounted className={focused ? "h-full" : undefined}>
-            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} focused={focused} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
-          </TabsContent>
-          <TabsContent value="recording" keepMounted className={focused ? "h-full" : undefined}>
-            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} stage="recording" focused={focused} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
-          </TabsContent>
-          <TabsContent value="minutes_review" keepMounted>
-            <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
-              members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
-              loading={workflowQuery.isPending} loadError={workflowQuery.isError}
-              onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}
-              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
-          </TabsContent>
-          <TabsContent value="followup" keepMounted>
-            <CockpitMeetingWorkflowPanel key={`${wsId}:${meeting.id}:follow`} stage="followup" wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
-              members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
-              loading={workflowQuery.isPending} loadError={workflowQuery.isError}
-              onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}
-              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
-          </TabsContent>
-          <TabsContent value="resources" keepMounted>
-            <CockpitMeetingDirectory key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} available={directoryPreparationAvailable} active={section === "resources"} operationId={directoryOperationId} readOnly={readOnly} onManageMeeting={() => onManageMeeting?.()} />
-            <div hidden={Boolean(directoryOperationId)} className="space-y-4">
-            {inputsAvailable && <CockpitMeetingInputs wsId={wsId} accountId={currentUserId} meetingId={meeting.id} targetLabel={meeting.title} active={section === "resources" && !directoryOperationId} readOnly={readOnly} />}
-            {artifactReferences}
-            <CockpitMeetingMaterials inputManifestAvailable={inputsAvailable && inputManifestAvailable} wsId={wsId} meeting={meeting} workflow={workflowQuery.data} workflowHref={workflowHref} readOnly={readOnly} directoryPreparationAvailable={directoryPreparationAvailable}
-              onSaveMaterialPatch={onSaveMaterialPatch} onPrepareDirectory={onPrepareDirectory} />
-        <Separator className="my-3" />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-5 p-4">
+          {/* Top region: the highlighted stage card. The timeline selects
+              the working surface; the checkmarks read off the meeting's
+              confirmed facts. */}
+          <section aria-label={t(($) => $.meeting_stage.strip)} className="rounded-xl border border-primary/30 bg-primary/5 p-3 shadow-sm">
+            <Tabs value={stage} onValueChange={openStage} className="gap-0">
+              <TabsList className="relative h-auto w-full justify-center gap-2 bg-transparent p-0">
+                <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state ?? meeting.occurrence_state} workflow={workflowQuery.data} timing={stageTiming} now={now} />
+              </TabsList>
+              <div className="mt-3 border-t border-primary/15 pt-3">
+                <TabsContent value="preparation" keepMounted>
+                  {preparationOpened && <CockpitMeetingPreparation key={`${wsId}:${meeting.id}`} wsId={wsId} currentUserId={currentUserId} meeting={meeting}
+                    defaultPlacement={defaultPlacement} defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />}
+                </TabsContent>
+                <TabsContent value="recording" keepMounted>
+                  {recordingOpened && <CockpitMeetingRecording key={`${wsId}:${meeting.id}:rec`} wsId={wsId} meetingId={meeting.id}
+                    workflow={workflowQuery.data} loading={workflowQuery.isPending} loadError={workflowQuery.isError} onReload={reloadWorkflow}
+                    currentUserId={currentUserId} defaultPlacement={defaultPlacement} defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />}
+                </TabsContent>
+                <TabsContent value="minutes_review" keepMounted>
+                  <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
+                    members={members} workflow={workflowQuery.data}
+                    loading={workflowQuery.isPending} loadError={workflowQuery.isError}
+                    onReload={reloadWorkflow} nasDir={meeting.nas_dir} recordingHref={recordingHref} readOnly={readOnly} />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </section>
 
-        {/* The tasks the meeting is carried out through. The one the platform
-            opened with the meeting leads the list and reads no differently —
-            it is an ordinary issue, and unlinking it does not delete it. */}
-        <CockpitField label={t(($) => $.meeting.issues)}>
-          {issuePageReady && issueLinks.length === 0 ? (
-            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
-          ) : null}
-          {issuePaging}
-          <CockpitMeetingIssueLinks
-            wsId={wsId}
-            links={issueLinks}
-            onLink={onLinkIssue}
-            onUnlink={onUnlinkIssue}
-            onSaveRoles={onSaveIssueRoles}
-            disabled={readOnly || workflowUnknown}
-            requiredRolesByIssue={requiredRolesByIssue} canAddPreparation={canAddPreparation}
-          />
-
-        </CockpitField>
-
-        <CockpitField label={t(($) => $.meeting.nodes)} className="mt-3">
-          {nodePaging}
-          {nodePageReady && nodeLinks.length === 0 ? (
-            <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_nodes)}</p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {nodeLinks.map((link) => {
-                const label = nodeLabels.get(link.node_id) ?? link.node_id;
-                return (
-                  <li key={link.node_id} className="group/node flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onOpenNode(link.node_id)}
-                      aria-label={t(($) => $.meeting.open_node, { label })}
-                      className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-caption hover:bg-accent"
-                    >
-                      {label}
-                    </button>
-                    {!readOnly && (
+          {/* Middle region: every issue and execution task the meeting
+              carries, whatever stage opened it. */}
+          <section aria-label={t(($) => $.meeting.issues)} className="space-y-3">
+            <h3 className="text-title-sm font-medium">{t(($) => $.meeting.issues)}</h3>
+            {issuePageReady && issueLinks.length === 0 ? (
+              <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
+            ) : null}
+            {issuePaging}
+            <CockpitMeetingIssueLinks
+              wsId={wsId}
+              links={issueLinks}
+              onLink={onLinkIssue}
+              onUnlink={onUnlinkIssue}
+              onSaveRoles={onSaveIssueRoles}
+              disabled={readOnly}
+              requiredRolesByIssue={requiredRolesByIssue}
+            />
+            <h3 className="text-title-sm font-medium">{t(($) => $.meeting.nodes)}</h3>
+            {nodePaging}
+            {nodePageReady && nodeLinks.length === 0 ? (
+              <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_nodes)}</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {nodeLinks.map((link) => {
+                  const label = nodeLabels.get(link.node_id) ?? link.node_id;
+                  return (
+                    <li key={link.node_id} className="group/node flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => onUnlinkNode(link.node_id)}
-                        aria-label={t(($) => $.meeting.unlink_node, { label })}
-                        className="rounded-full p-0.5 text-muted-foreground opacity-0 group-hover/node:opacity-100 hover:text-foreground focus-visible:opacity-100"
+                        onClick={() => onOpenNode(link.node_id)}
+                        aria-label={t(($) => $.meeting.open_node, { label })}
+                        className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-caption hover:bg-accent"
                       >
-                        <X className="size-3" />
+                        {label}
                       </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!readOnly && (
-            <CockpitNodeChoicePicker disabled={canAddPreparation === false} wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={cockpitScope(navigation.searchParams)}
-              onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
-          )}
-        </CockpitField>
-
-        <Separator className="my-3" />
-            </div>
-          </TabsContent>
-          <TabsContent value="details" keepMounted>
-        <div className="grid grid-cols-2 gap-3">
-          <CockpitField label={t(($) => $.meeting.date)}>
-            <EditableDate
-              value={meeting.meet_date}
-              onCommit={(meet_date) => onPatch({ meet_date })}
-              label={t(($) => $.meeting.date)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}>
-            <EditableSuggest
-              value={meeting.status}
-              onCommit={(status) => onPatch({ status })}
-              suggestions={vocabulary.statuses}
-              label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-            {lifecycleAvailable && <div className="mt-1 space-y-1 text-caption text-muted-foreground"><p>{t(($) => $.meeting_lifecycle.custom_status_hint)}</p><AppLink href={agendaHref} className="text-primary underline">{t(($) => $.meeting_lifecycle.record_occurrence)}</AppLink></div>}
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.start_time)}>
-            <EditableText
-              value={meeting.start_time ?? ""}
-              onCommit={(next) => onPatch({ start_time: next.trim() ? next.trim() : null })}
-              label={t(($) => $.meeting.start_time)}
-              placeholder={t(($) => $.meeting.all_day)}
-              disabled={readOnly}
-              displayClassName="tabular-nums"
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.end_time)}>
-            <EditableText
-              value={meeting.end_time ?? ""}
-              onCommit={(next) => onPatch({ end_time: next.trim() ? next.trim() : null })}
-              label={t(($) => $.meeting.end_time)}
-              placeholder={t(($) => $.meeting.all_day)}
-              disabled={readOnly}
-              displayClassName="tabular-nums"
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.kind)}>
-            <EditableSuggest
-              value={meeting.kind}
-              onCommit={(kind) => onPatch({ kind })}
-              suggestions={vocabulary.kinds}
-              label={t(($) => $.meeting.kind)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.track)}>
-            <EditableSuggest
-              value={meeting.track}
-              onCommit={(track) => onPatch({ track })}
-              suggestions={vocabulary.tracks}
-              label={t(($) => $.meeting.track)}
-              placeholder={unset}
-              // The empty state is a lane of its own ("unfiled"), not just an
-              // unset field, so the editor names it instead of showing "—".
-              clearLabel={t(($) => $.meetings.track_none)}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.location)}>
-            <EditableSuggest
-              value={meeting.location}
-              onCommit={(location) => onPatch({ location })}
-              suggestions={vocabulary.locations}
-              label={t(($) => $.meeting.location)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.parties)} className="col-span-2">
-            <EditableTokens
-              value={meeting.parties}
-              onCommit={(parties) => onPatch({ parties })}
-              split={splitCockpitMeetingParties}
-              suggestions={partyOptions}
-              label={t(($) => $.meeting.parties)}
-              placeholder={unset}
-              disabled={readOnly}
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.organizer)} className="col-span-2">
-            <EditableSuggest
-              value={meeting.organizer}
-              onCommit={(organizer) => onPatch({ organizer })}
-              suggestions={personOptions}
-              label={t(($) => $.meeting.organizer)}
-              placeholder={unset}
-              disabled={readOnly}
-              renderDisplay={(name) =>
-                name ? (
-                  <CockpitPersonLabel name={name} member={people.byName.get(name)} />
-                ) : (
-                  <span className="text-caption text-muted-foreground italic">{unset}</span>
-                )
-              }
-              renderOption={(name) => (
-                <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
-              )}
-            />
-            <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
-            <CockpitContactNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
-            <CockpitAttendeeField
-              value={meeting.attendees}
-              onCommit={(attendees) => onPatch({ attendees })}
-              parties={splitCockpitMeetingParties(meeting.parties)}
-              wsId={wsId}
-              suggestions={personOptions}
-              label={t(($) => $.meeting.attendees)}
-              placeholder={unset}
-              disabled={readOnly}
-              onSaveEntry={onSaveDirectoryEntry}
-              onDeleteEntry={onDeleteDirectoryEntry}
-              onAutoSave={onAutoSaveDirectory}
-              renderToken={(name) => (
-                <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
-              )}
-              renderOption={(name) => (
-                <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
-              )}
-            />
-            <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.attendees)} disabled={readOnly} onSelect={(name) => onPatch({ attendees: [...new Set([...splitCockpitMeetingParties(meeting.attendees), name])].join("、") })} />
-            {!readOnly && (
-              <p className="text-caption text-muted-foreground">
-                {t(($) => $.meetings.directory_hint)}
-              </p>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => onUnlinkNode(link.node_id)}
+                          aria-label={t(($) => $.meeting.unlink_node, { label })}
+                          className="rounded-full p-0.5 text-muted-foreground opacity-0 group-hover/node:opacity-100 hover:text-foreground focus-visible:opacity-100"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.meet_no)}>
-            <EditableText
-              value={meeting.meet_no}
-              onCommit={(meet_no) => onPatch({ meet_no })}
-              label={t(($) => $.meeting.meet_no)}
-              placeholder={unset}
-              disabled={readOnly}
-              displayClassName="tabular-nums"
-            />
-          </CockpitField>
-          <CockpitField label={t(($) => $.meeting.link)}>
-            <div className="flex min-w-0 items-center gap-1">
-              <EditableText
-                value={meeting.link}
-                onCommit={(link) => onPatch({ link })}
-                label={t(($) => $.meeting.link)}
-                placeholder={unset}
-                disabled={readOnly}
-                displayClassName="truncate"
-                className="min-w-0"
-              />
-              {meeting.link && (
-                <a
-                  href={meeting.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={t(($) => $.meeting.open)}
-                  className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground"
-                >
-                  <ExternalLink className="size-3.5" />
-                </a>
-              )}
+            {!readOnly && (
+              <CockpitNodeChoicePicker wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={scope}
+                onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
+            )}
+          </section>
+
+          {/* Bottom region: the long fact area — directory, schedule,
+              people, and the maintenance corners. */}
+          <section aria-label={t(($) => $.meeting_stage.tab_details)} className="space-y-3">
+            <h3 className="text-title-sm font-medium">{t(($) => $.meeting_stage.tab_details)}</h3>
+            <CockpitPathField value={meeting.nas_dir} label={t(($) => $.meeting.folder)} empty={t(($) => $.meeting.no_folder)} readOnly={readOnly} onCommit={onSaveDirectory} />
+            {lifecycleAvailable && lifecycleQuery.data ? <CockpitMeetingOccurrence wsId={wsId} header={lifecycleQuery.data} refresh={reloadWorkflow} readOnly={readOnly} /> : null}
+            <div className="grid grid-cols-2 gap-3">
+              <CockpitField label={t(($) => $.meeting.date)}>
+                <EditableDate
+                  value={meeting.meet_date}
+                  onCommit={(meet_date) => onPatch({ meet_date })}
+                  label={t(($) => $.meeting.date)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}>
+                <EditableSuggest
+                  value={meeting.status}
+                  onCommit={(status) => onPatch({ status })}
+                  suggestions={vocabulary.statuses}
+                  label={lifecycleAvailable ? t(($) => $.meeting_lifecycle.custom_status) : t(($) => $.meeting.status)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+                {lifecycleAvailable && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.custom_status_hint)}</p>}
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.start_time)}>
+                <EditableText
+                  value={meeting.start_time ?? ""}
+                  onCommit={(next) => onPatch({ start_time: next.trim() ? next.trim() : null })}
+                  label={t(($) => $.meeting.start_time)}
+                  placeholder={t(($) => $.meeting.all_day)}
+                  disabled={readOnly}
+                  displayClassName="tabular-nums"
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.end_time)}>
+                <EditableText
+                  value={meeting.end_time ?? ""}
+                  onCommit={(next) => onPatch({ end_time: next.trim() ? next.trim() : null })}
+                  label={t(($) => $.meeting.end_time)}
+                  placeholder={t(($) => $.meeting.all_day)}
+                  disabled={readOnly}
+                  displayClassName="tabular-nums"
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.kind)}>
+                <EditableSuggest
+                  value={meeting.kind}
+                  onCommit={(kind) => onPatch({ kind })}
+                  suggestions={vocabulary.kinds}
+                  label={t(($) => $.meeting.kind)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.track)}>
+                <EditableSuggest
+                  value={meeting.track}
+                  onCommit={(track) => onPatch({ track })}
+                  suggestions={vocabulary.tracks}
+                  label={t(($) => $.meeting.track)}
+                  placeholder={unset}
+                  // The empty state is a lane of its own ("unfiled"), not just an
+                  // unset field, so the editor names it instead of showing "—".
+                  clearLabel={t(($) => $.meetings.track_none)}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.location)}>
+                <EditableSuggest
+                  value={meeting.location}
+                  onCommit={(location) => onPatch({ location })}
+                  suggestions={vocabulary.locations}
+                  label={t(($) => $.meeting.location)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.parties)} className="col-span-2">
+                <EditableTokens
+                  value={meeting.parties}
+                  onCommit={(parties) => onPatch({ parties })}
+                  split={splitCockpitMeetingParties}
+                  suggestions={partyOptions}
+                  label={t(($) => $.meeting.parties)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.organizer)} className="col-span-2">
+                <EditableSuggest
+                  value={meeting.organizer}
+                  onCommit={(organizer) => onPatch({ organizer })}
+                  suggestions={personOptions}
+                  label={t(($) => $.meeting.organizer)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                  renderDisplay={(name) =>
+                    name ? (
+                      <CockpitPersonLabel name={name} member={people.byName.get(name)} />
+                    ) : (
+                      <span className="text-caption text-muted-foreground italic">{unset}</span>
+                    )
+                  }
+                  renderOption={(name) => (
+                    <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
+                  )}
+                />
+                <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
+                <CockpitContactNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
+                <CockpitAttendeeField
+                  value={meeting.attendees}
+                  onCommit={(attendees) => onPatch({ attendees })}
+                  parties={splitCockpitMeetingParties(meeting.parties)}
+                  wsId={wsId}
+                  suggestions={personOptions}
+                  label={t(($) => $.meeting.attendees)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                  onSaveEntry={onSaveDirectoryEntry}
+                  onDeleteEntry={onDeleteDirectoryEntry}
+                  onAutoSave={onAutoSaveDirectory}
+                  renderToken={(name) => (
+                    <CockpitPersonLabel name={name} member={people.byName.get(name)} chip />
+                  )}
+                  renderOption={(name) => (
+                    <CockpitPersonLabel name={name} member={people.byName.get(name)} withEmail />
+                  )}
+                />
+                <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.attendees)} disabled={readOnly} onSelect={(name) => onPatch({ attendees: [...new Set([...splitCockpitMeetingParties(meeting.attendees), name])].join("、") })} />
+                {!readOnly && (
+                  <p className="text-caption text-muted-foreground">
+                    {t(($) => $.meetings.directory_hint)}
+                  </p>
+                )}
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.meet_no)}>
+                <EditableText
+                  value={meeting.meet_no}
+                  onCommit={(meet_no) => onPatch({ meet_no })}
+                  label={t(($) => $.meeting.meet_no)}
+                  placeholder={unset}
+                  disabled={readOnly}
+                  displayClassName="tabular-nums"
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.link)}>
+                <div className="flex min-w-0 items-center gap-1">
+                  <EditableText
+                    value={meeting.link}
+                    onCommit={(link) => onPatch({ link })}
+                    label={t(($) => $.meeting.link)}
+                    placeholder={unset}
+                    disabled={readOnly}
+                    displayClassName="truncate"
+                    className="min-w-0"
+                  />
+                  {meeting.link && (
+                    <a
+                      href={meeting.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={t(($) => $.meeting.open)}
+                      className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  )}
+                </div>
+              </CockpitField>
             </div>
-          </CockpitField>
-        </div>
 
-
-            {/* R4: legacy free-text records live in the collapsed auxiliary area —
-                the fact layer on the agenda tab is where occurrence facts are read now. */}
-            <details className="mt-4 space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
+            {/* Legacy free-text records stay available, collapsed: the fact
+                layer above is where occurrence facts are read now. */}
+            <details className="space-y-3 border-t pt-4" aria-label={t(($) => $.workflow.legacy_records)}>
               <summary className="cursor-pointer text-title-sm font-medium text-muted-foreground">{t(($) => $.workflow.legacy_records)}</summary>
               <p className="text-caption text-muted-foreground">{t(($) => $.workflow.legacy_records_hint)}</p>
-        <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
-          <EditableTextArea
-            value={meeting.minutes}
-            onCommit={(minutes) => onPatch({ minutes })}
-            label={t(($) => $.meeting.minutes)}
-            placeholder={unset}
-            disabled={legacyReadOnly}
-            rows={4}
-          />
-        </CockpitField>
-        <CockpitField label={t(($) => $.meeting.decisions)} className="mt-3">
-          <EditableTextArea
-            value={meeting.decisions}
-            onCommit={(decisions) => onPatch({ decisions })}
-            label={t(($) => $.meeting.decisions)}
-            placeholder={unset}
-            disabled={legacyReadOnly}
-            rows={3}
-          />
-        </CockpitField>
-        <CockpitField label={t(($) => $.meeting.actions)} className="mt-3">
-          <EditableTextArea
-            value={meeting.actions}
-            onCommit={(actions) => onPatch({ actions })}
-            label={t(($) => $.meeting.actions)}
-            placeholder={unset}
-            disabled={legacyReadOnly}
-            rows={3}
-          />
-        </CockpitField>
+              <CockpitField label={t(($) => $.meeting.minutes)} className="mt-3">
+                <EditableTextArea
+                  value={meeting.minutes}
+                  onCommit={(minutes) => onPatch({ minutes })}
+                  label={t(($) => $.meeting.minutes)}
+                  placeholder={unset}
+                  disabled={legacyReadOnly}
+                  rows={4}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.decisions)} className="mt-3">
+                <EditableTextArea
+                  value={meeting.decisions}
+                  onCommit={(decisions) => onPatch({ decisions })}
+                  label={t(($) => $.meeting.decisions)}
+                  placeholder={unset}
+                  disabled={legacyReadOnly}
+                  rows={3}
+                />
+              </CockpitField>
+              <CockpitField label={t(($) => $.meeting.actions)} className="mt-3">
+                <EditableTextArea
+                  value={meeting.actions}
+                  onCommit={(actions) => onPatch({ actions })}
+                  label={t(($) => $.meeting.actions)}
+                  placeholder={unset}
+                  disabled={legacyReadOnly}
+                  rows={3}
+                />
+              </CockpitField>
             </details>
-          </TabsContent>
+
+            <details open={Boolean(preparationId)} className="space-y-3 border-t pt-4">
+              <summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.meeting_stage.preparation_ledger)}</summary>
+              {preparationId
+                ? <CockpitPreparationOperation key={preparationId} wsId={wsId} meetingId={meeting.id} operationId={preparationId} directoryPreparationAvailable={directoryPreparationAvailable} readOnly={readOnly} />
+                : <CockpitPreparationHistory wsId={wsId} meetingId={meeting.id} />}
+            </details>
+
+            <details open={Boolean(directoryOperationId)} className="space-y-3 border-t pt-4">
+              <summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.meeting_directory.maintenance)}</summary>
+              <CockpitMeetingDirectory key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} available={directoryPreparationAvailable} active={Boolean(directoryOperationId)} operationId={directoryOperationId} readOnly={readOnly} onManageMeeting={() => onManageMeeting?.()} />
+            </details>
+          </section>
         </div>
-      </Tabs>
-
-
+      </div>
     </aside>
   );
 }

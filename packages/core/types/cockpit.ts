@@ -370,8 +370,6 @@ export interface CockpitMeetingIssueLink {
   required_roles?: string[];
   has_direct_reference?: boolean;
   has_agenda_reference?: boolean;
-  agenda_id?: string | null;
-  agenda_total?: number;
   issue_number: number;
   /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
   issue_identifier: string;
@@ -420,7 +418,6 @@ export type CockpitEventScope =
   | "meeting_nodes"
   | "meeting_workflow"
   | "meeting_lifecycle"
-  | "meeting_templates"
   | "meeting_directory"
   | "inputs"
   | "input_manifests"

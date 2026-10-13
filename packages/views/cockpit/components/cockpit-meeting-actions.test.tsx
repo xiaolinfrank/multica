@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 async function openAction() {
-  fireEvent.click(await screen.findByRole("link", { name: "Review action Verify interface" }));
+  fireEvent.click(await screen.findByRole("link", { name: /(?:Create issue for action:|Review action) Verify interface/ }));
   const dialog = await screen.findByRole("dialog", { name: "Confirm action" });
   await within(dialog).findByText("Verify interface");
   await waitFor(() => expect(api.getCockpitMinutesVersion).toHaveBeenCalled());
@@ -121,7 +121,7 @@ describe("meeting action decisions", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(new URL(currentPath, "https://multica.test").searchParams.get("action")).toBeNull();
-    const secondLink = screen.getByRole("link", { name: "Review action Second action" });
+    const secondLink = screen.getByRole("link", { name: "Create issue for action: Second action" });
     const shared = new URL(secondLink.getAttribute("href")!, "https://multica.test");
     expect(shared.searchParams.get("meeting")).toBe(WORKFLOW_MEETING_ID);
     expect(shared.searchParams.get("action")).toBe("action-2");
@@ -141,7 +141,7 @@ describe("meeting action decisions", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     reloaded.unmount(); setup();
-    await screen.findByRole("link", { name: "Review action Second action" });
+    await screen.findByRole("link", { name: "Create issue for action: Second action" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(new URL(currentPath, "https://multica.test").searchParams.get("meeting_view")).toBe("workflow");
     expect(new URL(currentPath, "https://multica.test").searchParams.get("filter")).toBe("kept");
@@ -205,7 +205,7 @@ describe("meeting action decisions", () => {
     first.unmount();
     actions = [meetingAction({ revision: 2, title: "Other person's latest title" })];
     setup();
-    fireEvent.click(await screen.findByRole("link", { name: "Review action Other person's latest title" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Create issue for action: Other person's latest title" }));
     dialog = await screen.findByRole("dialog", { name: "Confirm action" });
     expect(await within(dialog).findByRole("textbox", { name: "Action title" })).toHaveValue("Keep my unsaved title");
     expect(within(dialog).getByRole("button", { name: "Save suggestion" })).toBeDisabled();

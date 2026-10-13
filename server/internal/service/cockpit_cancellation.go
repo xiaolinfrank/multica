@@ -24,7 +24,7 @@ func dispositionSlotID(kind string, id pgtype.UUID) string {
 
 func normalizeCancellation(in *CockpitCancellationPreviewInput) error {
 	in.Reason = strings.TrimSpace(in.Reason)
-	if in.Reason == "" || !templateText(in.Reason, 16000) || len(in.Issues) > 50 || len(in.RunIDs) > 50 {
+	if in.Reason == "" || !preparationText(in.Reason, 16000) || len(in.Issues) > 50 || len(in.RunIDs) > 50 {
 		return ErrCockpitWorkflowInput
 	}
 	seen := map[pgtype.UUID]bool{}
@@ -39,16 +39,16 @@ func normalizeCancellation(in *CockpitCancellationPreviewInput) error {
 		c.IssueID = util.UUIDToString(id)
 		switch c.Action {
 		case "retain":
-			if c.CancelStatus != nil || c.DueDate != nil || c.TargetMeetingID != nil || c.TargetAgendaID != nil {
+			if c.CancelStatus != nil || c.DueDate != nil || c.TargetMeetingID != nil {
 				return ErrCockpitWorkflowInput
 			}
 		case "cancel":
-			if c.CancelStatus == nil || *c.CancelStatus == "" || c.DueDate != nil || c.TargetMeetingID != nil || c.TargetAgendaID != nil {
+			if c.CancelStatus == nil || *c.CancelStatus == "" || c.DueDate != nil || c.TargetMeetingID != nil {
 				return ErrCockpitWorkflowInput
 			}
 			effects++
 		case "change_due_date":
-			if c.CancelStatus != nil || c.TargetMeetingID != nil || c.TargetAgendaID != nil {
+			if c.CancelStatus != nil || c.TargetMeetingID != nil {
 				return ErrCockpitWorkflowInput
 			}
 			if c.DueDate != nil {
@@ -58,14 +58,11 @@ func normalizeCancellation(in *CockpitCancellationPreviewInput) error {
 			}
 			effects++
 		case "link_meeting":
-			if c.CancelStatus != nil || c.DueDate != nil || c.TargetMeetingID == nil || c.TargetAgendaID == nil {
+			if c.CancelStatus != nil || c.DueDate != nil || c.TargetMeetingID == nil {
 				return ErrCockpitWorkflowInput
 			}
-			if _, e := preparationUUID(c.TargetMeetingID); e != nil {
-				return e
-			}
-			if _, e := preparationUUID(c.TargetAgendaID); e != nil {
-				return e
+			if target, e := preparationUUID(c.TargetMeetingID); e != nil || !target.Valid {
+				return ErrCockpitWorkflowInput
 			}
 			effects++
 		default:
@@ -161,7 +158,7 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 	if e != nil {
 		return plan, e
 	}
-	tokenFacts := []any{x.meeting.LifecycleRevision, x.meeting.AgendaRevision, plan.View.AffectedIssueTotal, plan.View.ActiveRunTotal}
+	tokenFacts := []any{x.meeting.LifecycleRevision, plan.View.AffectedIssueTotal, plan.View.ActiveRunTotal}
 	if intent == "cancel" {
 		facts, err := q.ReadCockpitCancellationDirectoryFacts(ctx, db.ReadCockpitCancellationDirectoryFactsParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID})
 		if err != nil {
@@ -211,7 +208,6 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 			}
 		case "link_meeting":
 			target, _ := preparationUUID(choice.TargetMeetingID)
-			agenda, _ := preparationUUID(choice.TargetAgendaID)
 			if target == p.MeetingID {
 				item.Allowed = false
 				item.ReasonCodes = append(item.ReasonCodes, "choose_another_meeting")
@@ -220,15 +216,11 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 				if err != nil {
 					return plan, cockpitWorkflowError(err)
 				}
-				a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: target, ID: agenda})
-				if err != nil {
-					return plan, cockpitWorkflowError(err)
-				}
-				if a.RemovedAt.Valid || requireMeetingPreparationOpen(m) != nil {
+				if requireMeetingPreparationOpen(m) != nil {
 					item.Allowed = false
 					item.ReasonCodes = append(item.ReasonCodes, "target_meeting_preparation_closed")
 				}
-				tokenFacts = append(tokenFacts, []any{target, m.LifecycleRevision, agenda, a.Revision})
+				tokenFacts = append(tokenFacts, []any{target, m.LifecycleRevision})
 			}
 		}
 		if !item.Allowed {
@@ -236,7 +228,7 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 		}
 		copyChoice := choice
 		copyFacts := f
-		step := preparationEffectIntent{Slot: CockpitMeetingTemplateSlot{SlotID: item.SlotID, Kind: kind, Label: item.Label}, Binding: CockpitMeetingTemplateBinding{SlotID: item.SlotID, Selected: true, IssueID: &copyChoice.IssueID}, ExpectedIssueRevision: f.View.IssueRevision, IssueChoice: &copyChoice, DispositionFacts: &copyFacts, SelectedRunIDs: append([]string{}, in.RunIDs...), FactsHash: planningHash([]any{f.View.IssueRevision, f.Automation.WakeupHash, f.Automation.TaskHash})}
+		step := preparationEffectIntent{Slot: cockpitPreparationSlot{SlotID: item.SlotID, Kind: kind, Label: item.Label}, Binding: cockpitPreparationBinding{SlotID: item.SlotID, Selected: true, IssueID: &copyChoice.IssueID}, ExpectedIssueRevision: f.View.IssueRevision, IssueChoice: &copyChoice, DispositionFacts: &copyFacts, SelectedRunIDs: append([]string{}, in.RunIDs...), FactsHash: planningHash([]any{f.View.IssueRevision, f.Automation.WakeupHash, f.Automation.TaskHash})}
 		plan.Intents = append(plan.Intents, step)
 		plan.View.Effects = append(plan.View.Effects, item)
 	}
@@ -270,7 +262,7 @@ func readCancellationPreview(ctx context.Context, q *db.Queries, p CockpitLifecy
 		if accessible {
 			selectedRun.AgentName = r.AgentName
 		}
-		plan.Intents = append(plan.Intents, preparationEffectIntent{Slot: CockpitMeetingTemplateSlot{SlotID: item.SlotID, Kind: "stop_run", Label: item.Label}, Binding: CockpitMeetingTemplateBinding{SlotID: item.SlotID, Selected: true, IssueID: &issueID}, RunID: &runID, ExpectedIssueRevision: f.View.IssueRevision, DispositionFacts: &copyFacts, SelectedRunIDs: append([]string{}, in.RunIDs...), ExpectedRunStatus: r.Status, SelectedRun: selectedRun, FactsHash: planningHash([]any{f.View.IssueRevision, f.Automation.WakeupHash, f.Automation.TaskHash, r.ID, r.Status})})
+		plan.Intents = append(plan.Intents, preparationEffectIntent{Slot: cockpitPreparationSlot{SlotID: item.SlotID, Kind: "stop_run", Label: item.Label}, Binding: cockpitPreparationBinding{SlotID: item.SlotID, Selected: true, IssueID: &issueID}, RunID: &runID, ExpectedIssueRevision: f.View.IssueRevision, DispositionFacts: &copyFacts, SelectedRunIDs: append([]string{}, in.RunIDs...), ExpectedRunStatus: r.Status, SelectedRun: selectedRun, FactsHash: planningHash([]any{f.View.IssueRevision, f.Automation.WakeupHash, f.Automation.TaskHash, r.ID, r.Status})})
 		plan.View.Effects = append(plan.View.Effects, item)
 		tokenFacts = append(tokenFacts, []any{r.ID, r.Status, accessible, f.View.IssueRevision, f.Automation.TaskHash})
 	}
@@ -323,7 +315,7 @@ func (s *IssueService) saveMeetingCancellation(ctx context.Context, p CockpitLif
 	if appendPlan {
 		action = "preparation_dispose"
 	}
-	c, e := newLifecycleCommand(p, in.CockpitLifecycleCommandInput, action, pgtype.UUID{}, pgtype.UUID{}, in)
+	c, e := newLifecycleCommand(p, in.CockpitLifecycleCommandInput, action, in)
 	if e != nil {
 		return out, e
 	}
@@ -358,7 +350,7 @@ func (s *IssueService) saveMeetingCancellation(ctx context.Context, p CockpitLif
 		x.meeting.CancelledReason = in.Reason
 		x.meeting.LifecycleRevision = rev
 	}
-	o, receipt, e := createPreparationOperation(ctx, q, p, c, x, "cancel_preparation", pgtype.UUID{}, pgtype.UUID{}, in.ContextToken, in, plan.Intents)
+	o, receipt, e := createPreparationOperation(ctx, q, p, c, x, "cancel_preparation", in.ContextToken, in, plan.Intents)
 	if e != nil {
 		return out, e
 	}
@@ -376,7 +368,7 @@ func (s *IssueService) saveMeetingCancellation(ctx context.Context, p CockpitLif
 		}
 		receipt.DirectoryEffect = &effect
 	}
-	if e = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, RequestHash: c.hash, Reason: in.Reason, PreviousOccurrence: &previous, Occurrence: &occurrence, Preparation: &receipt}); e != nil {
+	if e = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, RequestHash: c.hash, Reason: in.Reason, PreviousOccurrence: &previous, Occurrence: &occurrence, Preparation: &receipt}); e != nil {
 		return out, e
 	}
 	h, e := preparationHeader(ctx, q, p, o)

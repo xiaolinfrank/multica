@@ -18,17 +18,6 @@ const reference = { id: "reference-1", artifact_id: "artifact-1", version_id: "v
   node_id: "target-node", target_label: "Target", purpose: "evidence", created_by: "author-1", created_at: time, removed_by: null, removed_at: null };
 
 describe("artifact responsibility response boundaries", () => {
-  it("reads a meeting's explicit fixed references without treating removed references as active material", async () => {
-    const { node_id: _nodeId, ...fields } = reference;
-    const item = { ...fields, meeting_id: "meeting-1", artifact_title: "Delivery report" };
-    const body = { workspace_id: "ws-1", meeting_id: "meeting-1", include_removed: false, items: [item], total: 1, next_cursor: null };
-    await expect(reply(body).client.getCockpitMeetingArtifactReferences("ws-1", "meeting-1")).resolves.toEqual(body);
-    const removed = { ...item, removed_by: "author-1", removed_at: time };
-    await expect(reply({ ...body, items: [removed] }).client.getCockpitMeetingArtifactReferences("ws-1", "meeting-1")).resolves.toBeNull();
-    const history = { ...body, include_removed: true, items: [removed] };
-    await expect(reply(history).client.getCockpitMeetingArtifactReferences("ws-1", "meeting-1", { include_removed: true })).resolves.toEqual(history);
-    await expect(reply(body).client.getCockpitMeetingArtifactReferences("ws-1", "meeting-2")).resolves.toBeNull();
-  });
   it("reads an original producer receipt even after another handoff, but rejects wrong ledger targets", async () => {
     const artifact = artifactFixture();
     const body = { workspace_id: "ws-1", artifact, assignment, to_issue: { ...artifact.producer_issue, id: "producer-2" } };
@@ -54,9 +43,9 @@ describe("artifact responsibility response boundaries", () => {
     const { client, fetchMock } = reply(body);
     await expect(client.getCockpitArtifactReferences("ws-1", "artifact-1", "node")).resolves.toEqual(body);
     expect(new Headers(fetchMock.mock.calls[0]![1].headers).get("X-Workspace-ID")).toBe("ws-1");
-    await expect(reply(body).client.getCockpitArtifactReferences("ws-1", "artifact-1", "meeting")).resolves.toBeNull();
+    await expect(reply({ ...body, workspace_id: "ws-2" }).client.getCockpitArtifactReferences("ws-1", "artifact-1", "node")).resolves.toBeNull();
     await expect(reply({ ...body, next_cursor: "same" }).client.getCockpitArtifactReferences("ws-1", "artifact-1", "node", { cursor: "same" })).resolves.toBeNull();
-    await expect(reply({ ...body, items: [{ ...reference, meeting_id: "meeting-1" }] }).client.getCockpitArtifactReferences("ws-1", "artifact-1", "node")).resolves.toBeNull();
+    await expect(reply({ ...body, items: [{ ...reference, node_id: null }] }).client.getCockpitArtifactReferences("ws-1", "artifact-1", "node")).resolves.toBeNull();
     const removed = { workspace_id: "ws-1", reference: { ...reference, removed_by: "author-1", removed_at: time } };
     await expect(reply(removed).client.createCockpitArtifactReference("ws-1", "artifact-1", "node", { node_id: "target-node", version_id: "version-1", reference_key: ARTIFACT_CREATION_KEY, purpose: "evidence" })).resolves.toEqual(removed);
   });

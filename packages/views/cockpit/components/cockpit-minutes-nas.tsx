@@ -15,7 +15,6 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { LocalPathLink } from "../../common/local-path-link";
-import { AppLink } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
 import { CockpitNasAttempts } from "./cockpit-nas-attempts";
 
@@ -39,16 +38,17 @@ function NasDeploymentHelp() {
   </details>;
 }
 
-function NasDestinationRecovery({ reason, resourcesHref }: { reason: string; resourcesHref: string }) {
+function NasDestinationRecovery({ reason }: { reason: string }) {
   const { t } = useT("cockpit");
   const message = reason === "not_configured" ? t(($) => $.nas.not_configured)
     : reason === "directory_missing" ? t(($) => $.nas.directory_missing)
       : reason === "outside_root" ? t(($) => $.nas.outside_root)
         : reason === "unsupported_platform" ? t(($) => $.nas.unsupported_storage)
           : reason || t(($) => $.nas.no_destination);
+  // Recovery happens where the directory facts live — the meeting's own
+  // metadata and its directory maintenance; there is no separate materials
+  // tab to link to anymore.
   return <div className="space-y-2 text-caption"><p className="break-words text-muted-foreground">{message}</p>
-    {reason !== "not_configured" && reason !== "unsupported_platform" && <AppLink href={resourcesHref}
-      className="rounded-sm text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">{t(($) => $.nas.configure_materials)}</AppLink>}
     {(reason === "not_configured" || reason === "unsupported_platform" || !reason) && <NasDeploymentHelp />}
   </div>;
 }
@@ -129,12 +129,11 @@ function NasOperationRecovery({ code }: { code: string }) {
 }
 
 /** Mount per version: destination updates must never silently change the reader's selection. */
-export function CockpitMinutesPublishControl({ workflow, disabled, pending, onPublish, resourcesHref }: {
+export function CockpitMinutesPublishControl({ workflow, disabled, pending, onPublish }: {
   workflow: CockpitMeetingWorkflowSummary;
   disabled: boolean;
   pending: boolean;
   onPublish: (destination?: CockpitNasDestination) => void;
-  resourcesHref: string;
 }) {
   const { t } = useT("cockpit");
   const destination = cockpitNasDestination(workflow);
@@ -148,7 +147,7 @@ export function CockpitMinutesPublishControl({ workflow, disabled, pending, onPu
       {t(($) => $.nas.sync_on_publish)}</label>
     {(selected || destination) && <p dir="ltr" className="break-all font-mono text-caption text-muted-foreground">{(selected || destination)?.directory}</p>}
     {(selected || destination) && <NasWriteMode destination={(selected || destination)!} />}
-    {!destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} resourcesHref={resourcesHref} />}
+    {!destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} />}
     {selected && <p className="text-caption text-muted-foreground">{t(($) => $.nas.publish_queue_hint)}</p>}
     {changed && <div role="alert" className="space-y-2 text-caption">
       <p>{t(($) => $.nas.destination_changed)}</p>
@@ -264,8 +263,8 @@ function OfficialMinutesWithdrawal({ wsId, workflow, disabled }: {
   </Dialog>;
 }
 
-export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disabled, onReload, onOpenHistory, resourcesHref }: {
-  wsId: string; workflow: CockpitMeetingWorkflowSummary; userId: string; readOnly?: boolean; disabled: boolean; onReload: () => void; onOpenHistory: () => void; resourcesHref: string;
+export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disabled, onReload, onOpenHistory }: {
+  wsId: string; workflow: CockpitMeetingWorkflowSummary; userId: string; readOnly?: boolean; disabled: boolean; onReload: () => void; onOpenHistory: () => void;
 }) {
   const { t } = useT("cockpit");
   const request = useExportCockpitMinutesToNas(wsId);
@@ -291,7 +290,7 @@ export function CockpitMinutesNasCopies({ wsId, workflow, userId, readOnly, disa
         <Button type="button" size="sm" variant="ghost" disabled={request.isPending} onClick={onReload}>{t(($) => $.nas.refresh)}</Button>
       </div></div>
     {published && !existing && <p className="text-caption font-medium">{t(($) => $.nas.official_version, { number: published.version_number })}</p>}
-    {published && !destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} resourcesHref={resourcesHref} />}
+    {published && !destination && <NasDestinationRecovery reason={workflow.nas_unavailable_reason} />}
     {published && destination && !existing && <div className="space-y-2"><p className="text-caption text-muted-foreground">{t(($) => $.nas.configured_destination)}</p>
       <p dir="ltr" className="break-all font-mono text-caption">{destination.directory}</p>
       <NasWriteMode destination={destination} />

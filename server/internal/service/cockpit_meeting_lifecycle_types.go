@@ -22,31 +22,6 @@ type CockpitMaterialsInput struct {
 	CockpitLifecycleCommandInput
 	MaterialsReady *bool `json:"materials_ready"`
 }
-type CockpitAgendaInput struct {
-	CockpitLifecycleCommandInput
-	Title             *string         `json:"title,omitempty"`
-	Purposes          *[]string       `json:"purposes,omitempty"`
-	DesiredOutcome    *string         `json:"desired_outcome,omitempty"`
-	Notes             *string         `json:"notes,omitempty"`
-	FacilitatorUserID json.RawMessage `json:"facilitator_user_id,omitempty"`
-	NodeID            json.RawMessage `json:"node_id,omitempty"`
-	SortOrder         *int64          `json:"sort_order,omitempty"`
-}
-type CockpitAgendaRemoveInput struct {
-	CockpitLifecycleCommandInput
-	Reason string `json:"reason"`
-}
-type CockpitAgendaReferenceInput struct {
-	CockpitLifecycleCommandInput
-	Kind     string `json:"kind"`
-	TargetID string `json:"target_id"`
-	Purpose  string `json:"purpose"`
-}
-type CockpitPreparationIssueInput struct {
-	CockpitLifecycleCommandInput
-	PrimaryNodeID *string                       `json:"primary_node_id"`
-	NewIssue      CockpitPreparationIssueFields `json:"new_issue"`
-}
 type CockpitPreparationIssueFields struct {
 	Title        string  `json:"title"`
 	Description  string  `json:"description"`
@@ -63,10 +38,8 @@ type CockpitLifecycleRead struct {
 }
 type CockpitLifecycleList struct {
 	CockpitLifecycleRead
-	AgendaID       pgtype.UUID
-	Query, Cursor  string
-	IncludeRemoved bool
-	PageSize       int32
+	Query, Cursor string
+	PageSize      int32
 }
 type CockpitOccurrenceView struct {
 	State              string  `json:"state"`
@@ -93,105 +66,40 @@ type CockpitLifecycleBlock struct {
 	Code   string `json:"code"`
 }
 type CockpitMeetingLifecycleHeader struct {
+	// Retired affordances remain explicitly disabled for installed clients.
+	AgendaRevision      int64                     `json:"agenda_revision"`
+	AgendaTotal         int64                     `json:"agenda_total"`
+	CanEditAgenda       bool                      `json:"can_edit_agenda"`
 	WorkspaceID         string                    `json:"workspace_id"`
 	MeetingID           string                    `json:"meeting_id"`
 	LifecycleRevision   int64                     `json:"lifecycle_revision"`
-	AgendaRevision      int64                     `json:"agenda_revision"`
 	GeneratedAt         string                    `json:"generated_at"`
 	Occurrence          CockpitOccurrenceView     `json:"occurrence"`
 	Materials           *CockpitMaterialsView     `json:"materials"`
 	WorkflowEnabled     bool                      `json:"workflow_enabled"`
-	AgendaTotal         int64                     `json:"agenda_total"`
 	CanSchedule         bool                      `json:"can_schedule"`
 	CanEnd              bool                      `json:"can_end"`
 	CanCorrectTimes     bool                      `json:"can_correct_times"`
 	CanReopen           bool                      `json:"can_reopen"`
 	CanUnschedule       bool                      `json:"can_unschedule"`
-	CanEditAgenda       bool                      `json:"can_edit_agenda"`
 	CanConfirmMaterials bool                      `json:"can_confirm_materials"`
 	BlockedReasons      []CockpitLifecycleBlock   `json:"blocked_reasons"`
 	Archive             CockpitMeetingArchiveView `json:"archive"`
 }
-type CockpitAgendaMetadata struct {
-	ID                string   `json:"id"`
-	WorkspaceID       string   `json:"workspace_id"`
-	MeetingID         string   `json:"meeting_id"`
-	Revision          int64    `json:"revision"`
-	Title             string   `json:"title"`
-	Purposes          []string `json:"purposes"`
-	SortOrder         int64    `json:"sort_order"`
-	FacilitatorUserID *string  `json:"facilitator_user_id"`
-	FacilitatorName   string   `json:"facilitator_name"`
-	NodeID            *string  `json:"node_id"`
-	NodeCode          string   `json:"node_code"`
-	NodeTitle         string   `json:"node_title"`
-	ReferenceCount    int64    `json:"reference_count"`
-	CreatedAt         string   `json:"created_at"`
-	UpdatedAt         string   `json:"updated_at"`
-	RemovedAt         *string  `json:"removed_at"`
-	CanEdit           bool     `json:"can_edit"`
-	CanRemove         bool     `json:"can_remove"`
-}
-type CockpitAgendaDetail struct {
-	CockpitAgendaMetadata
-	DesiredOutcome string `json:"desired_outcome"`
-	Notes          string `json:"notes"`
-}
-type CockpitAgendaPage struct {
-	WorkspaceID    string                  `json:"workspace_id"`
-	MeetingID      string                  `json:"meeting_id"`
-	AgendaRevision int64                   `json:"agenda_revision"`
-	Query          string                  `json:"q"`
-	IncludeRemoved bool                    `json:"include_removed"`
-	PageSize       int32                   `json:"page_size"`
-	Items          []CockpitAgendaMetadata `json:"items"`
-	Total          int64                   `json:"total"`
-	NextCursor     *string                 `json:"next_cursor"`
-}
-type CockpitAgendaReferenceView struct {
-	ID              string               `json:"id"`
-	WorkspaceID     string               `json:"workspace_id"`
-	MeetingID       string               `json:"meeting_id"`
-	AgendaID        string               `json:"agenda_id"`
-	Kind            string               `json:"kind"`
-	TargetID        string               `json:"target_id"`
-	Purpose         string               `json:"purpose"`
-	Available       bool                 `json:"available"`
-	Label           string               `json:"label"`
-	Issue           *CockpitIssueSummary `json:"issue"`
-	ArtifactID      *string              `json:"artifact_id"`
-	VersionID       *string              `json:"version_id"`
-	VersionNumber   *int32               `json:"version_number"`
-	VersionDecision *string              `json:"version_decision"`
-	ContentHash     *string              `json:"content_hash"`
-	CreatedAt       string               `json:"created_at"`
-	RemovedAt       *string              `json:"removed_at"`
-	CanRemove       bool                 `json:"can_remove"`
-}
-type CockpitAgendaReferencePage struct {
-	WorkspaceID    string                       `json:"workspace_id"`
-	MeetingID      string                       `json:"meeting_id"`
-	AgendaID       string                       `json:"agenda_id"`
-	AgendaRevision int64                        `json:"agenda_revision"`
-	IncludeRemoved bool                         `json:"include_removed"`
-	PageSize       int32                        `json:"page_size"`
-	Items          []CockpitAgendaReferenceView `json:"items"`
-	Total          int64                        `json:"total"`
-	NextCursor     *string                      `json:"next_cursor"`
-}
 type CockpitLifecycleReceipt struct {
+	// Historical receipt payloads are data only; no retired edit API is exposed.
+	AgendaRevision     int64                             `json:"agenda_revision"`
+	AgendaID           *string                           `json:"agenda_id"`
+	Agenda             json.RawMessage                   `json:"agenda"`
+	Reference          json.RawMessage                   `json:"reference"`
 	Reason             string                            `json:"reason"`
 	PreviousOccurrence *CockpitOccurrenceView            `json:"previous_occurrence"`
 	Revision           int64                             `json:"revision"`
-	AgendaRevision     int64                             `json:"agenda_revision"`
-	AgendaID           *string                           `json:"agenda_id"`
 	ReferenceID        *string                           `json:"reference_id"`
 	IssueID            *string                           `json:"issue_id"`
 	RequestHash        string                            `json:"request_hash"`
 	Occurrence         *CockpitOccurrenceView            `json:"occurrence"`
 	Materials          *CockpitMaterialsView             `json:"materials"`
-	Agenda             *CockpitAgendaDetail              `json:"agenda"`
-	Reference          *CockpitAgendaReferenceView       `json:"reference"`
 	Archive            *CockpitMeetingArchiveView        `json:"archive"`
 	PreviousArchive    *CockpitMeetingArchiveView        `json:"previous_archive"`
 	Preparation        *CockpitPreparationCommandReceipt `json:"preparation"`
@@ -207,6 +115,7 @@ type CockpitLifecycleCommandResult struct {
 	Current     CockpitMeetingLifecycleHeader `json:"current"`
 }
 type CockpitLifecycleCommandMetadata struct {
+	AgendaID             *string `json:"agenda_id"`
 	CommandKey           string  `json:"command_key"`
 	Action               string  `json:"action"`
 	ActorID              string  `json:"actor_id"`
@@ -214,7 +123,6 @@ type CockpitLifecycleCommandMetadata struct {
 	ActorName            string  `json:"actor_name"`
 	CreatedAt            string  `json:"created_at"`
 	Revision             int64   `json:"revision"`
-	AgendaID             *string `json:"agenda_id"`
 	ReferenceID          *string `json:"reference_id"`
 	IssueID              *string `json:"issue_id"`
 	OperationID          *string `json:"operation_id"`

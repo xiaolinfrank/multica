@@ -1,10 +1,7 @@
 -- name: ListCockpitDispositionIssueIDs :many
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE (sqlc.arg(query)::text='' OR i.title ILIKE '%'||sqlc.arg(query)||'%' OR i.number::text=sqlc.arg(query))
@@ -12,32 +9,23 @@ AND (sqlc.narg(after_id)::uuid IS NULL OR i.id>sqlc.narg(after_id)) ORDER BY i.i
 
 -- name: CountCockpitDispositionIssues :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE (sqlc.arg(query)::text='' OR i.title ILIKE '%'||sqlc.arg(query)||'%' OR i.number::text=sqlc.arg(query));
 
 -- name: CockpitMeetingHasPreparationIssue :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT EXISTS(SELECT 1 FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id) WHERE i.id=sqlc.arg(issue_id));
 
 -- name: CountCockpitMeetingPreparationRuns :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM agent_task_queue t JOIN preparation_issues p ON p.id=t.issue_id
 WHERE t.chat_session_id IS NULL AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory');
@@ -54,8 +42,7 @@ SELECT r.id,r.parent_issue_id,
  (SELECT encode(sha256(convert_to(COALESCE(string_agg(t.id::text||':'||t.status||':'||COALESCE(extract(epoch FROM t.started_at)::text,''),',' ORDER BY t.id),''),'UTF8')),'hex') FROM agent_task_queue t WHERE t.issue_id=r.id AND NOT(t.id=ANY(COALESCE(sqlc.arg(excluded_run_ids)::uuid[],ARRAY[]::uuid[]))) AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory'))::text AS task_hash,
  (SELECT encode(sha256(convert_to(COALESCE(string_agg(w.id::text,',' ORDER BY w.id),''),'UTF8')),'hex') FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NULL AND w.disabled_at IS NULL)::text AS ordinary_wakeup_ids_hash,
  (SELECT COALESCE(jsonb_agg(s.id),'[]'::jsonb) FROM (SELECT w.id FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NULL AND w.disabled_at IS NULL ORDER BY w.id LIMIT 100) s)::jsonb AS ordinary_wakeup_ids,
- COALESCE(EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=sqlc.arg(workspace_id) AND v.review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg(workspace_id) AND h.from_review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg(workspace_id) AND h.to_review_issue_id=r.id),false)::boolean AS is_minutes_review,
- (SELECT count(*) FROM cockpit_meeting_agenda_reference l JOIN cockpit_meeting_agenda a ON a.workspace_id=l.workspace_id AND a.id=l.agenda_id AND a.removed_at IS NULL WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND l.kind='issue' AND l.target_id=r.id AND l.removed_at IS NULL)::bigint AS agenda_total
+ COALESCE(EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=sqlc.arg(workspace_id) AND v.review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg(workspace_id) AND h.from_review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=sqlc.arg(workspace_id) AND h.to_review_issue_id=r.id),false)::boolean AS is_minutes_review
 FROM requested r;
 
 -- name: ListCockpitDispositionRuns :many
@@ -73,11 +60,8 @@ WHERE t.issue_id=$2 AND t.chat_session_id IS NULL AND t.status IN ('queued','def
 
 -- name: FilterCockpitPreparationIssueIDs :many
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id) AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=sqlc.arg(workspace_id) AND l.meeting_id=sqlc.arg(meeting_id) AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=sqlc.arg(workspace_id)
 WHERE i.id=ANY(sqlc.arg(issue_ids)::uuid[]);

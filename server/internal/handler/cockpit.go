@@ -2228,36 +2228,32 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact provenance")
 		return
 	} else if retained {
-		writeError(w, http.StatusConflict, "This meeting is retained by fixed artifact provenance or references; preserve its history")
+		writeError(w, http.StatusConflict, "This meeting is retained by fixed artifact provenance; preserve its history")
 		return
 	}
 	if retained, err := q.HasCockpitMeetingPreparationHistory(ctx, db.HasCockpitMeetingPreparationHistoryParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check meeting preparation history")
 		return
 	} else if retained {
-		writeError(w, http.StatusConflict, "This meeting retains a confirmed preparation plan; open its operation history or archive it instead")
+		writeError(w, http.StatusConflict, "This meeting retains preparation history; archive it instead")
 		return
 	}
 	if retained, err := q.HasCockpitDirectoryHistory(ctx, db.HasCockpitDirectoryHistoryParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil || !retained.Valid {
 		writeError(w, http.StatusInternalServerError, "failed to check meeting directory history")
 		return
 	} else if retained.Bool {
-		writeError(w, http.StatusConflict, "This meeting retains directory preparation history; open its Resources or archive it instead")
+		writeError(w, http.StatusConflict, "This meeting retains directory history; open its meeting directory or archive it instead")
 		return
 	}
 	if retained, err := q.HasCockpitInputMeetingReferences(ctx, db.HasCockpitInputMeetingReferencesParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to check meeting input references")
 		return
 	} else if retained {
-		writeErrorCode(w, http.StatusConflict, "meeting_input_references", "Open this meeting's Resources to remove its exact input references, or archive the meeting to retain them")
+		writeErrorCode(w, http.StatusConflict, "meeting_input_references", "This meeting retains historical material references; archive it to preserve them")
 		return
 	}
 	if err := q.DeleteRemovedCockpitInputReferencesByMeeting(ctx, db.DeleteRemovedCockpitInputReferencesByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to clear removed input references")
-		return
-	}
-	if err := q.DeleteCockpitAgendaByMeeting(ctx, db.DeleteCockpitAgendaByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to clear meeting agenda")
 		return
 	}
 	if err := q.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{

@@ -138,20 +138,11 @@ func (h *Handler) RetryCockpitArtifactCapture(w http.ResponseWriter, r *http.Req
 func (h *Handler) ListCockpitArtifactNodeReferences(w http.ResponseWriter, r *http.Request) {
 	h.listCockpitArtifactReferences(w, r, "node")
 }
-func (h *Handler) ListCockpitArtifactMeetingReferences(w http.ResponseWriter, r *http.Request) {
-	h.listCockpitArtifactReferences(w, r, "meeting")
-}
 func (h *Handler) CreateCockpitArtifactNodeReference(w http.ResponseWriter, r *http.Request) {
 	h.createCockpitArtifactReference(w, r, "node")
 }
-func (h *Handler) CreateCockpitArtifactMeetingReference(w http.ResponseWriter, r *http.Request) {
-	h.createCockpitArtifactReference(w, r, "meeting")
-}
 func (h *Handler) RemoveCockpitArtifactNodeReference(w http.ResponseWriter, r *http.Request) {
 	h.removeCockpitArtifactReference(w, r, "node")
-}
-func (h *Handler) RemoveCockpitArtifactMeetingReference(w http.ResponseWriter, r *http.Request) {
-	h.removeCockpitArtifactReference(w, r, "meeting")
 }
 func (h *Handler) listCockpitArtifactReferences(w http.ResponseWriter, r *http.Request, kind string) {
 	p, ok := h.cockpitArtifactRead(w, r, false)

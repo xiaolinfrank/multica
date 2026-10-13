@@ -26,21 +26,16 @@ export interface CockpitArtifactHandoffPage { workspace_id: string; artifact_id:
 export interface CockpitArtifactHandoffResponse { workspace_id: string; artifact: CockpitArtifactHeader; version: CockpitArtifactVersionMetadata | null; handoff: CockpitArtifactReviewerHandoff }
 
 export type CockpitArtifactReferencePurpose = "input" | "output" | "evidence" | "reference";
-export type CockpitArtifactReferenceKind = "node" | "meeting";
+export type CockpitArtifactReferenceKind = "node";
 export interface CockpitArtifactReferenceCreate { reference_key: string; version_id: string; purpose: CockpitArtifactReferencePurpose }
 export interface CockpitArtifactNodeReferenceCreate extends CockpitArtifactReferenceCreate { node_id: string }
-export interface CockpitArtifactMeetingReferenceCreate extends CockpitArtifactReferenceCreate { meeting_id: string }
 export interface CockpitArtifactReference {
   id: string; artifact_id: string; version_id: string; version_number: number; content_hash: string; reference_key: string;
-  node_id?: string; meeting_id?: string; target_label: string; purpose: string;
+  node_id?: string; target_label: string; purpose: string;
   created_by: string; created_at: string; removed_by: string | null; removed_at: string | null;
 }
 export interface CockpitArtifactReferencePage { workspace_id: string; artifact_id: string; items: CockpitArtifactReference[]; total: number; next_cursor: string | null }
 export interface CockpitArtifactReferenceResponse { workspace_id: string; reference: CockpitArtifactReference }
-export interface CockpitMeetingArtifactReferencePage {
-  workspace_id: string; meeting_id: string; include_removed: boolean;
-  items: (CockpitArtifactReference & { artifact_title: string; version_decision?: string | null })[]; total: number; next_cursor: string | null;
-}
 
 export interface CockpitAcceptanceReviewerHandoff {
   from_reviewer_name?: string; to_reviewer_name?: string; created_by_name?: string;

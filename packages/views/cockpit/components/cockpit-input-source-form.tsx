@@ -68,8 +68,7 @@ export function CockpitInputSourceForm({ wsId, accountId, meetingId, agendaId = 
         if (ack.acknowledged.kind === "create" && !ack.acknowledged.result.current) return;
       }
       if (!value.versionId && value.inputId && value.inputRevision !== null && value.source) {
-        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: createSafeId(), expectedRevision: value.inputRevision, source: value.source,
-          initialReference: { referenceKey: createSafeId(), meetingId, agendaId: value.agendaId, purpose: value.purpose } } });
+        const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: createSafeId(), expectedRevision: value.inputRevision, source: value.source } });
         if (!ack || !current()) return; const next = record(ack, value); if (!next) return; value = next;
       }
       if (current()) open(value);

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"time"
@@ -19,48 +20,6 @@ func inputMaySubmit(p CockpitInputRead, a cockpitInputAuthority, h db.CockpitInp
 	}
 	if h.ArchivedAt.Valid {
 		return inputError("input_archived", "Unarchive this input before submitting another content version.")
-	}
-	return nil
-}
-
-func inputInitialTarget(ctx context.Context, q *db.Queries, p CockpitInputRead, a cockpitInputAuthority, initial *CockpitInputInitialReference, lock bool) error {
-	if initial == nil {
-		return nil
-	}
-	if _, err := inputKey(initial.ReferenceKey); err != nil {
-		return err
-	}
-	meetingID, err := inputKey(initial.MeetingID)
-	if err != nil {
-		return err
-	}
-	agendaID, err := inputOptionalID(initial.AgendaID)
-	if err != nil {
-		return err
-	}
-	if !inputPurposeValid(initial.Purpose) {
-		return inputError("invalid_input", "Select a supported input reference purpose.")
-	}
-	if lock {
-		if _, err = lockLifecycleMeeting(ctx, q, p.WorkspaceID, meetingID); err != nil {
-			return err
-		}
-	}
-	reasons, err := inputReadMeeting(ctx, q, CockpitInputQuery{CockpitInputRead: p, MeetingID: meetingID, AgendaID: agendaID})
-	if err != nil {
-		return err
-	}
-	if len(reasons) != 0 {
-		return inputError(reasons[0], "Restore this meeting or agenda before adding preparation material.")
-	}
-	if p.ActorSource != "human" {
-		_, err = q.GetCockpitDirectoryPreparationRelation(ctx, db.GetCockpitDirectoryPreparationRelationParams{WorkspaceID: p.WorkspaceID, MeetingID: meetingID, IssueID: a.Run.IssueID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return inputError("permission_revoked", "This task is not a direct preparation source for the selected meeting.")
-		}
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -141,15 +100,11 @@ func (s *IssueService) SubmitCockpitInputVersion(ctx context.Context, p CockpitI
 	if in.ExpectedRevision < 1 {
 		return out, inputError("invalid_input", "The observed input revision is required.")
 	}
+	if len(in.InitialReference) > 0 && !bytes.Equal(bytes.TrimSpace(in.InitialReference), []byte("null")) {
+		return out, inputError("invalid_input", "Meeting input references are no longer supported; use the meeting directory or an Issue input manifest.")
+	}
 	if err = inputSourceValidate(in.Source); err != nil {
 		return out, err
-	}
-	var initialMeetingID pgtype.UUID
-	if in.InitialReference != nil {
-		initialMeetingID, err = inputKey(in.InitialReference.MeetingID)
-		if err != nil {
-			return out, err
-		}
 	}
 	hash := inputWriteHash(p.CockpitInputRead, "input_version_submit", p.InputID, in)
 	// Replays precede source inspection and mutable permission/configuration
@@ -196,9 +151,6 @@ func (s *IssueService) SubmitCockpitInputVersion(ctx context.Context, p CockpitI
 	if err == nil && head.Revision != in.ExpectedRevision {
 		err = inputError("revision_conflict", "The input changed. Read its current revision before submitting another version.")
 	}
-	if err == nil {
-		err = inputInitialTarget(ctx, q, p.CockpitInputRead, a, in.InitialReference, false)
-	}
 	_ = tx.Rollback(ctx)
 	if err != nil {
 		return out, inputConvertError(err)
@@ -235,18 +187,8 @@ func (s *IssueService) SubmitCockpitInputVersion(ctx context.Context, p CockpitI
 			return out, e
 		}
 	}
-	// Meeting preparation writers acquire board/meeting before Agent/Run or
-	// input rows. Preserve that order for the initial delegated relation too.
-	if in.InitialReference != nil {
-		if _, err = lockLifecycleMeeting(ctx, q, p.WorkspaceID, initialMeetingID); err != nil {
-			return out, err
-		}
-	}
 	a, err = inputNewPrincipal(ctx, q, p.CockpitInputRead, true)
 	if err != nil {
-		return out, err
-	}
-	if err = inputInitialTarget(ctx, q, p.CockpitInputRead, a, in.InitialReference, false); err != nil {
 		return out, err
 	}
 	head, err = q.LockCockpitInput(ctx, db.LockCockpitInputParams{WorkspaceID: p.WorkspaceID, ID: p.InputID})
@@ -280,12 +222,6 @@ func (s *IssueService) SubmitCockpitInputVersion(ctx context.Context, p CockpitI
 		return out, err
 	}
 	receipt := CockpitInputVersionReceipt{CommandKey: in.CommandKey, RequestHash: hash, InputID: util.UUIDToString(p.InputID), VersionID: util.UUIDToString(id), VersionNumber: number, InputRevision: head.Revision + 1, Source: in.Source, PayloadKind: source.version.PayloadKind, CaptureState: source.version.CaptureState, Principal: principal, AcceptedAt: inputTime(stamp)}
-	if in.InitialReference != nil {
-		receipt.InitialReference, err = inputCreateInitialReference(ctx, q, p.CockpitInputRead, a, p.InputID, id, *in.InitialReference, now)
-		if err != nil {
-			return out, err
-		}
-	}
 	v := source.version
 	v.WorkspaceID, v.InputID, v.VersionNumber, v.SubmissionKey, v.RequestHash, v.Revision = p.WorkspaceID, p.InputID, number, key, hash, 1
 	v.ActorType, v.ActorID, v.CredentialOwnerUserID, v.AuthorizingUserID = principal.ActorType, ids.actor, ids.credential, ids.authorizer
@@ -317,11 +253,7 @@ func (s *IssueService) SubmitCockpitInputVersion(ctx context.Context, p CockpitI
 	if err = tx.Commit(ctx); err != nil {
 		return out, err
 	}
-	if receipt.InitialReference != nil {
-		s.inputReferenceChanged(p.WorkspaceID, p.InputID, initialMeetingID, principal)
-	} else {
-		s.inputChanged(p.WorkspaceID, p.InputID, principal)
-	}
+	s.inputChanged(p.WorkspaceID, p.InputID, principal)
 	return s.inputVersionResult(ctx, p, receipt, false)
 }
 

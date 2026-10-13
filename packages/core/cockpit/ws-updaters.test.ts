@@ -26,20 +26,21 @@ it("refreshes artifact responsibility and acceptance facts without applying a la
   qc.clear();
 });
 
-it.each(["meeting_templates", "meeting_preparation"] as const)("reconciles %s facts without replacing current state with the event or invalidating immutable receipts", async (scope) => {
+it.each(["meeting_preparation"] as const)("reconciles %s facts without replacing current state with the event or invalidating immutable receipts", async (scope) => {
   const qc = new QueryClient();
   const meeting = "meeting-1", otherMeeting = "meeting-2";
   const selected = [cockpitPreparationKeys.operation(WS, meeting, "operation"), cockpitPreparationKeys.effects(WS, meeting, "operation"),
     cockpitPreparationKeys.authorization(WS, meeting, "operation", "effect"), cockpitPreparationKeys.basis(WS, meeting), cockpitLifecycleKeys.header(WS, meeting)];
-  const otherMutable = [cockpitPreparationKeys.template(WS, "template"), cockpitPreparationKeys.versions(WS, "template"), cockpitPreparationKeys.operation(WS, otherMeeting, "operation")];
-  const immutable = [cockpitPreparationKeys.version(WS, "template", "version"), cockpitPreparationKeys.templateCommand(WS, "original-key"), cockpitLifecycleKeys.command(WS, meeting, "original-key"),
+  const otherMutable = [cockpitPreparationKeys.operations(WS, meeting), cockpitPreparationKeys.meeting(WS, meeting)];
+  const otherMeetingKeys = [cockpitPreparationKeys.operation(WS, otherMeeting, "operation")];
+  const immutable = [cockpitLifecycleKeys.command(WS, meeting, "original-key"),
     cockpitPreparationKeys.operation("other-workspace", meeting, "operation"), cockpitLifecycleKeys.header("other-workspace", meeting)];
-  for (const key of [...selected, ...otherMutable, ...immutable]) qc.setQueryData(key, { revision: 9, state: "active" });
+  for (const key of [...selected, ...otherMutable, ...otherMeetingKeys, ...immutable]) qc.setQueryData(key, { revision: 9, state: "active" });
   onCockpitChanged(qc, WS, { scope, action: "confirmed", entity: { ...(scope === "meeting_preparation" ? { meeting_id: meeting } : {}), revision: 1, state: "completed" } });
   await vi.waitFor(() => { for (const key of selected) expect(qc.getQueryState(key)?.isInvalidated).toBe(true); });
-  for (const key of otherMutable) expect(qc.getQueryState(key)?.isInvalidated).toBe(scope === "meeting_templates");
-  for (const key of immutable) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
-  for (const key of [...selected, ...otherMutable, ...immutable]) expect(qc.getQueryData(key)).toEqual({ revision: 9, state: "active" });
+  for (const key of otherMutable) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+  for (const key of [...otherMeetingKeys, ...immutable]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+  for (const key of [...selected, ...otherMutable, ...otherMeetingKeys, ...immutable]) expect(qc.getQueryData(key)).toEqual({ revision: 9, state: "active" });
   qc.clear();
 });
 

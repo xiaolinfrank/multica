@@ -40,9 +40,9 @@ function CockpitReferenceMeetings({ wsId, issueId }: { wsId: string; issueId: st
             <div className="min-w-0 flex-1 py-1">{row.available ? <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: row.meeting_id })} newTabTitle={label} title={label} className="block truncate text-caption hover:underline">{label}</AppLink>
               : <span className="block text-caption text-muted-foreground">{label}<span className="block break-all font-mono text-micro">{row.meeting_id}</span></span>}
               {cockpitMeetingHasDirectReference(row) && <CockpitMeetingRoleLabels link={row} />}
-              {row.has_agenda_reference && <div className="space-y-1 text-micro text-muted-foreground"><p>{t(($) => $.meeting_lifecycle.agenda_source, { count: row.agenda_total ?? 1 })}</p>{row.agenda_id && <AppLink className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: row.meeting_id, view: "agenda", agendaId: row.agenda_id })}>{t(($) => $.meeting_lifecycle.open_agenda)}</AppLink>}</div>}{row.required_roles.length > 0 && <p className="text-micro text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
+{row.required_roles.length > 0 && <p className="text-micro text-muted-foreground">{t(($) => $.workflow.managed_link)}</p>}
             </div>
-            {cockpitMeetingHasDirectReference(row) && <Button type="button" variant="ghost" size="icon-xs" disabled={busy || locked} aria-label={row.has_agenda_reference ? t(($) => $.meeting_lifecycle.unlink_direct, { name: label }) : row.available ? t(($) => $.issue_meetings.unlink, { label }) : t(($) => $.issue_meetings.remove_unavailable, { id: row.meeting_id })}
+            {cockpitMeetingHasDirectReference(row) && <Button type="button" variant="ghost" size="icon-xs" disabled={busy || locked} aria-label={row.available ? t(($) => $.issue_meetings.unlink, { label }) : t(($) => $.issue_meetings.remove_unavailable, { id: row.meeting_id })}
               onClick={() => unlink.mutate({ meetingId: row.meeting_id, issueId }, { onError: fail })}><X className="size-3.5" /></Button>}
           </li>;
         })}</ul>

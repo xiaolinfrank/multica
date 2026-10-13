@@ -167,9 +167,6 @@ func inputProjectionVersionActor(r db.ReadCockpitInputVersionsRow) inputProjecti
 func inputProjectionTransferActor(r db.ReadCockpitInputTransfersRow) inputProjectionActor {
 	return inputProjectionActor{kind: r.ActorType.String, actor: r.ActorID, credential: r.CredentialOwnerUserID, authorizer: r.AuthorizingUserID, agent: r.SourceAgentID, run: r.SourceRunID, issue: r.SourceIssueID, runtime: r.SourceRuntimeID}
 }
-func inputProjectionReferenceActor(r db.ReadCockpitInputReferencesRow) inputProjectionActor {
-	return inputProjectionActor{kind: r.ActorType, actor: r.ActorID, credential: r.CredentialOwnerUserID, authorizer: r.AuthorizingUserID, agent: r.SourceAgentID, run: r.SourceRunID, issue: r.SourceIssueID, runtime: r.SourceRuntimeID}
-}
 
 func (s *IssueService) inputHeaders(ctx context.Context, q *db.Queries, p CockpitInputRead, located []db.CockpitInput) ([]CockpitInputHeader, error) {
 	ids, err := inputProjectionIDs(p, located, func(r db.CockpitInput) (pgtype.UUID, pgtype.UUID) { return r.ID, r.WorkspaceID })
@@ -560,92 +557,40 @@ func inputProjectionTransferActions(dto *CockpitInputTransferMetadata, p Cockpit
 	}
 }
 
-func (s *IssueService) inputReferences(ctx context.Context, q *db.Queries, p CockpitInputRead, located []db.CockpitInputReference) ([]CockpitInputReference, error) {
-	ids, err := inputProjectionIDs(p, located, func(r db.CockpitInputReference) (pgtype.UUID, pgtype.UUID) { return r.ID, r.WorkspaceID })
-	if err != nil {
-		return nil, err
+
+// Principal DTOs can come from retained receipts. Invalid identities are an
+// integrity failure, never anonymous identities or a missing-object response.
+func inputParsePrincipalIDs(p CockpitInputPrincipal) (inputProjectionActor, error) {
+	out := inputProjectionActor{kind: p.ActorType}
+	if p.ActorType != "member" && p.ActorType != "agent" {
+		return out, inputError("input_integrity_error", "The retained input principal kind is invalid.")
 	}
-	out := []CockpitInputReference{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	a, err := inputReadPrincipal(ctx, q, p)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.ReadCockpitInputReferences(ctx, db.ReadCockpitInputReferencesParams{WorkspaceID: p.WorkspaceID, Ids: ids})
-	if err != nil {
-		return nil, err
-	}
-	byID := map[pgtype.UUID]db.ReadCockpitInputReferencesRow{}
-	versionIDs, headIDs, meetingIDs, agendaIDs := []pgtype.UUID{}, []pgtype.UUID{}, []pgtype.UUID{}, []pgtype.UUID{}
-	actors := []inputProjectionActor{}
-	for _, r := range rows {
-		if r.WorkspaceID != p.WorkspaceID {
-			return nil, inputProjectionMissing()
+	for _, field := range []struct {
+		value  string
+		target *pgtype.UUID
+	}{
+		{p.ActorID, &out.actor}, {p.CredentialOwnerUserID, &out.credential}, {p.AuthorizingUserID, &out.authorizer},
+	} {
+		id, err := util.ParseUUID(field.value)
+		if err != nil || !id.Valid {
+			return out, inputError("input_integrity_error", "The retained input principal identity is invalid.")
 		}
-		byID[r.ID] = r
-		versionIDs = append(versionIDs, r.InputVersionID)
-		headIDs = append(headIDs, r.InputID)
-		meetingIDs = append(meetingIDs, r.MeetingID)
-		agendaIDs = append(agendaIDs, r.AgendaID)
-		actors = append(actors, inputProjectionReferenceActor(r))
+		*field.target = id
 	}
-	versions, err := s.inputVersionProjectionByIDs(ctx, q, p, a, inputUniqueIDs(versionIDs))
-	if err != nil {
-		return nil, err
-	}
-	heads, err := inputProjectionHeadMap(ctx, q, p, headIDs)
-	if err != nil {
-		return nil, err
-	}
-	labels, err := loadInputProjectionLabels(ctx, q, p, actors, nil)
-	if err != nil {
-		return nil, err
-	}
-	meetings := map[pgtype.UUID]db.ReadCockpitInputSourceMeetingsRow{}
-	agendas := map[pgtype.UUID]db.ReadCockpitInputSourceAgendasRow{}
-	for _, batch := range inputProjectionChunks(meetingIDs) {
-		found, e := q.ReadCockpitInputSourceMeetings(ctx, db.ReadCockpitInputSourceMeetingsParams{WorkspaceID: p.WorkspaceID, Ids: batch})
-		if e != nil {
-			return nil, e
+	for _, field := range []struct {
+		value  *string
+		target *pgtype.UUID
+	}{
+		{p.AgentID, &out.agent}, {p.RunID, &out.run}, {p.IssueID, &out.issue}, {p.RuntimeID, &out.runtime},
+	} {
+		if field.value == nil {
+			continue
 		}
-		for _, r := range found {
-			meetings[r.ID] = r
+		id, err := util.ParseUUID(*field.value)
+		if err != nil || !id.Valid {
+			return out, inputError("input_integrity_error", "The retained input task identity is invalid.")
 		}
-	}
-	for _, batch := range inputProjectionChunks(agendaIDs) {
-		found, e := q.ReadCockpitInputSourceAgendas(ctx, db.ReadCockpitInputSourceAgendasParams{WorkspaceID: p.WorkspaceID, Ids: batch})
-		if e != nil {
-			return nil, e
-		}
-		for _, r := range found {
-			agendas[r.ID] = r
-		}
-	}
-	for _, want := range located {
-		r, ok := byID[want.ID]
-		if !ok || want.MeetingID.Valid && want.MeetingID != r.MeetingID || want.AgendaID.Valid && want.AgendaID != r.AgendaID || want.InputID.Valid && want.InputID != r.InputID || want.InputVersionID.Valid && want.InputVersionID != r.InputVersionID {
-			return nil, inputProjectionMissing()
-		}
-		version, ok := versions[r.InputVersionID]
-		if !ok || version.InputID != util.UUIDToString(r.InputID) {
-			return nil, inputProjectionMissing()
-		}
-		meeting, meetingOK := meetings[r.MeetingID]
-		agendaTitle := ""
-		if r.AgendaID.Valid {
-			agenda, ok := agendas[r.AgendaID]
-			if !ok || agenda.MeetingID != r.MeetingID {
-				return nil, inputProjectionMissing()
-			}
-			agendaTitle = agenda.Title
-		}
-		if !meetingOK {
-			return nil, inputProjectionMissing()
-		}
-		dto := CockpitInputReference{WorkspaceID: util.UUIDToString(r.WorkspaceID), ID: util.UUIDToString(r.ID), ReferenceKey: util.UUIDToString(r.CreationKey), MeetingID: util.UUIDToString(r.MeetingID), MeetingTitle: meeting.Title, AgendaID: planningUUID(r.AgendaID), AgendaTitle: agendaTitle, InputID: util.UUIDToString(r.InputID), InputTitle: heads[r.InputID].Title, Version: version, Purpose: r.Purpose, CreatedBy: labels.principal(inputProjectionReferenceActor(r)), CreatedAt: inputTime(r.CreatedAt), RemovedAt: timestamp(r.RemovedAt), CanRemove: p.ActorSource == "human" && !r.RemovedAt.Valid}
-		out = append(out, dto)
+		*field.target = id
 	}
 	return out, nil
 }

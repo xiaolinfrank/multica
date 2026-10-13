@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { cockpitMeetingActionsOptions, useCockpitActionCommandStore, cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore } from "@multica/core/cockpit";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { collectCockpitActionItems, cockpitActionItemsCsv, cockpitMeetingActionsOptions, useCockpitActionCommandStore, cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflowSummary } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
@@ -19,6 +19,9 @@ import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit
 export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { wsId: string; workflow: CockpitMeetingWorkflowSummary; userId: string; readOnly?: boolean }) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
+  const client = useQueryClient();
+  const exportItems = useMutation({ mutationFn: (versionId: string) => collectCockpitActionItems(workflow.meeting_id, versionId, (cursor) =>
+    client.fetchQuery({ ...cockpitMeetingActionsOptions(wsId, workflow.meeting_id, { version_id: versionId, cursor, page_size: 100 }), staleTime: 0 })) });
   const navigation = useNavigation();
   const linkedAction = navigation.searchParams.get("action");
   const linkedMeeting = navigation.searchParams.get("meeting");
@@ -58,6 +61,16 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
   const commands = useCockpitActionCommandStore((state) => state.draft.commands);
   const pending = Object.values(commands).filter((command) => command.kind === "decision" && command.meeting_id === workflow.meeting_id);
   const published = workflow.published_version;
+  const download = async () => {
+    if (!published || exportItems.isPending) return;
+    try {
+      const items = await exportItems.mutateAsync(published.id);
+      const csv = cockpitActionItemsCsv(items, [t(($) => $.meeting_actions.title), t(($) => $.meeting_actions.description), t(($) => $.meeting_actions.quote),
+        t(($) => $.meeting_actions.source_filter), t(($) => $.meeting_actions.node), t(($) => $.workflow.minutes_issue), t(($) => $.task_flow.assignee), t(($) => $.task_flow.due_date), t(($) => $.meeting_actions.status)]);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a");
+      link.href = url; link.download = `meeting-${workflow.meeting_id}-actions.csv`; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { /* The mutation error is kept inline beside the export action. */ }
+  };
   const human = Boolean(userId && !readOnly);
   const canAdd = human && query.data?.can_add === true && published?.decision === "approved" && Boolean(published.published_at)
     && (workflow.can_manage || published.reviewer_id === userId);
@@ -71,7 +84,9 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
   return <Dialog open={Boolean(selectedId)} onOpenChange={(next) => { if (!next && !busy.current) closeAction(selectedId); }}>
     <section className="space-y-4 rounded-lg border border-border p-4" aria-label={t(($) => $.meeting_actions.region)}>
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_actions.region)}</h3>
-        <CockpitActionCreate wsId={wsId} workflow={workflow} disabled={!canAdd || query.isFetching} /></div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={!published || exportItems.isPending} aria-busy={exportItems.isPending} onClick={() => void download()}>{exportItems.isPending && <Spinner />}{t(($) => $.meeting_actions.export_items)}</Button>
+        <CockpitActionCreate wsId={wsId} workflow={workflow} disabled={!canAdd || query.isFetching} /></div></div>
+      {exportItems.isError && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_actions.export_failed)}</p>}
       {pending.map((command) => command.kind === "decision" && <DialogTrigger key={command.action_id} nativeButton={false} role="link"
         render={<AppLink href={actionHref(command.action_id)} className={buttonVariants({ size: "sm", variant: "outline" })} />}>
         {t(($) => $.meeting_actions.retry_decision)}</DialogTrigger>)}
@@ -92,7 +107,7 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
           <ul className="max-h-[45vh] overflow-y-auto overscroll-contain divide-y divide-border">{query.data.items.map((action) => <li key={action.id} className="space-y-1.5 py-3">
             <div className="flex items-start justify-between gap-3"><h4 className="line-clamp-2 min-w-0 break-words text-body font-medium" title={action.title}>{action.title}</h4>
               <DialogTrigger nativeButton={false} role="link" render={<AppLink href={actionHref(action.id)} newTabTitle={action.title}
-                className={buttonVariants({ variant: "ghost", size: "xs" })} aria-label={t(($) => $.meeting_actions.review_action, { title: action.title })} />}>{t(($) => $.meeting_actions.review)}</DialogTrigger></div>
+                className={buttonVariants({ variant: "ghost", size: "xs" })} aria-label={t(($) => action.status === "draft" && !action.source_superseded ? $.meeting_actions.create_action_issue : $.meeting_actions.review_action, { title: action.title })} />}>{action.status === "draft" && !action.source_superseded ? t(($) => $.meeting_lifecycle.create_issue) : t(($) => $.meeting_actions.review)}</DialogTrigger></div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
               <Button type="button" variant="ghost" size="xs" onClick={() => setVersionId(action.version_id)}>{t(($) => $.meeting_actions.source_version, { number: action.version_number })}</Button>
               <span>{action.status === "draft" ? t(($) => $.meeting_actions.pending) : action.status === "accepted" ? t(($) => $.meeting_actions.accepted) : action.status === "dismissed" ? t(($) => $.meeting_actions.dismissed) : action.status}</span>

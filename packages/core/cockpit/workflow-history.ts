@@ -11,7 +11,6 @@ export function validCockpitWorkflowSummary(summary: CockpitMeetingWorkflowSumma
   // commands bump it as a cache stamp (R4). The version pointers are the facts.
   if (!summary.enabled) return !summary.current_version_id && !summary.published_version_id && !summary.current_version && !summary.published_version;
   return Boolean(summary.revision > 0 && summary.minutes_issue?.id && summary.reviewer_id
-    && (!summary.released_at || (summary.ended_at && summary.materials_ready))
     && (summary.current_version_id ? summary.current_version?.id === summary.current_version_id && cockpitWorkflowVersionMatches(summary, summary.current_version) : !summary.current_version)
     && (summary.published_version_id ? summary.published_version?.id === summary.published_version_id && cockpitWorkflowVersionMatches(summary, summary.published_version)
       && summary.published_version.decision === "approved" && summary.published_version.published_at : !summary.published_version));
@@ -27,7 +26,7 @@ export function cockpitWorkflowSummaryActions(workflow: CockpitMeetingWorkflowSu
   return { current, valid, canManage, hasExecutor,
     canReassignReviewer: Boolean(canManage && workflow.can_reassign_reviewer && (!current || (validVersion && ["pending", "approved", "changes_requested", "rejected"].includes(current.decision)))),
     canRelease: Boolean(canManage && hasExecutor && workflow.ended_at && workflow.materials_ready && !workflow.released_at && workflow.minutes_issue?.status === "backlog"),
-    canSubmit: Boolean(valid && userId && workflow.can_submit && (canManage || isWriter) && workflow.released_at
+    canSubmit: Boolean(valid && userId && workflow.can_submit && (canManage || isWriter)
       && (!current || (validVersion && ["approved", "changes_requested", "rejected"].includes(current.decision)))),
     canReview: Boolean(valid && validVersion && userId && workflow.can_review && current?.reviewer_id === userId && current.decision === "pending"),
     canPublish: Boolean(valid && validVersion && userId && workflow.can_publish && current?.decision === "approved" && workflow.published_version_id !== current.id),

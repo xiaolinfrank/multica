@@ -12,8 +12,8 @@ vi.mock("../api", () => ({ api: { getCockpitPreparationOperation: vi.fn() } }));
 afterEach(() => vi.resetAllMocks());
 const WS = "workspace", MEETING = "meeting", OP = "operation";
 function header(revision: number): CockpitPreparationOperationHeader {
-  return { workspace_id: WS, meeting_id: MEETING, id: OP, kind: "apply_template", revision, state: "active", command_key: "key",
-    template_id: "template", template_version_id: "version", template_title: "Template", template_version_number: 1, responsible_user_name: "Member", created_by: "user", created_by_name: "Member", responsible_user_id: "user",
+  return { workspace_id: WS, meeting_id: MEETING, id: OP, kind: "cancel_preparation", revision, state: "active", command_key: "key",
+    created_by: "user", created_by_name: "Preparer", responsible_user_id: "user", responsible_user_name: "Preparer",
     created_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T00:00:00Z", counts: { total: 1, pending: 1, applied: 0, needs_attention: 0, skipped: 0 },
     can_continue: true, can_resume: false, can_pause: true, can_claim: false, blocked_reasons: [] };
 }
@@ -68,15 +68,15 @@ describe("preparation fact reconciliation", () => {
 
   it("refreshes mutable workspace facts while allowing immutable version and receipt reads to finish", async () => {
     const qc = client();
-    const stableKeys = [cockpitPreparationKeys.version(WS, "template", "version"), cockpitPreparationKeys.templateCommand(WS, "command"), cockpitLifecycleKeys.command(WS, MEETING, "command")];
-    const mutableKeys = [cockpitPreparationKeys.template(WS, "template"), cockpitPreparationKeys.templates(WS), cockpitPreparationKeys.operation(WS, MEETING, OP), cockpitLifecycleKeys.header(WS, MEETING)];
+    const stableKeys = [cockpitLifecycleKeys.command(WS, MEETING, "command")];
+    const mutableKeys = [cockpitPreparationKeys.operation(WS, MEETING, OP), cockpitPreparationKeys.operations(WS, MEETING), cockpitPreparationKeys.meeting(WS, MEETING), cockpitLifecycleKeys.header(WS, MEETING)];
     const other = cockpitPreparationKeys.operation("other-workspace", MEETING, OP);
     for (const key of [...mutableKeys, other]) qc.setQueryData(key, { revision: 7 });
     const finish: Array<(value: { content: string }) => void> = [];
     const reads = stableKeys.map((queryKey) => qc.fetchQuery({ queryKey, queryFn: () => new Promise<{ content: string }>((resolve) => finish.push(resolve)), staleTime: Infinity }));
     const collected = Promise.allSettled(reads);
     try {
-      await vi.waitFor(() => expect(finish).toHaveLength(3));
+      await vi.waitFor(() => expect(finish).toHaveLength(1));
       await invalidateCockpitMeetingPreparationFacts(qc, WS);
       for (const key of mutableKeys) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
       expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
@@ -90,9 +90,10 @@ describe("preparation fact reconciliation", () => {
   it("reconciles the named meeting without clearing another meeting or applying a historic receipt as current state", async () => {
     const qc = client();
     const affected = [cockpitPreparationKeys.operation(WS, MEETING, OP), cockpitPreparationKeys.effects(WS, MEETING, OP),
+      cockpitPreparationKeys.effect(WS, MEETING, OP, "effect"),
       cockpitPreparationKeys.authorization(WS, MEETING, OP, "effect"), cockpitPreparationKeys.basis(WS, MEETING), cockpitKeys.workflow(WS, MEETING)];
     const untouched = [cockpitPreparationKeys.operation(WS, "other-meeting", OP), cockpitPreparationKeys.operation("other-workspace", MEETING, OP),
-      cockpitPreparationKeys.version(WS, "template", "version"), cockpitLifecycleKeys.command(WS, MEETING, "command")];
+      cockpitLifecycleKeys.command(WS, MEETING, "command")];
     for (const key of [...affected, ...untouched]) qc.setQueryData(key, { revision: 12 });
     await invalidateCockpitMeetingPreparationFacts(qc, WS, MEETING, OP);
     for (const key of affected) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);

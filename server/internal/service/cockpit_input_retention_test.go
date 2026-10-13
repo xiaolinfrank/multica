@@ -43,33 +43,3 @@ func TestCockpitInputHistoryBlocksDeleteWithoutChangingOrdinaryTaskFields(t *tes
 		t.Fatalf("missing exact historical-manifest repair route: %+v", row.Targets)
 	}
 }
-func TestCockpitMeetingInputDeleteBasisFollowsExactActiveReferences(t *testing.T) {
-	f, p, _, version := inputReferenceFixture(t)
-	ctx := context.Background()
-	query := CockpitInputQuery{CockpitInputRead: p, MeetingID: f.meeting}
-	ref, err := f.issues.CreateCockpitInputReference(ctx, query, CockpitInputReferenceCreateInput{CommandKey: util.UUIDToString(dbid.NewV7()), InputVersionID: util.UUIDToString(version), Purpose: "material"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	basis, err := f.issues.GetCockpitMeetingOperationBasis(ctx, lifecycleRead(f))
-	if err != nil || basis.Delete.State != "blocked" || basis.Delete.ReasonCodes[0] != "meeting_input_references" {
-		t.Fatalf("active input missing from deletion basis: %+v %v", basis, err)
-	}
-	found := false
-	for _, target := range basis.Targets {
-		if target.MeetingID == util.UUIDToString(f.meeting) && target.View == "resources" && target.Purpose == "meeting_input_references" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("meeting deletion has no direct materials route")
-	}
-	query.ReferenceID = parseTestUUID(t, ref.Receipt.ReferenceID)
-	if _, err = f.issues.RemoveCockpitInputReference(ctx, query, CockpitInputReferenceRemoveInput{CommandKey: util.UUIDToString(dbid.NewV7())}); err != nil {
-		t.Fatal(err)
-	}
-	after, err := f.issues.GetCockpitMeetingOperationBasis(ctx, lifecycleRead(f))
-	if err != nil || after.Delete.State != "allowed" {
-		t.Fatalf("removed reference still prevented deletion: %+v %v", after, err)
-	}
-}

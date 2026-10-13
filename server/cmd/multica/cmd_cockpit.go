@@ -222,18 +222,18 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
-		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
+		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitChangeCommand(), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
 		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd, newCockpitVersionCompareCommand())
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
 		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd,
-		newCockpitNodeTasksCommand(), newCockpitNodeCreateTaskCommand())
+		newCockpitNodeTasksCommand(), newCockpitNodeCreateTaskCommand(), newCockpitNextNodeCodeCommand())
 	cockpitPaymentCmd.AddCommand(cockpitPaymentAddCmd, cockpitPaymentUpdateCmd, cockpitPaymentRemoveCmd)
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingShowCommand(), newCockpitMeetingArtifactReferencesCommand(), newCockpitMeetingLifecycleCommand(false), newCockpitMeetingLifecycleCommand(true))
-	cockpitMeetingCmd.AddCommand(newCockpitMeetingPreparationCommand(true), newCockpitMeetingPreparationCommand(false), newCockpitMeetingDirectoryCommand())
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingShowCommand(), newCockpitMeetingLifecycleCommand())
+	cockpitMeetingCmd.AddCommand(newCockpitMeetingPreparationCommand(), newCockpitMeetingDirectoryCommand(), newCockpitMeetingRelationCommand("issue"), newCockpitMeetingRelationCommand("node"))
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 
@@ -276,7 +276,7 @@ func init() {
 		c.Flags().String("budget-category", "", "Budget category")
 		c.Flags().Float64("budget", 0, "Annual budget in the board's unit")
 		c.Flags().Bool("clear-budget", false, "Clear the budget instead of setting it")
-		c.Flags().String("exec-status", "", "Budget execution status")
+		c.Flags().String("exec-status", "", "Payment status")
 		c.Flags().String("contract", "", "Contract reference")
 		c.Flags().String("source", "", "Provenance of the row")
 		c.Flags().Float64("position", 0, "Sort position among siblings")

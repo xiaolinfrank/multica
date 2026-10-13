@@ -373,7 +373,7 @@ describe("the meeting register", () => {
   it("names the meeting, not the button, when it asks before deleting", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Meeting actions" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete meeting Working group weekly" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Delete meeting Working group weekly" }));
 
@@ -386,15 +386,14 @@ describe("the meeting register", () => {
   it("opens one meeting in a panel, with its task, its work item and its folder", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Preparation" }));
 
     // The meeting's own task reads as an ordinary issue.
     expect(await screen.findByText("BIO-42")).toBeInTheDocument();
     // The linked work item is addressed by the code the gantt uses.
     expect(screen.getByRole("button", { name: /Show .*Joint working and meetings/ })).toBeInTheDocument();
-    expect(
-      screen.getByText("/Volumes/share/06.06/20260921-01 Working group weekly"),
-    ).toBeInTheDocument();
+    // The folder fact lives in the bottom fact region, no tab needed.
+    expect(await screen.findByText("/Volumes/share/06.06/20260921-01 Working group weekly")).toBeInTheDocument();
   });
 
   it("numbers the work-item picker with the shipped row codes", async () => {
@@ -412,7 +411,7 @@ describe("the meeting register", () => {
     fixtureBoard = structuredClone({ ...board, nodes: [...board.nodes, ...extra] });
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Preparation" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
     expect(await screen.findByRole("button", { name: /02\.04 Ship/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /02\.05 Ship/ })).not.toBeInTheDocument();
@@ -429,7 +428,7 @@ describe("the meeting register", () => {
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockResolvedValue(summary);
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Preparation" }));
     expect(await screen.findByRole("button", { name: "Unlink BIO-42" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Unlink BIO-99" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Edit purposes for BIO-99" }));
@@ -444,7 +443,6 @@ describe("the meeting register", () => {
   it("writes a field edit from the panel as a patch of just that field", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     vi.mocked(api.updateCockpitMeeting).mockResolvedValue(
       meeting({ id: "meet-1", location: "Room 2" }),
@@ -462,7 +460,6 @@ describe("the meeting register", () => {
   it("rebinds the folder to one that already exists, and refuses a relative path", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit path" }));
     const input = screen.getByRole("textbox", { name: "Material folder" });
@@ -531,10 +528,10 @@ describe("the meeting register", () => {
       ).toBeInTheDocument(),
     );
     // And where the task lands: under the sub-item, not merely numbered by it.
-    expect(within(dialog).getByText(/› 06\.06\.03\./)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/› 06\.06\.03\./)).toBeNull();
   });
 
-  it("creates the meeting, enables its work package, and provisions only the directory", async () => {
+  it("creates the meeting and directory without creating a minutes task", async () => {
     const created = meeting({ id: "meet-new", code: "20260921-02", title: "New one" });
     vi.mocked(api.createCockpitMeeting).mockImplementation(async (body) => { fixtureBoard.meetings.push(created); return { ...created, creation_key: body.creation_key, replayed: false }; });
     vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
@@ -555,7 +552,7 @@ describe("the meeting register", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
 
     await waitFor(() => expect(api.createCockpitMeeting).toHaveBeenCalled());
-    await waitFor(() => expect(api.commandCockpitMeetingWorkflow).toHaveBeenCalledWith("ws-1", "meet-new", { action: "enabled", body: expect.objectContaining({ reviewer_id: "user-1" }) }));
+    expect(api.commandCockpitMeetingWorkflow).not.toHaveBeenCalled();
     // The row is written on its own, then the side effects are asked for —
     // an unmounted share must never cost the record of a meeting.
     expect(vi.mocked(api.createCockpitMeeting).mock.calls[0]![0]).not.toHaveProperty("code");
@@ -566,8 +563,7 @@ describe("the meeting register", () => {
         "ws-1",
       ),
     );
-    expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]!);
-    expect(vi.mocked(api.commandCockpitMeetingWorkflow).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(api.createCockpitMeeting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.provisionCockpitMeeting).mock.invocationCallOrder[0]!);
   });
 
   it("hands an acknowledged background directory plan to its reader without waiting for completion or repeating provisioning", async () => {
@@ -603,13 +599,13 @@ describe("the meeting register", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Retry" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const calls = vi.mocked(api.createCockpitMeeting).mock.calls; expect(calls).toHaveLength(2); expect(calls[1]?.[0]).toEqual(calls[0]?.[0]); expect(calls[0]?.[0].creation_key).toMatch(/^[0-9a-f-]{36}$/);
     expect(fixtureBoard.meetings.filter((row) => row.id === created.id)).toHaveLength(1);
-    expect(api.commandCockpitMeetingWorkflow).toHaveBeenCalledExactlyOnceWith("ws-1", created.id, { action: "enabled", body: expect.objectContaining({ reviewer_id: "user-1" }) });
+    expect(api.commandCockpitMeetingWorkflow).not.toHaveBeenCalled();
   });
 
-  it("retries failed workflow setup on the same saved meeting without falling back to immediate tasks", async () => {
+  it("retries failed directory preparation on the same saved meeting without creating another task", async () => {
     const created = meeting({ id: "meet-retry", code: `${codeDay()}-02`, title: "Retry setup" });
     vi.mocked(api.createCockpitMeeting).mockImplementation(async (body) => { fixtureBoard.meetings.push(created); return { ...created, creation_key: body.creation_key, replayed: false }; });
-    vi.mocked(api.commandCockpitMeetingWorkflow).mockRejectedValueOnce(new Error("Reviewer temporarily unavailable"));
+    vi.mocked(api.provisionCockpitMeeting).mockRejectedValueOnce(new Error("Directory temporarily unavailable"));
     vi.mocked(api.provisionCockpitMeeting).mockResolvedValue({
       meeting: { ...created, nas_dir: "/Volumes/share/retry" }, issues: [], task: null, task_error: "",
       dir: "/Volumes/share/retry", dir_created: true, dir_error: "",
@@ -619,12 +615,13 @@ describe("the meeting register", () => {
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeEnabled());
     fireEvent.click(within(dialog).getByRole("button", { name: "Create meeting" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Reviewer temporarily unavailable");
-    expect(api.provisionCockpitMeeting).not.toHaveBeenCalled();
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Directory temporarily unavailable");
+    expect(api.provisionCockpitMeeting).toHaveBeenCalledTimes(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Retry remaining setup" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.createCockpitMeeting).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.commandCockpitMeetingWorkflow).mock.calls.map(([, meetingId]) => meetingId)).toEqual(["meet-retry", "meet-retry"]);
+    expect(api.commandCockpitMeetingWorkflow).not.toHaveBeenCalled();
+    expect(vi.mocked(api.provisionCockpitMeeting).mock.calls.map(([meetingId]) => meetingId)).toEqual(["meet-retry", "meet-retry"]);
     expect(api.provisionCockpitMeeting).toHaveBeenCalledWith("meet-retry", expect.objectContaining({ create_task: false }), "ws-1");
   });
 
@@ -769,7 +766,6 @@ describe("the people at a meeting", () => {
   it("offers workspace members and accepts anyone else", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Attendees: Find workspace member" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Search workspace members" }), { target: { value: "Wang Gong" } });
@@ -800,11 +796,10 @@ describe("the people at a meeting", () => {
       ];
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     // The auto-save notice rides under the attendee field.
     expect(
-      screen.getByText("New people and positions you type are saved to the contact book automatically and offered next time."),
+      await screen.findByText("New people and positions you type are saved to the contact book automatically and offered next time."),
     ).toBeInTheDocument();
 
     // Narrow the meeting to its one unit so a fresh name can be attributed.
@@ -863,8 +858,7 @@ describe("the people at a meeting", () => {
       ];
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
-    fireEvent.click(screen.getByRole("button", { name: "Attendees" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Attendees" }));
 
     // Scoped to the meeting's units, both contacts show; only the hand-filed
     // one carries a trash affordance.
@@ -888,7 +882,6 @@ describe("the people at a meeting", () => {
   it("starts the meeting type from the programme's own words", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Type" }));
     // An empty board still opens on a vocabulary rather than on a blank box.

@@ -10,11 +10,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
-func executePreparationCLI(t *testing.T, templates bool, args ...string) (string, error) {
+func executePreparationCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	cmd := newCockpitMeetingPreparationCommand(templates)
+	cmd := newCockpitMeetingPreparationCommand()
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
@@ -64,7 +66,7 @@ func TestCockpitPreparationCLIReadsBoundedScopedEffects(t *testing.T) {
 			}))
 			defer srv.Close()
 			configureWorkflowCLIEnv(t, srv.URL)
-			out, err := executePreparationCLI(t, false, "effects", workflowCLIMeeting, workflowCLIVersion, "--page-size", "2", "--cursor", "older+page")
+			out, err := executePreparationCLI(t, "effects", workflowCLIMeeting, workflowCLIVersion, "--page-size", "2", "--cursor", "older+page")
 			if calls.Load() != 1 || (err == nil) != (defect == "none") || err == nil && !json.Valid([]byte(out)) {
 				t.Fatalf("%s: calls=%d err=%v", defect, calls.Load(), err)
 			}
@@ -107,45 +109,7 @@ func TestCockpitPreparationCLIRequiresExactGrantAndTerminalRunReceipt(t *testing
 			}))
 			defer srv.Close()
 			configureWorkflowCLIEnv(t, srv.URL)
-			_, err := executePreparationCLI(t, false, "execute", workflowCLIMeeting, workflowCLIVersion, workflowCLIProject, "--request-file", preparationCLIRequestFile(t, body))
-			if calls.Load() != 1 || (err == nil) != (defect == "none") {
-				t.Fatalf("%s: calls=%d err=%v", defect, calls.Load(), err)
-			}
-		})
-	}
-}
-
-func TestCockpitPreparationCLITemplateSaveKeepsFixedBody(t *testing.T) {
-	for _, defect := range []string{"none", "description", "config", "command", "current-only"} {
-		t.Run(defect, func(t *testing.T) {
-			config := map[string]any{"schema_version": 1, "slots": []any{map[string]any{"slot_id": workflowCLIProject, "kind": "agenda", "label": "Topic", "agenda_slot_id": nil, "purpose": "", "new_issue": nil, "agenda": map[string]any{"title": "Topic", "notes": "  Kept\n\n", "desired_outcome": "", "purposes": []string{"planning"}}}}}
-			body := map[string]any{"command_key": meetingLifecycleCLIKey, "expected_revision": 0, "title": "  Prep  ", "description": "  Keep spaces\n", "active": true, "config": config}
-			receipt := map[string]any{"workspace_id": "ws-1", "template_id": workflowCLIVersion, "command_key": meetingLifecycleCLIKey, "title": "Prep", "description": body["description"], "active": true, "config": config}
-			result := map[string]any{"workspace_id": "ws-1", "template_id": workflowCLIVersion, "command_key": meetingLifecycleCLIKey, "request_hash": workflowCLIHash, "replayed": false, "receipt": receipt,
-				"current": map[string]any{"workspace_id": "ws-1", "id": workflowCLIVersion, "title": "Later title", "active": false}}
-			switch defect {
-			case "description":
-				receipt["description"] = "Keep spaces"
-			case "config":
-				receipt["config"] = map[string]any{"schema_version": 1, "slots": []any{}}
-			case "command":
-				receipt["command_key"] = workflowCLIUser
-			case "current-only":
-				delete(result, "receipt")
-			}
-			var calls atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				calls.Add(1)
-				var sent map[string]any
-				_ = json.NewDecoder(r.Body).Decode(&sent)
-				if r.Method != "POST" || r.URL.Path != "/api/cockpit/meeting-templates" || sent["description"] != body["description"] || sent["expected_revision"] != float64(0) {
-					t.Error("template intent changed")
-				}
-				_ = json.NewEncoder(w).Encode(result)
-			}))
-			defer srv.Close()
-			configureWorkflowCLIEnv(t, srv.URL)
-			_, err := executePreparationCLI(t, true, "create", "--request-file", preparationCLIRequestFile(t, body))
+			_, err := executePreparationCLI(t, "execute", workflowCLIMeeting, workflowCLIVersion, workflowCLIProject, "--request-file", preparationCLIRequestFile(t, body))
 			if calls.Load() != 1 || (err == nil) != (defect == "none") {
 				t.Fatalf("%s: calls=%d err=%v", defect, calls.Load(), err)
 			}
@@ -159,7 +123,7 @@ func TestCockpitPreparationCLIRejectsMissingAuthorizationBeforeRequest(t *testin
 	defer srv.Close()
 	configureWorkflowCLIEnv(t, srv.URL)
 	body := map[string]any{"command_key": meetingLifecycleCLIKey}
-	_, err := executePreparationCLI(t, false, "execute", workflowCLIMeeting, workflowCLIVersion, workflowCLIProject, "--request-file", preparationCLIRequestFile(t, body))
+	_, err := executePreparationCLI(t, "execute", workflowCLIMeeting, workflowCLIVersion, workflowCLIProject, "--request-file", preparationCLIRequestFile(t, body))
 	if err == nil || calls.Load() != 0 {
 		t.Fatalf("missing grant must not be sent: calls=%d err=%v", calls.Load(), err)
 	}
@@ -194,5 +158,36 @@ func TestCockpitMeetingPageRequiresArchiveFilterEcho(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCockpitMeetingRetirementRemovesDeadCLICommands(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		command  *cobra.Command
+		retired  []string
+		retained []string
+	}{
+		{"meeting", cockpitMeetingCmd, []string{"agenda", "templates", "artifact-references"}, []string{"lifecycle", "directory", "preparation", "workflow"}},
+		{"disposition", newCockpitMeetingPreparationCommand(), []string{"preview", "apply"}, []string{"impact", "cancel", "dispose", "execute", "disposition"}},
+		{"artifact", newCockpitArtifactCommand(), []string{"meeting-references", "reference-meeting", "remove-meeting-reference"}, []string{"node-references", "reference-node", "remove-node-reference"}},
+		{"input", newCockpitInputCommand(), []string{"references", "reference", "remove-reference", "reference-command"}, []string{"manifest", "save-manifest", "run-manifest", "submit"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			commands := map[string]bool{}
+			for _, command := range tc.command.Commands() {
+				commands[command.Name()] = true
+			}
+			for _, name := range tc.retired {
+				if commands[name] {
+					t.Errorf("retired command %s remains registered", name)
+				}
+			}
+			for _, name := range tc.retained {
+				if !commands[name] {
+					t.Errorf("shared command %s was removed", name)
+				}
+			}
+		})
 	}
 }

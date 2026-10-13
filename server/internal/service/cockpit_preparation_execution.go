@@ -30,7 +30,6 @@ type cockpitPreparationExecution struct {
 	meeting          lifecycleState
 	intent           preparationEffectIntent
 	grant            preparationAuthorizationFacts
-	agenda           pgtype.UUID
 	checked          bool
 	result           *CockpitPreparationEffectResult
 	previousIssue    *db.Issue
@@ -121,34 +120,6 @@ func (e *cockpitPreparationExecution) lock(ctx context.Context, q *db.Queries) e
 		return ErrCockpitWorkflowConflict
 	}
 	e.checked = true
-	if o.Kind == "apply_template" {
-		if x.meeting.OccurrenceState == "cancelled" {
-			return ErrCockpitWorkflowConflict
-		}
-		if x.meeting.ArchivedAt.Valid {
-			confirmed, err := time.Parse(time.RFC3339Nano, e.grant.ConfirmedAt)
-			if err != nil || o.CreatedAt.Time.After(x.meeting.ArchivedAt.Time) || confirmed.After(x.meeting.ArchivedAt.Time) {
-				return ErrCockpitWorkflowConflict
-			}
-		}
-	}
-	if r.DependencyID.Valid {
-		d, err := q.GetCockpitPreparationEffect(ctx, db.GetCockpitPreparationEffectParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, OperationID: o.ID, ID: r.DependencyID})
-		if err != nil {
-			return cockpitWorkflowError(err)
-		}
-		if d.State != "applied" || !d.AgendaID.Valid {
-			return fmt.Errorf("%w: complete the prerequisite agenda first", ErrCockpitWorkflowConflict)
-		}
-		a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: d.AgendaID})
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && a.RemovedAt.Valid) {
-			return ErrCockpitLifecycleGone
-		}
-		if err != nil {
-			return err
-		}
-		e.agenda = a.ID
-	}
 	return nil
 }
 
@@ -159,33 +130,6 @@ func verifyPreparationReceiptTargets(ctx context.Context, q *db.Queries, p Cockp
 			return err
 		}
 		p.MeetingID = id
-	}
-	if r.AgendaID != nil {
-		id, _ := preparationUUID(r.AgendaID)
-		a, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: id})
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && a.RemovedAt.Valid) {
-			return ErrCockpitLifecycleGone
-		}
-		if err != nil {
-			return err
-		}
-	}
-	if r.ReferenceID != nil {
-		agenda, _ := preparationUUID(r.AgendaID)
-		id, _ := preparationUUID(r.ReferenceID)
-		ref, err := q.GetCockpitAgendaReference(ctx, db.GetCockpitAgendaReferenceParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, AgendaID: agenda, ID: id})
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && ref.RemovedAt.Valid) {
-			return ErrCockpitLifecycleGone
-		}
-		if err != nil {
-			return err
-		}
-		if err = validateAgendaReferenceTarget(ctx, q, p, ref.Kind, ref.TargetID); err != nil {
-			if errors.Is(err, ErrCockpitWorkflowNotFound) || errors.Is(err, ErrCockpitWorkflowConflict) {
-				return ErrCockpitLifecycleGone
-			}
-			return err
-		}
 	}
 	if r.IssueID != nil {
 		id, _ := preparationUUID(r.IssueID)
@@ -237,11 +181,9 @@ func (e *cockpitPreparationExecution) finish(ctx context.Context, q *db.Queries,
 	if err != nil {
 		return err
 	}
-	agenda, _ := preparationUUID(r.AgendaID)
-	ref, _ := preparationUUID(r.ReferenceID)
 	issue, _ := preparationUUID(r.IssueID)
 	run, _ := preparationUUID(r.RunID)
-	_, err = q.ApplyCockpitPreparationEffect(ctx, db.ApplyCockpitPreparationEffectParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, OperationID: p.OperationID, ID: p.EffectID, AgendaID: agenda, ReferenceID: ref, IssueID: issue, RunID: run, Receipt: body, AppliedBy: p.ActorID})
+	_, err = q.ApplyCockpitPreparationEffect(ctx, db.ApplyCockpitPreparationEffectParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, OperationID: p.OperationID, ID: p.EffectID, IssueID: issue, RunID: run, Receipt: body, AppliedBy: p.ActorID})
 	if err != nil {
 		return err
 	}

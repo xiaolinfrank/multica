@@ -15,7 +15,7 @@ const scope = { projectId: null, moduleId: null };
 const key = cockpitScopeViewKey("ws-1", scope);
 function setup(overrides: Partial<CockpitMeetingCreateProps> = {}) {
   const props: CockpitMeetingCreateProps = { open: true, wsId: "ws-1", scope, today: "2026-10-10", members: [], currentUserName: "Owner", currentUserId: "person", savedMeetingId: null, workflowCreated: false,
-    defaultProjectId: null, defaultModuleId: null, defaultNodeId: null, defaultAssigneeType: null, defaultAssigneeId: null,
+    defaultProjectId: "project", defaultModuleId: "module", defaultNodeId: null, defaultAssigneeType: null, defaultAssigneeId: null,
     onOpenChange: vi.fn(), onCreated: vi.fn(), onSaveDirectoryEntry: vi.fn().mockResolvedValue(true), onAutoSaveDirectory: vi.fn(), onSubmit: vi.fn().mockResolvedValue({ meetingId: "meeting-created" }), ...overrides };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>{children}</I18nProvider></QueryClientProvider>;
@@ -24,7 +24,7 @@ function setup(overrides: Partial<CockpitMeetingCreateProps> = {}) {
 beforeEach(() => {
   vi.clearAllMocks(); useCockpitMeetingCreateDraftStore.getState().clearDraft();
   vi.mocked(api.getCockpitContext).mockImplementation(async (ws, input) => ({ workspace_id: ws, scope: { project_id: input.projectId, module_id: input.moduleId, project_title: "", module_title: "" }, cockpit: null, actor: { user_id: "person", role: "member", is_human: true }, has_stable_bindings: false, has_meeting_workflows: false }));
-  vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({ project_id: "project", project_title: "Project", module_id: "module", module_title: "Module", node_id: "", node_code: "", node_title: "", collab_path: "", base_dir: "", derived: false, base_dir_exists: false, creatable: false, error: "" });
+  vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({ project_id: "project", project_title: "Project", module_id: "module", module_title: "Module", node_id: "", node_code: "", node_title: "", collab_path: "/Volumes/team", base_dir: "/Volumes/team/Meetings", derived: false, base_dir_exists: true, creatable: true, error: "" });
   vi.mocked(api.getCockpitMeetingNextCode).mockImplementation(async (ws, date) => ({ workspace_id: ws, date, code: "M-0001" }));
   vi.mocked(api.searchCockpitScopeMembers).mockResolvedValue({ workspace_id: "ws-1", scope: { q: "", ids: ["person"] }, items: [{ id: "person", title: "Owner", email: "owner@example.test", avatar_url: "", role: "member" }], total: 1, filtered_total: 1, next_cursor: null });
   vi.mocked(api.searchCockpitAssignees).mockResolvedValue({ workspace_id: "ws-1", q: "", kind: "all", selected_type: "member", selected_id: "person", items: [{ id: "person", type: "member", title: "Owner", email: "owner@example.test", avatar_url: "", status: "active", runtime_bound: null, can_assign: true, reason: "" }], total: 1, next_cursor: null });
@@ -62,13 +62,14 @@ describe("meeting creation command recovery", () => {
     await user.click(screen.getByRole("button", { name: "Create meeting" })); await waitFor(() => expect(view.props.onCreated).toHaveBeenCalled()); expect(vi.mocked(view.props.onSubmit).mock.calls[2]![0].creation_key).not.toBe(first.creation_key);
   });
 
-  it("waits for a remembered destination and retries its failed read without silently dropping the requested work package", async () => {
+  it("waits for the directory destination before creating the meeting, without creating a minutes issue", async () => {
     let fail!: (error: Error) => void; vi.mocked(api.getCockpitContext).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
     const view = setup({ defaultProjectId: "project", defaultModuleId: "module" }); const user = userEvent.setup();
     const create = screen.getByRole("button", { name: "Create meeting" }); expect(create).toBeDisabled(); expect(await screen.findByText(enCockpit.meeting_center.checking_destination)).toBeVisible(); expect(view.props.onSubmit).not.toHaveBeenCalled();
     await act(async () => fail(new Error("Scope unavailable"))); expect(await screen.findByRole("alert")).toHaveTextContent("Could not load"); expect(create).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Retry" })); await waitFor(() => expect(create).toBeEnabled()); await user.click(create); await waitFor(() => expect(view.props.onSubmit).toHaveBeenCalledOnce());
-    expect(vi.mocked(view.props.onSubmit).mock.calls[0]?.[2]).toMatchObject({ project_id: "project", module_id: "module", reviewer_id: "person" });
+    expect(vi.mocked(view.props.onSubmit).mock.calls[0]?.[2]).toBeNull();
+    expect(vi.mocked(view.props.onSubmit).mock.calls[0]?.[1]).toMatchObject({ create_dir: true, create_task: false });
   });
   it("retries a fixed creation command with its original task and folder actions while fresh destination reads fail", async () => {
     const command = prepareCockpitMeetingCreation(key, { meeting: { creation_key: "10000000-0000-4000-8000-000000000001", node_id: null, meet_date: "2026-10-10", start_time: "", end_time: "", kind: "", status: "", track: "", parties: "", organizer: "Owner", attendees: "", location: "", title: "Fixed request" }, provision: { project_id: "project", module_id: "module", node_id: "", create_dir: true, base_dir: "/captured-folder" }, workflow: { reviewer_id: "person", project_id: "project", module_id: "module" }, autoSaveEntries: [] });

@@ -1,7 +1,7 @@
 "use client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { CockpitArtifactProducerCommand, CockpitArtifactReviewerCommand, CockpitArtifactReferenceKind, CockpitArtifactNodeReferenceCreate, CockpitArtifactMeetingReferenceCreate } from "../types";
+import type { CockpitArtifactProducerCommand, CockpitArtifactReviewerCommand, CockpitArtifactNodeReferenceCreate } from "../types";
 import { invalidateCockpitArtifactFacts } from "./artifact-mutations";
 import { CockpitUnconfirmedWriteError } from "./errors";
 
@@ -34,16 +34,15 @@ export function useArchiveCockpitArtifact(wsId: string) {
   });
 }
 export function useCreateCockpitArtifactReference(wsId: string) {
-  return useArtifactCommand(wsId, async ({ artifactId, kind, body }: { artifactId: string; kind: CockpitArtifactReferenceKind; body: CockpitArtifactNodeReferenceCreate | CockpitArtifactMeetingReferenceCreate }) => {
+  return useArtifactCommand(wsId, async ({ artifactId, kind, body }: { artifactId: string; kind: "node"; body: CockpitArtifactNodeReferenceCreate }) => {
     const result = await api.createCockpitArtifactReference(wsId, artifactId, kind, body);
     if (!result || result.workspace_id !== wsId || result.reference.artifact_id !== artifactId || result.reference.reference_key !== body.reference_key
-      || result.reference.version_id !== body.version_id || result.reference.purpose !== body.purpose
-      || (kind === "node" ? !("node_id" in body) || result.reference.node_id !== body.node_id : !("meeting_id" in body) || result.reference.meeting_id !== body.meeting_id)) throw new CockpitUnconfirmedWriteError();
+      || result.reference.version_id !== body.version_id || result.reference.purpose !== body.purpose) throw new CockpitUnconfirmedWriteError();
     return result;
   });
 }
 export function useRemoveCockpitArtifactReference(wsId: string) {
-  return useArtifactCommand(wsId, async ({ artifactId, kind, referenceId }: { artifactId: string; kind: CockpitArtifactReferenceKind; referenceId: string }) => {
+  return useArtifactCommand(wsId, async ({ artifactId, kind, referenceId }: { artifactId: string; kind: "node"; referenceId: string }) => {
     const result = await api.removeCockpitArtifactReference(wsId, artifactId, kind, referenceId);
     if (!result || result.workspace_id !== wsId || result.reference.artifact_id !== artifactId || result.reference.id !== referenceId || !result.reference.removed_at) throw new CockpitUnconfirmedWriteError();
     return result;

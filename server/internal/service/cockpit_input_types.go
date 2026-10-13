@@ -1,6 +1,9 @@
 package service
 
-import "github.com/jackc/pgx/v5/pgtype"
+import (
+	"encoding/json"
+	"github.com/jackc/pgx/v5/pgtype"
+)
 
 // N2 wire contract. Capabilities remain disabled until the full implementation
 // and agent3 acceptance are complete. These declarations do not register routes.
@@ -226,19 +229,16 @@ type CockpitInputVersionPage struct {
 	Total       int64                         `json:"total"`
 	NextCursor  *string                       `json:"next_cursor"`
 }
-type CockpitInputInitialReference struct {
-	ReferenceKey string  `json:"reference_key"`
-	MeetingID    string  `json:"meeting_id"`
-	AgendaID     *string `json:"agenda_id"`
-	Purpose      string  `json:"purpose"` // material | recording | supporting
-}
 type CockpitInputVersionSubmitInput struct {
-	CommandKey       string                        `json:"command_key"`
-	ExpectedRevision int64                         `json:"expected_revision"` // input header revision
-	Source           CockpitInputSourceInput       `json:"source"`
-	InitialReference *CockpitInputInitialReference `json:"initial_reference"`
+	CommandKey       string                  `json:"command_key"`
+	ExpectedRevision int64                   `json:"expected_revision"` // input header revision
+	Source           CockpitInputSourceInput `json:"source"`
+	// Keep the field order and null in the canonical hash for fixed-input retries.
+	// Non-null meeting references are rejected; no relationship is created.
+	InitialReference json.RawMessage `json:"initial_reference"`
 }
 type CockpitInputVersionReceipt struct {
+	InitialReference *CockpitInputReferenceReceipt `json:"initial_reference"` // Historical receipt data only.
 	TransferRevision *int64                        `json:"transfer_revision"` // fixed first-transfer revision; null for borrowed artifact content
 	CommandKey       string                        `json:"command_key"`
 	RequestHash      string                        `json:"request_hash"`
@@ -250,7 +250,6 @@ type CockpitInputVersionReceipt struct {
 	PayloadKind      string                        `json:"payload_kind"`
 	CaptureState     string                        `json:"capture_state"`
 	TransferID       *string                       `json:"transfer_id"`
-	InitialReference *CockpitInputReferenceReceipt `json:"initial_reference"`
 	Principal        CockpitInputPrincipal         `json:"principal"`
 	AcceptedAt       string                        `json:"accepted_at"`
 }

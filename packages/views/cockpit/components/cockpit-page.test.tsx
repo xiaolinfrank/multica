@@ -552,7 +552,7 @@ describe("CockpitPage", () => {
 
     expect(await screen.findByText("Instalments")).toBeInTheDocument();
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
-    expect(screen.getByText("Budget status")).toBeInTheDocument();
+    expect(screen.getByText("Payment status")).toBeInTheDocument();
     // The linked issue renders as the live issue, not as free text.
     expect((await screen.findAllByText("BIO-314")).length).toBeGreaterThan(0);
   });

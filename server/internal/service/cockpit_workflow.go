@@ -311,9 +311,6 @@ func prepareCockpitWorkflowIssue(ctx context.Context, q *db.Queries, p *IssueCre
 	if err := cockpitWorkflowRevision(workState, in.ExpectedRevision); err != nil {
 		return nil, err
 	}
-	if !workState.Released {
-		return nil, fmt.Errorf("%w: minutes work has not been released", ErrCockpitWorkflowConflict)
-	}
 	if workState.CurrentVersionID.Valid {
 		current, err := q.GetCockpitMinutesVersion(ctx, db.GetCockpitMinutesVersionParams{WorkspaceID: in.WorkspaceID, MeetingID: in.MeetingID, ID: work.CurrentVersionID})
 		if err != nil {

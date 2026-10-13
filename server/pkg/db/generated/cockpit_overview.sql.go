@@ -95,14 +95,12 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  FROM cockpit_meeting m CROSS JOIN args x
  WHERE m.workspace_id=x.ws AND (x.project IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_project=x.project)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_project=x.project)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.project_id=x.project)
+
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.project_id=x.project)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.project_id=x.project))
  AND (x.module IS NULL
  OR EXISTS(SELECT 1 FROM cockpit_meeting_node l JOIN node_tree t ON t.id=l.node_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND t.valid AND t.resolved_module=x.module)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda a JOIN node_tree t ON t.id=a.node_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.removed_at IS NULL AND t.valid AND t.resolved_module=x.module)
- OR EXISTS(SELECT 1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.id=r.agenda_id JOIN issue i ON i.workspace_id=r.workspace_id AND i.id=r.target_id WHERE r.workspace_id=x.ws AND r.meeting_id=m.id AND r.kind='issue' AND r.removed_at IS NULL AND a.removed_at IS NULL AND i.module_id=x.module)
+
  OR EXISTS(SELECT 1 FROM cockpit_meeting_issue l JOIN issue i ON i.workspace_id=l.workspace_id AND i.id=l.issue_id WHERE l.workspace_id=x.ws AND l.meeting_id=m.id AND i.module_id=x.module)
  OR EXISTS(SELECT 1 FROM cockpit_meeting_action a JOIN issue i ON i.workspace_id=a.workspace_id AND i.id=a.issue_id WHERE a.workspace_id=x.ws AND a.meeting_id=m.id AND a.status='accepted' AND i.module_id=x.module))
 ), workflow AS (
@@ -113,9 +111,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  (x.actor_role IN ('owner','admin') OR m.created_by=x.actor)::bool AS manager,
  CASE
  WHEN NOT (i.status IN ('todo','in_progress','in_review','blocked')) THEN CASE
-  WHEN m.ended_at IS NOT NULL AND m.minutes_materials_ready AND i.status='backlog' THEN 'release_ready'
-  WHEN m.ended_at IS NOT NULL AND m.minutes_materials_ready THEN 'restore_backlog'
-  WHEN m.ended_at IS NOT NULL THEN 'materials_needed'
+  WHEN m.ended_at IS NOT NULL THEN 'minutes_needed'
   WHEN m.meet_date<x.as_of THEN 'readiness_needed' ELSE '' END
  WHEN v.decision='pending' AND NOT EXISTS(SELECT 1 FROM member u WHERE u.workspace_id=x.ws AND u.user_id=v.reviewer_id) THEN 'reviewer_missing'
  WHEN v.decision='pending' THEN 'review_pending'
@@ -142,7 +138,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  WHEN w.reason IN ('minutes_needed','minutes_rework') THEN w.manager OR (w.assignee_type='member' AND w.assignee_id=x.actor)
  ELSE w.manager END)::bool AS can_act,
  CASE w.reason WHEN 'review_pending' THEN 'review_minutes' WHEN 'reviewer_missing' THEN 'reassign_reviewer' WHEN 'publish_ready' THEN 'publish_minutes'
- WHEN 'release_ready' THEN 'release_minutes' WHEN 'restore_backlog' THEN 'restore_backlog' WHEN 'minutes_needed' THEN 'submit_minutes' WHEN 'minutes_rework' THEN 'revise_minutes' ELSE 'manage_readiness' END::text AS next_action,
+ WHEN 'minutes_needed' THEN 'submit_minutes' WHEN 'minutes_rework' THEN 'revise_minutes' ELSE 'manage_readiness' END::text AS next_action,
  w.id AS meeting_id,w.current_version_id AS version_id,w.version_number,NULL::uuid AS node_id,
  CASE WHEN w.reason IN ('review_pending','reviewer_missing') THEN COALESCE(w.review_issue_id,w.minutes_issue_id) ELSE w.minutes_issue_id END AS issue_id,
  NULL::uuid AS action_id,NULL::uuid AS export_id,ARRAY[]::text[] AS flags,1 AS rank

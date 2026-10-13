@@ -390,22 +390,6 @@ func (h *Handler) VerifyCockpitInputVersion(w http.ResponseWriter, r *http.Reque
 	out, err := api.VerifyCockpitInputVersion(r.Context(), q)
 	writeCockpitInputResult(w, r, out, err)
 }
-func (h *Handler) ListCockpitInputReferences(w http.ResponseWriter, r *http.Request) {
-	api, q, ok := h.cockpitInputRequest(w, r, "cursor", "page_size", "agenda_id", "include_removed", "q", "purpose")
-	if !ok {
-		return
-	}
-	out, err := api.ListCockpitInputReferences(r.Context(), q)
-	writeCockpitInputResult(w, r, out, err)
-}
-func (h *Handler) GetCockpitInputReferenceCommand(w http.ResponseWriter, r *http.Request) {
-	api, q, ok := h.cockpitInputRequest(w, r)
-	if !ok {
-		return
-	}
-	out, err := api.GetCockpitInputReferenceCommand(r.Context(), q)
-	writeCockpitInputResult(w, r, out, err)
-}
 func (h *Handler) GetCockpitInputManifest(w http.ResponseWriter, r *http.Request) {
 	api, q, ok := h.cockpitInputRequest(w, r)
 	if !ok {
@@ -539,30 +523,6 @@ func (h *Handler) AbandonCockpitInputTransfer(w http.ResponseWriter, r *http.Req
 		return
 	}
 	out, err := api.AbandonCockpitInputTransfer(r.Context(), q, in)
-	writeCockpitInputResult(w, r, out, err)
-}
-func (h *Handler) CreateCockpitInputReference(w http.ResponseWriter, r *http.Request) {
-	api, q, ok := h.cockpitInputRequest(w, r)
-	if !ok {
-		return
-	}
-	var in service.CockpitInputReferenceCreateInput
-	if !decodeCockpitInputBody(w, r, &in) {
-		return
-	}
-	out, err := api.CreateCockpitInputReference(r.Context(), q, in)
-	writeCockpitInputResult(w, r, out, err)
-}
-func (h *Handler) RemoveCockpitInputReference(w http.ResponseWriter, r *http.Request) {
-	api, q, ok := h.cockpitInputRequest(w, r)
-	if !ok {
-		return
-	}
-	var in service.CockpitInputReferenceRemoveInput
-	if !decodeCockpitInputBody(w, r, &in) {
-		return
-	}
-	out, err := api.RemoveCockpitInputReference(r.Context(), q, in)
 	writeCockpitInputResult(w, r, out, err)
 }
 func (h *Handler) SaveCockpitInputManifest(w http.ResponseWriter, r *http.Request) {

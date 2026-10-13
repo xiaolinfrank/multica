@@ -35,7 +35,7 @@ describe("meeting command interaction isolation", () => {
     vi.mocked(api.getCockpitLifecycleCommand).mockRejectedValueOnce(new ApiError("Not yet recorded", 404, "Not Found")); const hook = setup(); hook.client.setQueryData(cockpitKeys.workflow("ws-1", "A"), { observedBeforeCommit: true });
     await act(async () => { await hook.result.current.verify(); }); expect(hook.result.current.pending?.body).toEqual(body); expect(api.recordCockpitOccurrence).not.toHaveBeenCalled();
     const confirmed = resultFor("A", body.command_key);
-    vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValueOnce({ workspace_id: "ws-1", meeting_id: "A", command_key: body.command_key, action: "end", actor_id: "user-1", actor_name: "Member", created_at: "2026-01-01T10:00:00Z", revision: 2, agenda_id: null, reference_id: null, issue_id: null, receipt: confirmed.receipt });
+    vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValueOnce({ workspace_id: "ws-1", meeting_id: "A", command_key: body.command_key, action: "end", actor_id: "user-1", actor_name: "Member", created_at: "2026-01-01T10:00:00Z", revision: 2, issue_id: null, receipt: confirmed.receipt });
     await act(async () => { await hook.result.current.verify(); }); expect(hook.result.current.pending).toBeUndefined(); expect(api.recordCockpitOccurrence).not.toHaveBeenCalled(); await waitFor(() => expect(hook.client.getQueryState(cockpitKeys.workflow("ws-1", "A"))?.isInvalidated).toBe(true));
   });
 });

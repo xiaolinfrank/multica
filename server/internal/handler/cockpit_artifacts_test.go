@@ -27,7 +27,7 @@ func newArtifactHTTPFixture(t *testing.T) artifactHTTPFixture {
 	// Fixture inserts bypass canonical numbering; subsequent HTTP commands do not.
 	dbfx.Exec(t, "UPDATE workspace SET issue_counter=(SELECT COALESCE(MAX(number),0) FROM issue WHERE workspace_id=$1) WHERE id=$1", ws)
 	t.Cleanup(func() {
-		for _, table := range []string{"cockpit_acceptance_reviewer_handoff", "cockpit_acceptance_evidence", "cockpit_acceptance_request_criterion", "cockpit_acceptance_request", "cockpit_acceptance_criterion", "cockpit_acceptance_definition", "cockpit_artifact_meeting_reference", "cockpit_artifact_node_reference", "cockpit_artifact_producer_assignment", "cockpit_artifact_reviewer_handoff", "cockpit_artifact_capture_attempt", "cockpit_artifact_capture", "cockpit_artifact_version", "cockpit_artifact", "cockpit_issue_primary", "cockpit_node_issue"} {
+		for _, table := range []string{"cockpit_acceptance_reviewer_handoff", "cockpit_acceptance_evidence", "cockpit_acceptance_request_criterion", "cockpit_acceptance_request", "cockpit_acceptance_criterion", "cockpit_acceptance_definition", "cockpit_artifact_node_reference", "cockpit_artifact_producer_assignment", "cockpit_artifact_reviewer_handoff", "cockpit_artifact_capture_attempt", "cockpit_artifact_capture", "cockpit_artifact_version", "cockpit_artifact", "cockpit_issue_primary", "cockpit_node_issue"} {
 			dbfx.Exec(t, "DELETE FROM "+table+" WHERE workspace_id=$1", ws)
 		}
 		for _, table := range []string{"activity_log", "issue_subscriber", "inbox_item"} {
@@ -115,35 +115,6 @@ func TestCockpitArtifactHTTPProducerReplayPreservesOrigin(t *testing.T) {
 	}
 }
 
-func TestCockpitArtifactHTTPMeetingReferencesStayFixed(t *testing.T) {
-	f := newArtifactHTTPFixture(t)
-	a := f.create(t)
-	v := f.submit(t, a)
-	meeting := createMeeting(t, f.ws, map[string]any{"title": "Review evidence", "meet_date": "2026-10-11"})
-	body := map[string]any{"reference_key": uuid.NewString(), "version_id": v.Version.Version.ID, "meeting_id": meeting.ID, "purpose": "input"}
-	var reference service.CockpitArtifactReferenceResponse
-	f.call(t, f.h.CreateCockpitArtifactMeetingReference, "POST", "/reference", body, "artifactId", a.ID).Want(200).JSON(&reference)
-	var page service.CockpitMeetingArtifactReferencesPage
-	f.call(t, f.h.ListCockpitMeetingArtifactReferences, "GET", "/references?page_size=25", nil, "meetingId", meeting.ID).Want(200).JSON(&page)
-	if page.Total != 1 || page.Items[0].VersionID != v.Version.Version.ID || page.Items[0].ArtifactTitle != a.Title {
-		t.Fatalf("meeting did not expose the fixed version: %+v", page)
-	}
-	body["reference_key"] = uuid.NewString()
-	var conflict map[string]any
-	f.call(t, f.h.CreateCockpitArtifactMeetingReference, "POST", "/reference", body, "artifactId", a.ID).Want(409).JSON(&conflict)
-	if conflict["code"] != "reference_exists" || conflict["existing_reference_id"] != reference.Reference.ID {
-		t.Fatalf("duplicate did not identify existing reference: %+v", conflict)
-	}
-	f.call(t, f.h.RemoveCockpitArtifactMeetingReference, "DELETE", "/reference", nil, "artifactId", a.ID, "referenceId", reference.Reference.ID).Want(200)
-	f.call(t, f.h.ListCockpitMeetingArtifactReferences, "GET", "/references", nil, "meetingId", meeting.ID).Want(200).JSON(&page)
-	if page.Total != 0 {
-		t.Fatal("removed reference remains active material")
-	}
-	f.call(t, f.h.ListCockpitMeetingArtifactReferences, "GET", "/references?include_removed=true", nil, "meetingId", meeting.ID).Want(200).JSON(&page)
-	if page.Total != 1 || page.Items[0].RemovedAt == nil {
-		t.Fatal("removal erased reference history")
-	}
-}
 
 func TestCockpitArtifactHTTPAcceptanceKeepsFixedEvidenceAndHumanAuthority(t *testing.T) {
 	f := newArtifactHTTPFixture(t)

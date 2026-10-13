@@ -36,7 +36,6 @@ func (h *Handler) cockpitSurfaceQuery(w http.ResponseWriter, r *http.Request) (s
 	}
 	return service.CockpitSurfaceQuery{WorkspaceID: id, ProjectID: project, ModuleID: module, ActorID: member.UserID, Human: !isMachineCredentialActor(r),
 		MeetingLifecycleAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingLifecycleBackendReady,
-		MeetingTemplatesAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingTemplatesBackendReady,
 		MeetingDispositionAvailable: h.IssueService != nil && h.IssueService.CockpitMeetingDispositionBackendReady,
 		MeetingDirectoryAvailable:   h.IssueService != nil && h.IssueService.CockpitMeetingDirectoryBackendReady,
 		InputsAvailable:             h.IssueService != nil && h.IssueService.CockpitInputBackendReady,

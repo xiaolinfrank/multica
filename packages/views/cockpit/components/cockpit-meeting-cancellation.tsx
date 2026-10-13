@@ -45,15 +45,15 @@ export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCr
     setCockpitPreparationForm(key, value);
     const result = await request.run(pending ?? { kind: commandKind, meetingId, body: { command_key: createSafeId(), expected_revision: preview.data!.lifecycle_revision,
       context_token: preview.data!.context_token, reason: value.reason.trim(), issues: value.issues, run_ids: value.run_ids } }, async (command) => {
-      if (command.kind !== "cancellation" && command.kind !== "append_disposition") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return command.kind === "append_disposition" ? appendDisposition.mutateAsync(command.body) : cancel.mutateAsync(command.body);
+      if (command.kind !== "cancellation" && command.kind !== "append_disposition") throw new Error(t(($) => $.meeting_preparation.check_first)); return command.kind === "append_disposition" ? appendDisposition.mutateAsync(command.body) : cancel.mutateAsync(command.body);
     });
     if (result) { clearCockpitPreparationForm(key, value); if (result.stillCurrent()) { rememberCockpitPreparationInstance(key, result.result.receipt.operation_id); onCreated(result.result.receipt.operation_id, true); } }
   };
   const verify = async () => {
     const result = await request.verify(async (command) => {
-      if (command.kind !== "cancellation" && command.kind !== "append_disposition") throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (command.kind !== "cancellation" && command.kind !== "append_disposition") throw new Error(t(($) => $.meeting_preparation.check_first));
       const detail = await client.fetchQuery({ ...cockpitLifecycleCommandOptions(wsId, meetingId, command.body.command_key), staleTime: 0 });
-      if (!detail || !cockpitPreparationCommandAcknowledged(detail, command.kind === "append_disposition" ? "preparation_dispose" : "cancel", command.body) || !detail.receipt.preparation) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (!detail || !cockpitPreparationCommandAcknowledged(detail, command.kind === "append_disposition" ? "preparation_dispose" : "cancel", command.body) || !detail.receipt.preparation) throw new Error(t(($) => $.meeting_preparation.check_first));
       await invalidateCockpitMeetingPreparationFacts(client, wsId, meetingId, detail.receipt.preparation.operation_id); return detail.receipt.preparation;
     });
     if (result) { clearCockpitPreparationForm(key, value); if (result.stillCurrent()) { rememberCockpitPreparationInstance(key, result.result.operation_id); onCreated(result.result.operation_id, false); } }
@@ -69,8 +69,8 @@ export function CockpitMeetingCancellation({ wsId, basis, disabled, onBusy, onCr
       <div className="space-y-1 rounded-lg border border-border p-3 text-caption"><p>{t(($) => $.meeting_disposition.kept_issues, { count: preview.data.unselected_issue_total })}</p><p>{t(($) => $.meeting_disposition.kept_runs, { count: preview.data.unselected_run_total })}</p></div>
       <CockpitMeetingPendingResponsibilities basis={basis} />
       <label className="flex items-start gap-2 text-caption"><input type="checkbox" checked={confirmed} disabled={busy || Boolean(pending) || reviewRequired || !preview.data.can_confirm} onChange={(event) => setConfirmed(event.target.checked)} />{append ? t(($) => $.meeting_disposition.confirm_append) : t(($) => $.meeting_disposition.confirm_cancel)}</label>
-      {preview.data.lifecycle_revision !== basis.lifecycle_revision && <p role="alert" className="text-caption">{t(($) => $.meeting_templates.preview_changed)}</p>}
-      <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy || Boolean(pending)} onClick={() => { setStage("choices"); setConfirmed(false); preview.reset(); }}>{t(($) => $.meeting_templates.edit_choices)}</Button><Button variant="outline" disabled={busy || Boolean(pending) || !permitted} onClick={() => void makePreview()}>{t(($) => $.meeting_templates.preview_again)}</Button>
+      {preview.data.lifecycle_revision !== basis.lifecycle_revision && <p role="alert" className="text-caption">{t(($) => $.meeting_preparation.reason_context)}</p>}
+      <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy || Boolean(pending)} onClick={() => { setStage("choices"); setConfirmed(false); preview.reset(); }}>{t(($) => $.meeting_disposition.back_actions)}</Button><Button variant="outline" disabled={busy || Boolean(pending) || !permitted} onClick={() => void makePreview()}>{t(($) => $.meeting_lifecycle.refresh)}</Button>
         <Button variant="destructive" disabled={busy || Boolean(pending) || !permitted || !confirmed || !preview.data.can_confirm || preview.data.lifecycle_revision !== basis.lifecycle_revision} onClick={() => void save()}>{append ? t(($) => $.meeting_disposition.append_disposition) : t(($) => $.meeting_disposition.cancel)}</Button></div>
     </>}
     {pending && <Button disabled={busy || !permitted || !request.canRetry} onClick={() => void save()}>{request.busy && <Spinner />}{t(($) => $.meeting_lifecycle.retry_command)}</Button>}

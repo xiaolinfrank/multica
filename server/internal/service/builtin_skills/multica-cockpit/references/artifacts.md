@@ -17,16 +17,13 @@ multica cockpit artifact attachments <artifact-uuid> --query report
 multica cockpit artifact producer-history <artifact-uuid>
 multica cockpit artifact reviewer-history <artifact-uuid>
 multica cockpit artifact node-references <artifact-uuid>
-multica cockpit artifact meeting-references <artifact-uuid>
 multica cockpit issue artifacts <issue-identifier-or-uuid>
-multica cockpit meeting artifact-references <meeting-uuid>
 ```
 
 All commands return confirmed JSON. Pages default to 25, cap at 100 and retain
 `next_cursor`; no command automatically downloads every page or all document
 bodies. A cursor belongs to the same scope, filters and page size.
 
-Meeting references default to active entries; add `--include-removed` for history.
 Issue context carries a `formal_review` header independent of the requested page.
 Use its fixed target to reach a review; do not infer ordinary Issue editing
 permissions from the first page's rows.
@@ -61,7 +58,6 @@ to generate another key. Keys are UUIDs chosen once per intended operation.
 | `artifact reassign-reviewer <artifact>` | `expected_revision,handoff_key,reviewer_id,reason` |
 | `artifact archive <artifact>` / `unarchive` | `expected_revision` |
 | `artifact reference-node <artifact>` | `reference_key,version_id,node_id,purpose` |
-| `artifact reference-meeting <artifact>` | `reference_key,version_id,meeting_id,purpose` |
 
 Artifact edit, submit, producer/reviewer changes and archive use the **header**
 revision. Version review and capture retry use the **version** revision. The two
@@ -106,7 +102,6 @@ Remove only the explicit reference, preserving the artifact and its history:
 
 ```bash
 multica cockpit artifact remove-node-reference <artifact> <reference-id>
-multica cockpit artifact remove-meeting-reference <artifact> <reference-id>
 multica cockpit artifact download-link <artifact> <version>
 ```
 

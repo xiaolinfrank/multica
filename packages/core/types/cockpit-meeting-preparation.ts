@@ -3,156 +3,16 @@ import type { CockpitTask } from "./cockpit";
 import type { IssueOperationField, IssueOperationTarget } from "./issue-operation-basis";
 import type { CockpitLifecycleCommandInput, CockpitOccurrenceView, CockpitLifecyclePageQuery } from "./cockpit-meeting-lifecycle";
 
-export interface CockpitMeetingTemplateConfig {
-  schema_version: number;
-  slots: Array<CockpitMeetingTemplateSlot>;
-}
-
-export interface CockpitMeetingTemplateSlot {
-  slot_id: string;
-  kind: string;
-  label: string;
-  agenda_slot_id: string | null;
-  agenda: CockpitTemplateAgendaDefaults | null;
-  new_issue: CockpitTemplateIssueDefaults | null;
-  purpose: string;
-}
-
-export interface CockpitTemplateAgendaDefaults {
-  title: string;
-  purposes: Array<string>;
-  desired_outcome: string;
-  notes: string;
-}
-
-export interface CockpitTemplateIssueDefaults {
-  title: string;
-  description: string;
-  priority: string;
-}
-
-export interface CockpitMeetingTemplateSaveInput {
-  command_key: string;
-  expected_revision: number;
-  title: string;
-  description: string;
-  active: boolean;
-  config: CockpitMeetingTemplateConfig;
-}
-
-export interface CockpitMeetingTemplateVersionMetadata {
-  id: string;
-  template_id: string;
-  number: number;
-  title: string;
-  active: boolean;
-  slot_count: number;
-  config_hash: string;
-  command_key: string;
-  created_by: string;
-  created_by_name: string;
-  created_at: string;
-}
-
-export interface CockpitMeetingTemplateHeader {
-  workspace_id: string;
-  id: string;
-  revision: number;
-  title: string;
-  description: string;
-  active: boolean;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-  current_version: CockpitMeetingTemplateVersionMetadata;
-  can_edit: boolean;
-}
-
-export interface CockpitMeetingTemplateVersionDetail extends CockpitMeetingTemplateVersionMetadata {
-  workspace_id: string;
-  description: string;
-  config: CockpitMeetingTemplateConfig;
-}
-
-export interface CockpitMeetingTemplatePage {
-  workspace_id: string;
-  q: string;
-  include_inactive: boolean;
-  page_size: number;
-  items: Array<CockpitMeetingTemplateHeader>;
-  total: number;
-  next_cursor: string | null;
-  can_create: boolean;
-}
-
-export interface CockpitMeetingTemplateVersionPage {
-  workspace_id: string;
-  template_id: string;
-  page_size: number;
-  items: Array<CockpitMeetingTemplateVersionMetadata>;
-  total: number;
-  next_cursor: string | null;
-}
-
-export interface CockpitMeetingTemplateSaveResult {
-  workspace_id: string;
-  template_id: string;
-  command_key: string;
-  request_hash: string;
-  replayed: boolean;
-  receipt: CockpitMeetingTemplateVersionDetail;
-  current: CockpitMeetingTemplateHeader;
-}
-
-export interface CockpitMeetingTemplateBinding {
-  slot_id: string;
-  selected: boolean;
-  node_id: string | null;
-  facilitator_user_id: string | null;
-  project_id: string | null;
-  module_id: string | null;
-  assignee_type: string | null;
-  assignee_id: string | null;
-  due_date: string | null;
-  issue_id: string | null;
-  material_reference_id: string | null;
-}
-
-export interface CockpitTemplateApplicationPreviewInput {
-  template_version_id: string;
-  bindings: Array<CockpitMeetingTemplateBinding>;
-}
-
 export interface CockpitPreparationPreviewEffect {
   slot_id: string;
   kind: string;
   label: string;
-  agenda_slot_id: string | null;
   selected: boolean;
   allowed: boolean;
   reason_codes: Array<string>;
   targets: Array<IssueOperationTarget>;
   issue_impact: CockpitDispositionIssue | null;
   scope: CockpitPreparationResolvedScope | null;
-}
-
-export interface CockpitTemplateApplicationPreview {
-  workspace_id: string;
-  meeting_id: string;
-  template_id: string;
-  template_version_id: string;
-  lifecycle_revision: number;
-  agenda_revision: number;
-  context_token: string;
-  config_hash: string;
-  effects: Array<CockpitPreparationPreviewEffect>;
-  selected_total: number;
-  can_confirm: boolean;
-  blocked_reasons: Array<string>;
-}
-
-export interface CockpitTemplateApplicationInput extends CockpitLifecycleCommandInput, CockpitTemplateApplicationPreviewInput {
-  context_token: string;
 }
 
 export interface CockpitPreparationCounts {
@@ -171,8 +31,6 @@ export interface CockpitPreparationOperationHeader {
   revision: number;
   state: string;
   command_key: string;
-  template_id: string | null;
-  template_version_id: string | null;
   created_by: string;
   created_by_name: string;
   responsible_user_id: string;
@@ -184,8 +42,6 @@ export interface CockpitPreparationOperationHeader {
   can_pause: boolean;
   can_claim: boolean;
   blocked_reasons: Array<string>;
-  template_title: string;
-  template_version_number: number | null;
   responsible_user_name: string;
 }
 
@@ -194,8 +50,6 @@ export interface CockpitPreparationEffectReceipt {
   command_key: string;
   request_hash: string;
   kind: string;
-  agenda_id: string | null;
-  reference_id: string | null;
   issue_id: string | null;
   run_id: string | null;
   issue: CockpitTask | null;
@@ -278,7 +132,6 @@ export interface CockpitPreparationCommandReceipt {
   request_hash: string;
   occurrence: CockpitOccurrenceView | null;
   context_token: string;
-  template_version_id: string | null;
   authorization: CockpitPreparationAuthorization | null;
   previous_authorization: CockpitPreparationAuthorization | null;
 }
@@ -369,7 +222,6 @@ export interface CockpitDispositionIssue {
   unstarted_wakeup_run_count: number;
   other_queued_run_count: number;
   active_run_count: number;
-  agenda_total: number;
   targets: Array<IssueOperationTarget>;
   targets_total: number;
   parent_issue_id: string | null;
@@ -416,7 +268,6 @@ export interface CockpitCancellationIssueChoice {
   cancel_status: string | null;
   due_date: string | null;
   target_meeting_id: string | null;
-  target_agenda_id: string | null;
 }
 
 export interface CockpitCancellationPreviewInput {
@@ -481,17 +332,13 @@ export interface CockpitMeetingOperationBasis {
   reinstate: IssueOperationField;
   archive: IssueOperationField;
   unarchive: IssueOperationField;
-  add_preparation: IssueOperationField;
-  apply_template: IssueOperationField;
-  can_add_preparation: boolean;
   pending: CockpitMeetingPendingCounts;
   current_operation: CockpitPreparationOperationHeader | null;
   targets: Array<IssueOperationTarget>;
   targets_total: number;
 }
 
-export interface CockpitMeetingTemplateQuery extends CockpitLifecyclePageQuery { q?: string; include_inactive?: boolean }
 export interface CockpitCancellationImpactQuery extends CockpitLifecyclePageQuery { q?: string }
 export type CockpitPreparationControlTransition = "pause" | "resume" | "skip" | "claim";
 export type CockpitMeetingDispositionTransition = "reinstate" | "archive" | "unarchive";
-export type CockpitPreparationCommandAction = "template_apply" | "cancel" | "preparation_dispose" | "preparation_reauthorize" | "preparation_pause" | "preparation_resume" | "preparation_skip" | "preparation_claim";
+export type CockpitPreparationCommandAction = "cancel" | "preparation_dispose" | "preparation_reauthorize" | "preparation_pause" | "preparation_resume" | "preparation_skip" | "preparation_claim";

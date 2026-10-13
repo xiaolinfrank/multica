@@ -111,19 +111,17 @@ describe("CockpitNodePanel", () => {
 
   const payments = [{ id: "pay-1", node_id: "task", label: "First", pay_date: null, amount: 15, position: 0 }];
 
-  it.each([0, 1])("preserves editable existing instalments at structural depth %i", (depth) => {
+  it.each([0, 1])("keeps structural instalments as a read-only ledger at depth %i", (depth) => {
+    // Finance editing belongs to execution tasks; instalments filed on a
+    // structural row by older data stay visible but cannot be edited here.
     const { props } = setup({ depth, payments });
     expect(screen.getByText("Instalments")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Vendor" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Amount" }));
-    const input = screen.getByRole("spinbutton", { name: "Amount" });
-    fireEvent.change(input, { target: { value: "20" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(props.onPatchPayment).toHaveBeenCalledWith("pay-1", { amount: 20 });
-    fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(props.onCreatePayment).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Delete instalment" }));
-    expect(props.onDeletePayment).toHaveBeenCalledWith("pay-1");
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Amount" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete instalment" })).not.toBeInTheDocument();
+    expect(props.onPatchPayment).not.toHaveBeenCalled();
   });
 
   it.each([0, 1])("keeps existing structural instalments read-only at depth %i", (depth) => {

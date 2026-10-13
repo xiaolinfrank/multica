@@ -148,7 +148,7 @@ func (h *Handler) cockpitWorkflowContext(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handler) canSubmitCockpitMinutes(r *http.Request, q *db.Queries, cc cockpitContext, work handlerCockpitMinutesState, issue *CockpitWorkflowIssueResponse) bool {
-	if !work.Released || issue == nil {
+	if issue == nil {
 		return false
 	}
 	if !isMachineCredentialActor(r) {

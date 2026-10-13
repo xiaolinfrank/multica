@@ -9,12 +9,10 @@ func enableCockpitMeetingPreparationRuntime(h *handler.Handler) bool {
 		return false
 	}
 	s := h.IssueService
-	s.CockpitMeetingTemplatesBackendReady = false
 	s.CockpitMeetingDispositionBackendReady = false
 	if s.Queries == nil || s.TxStarter == nil || s.TaskService == nil || s.TaskService.Queries == nil || s.TaskService.TxStarter == nil || !s.CockpitMeetingLifecycleBackendReady {
 		return false
 	}
-	s.CockpitMeetingTemplatesBackendReady = true
 	s.CockpitMeetingDispositionBackendReady = true
 	return true
 }

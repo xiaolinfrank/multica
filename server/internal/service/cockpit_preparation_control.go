@@ -3,50 +3,15 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
-func allowExistingPreparation(ctx context.Context, q *db.Queries, meeting db.GetCockpitMeetingLifecycleRow, operation db.CockpitMeetingPreparationOperation) error {
-	if meeting.OccurrenceState == "cancelled" {
-		return ErrCockpitWorkflowConflict
-	}
-	if !meeting.ArchivedAt.Valid {
-		return nil
-	}
-	if operation.CreatedAt.Time.After(meeting.ArchivedAt.Time) {
-		return ErrCockpitWorkflowConflict
-	}
-	rows, err := q.ListCockpitPreparationEffects(ctx, db.ListCockpitPreparationEffectsParams{WorkspaceID: operation.WorkspaceID, MeetingID: operation.MeetingID, OperationID: operation.ID, PageLimit: 51})
-	if err != nil {
-		return err
-	}
-	if len(rows) > 50 {
-		return ErrCockpitWorkflowConflict
-	}
-	for _, row := range rows {
-		if row.State == "applied" || row.State == "skipped" {
-			continue
-		}
-		grant, err := decodePreparationGrant(db.CockpitMeetingPreparationEffect{AuthorizationKey: row.AuthorizationKey, AuthorizationRevision: row.AuthorizationRevision, AuthorizationHash: row.AuthorizationHash, AuthorizationSnapshot: row.AuthorizationSnapshot})
-		if err != nil {
-			return err
-		}
-		confirmed, err := time.Parse(time.RFC3339Nano, grant.ConfirmedAt)
-		if err != nil || confirmed.After(meeting.ArchivedAt.Time) {
-			return ErrCockpitWorkflowConflict
-		}
-	}
-	return nil
-}
-
 func (s *IssueService) ControlCockpitPreparationOperation(ctx context.Context, p CockpitPreparationQuery, in CockpitPreparationControlInput) (CockpitPreparationCommandResult, error) {
 	var out CockpitPreparationCommandResult
 	in.Reason = strings.TrimSpace(in.Reason)
-	if !templateText(in.Reason, 16000) {
+	if !preparationText(in.Reason, 16000) {
 		return out, ErrCockpitWorkflowInput
 	}
 	switch in.Transition {
@@ -64,7 +29,7 @@ func (s *IssueService) ControlCockpitPreparationOperation(ctx context.Context, p
 	if (in.Transition == "skip") != effect.Valid {
 		return out, ErrCockpitWorkflowInput
 	}
-	c, e := newLifecycleCommand(p.CockpitLifecycleRead, in.CockpitLifecycleCommandInput, "preparation_"+in.Transition, pgtype.UUID{}, pgtype.UUID{}, []any{p.OperationID, in})
+	c, e := newLifecycleCommand(p.CockpitLifecycleRead, in.CockpitLifecycleCommandInput, "preparation_"+in.Transition, []any{p.OperationID, in})
 	if e != nil {
 		return out, e
 	}
@@ -88,7 +53,7 @@ func (s *IssueService) ControlCockpitPreparationOperation(ctx context.Context, p
 		return out, e
 	}
 	responsible := o.ResponsibleUserID == p.ActorID
-	manager := templateManager(p.Human, p.ActorID, o.CreatedBy, role)
+	manager := preparationManager(p.Human, p.ActorID, o.CreatedBy, role)
 	state := o.State
 	actor := o.ResponsibleUserID
 	switch in.Transition {
@@ -103,11 +68,6 @@ func (s *IssueService) ControlCockpitPreparationOperation(ctx context.Context, p
 		}
 		if o.State != "paused" && o.State != "needs_attention" {
 			return out, ErrCockpitWorkflowConflict
-		}
-		if o.Kind == "apply_template" {
-			if e = allowExistingPreparation(ctx, q, x.meeting, o); e != nil {
-				return out, e
-			}
 		}
 		if e = q.ResetCockpitPreparationFailures(ctx, db.ResetCockpitPreparationFailuresParams{WorkspaceID: p.WorkspaceID, OperationID: o.ID}); e != nil {
 			return out, e
@@ -150,11 +110,11 @@ func (s *IssueService) ControlCockpitPreparationOperation(ctx context.Context, p
 	if e != nil {
 		return out, e
 	}
-	receipt := CockpitPreparationCommandReceipt{OperationID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, EffectIDs: []string{}, EffectID: planningUUID(effect), Reason: in.Reason, RequestHash: c.hash, ContextToken: o.ContextToken, TemplateVersionID: planningUUID(o.TemplateVersionID)}
+	receipt := CockpitPreparationCommandReceipt{OperationID: util.UUIDToString(o.ID), Kind: o.Kind, Revision: o.Revision, State: o.State, EffectIDs: []string{}, EffectID: planningUUID(effect), Reason: in.Reason, RequestHash: c.hash, ContextToken: o.ContextToken}
 	if effect.Valid {
 		receipt.EffectIDs = []string{util.UUIDToString(effect)}
 	}
-	if e = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, AgendaRevision: x.meeting.AgendaRevision, RequestHash: c.hash, Reason: in.Reason, Preparation: &receipt}); e != nil {
+	if e = storeLifecycleReceipt(ctx, q, c, CockpitLifecycleReceipt{Revision: x.meeting.LifecycleRevision, RequestHash: c.hash, Reason: in.Reason, Preparation: &receipt}); e != nil {
 		return out, e
 	}
 	h, e := preparationHeader(ctx, q, p.CockpitLifecycleRead, o)

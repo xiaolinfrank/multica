@@ -32,7 +32,7 @@ func directoryPlan(t cockpitnas.PreparationTarget, partitions []string) ([]Cockp
 	}
 	unique := map[string]bool{}
 	for _, p := range partitions {
-		if p == "" || p == "." || p == ".." || filepath.Base(p) != p || strings.ContainsAny(p, "/\\") || len(p) > 255 || !templateText(p, 255) || unique[p] {
+		if p == "" || p == "." || p == ".." || filepath.Base(p) != p || strings.ContainsAny(p, "/\\") || len(p) > 255 || !preparationText(p, 255) || unique[p] {
 			return nil, "", directoryError("invalid_input", "Partition names must be distinct, single directory names.")
 		}
 		unique[p] = true

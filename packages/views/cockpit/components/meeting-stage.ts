@@ -6,13 +6,13 @@ export type MeetingStageWorkflow = { published_version_id?: string | null } | nu
 /** The scheduled window of the meeting row, for the live "recording" projection. */
 export type MeetingStageTiming = { meet_date: string | null; start_time: string | null; end_time: string | null } | null | undefined;
 
-export type CockpitMeetingStage = "preparation" | "recording" | "minutes_review" | "followup";
+export type CockpitMeetingStage = "preparation" | "recording" | "minutes_review";
 
-export const MEETING_STAGE_ORDER: readonly CockpitMeetingStage[] = ["preparation", "recording", "minutes_review", "followup"];
+export const MEETING_STAGE_ORDER: readonly CockpitMeetingStage[] = ["preparation", "recording", "minutes_review"];
 
 /** The panel views that host each stage's working surface. */
 export const STAGE_VIEW: Record<CockpitMeetingStage, Exclude<CockpitMeetingView, "agenda" | "workflow" | "resources" | "details">> = {
-  preparation: "preparation", recording: "recording", minutes_review: "minutes_review", followup: "followup",
+  preparation: "preparation", recording: "recording", minutes_review: "minutes_review",
 };
 
 /**
@@ -35,15 +35,15 @@ export function meetingInsideWindow(timing: MeetingStageTiming, now: Date = new 
  * projection of the occurrence confirmation plus the minutes associations —
  * never a stored state machine field. Cancelled meetings have no stage line.
  */
-export function cockpitMeetingStage(occurrenceState: string | undefined, workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null, now: Date = new Date()): CockpitMeetingStage | null {
+export function cockpitMeetingStage(occurrenceState: string | undefined, _workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null, now: Date = new Date()): CockpitMeetingStage | null {
   if (occurrenceState === "cancelled") return null;
-  if (occurrenceState === "ended") return workflow?.published_version_id ? "followup" : "minutes_review";
+  if (occurrenceState === "ended") return "minutes_review";
   if (occurrenceState === "scheduled" && meetingInsideWindow(timing, now)) return "recording";
   return "preparation";
 }
 
 /** View a stage should land on when a meeting opens without an explicit view. */
-export function meetingStageDefaultView(occurrenceState: string | undefined, workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null, now: Date = new Date()): "preparation" | "recording" | "minutes_review" | "followup" {
+export function meetingStageDefaultView(occurrenceState: string | undefined, workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null, now: Date = new Date()): "preparation" | "recording" | "minutes_review" {
   return STAGE_VIEW[cockpitMeetingStage(occurrenceState, workflow, timing, now) ?? "preparation"];
 }
 

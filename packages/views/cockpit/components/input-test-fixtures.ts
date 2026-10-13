@@ -1,4 +1,4 @@
-import type { CockpitInputHeader, CockpitInputPrincipal, CockpitInputReference, CockpitInputReferencePage, CockpitInputTransferDetail, CockpitInputVersionMetadata } from "@multica/core/types/cockpit-input";
+import type { CockpitInputHeader, CockpitInputPrincipal, CockpitInputTransferDetail, CockpitInputVersionMetadata } from "@multica/core/types/cockpit-input";
 
 export const INPUT_WS = "b1000000-0000-4000-8000-000000000001";
 export const INPUT_ID = "b1000000-0000-4000-8000-000000000002";
@@ -23,18 +23,6 @@ export function inputVersion(patch: Partial<CockpitInputVersionMetadata> = {}): 
     captureState: "ready", captureErrorCode: "", availability: "available", checkedAt: INPUT_TIME, unavailableReason: "", activeTransferId: null, acceptedTransferId: null, currentTransferId: null,
     latestTransferId: null, allowedRestartModes: [],
     createdAt: INPUT_TIME, readyAt: INPUT_TIME, canDownload: true, canRestart: false, canReference: true, canVerify: true, blockedReasons: [], ...patch };
-}
-
-export function inputReference(patch: Partial<CockpitInputReference> = {}): CockpitInputReference {
-  return { workspaceId: INPUT_WS, id: INPUT_REFERENCE, referenceKey: INPUT_KEY, meetingId: INPUT_MEETING, meetingTitle: "Project review", agendaId: null, agendaTitle: "",
-    inputId: INPUT_ID, inputTitle: "Original meeting recording", version: inputVersion(), purpose: "recording", createdBy: inputPrincipal(), createdAt: INPUT_TIME,
-    removedAt: null, canRemove: true, ...patch };
-}
-
-export function inputReferencePage(patch: Partial<CockpitInputReferencePage> = {}): CockpitInputReferencePage {
-  return { workspaceId: INPUT_WS, meetingId: INPUT_MEETING, agendaId: null, q: "", purpose: "", includeRemoved: false, pageSize: 25, items: [inputReference()], total: 1,
-    summary: { total: 1, ready: 1, pending: 0, needsAttention: 0, availableReady: 1, unavailableReady: 0, unknownReady: 0 },
-    nextCursor: null, canAdd: true, blockedReasons: [], ...patch };
 }
 
 export function inputHeader(patch: Partial<CockpitInputHeader> = {}): CockpitInputHeader {

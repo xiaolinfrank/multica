@@ -132,14 +132,6 @@ func appendCockpitNodeIssueRecord(ctx context.Context, q *db.Queries, cc cockpit
 }
 
 func appendCockpitMeetingIssueRecord(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID, issueID pgtype.UUID) (CockpitMeetingIssueResponse, error) {
-	if _, err := q.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID, IssueID: issueID}); errors.Is(err, pgx.ErrNoRows) {
-		if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meetingID); err != nil {
-			return CockpitMeetingIssueResponse{}, err
-		}
-	} else if err != nil {
-		return CockpitMeetingIssueResponse{}, err
-	}
-
 	if _, err := q.LockIssueForChannelMediaBind(ctx, db.LockIssueForChannelMediaBindParams{WorkspaceID: cc.workspaceID, ID: issueID}); err != nil {
 		return CockpitMeetingIssueResponse{}, err
 	}
@@ -162,14 +154,6 @@ func readCockpitMeetingIssueReceipt(ctx context.Context, q *db.Queries, cc cockp
 }
 
 func appendCockpitMeetingNodeRecord(ctx context.Context, q *db.Queries, cc cockpitContext, meetingID, nodeID pgtype.UUID) (CockpitMeetingNodeResponse, error) {
-	if _, err := q.GetCockpitMeetingNodeLink(ctx, db.GetCockpitMeetingNodeLinkParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID, NodeID: nodeID}); errors.Is(err, pgx.ErrNoRows) {
-		if err = service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meetingID); err != nil {
-			return CockpitMeetingNodeResponse{}, err
-		}
-	} else if err != nil {
-		return CockpitMeetingNodeResponse{}, err
-	}
-
 	node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{WorkspaceID: cc.workspaceID, ID: nodeID})
 	if err != nil {
 		return CockpitMeetingNodeResponse{}, err

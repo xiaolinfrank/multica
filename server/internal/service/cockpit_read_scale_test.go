@@ -47,7 +47,7 @@ func TestCockpitReadScale(t *testing.T) {
 				t.Errorf("final owned search log cleanup: %v", e)
 				cleanupComplete = false
 			}
-			for _, table := range []string{"issue", "cockpit_node", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference", "search_index_change"} {
+			for _, table := range []string{"issue", "cockpit_node", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "search_index_change"} {
 				var count int
 				if e := finalFixture.Pool.QueryRow(cleanupCtx, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", finalFixture.WorkspaceID).Scan(&count); e != nil || count != 0 {
 					t.Errorf("final cleanup %s=%d: %v", table, count, e)
@@ -81,13 +81,13 @@ func TestCockpitReadScale(t *testing.T) {
 	}
 	// Register teardown before bulk insertion, including partially seeded tests.
 	t.Cleanup(func() {
-		for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference"} {
+		for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node"} {
 			if n := f.Count(t, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", ws); n != 0 {
 				t.Errorf("fixture cleanup left %d %s rows", n, table)
 			}
 		}
 	})
-	for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node", "cockpit_meeting_agenda", "cockpit_meeting_agenda_reference"} {
+	for _, table := range []string{"cockpit_node", "issue", "cockpit_issue_primary", "cockpit_meeting", "cockpit_meeting_node"} {
 		f.Cleanup(t, "DELETE FROM "+table+" WHERE workspace_id=$1", ws)
 	}
 	t.Cleanup(func() { cleanupStarted = time.Now() })
@@ -123,25 +123,15 @@ func TestCockpitReadScale(t *testing.T) {
 	// Duplicate provenance via an ancestor must not duplicate displayed meetings.
 	f.Exec(t, `INSERT INTO cockpit_meeting_node(workspace_id,meeting_id,node_id)
  SELECT $1,l.meeting_id,n.parent_id FROM cockpit_meeting_node l JOIN cockpit_node n ON n.id=l.node_id AND n.workspace_id=$1 WHERE l.workspace_id=$1`, ws)
-	var agendaMeeting, agendaOnlyMeeting, agendaID pgtype.UUID
-	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting WHERE workspace_id=$1 AND code='SCALE-1'", ws).Scan(&agendaMeeting); e != nil {
+	var markerMeeting pgtype.UUID
+	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting WHERE workspace_id=$1 AND code='SCALE-1'", ws).Scan(&markerMeeting); e != nil {
 		t.Fatal(e)
 	}
-	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting WHERE workspace_id=$1 AND code='SCALE-2'", ws).Scan(&agendaOnlyMeeting); e != nil {
-		t.Fatal(e)
-	}
-	f.Exec(t, `INSERT INTO cockpit_meeting_agenda(id,workspace_id,meeting_id,title,purposes,notes,node_id,sort_order,created_by,updated_by)
- SELECT gen_random_uuid(),$1,$2,'Scale agenda '||lpad(g::text,4,'0'),ARRAY['planning'],repeat('A',32768),$3,g,$4,$4 FROM generate_series(1,1000) g`, ws, agendaMeeting, leaves[0], actor)
-	if e := f.Pool.QueryRow(ctx, "SELECT id FROM cockpit_meeting_agenda WHERE workspace_id=$1 AND meeting_id=$2 AND sort_order=1", ws, agendaMeeting).Scan(&agendaID); e != nil {
-		t.Fatal(e)
-	}
-	f.Exec(t, `INSERT INTO cockpit_meeting_agenda(id,workspace_id,meeting_id,title,node_id,sort_order,created_by,updated_by)
- VALUES(gen_random_uuid(),$1,$2,'Agenda-only meeting provenance',$3,1,$4,$4)`, ws, agendaOnlyMeeting, leaves[1], actor)
-	f.Exec(t, "DELETE FROM cockpit_meeting_node WHERE workspace_id=$1 AND meeting_id=$2", ws, agendaOnlyMeeting)
-	f.Exec(t, `INSERT INTO cockpit_meeting_agenda_reference(id,workspace_id,meeting_id,agenda_id,kind,target_id,purpose,created_by)
- SELECT gen_random_uuid(),$1,$2,$3,'issue',i.id,'preparation',$4 FROM issue i WHERE i.workspace_id=$1 AND i.number<=1000`, ws, agendaMeeting, agendaID, actor)
-	f.Exec(t, "ANALYZE cockpit_issue_primary, cockpit_meeting, cockpit_meeting_node, cockpit_meeting_agenda, cockpit_meeting_agenda_reference")
-	for table, expected := range map[string]int{"project": 30, "module": 300, "cockpit_node": 3330, "issue": 100000, "cockpit_issue_primary": 100000, "cockpit_meeting": 20000, "cockpit_meeting_node": 39998, "cockpit_meeting_agenda": 1001, "cockpit_meeting_agenda_reference": 1000} {
+	// SCALE-1 also carries the workspace's material-preparation links.
+	f.Exec(t, `INSERT INTO cockpit_meeting_issue(workspace_id,meeting_id,issue_id,position,roles)
+	SELECT $1,$2,i.id,i.number::double precision,'{preparation}' FROM issue i WHERE i.workspace_id=$1 AND i.number<=1000`, ws, markerMeeting)
+	f.Exec(t, "ANALYZE cockpit_issue_primary, cockpit_meeting, cockpit_meeting_node, cockpit_meeting_issue")
+	for table, expected := range map[string]int{"project": 30, "module": 300, "cockpit_node": 3330, "issue": 100000, "cockpit_issue_primary": 100000, "cockpit_meeting": 20000, "cockpit_meeting_node": 39998, "cockpit_meeting_issue": 1000} {
 		if n := f.Count(t, "SELECT count(*) FROM "+table+" WHERE workspace_id=$1", ws); n != expected {
 			t.Fatalf("fixture %s=%d, want %d", table, n, expected)
 		}
@@ -158,59 +148,19 @@ func TestCockpitReadScale(t *testing.T) {
 	}
 	projectNodeID := util.UUIDToString(projectNodes[0])
 	markerRows[0] = CockpitPlanMarkerRow{RowKey: projectNodeID, NodeIDs: []string{projectNodeID}}
-	agendaRead := CockpitLifecycleRead{WorkspaceID: ws, MeetingID: agendaMeeting, ActorID: actor, Human: true}
-	var agendaCursor, referenceCursor *string
+	lifecycleRead := CockpitLifecycleRead{WorkspaceID: ws, MeetingID: markerMeeting, ActorID: actor, Human: true}
 	checks := []struct {
 		name string
 		read func(context.Context) (any, error)
 	}{
-		{"agenda_header", func(ctx context.Context) (any, error) { return svc.GetCockpitMeetingLifecycle(ctx, agendaRead) }},
-		{"agenda_metadata25", func(ctx context.Context) (any, error) {
-			out, e := svc.ListCockpitMeetingAgenda(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, PageSize: 25})
-			agendaCursor = out.NextCursor
+		{"lifecycle_header", func(ctx context.Context) (any, error) { return svc.GetCockpitMeetingLifecycle(ctx, lifecycleRead) }},
+		{"commands25", func(ctx context.Context) (any, error) {
+			out, e := svc.ListCockpitMeetingLifecycleCommands(ctx, CockpitLifecycleList{CockpitLifecycleRead: lifecycleRead, PageSize: 25})
 			return out, e
 		}},
-		{"agenda_metadata_next25", func(ctx context.Context) (any, error) {
-			if agendaCursor == nil {
-				return nil, fmt.Errorf("missing agenda continuation")
-			}
-			return svc.ListCockpitMeetingAgenda(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, PageSize: 25, Cursor: *agendaCursor})
+		{"meeting_issues25", func(ctx context.Context) (any, error) {
+			return svc.GetCockpitSurfaceObjectPage(ctx, CockpitSurfaceObjectQuery{CockpitSurfaceQuery: p, Kind: "meeting_issues", ObjectID: markerMeeting, PageSize: 25})
 		}},
-		{"agenda_detail_32k", func(ctx context.Context) (any, error) { return svc.GetCockpitMeetingAgenda(ctx, agendaRead, agendaID) }},
-		{"agenda_references25", func(ctx context.Context) (any, error) {
-			out, e := svc.ListCockpitMeetingAgendaReferences(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, AgendaID: agendaID, PageSize: 25})
-			referenceCursor = out.NextCursor
-			return out, e
-		}},
-		{"agenda_references_next25", func(ctx context.Context) (any, error) {
-			if referenceCursor == nil {
-				return nil, fmt.Errorf("missing reference continuation")
-			}
-			return svc.ListCockpitMeetingAgendaReferences(ctx, CockpitLifecycleList{CockpitLifecycleRead: agendaRead, AgendaID: agendaID, PageSize: 25, Cursor: *referenceCursor})
-		}},
-		{"context_workspace", func(ctx context.Context) (any, error) { return svc.GetCockpitSurfaceContext(ctx, p) }},
-		{"plan_workspace", func(ctx context.Context) (any, error) { return svc.GetCockpitPlanSurface(ctx, p) }},
-		{"plan_project", func(ctx context.Context) (any, error) { return svc.GetCockpitPlanSurface(ctx, projectScope) }},
-		{"plan_module", func(ctx context.Context) (any, error) { return svc.GetCockpitPlanSurface(ctx, moduleScope) }},
-		{"register_workspace", func(ctx context.Context) (any, error) {
-			return svc.ListCockpitMeetingRegister(ctx, CockpitMeetingRegisterQuery{CockpitSurfaceQuery: p, PageSize: 25})
-		}},
-		{"register_project", func(ctx context.Context) (any, error) {
-			return svc.ListCockpitMeetingRegister(ctx, CockpitMeetingRegisterQuery{CockpitSurfaceQuery: projectScope, PageSize: 25})
-		}},
-		{"register_search", func(ctx context.Context) (any, error) {
-			return svc.ListCockpitMeetingRegister(ctx, CockpitMeetingRegisterQuery{CockpitSurfaceQuery: p, Query: "Scale meeting 1", PageSize: 25})
-		}},
-		{"markers_visible100", func(ctx context.Context) (any, error) {
-			return svc.GetCockpitPlanMeetingMarkers(ctx, CockpitPlanMarkerQuery{CockpitSurfaceQuery: p, Rows: markerRows, DateFrom: "2026-10-01", DateTo: "2026-10-28"})
-		}},
-		{"overview_workspace", func(ctx context.Context) (any, error) {
-			return svc.GetCockpitOverview(ctx, CockpitOverviewQuery{WorkspaceID: ws, ActorID: actor, Human: true, AsOf: "2026-10-10", View: "team"})
-		}},
-		{"overview_project", func(ctx context.Context) (any, error) {
-			return svc.GetCockpitOverview(ctx, CockpitOverviewQuery{WorkspaceID: ws, ProjectID: projects[0], ActorID: actor, Human: true, AsOf: "2026-10-10", View: "mine"})
-		}},
-	}
 	type measurement struct {
 		Name                string    `json:"name"`
 		Failed              bool      `json:"failed"`

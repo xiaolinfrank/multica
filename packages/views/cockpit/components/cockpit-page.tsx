@@ -86,7 +86,6 @@ import { CockpitMeetingCreate, type CockpitMeetingDraft, type CockpitMeetingCrea
 import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
-import { CockpitInputInspector } from "./cockpit-input-inspector";
 import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 import { CockpitMeetings } from "./cockpit-meetings";
@@ -558,7 +557,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   return (
     <div className="cockpit-skin flex h-full min-h-0 flex-col">
-      {currentUserId && <CockpitInputInspector wsId={wsId} accountId={currentUserId} inputsAvailable={context.data?.capabilities?.inputs === true} />}
       <header className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2", (tab === "meetings" ? Boolean(selectedMeetingId) : showTaskWorkspace) && "max-xl:hidden")}>
         <span className="flex-1" />
 
@@ -850,7 +848,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               onSelect={openMeeting}
               onCreate={() => setCreatingMeeting(true)}
               onScan={() => setScanningMeetings(true)}
-              templatesAvailable={context.data?.capabilities?.meeting_templates === true}
               dispositionAvailable={context.data?.capabilities?.meeting_disposition === true}
               readOnly={context.data?.actor.is_human !== true}
             />
@@ -915,7 +912,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         defaultAssigneeType={cockpit?.meeting_assignee_type || null}
         defaultAssigneeId={cockpit?.meeting_assignee_id ?? null}
         onSubmit={submitMeeting}
-        onCreated={({ meetingId, directoryOperationId }) => directoryOperationId ? navigation.push(cockpitMeetingDirectoryPath(navigation.pathname, meetingId, directoryOperationId, navigation.searchParams)) : openMeeting(meetingId)}
+        onCreated={({ meetingId, directoryOperationId }) => directoryOperationId ? navigation.push(cockpitMeetingDirectoryPath(navigation.pathname, meetingId, directoryOperationId, navigation.searchParams)) : navigation.push(cockpitMeetingContextPath(navigation.pathname, meetingId, scope, navigation.searchParams, "preparation"))}
       />
       <CockpitMeetingImport
         open={scanningMeetings}

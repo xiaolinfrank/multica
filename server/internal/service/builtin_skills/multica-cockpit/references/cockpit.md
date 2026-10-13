@@ -7,7 +7,7 @@ The board's HTTP surface, write rules and broadcasts, and import document shape.
 Every route is workspace-scoped through the `X-Workspace-ID` header.
 For scoped plans, paginated meeting/object reads and visible-row markers, see [surfaces.md](surfaces.md).
 For bounded minutes metadata/body reads and compact command receipts, see [history.md](history.md). For bounded work overview, personal/team attention and recent meetings, see [overview.md](overview.md).
-For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](actions.md); primary tasks are not added to the board's reference array. For immutable meeting templates, preparation operations, cancellation impact and archive recovery, see [meeting-preparation.md](meeting-preparation.md).
+For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](actions.md); primary tasks are not added to the board's reference array. For explicit cancellation plans, impact and archive recovery, see [meeting-preparation.md](meeting-preparation.md).
 
 | Method | Path | What it does |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ work-item routes takes the same two forms as `{id}`.
 A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
 `time_range` for the free text older rows were logged with, `title`, `code`,
 `kind`, `status`, `track`, `parties`, `organizer`, `location`, `attendees`,
-`meet_no`, `link`) and what it LEFT BEHIND (`note` for the agenda and remarks,
+`meet_no`, `link`) and what it LEFT BEHIND (`note` for remarks,
 `minutes`, `decisions`, `actions`, `nas_dir`). `detected` marks a row the
 scan read off the share rather than one somebody typed.
 
@@ -150,7 +150,7 @@ link does not automatically promote it to the provisioned task.
 
 For meetings with a work package, `create_task: true` is rejected. Use
 `create_task: false` for the existing independent directory operation. New UI
-meeting creation uses the work-package workflow for minutes tasks; a folder
+minutes task creation uses the ordinary platform Issue dialog and explicit adoption; a folder
 failure remains separately retryable without creating another meeting or issue.
 
 ## Meeting work packages and fixed minutes
@@ -169,30 +169,11 @@ relationship; conflicting intent returns 409 instead of silently changing work.
 
 The normal lifecycle is:
 
-1. A human manager records `ended: true` and `materials_ready: true`. Ending is
-   irreversible here; material readiness can change until release.
-2. A human manager explicitly releases the backlog issue. Both facts are
-   required. The issue becomes todo; agent/squad execution uses the native run
-   queue, member execution creates no run. Queue and release commit together.
-   Unreleased minutes work cannot execute through ordinary status edits,
-   mentions, wakeups, reruns or queue claims. Review issues are always blocked
-   from agent execution even if their ordinary assignee is edited.
-   The native run handoff names the exact meeting and tells its executor to
-   fetch current board/source-directory and workflow data before writing and
-   submitting minutes. It does not replace the adopted issue's description or
-   treat a stale directory snapshot as current evidence.
-3. The writer submits `{expected_revision, submission_key, content}`. Content
-   is non-empty text, trimmed, at most 128 KiB. A UUID submission key identifies
-   one immutable version; retries with the same key and text reuse it. Each new
-   version creates one ordinary human-assigned Review Issue. Finish a pending
-   review before submitting another version.
-4. The designated reviewer submits `approved`, `changes_requested` or
-   `rejected`; the latter two require feedback. This ends that review issue.
-   Changes requested returns the original minutes issue to todo; another agent
-   run is not silently dispatched. New submission starts a new version/review.
-5. Explicitly publish the approved **current** version. An older approval
-   cannot publish a superseded version. Completing/reassigning a Review Issue
-   in the ordinary issue interface never approves or publishes anything.
+1. Preparation and recording create ordinary backlog Issues through the platform's Issue creation flow. Preparation links the Issue to the meeting and sets `roles: ["preparation"]`. Minutes creation explicitly adopts the new Issue with `workflow enable --existing-issue-id`; do not pre-link it with the `minutes` purpose, because adoption validates that it has no workflow ownership.
+2. Execute the linked minutes Issue through the ordinary Issue workflow after explicit execution authorization. A meeting-end/material-readiness/release ceremony is not required for execution or submission. Review Issues remain protected from agent execution even if their ordinary assignment is edited. Native handoff identifies the meeting and shared directory; read the actual evidence rather than rewriting the original Issue description or trusting a stale snapshot.
+3. Submit `{expected_revision, submission_key, content}`. Content is nonempty trimmed text, at most 128 KiB. The UUID key identifies one immutable version; an exact retry reuses it. Each version creates one human-assigned Review Issue. Finish a pending review before submitting another version.
+4. The designated reviewer decides `approved`, `changes_requested` or `rejected`; the latter two require feedback. This ends the Review Issue. Changes requested returns the minutes Issue to todo without silently dispatching another run.
+5. A human explicitly publishes the approved current version. Older approvals cannot publish a superseded version. Completing or reassigning a Review Issue in the ordinary Issue interface never approves or publishes minutes. Human publication can be withdrawn through the existing unpublish operation; fixed history remains.
 
 All successful commands return the complete workflow JSON directly. GET before
 enable returns 200 with `enabled: false`. Read `revision`, then send a positive
@@ -200,7 +181,7 @@ enable returns 200 with `enabled: false`. Read `revision`, then send a positive
 Do not blindly retry 409 with a fresh revision: reread and reconcile intent.
 Exact idempotent retries may return the already completed result.
 
-The package creator or a workspace owner/admin manages readiness and release.
+Legacy readiness/release operations remain human-manager commands, but do not gate the current minutes workflow.
 A human manager or the current member writer may submit. An agent authenticated
 with an issue-scoped `mat_` task token may submit only when that authenticated
 task belongs to the minutes issue and matches its agent; authorship records the
@@ -288,8 +269,8 @@ multica cockpit meeting workflow reassign-reviewer <meeting-id> --revision <n> -
 ```
 
 Fetch the new revision between commands. `ready` requires at least one fact;
-`--materials-ready=false` withdraws readiness before release, while
-`--ended=false` is refused. `enable` accepts optional `--project-id`,
+`ready` and `release` are legacy fact/dispatch commands, not the current creation/submission flow.
+For explicit reversible occurrence corrections use the lifecycle command described in [meeting-lifecycle.md](meeting-lifecycle.md); do not insert confirmation-end steps into the recording stage. `enable` accepts optional `--project-id`,
 `--module-id`, `--node-id`, and the paired `--assignee-type/--assignee-id`.
 Explicitly empty project/module flags clear the board defaults. To adopt, use
 `--existing-issue-id` instead of project/module/assignee flags; an explicit

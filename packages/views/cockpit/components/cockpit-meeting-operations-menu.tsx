@@ -71,6 +71,6 @@ export function CockpitMeetingRetentionNotice({ meeting, basis, onManage }: { me
   return <section className="space-y-2 text-caption"><p className="font-medium">{[meeting.archived_at ? t(($) => $.meeting_disposition.archived) : "", meeting.occurrence_state === "cancelled" ? t(($) => $.meeting_disposition.cancelled) : ""].filter(Boolean).join(" · ")}</p>
     <p className="text-muted-foreground">{meeting.archived_at ? t(($) => $.meeting_disposition.archive_hint) : t(($) => $.meeting_disposition.cancelled_hint)}</p>
     <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={onManage}>{t(($) => $.meeting_disposition.actions)}</Button>
-      {basis?.current_operation && <AppLink className="py-1 text-primary underline" href={cockpitMeetingPreparationPath(paths.cockpit(), meeting.id, basis.current_operation.id, navigation.searchParams)}>{t(($) => $.meeting_preparation.title)}</AppLink>}</div>
+      {basis?.current_operation && <AppLink className="py-1 text-primary underline" href={cockpitMeetingPreparationPath(paths.cockpit(), meeting.id, basis.current_operation.id, navigation.searchParams)}>{t(($) => $.meeting_preparation.cancellation)}</AppLink>}</div>
   </section>;
 }

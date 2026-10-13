@@ -24,9 +24,6 @@ func referenceView(id, artifact, version, key, node, meeting, by, removedBy pgty
 func nodeReferenceView(r db.CockpitArtifactNodeReference) CockpitArtifactReference {
 	return referenceView(r.ID, r.ArtifactID, r.VersionID, r.ReferenceKey, r.NodeID, pgtype.UUID{}, r.CreatedBy, r.RemovedBy, r.TargetLabel, r.Purpose, r.CreatedAt, r.RemovedAt)
 }
-func meetingReferenceView(r db.CockpitArtifactMeetingReference) CockpitArtifactReference {
-	return referenceView(r.ID, r.ArtifactID, r.VersionID, r.ReferenceKey, pgtype.UUID{}, r.MeetingID, r.CreatedBy, r.RemovedBy, r.TargetLabel, r.Purpose, r.CreatedAt, r.RemovedAt)
-}
 func enrichArtifactReferences(ctx context.Context, q *db.Queries, ws pgtype.UUID, items []CockpitArtifactReference) error {
 	ids := make([]pgtype.UUID, 0, len(items))
 	for _, i := range items {
@@ -89,17 +86,6 @@ func (s *IssueService) CreateCockpitArtifactReference(ctx context.Context, p Coc
 		} else if !errors.Is(e, pgx.ErrNoRows) {
 			return CockpitArtifactReferenceResponse{}, e
 		}
-	} else {
-		r, e := q.GetCockpitArtifactMeetingReferenceByKey(ctx, db.GetCockpitArtifactMeetingReferenceByKeyParams{WorkspaceID: p.WorkspaceID, ReferenceKey: p.ReferenceKey})
-		if e == nil {
-			if r.ArtifactID != a.ID || r.RequestHash != hash || r.CreatedBy != p.ActorID {
-				return CockpitArtifactReferenceResponse{}, ErrCockpitWorkflowConflict
-			}
-			item = meetingReferenceView(r)
-			found = true
-		} else if !errors.Is(e, pgx.ErrNoRows) {
-			return CockpitArtifactReferenceResponse{}, e
-		}
 	}
 	if !found {
 		if !artifactManager(a, p.ActorID, m.Role, p.Human) {
@@ -135,26 +121,6 @@ func (s *IssueService) CreateCockpitArtifactReference(ctx context.Context, p Coc
 				return CockpitArtifactReferenceResponse{}, e
 			}
 			item = nodeReferenceView(r)
-		} else {
-			meeting, e := q.GetCockpitMeeting(ctx, db.GetCockpitMeetingParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID})
-			if e != nil {
-				return CockpitArtifactReferenceResponse{}, cockpitWorkflowError(e)
-			}
-			old, e := q.GetActiveCockpitArtifactMeetingReference(ctx, db.GetActiveCockpitArtifactMeetingReferenceParams{WorkspaceID: p.WorkspaceID, VersionID: p.VersionID, MeetingID: p.MeetingID, Purpose: p.Purpose})
-			if e == nil {
-				return CockpitArtifactReferenceResponse{}, &CockpitArtifactReferenceExistsError{util.UUIDToString(old.ID)}
-			}
-			if !errors.Is(e, pgx.ErrNoRows) {
-				return CockpitArtifactReferenceResponse{}, e
-			}
-			if e = RequireCockpitMeetingPreparationOpen(ctx, q, p.WorkspaceID, p.MeetingID); e != nil {
-				return CockpitArtifactReferenceResponse{}, e
-			}
-			r, e := q.CreateCockpitArtifactMeetingReference(ctx, db.CreateCockpitArtifactMeetingReferenceParams{ID: dbid.NewV7(), WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID, VersionID: p.VersionID, MeetingID: p.MeetingID, TargetLabel: meeting.Title, Purpose: p.Purpose, ReferenceKey: p.ReferenceKey, RequestHash: hash, CreatedBy: p.ActorID})
-			if e != nil {
-				return CockpitArtifactReferenceResponse{}, e
-			}
-			item = meetingReferenceView(r)
 		}
 	}
 	items := []CockpitArtifactReference{item}
@@ -189,12 +155,6 @@ func (s *IssueService) RemoveCockpitArtifactReference(ctx context.Context, p Coc
 			return CockpitArtifactReferenceResponse{}, cockpitWorkflowError(e)
 		}
 		item = nodeReferenceView(r)
-	case "meeting":
-		r, e := q.RemoveCockpitArtifactMeetingReference(ctx, db.RemoveCockpitArtifactMeetingReferenceParams{WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID, ID: p.ReferenceID, RemovedBy: p.ActorID})
-		if e != nil {
-			return CockpitArtifactReferenceResponse{}, cockpitWorkflowError(e)
-		}
-		item = meetingReferenceView(r)
 	default:
 		return CockpitArtifactReferenceResponse{}, ErrCockpitWorkflowInput
 	}
@@ -240,15 +200,6 @@ func (s *IssueService) ListCockpitArtifactReferences(ctx context.Context, p Cock
 			out.Items = append(out.Items, nodeReferenceView(r))
 		}
 		out.Total, err = q.CountCockpitArtifactNodeReferences(ctx, db.CountCockpitArtifactNodeReferencesParams{WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID})
-	case "meeting":
-		rows, e := q.ListCockpitArtifactMeetingReferences(ctx, db.ListCockpitArtifactMeetingReferencesParams{WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID, AfterID: after, PageLimit: size + 1})
-		if e != nil {
-			return out, e
-		}
-		for _, r := range rows {
-			out.Items = append(out.Items, meetingReferenceView(r))
-		}
-		out.Total, err = q.CountCockpitArtifactMeetingReferences(ctx, db.CountCockpitArtifactMeetingReferencesParams{WorkspaceID: p.WorkspaceID, ArtifactID: p.ArtifactID})
 	default:
 		return out, ErrCockpitWorkflowInput
 	}
@@ -262,49 +213,6 @@ func (s *IssueService) ListCockpitArtifactReferences(ctx context.Context, p Cock
 	}
 	if err = enrichArtifactReferences(ctx, q, p.WorkspaceID, out.Items); err != nil {
 		return out, err
-	}
-	return out, tx.Commit(ctx)
-}
-func (s *IssueService) ListCockpitMeetingArtifactReferences(ctx context.Context, p CockpitMeetingArtifactReferencesRead) (CockpitMeetingArtifactReferencesPage, error) {
-	size, err := planningPageSize(p.PageSize)
-	if err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	scope := planningHash([]any{"meeting-artifacts", p.WorkspaceID, p.MeetingID, p.IncludeRemoved, size})
-	after, _, err := decodePlanningCursor(p.Cursor, scope)
-	if err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	tx, q, err := s.beginPlanningRead(ctx)
-	if err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	defer tx.Rollback(ctx)
-	if _, err = artifactReadMember(ctx, q, CockpitArtifactRead{WorkspaceID: p.WorkspaceID, ActorID: p.ActorID}); err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	if _, err = q.GetCockpitMeeting(ctx, db.GetCockpitMeetingParams{WorkspaceID: p.WorkspaceID, ID: p.MeetingID}); err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, cockpitWorkflowError(err)
-	}
-	rows, err := q.ListCockpitMeetingArtifactReferences(ctx, db.ListCockpitMeetingArtifactReferencesParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, IncludeRemoved: p.IncludeRemoved, AfterID: after, PageLimit: size + 1})
-	if err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	total, err := q.CountCockpitMeetingArtifactReferences(ctx, db.CountCockpitMeetingArtifactReferencesParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, Column3: p.IncludeRemoved})
-	if err != nil {
-		return CockpitMeetingArtifactReferencesPage{}, err
-	}
-	out := CockpitMeetingArtifactReferencesPage{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), IncludeRemoved: p.IncludeRemoved, Items: []CockpitMeetingArtifactReference{}, Total: total}
-	if len(rows) > int(size) {
-		rows = rows[:size]
-		out.NextCursor = encodePlanningCursor(scope, rows[len(rows)-1].ID, 0)
-	}
-	for _, r := range rows {
-		ref := referenceView(r.ID, r.ArtifactID, r.VersionID, r.ReferenceKey, pgtype.UUID{}, r.MeetingID, r.CreatedBy, r.RemovedBy, r.TargetLabel, r.Purpose, r.CreatedAt, r.RemovedAt)
-		ref.VersionNumber = r.VersionNumber
-		ref.ContentHash = r.ContentHash.String
-		decision := r.VersionDecision
-		out.Items = append(out.Items, CockpitMeetingArtifactReference{CockpitArtifactReference: ref, ArtifactTitle: r.ArtifactTitle, VersionDecision: &decision})
 	}
 	return out, tx.Commit(ctx)
 }

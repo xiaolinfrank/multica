@@ -6,18 +6,17 @@ import * as DirectorySchemas from "./cockpit-meeting-directory-schemas";
 import { cockpitDirectoryCommandAcknowledged, type CockpitDirectoryCommandInput } from "../cockpit/meeting-directory";
 import type * as MeetingPreparation from "../types/cockpit-meeting-preparation";
 import * as PreparationSchemas from "./cockpit-meeting-preparation-schemas";
-import { cockpitMeetingTemplateAcknowledged, cockpitPreparationCommandAcknowledged, cockpitPreparationEffectAcknowledged } from "../cockpit/meeting-preparation";
+import { cockpitPreparationCommandAcknowledged, cockpitPreparationEffectAcknowledged } from "../cockpit/meeting-preparation";
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
 import type {
-  CockpitMeetingLifecycleHeader, CockpitAgendaPage, CockpitAgendaDetail, CockpitAgendaReferencePage,
+  CockpitMeetingLifecycleHeader,
   CockpitLifecycleCommandPage, CockpitLifecycleCommandDetail, CockpitLifecycleCommandResult, CockpitLifecycleAction,
-  CockpitLifecyclePageQuery, CockpitAgendaQuery, CockpitAgendaReferenceQuery, CockpitLifecycleCommandInput,
-  CockpitOccurrenceInput, CockpitMaterialsInput, CockpitAgendaInput, CockpitAgendaRemoveInput,
-  CockpitAgendaReferenceInput, CockpitPreparationIssueInput,
+  CockpitLifecyclePageQuery, CockpitLifecycleCommandInput,
+  CockpitOccurrenceInput, CockpitMaterialsInput,
 } from "../types/cockpit-meeting-lifecycle";
 import {
-  CockpitMeetingLifecycleHeaderSchema, CockpitAgendaPageSchema, CockpitAgendaDetailSchema,
-  CockpitAgendaReferencePageSchema, CockpitLifecycleCommandPageSchema, CockpitLifecycleCommandDetailSchema,
+  CockpitMeetingLifecycleHeaderSchema,
+  CockpitLifecycleCommandPageSchema, CockpitLifecycleCommandDetailSchema,
   CockpitLifecycleCommandResultSchema,
 } from "./cockpit-meeting-lifecycle-schemas";
 import { cockpitLifecycleAcknowledged } from "../cockpit/meeting-lifecycle";
@@ -26,8 +25,6 @@ import { IssueOperationBasisPageSchema, ContainerOperationBasisSchema } from "./
 import type { IssueBatchReceipt, IssueBatchWriteOptions } from "../types/issue-batch";
 import { parseIssueBatchReceipt, IssueBatchUnconfirmedError } from "./issue-batch-schemas";
 import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-artifacts";
-import type { CockpitMeetingArtifactReferencePage } from "../types/cockpit-artifact-responsibility";
-import { CockpitMeetingArtifactReferencePageSchema } from "./cockpit-artifact-responsibility-schemas";
 import { CockpitIssueArtifactContextPageSchema } from "./cockpit-issue-artifact-schemas";
 import { CockpitUnconfirmedReadError, CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import type { CockpitNodeCreate, CockpitNodeCreated } from "../types/cockpit";
@@ -39,8 +36,8 @@ import type { CockpitSnapshotDiff } from "../types/cockpit-snapshot-diff";
 import { CockpitSnapshotDiffSchema } from "./cockpit-snapshot-diff-schema";
 import type {
   CockpitArtifactProducerCommand, CockpitArtifactReviewerCommand, CockpitArtifactProducerPage, CockpitArtifactProducerResponse,
-  CockpitArtifactHandoffPage, CockpitArtifactHandoffResponse, CockpitArtifactReferenceKind, CockpitArtifactNodeReferenceCreate,
-  CockpitArtifactMeetingReferenceCreate, CockpitArtifactReferencePage, CockpitArtifactReferenceResponse, CockpitAcceptanceHandoffPage, CockpitAcceptanceHandoffResponse,
+  CockpitArtifactHandoffPage, CockpitArtifactHandoffResponse, CockpitArtifactNodeReferenceCreate,
+CockpitArtifactReferencePage, CockpitArtifactReferenceResponse, CockpitAcceptanceHandoffPage, CockpitAcceptanceHandoffResponse,
 } from "../types/cockpit-artifact-responsibility";
 import {
   CockpitArtifactProducerPageSchema, CockpitArtifactProducerResponseSchema, CockpitArtifactHandoffPageSchema, CockpitArtifactHandoffResponseSchema,
@@ -1315,30 +1312,9 @@ export class ApiClient {
     return result && result.inputId === inputId && result.versionId === versionId ? result : null;
   }
 
-  async getCockpitMeetingInputReferences(wsId: string, meetingId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferencePage | null> {
-    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references${cockpitInputSearch(query)}`, inputSchemas.CockpitInputReferencePageSchema, { signal });
-    return result && result.meetingId === meetingId && result.agendaId === null ? result : null;
-  }
 
-  async getCockpitAgendaInputReferences(wsId: string, meetingId: string, agendaId: string, query: inputTypes.CockpitInputPageQuery = {}, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferencePage | null> {
-    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/agenda/${encodeURIComponent(agendaId)}/input-references${cockpitInputSearch(query)}`, inputSchemas.CockpitInputReferencePageSchema, { signal });
-    return result && result.meetingId === meetingId && result.agendaId === agendaId ? result : null;
-  }
 
-  async createCockpitInputReference(wsId: string, meetingId: string, body: inputTypes.CockpitInputReferenceCreateInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
-    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references`, inputSchemas.CockpitInputReferenceResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
-    return result && result.receipt.meetingId === meetingId && result.commandKey === body.commandKey ? result : null;
-  }
 
-  async removeCockpitInputReference(wsId: string, meetingId: string, referenceId: string, body: inputTypes.CockpitInputReferenceRemoveInput, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
-    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-references/${encodeURIComponent(referenceId)}/remove`, inputSchemas.CockpitInputReferenceResultSchema, { signal, method: "POST", body: JSON.stringify(cockpitInputBody(body)) });
-    return result && result.receipt.meetingId === meetingId && result.receipt.referenceId === referenceId && result.commandKey === body.commandKey ? result : null;
-  }
-
-  async getCockpitInputReferenceCommand(wsId: string, meetingId: string, commandKey: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputReferenceResult | null> {
-    const result = await this.cockpitInputResource(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/input-reference-commands/${encodeURIComponent(commandKey)}`, inputSchemas.CockpitInputReferenceResultSchema, { signal });
-    return result && result.receipt.meetingId === meetingId && result.commandKey === commandKey ? result : null;
-  }
 
   async getCockpitIssueInputManifest(wsId: string, issueId: string, signal?: AbortSignal): Promise<inputTypes.CockpitInputManifestHeader | null> {
     const result = await this.cockpitInputResource(wsId, `/api/cockpit/issues/${encodeURIComponent(issueId)}/input-manifest`, inputSchemas.CockpitInputManifestHeaderSchema, { signal });
@@ -2562,12 +2538,6 @@ export class ApiClient {
     return result && result.issue_id === issueId && result.items.length <= (query.page_size ?? 25) ? result : null;
   }
 
-  async getCockpitMeetingArtifactReferences(wsId: string, meetingId: string, query: CockpitArtifactPageQuery & { include_removed?: boolean } = {}, signal?: AbortSignal): Promise<CockpitMeetingArtifactReferencePage | null> {
-    const result = await this.cockpitArtifactResource<CockpitMeetingArtifactReferencePage>(wsId, `/api/cockpit/meetings/${encodeURIComponent(meetingId)}/artifact-references`, CockpitMeetingArtifactReferencePageSchema,
-      { signal }, { ...query, page_size: query.page_size ?? 25, include_removed: query.include_removed ?? false });
-    return result?.meeting_id === meetingId && result.include_removed === (query.include_removed ?? false)
-      && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor) ? result : null;
-  }
 
   async getCockpitArtifacts(wsId: string, query: CockpitArtifactQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactPage | null> {
     const ids = [...new Set(query.ids ?? [])].sort();
@@ -2690,22 +2660,22 @@ export class ApiClient {
       { method: "POST", body: JSON.stringify({ expected_revision: expectedRevision }) });
     return result?.id === artifactId && Boolean(result.archived_at) === archived ? result : null;
   }
-  async getCockpitArtifactReferences(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactReferencePage | null> {
+  async getCockpitArtifactReferences(wsId: string, artifactId: string, kind: "node", query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitArtifactReferencePage | null> {
     const result = await this.cockpitArtifactResource<CockpitArtifactReferencePage>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references`, CockpitArtifactReferencePageSchema,
       { signal }, { ...query, page_size: query.page_size ?? 25 });
     return result?.artifact_id === artifactId && result.items.length <= (query.page_size ?? 25) && (!query.cursor || result.next_cursor !== query.cursor)
-      && result.items.every((item) => Boolean(kind === "node" ? item.node_id : item.meeting_id)) ? result : null;
+      && result.items.every((item) => Boolean(item.node_id)) ? result : null;
   }
-  async createCockpitArtifactReference(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, body: CockpitArtifactNodeReferenceCreate | CockpitArtifactMeetingReferenceCreate): Promise<CockpitArtifactReferenceResponse | null> {
+  async createCockpitArtifactReference(wsId: string, artifactId: string, kind: "node", body: CockpitArtifactNodeReferenceCreate): Promise<CockpitArtifactReferenceResponse | null> {
     const result = await this.cockpitArtifactResource<CockpitArtifactReferenceResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references`, CockpitArtifactReferenceResponseSchema,
       { method: "POST", body: JSON.stringify(body) });
-    return result?.reference.artifact_id === artifactId && Boolean(kind === "node" ? result.reference.node_id : result.reference.meeting_id) ? result : null;
+    return result?.reference.artifact_id === artifactId && Boolean(result.reference.node_id) ? result : null;
   }
-  async removeCockpitArtifactReference(wsId: string, artifactId: string, kind: CockpitArtifactReferenceKind, referenceId: string): Promise<CockpitArtifactReferenceResponse | null> {
+  async removeCockpitArtifactReference(wsId: string, artifactId: string, kind: "node", referenceId: string): Promise<CockpitArtifactReferenceResponse | null> {
     const result = await this.cockpitArtifactResource<CockpitArtifactReferenceResponse>(wsId, `/api/cockpit/artifacts/${encodeURIComponent(artifactId)}/${kind}-references/${encodeURIComponent(referenceId)}`, CockpitArtifactReferenceResponseSchema,
       { method: "DELETE" });
     return result?.reference.artifact_id === artifactId && result.reference.id === referenceId && Boolean(result.reference.removed_at)
-      && Boolean(kind === "node" ? result.reference.node_id : result.reference.meeting_id) ? result : null;
+      && Boolean(result.reference.node_id) ? result : null;
   }
   async getCockpitAcceptanceReviewerHandoffs(wsId: string, nodeId: string, query: CockpitArtifactPageQuery = {}, signal?: AbortSignal): Promise<CockpitAcceptanceHandoffPage | null> {
     const result = await this.cockpitArtifactResource<CockpitAcceptanceHandoffPage>(wsId, `/api/cockpit/nodes/${encodeURIComponent(nodeId)}/acceptance/reviewer-handoffs`, CockpitAcceptanceHandoffPageSchema,
@@ -2922,10 +2892,6 @@ export class ApiClient {
     return "/api/cockpit/meetings/" + encodeURIComponent(meetingId) + "/" + suffix;
   }
 
-  private cockpitAgendaPath(agendaId: string, suffix = ""): string {
-    if (!agendaId) throw new RangeError("Agenda operations require an explicit agenda identity");
-    return "agenda/" + encodeURIComponent(agendaId) + suffix;
-  }
 
   private async readCockpitLifecycle<T extends { workspace_id: string; meeting_id: string }>(wsId: string, meetingId: string,
     suffix: string, schema: ZodType<T>, query: Record<string, string | number | boolean | undefined> = {}, signal?: AbortSignal): Promise<T | null> {
@@ -2938,12 +2904,12 @@ export class ApiClient {
   }
 
   private async writeCockpitLifecycle(wsId: string, meetingId: string, suffix: string, action: CockpitLifecycleAction,
-    body: CockpitLifecycleCommandInput, agendaId?: string, referenceId?: string, method = "POST"): Promise<CockpitLifecycleCommandResult> {
+    body: CockpitLifecycleCommandInput, method = "POST"): Promise<CockpitLifecycleCommandResult> {
     const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix);
     const raw = await this.fetch<unknown>(endpoint, { method, headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
     const parsed = parseWithFallback<CockpitLifecycleCommandResult | null>(raw, CockpitLifecycleCommandResultSchema, null, { endpoint: method + " " + suffix });
     if (!parsed || parsed.workspace_id !== wsId || parsed.meeting_id !== meetingId
-      || !cockpitLifecycleAcknowledged(parsed, action, body, agendaId, referenceId)) throw new CockpitUnconfirmedWriteError();
+      || !cockpitLifecycleAcknowledged(parsed, action, body)) throw new CockpitUnconfirmedWriteError();
     return parsed;
   }
 
@@ -2951,22 +2917,8 @@ export class ApiClient {
     return this.readCockpitLifecycle(wsId, meetingId, "lifecycle", CockpitMeetingLifecycleHeaderSchema, {}, signal);
   }
 
-  async getCockpitMeetingAgenda(wsId: string, meetingId: string, query: CockpitAgendaQuery = {}, signal?: AbortSignal): Promise<CockpitAgendaPage | null> {
-    const params = { ...query, q: query.q?.trim() ?? "", include_removed: query.include_removed ?? false, page_size: query.page_size ?? 25 };
-    const page = await this.readCockpitLifecycle(wsId, meetingId, "agenda", CockpitAgendaPageSchema, params, signal);
-    return page && page.q === params.q && page.include_removed === params.include_removed && page.page_size === params.page_size ? page : null;
-  }
 
-  async getCockpitAgendaDetail(wsId: string, meetingId: string, agendaId: string, signal?: AbortSignal): Promise<CockpitAgendaDetail | null> {
-    const detail = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId), CockpitAgendaDetailSchema, {}, signal);
-    return detail?.id === agendaId ? detail : null;
-  }
 
-  async getCockpitAgendaReferences(wsId: string, meetingId: string, agendaId: string, query: CockpitAgendaReferenceQuery = {}, signal?: AbortSignal): Promise<CockpitAgendaReferencePage | null> {
-    const params = { ...query, include_removed: query.include_removed ?? false, page_size: query.page_size ?? 25 };
-    const page = await this.readCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references"), CockpitAgendaReferencePageSchema, params, signal);
-    return page && page.agenda_id === agendaId && page.include_removed === params.include_removed && page.page_size === params.page_size ? page : null;
-  }
 
   async getCockpitLifecycleCommands(wsId: string, meetingId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<CockpitLifecycleCommandPage | null> {
     const params = { ...query, page_size: query.page_size ?? 25 };
@@ -2985,25 +2937,6 @@ export class ApiClient {
   }
   async confirmCockpitMaterials(wsId: string, meetingId: string, body: CockpitMaterialsInput): Promise<CockpitLifecycleCommandResult> {
     return this.writeCockpitLifecycle(wsId, meetingId, "lifecycle/materials", "materials", body);
-  }
-  async createCockpitAgenda(wsId: string, meetingId: string, body: CockpitAgendaInput): Promise<CockpitLifecycleCommandResult> {
-    return this.writeCockpitLifecycle(wsId, meetingId, "agenda", "agenda_create", body);
-  }
-  async updateCockpitAgenda(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaInput): Promise<CockpitLifecycleCommandResult> {
-    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId), "agenda_update", body, agendaId, undefined, "PATCH");
-  }
-  async removeCockpitAgenda(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaRemoveInput): Promise<CockpitLifecycleCommandResult> {
-    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/remove"), "agenda_remove", body, agendaId);
-  }
-  async attachCockpitAgendaReference(wsId: string, meetingId: string, agendaId: string, body: CockpitAgendaReferenceInput): Promise<CockpitLifecycleCommandResult> {
-    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references"), "reference_attach", body, agendaId);
-  }
-  async removeCockpitAgendaReference(wsId: string, meetingId: string, agendaId: string, referenceId: string, body: CockpitLifecycleCommandInput): Promise<CockpitLifecycleCommandResult> {
-    if (!referenceId) throw new RangeError("Removing a reference requires its identity");
-    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/references/" + encodeURIComponent(referenceId) + "/remove"), "reference_remove", body, agendaId, referenceId);
-  }
-  async createCockpitPreparationIssue(wsId: string, meetingId: string, agendaId: string, body: CockpitPreparationIssueInput): Promise<CockpitLifecycleCommandResult> {
-    return this.writeCockpitLifecycle(wsId, meetingId, this.cockpitAgendaPath(agendaId, "/preparation-issues"), "preparation_issue_create", body, agendaId);
   }
 
   async getCockpitDirectoryRoots(wsId: string, query: MeetingDirectory.CockpitMeetingDirectoryPageQuery = {}, signal?: AbortSignal): Promise<MeetingDirectory.CockpitDirectoryRootPage | null> {
@@ -3092,74 +3025,17 @@ export class ApiClient {
     return this.writeCockpitDirectoryCommand(wsId, meetingId, this.cockpitDirectoryOperationPath(operationId, "/control"), `directory_${body.transition}`, body, operationId);
   }
 
-  private cockpitTemplatePath(wsId: string, suffix = ""): string {
-    if (!wsId) throw new RangeError("Template operations require an explicit workspace");
-    return "/api/cockpit/meeting-templates" + suffix;
-  }
   private cockpitPreparationOperationPath(operationId: string, suffix = ""): string {
     if (!operationId) throw new RangeError("Preparation operations require their identity");
     return "preparation-operations/" + encodeURIComponent(operationId) + suffix;
   }
-  private async readCockpitTemplate<T extends { workspace_id: string }>(wsId: string, suffix: string, schema: ZodType<T>, query: Record<string, string | number | boolean | undefined> = {}, signal?: AbortSignal): Promise<T | null> {
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
-    const endpoint = this.cockpitTemplatePath(wsId, suffix) + (params.size ? "?" + params : "");
-    const raw = await this.fetch<unknown>(endpoint, { headers: { "X-Workspace-ID": wsId }, signal });
-    const parsed = parseWithFallback<T | null>(raw, schema, null, { endpoint: "GET " + endpoint });
-    return parsed?.workspace_id === wsId ? parsed : null;
-  }
-  async getCockpitMeetingTemplates(wsId: string, query: MeetingPreparation.CockpitMeetingTemplateQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplatePage | null> {
-    const params = { ...query, q: query.q?.trim() ?? "", include_inactive: query.include_inactive ?? false, page_size: query.page_size ?? 25 };
-    const value = await this.readCockpitTemplate(wsId, "", PreparationSchemas.CockpitMeetingTemplatePageSchema, params, signal);
-    return value?.q === params.q && value.include_inactive === params.include_inactive && value.page_size === params.page_size ? value : null;
-  }
-  async getCockpitMeetingTemplate(wsId: string, templateId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateHeader | null> {
-    if (!templateId) throw new RangeError("A template requires its identity");
-    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId), PreparationSchemas.CockpitMeetingTemplateHeaderSchema, {}, signal);
-    return value?.id === templateId ? value : null;
-  }
-  async getCockpitMeetingTemplateVersions(wsId: string, templateId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateVersionPage | null> {
-    if (!templateId) throw new RangeError("A template requires its identity");
-    const params = { ...query, page_size: query.page_size ?? 25 };
-    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId) + "/versions", PreparationSchemas.CockpitMeetingTemplateVersionPageSchema, params, signal);
-    return value?.template_id === templateId && value.page_size === params.page_size ? value : null;
-  }
-  async getCockpitMeetingTemplateVersion(wsId: string, templateId: string, versionId: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateVersionDetail | null> {
-    if (!templateId || !versionId) throw new RangeError("A version requires its template and version identity");
-    const value = await this.readCockpitTemplate(wsId, "/" + encodeURIComponent(templateId) + "/versions/" + encodeURIComponent(versionId), PreparationSchemas.CockpitMeetingTemplateVersionDetailSchema, {}, signal);
-    return value?.template_id === templateId && value.id === versionId ? value : null;
-  }
-  async getCockpitMeetingTemplateCommand(wsId: string, commandKey: string, signal?: AbortSignal): Promise<MeetingPreparation.CockpitMeetingTemplateSaveResult | null> {
-    if (!commandKey) throw new RangeError("A command requires its original key");
-    const value = await this.readCockpitTemplate(wsId, "/commands/" + encodeURIComponent(commandKey), PreparationSchemas.CockpitMeetingTemplateSaveResultSchema, {}, signal);
-    return value?.command_key === commandKey ? value : null;
-  }
-  async saveCockpitMeetingTemplate(wsId: string, templateId: string | null, body: MeetingPreparation.CockpitMeetingTemplateSaveInput): Promise<MeetingPreparation.CockpitMeetingTemplateSaveResult> {
-    const endpoint = this.cockpitTemplatePath(wsId, templateId ? "/" + encodeURIComponent(templateId) + "/versions" : "");
-    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
-    const value = parseWithFallback<MeetingPreparation.CockpitMeetingTemplateSaveResult | null>(raw, PreparationSchemas.CockpitMeetingTemplateSaveResultSchema, null, { endpoint: "POST " + endpoint });
-    if (!value || value.workspace_id !== wsId || !cockpitMeetingTemplateAcknowledged(value, body, templateId)) throw new CockpitUnconfirmedWriteError();
-    return value;
-  }
-  async previewCockpitTemplateApplication(wsId: string, meetingId: string, body: MeetingPreparation.CockpitTemplateApplicationPreviewInput): Promise<MeetingPreparation.CockpitTemplateApplicationPreview> {
-    const endpoint = this.cockpitLifecyclePath(wsId, meetingId, "template-applications/preview");
-    const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
-    const value = parseWithFallback<MeetingPreparation.CockpitTemplateApplicationPreview | null>(raw, PreparationSchemas.CockpitTemplateApplicationPreviewSchema, null, { endpoint: "POST " + endpoint });
-    if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || value.template_version_id !== body.template_version_id
-      || value.selected_total !== body.bindings.filter((item) => item.selected).length
-      || value.effects.some((effect) => !body.bindings.some((binding) => binding.slot_id === effect.slot_id && binding.selected === effect.selected))) throw new CockpitUnconfirmedReadError();
-    return value;
-  }
   private async writeCockpitPreparationCommand(wsId: string, meetingId: string, suffix: string, action: string,
-    body: MeetingPreparation.CockpitTemplateApplicationInput | MeetingPreparation.CockpitCancellationInput | MeetingPreparation.CockpitPreparationControlInput | MeetingPreparation.CockpitPreparationReauthorizationInput, operationId?: string, effectId?: string): Promise<MeetingPreparation.CockpitPreparationCommandResult> {
+    body: MeetingPreparation.CockpitCancellationInput | MeetingPreparation.CockpitPreparationControlInput | MeetingPreparation.CockpitPreparationReauthorizationInput, operationId?: string, effectId?: string): Promise<MeetingPreparation.CockpitPreparationCommandResult> {
     const endpoint = this.cockpitLifecyclePath(wsId, meetingId, suffix);
     const raw = await this.fetch<unknown>(endpoint, { method: "POST", headers: { "X-Workspace-ID": wsId }, body: JSON.stringify(body) });
     const value = parseWithFallback<MeetingPreparation.CockpitPreparationCommandResult | null>(raw, PreparationSchemas.CockpitPreparationCommandResultSchema, null, { endpoint: "POST " + endpoint });
     if (!value || value.workspace_id !== wsId || value.meeting_id !== meetingId || !cockpitPreparationCommandAcknowledged(value, action, body, operationId, effectId)) throw new CockpitUnconfirmedWriteError();
     return value;
-  }
-  async applyCockpitMeetingTemplate(wsId: string, meetingId: string, body: MeetingPreparation.CockpitTemplateApplicationInput) {
-    return this.writeCockpitPreparationCommand(wsId, meetingId, "template-applications", "template_apply", body);
   }
   async getCockpitPreparationOperations(wsId: string, meetingId: string, query: CockpitLifecyclePageQuery = {}, signal?: AbortSignal): Promise<MeetingPreparation.CockpitPreparationOperationPage | null> {
     const params = { ...query, page_size: query.page_size ?? 25 };

@@ -39,6 +39,7 @@ import {
   ProgressField,
 } from "./cockpit-fields";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
+import { formatAmount } from "./cockpit-table";
 
 export interface CockpitNodePanelProps {
   node: CockpitNode;
@@ -166,6 +167,9 @@ export function CockpitNodePanel({
 
   const unset = t(($) => $.common.unset);
   const paymentTotal = confirmedPaymentTotal ?? payments.reduce((sum, p) => sum + p.amount, 0);
+  // Finance editing belongs to execution tasks; a structural row keeps only a
+  // read-only view of payments filed there by older data.
+  const paymentsEditable = taskDetails && !readOnly;
 
   return (
     <aside className={cn("cockpit-panel-enter flex max-w-full shrink-0 flex-col border-l border-border bg-card",
@@ -286,6 +290,7 @@ export function CockpitNodePanel({
               label={t(($) => $.node.progress)}
               disabled={readOnly || isBranch}
             />
+            {isBranch && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>}
           </CockpitField>
           {taskDetails && (
             <CockpitField label={t(($) => $.node.collaborators)} className="col-span-2">
@@ -407,11 +412,11 @@ export function CockpitNodePanel({
                 </span>
                 {payments.length > 0 && (
                   <span className="text-micro text-muted-foreground tabular-nums">
-                    {t(($) => $.finance.payment_total, { total: paymentTotal })}
+                    {t(($) => $.finance.payment_total, { total: formatAmount(paymentTotal) })}
                   </span>
                 )}
                 <span className="flex-1" />
-                {!readOnly && (
+                {paymentsEditable && (
                   <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5" onClick={onCreatePayment}>
                     <Plus className="size-3" />
                     {t(($) => $.node.add_payment)}
@@ -429,7 +434,7 @@ export function CockpitNodePanel({
                         onCommit={(label) => onPatchPayment(payment.id, { label })}
                         label={t(($) => $.payment.label)}
                         placeholder={t(($) => $.payment.label)}
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                         displayClassName="w-16 text-caption"
                       />
                       <EditableDate
@@ -437,17 +442,17 @@ export function CockpitNodePanel({
                         onCommit={(pay_date) => onPatchPayment(payment.id, { pay_date })}
                         label={t(($) => $.payment.date)}
                         placeholder={unset}
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                       />
                       <EditableNumber
                         value={payment.amount}
                         onCommit={(amount) => onPatchPayment(payment.id, { amount: amount ?? 0 })}
                         label={t(($) => $.payment.amount)}
                         placeholder="0"
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                       />
                       <span className="flex-1" />
-                      {!readOnly && (
+                      {paymentsEditable && (
                         <button
                           type="button"
                           onClick={() => onDeletePayment(payment.id)}
@@ -479,6 +484,7 @@ export function CockpitNodePanel({
                   disabled={readOnly}
                   rows={2}
                 />
+                <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.current_progress_hint)}</p>
               </CockpitField>
               <CockpitField label={t(($) => $.node.deliverable)}>
                 <EditableTextArea

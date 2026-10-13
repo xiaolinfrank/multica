@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -16,21 +17,64 @@ import (
 func preparationFixture(t *testing.T) cockpitWorkflowFixture {
 	t.Helper()
 	f := lifecycleFixture(t)
-	f.Cleanup(t, "DELETE FROM cockpit_meeting_template WHERE workspace_id=$1", f.ws)
-	f.Cleanup(t, "DELETE FROM cockpit_meeting_template_version WHERE workspace_id=$1", f.ws)
 	f.Cleanup(t, "DELETE FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1", f.ws)
 	f.Cleanup(t, "DELETE FROM cockpit_meeting_preparation_effect WHERE workspace_id=$1", f.ws)
 	return f
 }
 
+// preparationIssue creates one issue linked to the meeting as preparation
+// work — the state a meeting reaches once its materials are prepared.
+func preparationIssue(t *testing.T, f cockpitWorkflowFixture, title string) pgtype.UUID {
+	t.Helper()
+	id := parseTestUUID(t, f.Issue(t, title))
+	f.Exec(t, "INSERT INTO cockpit_meeting_issue(workspace_id,meeting_id,issue_id,position,roles) VALUES($1,$2,$3,0,'{preparation}')", f.ws, f.meeting, id)
+	return id
+}
+
+// preparationCancel previews and confirms a cancellation, returning the
+// disposition operation whose effects carry out the plan.
+func preparationCancel(t *testing.T, f cockpitWorkflowFixture, in CockpitCancellationPreviewInput) (CockpitCancellationPreview, CockpitPreparationCommandResult) {
+	t.Helper()
+	ctx := context.Background()
+	preview, e := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), in)
+	if e != nil || !preview.CanConfirm {
+		t.Fatalf("cancellation preview: %+v %v", preview, e)
+	}
+	operation, e := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: in, ContextToken: preview.ContextToken})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return preview, operation
+}
+
+func preparationEffects(t *testing.T, f cockpitWorkflowFixture, operation string) []CockpitPreparationEffect {
+	t.Helper()
+	id, e := util.ParseUUID(operation)
+	if e != nil {
+		t.Fatal(e)
+	}
+	page, e := f.issues.ListCockpitPreparationEffects(context.Background(), CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: id, PageSize: 100})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return page.Items
+}
+
+func preparationApply(t *testing.T, f cockpitWorkflowFixture, operation string, effect CockpitPreparationEffect) CockpitPreparationEffectResult {
+	t.Helper()
+	op, _ := util.ParseUUID(operation)
+	id, _ := util.ParseUUID(effect.ID)
+	out, e := f.issues.ApplyCockpitPreparationEffect(context.Background(), CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: op, EffectID: id}, CockpitPreparationEffectApplyInput{CommandKey: effect.CommandKey, AuthorizationKey: effect.AuthorizationKey, AuthorizationRevision: effect.AuthorizationRevision}, IssueCreateOpts{})
+	if e != nil {
+		t.Fatalf("apply %s/%s: %v", effect.Kind, effect.ID, e)
+	}
+	return out
+}
+
 func TestCockpitPreparationCancellationDisclosesWakeupsAndSeparatesExactRunStops(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, application, _ := preparationTemplate(t, f, 1)
-	steps := preparationEffects(t, f, application.Current.ID)
-	preparationApply(t, f, application.Current.ID, steps[0])
-	created := preparationApply(t, f, application.Current.ID, steps[1])
-	issueID, _ := preparationUUID(created.Receipt.IssueID)
+	issueID := preparationIssue(t, f, "Collect the primary evidence")
 	agent := f.privateAgentOwnedBy(t, f.UserID, "preparation-stop")
 	var runtimeID string
 	if err := f.Pool.QueryRow(ctx, "SELECT runtime_id::text FROM agent WHERE id=$1", agent).Scan(&runtimeID); err != nil {
@@ -48,17 +92,13 @@ func TestCockpitPreparationCancellationDisclosesWakeupsAndSeparatesExactRunStops
 	}
 	status := "cancelled"
 	input := CockpitCancellationPreviewInput{Reason: "Cancel the meeting while retaining its recorded work.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issueID), ExpectedRevision: issue.Revision, Action: "cancel", CancelStatus: &status}}, RunIDs: []string{}}
-	preview, e := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), input)
-	if e != nil || !preview.CanConfirm || len(preview.Effects) != 1 {
-		t.Fatalf("preview %+v %v", preview, e)
+	preview, operation := preparationCancel(t, f, input)
+	if len(preview.Effects) != 1 {
+		t.Fatalf("preview effects: %+v", preview)
 	}
 	impact := preview.Effects[0].IssueImpact
 	if impact == nil || impact.OrdinaryWakeupCount != 1 || impact.UnstartedWakeupRunCount != 1 || impact.OtherQueuedRunCount != 1 || impact.ActiveRunCount != 1 || preview.UnselectedRunTotal != 3 {
 		t.Fatalf("close effects were concealed or merged: %+v %+v", impact, preview)
-	}
-	operation, e := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: input, ContextToken: preview.ContextToken})
-	if e != nil {
-		t.Fatal(e)
 	}
 	result := preparationApply(t, f, operation.Current.ID, preparationEffects(t, f, operation.Current.ID)[0])
 	if result.Receipt.StoppedWakeupTotal != 1 || result.Receipt.CancelledQueueTotal != 1 || len(result.Receipt.CancelledQueueIDs) != 1 || result.Receipt.CancelledQueueIDs[0] != wakeupTask || len(result.Receipt.FactsHash) != 64 {
@@ -96,94 +136,50 @@ func TestCockpitPreparationCancellationDisclosesWakeupsAndSeparatesExactRunStops
 	}
 }
 
-func preparationTemplate(t *testing.T, f cockpitWorkflowFixture, tasks int) (CockpitMeetingTemplateSaveResult, CockpitPreparationCommandResult, CockpitTemplateApplicationInput) {
-	t.Helper()
-	ctx := context.Background()
-	in := templateInputFixture()
-	first := in.Config.Slots[0]
-	task := in.Config.Slots[1]
-	in.Config.Slots = []CockpitMeetingTemplateSlot{first}
-	for i := 0; i < tasks; i++ {
-		next := task
-		next.SlotID = util.UUIDToString(dbid.NewV7())
-		copyIssue := *task.NewIssue
-		copyIssue.Title = fmt.Sprintf("Preparation %02d", i)
-		next.NewIssue = &copyIssue
-		in.Config.Slots = append(in.Config.Slots, next)
-	}
-	saved, e := f.issues.SaveCockpitMeetingTemplate(ctx, CockpitMeetingTemplateQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true}, in)
-	if e != nil {
-		t.Fatal(e)
-	}
-	bindings := []CockpitMeetingTemplateBinding{}
-	for _, slot := range in.Config.Slots {
-		bindings = append(bindings, CockpitMeetingTemplateBinding{SlotID: slot.SlotID, Selected: true})
-	}
-	previewIn := CockpitTemplateApplicationPreviewInput{TemplateVersionID: saved.Receipt.ID, Bindings: bindings}
-	preview, e := f.issues.PreviewCockpitTemplateApplication(ctx, lifecycleRead(f), previewIn)
-	if e != nil || !preview.CanConfirm {
-		t.Fatalf("preview: %+v %v", preview, e)
-	}
-	command := CockpitTemplateApplicationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitTemplateApplicationPreviewInput: previewIn, ContextToken: preview.ContextToken}
-	operation, e := f.issues.CreateCockpitTemplateApplication(ctx, lifecycleRead(f), command)
-	if e != nil {
-		t.Fatal(e)
-	}
-	return saved, operation, command
-}
-
-func preparationEffects(t *testing.T, f cockpitWorkflowFixture, operation string) []CockpitPreparationEffect {
-	t.Helper()
-	id, e := util.ParseUUID(operation)
-	if e != nil {
-		t.Fatal(e)
-	}
-	page, e := f.issues.ListCockpitPreparationEffects(context.Background(), CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: id, PageSize: 100})
-	if e != nil {
-		t.Fatal(e)
-	}
-	return page.Items
-}
-
-func preparationApply(t *testing.T, f cockpitWorkflowFixture, operation string, effect CockpitPreparationEffect) CockpitPreparationEffectResult {
-	t.Helper()
-	op, _ := util.ParseUUID(operation)
-	id, _ := util.ParseUUID(effect.ID)
-	out, e := f.issues.ApplyCockpitPreparationEffect(context.Background(), CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: op, EffectID: id}, CockpitPreparationEffectApplyInput{CommandKey: effect.CommandKey, AuthorizationKey: effect.AuthorizationKey, AuthorizationRevision: effect.AuthorizationRevision}, IssueCreateOpts{})
-	if e != nil {
-		t.Fatalf("apply %s/%s: %v", effect.Kind, effect.ID, e)
-	}
-	return out
-}
-
 func TestCockpitPreparationMultipleEffectsAdvanceWithoutInvalidatingOwnAuthorization(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, operation, command := preparationTemplate(t, f, 30)
+	issueIDs := make([]string, 0, 30)
+	choices := make([]CockpitCancellationIssueChoice, 0, 30)
+	for i := 0; i < 30; i++ {
+		id := preparationIssue(t, f, fmt.Sprintf("Preparation %02d", i))
+		issueIDs = append(issueIDs, util.UUIDToString(id))
+	}
+	status := "cancelled"
+	for _, sid := range issueIDs {
+		row, e := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: parseTestUUID(t, sid)})
+		if e != nil {
+			t.Fatal(e)
+		}
+		choices = append(choices, CockpitCancellationIssueChoice{IssueID: sid, ExpectedRevision: row.Revision, Action: "cancel", CancelStatus: &status})
+	}
+	in := CockpitCancellationPreviewInput{Reason: "Cancel the meeting; retain every prepared task as cancelled work.", Issues: choices, RunIDs: []string{}}
+	preview, operation := preparationCancel(t, f, in)
+	command := CockpitCancellationInput{CockpitLifecycleCommandInput: CockpitLifecycleCommandInput{CommandKey: operation.CommandKey, ExpectedRevision: preview.LifecycleRevision}, CockpitCancellationPreviewInput: in, ContextToken: preview.ContextToken}
 	effects := preparationEffects(t, f, operation.Current.ID)
-	if len(effects) != 31 {
-		t.Fatal("fixture lost effects")
+	if len(effects) != 30 {
+		t.Fatalf("fixture lost effects: %d", len(effects))
 	}
 	var last CockpitPreparationEffectResult
 	for _, effect := range effects {
 		last = preparationApply(t, f, operation.Current.ID, effect)
 	}
-	if last.Current.State != "completed" || last.Current.Counts.Applied != 31 || last.Current.Counts.Total != 31 {
+	if last.Current.State != "completed" || last.Current.Counts.Applied != 30 || last.Current.Counts.Total != 30 {
 		t.Fatalf("not all authorized effects completed: %+v", last.Current)
 	}
-	var issues, backlog, runs int
-	if e := f.Pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM issue WHERE workspace_id=$1),(SELECT count(*) FROM issue WHERE workspace_id=$1 AND status='backlog'),(SELECT count(*) FROM agent_task_queue t JOIN issue i ON i.id=t.issue_id WHERE i.workspace_id=$1)", f.ws).Scan(&issues, &backlog, &runs); e != nil {
+	var issues, cancelled, runs int
+	if e := f.Pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM issue WHERE workspace_id=$1),(SELECT count(*) FROM issue WHERE workspace_id=$1 AND status='cancelled'),(SELECT count(*) FROM agent_task_queue t JOIN issue i ON i.id=t.issue_id WHERE i.workspace_id=$1)", f.ws).Scan(&issues, &cancelled, &runs); e != nil {
 		t.Fatal(e)
 	}
-	if issues != 30 || backlog != 30 || runs != 0 {
-		t.Fatalf("authorization dispatched or lost preparation: issues=%d backlog=%d runs=%d", issues, backlog, runs)
+	if issues != 30 || cancelled != 30 || runs != 0 {
+		t.Fatalf("authorization dispatched or lost preparation: issues=%d cancelled=%d runs=%d", issues, cancelled, runs)
 	}
-	replay, e := f.issues.CreateCockpitTemplateApplication(ctx, lifecycleRead(f), command)
-	if e != nil || !replay.Replayed || replay.Receipt.ContextToken != operation.Receipt.ContextToken || replay.Current.Counts.Applied != 31 {
-		t.Fatalf("fixed application receipt/current progress: %+v %v", replay, e)
+	replay, e := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), command)
+	if e != nil || !replay.Replayed || replay.Receipt.RequestHash != operation.Receipt.RequestHash || replay.Receipt.ContextToken != operation.Receipt.ContextToken || replay.Current.Counts.Applied != 30 {
+		t.Fatalf("fixed cancellation receipt/current progress: %+v %v", replay, e)
 	}
 	lastReplay := preparationApply(t, f, operation.Current.ID, effects[len(effects)-1])
-	if !lastReplay.Replayed || lastReplay.Receipt.Issue == nil || lastReplay.Receipt.Issue.Status != "backlog" {
+	if !lastReplay.Replayed || lastReplay.Receipt.Issue == nil || lastReplay.Receipt.Issue.ID != issueIDs[29] || lastReplay.Receipt.Issue.Status != "cancelled" {
 		t.Fatal("effect replay replaced the original task receipt")
 	}
 }
@@ -191,7 +187,18 @@ func TestCockpitPreparationMultipleEffectsAdvanceWithoutInvalidatingOwnAuthoriza
 func TestCockpitPreparationPrearchiveAuthorizationResumesAndSkipReceiptIsExact(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, operation, _ := preparationTemplate(t, f, 1)
+	first := preparationIssue(t, f, "Keep the checked evidence")
+	second := preparationIssue(t, f, "Drop the duplicate survey")
+	choices := []CockpitCancellationIssueChoice{}
+	status := "cancelled"
+	for _, sid := range []string{util.UUIDToString(first), util.UUIDToString(second)} {
+		row, e := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: parseTestUUID(t, sid)})
+		if e != nil {
+			t.Fatal(e)
+		}
+		choices = append(choices, CockpitCancellationIssueChoice{IssueID: sid, ExpectedRevision: row.Revision, Action: "cancel", CancelStatus: &status})
+	}
+	_, operation := preparationCancel(t, f, CockpitCancellationPreviewInput{Reason: "Cancel before the archive keeps the authorized preparation available.", Issues: choices, RunIDs: []string{}})
 	op, _ := util.ParseUUID(operation.Current.ID)
 	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: op}
 	paused, e := f.issues.ControlCockpitPreparationOperation(ctx, p, CockpitPreparationControlInput{CockpitLifecycleCommandInput: lifecycleInput(operation.Current.Revision), Transition: "pause"})
@@ -211,42 +218,45 @@ func TestCockpitPreparationPrearchiveAuthorizationResumesAndSkipReceiptIsExact(t
 		t.Fatalf("archival stranded existing authorization: %+v %v", resumed, e)
 	}
 	effects := preparationEffects(t, f, operation.Current.ID)
-	first := preparationApply(t, f, operation.Current.ID, effects[0])
+	applied := preparationApply(t, f, operation.Current.ID, effects[0])
 	effect := effects[1].ID
-	skipped, e := f.issues.ControlCockpitPreparationOperation(ctx, p, CockpitPreparationControlInput{CockpitLifecycleCommandInput: lifecycleInput(first.Current.Revision), Transition: "skip", EffectID: &effect, Reason: "This task is no longer needed."})
+	skipped, e := f.issues.ControlCockpitPreparationOperation(ctx, p, CockpitPreparationControlInput{CockpitLifecycleCommandInput: lifecycleInput(applied.Current.Revision), Transition: "skip", EffectID: &effect, Reason: "This task is no longer needed."})
 	if e != nil {
 		t.Fatal(e)
 	}
 	if skipped.Receipt.EffectID == nil || *skipped.Receipt.EffectID != effect || len(skipped.Receipt.EffectIDs) != 1 || skipped.Receipt.EffectIDs[0] != effect || skipped.Current.State != "completed" {
 		t.Fatalf("skip cannot be confirmed exactly: %+v", skipped)
 	}
-	if _, e = f.issues.CreateCockpitMeetingPreparationIssue(ctx, lifecycleRead(f), mustLifecycleUUID(first.Receipt.AgendaID), CockpitPreparationIssueInput{CockpitLifecycleCommandInput: lifecycleInput(1), NewIssue: CockpitPreparationIssueFields{Title: "Unapproved new preparation"}}, IssueCreateOpts{}); !errors.Is(e, ErrCockpitWorkflowConflict) {
-		t.Fatalf("direct creation bypassed archive: %v", e)
+	basis, e := f.issues.GetCockpitMeetingOperationBasis(ctx, lifecycleRead(f))
+	if e != nil || basis.AddPreparation.State != "blocked" || basis.CanAddPreparation || len(basis.AddPreparation.ReasonCodes) != 1 || basis.AddPreparation.ReasonCodes[0] != "meeting_cancelled" {
+		t.Fatalf("cancelled archived meeting lost its preparation guard: %+v %v", basis.AddPreparation, e)
+	}
+	if e = RequireCockpitMeetingPreparationOpen(ctx, f.q, f.ws, f.meeting); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("cancelled archived meeting accepted new preparation: %v", e)
+	}
+	if _, e = f.issues.ChangeCockpitMeetingDisposition(ctx, lifecycleRead(f), CockpitMeetingDispositionInput{CockpitLifecycleCommandInput: lifecycleInput(archived.Current.LifecycleRevision), Transition: "reinstate", Reason: "Withdraw cancellation without changing the archive."}); e != nil {
+		t.Fatal(e)
+	}
+	basis, e = f.issues.GetCockpitMeetingOperationBasis(ctx, lifecycleRead(f))
+	if e != nil || basis.AddPreparation.State != "blocked" || basis.CanAddPreparation || len(basis.AddPreparation.ReasonCodes) != 1 || basis.AddPreparation.ReasonCodes[0] != "meeting_archived" {
+		t.Fatalf("reinstating the meeting bypassed its archive guard: %+v %v", basis.AddPreparation, e)
+	}
+	if e = RequireCockpitMeetingPreparationOpen(ctx, f.q, f.ws, f.meeting); !errors.Is(e, ErrCockpitWorkflowConflict) {
+		t.Fatalf("archived meeting accepted new preparation: %v", e)
 	}
 }
 
 func TestCockpitPreparationReauthorizationPreservesIntentAndRejectsOldInflightGrant(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, application, _ := preparationTemplate(t, f, 1)
-	effects := preparationEffects(t, f, application.Current.ID)
-	preparationApply(t, f, application.Current.ID, effects[0])
-	created := preparationApply(t, f, application.Current.ID, effects[1])
-	issueID, _ := preparationUUID(created.Receipt.IssueID)
+	issueID := preparationIssue(t, f, "Collect the primary evidence")
 	issue, e := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issueID})
 	if e != nil {
 		t.Fatal(e)
 	}
 	due := "2026-12-20"
 	previewInput := CockpitCancellationPreviewInput{Reason: "The meeting will not occur; preserve this preparation for the revised date.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issueID), ExpectedRevision: issue.Revision, Action: "change_due_date", DueDate: &due}}, RunIDs: []string{}}
-	preview, e := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), previewInput)
-	if e != nil || !preview.CanConfirm {
-		t.Fatalf("cancellation preview: %+v %v", preview, e)
-	}
-	cancelled, e := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: previewInput, ContextToken: preview.ContextToken})
-	if e != nil {
-		t.Fatal(e)
-	}
+	_, cancelled := preparationCancel(t, f, previewInput)
 	step := preparationEffects(t, f, cancelled.Current.ID)[0]
 	op, _ := util.ParseUUID(cancelled.Current.ID)
 	id, _ := util.ParseUUID(step.ID)
@@ -299,33 +309,54 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 	root := f.Insert(t, "cockpit_node", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": util.UUIDToString(meeting.CockpitID), "name": "Module", "code": "M", "project_id": project, "module_id": module})
 	node := f.Insert(t, "cockpit_node", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": util.UUIDToString(meeting.CockpitID), "name": "Stable delivery", "code": "L3", "parent_id": root})
 	f.Cleanup(t, "DELETE FROM cockpit_issue_primary WHERE workspace_id=$1", f.ws)
-	in := templateInputFixture()
-	saved, err := f.issues.SaveCockpitMeetingTemplate(ctx, CockpitMeetingTemplateQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true}, in)
+	issue := preparationIssue(t, f, "Stable delivery")
+	setScope := func(projectID, moduleID string) {
+		t.Helper()
+		row, e := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
+		if e != nil {
+			t.Fatal(e)
+		}
+		params := RetainedIssueUpdateFields(row)
+		params.ProjectID, params.ModuleID = parseTestUUID(t, projectID), parseTestUUID(t, moduleID)
+		if _, e = f.q.UpdateIssue(ctx, params); e != nil {
+			t.Fatal(e)
+		}
+	}
+	setScope(project, module)
+	primaryBinding, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindings := []CockpitMeetingTemplateBinding{{SlotID: in.Config.Slots[0].SlotID, Selected: true, NodeID: &node}, {SlotID: in.Config.Slots[1].SlotID, Selected: true}}
-	previewInput := CockpitTemplateApplicationPreviewInput{TemplateVersionID: saved.Receipt.ID, Bindings: bindings}
-	preview, err := f.issues.PreviewCockpitTemplateApplication(ctx, lifecycleRead(f), previewInput)
-	if err != nil || !preview.CanConfirm {
-		t.Fatalf("preview: %+v %v", preview, err)
-	}
-	application, err := f.issues.CreateCockpitTemplateApplication(ctx, lifecycleRead(f), CockpitTemplateApplicationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitTemplateApplicationPreviewInput: previewInput, ContextToken: preview.ContextToken})
+	due := "2026-12-20"
+	issueRow, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, application := preparationCancel(t, f, CockpitCancellationPreviewInput{Reason: "Move the retained preparation with its confirmed delivery.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issue), ExpectedRevision: issueRow.Revision, Action: "change_due_date", DueDate: &due}}, RunIDs: []string{}})
 	effects := preparationEffects(t, f, application.Current.ID)
-	preparationApply(t, f, application.Current.ID, effects[0])
+	// An existing primary prevents changing its inherited scope underneath the
+	// Issue. Withdraw the binding, change the mapping, then explicitly reattach.
+	unlinked, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, ActorID: f.owner, ExpectedRevision: primaryBinding.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err = f.Pool.Exec(ctx, "UPDATE cockpit_node SET project_id=$2,module_id=$3 WHERE workspace_id=$1 AND id=$4", f.ws, nextProject, nextModule, root); err != nil {
 		t.Fatal(err)
 	}
-	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: parseTestUUID(t, application.Current.ID), EffectID: parseTestUUID(t, effects[1].ID)}
-	old := CockpitPreparationEffectApplyInput{CommandKey: effects[1].CommandKey, AuthorizationKey: effects[1].AuthorizationKey, AuthorizationRevision: effects[1].AuthorizationRevision}
+	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); !errors.Is(err, ErrCockpitWorkflowConflict) {
+		t.Fatalf("ownership silently refiled an Issue with mismatched scope: %v", err)
+	}
+	setScope(nextProject, nextModule)
+	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: parseTestUUID(t, application.Current.ID), EffectID: parseTestUUID(t, effects[0].ID)}
+	old := CockpitPreparationEffectApplyInput{CommandKey: effects[0].CommandKey, AuthorizationKey: effects[0].AuthorizationKey, AuthorizationRevision: effects[0].AuthorizationRevision}
 	if _, err = f.issues.ApplyCockpitPreparationEffect(ctx, p, old, IssueCreateOpts{}); !errors.Is(err, ErrCockpitPreparationContextChanged) {
 		t.Fatalf("changed mapping silently accepted: %v", err)
 	}
 	review, err := f.issues.PreviewCockpitPreparationReauthorization(ctx, p)
-	if err != nil || !review.CanConfirm || review.CurrentScope == nil || review.PreviousAuthorization.Scope == nil || review.CurrentScope.NodeID == nil || *review.CurrentScope.NodeID != node || *review.CurrentScope.ProjectID != nextProject || *review.PreviousAuthorization.Scope.ProjectID != project {
+	if err != nil || !review.CanConfirm || review.CurrentImpact == nil || review.PreviousAuthorization.Impact == nil || review.CurrentImpact.Issue.PrimaryNodeID == nil || *review.CurrentImpact.Issue.PrimaryNodeID != node || review.CurrentImpact.Issue.ProjectID == nil || *review.CurrentImpact.Issue.ProjectID != nextProject || review.PreviousAuthorization.Impact.Issue.ProjectID == nil || *review.PreviousAuthorization.Impact.Issue.ProjectID != project {
 		t.Fatalf("derived scope cannot be reviewed: %+v %v", review, err)
 	}
 	grant, err := f.issues.ReauthorizeCockpitPreparationEffect(ctx, p, CockpitPreparationReauthorizationInput{CockpitLifecycleCommandInput: lifecycleInput(review.EffectRevision), ContextToken: review.ContextToken, Reason: "Confirm the same delivery in its newly assigned project and module."})
@@ -340,12 +371,12 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 		t.Fatal(err)
 	}
 	created := preparationApply(t, f, application.Current.ID, current.Effect)
-	issue, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: mustLifecycleUUID(created.Receipt.IssueID)})
-	if err != nil || issue.ProjectID != parseTestUUID(t, nextProject) || issue.ModuleID != parseTestUUID(t, nextModule) || created.Receipt.AuthorizationKey != grant.CommandKey {
-		t.Fatalf("new grant did not govern created scope: %+v %+v %v", issue, created, err)
+	updated, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: parseTestUUID(t, *created.Receipt.IssueID)})
+	if err != nil || updated.ID != issue || !updated.DueDate.Valid || updated.DueDate.Time.Format("2006-01-02") != due || updated.ProjectID != parseTestUUID(t, nextProject) || updated.ModuleID != parseTestUUID(t, nextModule) || created.Receipt.AuthorizationKey != grant.CommandKey {
+		t.Fatalf("new grant did not govern the retained Issue: %+v %+v %v", updated, created, err)
 	}
 	var primary string
-	if err = f.Pool.QueryRow(ctx, "SELECT node_id::text FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, issue.ID).Scan(&primary); err != nil || primary != node {
+	if err = f.Pool.QueryRow(ctx, "SELECT node_id::text FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, updated.ID).Scan(&primary); err != nil || primary != node {
 		t.Fatalf("stable primary identity lost: %s %v", primary, err)
 	}
 }
@@ -354,20 +385,13 @@ func TestCockpitPreparationCancelledMeetingCannotBypassLegacyReadiness(t *testin
 	f := preparationFixture(t)
 	ctx := context.Background()
 	f.init(t, "")
-	agenda, original := lifecycleAgenda(t, f, "Retained agenda", "Original notes")
 	previewInput := CockpitCancellationPreviewInput{Reason: "Cancelled before occurrence; keep all existing work.", Issues: []CockpitCancellationIssueChoice{}, RunIDs: []string{}}
-	preview, err := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), previewInput)
-	if err != nil || !preview.CanConfirm {
-		t.Fatalf("preview: %+v %v", preview, err)
-	}
-	if _, err = f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: previewInput, ContextToken: preview.ContextToken}); err != nil {
-		t.Fatal(err)
-	}
+	_, _ = preparationCancel(t, f, previewInput)
 	yes := true
-	if err = f.issues.SetCockpitMeetingReadiness(ctx, CockpitWorkPackageReadiness{CockpitWorkPackageCommand: f.command(t), Ended: &yes, MaterialsReady: &yes}); !errors.Is(err, ErrCockpitWorkflowConflict) {
+	if err := f.issues.SetCockpitMeetingReadiness(ctx, CockpitWorkPackageReadiness{CockpitWorkPackageCommand: f.command(t), Ended: &yes, MaterialsReady: &yes}); !errors.Is(err, ErrCockpitWorkflowConflict) {
 		t.Fatalf("legacy readiness reopened cancellation: %v", err)
 	}
-	if err = f.issues.ReleaseCockpitMeetingMinutes(ctx, f.command(t)); !errors.Is(err, ErrCockpitWorkflowConflict) {
+	if err := f.issues.ReleaseCockpitMeetingMinutes(ctx, f.command(t)); !errors.Is(err, ErrCockpitWorkflowConflict) {
 		t.Fatalf("legacy release dispatched cancelled meeting: %v", err)
 	}
 	h, err := f.issues.GetCockpitMeetingLifecycle(ctx, lifecycleRead(f))
@@ -380,17 +404,6 @@ func TestCockpitPreparationCancelledMeetingCannotBypassLegacyReadiness(t *testin
 	if _, err = f.issues.ConfirmCockpitMeetingMaterials(ctx, lifecycleRead(f), CockpitMaterialsInput{CockpitLifecycleCommandInput: lifecycleInput(f.work(t).Revision), MaterialsReady: &yes}); !errors.Is(err, ErrCockpitWorkflowConflict) {
 		t.Fatalf("cancelled materials confirmed: %v", err)
 	}
-	if _, err = f.issues.SaveCockpitMeetingAgenda(ctx, lifecycleRead(f), pgtype.UUID{}, CockpitAgendaInput{CockpitLifecycleCommandInput: lifecycleInput(h.AgendaRevision), Title: original.Title}); !errors.Is(err, ErrCockpitWorkflowConflict) {
-		t.Fatalf("new agenda bypassed cancellation: %v", err)
-	}
-	replayed, err := f.issues.SaveCockpitMeetingAgenda(ctx, lifecycleRead(f), pgtype.UUID{}, original)
-	if err != nil || !replayed.Replayed {
-		t.Fatalf("old receipt cannot be recovered: %+v %v", replayed, err)
-	}
-	notes := "Retained follow-up notes remain editable."
-	if _, err = f.issues.SaveCockpitMeetingAgenda(ctx, lifecycleRead(f), mustLifecycleUUID(agenda.Receipt.AgendaID), CockpitAgendaInput{CockpitLifecycleCommandInput: lifecycleInput(agenda.Receipt.Revision), Notes: &notes}); err != nil {
-		t.Fatalf("cancel made retained notes read-only: %v", err)
-	}
 	var runs int
 	if err = f.Pool.QueryRow(ctx, "SELECT count(*) FROM agent_task_queue t JOIN issue i ON i.id=t.issue_id WHERE i.workspace_id=$1", f.ws).Scan(&runs); err != nil || runs != 0 {
 		t.Fatalf("cancel guard dispatched: %d %v", runs, err)
@@ -400,11 +413,7 @@ func TestCockpitPreparationCancelledMeetingCannotBypassLegacyReadiness(t *testin
 func TestCockpitPreparationMultipleStopsDoNotInvalidateSiblingAuthorization(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, application, _ := preparationTemplate(t, f, 1)
-	steps := preparationEffects(t, f, application.Current.ID)
-	preparationApply(t, f, application.Current.ID, steps[0])
-	created := preparationApply(t, f, application.Current.ID, steps[1])
-	issueID := mustLifecycleUUID(created.Receipt.IssueID)
+	issueID := preparationIssue(t, f, "Collect the primary evidence")
 	agent := f.privateAgentOwnedBy(t, f.UserID, "multiple-preparation-stops")
 	var runtimeID string
 	if err := f.Pool.QueryRow(ctx, "SELECT runtime_id::text FROM agent WHERE id=$1", agent).Scan(&runtimeID); err != nil {
@@ -419,14 +428,7 @@ func TestCockpitPreparationMultipleStopsDoNotInvalidateSiblingAuthorization(t *t
 	}
 	status := "cancelled"
 	in := CockpitCancellationPreviewInput{Reason: "Stop only the two selected tasks and then cancel preparation.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issueID), ExpectedRevision: issue.Revision, Action: "cancel", CancelStatus: &status}}, RunIDs: []string{a, b}}
-	preview, err := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), in)
-	if err != nil || !preview.CanConfirm || preview.UnselectedRunTotal != 1 {
-		t.Fatalf("mixed preview: %+v %v", preview, err)
-	}
-	op, err := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: in, ContextToken: preview.ContextToken})
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, op := preparationCancel(t, f, in)
 	effects := preparationEffects(t, f, op.Current.ID)
 	if len(effects) != 3 || effects[0].Kind != "stop_run" || effects[1].Kind != "stop_run" || effects[2].Kind != "cancel_issue" {
 		t.Fatalf("unsafe execution order: %+v", effects)
@@ -449,11 +451,7 @@ func TestCockpitPreparationMultipleStopsDoNotInvalidateSiblingAuthorization(t *t
 func TestCockpitPreparationRunReauthorizationShowsTerminalTargetWithoutStoppingNewRun(t *testing.T) {
 	f := preparationFixture(t)
 	ctx := context.Background()
-	_, application, _ := preparationTemplate(t, f, 1)
-	steps := preparationEffects(t, f, application.Current.ID)
-	preparationApply(t, f, application.Current.ID, steps[0])
-	created := preparationApply(t, f, application.Current.ID, steps[1])
-	issueID := mustLifecycleUUID(created.Receipt.IssueID)
+	issueID := preparationIssue(t, f, "Collect the primary evidence")
 	agent := f.privateAgentOwnedBy(t, f.UserID, "preparation-run-recheck")
 	var runtimeID string
 	if err := f.Pool.QueryRow(ctx, "SELECT runtime_id::text FROM agent WHERE id=$1", agent).Scan(&runtimeID); err != nil {
@@ -461,22 +459,15 @@ func TestCockpitPreparationRunReauthorizationShowsTerminalTargetWithoutStoppingN
 	}
 	selected := f.Task(t, agent, testutil.Cols{"runtime_id": runtimeID, "issue_id": util.UUIDToString(issueID), "status": "running", "started_at": testutil.Raw("now()")})
 	in := CockpitCancellationPreviewInput{Reason: "Stop the explicitly selected task only.", Issues: []CockpitCancellationIssueChoice{}, RunIDs: []string{selected}}
-	preview, err := f.issues.PreviewCockpitMeetingCancellation(ctx, lifecycleRead(f), in)
-	if err != nil || !preview.CanConfirm {
-		t.Fatalf("preview: %+v %v", preview, err)
-	}
-	op, err := f.issues.CancelCockpitMeeting(ctx, lifecycleRead(f), CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(preview.LifecycleRevision), CockpitCancellationPreviewInput: in, ContextToken: preview.ContextToken})
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, op := preparationCancel(t, f, in)
 	effect := preparationEffects(t, f, op.Current.ID)[0]
 	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: parseTestUUID(t, op.Current.ID), EffectID: parseTestUUID(t, effect.ID)}
 	newRun := f.Task(t, agent, testutil.Cols{"runtime_id": runtimeID, "issue_id": util.UUIDToString(issueID), "status": "queued"})
 	old := CockpitPreparationEffectApplyInput{CommandKey: effect.CommandKey, AuthorizationKey: effect.AuthorizationKey, AuthorizationRevision: effect.AuthorizationRevision}
-	if _, err = f.issues.ApplyCockpitPreparationEffect(ctx, p, old, IssueCreateOpts{}); !errors.Is(err, ErrCockpitPreparationContextChanged) {
+	if _, err := f.issues.ApplyCockpitPreparationEffect(ctx, p, old, IssueCreateOpts{}); !errors.Is(err, ErrCockpitPreparationContextChanged) {
 		t.Fatalf("new activity was not surfaced: %v", err)
 	}
-	if _, err = f.Pool.Exec(ctx, "UPDATE agent_task_queue SET status='completed',completed_at=now() WHERE id=$1", selected); err != nil {
+	if _, err := f.Pool.Exec(ctx, "UPDATE agent_task_queue SET status='completed',completed_at=now() WHERE id=$1", selected); err != nil {
 		t.Fatal(err)
 	}
 	review, err := f.issues.PreviewCockpitPreparationReauthorization(ctx, p)
@@ -497,5 +488,120 @@ func TestCockpitPreparationRunReauthorizationShowsTerminalTargetWithoutStoppingN
 	remaining, err := f.q.GetAgentTask(ctx, parseTestUUID(t, newRun))
 	if err != nil || remaining.Status != "queued" {
 		t.Fatalf("new unselected task was stopped: %+v %v", remaining, err)
+	}
+}
+
+func TestCockpitPreparationLinkMeetingOnlyRequiresTargetMeeting(t *testing.T) {
+	issue, target := util.UUIDToString(dbid.NewV7()), util.UUIDToString(dbid.NewV7())
+	input := func(value *string) CockpitCancellationPreviewInput {
+		return CockpitCancellationPreviewInput{Reason: "Retain preparation in another meeting.", Issues: []CockpitCancellationIssueChoice{{IssueID: issue, ExpectedRevision: 1, Action: "link_meeting", TargetMeetingID: value}}, RunIDs: []string{}}
+	}
+	valid := input(&target)
+	if err := normalizeCancellation(&valid); err != nil {
+		t.Fatalf("direct meeting link still requires a retired agenda: %v", err)
+	}
+	for _, value := range []*string{nil, new(string), func() *string { value := "not-a-uuid"; return &value }()} {
+		invalid := input(value)
+		if err := normalizeCancellation(&invalid); !errors.Is(err, ErrCockpitWorkflowInput) {
+			t.Fatalf("invalid target meeting accepted: %v", err)
+		}
+	}
+}
+
+func TestCockpitPreparationLinkMeetingMergesPurposesTransactionally(t *testing.T) {
+	for _, roles := range [][]string{nil, {"support", "future_purpose"}, {"preparation", "support"}} {
+		t.Run(fmt.Sprint(roles), func(t *testing.T) {
+			f := preparationFixture(t)
+			ctx := context.Background()
+			issue := preparationIssue(t, f, "Retained preparation")
+			var board string
+			if err := f.Pool.QueryRow(ctx, "SELECT cockpit_id::text FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2", f.ws, f.meeting).Scan(&board); err != nil {
+				t.Fatal(err)
+			}
+			target := parseTestUUID(t, f.Insert(t, "cockpit_meeting", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board, "title": "Another meeting"}))
+			if roles != nil {
+				f.Exec(t, "INSERT INTO cockpit_meeting_issue(workspace_id,meeting_id,issue_id,role,position,roles) VALUES($1,$2,$3,'task',7,$4)", f.ws, target, issue, roles)
+			}
+			tx, err := f.Pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			q := f.q.WithTx(tx)
+			if _, err = lockLifecycleMeeting(ctx, q, f.ws, target); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = linkPreparationIssueToMeeting(ctx, q, f.ws, target, issue, f.owner); err != nil {
+				t.Fatal(err)
+			}
+			link, err := q.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{WorkspaceID: f.ws, MeetingID: target, IssueID: issue})
+			if err != nil || !slices.Contains(link.Roles, "preparation") {
+				t.Fatalf("target association lost preparation purpose: %+v %v", link, err)
+			}
+			want := append([]string{}, roles...)
+			if !slices.Contains(want, "preparation") {
+				want = append(want, "preparation")
+			}
+			if !slices.Equal(link.Roles, want) || (roles != nil && (link.Role != "task" || link.Position != 7)) {
+				t.Fatalf("existing purposes or provisioning marker changed: %+v want %v", link, want)
+			}
+			if err = tx.Rollback(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if roles == nil {
+				if f.Count(t, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND meeting_id=$2 AND issue_id=$3", f.ws, target, issue) != 0 {
+					t.Fatal("rolled-back association escaped its transaction")
+				}
+			} else {
+				old, err := f.q.GetCockpitMeetingIssue(ctx, db.GetCockpitMeetingIssueParams{WorkspaceID: f.ws, MeetingID: target, IssueID: issue})
+				if err != nil || !slices.Equal(old.Roles, roles) {
+					t.Fatalf("rolled-back purpose update escaped its transaction: %+v %v", old, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCockpitPreparationCancellationLinksRetainedIssueWithoutAgenda(t *testing.T) {
+	f := preparationFixture(t)
+	ctx := context.Background()
+	issue := preparationIssue(t, f, "Carry preparation into another meeting")
+	var board string
+	if err := f.Pool.QueryRow(ctx, "SELECT cockpit_id::text FROM cockpit_meeting WHERE workspace_id=$1 AND id=$2", f.ws, f.meeting).Scan(&board); err != nil {
+		t.Fatal(err)
+	}
+	target := f.Insert(t, "cockpit_meeting", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board, "title": "Next meeting"})
+	before, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, operation := preparationCancel(t, f, CockpitCancellationPreviewInput{Reason: "Retain work and link it to the next meeting.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issue), ExpectedRevision: before.Revision, Action: "link_meeting", TargetMeetingID: &target}}, RunIDs: []string{}})
+	steps := preparationEffects(t, f, operation.Current.ID)
+	if len(steps) != 1 || steps[0].Kind != "link_meeting" {
+		t.Fatalf("cancellation did not record one direct link effect: %+v", steps)
+	}
+	applied := preparationApply(t, f, operation.Current.ID, steps[0])
+	if applied.Current.State != "completed" || applied.Receipt.TargetMeetingID == nil || *applied.Receipt.TargetMeetingID != target || applied.Receipt.IssueID == nil || *applied.Receipt.IssueID != util.UUIDToString(issue) {
+		t.Fatalf("direct link receipt: %+v", applied)
+	}
+	targetRead := lifecycleRead(f)
+	targetRead.MeetingID = parseTestUUID(t, target)
+	impact, err := f.issues.ListCockpitCancellationImpact(ctx, CockpitPreparationQuery{CockpitLifecycleRead: targetRead, PageSize: 100})
+	if err != nil || impact.Total != 1 || len(impact.Items) != 1 || impact.Items[0].Issue.ID != util.UUIDToString(issue) {
+		t.Fatalf("target meeting cannot discover its retained preparation: %+v %v", impact, err)
+	}
+	if _, err = f.issues.ListCockpitDispositionRuns(ctx, CockpitPreparationQuery{CockpitLifecycleRead: targetRead, IssueID: issue, PageSize: 100}); err != nil {
+		t.Fatalf("target meeting rejects preparation run lookup: %v", err)
+	}
+	after, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
+	if err != nil || after.Revision != before.Revision || after.Status != before.Status || after.ProjectID != before.ProjectID || after.ModuleID != before.ModuleID {
+		t.Fatalf("association mutated retained Issue ownership or work: %+v %v", after, err)
+	}
+	if f.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1", f.ws) != 1 || f.Count(t, "SELECT count(*) FROM agent_task_queue WHERE issue_id=$1", issue) != 0 || f.Count(t, "SELECT count(*) FROM cockpit_meeting_issue WHERE workspace_id=$1 AND issue_id=$2 AND 'preparation'=ANY(roles)", f.ws, issue) != 2 {
+		t.Fatal("direct association duplicated work, executed it, or lost either preparation purpose")
+	}
+	replay := preparationApply(t, f, operation.Current.ID, steps[0])
+	if !replay.Replayed || replay.Receipt.FactsHash != applied.Receipt.FactsHash {
+		t.Fatal("replay replaced the fixed association receipt")
 	}
 }

@@ -10,10 +10,6 @@ FROM cockpit_input_version WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[
 SELECT id, workspace_id, input_id, version_id, transfer_number, command_key, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, kind, mode, state, revision, replaces_transfer_id, lease_expires_at, next_attempt_at, expected_bytes, bytes_received, content_pin_at, pinned_size_bytes, content_hash, session_expires_at, io_finished_at, io_outcome, error_code, finalize_key, finalize_hash, abort_key, abort_hash, created_at, updated_at, finished_at, workspace_deleted_at
 FROM cockpit_input_transfer WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[]) AND workspace_deleted_at IS NULL;
 
--- name: ReadCockpitInputReferences :many
-SELECT id, workspace_id, meeting_id, agenda_id, input_id, input_version_id, purpose, creation_key, actor_type, actor_id, credential_owner_user_id, authorizing_user_id, source_agent_id, source_run_id, source_issue_id, source_runtime_id, created_at, removed_at, removed_by, removal_key
-FROM cockpit_input_reference WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[]);
-
 -- name: ReadCockpitInputAgentNames :many
 SELECT id,name FROM agent WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[]);
 
@@ -28,9 +24,6 @@ SELECT id,issue_id FROM attachment WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids
 
 -- name: ReadCockpitInputSourceMeetings :many
 SELECT id,title,archived_at,occurrence_state FROM cockpit_meeting WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[]);
-
--- name: ReadCockpitInputSourceAgendas :many
-SELECT id,meeting_id,title,removed_at FROM cockpit_meeting_agenda WHERE workspace_id=$1 AND id=ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: ReadCockpitInputPinnedVersions :many
 SELECT input_version_id FROM cockpit_issue_input_manifest_item WHERE workspace_id=$1 AND manifest_version_id=$2 AND input_version_id=ANY(sqlc.arg(ids)::uuid[]);
@@ -82,35 +75,6 @@ ORDER BY transfer_number DESC LIMIT sqlc.arg(page_limit);
 
 -- name: CountCockpitInputTransferReadKeys :one
 SELECT count(*) FROM cockpit_input_transfer WHERE workspace_id=sqlc.arg(workspace_id) AND version_id=sqlc.arg(version_id) AND workspace_deleted_at IS NULL;
-
--- name: ListCockpitInputReferenceReadKeys :many
-SELECT r.id,r.created_at FROM cockpit_input_reference r JOIN cockpit_input i ON i.workspace_id=r.workspace_id AND i.id=r.input_id
-JOIN cockpit_input_version v ON v.workspace_id=r.workspace_id AND v.id=r.input_version_id WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id)
-AND (sqlc.narg(agenda_id)::uuid IS NULL OR r.agenda_id=sqlc.narg(agenda_id))
-AND (sqlc.arg(include_removed)::boolean OR r.removed_at IS NULL)
-AND (sqlc.arg(purpose)::text='' OR r.purpose=sqlc.arg(purpose))
-AND (sqlc.arg(query)::text='' OR lower(i.title) LIKE sqlc.arg(prefix)::text OR lower(v.filename) LIKE sqlc.arg(prefix)::text)
-AND (sqlc.narg(after_time)::timestamptz IS NULL OR (r.created_at,r.id)<(sqlc.narg(after_time),sqlc.narg(after_id)::uuid))
-ORDER BY r.created_at DESC,r.id DESC LIMIT sqlc.arg(page_limit);
-
--- name: CountCockpitInputReferenceReadKeys :one
-SELECT count(*) FROM cockpit_input_reference r JOIN cockpit_input i ON i.workspace_id=r.workspace_id AND i.id=r.input_id
-JOIN cockpit_input_version v ON v.workspace_id=r.workspace_id AND v.id=r.input_version_id WHERE r.workspace_id=sqlc.arg(workspace_id) AND r.meeting_id=sqlc.arg(meeting_id)
-AND (sqlc.narg(agenda_id)::uuid IS NULL OR r.agenda_id=sqlc.narg(agenda_id))
-AND (sqlc.arg(include_removed)::boolean OR r.removed_at IS NULL)
-AND (sqlc.arg(purpose)::text='' OR r.purpose=sqlc.arg(purpose))
-AND (sqlc.arg(query)::text='' OR lower(i.title) LIKE sqlc.arg(prefix)::text OR lower(v.filename) LIKE sqlc.arg(prefix)::text);
-
--- name: ReadCockpitInputReferenceSummary :one
-SELECT count(*)::bigint AS total,
-count(*) FILTER (WHERE v.capture_state='ready')::bigint AS ready,
-count(*) FILTER (WHERE v.capture_state IN ('awaiting_upload','queued','capturing'))::bigint AS pending,
-count(*) FILTER (WHERE v.capture_state='needs_attention')::bigint AS needs_attention,
-count(*) FILTER (WHERE v.capture_state='ready' AND (CASE WHEN v.availability='available' AND (v.proof_expires_at IS NULL OR v.proof_expires_at<=now() OR v.checked_at IS NULL) THEN 'unknown'::text ELSE v.availability END)='available')::bigint AS available_ready,
-count(*) FILTER (WHERE v.capture_state='ready' AND (CASE WHEN v.availability='available' AND (v.proof_expires_at IS NULL OR v.proof_expires_at<=now() OR v.checked_at IS NULL) THEN 'unknown'::text ELSE v.availability END)='unavailable')::bigint AS unavailable_ready,
-count(*) FILTER (WHERE v.capture_state='ready' AND (CASE WHEN v.availability='available' AND (v.proof_expires_at IS NULL OR v.proof_expires_at<=now() OR v.checked_at IS NULL) THEN 'unknown'::text ELSE v.availability END) IN ('unknown','checking'))::bigint AS unknown_ready
-FROM cockpit_input_reference r JOIN cockpit_input_version v ON v.workspace_id=r.workspace_id AND v.id=r.input_version_id
-WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND (sqlc.narg(agenda_id)::uuid IS NULL OR r.agenda_id=sqlc.narg(agenda_id)) AND r.removed_at IS NULL;
 
 -- name: ReadCockpitInputManifestCounts :one
 SELECT count(*)::bigint AS total,count(*) FILTER (WHERE i.required)::bigint AS required,

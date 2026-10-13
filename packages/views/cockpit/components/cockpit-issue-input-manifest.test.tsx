@@ -88,7 +88,7 @@ it("gives a suggested fixed version a valid purpose and preserves explicit selec
     expect(purpose).toHaveTextContent(enCockpit.input_materials.purpose_material);
     expect(api.saveCockpitIssueInputManifest).not.toHaveBeenCalled();
     await user.click(purpose);
-    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_recording, exact: true }));
+    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_recording }));
     await waitFor(() => expect(purpose).toHaveTextContent(enCockpit.input_materials.purpose_recording));
     await user.click(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save }));
     await waitFor(() => expect(api.saveCockpitIssueInputManifest).toHaveBeenCalledTimes(1));
@@ -109,7 +109,7 @@ it("retains a draft with an invalid purpose and requires choosing a supported pu
     expect(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save })).toBeDisabled();
     expect(useCockpitInputDraftStore.getState().draft.forms[key]?.manifestItems[0]?.purpose).toBe("old free text");
     await user.click(within(dialog).getByRole("combobox", { name: enCockpit.input_materials.manifest_purpose }));
-    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_supporting, exact: true }));
+    await user.click(await screen.findByRole("option", { name: enCockpit.input_materials.purpose_supporting }));
     await waitFor(() => expect(within(dialog).getByRole("button", { name: enCockpit.input_materials.manifest_save })).toBeEnabled());
   } finally { view.unmount(); view.client.clear(); }
 });

@@ -13,11 +13,7 @@ export function cockpitIssueArtifactsOptions(wsId: string, issueId: string, para
   return queryOptions({ queryKey: [...cockpitArtifactKeys.issueContexts(wsId), issueId, query],
     queryFn: async ({ signal }) => requireCockpitReadResult(await api.getCockpitIssueArtifacts(wsId, issueId, query, signal)), enabled: Boolean(wsId && issueId) });
 }
-export function cockpitMeetingArtifactReferencesOptions(wsId: string, meetingId: string, params: CockpitArtifactPageQuery & { include_removed?: boolean } = {}) {
-  const query = { ...page(params), include_removed: params.include_removed ?? false };
-  return queryOptions({ queryKey: [...cockpitArtifactKeys.meetingReferences(wsId, meetingId), query],
-    queryFn: ({ signal }) => api.getCockpitMeetingArtifactReferences(wsId, meetingId, query, signal).then(requireCockpitReadResult), enabled: Boolean(wsId && meetingId) });
-}
+
 export function cockpitArtifactProducerHistoryOptions(wsId: string, artifactId: string, params: CockpitArtifactPageQuery = {}) {
   const query = page(params);
   return queryOptions({ queryKey: [...cockpitArtifactKeys.producerHistory(wsId, artifactId), query],

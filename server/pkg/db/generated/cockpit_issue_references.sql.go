@@ -51,11 +51,6 @@ const readCockpitIssueReferences = `-- name: ReadCockpitIssueReferences :one
 WITH args AS NOT MATERIALIZED (
  SELECT $1::uuid AS ws, $2::uuid AS issue_id,
  $3::text AS kind, $4::uuid AS cursor_id, $5::int AS page_size
-), agenda_refs AS MATERIALIZED (
- SELECT r.meeting_id,min(r.agenda_id::text)::uuid AS agenda_id,count(DISTINCT r.agenda_id)::bigint AS agenda_total
- FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id CROSS JOIN args x
- WHERE x.kind='meetings' AND r.workspace_id=x.ws AND r.kind='issue' AND r.target_id=x.issue_id AND r.removed_at IS NULL AND a.removed_at IS NULL
- GROUP BY r.meeting_id
 ), refs AS MATERIALIZED (
  SELECT l.node_id AS id FROM cockpit_node_issue l,args x
  WHERE x.kind='nodes' AND l.workspace_id=x.ws AND l.issue_id=x.issue_id
@@ -63,8 +58,6 @@ WITH args AS NOT MATERIALIZED (
  UNION ALL
  SELECT l.meeting_id AS id FROM cockpit_meeting_issue l,args x
  WHERE x.kind='meetings' AND l.workspace_id=x.ws AND l.issue_id=x.issue_id
- UNION
- SELECT a.meeting_id FROM agenda_refs a
 ), page AS (
  SELECT r.id FROM refs r,args x WHERE x.cursor_id IS NULL OR r.id>x.cursor_id
  ORDER BY r.id LIMIT (SELECT page_size+1 FROM args)
@@ -75,10 +68,9 @@ WITH args AS NOT MATERIALIZED (
  UNION ALL
  SELECT p.id,jsonb_build_object('meeting_id',p.id,'code',COALESCE(m.code,''),'title',COALESCE(m.title,''),'meet_date',COALESCE(m.meet_date::text,''),
  'archived_at',m.archived_at,'available',m.id IS NOT NULL,'role',COALESCE(l.role,''),'roles',COALESCE(l.roles,ARRAY['preparation']::text[]),'required_roles',required.roles,'can_unlink',l.issue_id IS NOT NULL AND cardinality(required.roles)=0,
- 'has_direct_reference',l.issue_id IS NOT NULL,'has_agenda_reference',ar.meeting_id IS NOT NULL,'agenda_id',ar.agenda_id,'agenda_total',COALESCE(ar.agenda_total,0))
+ 'has_direct_reference',TRUE)
  FROM page p CROSS JOIN args x
  LEFT JOIN cockpit_meeting_issue l ON l.workspace_id=x.ws AND l.issue_id=x.issue_id AND l.meeting_id=p.id
- LEFT JOIN agenda_refs ar ON ar.meeting_id=p.id
  LEFT JOIN cockpit_meeting m ON m.workspace_id=x.ws AND m.id=p.id
  CROSS JOIN LATERAL (SELECT array_remove(ARRAY[
  CASE WHEN 'minutes'=ANY(l.roles) THEN 'minutes' END,

@@ -61,6 +61,10 @@ func TestCockpitDirectoryPartialRetryThenHumanClaimPreservesOriginalBindingGrant
 	f, p, root, rid := legacyDirectoryFixture(t, true)
 	ctx := context.Background()
 	created, _ := directoryCreateFixturePlan(t, f, p, rid, "meeting", []string{"first", "second"})
+	originalGrant, e := f.q.GetCockpitLifecycleCommand(ctx, db.GetCockpitLifecycleCommandParams{WorkspaceID: f.ws, MeetingID: f.meeting, CommandKey: parseTestUUID(t, created.CommandKey)})
+	if e != nil {
+		t.Fatal(e)
+	}
 	op := parseTestUUID(t, created.Current.ID)
 	query := CockpitDirectoryQuery{CockpitDirectoryRead: p, OperationID: op}
 	directoryApplyOne(t, f, op)
@@ -115,6 +119,10 @@ func TestCockpitDirectoryPartialRetryThenHumanClaimPreservesOriginalBindingGrant
 	final, e := f.issues.GetCockpitDirectoryOperation(ctx, query)
 	if e != nil || final.State != "completed" || final.AcceptedBindingRevision == nil || *final.AcceptedBindingRevision != 2 {
 		t.Fatalf("regrant replaced the original CAS exception: %+v %v", final, e)
+	}
+	retainedGrant, e := f.q.GetCockpitLifecycleCommand(ctx, db.GetCockpitLifecycleCommandParams{WorkspaceID: f.ws, MeetingID: f.meeting, CommandKey: parseTestUUID(t, created.CommandKey)})
+	if e != nil || retainedGrant.RequestHash != originalGrant.RequestHash || string(retainedGrant.Receipt) != string(originalGrant.Receipt) {
+		t.Fatalf("retry or claim rewrote the original fixed binding grant: %+v %v", retainedGrant, e)
 	}
 	if _, e = f.Pool.Exec(ctx, "UPDATE cockpit_meeting_directory_operation SET accepted_binding_revision=99 WHERE workspace_id=$1 AND id=$2", f.ws, op); e == nil {
 		t.Fatal("accepted binding could be rewritten")

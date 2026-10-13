@@ -426,6 +426,7 @@ export function useSaveCockpitMeetingMaterials(wsId: string) {
       return meeting;
     },
     onSuccess: (meeting, { id, patch }) => {
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
       // A parallel field edit or deletion must survive this response's older, otherwise unrelated fields.
       patchCockpitBoard(queryClient, wsId, (board) => ({ ...board, meetings: board.meetings.map((current) => current.id === id
         ? { ...current, ...(patch.note !== undefined ? { note: meeting.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: meeting.nas_dir } : {}) }

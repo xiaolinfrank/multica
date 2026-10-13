@@ -21,9 +21,7 @@ describe("directory cancellation disclosure", () => {
   });
   it("uses the exact cancellation receipt even when the plan contains no issue effects", async () => {
     const command = history(); command.action = "cancel"; command.directory_operation_id = null;
-    command.receipt = { ...command.receipt, directory: null, preparation: { operation_id: OP, kind: "cancel_preparation", revision: 1, state: "completed", effect_ids: [], effect_id: null,
-      reason: "Postponed", request_hash: HASH, occurrence: null, context_token: HASH, template_version_id: null, authorization: null, previous_authorization: null,
-      directory_effect: { paused_total: 7, sample_operation_ids: [OP], facts_hash: HASH } } };
+    command.receipt = { ...command.receipt, directory: null, preparation: { operation_id: OP, kind: "cancel_preparation", revision: 1, state: "completed", effect_ids: [], effect_id: null, reason: "", request_hash: HASH, occurrence: null, context_token: "", authorization: null, previous_authorization: null, directory_effect: { paused_total: 7, sample_operation_ids: [OP], facts_hash: HASH } } };
     vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValue(command);
     render(<CockpitDirectoryCancellationReceipt wsId={WS} meetingId={MEETING} operationId={OP} commandKey={KEY} />, { wrapper });
     expect(await screen.findByText("This cancellation paused 7 directory plans.")).toBeVisible();

@@ -125,31 +125,11 @@ export function cockpitInputTransferCommandOptions(wsId: string, inputId: string
   });
 }
 
-export function cockpitMeetingInputReferencesOptions(wsId: string, meetingId: string, params: CockpitInputPageQuery = {}) {
-  const query = bounded(params);
-  return queryOptions({
-    queryKey: [...cockpitInputKeys.meeting(wsId, meetingId), "all", query],
-    queryFn: ({ signal }) => api.getCockpitMeetingInputReferences(wsId, meetingId, query, signal).then(requireCockpitReadResult),
-    enabled: Boolean(wsId && meetingId), retry: false,
-  });
-}
 
-export function cockpitAgendaInputReferencesOptions(wsId: string, meetingId: string, agendaId: string, params: CockpitInputPageQuery = {}) {
-  const query = bounded(params);
-  return queryOptions({
-    queryKey: [...cockpitInputKeys.meeting(wsId, meetingId), "agenda", agendaId, query],
-    queryFn: ({ signal }) => api.getCockpitAgendaInputReferences(wsId, meetingId, agendaId, query, signal).then(requireCockpitReadResult),
-    enabled: Boolean(wsId && meetingId && agendaId), retry: false,
-  });
-}
 
-export function cockpitInputReferenceCommandOptions(wsId: string, meetingId: string, commandKey: string) {
-  return queryOptions({
-    queryKey: [...cockpitInputKeys.meeting(wsId, meetingId), "command", commandKey],
-    queryFn: ({ signal }) => api.getCockpitInputReferenceCommand(wsId, meetingId, commandKey, signal).then(requireCockpitReadResult),
-    enabled: Boolean(wsId && meetingId && commandKey), retry: false,
-  });
-}
+
+
+
 
 export function cockpitIssueInputManifestOptions(wsId: string, issueId: string) {
   return queryOptions({

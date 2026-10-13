@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -22,15 +21,13 @@ type cockpitPreparationCLIOperation struct {
 	post, page, search            bool
 }
 
-func newCockpitMeetingPreparationCommand(templates bool) *cobra.Command {
+func newCockpitMeetingPreparationCommand() *cobra.Command {
 	name := "preparation"
 	ops := []cockpitPreparationCLIOperation{
 		{"list", "preparation-operations", "<meeting-id>", "", false, true, false},
 		{"show", "preparation-operations/{1}", "<meeting-id> <operation-id>", "", false, false, false},
 		{"effects", "preparation-operations/{1}/effects", "<meeting-id> <operation-id>", "", false, true, false},
 		{"effect", "preparation-operations/{1}/effects/{2}", "<meeting-id> <operation-id> <effect-id>", "", false, false, false},
-		{"preview", "template-applications/preview", "<meeting-id>", "preview", true, false, false},
-		{"apply", "template-applications", "<meeting-id>", "template_apply", true, false, false},
 		{"execute", "preparation-operations/{1}/effects/{2}/apply", "<meeting-id> <operation-id> <effect-id>", "effect", true, false, false},
 		{"control", "preparation-operations/{1}/control", "<meeting-id> <operation-id>", "control", true, false, false},
 		{"authorization", "preparation-operations/{1}/effects/{2}/authorization-preview", "<meeting-id> <operation-id> <effect-id>", "", false, false, false},
@@ -43,26 +40,14 @@ func newCockpitMeetingPreparationCommand(templates bool) *cobra.Command {
 		{"basis", "operation-basis", "<meeting-id>", "", false, false, false},
 		{"disposition", "lifecycle/disposition", "<meeting-id>", "disposition", true, false, false},
 	}
-	if templates {
-		name = "templates"
-		ops = []cockpitPreparationCLIOperation{
-			{"list", "", "", "", false, true, true},
-			{"show", "/{0}", "<template-id>", "", false, false, false},
-			{"versions", "/{0}/versions", "<template-id>", "", false, true, false},
-			{"version", "/{0}/versions/{1}", "<template-id> <version-id>", "", false, false, false},
-			{"command", "/commands/{0}", "<command-key>", "", false, false, false},
-			{"create", "", "", "template_save", true, false, false},
-			{"update", "/{0}/versions", "<template-id>", "template_save", true, false, false},
-		}
-	}
 	parent := &cobra.Command{Use: name, Short: "Read meeting " + name + " and submit explicit preparation commands",
 		Long: "Reads return one bounded page or one exact record as JSON. Writes require a human credential and an explicit request file. " +
 			"Keep command keys and authorization revisions after uncertain responses; read the exact command or effect before retrying. " +
-			"Template application records a plan; execute applies one selected effect. It never starts an agent or provisions NAS folders."}
+			"Cancellation plans retain their explicit effect receipts. They never start an agent or provision NAS folders."}
 	for _, op := range ops {
 		cmd := &cobra.Command{Use: strings.TrimSpace(op.name + " " + op.arguments), Args: exactArgs(len(strings.Fields(op.arguments))),
 			Short: op.name + " meeting " + name, RunE: func(cmd *cobra.Command, args []string) error {
-				return runCockpitPreparationCLI(cmd, args, templates, op)
+				return runCockpitPreparationCLI(cmd, args, op)
 			}}
 		cmd.Flags().Bool("json", false, "Print the confirmed API response as JSON")
 		if op.post {
@@ -74,9 +59,6 @@ func newCockpitMeetingPreparationCommand(templates bool) *cobra.Command {
 		}
 		if op.search {
 			cmd.Flags().String("query", "", "Search metadata (up to 512 bytes)")
-		}
-		if templates && op.name == "list" {
-			cmd.Flags().Bool("include-inactive", false, "Include inactive templates")
 		}
 		parent.AddCommand(cmd)
 	}
@@ -114,15 +96,8 @@ func cockpitPreparationCLIRequest(cmd *cobra.Command, op cockpitPreparationCLIOp
 		}
 		return body, action, nil
 	}
-	minimum := float64(1)
-	if op.name == "create" {
-		minimum = 0
-	}
-	if !cockpitReceiptNumber(body["expected_revision"], minimum) {
-		return nil, "", fmt.Errorf("expected_revision must be an observed integer (zero only for a new template)")
-	}
-	if op.name == "create" && body["expected_revision"] != float64(0) {
-		return nil, "", fmt.Errorf("a new template requires expected_revision zero")
+	if !cockpitReceiptNumber(body["expected_revision"], 1) {
+		return nil, "", fmt.Errorf("expected_revision must be an observed positive integer")
 	}
 	if action == "control" || action == "disposition" {
 		transition, _ := body["transition"].(string)
@@ -141,7 +116,7 @@ func cockpitPreparationCLIRequest(cmd *cobra.Command, op cockpitPreparationCLIOp
 	return body, action, nil
 }
 
-func runCockpitPreparationCLI(cmd *cobra.Command, args []string, templates bool, op cockpitPreparationCLIOperation) error {
+func runCockpitPreparationCLI(cmd *cobra.Command, args []string, op cockpitPreparationCLIOperation) error {
 	ids := make([]string, len(args))
 	for i, raw := range args {
 		id, err := cockpitWorkflowUUID(raw, fmt.Sprintf("argument %d", i+1))
@@ -170,10 +145,6 @@ func runCockpitPreparationCLI(cmd *cobra.Command, args []string, templates bool,
 		}
 		query.Set("q", q)
 	}
-	if templates && op.name == "list" {
-		inactive, _ := cmd.Flags().GetBool("include-inactive")
-		query.Set("include_inactive", fmt.Sprint(inactive))
-	}
 	var body map[string]any
 	action := ""
 	if op.post {
@@ -187,11 +158,7 @@ func runCockpitPreparationCLI(cmd *cobra.Command, args []string, templates bool,
 	for i, id := range ids {
 		path = strings.ReplaceAll(path, fmt.Sprintf("{%d}", i), url.PathEscape(id))
 	}
-	if templates {
-		path = "/api/cockpit/meeting-templates" + path
-	} else {
-		path = "/api/cockpit/meetings/" + ids[0] + "/" + path
-	}
+	path = "/api/cockpit/meetings/" + ids[0] + "/" + path
 	if len(query) > 0 {
 		path += "?" + query.Encode()
 	}
@@ -210,7 +177,7 @@ func runCockpitPreparationCLI(cmd *cobra.Command, args []string, templates bool,
 	if err != nil {
 		return err
 	}
-	if !confirmCockpitPreparationCLI(result, body, ids, templates, op, action, client.WorkspaceID, query, size) {
+	if !confirmCockpitPreparationCLI(result, body, ids, op, action, client.WorkspaceID, query, size) {
 		return fmt.Errorf("preparation response was not confirmed; retain the original request and read its exact command/effect before retrying")
 	}
 	return cli.PrintJSON(os.Stdout, result)
@@ -222,8 +189,8 @@ func cockpitPreparationCLIHash(value any) bool {
 	return err == nil && len(b) == 32
 }
 
-func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, templates bool, op cockpitPreparationCLIOperation, action, ws string, query url.Values, size int) bool {
-	if result["workspace_id"] != ws || !templates && result["meeting_id"] != ids[0] {
+func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, op cockpitPreparationCLIOperation, action, ws string, query url.Values, size int) bool {
+	if result["workspace_id"] != ws || result["meeting_id"] != ids[0] {
 		return false
 	}
 	if op.page {
@@ -233,10 +200,10 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 		if !ok || len(items) > size || result["page_size"] != float64(size) || !cockpitReceiptNumber(result["total"], float64(len(items))) || !exists || next != nil && (!cursorOK || cursor == "" || len(items) == 0) {
 			return false
 		}
-		if op.search && result["q"] != query.Get("q") || templates && op.name == "list" && result["include_inactive"] != (query.Get("include_inactive") == "true") {
+		if op.search && result["q"] != query.Get("q") {
 			return false
 		}
-		if templates && op.name == "versions" && result["template_id"] != ids[0] || !templates && op.name == "effects" && result["operation_id"] != ids[1] || op.name == "runs" && result["issue_id"] != ids[1] {
+		if op.name == "effects" && result["operation_id"] != ids[1] || op.name == "runs" && result["issue_id"] != ids[1] {
 			return false
 		}
 		seen := map[string]bool{}
@@ -254,27 +221,13 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 				return false
 			}
 			seen[key] = true
-			if templates && op.name == "list" && row["workspace_id"] != ws || templates && op.name == "versions" && row["template_id"] != ids[0] {
-				return false
-			}
-			if !templates && op.name == "list" && (row["workspace_id"] != ws || row["meeting_id"] != ids[0]) || op.name == "effects" && row["operation_id"] != ids[1] || op.name == "runs" && row["issue_id"] != ids[1] {
+			if op.name == "list" && (row["workspace_id"] != ws || row["meeting_id"] != ids[0]) || op.name == "effects" && row["operation_id"] != ids[1] || op.name == "runs" && row["issue_id"] != ids[1] {
 				return false
 			}
 		}
 		return true
 	}
 	if !op.post {
-		if templates {
-			switch op.name {
-			case "show":
-				return result["id"] == ids[0] && cockpitReceiptNumber(result["revision"], 1)
-			case "version":
-				return result["template_id"] == ids[0] && result["id"] == ids[1] && cockpitPreparationCLIHash(result["config_hash"])
-			case "command":
-				receipt, _ := result["receipt"].(map[string]any)
-				return result["command_key"] == ids[0] && receipt["command_key"] == ids[0] && receipt["template_id"] == result["template_id"] && receipt["workspace_id"] == ws && cockpitPreparationCLIHash(result["request_hash"])
-			}
-		}
 		switch op.name {
 		case "show":
 			return result["id"] == ids[1] && cockpitReceiptNumber(result["revision"], 1)
@@ -301,25 +254,13 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 		if !valid || result["selected_total"] != float64(selected) {
 			return false
 		}
-		if op.name == "preview" {
-			bindings, ok := body["bindings"].([]any)
-			wanted, valid := cockpitPreparationCLISelectedEffects(bindings)
-			return ok && valid && wanted == selected && len(bindings) == len(effects) && result["template_version_id"] == body["template_version_id"]
-		}
 		return result["intent"] == "cancel" || result["intent"] == "append_disposition"
 	}
 	receipt, _ := result["receipt"].(map[string]any)
 	current, _ := result["current"].(map[string]any)
 	_, replayed := result["replayed"].(bool)
-	if !replayed || result["command_key"] != body["command_key"] || !cockpitPreparationCLIHash(receipt["request_hash"]) && action != "template_save" {
+	if !replayed || result["command_key"] != body["command_key"] || !cockpitPreparationCLIHash(receipt["request_hash"]) {
 		return false
-	}
-	if templates {
-		if !cockpitPreparationCLIHash(result["request_hash"]) || receipt["workspace_id"] != ws || receipt["template_id"] != result["template_id"] || receipt["command_key"] != body["command_key"] || current["id"] != result["template_id"] || current["workspace_id"] != ws || len(ids) > 0 && result["template_id"] != ids[0] {
-			return false
-		}
-		title, _ := body["title"].(string)
-		return receipt["title"] == strings.TrimSpace(title) && receipt["description"] == body["description"] && receipt["active"] == body["active"] && cockpitPreparationCLIConfigEqual(receipt["config"], body["config"])
 	}
 	if current["workspace_id"] != ws || current["meeting_id"] != ids[0] {
 		return false
@@ -337,10 +278,10 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 			return ok && cockpitNASReceiptUUID(receipt["run_id"]) != "" && slices.Contains([]string{"completed", "failed", "cancelled"}, status) && (!changed || status == "cancelled")
 		}
 		kind, _ := receipt["kind"].(string)
-		if kind == "link_meeting" && (cockpitNASReceiptUUID(receipt["target_meeting_id"]) == "" || cockpitNASReceiptUUID(receipt["agenda_id"]) == "" || cockpitNASReceiptUUID(receipt["reference_id"]) == "" || cockpitNASReceiptUUID(receipt["issue_id"]) == "") {
+		if kind == "link_meeting" && (cockpitNASReceiptUUID(receipt["target_meeting_id"]) == "" || cockpitNASReceiptUUID(receipt["issue_id"]) == "") {
 			return false
 		}
-		return slices.Contains([]string{"agenda", "preparation_issue", "issue_reference", "material_reference", "cancel_issue", "change_due_date", "link_meeting"}, kind)
+		return slices.Contains([]string{"cancel_issue", "change_due_date", "link_meeting"}, kind)
 	}
 	if result["action"] != action {
 		return false
@@ -353,11 +294,6 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 	}
 	if token, exists := body["context_token"]; exists && receipt["context_token"] != token {
 		return false
-	}
-	if action == "template_apply" {
-		bindings, ok := body["bindings"].([]any)
-		selected, valid := cockpitPreparationCLISelectedEffects(bindings)
-		return ok && valid && cockpitPreparationCLIEffectCount(receipt, selected) && receipt["kind"] == "apply_template" && receipt["template_version_id"] == body["template_version_id"]
 	}
 	reason, _ := body["reason"].(string)
 	if receipt["reason"] != strings.TrimSpace(reason) {
@@ -399,53 +335,6 @@ func confirmCockpitPreparationCLI(result, body map[string]any, ids []string, tem
 		return true
 	}
 	return false
-}
-
-func cockpitPreparationCLIConfigEqual(left, right any) bool {
-	if _, ok := left.(map[string]any); !ok {
-		return false
-	}
-	if _, ok := right.(map[string]any); !ok {
-		return false
-	}
-	normalize := func(value any) any {
-		data, _ := json.Marshal(value)
-		var config map[string]any
-		if json.Unmarshal(data, &config) != nil {
-			return nil
-		}
-		slots, _ := config["slots"].([]any)
-		for _, raw := range slots {
-			slot, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			for _, field := range []string{"slot_id", "agenda_slot_id"} {
-				if s, ok := slot[field].(string); ok {
-					slot[field] = strings.ToLower(s)
-				}
-			}
-			for _, field := range []string{"label", "purpose"} {
-				if s, ok := slot[field].(string); ok {
-					slot[field] = strings.TrimSpace(s)
-				}
-			}
-			for _, field := range []string{"agenda", "new_issue"} {
-				if defaults, ok := slot[field].(map[string]any); ok {
-					if title, ok := defaults["title"].(string); ok {
-						defaults["title"] = strings.TrimSpace(title)
-					}
-					if field == "agenda" {
-						if purposes, ok := cockpitLifecycleCLIStrings(defaults["purposes"]); ok {
-							defaults["purposes"] = purposes
-						}
-					}
-				}
-			}
-		}
-		return config
-	}
-	return reflect.DeepEqual(normalize(left), normalize(right))
 }
 
 func cockpitPreparationCLISelectedEffects(items []any) (int, bool) {

@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 func writeCockpitArtifactError(w http.ResponseWriter, r *http.Request, err error) bool {
@@ -379,28 +378,6 @@ func (h *Handler) ListCockpitIssueArtifactContexts(w http.ResponseWriter, r *htt
 	}
 }
 
-func (h *Handler) ListCockpitMeetingArtifactReferences(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.cockpitArtifactRead(w, r, false)
-	if !ok {
-		return
-	}
-	meetingID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "meetingId"), "meeting_id")
-	if !ok {
-		return
-	}
-	if _, err := h.Queries.GetCockpitMeeting(r.Context(), db.GetCockpitMeetingParams{WorkspaceID: p.WorkspaceID, ID: meetingID}); writeCockpitArtifactError(w, r, err) {
-		return
-	}
-	removed := r.URL.Query().Get("include_removed")
-	if removed != "" && removed != "true" && removed != "false" {
-		writeError(w, http.StatusBadRequest, "include_removed must be true or false")
-		return
-	}
-	out, err := h.IssueService.ListCockpitMeetingArtifactReferences(r.Context(), service.CockpitMeetingArtifactReferencesRead{WorkspaceID: p.WorkspaceID, ActorID: p.ActorID, MeetingID: meetingID, Human: p.Human, IncludeRemoved: removed == "true", Cursor: p.Cursor, PageSize: p.PageSize})
-	if !writeCockpitArtifactError(w, r, err) {
-		writeJSON(w, http.StatusOK, out)
-	}
-}
 
 func cockpitArtifactNewIssue(w http.ResponseWriter, p service.CockpitArtifactRead, req *cockpitArtifactNewIssueRequest) (*service.IssueCreateParams, bool) {
 	if req == nil {

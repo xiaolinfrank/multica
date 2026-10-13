@@ -13,11 +13,8 @@ import (
 
 const cockpitMeetingHasPreparationIssue = `-- name: CockpitMeetingHasPreparationIssue :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT EXISTS(SELECT 1 FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1 WHERE i.id=$2)
 `
@@ -37,11 +34,8 @@ func (q *Queries) CockpitMeetingHasPreparationIssue(ctx context.Context, arg Coc
 
 const countCockpitDispositionIssues = `-- name: CountCockpitDispositionIssues :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE ($2::text='' OR i.title ILIKE '%'||$2||'%' OR i.number::text=$2)
@@ -79,11 +73,8 @@ func (q *Queries) CountCockpitDispositionRuns(ctx context.Context, arg CountCock
 
 const countCockpitMeetingPreparationRuns = `-- name: CountCockpitMeetingPreparationRuns :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
 )
 SELECT count(*) FROM agent_task_queue t JOIN preparation_issues p ON p.id=t.issue_id
 WHERE t.chat_session_id IS NULL AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory')
@@ -103,11 +94,8 @@ func (q *Queries) CountCockpitMeetingPreparationRuns(ctx context.Context, arg Co
 
 const filterCockpitPreparationIssueIDs = `-- name: FilterCockpitPreparationIssueIDs :many
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$3 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$3 AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE i.id=ANY($2::uuid[])
@@ -200,11 +188,8 @@ func (q *Queries) GetCockpitDispositionRunsByIDs(ctx context.Context, arg GetCoc
 
 const listCockpitDispositionIssueIDs = `-- name: ListCockpitDispositionIssueIDs :many
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$5 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND 'minutes'=ANY(l.roles)
+ SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND ('preparation'=ANY(l.roles) OR 'task'=ANY(l.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$5 AND 'minutes'=ANY(l.roles)
 )
 SELECT i.id FROM preparation_issues p JOIN issue i ON i.id=p.id AND i.workspace_id=$1
 WHERE ($2::text='' OR i.title ILIKE '%'||$2||'%' OR i.number::text=$2)
@@ -368,7 +353,7 @@ func (q *Queries) ReadCockpitCancellationDirectoryFacts(ctx context.Context, arg
 }
 
 const readCockpitDispositionAutomationFacts = `-- name: ReadCockpitDispositionAutomationFacts :many
-WITH requested AS (SELECT i.id,i.parent_issue_id FROM issue i WHERE i.workspace_id=$2 AND i.id=ANY($4::uuid[]))
+WITH requested AS (SELECT i.id,i.parent_issue_id FROM issue i WHERE i.workspace_id=$2 AND i.id=ANY($3::uuid[]))
 SELECT r.id,r.parent_issue_id,
  (SELECT count(*) FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NULL AND w.disabled_at IS NULL)::bigint AS ordinary_wakeup_count,
  (SELECT count(*) FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NOT NULL)::bigint AS system_rule_count,
@@ -379,15 +364,13 @@ SELECT r.id,r.parent_issue_id,
  (SELECT encode(sha256(convert_to(COALESCE(string_agg(t.id::text||':'||t.status||':'||COALESCE(extract(epoch FROM t.started_at)::text,''),',' ORDER BY t.id),''),'UTF8')),'hex') FROM agent_task_queue t WHERE t.issue_id=r.id AND NOT(t.id=ANY(COALESCE($1::uuid[],ARRAY[]::uuid[]))) AND t.status IN ('queued','deferred','dispatched','running','waiting_local_directory'))::text AS task_hash,
  (SELECT encode(sha256(convert_to(COALESCE(string_agg(w.id::text,',' ORDER BY w.id),''),'UTF8')),'hex') FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NULL AND w.disabled_at IS NULL)::text AS ordinary_wakeup_ids_hash,
  (SELECT COALESCE(jsonb_agg(s.id),'[]'::jsonb) FROM (SELECT w.id FROM issue_wakeup w WHERE w.issue_id=r.id AND w.system_rule IS NULL AND w.disabled_at IS NULL ORDER BY w.id LIMIT 100) s)::jsonb AS ordinary_wakeup_ids,
- COALESCE(EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=$2 AND v.review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$2 AND h.from_review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$2 AND h.to_review_issue_id=r.id),false)::boolean AS is_minutes_review,
- (SELECT count(*) FROM cockpit_meeting_agenda_reference l JOIN cockpit_meeting_agenda a ON a.workspace_id=l.workspace_id AND a.id=l.agenda_id AND a.removed_at IS NULL WHERE l.workspace_id=$2 AND l.meeting_id=$3 AND l.kind='issue' AND l.target_id=r.id AND l.removed_at IS NULL)::bigint AS agenda_total
+ COALESCE(EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=$2 AND v.review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$2 AND h.from_review_issue_id=r.id) OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=$2 AND h.to_review_issue_id=r.id),false)::boolean AS is_minutes_review
 FROM requested r
 `
 
 type ReadCockpitDispositionAutomationFactsParams struct {
 	ExcludedRunIds []pgtype.UUID `json:"excluded_run_ids"`
 	WorkspaceID    pgtype.UUID   `json:"workspace_id"`
-	MeetingID      pgtype.UUID   `json:"meeting_id"`
 	IssueIds       []pgtype.UUID `json:"issue_ids"`
 }
 
@@ -404,16 +387,10 @@ type ReadCockpitDispositionAutomationFactsRow struct {
 	OrdinaryWakeupIdsHash   string      `json:"ordinary_wakeup_ids_hash"`
 	OrdinaryWakeupIds       []byte      `json:"ordinary_wakeup_ids"`
 	IsMinutesReview         bool        `json:"is_minutes_review"`
-	AgendaTotal             int64       `json:"agenda_total"`
 }
 
 func (q *Queries) ReadCockpitDispositionAutomationFacts(ctx context.Context, arg ReadCockpitDispositionAutomationFactsParams) ([]ReadCockpitDispositionAutomationFactsRow, error) {
-	rows, err := q.db.Query(ctx, readCockpitDispositionAutomationFacts,
-		arg.ExcludedRunIds,
-		arg.WorkspaceID,
-		arg.MeetingID,
-		arg.IssueIds,
-	)
+	rows, err := q.db.Query(ctx, readCockpitDispositionAutomationFacts, arg.ExcludedRunIds, arg.WorkspaceID, arg.IssueIds)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +411,6 @@ func (q *Queries) ReadCockpitDispositionAutomationFacts(ctx context.Context, arg
 			&i.OrdinaryWakeupIdsHash,
 			&i.OrdinaryWakeupIds,
 			&i.IsMinutesReview,
-			&i.AgendaTotal,
 		); err != nil {
 			return nil, err
 		}

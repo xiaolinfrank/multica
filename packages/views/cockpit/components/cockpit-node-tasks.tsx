@@ -152,7 +152,9 @@ export function CockpitNodeTasks({ wsId, node, userId, readOnly, referenceOnly =
   return <section aria-label={t(($) => $.task_flow.region)} className="space-y-4">
     {!referenceOnly && <div className="flex flex-wrap items-center gap-2"><NodeTaskCreate wsId={wsId} node={node} userId={userId} disabled={blocked} />
       <NodePrimaryAssign wsId={wsId} node={node} projectId={data?.eligibility.project_id ?? null} moduleId={data?.eligibility.module_id ?? null} disabled={blocked} /></div>}
-    {referenceOnly && onCreateReference && <Button type="button" variant="outline" size="sm" disabled={readOnly} onClick={onCreateReference}>{t(($) => $.issues.create)}</Button>}
+    {referenceOnly && (onCreateReference
+      ? <Button type="button" variant="outline" size="sm" disabled={readOnly} onClick={onCreateReference}>{t(($) => $.issues.create)}</Button>
+      : <Button type="button" variant="outline" size="sm" disabled title={t(($) => $.task_flow.create_reference_unavailable)}>{t(($) => $.issues.create)}</Button>)}
     {relation === "reference" && <NodePrimaryAssign wsId={wsId} node={node} projectId={null} moduleId={null} disabled={Boolean(readOnly || !userId)} reference />}
     <label className="block space-y-1 text-caption">{t(($) => $.task_flow.search)}<Input value={text} onChange={(event) => setText(event.target.value)} /></label>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

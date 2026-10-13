@@ -151,7 +151,7 @@ export function CockpitInputUploadForm({ wsId, accountId, meetingId, existingInp
       }
       if (!value.versionId && value.inputId && value.inputRevision !== null && value.source) {
         const ack = await request.run({ kind: "version", inputId: value.inputId, body: { commandKey: createSafeId(), expectedRevision: value.inputRevision,
-          source: value.source, initialReference: meetingId ? { referenceKey: createSafeId(), meetingId, agendaId: value.agendaId, purpose: value.purpose } : null } });
+          source: value.source } });
         if (!ack) return;
         value = record(ack, value);
         if (!ack.stillCurrent()) return;

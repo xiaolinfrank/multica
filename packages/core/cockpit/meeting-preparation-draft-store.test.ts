@@ -4,7 +4,7 @@ import { resetAllRegisteredDrafts } from "../drafts/cleanup-registry";
 import {
   clearCockpitPreparationForm, cockpitMeetingPreparationDraftKey, prepareCockpitPreparationCommand,
   rememberCockpitPreparationInstance, setCockpitPreparationForm, settleCockpitPreparationCommand, cockpitPreparationGrantReplaced,
-  useCockpitMeetingPreparationDraftStore, type CockpitTemplateEditorDraft, type CockpitPreparationPendingCommand,
+  useCockpitMeetingPreparationDraftStore, type CockpitPreparationFormDraft, type CockpitPreparationPendingCommand,
 } from "./meeting-preparation-draft-store";
 
 vi.mock("../platform/storage", () => ({ defaultStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } }));
@@ -12,26 +12,26 @@ const meetingId = "11111111-1111-4111-8111-111111111111";
 const versionId = "22222222-2222-4222-8222-222222222222";
 const commandKey = "33333333-3333-4333-8333-333333333333";
 const operationId = "44444444-4444-4444-8444-444444444444";
-const key = cockpitMeetingPreparationDraftKey("ws-a", "application", meetingId);
-const editor: CockpitTemplateEditorDraft = { kind: "template", observedRevision: 4, title: "Boundary review", description: "", active: true,
-  config: { schema_version: 1, slots: [{ slot_id: versionId, kind: "agenda", label: "Review boundary", agenda_slot_id: null, purpose: "",
-    agenda: { title: "Review boundary", purposes: ["boundary_confirmation"], desired_outcome: "  Keep whitespace\n", notes: "Draft" }, new_issue: null }] } };
-const command: CockpitPreparationPendingCommand = { kind: "application", meetingId,
-  body: { command_key: commandKey, expected_revision: 7, template_version_id: versionId, context_token: "observed-context", bindings: [] } };
+const key = cockpitMeetingPreparationDraftKey("ws-a", "cancellation", meetingId);
+const editor: Extract<CockpitPreparationFormDraft, { kind: "cancellation" }> = {
+  kind: "cancellation", reason: "  Preserve the cancellation reason\n", issues: [], run_ids: [],
+};
+const command: Extract<CockpitPreparationPendingCommand, { kind: "cancellation" }> = { kind: "cancellation", meetingId,
+  body: { command_key: commandKey, expected_revision: 7, reason: editor.reason, issues: [], run_ids: [], context_token: "observed-context" } };
 beforeEach(() => useCockpitMeetingPreparationDraftStore.getState().clearDraft());
 
 describe("meeting preparation intent persistence", () => {
-  it("preserves slot identities and exact text while a late save cannot clear a newer edit", () => {
+  it("preserves exact cancellation text while a late save cannot clear a newer edit", () => {
     setCockpitPreparationForm(key, editor);
     const submitted = useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]!;
-    setCockpitPreparationForm(key, { ...editor, title: "A new title" });
+    setCockpitPreparationForm(key, { ...editor, reason: "A new reason" });
     clearCockpitPreparationForm(key, submitted);
-    expect(useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]).toEqual({ ...editor, title: "A new title" });
+    expect(useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]).toEqual({ ...editor, reason: "A new reason" });
   });
-  it("retains the exact preview version, token and command after an unknown response", () => {
+  it("retains the exact cancellation token and command after an unknown response", () => {
     setCockpitPreparationForm(key, editor);
     expect(prepareCockpitPreparationCommand(key, command)).toEqual(command);
-    setCockpitPreparationForm(key, { ...editor, observedRevision: 12, title: "Changed during a request" });
+    setCockpitPreparationForm(key, { ...editor, reason: "Changed during a request" });
     expect(prepareCockpitPreparationCommand(key, { ...command, body: { ...command.body, command_key: operationId, expected_revision: 12, context_token: "new-context" } })).toEqual(command);
     settleCockpitPreparationCommand(key, operationId);
     expect(useCockpitMeetingPreparationDraftStore.getState().draft.commands[key]).toEqual(command);
@@ -42,11 +42,11 @@ describe("meeting preparation intent persistence", () => {
     expect(() => prepareCockpitPreparationCommand(key, { ...command, meetingId: versionId })).toThrow("meeting_preparation_command_scope_changed");
     settleCockpitPreparationCommand(key, commandKey);
     expect(useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]).toEqual(editor);
-    setCockpitPreparationForm(key, { ...editor, observedRevision: 8 });
-    expect(useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]).toMatchObject({ observedRevision: 8 });
+    setCockpitPreparationForm(key, { ...editor, reason: "Explicitly reviewed correction" });
+    expect(useCockpitMeetingPreparationDraftStore.getState().draft.forms[key]).toMatchObject({ reason: "Explicitly reviewed correction" });
   });
   it("keeps a confirmed instance pointer separate from effect progress and clears session drafts on logout", () => {
-    const other = cockpitMeetingPreparationDraftKey("ws-b", "application", meetingId);
+    const other = cockpitMeetingPreparationDraftKey("ws-b", "cancellation", meetingId);
     rememberCockpitPreparationInstance(key, operationId); rememberCockpitPreparationInstance(other, versionId);
     setCockpitPreparationForm(other, editor); prepareCockpitPreparationCommand(key, command);
     settleCockpitPreparationCommand(key, commandKey);

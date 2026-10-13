@@ -1,9 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { CockpitInputVersionSource, CockpitInputVersionSummary } from "./cockpit-input-version-summary";
-import { CockpitInputReferenceList } from "./cockpit-input-reference-list";
-import { inputReferencePage, inputVersion } from "./input-test-fixtures";
+import { inputVersion } from "./input-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
@@ -34,15 +33,4 @@ describe("fixed input evidence", () => {
     expect(screen.queryByText("Original source")).toBeNull();
   });
 
-  it("shows full-scope counts beside a filtered page and routes removal to the exact reference", () => {
-    const page = inputReferencePage({ total: 1, summary: { total: 30, ready: 20, pending: 7, needsAttention: 3, availableReady: 17, unavailableReady: 2, unknownReady: 1 } });
-    const remove = vi.fn();
-    render(<CockpitInputReferenceList page={page} pageNumber={1} search="recording" busy={false} onPrevious={vi.fn()} onNext={vi.fn()} onInspect={vi.fn()} onRemove={remove} />, { wrapper: Wrapper });
-    expect(screen.getByText("All material references in this meeting")).toBeVisible();
-    expect(screen.getByText("17 readable · 2 unavailable · 1 awaiting checks")).toBeVisible();
-    expect(screen.getByText("20")).toBeVisible();
-    expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Remove reference to Original meeting recording" }));
-    expect(remove).toHaveBeenCalledExactlyOnceWith(page.items[0]);
-  });
 });

@@ -33,17 +33,11 @@ beforeEach(() => {
   vi.mocked(api.appendCockpitMeetingIssue).mockResolvedValue({ meeting_id: "meeting-2", issue_id: "issue-1", issue_number: 1, issue_identifier: "BIO-1", issue_title: "Issue", issue_status: "backlog", role: "", roles: [], required_roles: [], position: 0 } as Awaited<ReturnType<typeof api.appendCockpitMeetingIssue>>);
 });
 describe("bounded issue meeting references", () => {
-  it("removes only an explicit direct reference while preserving the meeting's agenda source", async () => {
-    page.items = [{ ...ref(), has_direct_reference: true, has_agenda_reference: true, agenda_id: "agenda-1", agenda_total: 2 }];
-    vi.mocked(api.removeCockpitIssueMeetingReference).mockImplementationOnce(async (_ws, issueId, targetId) => {
-      page.items = [{ ...page.items[0]!, has_direct_reference: false, can_unlink: false }];
-      return { workspace_id: "ws-1", issue_id: issueId, kind: "meeting", target_id: targetId, removed: true };
-    });
-    renderSection(); const agenda = await screen.findByRole("link", { name: "Open agenda & preparation" });
-    expect(agenda).toHaveAttribute("href", "/acme/cockpit?meeting=meeting-1&agenda=agenda-1&meeting_view=agenda");
-    fireEvent.click(screen.getByRole("button", { name: "Remove direct meeting link: M-01 Review" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove direct meeting link: M-01 Review" })).toBeNull());
-    expect(screen.getByRole("link", { name: "M-01 Review" })).toBeVisible(); expect(screen.getByRole("link", { name: "Open agenda & preparation" })).toBeVisible();
+  it("removes only an explicit direct reference", async () => {
+    renderSection(); await screen.findByRole("link", { name: "M-01 Review" });
+    fireEvent.click(screen.getByRole("button", { name: "Unlink M-01 Review" }));
+    await waitFor(() => expect(api.removeCockpitIssueMeetingReference).toHaveBeenCalledExactlyOnceWith("ws-1", "issue-1", "meeting-1"));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "M-01 Review" })).toBeNull());
   });
 
   it("reads lightweight reverse links including the filing role without the board", async () => {

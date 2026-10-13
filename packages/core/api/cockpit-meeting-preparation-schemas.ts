@@ -10,112 +10,11 @@ const count = z.number().int().nonnegative();
 const timestamp = z.string().datetime({ offset: true });
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const capability = z.boolean().catch(false).default(false);
-const effectKinds = new Set(["agenda", "preparation_issue", "issue_reference", "material_reference", "cancel_issue", "change_due_date", "link_meeting", "stop_run"]);
+const effectKinds = new Set(["cancel_issue", "change_due_date", "link_meeting", "stop_run"]);
 const effectStates = new Set(["pending", "applied", "needs_attention", "skipped"]);
-const operationKinds = new Set(["apply_template", "cancel_preparation"]);
+const operationKinds = new Set(["cancel_preparation"]);
 const operationStates = new Set(["active", "paused", "needs_attention", "completed"]);
 function distinct(rows: Array<{ id: string }>) { return new Set(rows.map((row) => row.id)).size === rows.length; }
-
-export const CockpitTemplateAgendaDefaultsSchema = z.object({
-  title: z.string(),
-  purposes: z.array(z.string()).max(100),
-  desired_outcome: z.string(),
-  notes: z.string(),
-});
-
-export const CockpitTemplateIssueDefaultsSchema = z.object({
-  title: z.string(),
-  description: z.string(),
-  priority: z.string(),
-});
-
-export const CockpitMeetingTemplateSlotSchema = z.object({
-  slot_id: id,
-  kind: z.string(),
-  label: z.string(),
-  agenda_slot_id: id.nullable(),
-  agenda: CockpitTemplateAgendaDefaultsSchema.nullable(),
-  new_issue: CockpitTemplateIssueDefaultsSchema.nullable(),
-  purpose: z.string(),
-});
-
-export const CockpitMeetingTemplateConfigSchema = z.object({
-  schema_version: revision,
-  slots: z.array(CockpitMeetingTemplateSlotSchema).max(50),
-})
-  .refine((v) => v.slots.length > 0 && new Set(v.slots.map((s) => s.slot_id)).size === v.slots.length);
-
-export const CockpitMeetingTemplateVersionMetadataSchema = z.object({
-  id: id,
-  template_id: id,
-  number: revision,
-  title: z.string(),
-  active: z.boolean(),
-  slot_count: count,
-  config_hash: digest,
-  command_key: commandKey,
-  created_by: z.string(),
-  created_by_name: z.string(),
-  created_at: timestamp,
-});
-
-export const CockpitMeetingTemplateHeaderSchema = z.object({
-  workspace_id: id,
-  id: id,
-  revision: revision,
-  title: z.string(),
-  description: z.string(),
-  active: z.boolean(),
-  created_by: z.string(),
-  created_at: timestamp,
-  updated_at: timestamp,
-  current_version: CockpitMeetingTemplateVersionMetadataSchema,
-  can_edit: capability,
-})
-  .refine((v) => v.current_version.template_id === v.id && v.current_version.title === v.title && v.current_version.active === v.active);
-
-export const CockpitMeetingTemplateVersionDetailSchema = z.object({
-  ...CockpitMeetingTemplateVersionMetadataSchema.shape,
-  workspace_id: id,
-  description: z.string(),
-  config: CockpitMeetingTemplateConfigSchema,
-})
-  .refine((v) => v.slot_count === v.config.slots.length);
-
-export const CockpitMeetingTemplatePageSchema = z.object({
-  workspace_id: id,
-  q: z.string(),
-  include_inactive: z.boolean(),
-  page_size: z.number().int().min(1).max(100),
-  items: z.array(CockpitMeetingTemplateHeaderSchema).max(100),
-  total: count,
-  next_cursor: z.string().nullable(),
-  can_create: capability,
-})
-  .refine((v) => v.items.length <= v.page_size && v.items.length <= v.total && distinct(v.items) && (v.next_cursor === null || v.next_cursor.length > 0 && v.items.length > 0))
-  .refine((v) => v.items.every((i) => i.workspace_id === v.workspace_id));
-
-export const CockpitMeetingTemplateVersionPageSchema = z.object({
-  workspace_id: id,
-  template_id: id,
-  page_size: z.number().int().min(1).max(100),
-  items: z.array(CockpitMeetingTemplateVersionMetadataSchema).max(100),
-  total: count,
-  next_cursor: z.string().nullable(),
-})
-  .refine((v) => v.items.length <= v.page_size && v.items.length <= v.total && distinct(v.items) && (v.next_cursor === null || v.next_cursor.length > 0 && v.items.length > 0))
-  .refine((v) => v.items.every((i) => i.template_id === v.template_id));
-
-export const CockpitMeetingTemplateSaveResultSchema = z.object({
-  workspace_id: id,
-  template_id: id,
-  command_key: commandKey,
-  request_hash: digest,
-  replayed: z.boolean(),
-  receipt: CockpitMeetingTemplateVersionDetailSchema,
-  current: CockpitMeetingTemplateHeaderSchema,
-})
-  .refine((v) => v.receipt.workspace_id === v.workspace_id && v.receipt.template_id === v.template_id && v.receipt.command_key === v.command_key && v.current.workspace_id === v.workspace_id && v.current.id === v.template_id);
 
 export const CockpitDispositionIssueSchema = z.object({
   issue: CockpitTaskSchema,
@@ -130,7 +29,6 @@ export const CockpitDispositionIssueSchema = z.object({
   unstarted_wakeup_run_count: count,
   other_queued_run_count: count,
   active_run_count: count,
-  agenda_total: count,
   targets: z.array(IssueOperationTargetSchema).max(3),
   targets_total: count,
   parent_issue_id: id.nullable(),
@@ -151,7 +49,6 @@ export const CockpitPreparationPreviewEffectSchema = z.object({
   slot_id: id,
   kind: z.string(),
   label: z.string(),
-  agenda_slot_id: id.nullable(),
   selected: z.boolean(),
   allowed: capability,
   reason_codes: z.array(z.string()).max(100),
@@ -159,23 +56,6 @@ export const CockpitPreparationPreviewEffectSchema = z.object({
   issue_impact: CockpitDispositionIssueSchema.nullable(),
   scope: CockpitPreparationResolvedScopeSchema.nullable(),
 });
-
-export const CockpitTemplateApplicationPreviewSchema = z.object({
-  workspace_id: id,
-  meeting_id: id,
-  template_id: id,
-  template_version_id: id,
-  lifecycle_revision: revision,
-  agenda_revision: revision,
-  context_token: z.string(),
-  config_hash: digest,
-  effects: z.array(CockpitPreparationPreviewEffectSchema).max(50),
-  selected_total: count,
-  can_confirm: capability,
-  blocked_reasons: z.array(z.string()).max(100),
-})
-  .refine((v) => (!v.can_confirm || v.context_token.trim().length > 0) && v.selected_total === v.effects.filter((e) => e.selected).length && new Set(v.effects.map((e) => e.slot_id)).size === v.effects.length)
-  .transform((v) => ({ ...v, can_confirm: v.can_confirm && v.selected_total > 0 && v.effects.every((e) => !e.selected || e.allowed && effectKinds.has(e.kind)) }));
 
 export const CockpitPreparationCountsSchema = z.object({
   total: count,
@@ -194,8 +74,6 @@ export const CockpitPreparationOperationHeaderSchema = z.object({
   revision: revision,
   state: z.string(),
   command_key: commandKey,
-  template_id: id.nullable(),
-  template_version_id: id.nullable(),
   created_by: z.string(),
   created_by_name: z.string(),
   responsible_user_id: id,
@@ -207,8 +85,6 @@ export const CockpitPreparationOperationHeaderSchema = z.object({
   can_pause: capability,
   can_claim: capability,
   blocked_reasons: z.array(z.string()).max(100),
-  template_title: z.string().catch("").default(""),
-  template_version_number: z.number().int().positive().nullable().catch(null).default(null),
   responsible_user_name: z.string().catch("").default(""),
 })
   .refine((v) => v.state !== "completed" || v.counts.pending === 0 && v.counts.needs_attention === 0)
@@ -219,8 +95,6 @@ export const CockpitPreparationEffectReceiptSchema = z.object({
   command_key: commandKey,
   request_hash: digest,
   kind: z.string(),
-  agenda_id: id.nullable(),
-  reference_id: id.nullable(),
   issue_id: id.nullable(),
   run_id: id.nullable(),
   issue: CockpitTaskSchema.nullable(),
@@ -236,7 +110,7 @@ export const CockpitPreparationEffectReceiptSchema = z.object({
   facts_hash: digest,
   target_meeting_id: id.nullable(),
 })
-  .refine((v) => (v.kind !== "link_meeting" || Boolean(v.target_meeting_id && v.agenda_id && v.reference_id && v.issue_id)) && v.stopped_wakeup_total >= v.stopped_wakeup_ids.length && v.cancelled_queue_total >= v.cancelled_queue_ids.length && new Set(v.stopped_wakeup_ids).size === v.stopped_wakeup_ids.length && new Set(v.cancelled_queue_ids).size === v.cancelled_queue_ids.length && (v.kind !== "stop_run" || Boolean(v.run_id) && ["completed", "failed", "cancelled"].includes(v.run_status ?? "") && (!v.changed || v.run_status === "cancelled")) && (!v.issue || v.issue.id === v.issue_id) && (v.kind !== "preparation_issue" || Boolean(v.issue_id && v.reference_id && v.agenda_id && v.issue?.status === "backlog")));
+  .refine((v) => (v.kind !== "link_meeting" || Boolean(v.target_meeting_id && v.issue_id)) && v.stopped_wakeup_total >= v.stopped_wakeup_ids.length && v.cancelled_queue_total >= v.cancelled_queue_ids.length && new Set(v.stopped_wakeup_ids).size === v.stopped_wakeup_ids.length && new Set(v.cancelled_queue_ids).size === v.cancelled_queue_ids.length && (v.kind !== "stop_run" || Boolean(v.run_id) && ["completed", "failed", "cancelled"].includes(v.run_status ?? "") && (!v.changed || v.run_status === "cancelled")) && (!v.issue || v.issue.id === v.issue_id));
 
 export const CockpitPreparationEffectSchema = z.object({
   id: id,
@@ -324,7 +198,6 @@ export const CockpitPreparationCommandReceiptSchema = z.object({
   request_hash: digest,
   occurrence: CockpitOccurrenceSchema.nullable(),
   context_token: z.string(),
-  template_version_id: id.nullable(),
   authorization: CockpitPreparationAuthorizationSchema.nullable(),
   previous_authorization: CockpitPreparationAuthorizationSchema.nullable(),
 })
@@ -448,13 +321,10 @@ export const CockpitMeetingOperationBasisSchema = z.object({
   reinstate: IssueOperationFieldSchema,
   archive: IssueOperationFieldSchema,
   unarchive: IssueOperationFieldSchema,
-  add_preparation: IssueOperationFieldSchema,
-  apply_template: IssueOperationFieldSchema,
-  can_add_preparation: capability,
   pending: CockpitMeetingPendingCountsSchema,
   current_operation: CockpitPreparationOperationHeaderSchema.nullable(),
   targets: z.array(IssueOperationTargetSchema).max(3),
   targets_total: count,
 })
   .refine((v) => v.schema_version === 1 && v.targets_total >= v.targets.length)
-  .transform((v) => v.availability === "available" ? { ...v, can_add_preparation: v.can_add_preparation && v.add_preparation.state === "allowed" } : { ...v, can_add_preparation: false, delete: { state: "unknown" as const, reason_codes: v.delete.reason_codes }, cancel: { state: "unknown" as const, reason_codes: v.cancel.reason_codes }, reinstate: { state: "unknown" as const, reason_codes: v.reinstate.reason_codes }, archive: { state: "unknown" as const, reason_codes: v.archive.reason_codes }, unarchive: { state: "unknown" as const, reason_codes: v.unarchive.reason_codes }, add_preparation: { state: "unknown" as const, reason_codes: v.add_preparation.reason_codes }, apply_template: { state: "unknown" as const, reason_codes: v.apply_template.reason_codes }, append_disposition: { state: "unknown" as const, reason_codes: v.append_disposition.reason_codes } });
+  .transform((v) => v.availability === "available" ? v : { ...v, delete: { state: "unknown" as const, reason_codes: v.delete.reason_codes }, cancel: { state: "unknown" as const, reason_codes: v.cancel.reason_codes }, reinstate: { state: "unknown" as const, reason_codes: v.reinstate.reason_codes }, archive: { state: "unknown" as const, reason_codes: v.archive.reason_codes }, unarchive: { state: "unknown" as const, reason_codes: v.unarchive.reason_codes }, append_disposition: { state: "unknown" as const, reason_codes: v.append_disposition.reason_codes } });

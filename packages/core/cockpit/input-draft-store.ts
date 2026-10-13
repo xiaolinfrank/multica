@@ -33,8 +33,6 @@ const commands = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("restart"), inputId: id, versionId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputRestartInputSchema) }),
   z.object({ kind: z.literal("finalize"), inputId: id, versionId: id, transferId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputFinalizeInputSchema) }),
   z.object({ kind: z.literal("abandon"), inputId: id, versionId: id, transferId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputAbandonInputSchema) }),
-  z.object({ kind: z.literal("reference"), meetingId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputReferenceCreateInputSchema) }),
-  z.object({ kind: z.literal("remove_reference"), meetingId: id, referenceId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputReferenceRemoveInputSchema) }),
   z.object({ kind: z.literal("manifest"), issueId: id, body: z.preprocess(cockpitInputBody, schemas.CockpitInputManifestSaveInputSchema) }),
 ]);
 const persisted = z.object({ forms: z.record(z.string(), form), commands: z.record(z.string(), commands) });

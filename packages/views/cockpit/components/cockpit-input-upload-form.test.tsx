@@ -6,7 +6,7 @@ import { api, ApiError } from "@multica/core/api";
 import { cockpitEndedInputRegistrations, cockpitInputDraftKey, useCockpitInputDraftStore } from "@multica/core/cockpit";
 import type { CockpitInputCreateInput, CockpitInputCreateResult, CockpitInputVersionResult, CockpitInputVersionSubmitInput } from "@multica/core/types/cockpit-input";
 import { CockpitInputUploadForm } from "./cockpit-input-upload-form";
-import { inputHeader, inputPrincipal, inputTransfer, inputVersion, INPUT_ID, INPUT_MEETING, INPUT_MEMBER, INPUT_REFERENCE, INPUT_TIME, INPUT_TRANSFER, INPUT_VERSION, INPUT_WS } from "./input-test-fixtures";
+import { inputHeader, inputPrincipal, inputTransfer, inputVersion, INPUT_ID, INPUT_MEETING, INPUT_MEMBER, INPUT_TIME, INPUT_TRANSFER, INPUT_VERSION, INPUT_WS } from "./input-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
 const navigation = { pathname: "/ws/cockpit", searchParams: new URLSearchParams(`meeting=${INPUT_MEETING}&meeting_view=resources`) };
@@ -26,13 +26,9 @@ function createResult(body: CockpitInputCreateInput): CockpitInputCreateResult {
     current: inputHeader({ creationKey: body.commandKey, title: body.title, description: body.description }) };
 }
 function versionResult(body: CockpitInputVersionSubmitInput): CockpitInputVersionResult {
-  const ref = body.initialReference;
-  if (!ref) throw new Error("The upload must preserve the explicitly selected meeting reference");
   return { workspaceId: INPUT_WS, inputId: INPUT_ID, commandKey: body.commandKey, action: "input_version_submit", replayed: false,
     receipt: { commandKey: body.commandKey, requestHash: "b".repeat(64), inputId: INPUT_ID, versionId: INPUT_VERSION, versionNumber: 1, inputRevision: 2,
       source: body.source, payloadKind: "file", captureState: "awaiting_upload", transferId: INPUT_TRANSFER, transferRevision: 1,
-      initialReference: { commandKey: ref.referenceKey, requestHash: "c".repeat(64), referenceId: INPUT_REFERENCE, meetingId: ref.meetingId, agendaId: ref.agendaId,
-        inputId: INPUT_ID, inputVersionId: INPUT_VERSION, purpose: ref.purpose, removed: false, principal: inputPrincipal(), acceptedAt: INPUT_TIME },
       principal: inputPrincipal(), acceptedAt: INPUT_TIME }, current: version, transfer };
 }
 
@@ -146,15 +142,15 @@ describe("original material upload", () => {
     } finally { view.unmount(); view.client.clear(); }
   });
 
-  it("registers a meeting input and fixes its original file without a delivery or review issue", async () => {
+  it("registers an independent input and fixes its file without a meeting reference", async () => {
     const view = show();
     try {
       const file = chooseFile();
       fireEvent.click(screen.getByRole("button", { name: "Upload and save this version" }));
       await waitFor(() => expect(view.onOpenVersion).toHaveBeenCalledExactlyOnceWith(INPUT_ID, INPUT_VERSION));
       expect(api.createCockpitInput).toHaveBeenCalledExactlyOnceWith(INPUT_WS, expect.objectContaining({ title: file.name, projectId: null, originIssueId: null }));
-      expect(api.submitCockpitInputVersion).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, expect.objectContaining({ expectedRevision: 1,
-        initialReference: expect.objectContaining({ meetingId: INPUT_MEETING, agendaId: null, purpose: "material" }) }));
+      expect(api.submitCockpitInputVersion).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, expect.objectContaining({ expectedRevision: 1 }));
+      expect(vi.mocked(api.submitCockpitInputVersion).mock.calls[0]?.[2]).not.toHaveProperty("initialReference");
       expect(api.uploadCockpitInputBytes).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, INPUT_VERSION, INPUT_TRANSFER, 1, file, undefined);
       expect(api.finalizeCockpitInputTransfer).toHaveBeenCalledExactlyOnceWith(INPUT_WS, INPUT_ID, INPUT_VERSION, INPUT_TRANSFER,
         expect.objectContaining({ expectedRevision: 4, expectedContentHash: "a".repeat(64) }));

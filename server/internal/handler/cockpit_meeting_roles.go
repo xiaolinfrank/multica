@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -102,12 +100,6 @@ func (h *Handler) SetCockpitMeetingIssueRoles(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if slices.Contains(roles, "preparation") && !slices.Contains(link.Roles, "preparation") {
-		if err := service.RequireCockpitMeetingPreparationOpen(ctx, q, cc.workspaceID, meeting.ID); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
 	}
 	required, err := q.CockpitMeetingWorkflowRequiredRole(ctx, db.CockpitMeetingWorkflowRequiredRoleParams{WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issue.ID})
 	if err != nil {

@@ -6,8 +6,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
 import { useCockpitMeetingAgendaDraftStore } from "@multica/core/cockpit";
 import { CockpitMeetingOccurrence, CockpitMeetingMaterialsConfirmation } from "./cockpit-meeting-lifecycle";
-import { artifactFixture } from "./artifact-test-fixtures";
-import { agendaFixture, lifecycleFixture, lifecycleResultFixture } from "./meeting-lifecycle-test-fixtures";
+import { lifecycleFixture, lifecycleResultFixture } from "./meeting-lifecycle-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
 const navigation = vi.hoisted(() => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("meeting=meeting-1&meeting_view=agenda"), push: vi.fn() }));
@@ -22,26 +21,18 @@ function shell(children: React.ReactNode, cache = client(), copy: typeof enCockp
 beforeEach(() => { vi.clearAllMocks(); useCockpitMeetingAgendaDraftStore.getState().clearDraft(); navigation.searchParams = new URLSearchParams("meeting=meeting-1&meeting_view=agenda"); });
 
 describe("meeting occurrence and material confirmation", () => {
-  it("names each recorded operation and shows its agenda, preparation issue or material conclusion without loading every receipt", async () => {
-    const header = lifecycleFixture(); const agenda = agendaFixture(); const issue = artifactFixture().source_issue;
-    const metadata = ["agenda_update", "preparation_issue_create", "materials"].map((action) => ({ command_key: action, action, actor_id: "user-1", actor_name: "Recorder", created_at: "2026-10-11T01:00:00Z", revision: 2, agenda_id: action === "materials" ? null : agenda.id, reference_id: action === "preparation_issue_create" ? "reference-1" : null, issue_id: action === "preparation_issue_create" ? issue.id : null }));
-    vi.mocked(api.getCockpitLifecycleCommands).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", page_size: 25, total: 3, next_cursor: null, items: metadata });
+  it("names each recorded material conclusion without loading every receipt", async () => {
+    const header = lifecycleFixture();
+    const metadata = ["materials"].map((action) => ({ command_key: action, action, actor_id: "user-1", actor_name: "Recorder", created_at: "2026-10-11T01:00:00Z", revision: 2, issue_id: null }));
+    vi.mocked(api.getCockpitLifecycleCommands).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", page_size: 25, total: 1, next_cursor: null, items: metadata });
     vi.mocked(api.getCockpitLifecycleCommand).mockImplementation(async (_ws, _meeting, commandKey) => {
       const item = metadata.find((row) => row.command_key === commandKey)!;
-      const receipt = lifecycleResultFixture(header, commandKey, "agenda_update", commandKey === "materials" ? { materials: { workflow_revision: 2, ready: true, confirmed_at: "2026-10-11T01:00:00Z", confirmed_by: "user-1", released: false } }
-        : commandKey === "agenda_update" ? { agenda_id: agenda.id, agenda: { ...agenda, notes: "Large historical body remains outside the metadata list" } }
-          : { agenda_id: agenda.id, issue_id: issue.id, reference: { id: "reference-1", workspace_id: "ws-1", meeting_id: "meeting-1", agenda_id: agenda.id, kind: "issue", target_id: issue.id, purpose: "preparation", available: true, label: issue.title, issue, artifact_id: null, version_id: null, version_number: null, content_hash: null, created_at: "2026-10-11T01:00:00Z", removed_at: null, can_remove: true } }).receipt;
+      const receipt = lifecycleResultFixture(header, commandKey, "materials", { materials: { workflow_revision: 2, ready: true, confirmed_at: "2026-10-11T01:00:00Z", confirmed_by: "user-1", released: false } }).receipt;
       return { ...item, workspace_id: "ws-1", meeting_id: "meeting-1", receipt };
     });
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />)); fireEvent.click(screen.getByText("Actual times & confirmation history")); fireEvent.click(screen.getByRole("button", { name: "Confirmation history" }));
-    await screen.findByRole("button", { name: "Save agenda item" }); expect(api.getCockpitLifecycleCommand).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Save agenda item" })); expect(await screen.findByText(agenda.title)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Open the current agenda item (new tab)" })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1&agenda=agenda-1&meeting_view=agenda");
-    expect(screen.queryByText("Large historical body remains outside the metadata list")).toBeNull();
-    await userEvent.keyboard("{Escape}"); fireEvent.click(screen.getByRole("button", { name: "Create preparation issue" }));
-    expect(await screen.findByRole("link", { name: `${issue.identifier} ${issue.title} (new tab)` })).toHaveAttribute("href", `/ws/issues/${issue.identifier}`);
-    await userEvent.keyboard("{Escape}"); fireEvent.click(screen.getByRole("button", { name: "Materials confirmation" }));
-    expect(await screen.findByText("Materials were confirmed ready.")).toBeVisible(); expect(api.getCockpitLifecycleCommand).toHaveBeenCalledTimes(3);
+    fireEvent.click(await screen.findByRole("button", { name: "Materials confirmation" }));
+    expect(await screen.findByText("Materials were confirmed ready.")).toBeVisible(); expect(api.getCockpitLifecycleCommand).toHaveBeenCalledTimes(1);
   });
 
   it("records the end without a workflow or inventing actual times, and retries the same frozen command after an ambiguous response", async () => {
@@ -89,8 +80,8 @@ describe("meeting occurrence and material confirmation", () => {
   });
   it("shows legacy confirmation as unknown actual time and fetches history details only after a named record is opened", async () => {
     const header = lifecycleFixture({ can_end: false, can_schedule: false, occurrence: { ...lifecycleFixture().occurrence, state: "ended", ended_at: "2025-01-01T10:00:00Z", ended_source: "legacy_confirmation" } });
-    vi.mocked(api.getCockpitLifecycleCommands).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", page_size: 25, total: 1, next_cursor: null, items: [{ command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, agenda_id: null, reference_id: null, issue_id: null }] });
-    vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, agenda_id: null, reference_id: null, issue_id: null, receipt: lifecycleResultFixture(header, "command-1", "correct_times", { reason: "Correct the meeting record", previous_occurrence: header.occurrence, occurrence: header.occurrence }).receipt });
+    vi.mocked(api.getCockpitLifecycleCommands).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", page_size: 25, total: 1, next_cursor: null, items: [{ command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, issue_id: null }] });
+    vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, issue_id: null, receipt: lifecycleResultFixture(header, "command-1", "correct_times", { reason: "Correct the meeting record", previous_occurrence: header.occurrence, occurrence: header.occurrence }).receipt });
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />)); expect(api.getCockpitLifecycleCommands).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Actual times & confirmation history")); expect(screen.getByText(enCockpit.meeting_lifecycle.legacy_confirmation)).toBeVisible(); fireEvent.click(screen.getByRole("button", { name: "Confirmation history" }));
     await screen.findByText(/Reviewer/); expect(api.getCockpitLifecycleCommand).not.toHaveBeenCalled();
@@ -99,9 +90,9 @@ describe("meeting occurrence and material confirmation", () => {
   it("requires an explicit material confirmation and exposes real preparation routes", async () => {
     const header = lifecycleFixture({ workflow_enabled: true, can_confirm_materials: true, materials: { workflow_revision: 4, ready: false, confirmed_at: null, confirmed_by: null, released: false } });
     vi.mocked(api.confirmCockpitMaterials).mockRejectedValueOnce(new Error("Network timeout"));
-    render(shell(<CockpitMeetingMaterialsConfirmation wsId="ws-1" header={header} resourcesHref="/ws/cockpit?meeting=meeting-1&meeting_view=resources" workflowHref="/ws/cockpit?meeting=meeting-1&meeting_view=workflow" />));
+    render(shell(<CockpitMeetingMaterialsConfirmation wsId="ws-1" header={header} resourcesHref="/ws/cockpit?meeting=meeting-1&meeting_view=resources" />));
     expect(screen.getByRole("checkbox", { name: "I have checked the minutes inputs" })).not.toBeChecked(); expect(api.confirmCockpitMaterials).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: "Open links & materials" })).toHaveAttribute("href", expect.stringContaining("meeting_view=resources"));
+    expect(screen.getByRole("link", { name: "Open the meeting directory" })).toHaveAttribute("href", expect.stringContaining("meeting_view=resources"));
     fireEvent.click(screen.getByRole("checkbox", { name: "I have checked the minutes inputs" })); await screen.findByText("Network timeout");
     expect(vi.mocked(api.confirmCockpitMaterials).mock.calls[0]![2]).toMatchObject({ expected_revision: 4, materials_ready: true }); expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Retry the same request" })).toBeEnabled();

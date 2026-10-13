@@ -794,7 +794,7 @@ func TestCockpitWorkflowReleaseHandoffConnectsAdoptedMinutesToSubmission(t *test
 				t.Fatal(err)
 			}
 			meetingID := util.UUIDToString(f.meeting)
-			for _, fragment := range []string{meetingID, "multica cockpit meeting show " + meetingID + " --json", "multica cockpit meeting lifecycle show " + meetingID, "multica cockpit meeting agenda list " + meetingID, "multica cockpit meeting agenda show " + meetingID, "multica cockpit meeting agenda references " + meetingID, "multica cockpit meeting workflow summary " + meetingID, "multica cockpit meeting workflow version " + meetingID, "multica cockpit meeting workflow submit " + meetingID, "--revision", "--submission-key", "--content-file", "--compact"} {
+			for _, fragment := range []string{meetingID, "multica cockpit meeting show " + meetingID + " --json", "multica cockpit meeting lifecycle show " + meetingID, "The meeting NAS directory named by", "multica cockpit meeting workflow summary " + meetingID, "multica cockpit meeting workflow version " + meetingID, "multica cockpit meeting workflow submit " + meetingID, "--revision", "--submission-key", "--content-file", "--compact"} {
 				if !task.HandoffNote.Valid || !strings.Contains(task.HandoffNote.String, fragment) {
 					t.Errorf("handoff does not provide %q: %q", fragment, task.HandoffNote.String)
 				}

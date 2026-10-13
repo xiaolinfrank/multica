@@ -279,7 +279,7 @@ describe("Cockpit secondary interactions", () => {
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary(workflowFixture({ meeting_id: meetingId })));
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Working group weekly" }));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Meeting actions" }));
     expect(await screen.findByRole("button", { name: "Delete meeting Working group weekly" })).toBeDisabled();
     expect(await screen.findByText("This meeting has a work package and cannot be deleted. Its tasks and versions are retained.")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -291,7 +291,7 @@ describe("Cockpit secondary interactions", () => {
     vi.mocked(api.deleteCockpitMeeting).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Working group weekly" }));
-    fireEvent.click(await screen.findByRole("tab", { name: "Details" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Meeting actions" }));
     const trigger = await screen.findByRole("button", { name: "Delete meeting Working group weekly" }); await waitFor(() => expect(trigger).toBeEnabled()); fireEvent.click(trigger);
     const dialog = await screen.findByRole("alertdialog");
     const remove = within(dialog).getByRole("button", { name: "Delete meeting Working group weekly" });

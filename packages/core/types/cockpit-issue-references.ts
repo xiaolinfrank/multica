@@ -4,7 +4,7 @@ export interface CockpitIssueNodeReference {
 export interface CockpitIssueMeetingReference {
   meeting_id: string; code: string; title: string; meet_date: string; available: boolean;
   role: string; roles: string[]; required_roles: string[]; can_unlink: boolean;
-  has_direct_reference?: boolean; has_agenda_reference?: boolean; agenda_id?: string | null; agenda_total?: number;
+  has_direct_reference?: boolean;
 }
 export interface CockpitIssueReferencePage<T> {
   workspace_id: string; issue_id: string; items: T[]; total: number; next_cursor: string | null;

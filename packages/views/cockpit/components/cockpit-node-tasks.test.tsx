@@ -14,7 +14,10 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
   getCockpitNodeTasks: vi.fn(), listIssueStatuses: vi.fn(), createCockpitNodeTask: vi.fn(), getCockpitPrimaryNode: vi.fn(), setCockpitPrimaryNode: vi.fn(), searchIssues: vi.fn(),
 } }));
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
-vi.mock("../../navigation", () => ({ AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock("../../navigation", () => ({
+  AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams(), push: vi.fn() }),
+}));
 vi.mock("../../issues/components/pickers/assignee-picker", () => ({ AssigneePicker: () => <button type="button">Assignee picker</button> }));
 
 function setup() {

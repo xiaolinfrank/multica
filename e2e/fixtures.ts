@@ -923,7 +923,7 @@ export class TestApiClient {
     return response.json();
   }
 
-  async updateCockpitBoard(body: { title?: string; goal_title?: string; goal_date?: string }): Promise<void> {
+  async updateCockpitBoard(body: { title?: string; goal_title?: string; goal_date?: string; meeting_project_id?: string; meeting_module_id?: string }): Promise<void> {
     const response = await this.authedFetch("/api/cockpit", { method: "PATCH", body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`update cockpit failed: ${response.status} ${await response.text()}`);
   }

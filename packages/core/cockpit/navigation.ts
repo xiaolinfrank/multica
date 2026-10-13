@@ -7,8 +7,8 @@ export type CockpitNodeView = "tasks" | "artifacts" | "acceptance" | "details";
  * "workflow" remain accepted as legacy URL spellings and normalize to the
  * stage views on read.
  */
-export type CockpitMeetingView = "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details" | "agenda" | "workflow";
-export type CockpitSurface = "work" | "plan" | "meetings" | "artifacts" | "governance";
+export type CockpitMeetingView = "preparation" | "recording" | "minutes_review" | "resources" | "details" | "agenda" | "workflow";
+export type CockpitSurface = "chat" | "work" | "plan" | "meetings" | "artifacts" | "governance";
 export type CockpitPlanView = "gantt" | "table" | "responsibility" | "milestones" | "finance" | "operations";
 export type CockpitGovernanceView = "changes" | "decisions" | "risks" | "history" | "automation";
 export type CockpitArtifactView = "review" | "all" | "directory";
@@ -32,6 +32,9 @@ export function cockpitScope(search: { get: (name: string) => string | null }): 
 
 export function cockpitScopedPath(pathname: string, search: URLSearchParams, scope: CockpitScope): string {
   const query = new URLSearchParams(search);
+  if (query.get("project") !== scope.projectId || query.get("module") !== scope.moduleId) {
+    query.delete("session"); query.delete("agent");
+  }
   if (scope.projectId) query.set("project", scope.projectId); else query.delete("project");
   if (scope.moduleId) query.set("module", scope.moduleId); else query.delete("module");
   const suffix = query.toString();
@@ -41,7 +44,7 @@ export function cockpitScopedPath(pathname: string, search: URLSearchParams, sco
 export function cockpitSurfacePath(pathname: string, surface: CockpitSurface, scope: CockpitScope = EMPTY_COCKPIT_SCOPE,
   view?: CockpitPlanView | CockpitGovernanceView | CockpitArtifactView): string {
   const query = new URLSearchParams();
-  if (surface !== "work") query.set("tab", surface);
+  if (surface !== "chat") query.set("tab", surface);
   if (view && surface === "plan") query.set("plan_view", view);
   if (view && surface === "governance") query.set("governance_view", view);
   if (view && surface === "artifacts") query.set("artifact_view", view);
@@ -56,7 +59,7 @@ export function cockpitShellDestination(search: { get: (name: string) => string 
   const surface: CockpitSurface = search.get("artifact") ? "artifacts" : search.get("meeting") ? "meetings" : search.get("node") ? "plan"
     : search.get("view") === "operations" || tab === "gantt" || tab === "finance" || tab === "plan" ? "plan"
       : tab === "changes" || tab === "governance" ? "governance"
-        : tab === "meetings" || tab === "artifacts" ? tab : "work";
+        : tab === "meetings" || tab === "artifacts" ? tab : tab === "work" || tab === "overview" ? "work" : "chat";
   const planView: CockpitPlanView = search.get("view") === "operations" ? "operations" : tab === "finance" ? "finance"
     : plan === "table" || plan === "responsibility" || plan === "milestones" || plan === "finance" || plan === "operations" ? plan : "gantt";
   return { surface, planView,
@@ -70,7 +73,6 @@ export interface CockpitDestination {
   nodeId: string | null;
   meetingId: string | null;
   actionId: string | null;
-  agendaId: string | null;
   preparationId: string | null;
   directoryOperationId: string | null;
   nodeView: CockpitNodeView | null;
@@ -83,14 +85,13 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
   const meetingId = search.get("meeting") || null;
   const nodeId = meetingId ? null : search.get("node") || null;
   const actionId = meetingId ? search.get("action") || null : null;
-  const agendaId = meetingId ? search.get("agenda") || null : null;
   const preparationId = meetingId ? search.get("preparation") || null : null;
   const directoryOperationId = meetingId ? search.get("directory_operation") || null : null;
   const requestedNodeView = search.get("node_view");
   const requestedMeetingView = search.get("meeting_view");
   const nodeView = nodeId && (requestedNodeView === "tasks" || requestedNodeView === "artifacts" || requestedNodeView === "acceptance" || requestedNodeView === "details") ? requestedNodeView : null;
   const legacyMeetingView: Record<string, CockpitMeetingView> = { agenda: "preparation", workflow: "minutes_review" };
-  const stageMeetingViews: readonly CockpitMeetingView[] = ["preparation", "recording", "minutes_review", "followup", "resources", "details"];
+  const stageMeetingViews: readonly CockpitMeetingView[] = ["preparation", "recording", "minutes_review", "resources", "details"];
   const meetingView = meetingId && requestedMeetingView
     ? stageMeetingViews.includes(requestedMeetingView as CockpitMeetingView)
       ? requestedMeetingView as CockpitMeetingView
@@ -101,7 +102,7 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
     : search.get("view") === "operations" ? "operations"
       : tab === "gantt" || tab === "meetings" || tab === "changes" || tab === "finance" ? tab : "work";
   return { area, boardTab: area === "operations" || area === "work" ? "overview" : area,
-    nodeId, meetingId, actionId, agendaId, preparationId, directoryOperationId, nodeView, meetingView, key: JSON.stringify([area, nodeId, meetingId]) };
+    nodeId, meetingId, actionId, preparationId, directoryOperationId, nodeView, meetingView, key: JSON.stringify([area, nodeId, meetingId]) };
 }
 
 /** Section changes deliberately drop stale object targets and unrelated filters. */
@@ -110,16 +111,12 @@ export function cockpitAreaPath(pathname: string, area: CockpitArea): string {
   return `${pathname}?${area === "operations" ? "view=operations" : `tab=${area}`}`;
 }
 
-export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView; planView?: CockpitPlanView; requestId?: string } | { kind: "meeting"; id: string; actionId?: string; agendaId?: string; preparationId?: string; directoryOperationId?: string; view?: CockpitMeetingView }, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
+export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: string; view?: CockpitNodeView; planView?: CockpitPlanView; requestId?: string } | { kind: "meeting"; id: string; actionId?: string; preparationId?: string; directoryOperationId?: string; view?: CockpitMeetingView }, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
   const query = new URLSearchParams({ [target.kind]: target.id });
   if (target.kind === "meeting" && target.actionId) query.set("action", target.actionId);
-  if (target.kind === "meeting" && target.agendaId) {
-    query.set("agenda", target.agendaId);
-    if (!target.view) query.set("meeting_view", "preparation");
-  }
   if (target.kind === "meeting" && target.preparationId) {
     query.set("preparation", target.preparationId);
-    if (!target.view) query.set("meeting_view", "preparation");
+    if (!target.view) query.set("meeting_view", "details");
   }
   if (target.kind === "meeting" && target.directoryOperationId) {
     query.set("directory_operation", target.directoryOperationId);
@@ -155,35 +152,11 @@ export function cockpitMeetingContextPath(pathname: string, meetingId: string | 
   const base = meetingId ? cockpitObjectPath(pathname, { kind: "meeting", id: meetingId, view }, scope) : cockpitSurfacePath(pathname, "meetings", scope);
   const query = new URLSearchParams(base.split("?")[1] ?? "");
   if (meetingId && source.get("meeting") === meetingId && source.get("action")) query.set("action", source.get("action")!);
-  if (meetingId && source.get("meeting") === meetingId && source.get("agenda")) query.set("agenda", source.get("agenda")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("preparation")) query.set("preparation", source.get("preparation")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("directory_operation")) query.set("directory_operation", source.get("directory_operation")!);
-  if (meetingId && source.get("meeting_focus") === "1") query.set("meeting_focus", "1");
   for (const name of ["meeting_node", "meeting_nodes", "meeting_archive", "from", "to"] as const) {
     const value = source.get(name); if (value) query.set(name, value);
   }
-  return `${pathname}?${query}`;
-}
-
-/** Expand or restore one meeting without changing its selected stage or context. */
-export function cockpitMeetingFocusPath(pathname: string, meetingId: string, scope: CockpitScope,
-  source: { get: (key: string) => string | null }, focused: boolean, view?: CockpitMeetingView): string {
-  const base = cockpitMeetingContextPath(pathname, meetingId, scope, source, view ?? (source.get("meeting_view") as CockpitMeetingView | undefined));
-  const query = new URLSearchParams(base.split("?")[1] ?? "");
-  if (focused) query.set("meeting_focus", "1"); else query.delete("meeting_focus");
-  return `${pathname}?${query}`;
-}
-
-/** Opening or closing one topic preserves the meeting workbench's other URL state. */
-export function cockpitMeetingAgendaPath(pathname: string, meetingId: string, agendaId: string | null,
-  source: { toString(): string }): string {
-  const query = new URLSearchParams(source.toString());
-  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("directory_operation"); }
-  for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance", "preparation"]) query.delete(name);
-  query.set("meeting", meetingId);
-  const currentView = query.get("meeting_view");
-  query.set("meeting_view", currentView === "recording" ? "recording" : "preparation");
-  if (agendaId) query.set("agenda", agendaId); else query.delete("agenda");
   return `${pathname}?${query}`;
 }
 
@@ -191,11 +164,10 @@ export function cockpitMeetingAgendaPath(pathname: string, meetingId: string, ag
 export function cockpitMeetingPreparationPath(pathname: string, meetingId: string, preparationId: string | null,
   source: { toString(): string }): string {
   const query = new URLSearchParams(source.toString());
-  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("agenda"); query.delete("directory_operation"); }
+  if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("directory_operation"); }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance"]) query.delete(name);
   query.set("meeting", meetingId);
-  const currentView = query.get("meeting_view");
-  query.set("meeting_view", currentView === "recording" ? "recording" : "preparation");
+  query.set("meeting_view", "details");
   if (preparationId) query.set("preparation", preparationId); else query.delete("preparation");
   return `${pathname}?${query}`;
 }
@@ -205,7 +177,7 @@ export function cockpitMeetingDirectoryPath(pathname: string, meetingId: string,
   source: { toString(): string }): string {
   const query = new URLSearchParams(source.toString());
   if (query.get("meeting") !== meetingId) {
-    query.delete("action"); query.delete("agenda"); query.delete("preparation");
+    query.delete("action"); query.delete("preparation");
   }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance"]) query.delete(name);
   query.set("meeting", meetingId);

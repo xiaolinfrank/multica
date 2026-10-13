@@ -88,15 +88,6 @@ func inputReadMeeting(ctx context.Context, q *db.Queries, p CockpitInputQuery) (
 	if meeting.OccurrenceState == "cancelled" {
 		reasons = append(reasons, "meeting_cancelled")
 	}
-	if p.AgendaID.Valid {
-		agenda, err := q.GetCockpitMeetingAgenda(ctx, db.GetCockpitMeetingAgendaParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, ID: p.AgendaID})
-		if err != nil {
-			return nil, inputReadNotFound(err)
-		}
-		if agenda.RemovedAt.Valid {
-			reasons = append(reasons, "agenda_removed")
-		}
-	}
 	return reasons, nil
 }
 func (s *IssueService) GetCockpitInputCapabilities(ctx context.Context, p CockpitInputRead) (CockpitInputCapabilities, error) {
@@ -433,60 +424,5 @@ func (s *IssueService) GetCockpitInputTransfer(ctx context.Context, p CockpitInp
 	}
 	out.CockpitInputTransferMetadata = items[0]
 	out.ErrorMessage = row.ErrorMessage
-	return out, tx.Commit(ctx)
-}
-func (s *IssueService) ListCockpitInputReferences(ctx context.Context, p CockpitInputQuery) (CockpitInputReferencePage, error) {
-	out := CockpitInputReferencePage{Items: []CockpitInputReference{}, BlockedReasons: []string{}}
-	if err := inputReadPage(&p); err != nil {
-		return out, err
-	}
-	if p.ActorSource != "human" {
-		return out, inputError("permission_revoked", "Meeting input browsing requires a human workspace member.")
-	}
-	switch p.Purpose {
-	case "", "material", "recording", "supporting":
-	default:
-		return out, inputError("invalid_input", "The input reference purpose is unsupported.")
-	}
-	afterID, afterTime, err := inputDatedCursor(p, "references")
-	if err != nil {
-		return out, err
-	}
-	tx, q, _, err := s.beginInputRead(ctx, p.CockpitInputRead)
-	if err != nil {
-		return out, err
-	}
-	defer tx.Rollback(ctx)
-	reasons, err := inputReadMeeting(ctx, q, p)
-	if err != nil {
-		return out, err
-	}
-	out = CockpitInputReferencePage{WorkspaceID: util.UUIDToString(p.WorkspaceID), MeetingID: util.UUIDToString(p.MeetingID), AgendaID: planningUUID(p.AgendaID), Query: p.Scope.Query, Purpose: p.Purpose, IncludeRemoved: p.IncludeRemoved, PageSize: p.PageSize, Items: []CockpitInputReference{}, CanAdd: len(reasons) == 0, BlockedReasons: reasons}
-	keys, err := q.ListCockpitInputReferenceReadKeys(ctx, db.ListCockpitInputReferenceReadKeysParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, AgendaID: p.AgendaID, IncludeRemoved: p.IncludeRemoved, Purpose: p.Purpose, Query: p.Scope.Query, Prefix: inputPrefix(p.Scope.Query), AfterTime: afterTime, AfterID: afterID, PageLimit: p.PageSize + 1})
-	if err != nil {
-		return out, err
-	}
-	out.Total, err = q.CountCockpitInputReferenceReadKeys(ctx, db.CountCockpitInputReferenceReadKeysParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, AgendaID: p.AgendaID, IncludeRemoved: p.IncludeRemoved, Purpose: p.Purpose, Query: p.Scope.Query, Prefix: inputPrefix(p.Scope.Query)})
-	if err != nil {
-		return out, err
-	}
-	summary, err := q.ReadCockpitInputReferenceSummary(ctx, db.ReadCockpitInputReferenceSummaryParams{WorkspaceID: p.WorkspaceID, MeetingID: p.MeetingID, AgendaID: p.AgendaID})
-	if err != nil {
-		return out, err
-	}
-	out.Summary = CockpitInputReferenceSummary{Total: summary.Total, Ready: summary.Ready, Pending: summary.Pending, NeedsAttention: summary.NeedsAttention, AvailableReady: summary.AvailableReady, UnavailableReady: summary.UnavailableReady, UnknownReady: summary.UnknownReady}
-	if len(keys) > int(p.PageSize) {
-		keys = keys[:p.PageSize]
-		last := keys[len(keys)-1]
-		out.NextCursor = inputTimeCursor(p, "references", last.ID, last.CreatedAt)
-	}
-	rows := make([]db.CockpitInputReference, 0, len(keys))
-	for _, key := range keys {
-		rows = append(rows, db.CockpitInputReference{ID: key.ID, WorkspaceID: p.WorkspaceID})
-	}
-	out.Items, err = s.inputReferences(ctx, q, p.CockpitInputRead, rows)
-	if err != nil {
-		return out, err
-	}
 	return out, tx.Commit(ctx)
 }

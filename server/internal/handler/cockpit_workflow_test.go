@@ -218,8 +218,10 @@ func TestCockpitWorkflowHTTPMachineGuardsAndConflicts(t *testing.T) {
 	callCockpitWorkflow(t, testHandler.UpdateCockpitMeetingReadiness, http.MethodPatch, ws, meeting.ID, "", "",
 		map[string]any{"expected_revision": state.Revision + 99, "ended": true}).Want(http.StatusConflict)
 	callCockpitWorkflow(t, testHandler.UpdateCockpitMeetingReadiness, http.MethodPatch, ws, meeting.ID, "", "", map[string]any{"ended": true}).Want(http.StatusBadRequest)
+	// The readiness/release ceremony no longer gates submission: a manager can
+	// submit a version as soon as the workflow exists.
 	callCockpitWorkflow(t, testHandler.SubmitCockpitMeetingMinutes, http.MethodPost, ws, meeting.ID, "", "",
-		map[string]any{"expected_revision": state.Revision, "submission_key": uuid.NewString(), "content": "Too early"}).Want(http.StatusForbidden)
+		map[string]any{"expected_revision": state.Revision, "submission_key": uuid.NewString(), "content": "Early is fine now"}).Want(http.StatusOK)
 	foreign := cockpitMeetingFixture(t, "Other workspace")
 	callCockpitWorkflow(t, testHandler.GetCockpitMeetingWorkflow, http.MethodGet, foreign, meeting.ID, "", "", nil).Want(http.StatusNotFound)
 	callCockpitWorkflow(t, testHandler.EnableCockpitMeetingWorkflow, http.MethodPost, ws, meeting.ID, "", "",

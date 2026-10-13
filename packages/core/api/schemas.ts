@@ -2024,8 +2024,6 @@ export const CockpitMeetingIssueLinkSchema = z.object({
   required_roles: z.array(z.string()).catch([]).default([]),
   has_direct_reference: z.boolean().optional(),
   has_agenda_reference: z.boolean().default(false),
-  agenda_id: z.string().min(1).nullable().default(null),
-  agenda_total: z.number().int().nonnegative().default(0),
   issue_number: z.number().default(0),
   issue_identifier: z.string().default(""),
   issue_title: z.string().default(""),

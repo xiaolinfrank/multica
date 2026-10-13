@@ -48,15 +48,15 @@ function ControlForm({ wsId, header, effect, transition, draftKey, permitted, on
     setCockpitPreparationForm(draftKey, value);
     const result = await request.run(original ?? { kind: "control", meetingId: header.meeting_id, operationId: header.id,
       body: { command_key: createSafeId(), expected_revision: value.observedRevision, transition: value.transition, effect_id: value.effectId, reason: value.reason.trim() } }, async (command) => {
-      if (command.kind !== "control") throw new Error(t(($) => $.meeting_templates.unconfirmed)); return mutation.mutateAsync(command.body);
+      if (command.kind !== "control") throw new Error(t(($) => $.meeting_preparation.check_first)); return mutation.mutateAsync(command.body);
     });
     if (result) { clearCockpitPreparationForm(draftKey, value); if (result.stillCurrent()) onDone(transition === "resume"); }
   };
   const verify = async () => {
     const result = await request.verify(async (command) => {
-      if (command.kind !== "control") throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (command.kind !== "control") throw new Error(t(($) => $.meeting_preparation.check_first));
       const detail = await client.fetchQuery({ ...cockpitLifecycleCommandOptions(wsId, header.meeting_id, command.body.command_key), staleTime: 0 });
-      if (!detail || !cockpitPreparationCommandAcknowledged(detail, `preparation_${command.body.transition}`, command.body, header.id)) throw new Error(t(($) => $.meeting_templates.unconfirmed));
+      if (!detail || !cockpitPreparationCommandAcknowledged(detail, `preparation_${command.body.transition}`, command.body, header.id)) throw new Error(t(($) => $.meeting_preparation.check_first));
       await invalidateCockpitMeetingPreparationFacts(client, wsId, header.meeting_id, header.id); return detail;
     });
     if (result) { clearCockpitPreparationForm(draftKey, value); if (result.stillCurrent()) onDone(false); }

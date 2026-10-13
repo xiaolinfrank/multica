@@ -8,11 +8,8 @@ RETURNING lifecycle_revision;
 
 -- name: ReadCockpitMeetingPendingCounts :one
 WITH preparation_issues AS MATERIALIZED (
- SELECT r.target_id AS id FROM cockpit_meeting_agenda_reference r
- JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id AND a.removed_at IS NULL
- WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.purpose='preparation' AND r.removed_at IS NULL
- UNION SELECT i.issue_id FROM cockpit_meeting_issue i WHERE i.workspace_id=$1 AND i.meeting_id=$2 AND ('preparation'=ANY(i.roles) OR 'task'=ANY(i.roles))
- UNION SELECT l.issue_id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
+ SELECT i.issue_id AS id FROM cockpit_meeting_issue i WHERE i.workspace_id=$1 AND i.meeting_id=$2 AND ('preparation'=ANY(i.roles) OR 'task'=ANY(i.roles))
+ UNION SELECT l.issue_id AS id FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND 'minutes'=ANY(l.roles)
 )
 SELECT jsonb_build_object(
  'minutes_review',(SELECT count(*) FROM cockpit_meeting m JOIN cockpit_minutes_version v ON v.workspace_id=m.workspace_id AND v.meeting_id=m.id AND v.id=m.minutes_current_version_id WHERE m.workspace_id=$1 AND m.id=$2 AND v.decision='pending'),
@@ -28,17 +25,25 @@ WITH candidates AS (
  SELECT 'artifact'::text AS kind,a.id AS artifact_id,NULL::uuid AS operation_id,NULL::uuid AS directory_operation_id,a.title AS label,'fixed_artifact_source'::text AS purpose
  FROM cockpit_artifact a WHERE a.workspace_id=$1 AND EXISTS(SELECT 1 FROM cockpit_artifact_version v WHERE v.workspace_id=$1 AND v.artifact_id=a.id AND v.source_meeting_id=$2)
  UNION
- SELECT 'artifact',a.id,NULL::uuid,NULL::uuid,a.title,'fixed_artifact_reference'
- FROM cockpit_artifact_meeting_reference r JOIN cockpit_artifact a ON a.workspace_id=r.workspace_id AND a.id=r.artifact_id
- WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.removed_at IS NULL
- UNION
- SELECT 'preparation_operation',NULL::uuid,o.id,NULL::uuid,COALESCE(tv.title,m.title),'preparation_history'
+ SELECT 'preparation_operation',NULL::uuid,o.id,NULL::uuid,m.title,'preparation_history'
  FROM cockpit_meeting_preparation_operation o
  JOIN cockpit_meeting m ON m.workspace_id=o.workspace_id AND m.id=o.meeting_id
- LEFT JOIN cockpit_meeting_template_version tv ON tv.workspace_id=o.workspace_id AND tv.id=o.template_version_id
  WHERE o.workspace_id=$1 AND o.meeting_id=$2
  UNION
  SELECT 'directory_operation',NULL::uuid,NULL::uuid,o.id,o.directory,'meeting_directory_history'
  FROM cockpit_meeting_directory_operation o WHERE o.workspace_id=$1 AND o.meeting_id=$2
 ), grouped AS (SELECT kind,artifact_id,operation_id,directory_operation_id,min(label)::text AS label,min(purpose)::text AS purpose FROM candidates GROUP BY kind,artifact_id,operation_id,directory_operation_id), ranked AS (SELECT *,count(*) OVER() AS total FROM grouped)
 SELECT * FROM ranked ORDER BY kind,artifact_id,operation_id,directory_operation_id LIMIT 3;
+
+-- name: HasCockpitMeetingPreparation :one
+SELECT EXISTS(
+ SELECT 1 FROM cockpit_meeting_preparation_operation WHERE cockpit_meeting_preparation_operation.workspace_id=$1
+ UNION ALL SELECT 1 FROM cockpit_meeting WHERE cockpit_meeting.workspace_id=$1 AND (cancelled_at IS NOT NULL OR archived_at IS NOT NULL)
+ UNION ALL SELECT 1 FROM cockpit_meeting_lifecycle_command WHERE cockpit_meeting_lifecycle_command.workspace_id=$1 AND (operation_id IS NOT NULL OR kind IN ('cancel','reinstate','archive','unarchive'))
+);
+
+-- name: DeleteCockpitMeetingPreparationByWorkspace :exec
+WITH effects AS(DELETE FROM cockpit_meeting_preparation_effect WHERE cockpit_meeting_preparation_effect.workspace_id=$1),
+versions AS(DELETE FROM cockpit_meeting_template_version WHERE cockpit_meeting_template_version.workspace_id=$1),
+templates AS(DELETE FROM cockpit_meeting_template WHERE cockpit_meeting_template.workspace_id=$1)
+DELETE FROM cockpit_meeting_preparation_operation WHERE cockpit_meeting_preparation_operation.workspace_id=$1;

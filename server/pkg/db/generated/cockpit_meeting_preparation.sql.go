@@ -13,7 +13,7 @@ import (
 
 const applyCockpitPreparationEffect = `-- name: ApplyCockpitPreparationEffect :one
 UPDATE cockpit_meeting_preparation_effect SET state='applied',revision=revision+1,error_code='',reason='',
- agenda_id=$5,reference_id=$6,issue_id=$7,run_id=$8,receipt=$9,applied_by=$10,applied_at=now(),updated_at=now()
+ issue_id=$5,run_id=$6,receipt=$7,applied_by=$8,applied_at=now(),updated_at=now()
 WHERE workspace_id=$1 AND meeting_id=$2 AND operation_id=$3 AND id=$4 AND state='pending' RETURNING id, workspace_id, meeting_id, operation_id, slot_id, position, kind, label, command_key, dependency_id, request_hash, input, authorization_key, authorization_revision, authorization_hash, authorization_snapshot, state, revision, error_code, reason, agenda_id, reference_id, issue_id, run_id, target_meeting_id, receipt, applied_by, applied_at, created_at, updated_at
 `
 
@@ -22,8 +22,6 @@ type ApplyCockpitPreparationEffectParams struct {
 	MeetingID   pgtype.UUID `json:"meeting_id"`
 	OperationID pgtype.UUID `json:"operation_id"`
 	ID          pgtype.UUID `json:"id"`
-	AgendaID    pgtype.UUID `json:"agenda_id"`
-	ReferenceID pgtype.UUID `json:"reference_id"`
 	IssueID     pgtype.UUID `json:"issue_id"`
 	RunID       pgtype.UUID `json:"run_id"`
 	Receipt     []byte      `json:"receipt"`
@@ -36,8 +34,6 @@ func (q *Queries) ApplyCockpitPreparationEffect(ctx context.Context, arg ApplyCo
 		arg.MeetingID,
 		arg.OperationID,
 		arg.ID,
-		arg.AgendaID,
-		arg.ReferenceID,
 		arg.IssueID,
 		arg.RunID,
 		arg.Receipt,
@@ -115,7 +111,7 @@ func (q *Queries) CountCockpitPreparationEffects(ctx context.Context, arg CountC
 }
 
 const countCockpitPreparationOperations = `-- name: CountCockpitPreparationOperations :one
-SELECT count(*) FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2
+SELECT count(*) FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND kind='cancel_preparation'
 `
 
 type CountCockpitPreparationOperationsParams struct {
@@ -214,8 +210,8 @@ func (q *Queries) CreateCockpitPreparationEffect(ctx context.Context, arg Create
 }
 
 const createCockpitPreparationOperation = `-- name: CreateCockpitPreparationOperation :one
-INSERT INTO cockpit_meeting_preparation_operation(id,workspace_id,meeting_id,kind,command_key,request_hash,context_token,template_id,template_version_id,input,state,authorized_lifecycle_revision,authorized_agenda_revision,created_by,responsible_user_id)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at
+INSERT INTO cockpit_meeting_preparation_operation(id,workspace_id,meeting_id,kind,command_key,request_hash,context_token,input,state,authorized_lifecycle_revision,authorized_agenda_revision,created_by,responsible_user_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12) RETURNING id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at
 `
 
 type CreateCockpitPreparationOperationParams struct {
@@ -226,13 +222,11 @@ type CreateCockpitPreparationOperationParams struct {
 	CommandKey                  pgtype.UUID `json:"command_key"`
 	RequestHash                 string      `json:"request_hash"`
 	ContextToken                string      `json:"context_token"`
-	TemplateID                  pgtype.UUID `json:"template_id"`
-	TemplateVersionID           pgtype.UUID `json:"template_version_id"`
 	Input                       []byte      `json:"input"`
 	State                       string      `json:"state"`
 	AuthorizedLifecycleRevision int64       `json:"authorized_lifecycle_revision"`
-	AuthorizedAgendaRevision    int64       `json:"authorized_agenda_revision"`
 	CreatedBy                   pgtype.UUID `json:"created_by"`
+	ResponsibleUserID           pgtype.UUID `json:"responsible_user_id"`
 }
 
 func (q *Queries) CreateCockpitPreparationOperation(ctx context.Context, arg CreateCockpitPreparationOperationParams) (CockpitMeetingPreparationOperation, error) {
@@ -244,13 +238,11 @@ func (q *Queries) CreateCockpitPreparationOperation(ctx context.Context, arg Cre
 		arg.CommandKey,
 		arg.RequestHash,
 		arg.ContextToken,
-		arg.TemplateID,
-		arg.TemplateVersionID,
 		arg.Input,
 		arg.State,
 		arg.AuthorizedLifecycleRevision,
-		arg.AuthorizedAgendaRevision,
 		arg.CreatedBy,
+		arg.ResponsibleUserID,
 	)
 	var i CockpitMeetingPreparationOperation
 	err := row.Scan(
@@ -331,7 +323,7 @@ func (q *Queries) GetCockpitPreparationEffect(ctx context.Context, arg GetCockpi
 }
 
 const getCockpitPreparationOperation = `-- name: GetCockpitPreparationOperation :one
-SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3
+SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND kind='cancel_preparation'
 `
 
 type GetCockpitPreparationOperationParams struct {
@@ -366,65 +358,8 @@ func (q *Queries) GetCockpitPreparationOperation(ctx context.Context, arg GetCoc
 	return i, err
 }
 
-const getCockpitPreparationTemplateDisplay = `-- name: GetCockpitPreparationTemplateDisplay :one
-SELECT title,number FROM cockpit_meeting_template_version WHERE workspace_id=$1 AND id=$2
-`
-
-type GetCockpitPreparationTemplateDisplayParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ID          pgtype.UUID `json:"id"`
-}
-
-type GetCockpitPreparationTemplateDisplayRow struct {
-	Title  string `json:"title"`
-	Number int32  `json:"number"`
-}
-
-func (q *Queries) GetCockpitPreparationTemplateDisplay(ctx context.Context, arg GetCockpitPreparationTemplateDisplayParams) (GetCockpitPreparationTemplateDisplayRow, error) {
-	row := q.db.QueryRow(ctx, getCockpitPreparationTemplateDisplay, arg.WorkspaceID, arg.ID)
-	var i GetCockpitPreparationTemplateDisplayRow
-	err := row.Scan(&i.Title, &i.Number)
-	return i, err
-}
-
-const getCockpitTemplateApplication = `-- name: GetCockpitTemplateApplication :one
-SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND template_version_id=$3 AND kind='apply_template'
-`
-
-type GetCockpitTemplateApplicationParams struct {
-	WorkspaceID       pgtype.UUID `json:"workspace_id"`
-	MeetingID         pgtype.UUID `json:"meeting_id"`
-	TemplateVersionID pgtype.UUID `json:"template_version_id"`
-}
-
-func (q *Queries) GetCockpitTemplateApplication(ctx context.Context, arg GetCockpitTemplateApplicationParams) (CockpitMeetingPreparationOperation, error) {
-	row := q.db.QueryRow(ctx, getCockpitTemplateApplication, arg.WorkspaceID, arg.MeetingID, arg.TemplateVersionID)
-	var i CockpitMeetingPreparationOperation
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.MeetingID,
-		&i.Kind,
-		&i.CommandKey,
-		&i.RequestHash,
-		&i.ContextToken,
-		&i.TemplateID,
-		&i.TemplateVersionID,
-		&i.Input,
-		&i.State,
-		&i.Revision,
-		&i.AuthorizedLifecycleRevision,
-		&i.AuthorizedAgendaRevision,
-		&i.CreatedBy,
-		&i.ResponsibleUserID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getCurrentCockpitPreparationOperation = `-- name: GetCurrentCockpitPreparationOperation :one
-SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND state<>'completed' ORDER BY created_at DESC,id DESC LIMIT 1
+SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND kind='cancel_preparation' AND state<>'completed' ORDER BY created_at DESC,id DESC LIMIT 1
 `
 
 type GetCurrentCockpitPreparationOperationParams struct {
@@ -459,7 +394,11 @@ func (q *Queries) GetCurrentCockpitPreparationOperation(ctx context.Context, arg
 }
 
 const hasCockpitMeetingPreparationHistory = `-- name: HasCockpitMeetingPreparationHistory :one
-SELECT EXISTS(SELECT 1 FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2)
+SELECT EXISTS(
+ SELECT 1 FROM cockpit_meeting_preparation_operation WHERE cockpit_meeting_preparation_operation.workspace_id=$1 AND cockpit_meeting_preparation_operation.meeting_id=$2
+ UNION ALL SELECT 1 FROM cockpit_meeting_agenda WHERE cockpit_meeting_agenda.workspace_id=$1 AND cockpit_meeting_agenda.meeting_id=$2
+ UNION ALL SELECT 1 FROM cockpit_meeting_agenda_reference WHERE cockpit_meeting_agenda_reference.workspace_id=$1 AND cockpit_meeting_agenda_reference.meeting_id=$2
+)
 `
 
 type HasCockpitMeetingPreparationHistoryParams struct {
@@ -475,7 +414,7 @@ func (q *Queries) HasCockpitMeetingPreparationHistory(ctx context.Context, arg H
 }
 
 const listCockpitPreparationEffects = `-- name: ListCockpitPreparationEffects :many
-SELECT e.id,e.workspace_id,e.meeting_id,e.operation_id,e.slot_id,e.position,e.kind,e.label,e.command_key,e.dependency_id,e.revision,e.state,e.error_code,e.reason,e.agenda_id,e.reference_id,e.issue_id,e.run_id,e.target_meeting_id,e.receipt,e.applied_by,e.applied_at,e.created_at,e.updated_at,e.authorization_key,e.authorization_revision,e.authorization_hash,e.authorization_snapshot,COALESCE(e.dependency_id IS NULL OR d.state='applied',false)::boolean AS dependency_applied
+SELECT e.id,e.workspace_id,e.meeting_id,e.operation_id,e.slot_id,e.position,e.kind,e.label,e.command_key,e.dependency_id,e.revision,e.state,e.error_code,e.reason,e.issue_id,e.run_id,e.target_meeting_id,e.receipt,e.applied_by,e.applied_at,e.created_at,e.updated_at,e.authorization_key,e.authorization_revision,e.authorization_hash,e.authorization_snapshot,COALESCE(e.dependency_id IS NULL OR d.state='applied',false)::boolean AS dependency_applied
 FROM cockpit_meeting_preparation_effect e LEFT JOIN cockpit_meeting_preparation_effect d ON d.workspace_id=e.workspace_id AND d.operation_id=e.operation_id AND d.id=e.dependency_id
 WHERE e.workspace_id=$1 AND e.meeting_id=$2 AND e.operation_id=$3
 AND ($4::uuid IS NULL OR (e.position,e.id)>($5::integer,$4))
@@ -506,8 +445,6 @@ type ListCockpitPreparationEffectsRow struct {
 	State                 string             `json:"state"`
 	ErrorCode             string             `json:"error_code"`
 	Reason                string             `json:"reason"`
-	AgendaID              pgtype.UUID        `json:"agenda_id"`
-	ReferenceID           pgtype.UUID        `json:"reference_id"`
 	IssueID               pgtype.UUID        `json:"issue_id"`
 	RunID                 pgtype.UUID        `json:"run_id"`
 	TargetMeetingID       pgtype.UUID        `json:"target_meeting_id"`
@@ -554,8 +491,6 @@ func (q *Queries) ListCockpitPreparationEffects(ctx context.Context, arg ListCoc
 			&i.State,
 			&i.ErrorCode,
 			&i.Reason,
-			&i.AgendaID,
-			&i.ReferenceID,
 			&i.IssueID,
 			&i.RunID,
 			&i.TargetMeetingID,
@@ -581,12 +516,12 @@ func (q *Queries) ListCockpitPreparationEffects(ctx context.Context, arg ListCoc
 }
 
 const listCockpitPreparationOperations = `-- name: ListCockpitPreparationOperations :many
-SELECT o.id,o.workspace_id,o.meeting_id,o.kind,o.revision,o.state,o.command_key,o.template_id,o.template_version_id,o.created_by,o.responsible_user_id,o.created_at,o.updated_at,COALESCE(u.name,'')::text AS created_by_name,COALESCE(responsible.name,'')::text AS responsible_user_name,COALESCE(v.title,'')::text AS template_title,v.number AS template_version_number,
+SELECT o.id,o.workspace_id,o.meeting_id,o.kind,o.revision,o.state,o.command_key,o.created_by,o.responsible_user_id,o.created_at,o.updated_at,COALESCE(u.name,'')::text AS created_by_name,COALESCE(responsible.name,'')::text AS responsible_user_name,
  (SELECT jsonb_build_object('total',count(*),'pending',count(*) FILTER(WHERE e.state='pending'),'applied',count(*) FILTER(WHERE e.state='applied'),'needs_attention',count(*) FILTER(WHERE e.state='needs_attention'),'skipped',count(*) FILTER(WHERE e.state='skipped')) FROM cockpit_meeting_preparation_effect e WHERE e.workspace_id=o.workspace_id AND e.operation_id=o.id) AS counts
 FROM cockpit_meeting_preparation_operation o LEFT JOIN "user" u ON u.id=o.created_by
 LEFT JOIN "user" responsible ON responsible.id=o.responsible_user_id
-LEFT JOIN cockpit_meeting_template_version v ON v.workspace_id=o.workspace_id AND v.template_id=o.template_id AND v.id=o.template_version_id
-WHERE o.workspace_id=$1 AND o.meeting_id=$2
+
+WHERE o.workspace_id=$1 AND o.meeting_id=$2 AND o.kind='cancel_preparation'
 AND ($3::uuid IS NULL OR (o.created_at,o.id)<($4::timestamptz,$3))
 ORDER BY o.created_at DESC,o.id DESC LIMIT $5
 `
@@ -600,24 +535,20 @@ type ListCockpitPreparationOperationsParams struct {
 }
 
 type ListCockpitPreparationOperationsRow struct {
-	ID                    pgtype.UUID        `json:"id"`
-	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
-	MeetingID             pgtype.UUID        `json:"meeting_id"`
-	Kind                  string             `json:"kind"`
-	Revision              int64              `json:"revision"`
-	State                 string             `json:"state"`
-	CommandKey            pgtype.UUID        `json:"command_key"`
-	TemplateID            pgtype.UUID        `json:"template_id"`
-	TemplateVersionID     pgtype.UUID        `json:"template_version_id"`
-	CreatedBy             pgtype.UUID        `json:"created_by"`
-	ResponsibleUserID     pgtype.UUID        `json:"responsible_user_id"`
-	CreatedAt             pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
-	CreatedByName         string             `json:"created_by_name"`
-	ResponsibleUserName   string             `json:"responsible_user_name"`
-	TemplateTitle         string             `json:"template_title"`
-	TemplateVersionNumber pgtype.Int4        `json:"template_version_number"`
-	Counts                []byte             `json:"counts"`
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	MeetingID           pgtype.UUID        `json:"meeting_id"`
+	Kind                string             `json:"kind"`
+	Revision            int64              `json:"revision"`
+	State               string             `json:"state"`
+	CommandKey          pgtype.UUID        `json:"command_key"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	ResponsibleUserID   pgtype.UUID        `json:"responsible_user_id"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	CreatedByName       string             `json:"created_by_name"`
+	ResponsibleUserName string             `json:"responsible_user_name"`
+	Counts              []byte             `json:"counts"`
 }
 
 func (q *Queries) ListCockpitPreparationOperations(ctx context.Context, arg ListCockpitPreparationOperationsParams) ([]ListCockpitPreparationOperationsRow, error) {
@@ -643,16 +574,12 @@ func (q *Queries) ListCockpitPreparationOperations(ctx context.Context, arg List
 			&i.Revision,
 			&i.State,
 			&i.CommandKey,
-			&i.TemplateID,
-			&i.TemplateVersionID,
 			&i.CreatedBy,
 			&i.ResponsibleUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedByName,
 			&i.ResponsibleUserName,
-			&i.TemplateTitle,
-			&i.TemplateVersionNumber,
 			&i.Counts,
 		); err != nil {
 			return nil, err
@@ -720,7 +647,7 @@ func (q *Queries) LockCockpitPreparationEffect(ctx context.Context, arg LockCock
 }
 
 const lockCockpitPreparationOperation = `-- name: LockCockpitPreparationOperation :one
-SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 FOR UPDATE
+SELECT id, workspace_id, meeting_id, kind, command_key, request_hash, context_token, template_id, template_version_id, input, state, revision, authorized_lifecycle_revision, authorized_agenda_revision, created_by, responsible_user_id, created_at, updated_at FROM cockpit_meeting_preparation_operation WHERE workspace_id=$1 AND meeting_id=$2 AND id=$3 AND kind='cancel_preparation' FOR UPDATE
 `
 
 type LockCockpitPreparationOperationParams struct {

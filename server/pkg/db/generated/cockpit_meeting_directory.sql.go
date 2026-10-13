@@ -239,7 +239,7 @@ func (q *Queries) CreateCockpitDirectoryAttempt(ctx context.Context, arg CreateC
 
 const createCockpitDirectoryCommand = `-- name: CreateCockpitDirectoryCommand :exec
 INSERT INTO cockpit_meeting_lifecycle_command(workspace_id,meeting_id,command_key,kind,actor_type,actor_id,request_hash,revision,agenda_revision,directory_operation_id,directory_step_id,receipt)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11)
 `
 
 type CreateCockpitDirectoryCommandParams struct {
@@ -251,7 +251,6 @@ type CreateCockpitDirectoryCommandParams struct {
 	ActorID              pgtype.UUID `json:"actor_id"`
 	RequestHash          string      `json:"request_hash"`
 	Revision             int64       `json:"revision"`
-	AgendaRevision       int64       `json:"agenda_revision"`
 	DirectoryOperationID pgtype.UUID `json:"directory_operation_id"`
 	DirectoryStepID      pgtype.UUID `json:"directory_step_id"`
 	Receipt              []byte      `json:"receipt"`
@@ -267,7 +266,6 @@ func (q *Queries) CreateCockpitDirectoryCommand(ctx context.Context, arg CreateC
 		arg.ActorID,
 		arg.RequestHash,
 		arg.Revision,
-		arg.AgendaRevision,
 		arg.DirectoryOperationID,
 		arg.DirectoryStepID,
 		arg.Receipt,
@@ -276,8 +274,8 @@ func (q *Queries) CreateCockpitDirectoryCommand(ctx context.Context, arg CreateC
 }
 
 const createCockpitDirectoryOperation = `-- name: CreateCockpitDirectoryOperation :one
-INSERT INTO cockpit_meeting_directory_operation(id,workspace_id,meeting_id,creation_command_key,request_hash,plan_hash,state,root_id,root_path,prepare_subpath,relative_directory,directory,target_hash,root_config_hash,observed_nas_dir,observed_binding_revision,bind_after_base,created_by_type,created_by,credential_owner_user_id,authorizing_user_id,source_run_id,source_issue_id,source_agent_id,source_runtime_id,source_task_token_id,source_relation_kind,source_agenda_reference_id,source_principal,last_grant_command_key,responsible_user_id,input,receipt)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33) RETURNING id, workspace_id, meeting_id, creation_command_key, request_hash, plan_hash, revision, state, root_id, root_path, prepare_subpath, relative_directory, directory, target_hash, root_config_hash, observed_nas_dir, observed_binding_revision, accepted_binding_revision, bind_after_base, binding_result, created_by_type, created_by, credential_owner_user_id, authorizing_user_id, source_run_id, source_issue_id, source_agent_id, source_runtime_id, source_task_token_id, source_relation_kind, source_agenda_reference_id, source_principal, last_grant_command_key, responsible_user_id, input, receipt, created_at, updated_at, finished_at
+INSERT INTO cockpit_meeting_directory_operation(id,workspace_id,meeting_id,creation_command_key,request_hash,plan_hash,state,root_id,root_path,prepare_subpath,relative_directory,directory,target_hash,root_config_hash,observed_nas_dir,observed_binding_revision,bind_after_base,created_by_type,created_by,credential_owner_user_id,authorizing_user_id,source_run_id,source_issue_id,source_agent_id,source_runtime_id,source_task_token_id,source_relation_kind,source_principal,last_grant_command_key,responsible_user_id,input,receipt)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) RETURNING id, workspace_id, meeting_id, creation_command_key, request_hash, plan_hash, revision, state, root_id, root_path, prepare_subpath, relative_directory, directory, target_hash, root_config_hash, observed_nas_dir, observed_binding_revision, accepted_binding_revision, bind_after_base, binding_result, created_by_type, created_by, credential_owner_user_id, authorizing_user_id, source_run_id, source_issue_id, source_agent_id, source_runtime_id, source_task_token_id, source_relation_kind, source_agenda_reference_id, source_principal, last_grant_command_key, responsible_user_id, input, receipt, created_at, updated_at, finished_at
 `
 
 type CreateCockpitDirectoryOperationParams struct {
@@ -308,7 +306,6 @@ type CreateCockpitDirectoryOperationParams struct {
 	SourceRuntimeID         pgtype.UUID `json:"source_runtime_id"`
 	SourceTaskTokenID       pgtype.UUID `json:"source_task_token_id"`
 	SourceRelationKind      string      `json:"source_relation_kind"`
-	SourceAgendaReferenceID pgtype.UUID `json:"source_agenda_reference_id"`
 	SourcePrincipal         []byte      `json:"source_principal"`
 	LastGrantCommandKey     pgtype.UUID `json:"last_grant_command_key"`
 	ResponsibleUserID       pgtype.UUID `json:"responsible_user_id"`
@@ -345,7 +342,6 @@ func (q *Queries) CreateCockpitDirectoryOperation(ctx context.Context, arg Creat
 		arg.SourceRuntimeID,
 		arg.SourceTaskTokenID,
 		arg.SourceRelationKind,
-		arg.SourceAgendaReferenceID,
 		arg.SourcePrincipal,
 		arg.LastGrantCommandKey,
 		arg.ResponsibleUserID,
@@ -766,13 +762,11 @@ func (q *Queries) GetCockpitDirectoryOperation(ctx context.Context, arg GetCockp
 
 const getCockpitDirectoryPreparationRelation = `-- name: GetCockpitDirectoryPreparationRelation :one
 WITH relations AS (
- SELECT 'work_package'::text AS kind,NULL::uuid AS agenda_reference_id,0 AS rank FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND 'minutes'=ANY(l.roles)
- UNION ALL SELECT 'agenda_preparation',r.id,1 FROM cockpit_meeting_agenda_reference r JOIN cockpit_meeting_agenda a ON a.workspace_id=r.workspace_id AND a.meeting_id=r.meeting_id AND a.id=r.agenda_id
- WHERE r.workspace_id=$1 AND r.meeting_id=$2 AND r.kind='issue' AND r.target_id=$3 AND r.purpose='preparation' AND r.removed_at IS NULL AND a.removed_at IS NULL
- UNION ALL SELECT CASE WHEN l.role='task' THEN 'legacy_task' ELSE 'direct_preparation' END,NULL::uuid,2 FROM cockpit_meeting_issue l
+ SELECT 'work_package'::text AS kind,0 AS rank FROM cockpit_meeting_issue l WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND 'minutes'=ANY(l.roles)
+ UNION ALL SELECT CASE WHEN l.role='task' THEN 'legacy_task' ELSE 'direct_preparation' END,2 FROM cockpit_meeting_issue l
  WHERE l.workspace_id=$1 AND l.meeting_id=$2 AND l.issue_id=$3 AND (l.role='task' OR 'preparation'=ANY(l.roles))
 )
-SELECT kind,agenda_reference_id FROM relations ORDER BY rank,agenda_reference_id LIMIT 1
+SELECT kind FROM relations ORDER BY rank LIMIT 1
 `
 
 type GetCockpitDirectoryPreparationRelationParams struct {
@@ -781,16 +775,11 @@ type GetCockpitDirectoryPreparationRelationParams struct {
 	IssueID     pgtype.UUID `json:"issue_id"`
 }
 
-type GetCockpitDirectoryPreparationRelationRow struct {
-	Kind              string      `json:"kind"`
-	AgendaReferenceID pgtype.UUID `json:"agenda_reference_id"`
-}
-
-func (q *Queries) GetCockpitDirectoryPreparationRelation(ctx context.Context, arg GetCockpitDirectoryPreparationRelationParams) (GetCockpitDirectoryPreparationRelationRow, error) {
+func (q *Queries) GetCockpitDirectoryPreparationRelation(ctx context.Context, arg GetCockpitDirectoryPreparationRelationParams) (string, error) {
 	row := q.db.QueryRow(ctx, getCockpitDirectoryPreparationRelation, arg.WorkspaceID, arg.MeetingID, arg.IssueID)
-	var i GetCockpitDirectoryPreparationRelationRow
-	err := row.Scan(&i.Kind, &i.AgendaReferenceID)
-	return i, err
+	var kind string
+	err := row.Scan(&kind)
+	return kind, err
 }
 
 const getCockpitDirectoryStep = `-- name: GetCockpitDirectoryStep :one
