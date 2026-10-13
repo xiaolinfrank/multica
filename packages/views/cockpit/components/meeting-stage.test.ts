@@ -28,7 +28,7 @@ describe("meeting stage projection", () => {
   it("lands each stage on its own working view", () => {
     expect(meetingStageDefaultView("ended", { published_version_id: "v-1" })).toBe("followup");
     expect(meetingStageDefaultView("ended", {})).toBe("minutes_review");
-    expect(meetingStageDefaultView("scheduled", {}, WINDOW)).toBe("recording");
+    expect(meetingStageDefaultView("scheduled", {}, WINDOW, NOON)).toBe("recording");
     expect(meetingStageDefaultView("scheduled", {})).toBe("preparation");
     expect(meetingStageDefaultView(undefined, undefined)).toBe("preparation");
   });

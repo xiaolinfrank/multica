@@ -43,8 +43,8 @@ export function cockpitMeetingStage(occurrenceState: string | undefined, workflo
 }
 
 /** View a stage should land on when a meeting opens without an explicit view. */
-export function meetingStageDefaultView(occurrenceState: string | undefined, workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null): "preparation" | "recording" | "minutes_review" | "followup" {
-  return STAGE_VIEW[cockpitMeetingStage(occurrenceState, workflow, timing) ?? "preparation"];
+export function meetingStageDefaultView(occurrenceState: string | undefined, workflow: MeetingStageWorkflow, timing: MeetingStageTiming = null, now: Date = new Date()): "preparation" | "recording" | "minutes_review" | "followup" {
+  return STAGE_VIEW[cockpitMeetingStage(occurrenceState, workflow, timing, now) ?? "preparation"];
 }
 
 /** Stages completed as of the current stage, for the checkmarks on the segment bar. */
