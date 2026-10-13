@@ -7,7 +7,9 @@ export function cockpitWorkflowVersionMatches(summary: CockpitMeetingWorkflowSum
 }
 
 export function validCockpitWorkflowSummary(summary: CockpitMeetingWorkflowSummary): boolean {
-  if (!summary.enabled) return summary.revision === 0 && !summary.current_version_id && !summary.published_version_id && !summary.current_version && !summary.published_version;
+  // An unconfigured workflow may still carry a nonzero revision: lifecycle
+  // commands bump it as a cache stamp (R4). The version pointers are the facts.
+  if (!summary.enabled) return !summary.current_version_id && !summary.published_version_id && !summary.current_version && !summary.published_version;
   return Boolean(summary.revision > 0 && summary.minutes_issue?.id && summary.reviewer_id
     && (!summary.released_at || (summary.ended_at && summary.materials_ready))
     && (summary.current_version_id ? summary.current_version?.id === summary.current_version_id && cockpitWorkflowVersionMatches(summary, summary.current_version) : !summary.current_version)

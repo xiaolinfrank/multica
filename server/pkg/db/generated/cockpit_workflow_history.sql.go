@@ -130,7 +130,7 @@ func (q *Queries) GetCockpitWorkflowMeetingIdentity(ctx context.Context, arg Get
 }
 
 const getCockpitWorkflowSnapshot = `-- name: GetCockpitWorkflowSnapshot :one
-SELECT m.minutes_revision AS revision, m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id,
+SELECT m.minutes_revision AS revision, m.minutes_focus_issue_id AS minutes_issue_id, m.minutes_reviewer_id AS reviewer_id, m.minutes_configured_by AS minutes_configured_by,
  m.minutes_materials_ready AS materials_ready, m.minutes_current_version_id AS current_version_id,
  m.minutes_published_version_id AS published_version_id
 FROM cockpit_meeting m WHERE m.workspace_id=$1 AND m.id=$2
@@ -142,12 +142,13 @@ type GetCockpitWorkflowSnapshotParams struct {
 }
 
 type GetCockpitWorkflowSnapshotRow struct {
-	Revision           int64       `json:"revision"`
-	MinutesIssueID     pgtype.UUID `json:"minutes_issue_id"`
-	ReviewerID         pgtype.UUID `json:"reviewer_id"`
-	MaterialsReady     bool        `json:"materials_ready"`
-	CurrentVersionID   pgtype.UUID `json:"current_version_id"`
-	PublishedVersionID pgtype.UUID `json:"published_version_id"`
+	Revision            int64       `json:"revision"`
+	MinutesIssueID      pgtype.UUID `json:"minutes_issue_id"`
+	ReviewerID          pgtype.UUID `json:"reviewer_id"`
+	MinutesConfiguredBy pgtype.UUID `json:"minutes_configured_by"`
+	MaterialsReady      bool        `json:"materials_ready"`
+	CurrentVersionID    pgtype.UUID `json:"current_version_id"`
+	PublishedVersionID  pgtype.UUID `json:"published_version_id"`
 }
 
 func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpitWorkflowSnapshotParams) (GetCockpitWorkflowSnapshotRow, error) {
@@ -157,6 +158,7 @@ func (q *Queries) GetCockpitWorkflowSnapshot(ctx context.Context, arg GetCockpit
 		&i.Revision,
 		&i.MinutesIssueID,
 		&i.ReviewerID,
+		&i.MinutesConfiguredBy,
 		&i.MaterialsReady,
 		&i.CurrentVersionID,
 		&i.PublishedVersionID,

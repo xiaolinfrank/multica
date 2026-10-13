@@ -183,8 +183,11 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 		return out, err
 	}
 	// R1: the focus pointer is nullable (unbinding the focus task clears it);
-	// "configured" is any minutes state, not just a live focus.
-	if workRow.Revision <= 1 && !workRow.MinutesIssueID.Valid && !workRow.ReviewerID.Valid && !workRow.CurrentVersionID.Valid && !workRow.PublishedVersionID.Valid {
+	// "configured" is any minutes state, not just a live focus. The minutes
+	// revision alone is not evidence — lifecycle commands bump it for cache
+	// invalidation, so only an explicit configuration (configured_by) or a
+	// live pointer counts (R4).
+	if !workRow.ConfiguredBy.Valid && !workRow.MinutesIssueID.Valid && !workRow.ReviewerID.Valid && !workRow.CurrentVersionID.Valid && !workRow.PublishedVersionID.Valid {
 		if links, lerr := q.ListCockpitMinutesIssueLinks(r.Context(), db.ListCockpitMinutesIssueLinksParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID}); lerr == nil && len(links) == 0 {
 			out.CanManage = !isMachineCredentialActor(r)
 			return out, nil
