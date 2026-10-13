@@ -102,7 +102,7 @@ function CancellationDestination({ wsId, sourceMeetingId, value, onChange, disab
       {cursors.length > 1 && <Button size="sm" variant="outline" onClick={() => setCursors([""])}>{t(($) => $.task_flow.first_page)}</Button>}
       {value.target_agenda_id && <p className="break-words text-caption">{selected.data?.title ?? value.target_agenda_id}</p>}
       {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}
-      <AppLink className={buttonVariants({ variant: "outline", size: "sm" })} target="_blank" rel="noopener noreferrer" href={cockpitMeetingContextPath(paths.cockpit(), value.target_meeting_id, EMPTY_COCKPIT_SCOPE, navigation.searchParams, "agenda")}>{t(($) => $.meeting_lifecycle.open_agenda)} {t(($) => $.action_flow.new_tab)}</AppLink>
+      <AppLink className={buttonVariants({ variant: "outline", size: "sm" })} target="_blank" rel="noopener noreferrer" href={cockpitMeetingContextPath(paths.cockpit(), value.target_meeting_id, EMPTY_COCKPIT_SCOPE, navigation.searchParams, "preparation")}>{t(($) => $.meeting_lifecycle.open_agenda)} {t(($) => $.action_flow.new_tab)}</AppLink>
     </>}
   </section>;
 }

@@ -1,54 +1,54 @@
 "use client";
 
-// R4 (proposal §9.3): one meeting reads as one line of work — preparation,
-// the meeting itself, its minutes, then the actions it opened. The strip is a
-// projection, never a second state machine: the stage is recomputed from the
-// occurrence confirmation and the minutes associations every render.
+// R4 (proposal §9.3): the meeting reads as one line of work. The stage
+// segments ARE the navigation — clicking a stage switches the working surface
+// below, one level instead of two. The checkmarks show where the meeting's
+// confirmed facts stand; the selection shows which surface you are reading
+// (visiting an earlier stage is a look back, never a state change).
 
 import { Button } from "@multica/ui/components/ui/button";
-import { Check, ClipboardList, FileText, ListChecks } from "lucide-react";
+import { TabsTrigger } from "@multica/ui/components/ui/tabs";
+import { Check, ClipboardList, FileText, ListChecks, PenLine } from "lucide-react";
 import { useT } from "../../i18n";
-import { cockpitMeetingStage, type CockpitMeetingStage, type MeetingStageWorkflow } from "./meeting-stage";
+import { cockpitMeetingStage, meetingStagesBefore, MEETING_STAGE_ORDER, type CockpitMeetingStage, type MeetingStageWorkflow } from "./meeting-stage";
 
-const STAGE_ICON = { preparation: ClipboardList, recording: Check, minutes_review: FileText, followup: ListChecks } as const;
+const STAGE_ICON = { preparation: ClipboardList, recording: PenLine, minutes_review: FileText, followup: ListChecks } as const;
 
-export function CockpitMeetingStageStrip({
-  occurrenceState, workflow, onOpenSection,
-}: {
+export function CockpitMeetingStageTabs({ occurrenceState, workflow }: { occurrenceState: string | undefined; workflow: MeetingStageWorkflow }) {
+  const { t } = useT("cockpit");
+  const current = cockpitMeetingStage(occurrenceState, workflow);
+  const done = current ? new Set(meetingStagesBefore(current)) : new Set<CockpitMeetingStage>();
+  return <>
+    {MEETING_STAGE_ORDER.map((stage, index) => {
+      const Icon = STAGE_ICON[stage];
+      const finished = done.has(stage);
+      return <TabsTrigger key={stage} value={stage} className="h-9 flex-1 gap-1.5 px-2.5 text-body data-active:bg-primary/10 data-active:font-semibold data-active:text-primary data-active:shadow-sm">
+        <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-current text-[10px] leading-none tabular-nums">
+          {finished ? <Check className="size-3" /> : index + 1}
+        </span>
+        <span className="truncate">{t(($) => $.meeting_stage[stage])}</span>
+        <Icon className="hidden size-3.5 sm:block" aria-hidden />
+      </TabsTrigger>;
+    })}
+  </>;
+}
+
+/** The single primary action for the meeting's current stage, for the header. */
+export function CockpitMeetingStageAction({ occurrenceState, workflow, onOpenView }: {
   occurrenceState: string | undefined;
   workflow: MeetingStageWorkflow;
-  onOpenSection: (section: "agenda" | "workflow" | "resources" | "details") => void;
+  onOpenView: (view: "preparation" | "recording" | "minutes_review" | "followup" | "resources") => void;
 }) {
   const { t } = useT("cockpit");
   const stage = cockpitMeetingStage(occurrenceState, workflow);
   if (!stage) return null;
-  const order: CockpitMeetingStage[] = ["preparation", "recording", "minutes_review", "followup"];
-  const action = stage === "preparation" ? { label: t(($) => $.meeting_stage.action_check_materials), section: "resources" as const }
-    : stage === "recording" ? { label: t(($) => $.meeting_stage.action_end_meeting), section: "agenda" as const }
-    : stage === "minutes_review" ? { label: t(($) => $.meeting_stage.action_minutes), section: "workflow" as const }
-    : { label: t(($) => $.meeting_stage.action_followup), section: "workflow" as const };
+  const action = stage === "preparation" ? { label: t(($) => $.meeting_stage.action_check_materials), view: "resources" as const }
+    : stage === "recording" ? { label: t(($) => $.meeting_stage.action_end_meeting), view: "recording" as const }
+    : stage === "minutes_review" ? { label: t(($) => $.meeting_stage.action_minutes), view: "minutes_review" as const }
+    : { label: t(($) => $.meeting_stage.action_followup), view: "followup" as const };
   const Icon = STAGE_ICON[stage];
-  return <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-1.5" aria-label={t(($) => $.meeting_stage.strip)}>
-    <ol className="flex min-w-0 flex-1 items-center gap-1 text-caption">
-      {order.map((item, index) => {
-        const current = item === stage;
-        const done = order.indexOf(stage) > index;
-        return <li key={item} className="flex min-w-0 items-center gap-1">
-          {index > 0 && <span aria-hidden className="text-muted-foreground/50">→</span>}
-          <button
-            type="button"
-            aria-current={current ? "step" : undefined}
-            className={current ? "font-medium text-primary" : done ? "text-muted-foreground" : "text-muted-foreground/70 hover:text-foreground"}
-            onClick={() => onOpenSection(item === "preparation" ? "resources" : item === "recording" ? "agenda" : "workflow")}
-          >
-            {t(($) => $.meeting_stage[item])}
-          </button>
-        </li>;
-      })}
-    </ol>
-    <Button size="sm" variant={stage === "recording" ? "default" : "outline"} className="h-7 shrink-0 gap-1 px-2 text-caption" onClick={() => onOpenSection(action.section)}>
-      <Icon className="size-3.5" aria-hidden />
-      {action.label}
-    </Button>
-  </div>;
+  return <Button size="sm" variant={stage === "recording" ? "default" : "outline"} className="h-7 shrink-0 gap-1.5 px-2.5 text-caption" onClick={() => onOpenView(action.view)}>
+    <Icon className="size-3.5" aria-hidden />
+    {action.label}
+  </Button>;
 }

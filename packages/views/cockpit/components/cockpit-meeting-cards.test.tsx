@@ -12,7 +12,8 @@ it("separates a custom ended note from authoritative unconfirmed occurrence and 
   render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitMeetingCards scope={{ projectId: "project-1", moduleId: null }} selectedId={null} items={[meeting({ occurrence_state: "unconfirmed" }), meeting({ id: "old-meeting", title: "Older server record", occurrence_state: undefined })]} /></I18nProvider>);
   const rows = screen.getAllByRole("listitem"); const first = within(rows[0]!); expect(first.getByText("Custom note: Ended")).toBeVisible();
   const target = first.getByRole("link", { name: "Record meeting occurrence · Not confirmed" }); const url = new URL(target.getAttribute("href")!, "https://example.test");
-  expect(Object.fromEntries(url.searchParams)).toMatchObject({ meeting: "meeting-1", meeting_view: "agenda", project: "project-1", from: "2026-10-01", to: "2026-10-31" });
+  // R4: the occurrence badge carries no explicit view — the panel lands on the meeting's current stage.
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({ meeting: "meeting-1", project: "project-1", from: "2026-10-01", to: "2026-10-31" });
   expect(within(rows[1]!).queryByRole("link", { name: /Record meeting occurrence/ })).toBeNull(); expect(within(rows[1]!).getByText("Ended")).toBeVisible();
 });
 

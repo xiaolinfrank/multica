@@ -1,7 +1,16 @@
+import type { CockpitMeetingView } from "@multica/core/cockpit";
+
 /** The workflow summary carries all the stage needs: whether a version is live. */
 export type MeetingStageWorkflow = { published_version_id?: string | null } | null | undefined;
 
 export type CockpitMeetingStage = "preparation" | "recording" | "minutes_review" | "followup";
+
+export const MEETING_STAGE_ORDER: readonly CockpitMeetingStage[] = ["preparation", "recording", "minutes_review", "followup"];
+
+/** The panel views that host each stage's working surface. */
+export const STAGE_VIEW: Record<CockpitMeetingStage, Exclude<CockpitMeetingView, "agenda" | "workflow" | "resources" | "details">> = {
+  preparation: "preparation", recording: "recording", minutes_review: "minutes_review", followup: "followup",
+};
 
 /**
  * R4 (design-principles-2026-10-12, principle 3): the meeting stage is a live
@@ -15,8 +24,12 @@ export function cockpitMeetingStage(occurrenceState: string | undefined, workflo
   return "preparation";
 }
 
-/** Which panel section a stage should open on, for stage-aware landing. */
-export function meetingStageDefaultSection(occurrenceState: string | undefined, workflow: MeetingStageWorkflow): "agenda" | "workflow" {
-  const stage = cockpitMeetingStage(occurrenceState, workflow);
-  return stage === "minutes_review" || stage === "followup" ? "workflow" : "agenda";
+/** View a stage should land on when a meeting opens without an explicit view. */
+export function meetingStageDefaultView(occurrenceState: string | undefined, workflow: MeetingStageWorkflow): "preparation" | "recording" | "minutes_review" | "followup" {
+  return STAGE_VIEW[cockpitMeetingStage(occurrenceState, workflow) ?? "preparation"];
+}
+
+/** Stages completed as of the current stage, for the checkmarks on the segment bar. */
+export function meetingStagesBefore(stage: CockpitMeetingStage): CockpitMeetingStage[] {
+  return MEETING_STAGE_ORDER.slice(0, MEETING_STAGE_ORDER.indexOf(stage));
 }

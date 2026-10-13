@@ -386,7 +386,7 @@ describe("the meeting register", () => {
   it("opens one meeting in a panel, with its task, its work item and its folder", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
 
     // The meeting's own task reads as an ordinary issue.
     expect(await screen.findByText("BIO-42")).toBeInTheDocument();
@@ -412,7 +412,7 @@ describe("the meeting register", () => {
     fixtureBoard = structuredClone({ ...board, nodes: [...board.nodes, ...extra] });
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
     expect(await screen.findByRole("button", { name: /02\.04 Ship/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /02\.05 Ship/ })).not.toBeInTheDocument();
@@ -429,7 +429,7 @@ describe("the meeting register", () => {
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockResolvedValue(summary);
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
     expect(await screen.findByRole("button", { name: "Unlink BIO-42" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Unlink BIO-99" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Edit purposes for BIO-99" }));
@@ -462,7 +462,7 @@ describe("the meeting register", () => {
   it("rebinds the folder to one that already exists, and refuses a relative path", async () => {
     await openRegister();
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
-    fireEvent.click(await screen.findByRole("tab", { name: "Links & materials" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Materials" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit path" }));
     const input = screen.getByRole("textbox", { name: "Material folder" });

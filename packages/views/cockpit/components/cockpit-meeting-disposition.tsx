@@ -20,9 +20,9 @@ import { createSafeId } from "@multica/core/utils";
 
 export function CockpitMeetingPendingResponsibilities({ basis }: { basis: CockpitMeetingOperationBasis }) {
   const { t } = useT("cockpit"); const navigation = useNavigation(); const paths = useWorkspacePaths();
-  const href = (view: "agenda" | "workflow" | "resources") => cockpitMeetingContextPath(paths.cockpit(), basis.meeting_id, cockpitScope(navigation.searchParams), navigation.searchParams, view);
-  const rows = ([{ key: "minutes_review", view: "workflow" }, { key: "draft_actions", view: "workflow" }, { key: "active_preparation_issues", view: "agenda" },
-    { key: "active_runs", view: "agenda" }, { key: "nas_operations", view: "workflow" }, { key: "preparation_operations", view: "agenda" }, { key: "directory_operations", view: "resources" }] as const).filter((item) => (basis.pending[item.key] ?? 0) > 0);
+  const href = (view: "preparation" | "recording" | "minutes_review" | "followup" | "resources") => cockpitMeetingContextPath(paths.cockpit(), basis.meeting_id, cockpitScope(navigation.searchParams), navigation.searchParams, view);
+  const rows = ([{ key: "minutes_review", view: "minutes_review" }, { key: "draft_actions", view: "minutes_review" }, { key: "active_preparation_issues", view: "preparation" },
+    { key: "active_runs", view: "preparation" }, { key: "nas_operations", view: "minutes_review" }, { key: "preparation_operations", view: "preparation" }, { key: "directory_operations", view: "resources" }] as const).filter((item) => (basis.pending[item.key] ?? 0) > 0);
   return rows.length > 0 ? <section className="space-y-2 rounded-md border border-border p-3"><h3 className="text-body font-medium">{t(($) => $.meeting_disposition.remaining)}</h3><ul className="space-y-1">{rows.map((item) => <li key={item.key} className="text-caption"><AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={href(item.view)}>{item.key === "directory_operations" ? t(($) => $.meeting_directory.pending_directory, { count: basis.pending[item.key] ?? 0 }) : t(($) => $.meeting_disposition[item.key], { count: basis.pending[item.key] ?? 0 })} {t(($) => $.action_flow.new_tab)}</AppLink></li>)}</ul></section> : null;
 }
 

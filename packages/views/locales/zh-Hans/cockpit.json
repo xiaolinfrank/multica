@@ -2354,6 +2354,8 @@
     "action_check_materials": "检查材料",
     "action_end_meeting": "结束会议",
     "action_minutes": "纪要任务",
-    "action_followup": "未完成行动"
+    "action_followup": "未完成行动",
+    "tab_resources": "资料",
+    "tab_details": "信息"
   }
 }

@@ -2354,6 +2354,8 @@
     "action_check_materials": "Check materials",
     "action_end_meeting": "End the meeting",
     "action_minutes": "Minutes task",
-    "action_followup": "Open actions"
+    "action_followup": "Open actions",
+    "tab_resources": "Materials",
+    "tab_details": "Details"
   }
 }

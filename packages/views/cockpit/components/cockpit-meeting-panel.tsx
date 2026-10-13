@@ -48,8 +48,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components
 import { CockpitMeetingInputs } from "./cockpit-meeting-inputs";
 import { CockpitMeetingAgenda } from "./cockpit-meeting-agenda";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
-import { CockpitMeetingStageStrip } from "./cockpit-meeting-stage";
-import { meetingStageDefaultSection } from "./meeting-stage";
+import { CockpitMeetingStageAction, CockpitMeetingStageTabs } from "./cockpit-meeting-stage";
+import { meetingStageDefaultView } from "./meeting-stage";
 import { cockpitMeetingLifecycleOptions } from "@multica/core/cockpit";
 
 export interface CockpitMeetingPanelProps {
@@ -150,14 +150,18 @@ export function CockpitMeetingPanel({
     nasPoll.current.deadline = Date.now() + 5 * 60_000;
     void workflowQuery.refetch();
   };
-  const stageDefault = meetingStageDefaultSection(lifecycleQuery.data?.occurrence.state, workflowQuery.data);
-  const section = destination.meetingId === meeting.id && destination.meetingView ? destination.meetingView : stageDefault;
-  const openSection = (value: "agenda" | "workflow" | "resources" | "details") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
-  const [agendaOpened, setAgendaOpened] = useState(section === "agenda");
-  useEffect(() => { if (section === "agenda") setAgendaOpened(true); }, [section]);
-  const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "agenda");
+  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data);
+  const section = destination.meetingId === meeting.id && destination.meetingView && destination.meetingView !== "agenda" && destination.meetingView !== "workflow" ? destination.meetingView : stageDefault;
+  const openSection = (value: "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
+  // Each stage view mounts its working surface on first visit; the meeting
+  // keeps state through the stores, not through duplicated early mounts.
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<string>>(() => new Set([section]));
+  useEffect(() => { setVisitedViews((visited) => visited.has(section) ? visited : new Set(visited).add(section)); }, [section]);
+  const agendaOpened = visitedViews.has("preparation");
+  const recordingOpened = visitedViews.has("recording");
+  const agendaHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "preparation");
   const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
-  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "workflow");
+  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, "minutes_review");
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
   const unset = t(($) => $.common.unset);
@@ -218,6 +222,7 @@ export function CockpitMeetingPanel({
             />
           </div>
         </div>
+        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} onOpenView={openSection} />
         {meetingActions ?? (!readOnly && <Button variant="ghost" size="icon-sm" disabled={workflowEnabled || workflowUnknown} aria-label={t(($) => $.meeting.delete, { title: meeting.title })} onClick={onDelete}><Trash2 className="size-4" /></Button>)}
         <button
           ref={closeButton}
@@ -256,20 +261,29 @@ export function CockpitMeetingPanel({
       )}
 
       <Tabs value={section} onValueChange={(value) => {
-        if (value === "workflow" || value === "resources" || value === "details" || value === "agenda") navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
+        navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
-        <CockpitMeetingStageStrip occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} onOpenSection={openSection} />
-        <TabsList variant="line" className="min-h-11 h-auto w-full shrink-0 flex-wrap border-b px-3 py-1" aria-label={t(($) => $.workflow.sections)}>
-          {lifecycleAvailable && <TabsTrigger value="agenda">{t(($) => $.meeting_lifecycle.title)}</TabsTrigger>}
-          <TabsTrigger value="workflow">{t(($) => $.workflow.tab_workflow)}</TabsTrigger>
-          <TabsTrigger value="resources">{t(($) => $.workflow.tab_resources)}</TabsTrigger>
-          <TabsTrigger value="details">{t(($) => $.workflow.tab_details)}</TabsTrigger>
+        <TabsList aria-label={t(($) => $.meeting_stage.strip)} className="h-auto w-full shrink-0 gap-1 rounded-none border-b p-2">
+          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} />}
+          {!lifecycleAvailable && <TabsTrigger value="preparation" className="h-9 flex-1 px-3 text-body">{t(($) => $.meeting_stage.preparation)}</TabsTrigger>}
+          <TabsTrigger value="resources" className="ml-auto h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_resources)}</TabsTrigger>
+          <TabsTrigger value="details" className="h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_details)}</TabsTrigger>
         </TabsList>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <TabsContent value="agenda" keepMounted>
+          <TabsContent value="preparation" keepMounted>
             {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
           </TabsContent>
-          <TabsContent value="workflow" keepMounted>
+          <TabsContent value="recording" keepMounted>
+            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
+          </TabsContent>
+          <TabsContent value="minutes_review" keepMounted>
+            <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
+              members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
+              loading={workflowQuery.isPending} loadError={workflowQuery.isError}
+              onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}
+              defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
+          </TabsContent>
+          <TabsContent value="followup" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}

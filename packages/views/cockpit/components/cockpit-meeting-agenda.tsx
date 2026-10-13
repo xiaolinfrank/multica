@@ -58,7 +58,7 @@ export function CockpitMeetingAgenda({ wsId, meetingId, accountId, inputsAvailab
   useEffect(() => { if (operationId && autoStart && operationId !== autoStart) setAutoStart(null); }, [operationId, autoStart]);
   const href = (agendaId: string | null) => cockpitMeetingAgendaPath(paths.cockpit(), meetingId, agendaId, navigation.searchParams);
   const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
-  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "workflow");
+  const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "minutes_review");
   const firstPage = async () => { await client.invalidateQueries({ queryKey: cockpitAgendaOptions(wsId, meetingId, { q, include_removed: removed, page_size: 25 }).queryKey }); setCursors([""]); };
   return <section aria-label={t(($) => $.meeting_lifecycle.title)} className="min-w-0 space-y-4">
     {lifecycle.isPending ? <Spinner /> : lifecycle.isError || !lifecycle.data ? <CockpitFlowError onRetry={() => void lifecycle.refetch()} /> : <>

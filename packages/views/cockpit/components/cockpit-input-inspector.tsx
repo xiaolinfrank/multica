@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { cockpitInputContextPath, cockpitMeetingDetailOptions, cockpitMeetingInputReferencesOptions, cockpitAgendaInputReferencesOptions, cockpitAgendaDetailOptions, cockpitScope } from "@multica/core/cockpit";
+import { cockpitInputContextPath, cockpitMeetingDetailOptions, cockpitMeetingInputReferencesOptions, cockpitAgendaInputReferencesOptions, cockpitAgendaDetailOptions, cockpitScope, cockpitDestination } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { useNavigation } from "../../navigation";
@@ -20,7 +20,10 @@ export function CockpitInputInspector({ wsId, accountId, inputsAvailable }: { ws
   const inputId = navigation.searchParams.get("input");
   const versionId = navigation.searchParams.get("input_version");
   const meetingId = navigation.searchParams.get("meeting");
-  const agendaId = navigation.searchParams.get("meeting_view") === "agenda" ? navigation.searchParams.get("agenda") : null;
+  // The agenda reader lives in both stage views (preparation and recording);
+  // legacy "agenda"/"workflow" spellings normalize on read, so match by view.
+  const stageView = cockpitDestination(navigation.searchParams).meetingView;
+  const agendaId = (stageView === "preparation" || stageView === "recording") ? navigation.searchParams.get("agenda") : null;
   const signature = JSON.stringify([wsId, accountId, inputId, versionId, meetingId, agendaId]);
   const [association, setAssociation] = useState<{ signature: string; versionId: string } | null>(null);
   const associating = association?.signature === signature ? association : null;

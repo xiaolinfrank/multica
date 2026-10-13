@@ -1,7 +1,13 @@
 export type CockpitArea = "work" | "operations" | "gantt" | "meetings" | "changes" | "finance";
 export type CockpitBoardTab = "overview" | "gantt" | "meetings" | "changes" | "finance";
 export type CockpitNodeView = "tasks" | "artifacts" | "acceptance" | "details";
-export type CockpitMeetingView = "workflow" | "agenda" | "resources" | "details";
+/**
+ * R4: the meeting panel navigates by stage — preparation, recording, minutes
+ * confirmation, action follow-up — plus two auxiliary views. "agenda" and
+ * "workflow" remain accepted as legacy URL spellings and normalize to the
+ * stage views on read.
+ */
+export type CockpitMeetingView = "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details" | "agenda" | "workflow";
 export type CockpitSurface = "work" | "plan" | "meetings" | "artifacts" | "governance";
 export type CockpitPlanView = "gantt" | "table" | "responsibility" | "milestones" | "finance" | "operations";
 export type CockpitGovernanceView = "changes" | "decisions" | "risks" | "history" | "automation";
@@ -83,7 +89,13 @@ export function cockpitDestination(search: { get: (name: string) => string | nul
   const requestedNodeView = search.get("node_view");
   const requestedMeetingView = search.get("meeting_view");
   const nodeView = nodeId && (requestedNodeView === "tasks" || requestedNodeView === "artifacts" || requestedNodeView === "acceptance" || requestedNodeView === "details") ? requestedNodeView : null;
-  const meetingView = meetingId && (requestedMeetingView === "workflow" || requestedMeetingView === "agenda" || requestedMeetingView === "resources" || requestedMeetingView === "details") ? requestedMeetingView : null;
+  const legacyMeetingView: Record<string, CockpitMeetingView> = { agenda: "preparation", workflow: "minutes_review" };
+  const stageMeetingViews: readonly CockpitMeetingView[] = ["preparation", "recording", "minutes_review", "followup", "resources", "details"];
+  const meetingView = meetingId && requestedMeetingView
+    ? stageMeetingViews.includes(requestedMeetingView as CockpitMeetingView)
+      ? requestedMeetingView as CockpitMeetingView
+      : legacyMeetingView[requestedMeetingView] ?? null
+    : null;
   const tab = search.get("tab");
   const area: CockpitArea = meetingId ? "meetings" : nodeId ? "gantt"
     : search.get("view") === "operations" ? "operations"
@@ -103,11 +115,11 @@ export function cockpitObjectPath(pathname: string, target: { kind: "node"; id: 
   if (target.kind === "meeting" && target.actionId) query.set("action", target.actionId);
   if (target.kind === "meeting" && target.agendaId) {
     query.set("agenda", target.agendaId);
-    if (!target.view) query.set("meeting_view", "agenda");
+    if (!target.view) query.set("meeting_view", "preparation");
   }
   if (target.kind === "meeting" && target.preparationId) {
     query.set("preparation", target.preparationId);
-    if (!target.view) query.set("meeting_view", "agenda");
+    if (!target.view) query.set("meeting_view", "preparation");
   }
   if (target.kind === "meeting" && target.directoryOperationId) {
     query.set("directory_operation", target.directoryOperationId);
@@ -159,7 +171,8 @@ export function cockpitMeetingAgendaPath(pathname: string, meetingId: string, ag
   if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("directory_operation"); }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance", "preparation"]) query.delete(name);
   query.set("meeting", meetingId);
-  query.set("meeting_view", "agenda");
+  const currentView = query.get("meeting_view");
+  query.set("meeting_view", currentView === "recording" ? "recording" : "preparation");
   if (agendaId) query.set("agenda", agendaId); else query.delete("agenda");
   return `${pathname}?${query}`;
 }
@@ -171,7 +184,8 @@ export function cockpitMeetingPreparationPath(pathname: string, meetingId: strin
   if (query.get("meeting") !== meetingId) { query.delete("action"); query.delete("agenda"); query.delete("directory_operation"); }
   for (const name of ["node", "node_view", "artifact", "artifact_version", "acceptance"]) query.delete(name);
   query.set("meeting", meetingId);
-  query.set("meeting_view", "agenda");
+  const currentView = query.get("meeting_view");
+  query.set("meeting_view", currentView === "recording" ? "recording" : "preparation");
   if (preparationId) query.set("preparation", preparationId); else query.delete("preparation");
   return `${pathname}?${query}`;
 }

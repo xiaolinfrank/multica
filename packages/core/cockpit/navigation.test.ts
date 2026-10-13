@@ -27,7 +27,7 @@ describe("cockpit destinations", () => {
     const source = new URLSearchParams("meeting=m1&agenda=topic-1&action=a1&project=p1&from=2026-10-01&custom_filter=kept");
     const opened = new URL(cockpitMeetingPreparationPath("/acme/cockpit", "m1", "operation-1", source), "https://example.test");
     const destination = cockpitDestination(opened.searchParams);
-    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "topic-1", preparationId: "operation-1", meetingView: "agenda" });
+    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "topic-1", preparationId: "operation-1", meetingView: "preparation" });
     expect(destination.key).toBe(cockpitDestination(source).key);
     const materials = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", cockpitScope(source), opened.searchParams, "resources"), "https://example.test");
     expect(materials.searchParams.get("preparation")).toBe("operation-1");
@@ -45,7 +45,7 @@ describe("cockpit destinations", () => {
     const source = new URLSearchParams("meeting=m1&action=a1&project=p1&meeting_nodes=n1,n2&from=2026-10-01&custom_filter=kept&artifact=old&node=old");
     const opened = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "agenda-1", source), "https://example.test");
     const destination = cockpitDestination(opened.searchParams);
-    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "agenda-1", meetingView: "agenda", actionId: "a1", nodeId: null });
+    expect(destination).toMatchObject({ meetingId: "m1", agendaId: "agenda-1", meetingView: "preparation", actionId: "a1", nodeId: null });
     expect(destination.key).toBe(cockpitDestination(new URLSearchParams("meeting=m1")).key);
     expect(opened.searchParams.get("custom_filter")).toBe("kept");
     expect(opened.searchParams.has("artifact")).toBe(false);
@@ -55,7 +55,7 @@ describe("cockpit destinations", () => {
     expect(closed.searchParams.get("from")).toBe("2026-10-01");
     const other = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m2", "agenda-2", opened.searchParams), "https://example.test");
     expect(other.searchParams.has("action")).toBe(false);
-    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", agendaId: "agenda-1" })).toBe("/acme/cockpit?meeting=m1&agenda=agenda-1&meeting_view=agenda");
+    expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", agendaId: "agenda-1" })).toBe("/acme/cockpit?meeting=m1&agenda=agenda-1&meeting_view=preparation");
   });
   it("returns to the original acceptance scope after opening an externally owned artifact", () => {
     const origin = { projectId: "target-project", moduleId: "target-module" };

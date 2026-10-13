@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitMeetingStage, meetingStageDefaultSection } from "./meeting-stage";
+import { cockpitMeetingStage, meetingStageDefaultView } from "./meeting-stage";
 
 describe("meeting stage projection", () => {
   it("projects preparation before any confirmation", () => {
@@ -19,10 +19,11 @@ describe("meeting stage projection", () => {
   it("has no stage line for a cancelled meeting", () => {
     expect(cockpitMeetingStage("cancelled", { published_version_id: "v-1" })).toBeNull();
   });
-  it("lands ended meetings on minutes and the rest on the agenda", () => {
-    expect(meetingStageDefaultSection("ended", { published_version_id: "v-1" })).toBe("workflow");
-    expect(meetingStageDefaultSection("ended", {})).toBe("workflow");
-    expect(meetingStageDefaultSection("scheduled", {})).toBe("agenda");
-    expect(meetingStageDefaultSection(undefined, undefined)).toBe("agenda");
+  it("lands each stage on its own working view", () => {
+    expect(meetingStageDefaultView("ended", { published_version_id: "v-1" })).toBe("followup");
+    expect(meetingStageDefaultView("ended", {})).toBe("minutes_review");
+    expect(meetingStageDefaultView("in_progress", {})).toBe("recording");
+    expect(meetingStageDefaultView("scheduled", {})).toBe("preparation");
+    expect(meetingStageDefaultView(undefined, undefined)).toBe("preparation");
   });
 });
