@@ -16,6 +16,7 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/acme/cockpit", searchParams: route.params, push: route.push }),
   AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
 vi.mock("./cockpit-scope-control", () => ({ CockpitScopeControl: () => <button>Project scope</button> }));
+vi.mock("./cockpit-chat", () => ({ CockpitChat: ({ scope }: { scope: unknown }) => <section aria-label="Cockpit chat">{JSON.stringify(scope)}</section> }));
 vi.mock("./cockpit-work-overview", () => ({ CockpitWorkOverview: ({ wsId, today }: { wsId: string; today: string }) => <section aria-label="Work overview"><span>{wsId}</span><time>{today}</time></section> }));
 vi.mock("./cockpit-artifacts", () => ({ CockpitArtifacts: () => <section aria-label="Artifact list" /> }));
 vi.mock("./cockpit-artifact-detail", () => ({ CockpitArtifactDetail: ({ artifactId, versionId }: { artifactId: string; versionId: string | null }) => <section aria-label="Artifact reader">{artifactId}:{versionId}</section> }));
@@ -48,6 +49,7 @@ describe("unified cockpit shell", () => {
     expect(board).not.toHaveBeenCalled();
   });
   it("mounts the bounded work overview and available destinations without mounting the complete board", () => {
+    route.params = new URLSearchParams("tab=work");
     setup();
     expect(screen.getByRole("region", { name: "Work overview" })).toBeInTheDocument();
     expect(board).not.toHaveBeenCalled();
@@ -106,3 +108,11 @@ describe("unified cockpit shell", () => {
     expect(screen.getByText("2026-10-11")).toBeInTheDocument();
   });
 });
+
+ it("opens Mika chat at the cockpit home without downloading the board and keeps overview available", () => {
+   route.params = new URLSearchParams("project=p1&module=m1"); setup();
+   expect(screen.getByRole("region", { name: "Cockpit chat" })).toHaveTextContent('"projectId":"p1","moduleId":"m1"');
+   expect(board).not.toHaveBeenCalled();
+   expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("aria-current", "page");
+   expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/acme/cockpit?tab=work&project=p1&module=m1");
+ });

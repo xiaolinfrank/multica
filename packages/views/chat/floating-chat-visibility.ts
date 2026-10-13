@@ -1,3 +1,5 @@
+import { cockpitShellDestination } from "@multica/core/cockpit";
+
 /**
  * Route gate for the floating chat overlay, shared by the overlay itself and by
  * the `toggleChat` keyboard shortcut so the two can never disagree.
@@ -11,6 +13,12 @@
 export function isFloatingChatRouteSuppressed(
   pathname: string,
   chatPath: string,
+  cockpit?: { pathname?: string; search?: { get: (key: string) => string | null } },
 ): boolean {
-  return pathname === chatPath || pathname.startsWith(`${chatPath}/`);
+  if (pathname === chatPath || pathname.startsWith(`${chatPath}/`)) return true;
+  // The cockpit hosts the full-page chat as its home surface. Other cockpit
+  // pages keep the overlay; a caller without cockpit info (older mocks) never
+  // suppresses here.
+  if (!cockpit?.pathname || pathname !== cockpit.pathname) return false;
+  return cockpitShellDestination(cockpit.search ?? { get: () => null }).surface === "chat";
 }

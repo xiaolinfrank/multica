@@ -1,2 +1,2 @@
-export { ChatPage } from "./chat-page";
+export { ChatPage, ChatPageSurface } from "./chat-page";
 export { FloatingChat } from "./floating-chat";

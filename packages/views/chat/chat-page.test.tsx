@@ -12,6 +12,7 @@ import {
   NavigationProvider,
   type NavigationAdapter,
 } from "../navigation";
+import type { ComponentProps } from "react";
 
 const TEST_RESOURCES = { en: { common: enCommon, chat: enChat } };
 
@@ -25,7 +26,7 @@ vi.mock("./components/chat-message-list", () => ({
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
 }));
 vi.mock("./components/chat-input", () => ({
-  ChatInput: () => <div>chat-input</div>,
+  ChatInput: ({ onSend }: { onSend: (text: string) => void }) => <button onClick={() => onSend("hello")}>chat-input</button>,
 }));
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
@@ -106,6 +107,9 @@ const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
+const mockSeedAgent = vi.hoisted(() => vi.fn());
+const mockSeedProject = vi.hoisted(() => vi.fn());
+const mockSend = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
   vi.fn((id: string | null) => {
     storeRef.current = { ...storeRef.current, activeSessionId: id };
@@ -125,7 +129,7 @@ vi.mock("@multica/core/chat", () => ({
   useChatStore: Object.assign(
     (selector?: (s: { activeSessionId: string | null }) => unknown) =>
       selector ? selector(storeRef.current) : storeRef.current,
-    { getState: () => storeRef.current },
+    { getState: () => ({ ...storeRef.current, setSelectedAgentId: mockSeedAgent, setSelectedProjectId: mockSeedProject }) },
   ),
 }));
 
@@ -163,7 +167,7 @@ vi.mock("./components/use-chat-controller", async () => {
       restoreDraftRequest: null,
       handleRestoreDraftConsumed: vi.fn(),
       focusInputRequest: 0,
-      handleSend: vi.fn(),
+      handleSend: mockSend,
       handleStop: vi.fn(),
       handleUploadFile: vi.fn(),
       handleNewChat: vi.fn(),
@@ -177,7 +181,7 @@ vi.mock("./components/use-chat-controller", async () => {
   };
 });
 
-import { ChatPage } from "./chat-page";
+import { ChatPageSurface } from "./chat-page";
 
 const agent: Agent = {
   id: "agent-1",
@@ -206,13 +210,13 @@ const agent: Agent = {
 
 const NO_ACCESS_MSG = "You don't have access to chat with this agent.";
 
-function renderPage(search: string, { strict = false } = {}) {
+function renderPage(search: string, { strict = false, pathname = "/acme/chat", pageProps = {} }: { strict?: boolean; pathname?: string; pageProps?: ComponentProps<typeof ChatPageSurface> } = {}) {
   const replace = vi.fn();
   let navigation: NavigationAdapter = {
     push: vi.fn(),
     replace,
     back: vi.fn(),
-    pathname: "/acme/chat",
+    pathname,
     searchParams: new URLSearchParams(search),
     hash: "",
     getShareableUrl: (path) => path,
@@ -227,7 +231,7 @@ function renderPage(search: string, { strict = false } = {}) {
       <QueryClientProvider client={qc}>
         <I18nProvider locale="en" resources={TEST_RESOURCES}>
           <NavigationProvider value={navigation}>
-            <ChatPage />
+            <ChatPageSurface {...pageProps} />
           </NavigationProvider>
         </I18nProvider>
       </QueryClientProvider>
@@ -494,5 +498,29 @@ describe("ChatPage responsive layout", () => {
       screen.getByRole("button", { name: "select-thread" }),
     ).toBeInTheDocument();
     expect(screen.getByText("chat-input")).toBeInTheDocument();
+  });
+});
+
+describe("cockpit-hosted ChatPage", () => {
+  const props = { routeHref: "/acme/cockpit?project=p1&module=m1", defaultAgentSystemKey: "mika", defaultProjectId: "p1", initialContext: "project=p1; module=m1" };
+  it("seeds a fresh scoped Mika compose once under StrictMode, with visible context on the first message", () => {
+    renderPage("project=p1&module=m1", { strict: true, pathname: "/acme/cockpit", pageProps: props });
+    expect(mockSeedAgent).toHaveBeenCalledTimes(1);
+    expect(mockSeedProject).toHaveBeenCalledWith("p1");
+    fireEvent.click(screen.getByRole("button", { name: "chat-input" }));
+    expect(mockSend.mock.lastCall?.[0]).toBe("project=p1; module=m1\n\nhello");
+  });
+  it("preserves cockpit scope and route when a new session exists, without redirecting to platform chat", () => {
+    const view = renderPage("project=p1&module=m1", { pathname: "/acme/cockpit", pageProps: props });
+    act(() => mockSetActiveSession("new-session"));
+    expect(view.replace).toHaveBeenCalledWith("/acme/cockpit?project=p1&module=m1&session=new-session");
+  });
+  it("honors an existing session deep link without resetting its agent, project or transcript", () => {
+    renderPage("project=p1&module=m1&session=existing", { pathname: "/acme/cockpit", pageProps: props });
+    expect(storeRef.current.activeSessionId).toBe("existing");
+    expect(mockSeedAgent).not.toHaveBeenCalled();
+    expect(mockSeedProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "chat-input" }));
+    expect(mockSend.mock.lastCall?.[0]).toBe("hello");
   });
 });

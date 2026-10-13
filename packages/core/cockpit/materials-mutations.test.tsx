@@ -103,10 +103,12 @@ describe("confirmed meeting material writes", () => {
     await act(async () => { noteSave.resolve({ ...a, note: "Saved new note" }); await notePending; });
     expect(cached().meetings[0]).toMatchObject({ note: "Saved new note", nas_dir: "/Volumes/share/Confirmed" });
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitKeys.surfaces("ws-1") }],
       [{ queryKey: cockpitReadKeys.all("ws-1") }],
       [{ queryKey: cockpitKeys.board("ws-1"), exact: true }],
       [{ queryKey: cockpitKeys.workflow("ws-1", a.id), exact: true }],
       [{ queryKey: cockpitDirectoryKeys.meeting("ws-1", a.id) }],
+      [{ queryKey: cockpitKeys.surfaces("ws-1") }],
       [{ queryKey: cockpitReadKeys.all("ws-1") }],
       [{ queryKey: cockpitKeys.board("ws-1"), exact: true }],
     ]);

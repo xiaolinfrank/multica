@@ -7,6 +7,7 @@ import { api } from "../api";
 import type { CockpitMeetingWorkflowSummary } from "../types";
 import { cockpitKeys, cockpitMeetingWorkflowOptions, invalidateCockpitWorkflowsForIssue } from "./queries";
 import { useEnableCockpitMeetingWorkflow } from "./workflow-mutations";
+import { cockpitArtifactKeys } from "./artifact-queries";
 import { workflowFixture, WORKFLOW_MEETING_ID } from "./workflow-test-fixtures";
 import { compactFixture, workflowSummaryFixture } from "./workflow-history-test-fixtures";
 
@@ -40,9 +41,14 @@ describe("workflow cache ownership", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     invalidateCockpitWorkflowsForIssue(client, "ws-1", "minutes-1");
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: ["issue-operation-basis", "ws-1"] }, { cancelRefetch: false }],
+      [{ queryKey: cockpitKeys.surfaces("ws-1") }],
       [{ queryKey: cockpitKeys.dashboard("ws-1") }],
       [{ queryKey: cockpitKeys.tasks("ws-1") }], [{ queryKey: cockpitKeys.actions("ws-1") }], [{ queryKey: cockpitKeys.primaryNodes("ws-1") }],
       [{ queryKey: cockpitKeys.issueActions("ws-1") }],
+      [{ queryKey: cockpitArtifactKeys.all("ws-1"), predicate: expect.any(Function) }],
+      [{ queryKey: cockpitArtifactKeys.acceptances("ws-1"), predicate: expect.any(Function) }],
+      [{ queryKey: [...cockpitArtifactKeys.issueContexts("ws-1"), "minutes-1"] }],
       [{ queryKey: cockpitKeys.workflowHistories("ws-1") }],
       [{ queryKey: cockpitKeys.workflow("ws-1", "meeting-a"), exact: true }],
     ]);
@@ -57,9 +63,14 @@ describe("workflow cache ownership", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     invalidateCockpitWorkflowsForIssue(client, "ws-1", "review-1");
     expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: ["issue-operation-basis", "ws-1"] }, { cancelRefetch: false }],
+      [{ queryKey: cockpitKeys.surfaces("ws-1") }],
       [{ queryKey: cockpitKeys.dashboard("ws-1") }],
       [{ queryKey: cockpitKeys.tasks("ws-1") }], [{ queryKey: cockpitKeys.actions("ws-1") }], [{ queryKey: cockpitKeys.primaryNodes("ws-1") }],
       [{ queryKey: cockpitKeys.issueActions("ws-1") }],
+      [{ queryKey: cockpitArtifactKeys.all("ws-1"), predicate: expect.any(Function) }],
+      [{ queryKey: cockpitArtifactKeys.acceptances("ws-1"), predicate: expect.any(Function) }],
+      [{ queryKey: [...cockpitArtifactKeys.issueContexts("ws-1"), "review-1"] }],
       [{ queryKey: cockpitKeys.workflowHistories("ws-1") }],
     ]);
   });

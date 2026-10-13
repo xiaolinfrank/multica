@@ -11,7 +11,7 @@ import { GlobalShortcuts } from "./global-shortcuts";
 // without swallowing the keypress — everywhere the overlay cannot exist.
 const h = vi.hoisted(() => ({
   chat: { floatingChatEnabled: true, toggle: vi.fn() },
-  navigation: { pathname: "/acme/issues", push: vi.fn() },
+  navigation: { pathname: "/acme/issues", push: vi.fn(), searchParams: new URLSearchParams() },
   toggleSidebar: vi.fn(),
   searchToggle: vi.fn(),
 }));
@@ -42,6 +42,7 @@ vi.mock("@multica/core/paths", () => ({
     runtimes: () => "/acme/runtimes",
     skills: () => "/acme/skills",
     settings: () => "/acme/settings",
+    cockpit: () => "/acme/cockpit",
   }),
 }));
 vi.mock("@multica/ui/components/ui/sidebar", () => ({
@@ -162,5 +163,25 @@ describe("chat toggle shortcut", () => {
     );
     expect(h.toggleSidebar).toHaveBeenCalledTimes(1);
     expect(h.chat.toggle).not.toHaveBeenCalled();
+  });
+});
+
+describe("cockpit chat home suppression", () => {
+  it("swallows the chord only on the cockpit's full-page chat surface", () => {
+    h.navigation.pathname = "/acme/cockpit";
+    render(<GlobalShortcuts />);
+
+    // A no-op keeps the keypress for the page — the chord is not swallowed.
+    h.navigation.searchParams = new URLSearchParams();
+    expect(pressToggleChat()).toBe(false);
+    expect(h.chat.toggle).not.toHaveBeenCalled();
+
+    h.navigation.searchParams = new URLSearchParams("tab=work");
+    expect(pressToggleChat()).toBe(true);
+    expect(h.chat.toggle).toHaveBeenCalledTimes(1);
+
+    h.navigation.searchParams = new URLSearchParams("session=s1");
+    expect(pressToggleChat()).toBe(false);
+    expect(h.chat.toggle).toHaveBeenCalledTimes(1);
   });
 });

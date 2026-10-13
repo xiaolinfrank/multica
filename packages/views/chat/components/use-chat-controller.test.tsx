@@ -1235,3 +1235,26 @@ describe("useChatController revoked invoke permission", () => {
     expect(h.createSessionMutate).not.toHaveBeenCalled();
   });
 });
+
+describe("cockpit default agent selection", () => {
+  beforeEach(() => {
+    h.store.activeSessionId = null; h.store.selectedAgentId = null; h.store.selectedProjectId = null;
+    h.sessions = []; h.projects = []; h.pendingTask = null; invokableAgentIds.current = null;
+  });
+  it("resolves the built-in Mika by system key even after a rename, not by list order or name", () => {
+    h.agents = [agentA, { ...agentB, name: "Renamed chief", system_key: "mika" }];
+    const { result } = renderHook(() => useChatController({ defaultAgentSystemKey: "mika" }));
+    expect(result.current.activeAgent?.id).toBe(agentB.id);
+  });
+  it("does not silently send to another agent when Mika is missing or inaccessible", () => {
+    h.agents = [agentA, { ...agentB, system_key: "mika" }]; invokableAgentIds.current = [agentA.id];
+    const { result } = renderHook(() => useChatController({ defaultAgentSystemKey: "mika" }));
+    expect(result.current.activeAgent).toBeNull();
+    expect(result.current.noAgent).toBe(true);
+  });
+  it("keeps explicit agent choices and existing session bindings above the default", () => {
+    h.agents = [agentA, { ...agentB, system_key: "mika" }]; h.store.selectedAgentId = agentA.id;
+    const { result } = renderHook(() => useChatController({ defaultAgentSystemKey: "mika" }));
+    expect(result.current.activeAgent?.id).toBe(agentA.id);
+  });
+});

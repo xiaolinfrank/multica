@@ -4,7 +4,7 @@ import { cockpitSurfacePath, type CockpitScope, type CockpitSurface } from "@mul
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buttonVariants } from "@multica/ui/components/ui/button";
 import { cn } from "@multica/ui/lib/utils";
-import { CalendarDays, ChartNoAxesGantt, Files, LayoutDashboard, Layers3, ShieldCheck } from "lucide-react";
+import { CalendarDays, ChartNoAxesGantt, Files, LayoutDashboard, Layers3, MessageSquare, ShieldCheck } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 
@@ -25,6 +25,7 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
   const navigation = [
+    { value: "chat" as const, label: t(($) => $.shell.chat), Icon: MessageSquare },
     { value: "work" as const, label: t(($) => $.shell.overview), Icon: LayoutDashboard },
     { value: "plan" as const, label: t(($) => $.shell.plan), Icon: ChartNoAxesGantt },
     { value: "meetings" as const, label: t(($) => $.shell.meetings), Icon: CalendarDays },

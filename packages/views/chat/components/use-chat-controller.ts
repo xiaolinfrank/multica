@@ -205,7 +205,7 @@ const CHAT_VIRTUOSO_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
  * currently on screen — which gates auto-mark-read so a background overlay
  * doesn't silently clear unread state the user hasn't actually seen.
  */
-export function useChatController(opts?: { isActive?: boolean }) {
+export function useChatController(opts?: { isActive?: boolean; defaultAgentSystemKey?: string }) {
   const isActive = opts?.isActive ?? true;
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
@@ -366,7 +366,9 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const activeAgent =
     sessionAgent ??
     availableAgents.find((a) => a.id === selectedAgentId) ??
-    availableAgents[0] ??
+    (opts?.defaultAgentSystemKey
+      ? availableAgents.find((a) => a.system_key === opts.defaultAgentSystemKey)
+      : availableAgents[0]) ??
     null;
   const isAgentRuntimeBound = !!activeAgent && hasAgentRuntime(activeAgent);
 
@@ -389,7 +391,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
   );
 
   const agentAvailability = useWorkspaceAgentAvailability();
-  const noAgent = agentAvailability === "none";
+  const noAgent = !activeAgent || agentAvailability === "none";
 
   const projectContextSupport = useChatProjectContextSupport(wsId, activeAgent);
 
