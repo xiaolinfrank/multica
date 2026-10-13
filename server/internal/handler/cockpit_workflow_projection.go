@@ -238,7 +238,11 @@ func (x *cockpitHistoryRead) handoffs(ids []pgtype.UUID) (map[pgtype.UUID]Cockpi
 func (h *Handler) cockpitHistorySummary(r *http.Request, x *cockpitHistoryRead) (CockpitWorkflowSummaryResponse, error) {
 	out := CockpitWorkflowSummaryResponse{Representation: "summary", WorkspaceID: uuidToString(x.cc.workspaceID), MeetingID: uuidToString(x.meetingID)}
 	if x.work == nil {
+		// An unconfigured workflow still speaks the same response shape: empty
+		// arrays, not null slices (the client schema rejects null arrays).
 		out.CanManage = x.human
+		out.MinutesIssues = []CockpitMinutesBindingResponse{}
+		out.HistoryCounts = CockpitWorkflowHistoryCounts{}
 		return out, nil
 	}
 	w := *x.work
