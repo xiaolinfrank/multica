@@ -285,7 +285,7 @@ export function CockpitMeetingPanel({
               defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly || !workflowEnabled && canAddPreparation === false} />
           </TabsContent>
           <TabsContent value="followup" keepMounted>
-            <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
+            <CockpitMeetingWorkflowPanel key={`${wsId}:${meeting.id}:follow`} stage="followup" wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}
               members={members} issueLinks={issueLinks} workflow={workflowQuery.data}
               loading={workflowQuery.isPending} loadError={workflowQuery.isError}
               onReload={reloadWorkflow} resourcesHref={resourcesHref} agendaHref={lifecycleAvailable ? agendaHref : undefined} defaultPlacement={defaultPlacement}

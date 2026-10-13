@@ -875,7 +875,8 @@
     "unpublish_description": "이 버전을 공식 회의록 포인터에서 내립니다. NAS에 기록된 사본은 그대로 유지되며, 승인된 버전은 이후 다시 게시할 수 있습니다.",
     "unpublish_reason": "사유",
     "unpublish_reason_hint": "게시 취소 사유는 버전 이력에 기록됩니다.",
-    "unpublish_confirm": "게시 취소"
+    "unpublish_confirm": "게시 취소",
+    "followup_hint": "회의록이 확정되었습니다. 이 회의에서 시작된 행동을 여기서 후속 관리합니다."
   },
   "nas": {
     "not_configured": "이 워크스페이스에 허용된 NAS 내보내기 위치가 설정되지 않았습니다. 배포 관리자가 내보내기 루트를 설정해야 하며 회의 폴더만 만드는 것으로 해결되지 않습니다.",

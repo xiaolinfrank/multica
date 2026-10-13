@@ -875,7 +875,8 @@
     "unpublish_description": "将此版本从正式纪要指针下线。已写入 NAS 的副本保持不变，之后可重新发布同一或另一已通过的版本。",
     "unpublish_reason": "原因",
     "unpublish_reason_hint": "下线原因会随版本历史留痕。",
-    "unpublish_confirm": "下线"
+    "unpublish_confirm": "下线",
+    "followup_hint": "纪要已定稿。这里跟进本次会议开启的行动。"
   },
   "nas": {
     "not_configured": "此工作区尚未配置允许的 NAS 导出位置。需要部署管理员配置导出根目录，仅创建会议文件夹无法解决。",

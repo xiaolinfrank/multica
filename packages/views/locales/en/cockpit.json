@@ -875,7 +875,8 @@
     "unpublish_description": "Withdraws this version from the official minutes pointer. NAS copies already written stay untouched, and an approved version can be published again afterwards.",
     "unpublish_reason": "Reason",
     "unpublish_reason_hint": "The reason is recorded with the version's withdrawal history.",
-    "unpublish_confirm": "Unpublish"
+    "unpublish_confirm": "Unpublish",
+    "followup_hint": "Minutes are final. Follow up the actions this meeting opened."
   },
   "nas": {
     "not_configured": "No permitted NAS destination is configured. A deployment administrator must configure this workspace’s export root; creating a meeting folder alone is not enough.",
