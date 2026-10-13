@@ -113,7 +113,8 @@
     "unstart_hint": "開始確認を取り消すと会議は予定済みに戻り、合わせて記録された実際の開始時刻も消去されます。実際に始まった会議には、時刻の修正か終了確認をご利用ください。",
     "unschedule": "予定確認の修正",
     "unschedule_hint": "予定確認を取り消すと会議は未確認の状態に戻り、時刻や計画を立て直せます。理由は確認履歴に残ります。",
-    "recording_hint": "会議中：議題を選んで要点を記録します。発生事実と終了確認は上部にあります。"
+    "recording_hint": "会議中：議題を選んで要点を記録します。発生事実と終了確認は上部にあります。",
+    "draft_unsaved": "ローカル下書き——未保存"
   },
   "header": {
     "title": "プロジェクトコックピット",
@@ -2354,7 +2355,10 @@
     "recording": "会議記録",
     "minutes_review": "議事録確認",
     "followup": "アクションフォロー",
-    "action_check_materials": "資料を確認",
+    "action_view_gaps": "不足を確認",
+    "action_enter_workbench": "会議ワークベンチへ",
+    "enter_focus": "ワークベンチを全幅で開く",
+    "exit_focus": "サイドパネルに戻す",
     "action_end_meeting": "会議を終了",
     "action_minutes": "議事録タスク",
     "action_followup": "未了アクション",

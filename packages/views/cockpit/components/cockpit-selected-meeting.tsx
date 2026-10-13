@@ -63,7 +63,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   };
   const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(detail?.node_index ?? []), [detail?.node_index]);
   const labels = new Map((nodePage?.items ?? []).map((link) => [link.node_id, `${codes.get(link.node_id) ?? link.code} ${link.name}`.trim()]));
-  if (!detail) return <aside className="w-[min(46rem,65vw)] max-w-full space-y-4 border-l bg-card p-4 max-xl:w-full">
+  if (!detail) return <aside className={navigation.searchParams.get("meeting") === meetingId && navigation.searchParams.get("meeting_focus") === "1" ? "flex w-full max-w-full flex-col space-y-4 bg-card p-4" : "w-[min(46rem,65vw)] max-w-full space-y-4 border-l bg-card p-4 max-xl:w-full"}>
     <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={t(($) => $.panel.close)}><X className="size-4" /></Button>
     {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} onClose={close} /> : <Spinner />}
   </aside>;

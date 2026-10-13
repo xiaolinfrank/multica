@@ -113,7 +113,8 @@
     "unstart_hint": "Withdraw the start confirmation: the meeting returns to scheduled and the actual start time recorded with it is cleared. For a meeting that genuinely began, correct the times or confirm the end instead.",
     "unschedule": "Correct schedule confirmation",
     "unschedule_hint": "Withdraw the schedule confirmation: the meeting returns to not yet confirmed, so times or the plan can be reworked. The reason stays in the confirmation history.",
-    "recording_hint": "In session: pick a topic and record against it; facts and the end confirmation stay on top."
+    "recording_hint": "In session: pick a topic and record against it; facts and the end confirmation stay on top.",
+    "draft_unsaved": "Local draft — not saved yet"
   },
   "header": {
     "title": "Project Cockpit",
@@ -2354,7 +2355,10 @@
     "recording": "Meeting record",
     "minutes_review": "Minutes confirmation",
     "followup": "Action follow-up",
-    "action_check_materials": "Check materials",
+    "action_view_gaps": "View gaps",
+    "action_enter_workbench": "Enter the meeting workbench",
+    "enter_focus": "Expand the workbench to full width",
+    "exit_focus": "Restore the side panel",
     "action_end_meeting": "End the meeting",
     "action_minutes": "Minutes task",
     "action_followup": "Open actions",

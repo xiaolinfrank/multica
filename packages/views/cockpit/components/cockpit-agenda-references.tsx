@@ -24,7 +24,7 @@ import { CockpitScopePicker } from "./cockpit-scope-control";
 import { useCockpitSelectedNodeIssueOption } from "./cockpit-node-issue-picker";
 import { createSafeId } from "@multica/core/utils";
 
-export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
+export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref, readOnly, canAddPreparation, recording = false }: { wsId: string; meetingId: string; agenda: CockpitAgendaDetail; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean; /** S07: recording links evidence mid-session; opening preparation work is preparation's job. */ recording?: boolean }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const status = useStatusLabel(wsId); const client = useQueryClient();
   const [cursors, setCursors] = useState([""]); const [removed, setRemoved] = useState(false); const [mode, setMode] = useState<"issue" | "artifact_reference" | "create" | null>(null);
   const dialogBusy = useRef(false);
@@ -36,7 +36,7 @@ export function CockpitAgendaReferences({ wsId, meetingId, agenda, resourcesHref
   return <section aria-label={t(($) => $.meeting_lifecycle.references)} className="space-y-3 rounded-lg border border-border p-3">
     <h3 className="text-body font-medium">{t(($) => $.meeting_lifecycle.references)}</h3>
     <Dialog open={mode !== null} onOpenChange={(open) => { if (!open && !dialogBusy.current) setMode(null); }}><div className="flex flex-wrap gap-2">
-      <DialogTrigger render={<Button size="sm" disabled={(!writable || canAddPreparation === false) && !hasPending("create")} />} onClick={() => setMode("create")}>{t(($) => $.meeting_lifecycle.create_preparation)}</DialogTrigger>
+      {!recording && <DialogTrigger render={<Button size="sm" disabled={(!writable || canAddPreparation === false) && !hasPending("create")} />} onClick={() => setMode("create")}>{t(($) => $.meeting_lifecycle.create_preparation)}</DialogTrigger>}
       <DialogTrigger render={<Button size="sm" variant="outline" disabled={(!writable || canAddPreparation === false) && !hasPending("issue")} />} onClick={() => setMode("issue")}>{t(($) => $.meeting_lifecycle.attach_issue)}</DialogTrigger>
       <DialogTrigger render={<Button size="sm" variant="outline" disabled={(!writable || canAddPreparation === false) && !hasPending("artifact_reference")} />} onClick={() => setMode("artifact_reference")}>{t(($) => $.meeting_lifecycle.attach_artifact)}</DialogTrigger>
     </div>{mode === "create" ? <CockpitPreparationIssueForm key={`${agenda.id}:create`} wsId={wsId} meetingId={meetingId} agenda={agenda} canAddPreparation={canAddPreparation} onDone={() => setMode(null)} onBusyChange={(busy) => { dialogBusy.current = busy; }} />

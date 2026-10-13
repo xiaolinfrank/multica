@@ -3,12 +3,13 @@
 import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { applyCockpitSavedView, captureCockpitSavedView, cockpitSavedViewPath, cockpitContextOptions, cockpitChangePageOptions, cockpitShellDestination, cockpitSurfacePath, useUpdateCockpit } from "@multica/core/cockpit";
+import { applyCockpitSavedView, captureCockpitSavedView, cockpitSavedViewPath, cockpitContextOptions, cockpitChangePageOptions, cockpitMeetingContextPath, cockpitObjectPath, cockpitShellDestination, cockpitSurfacePath, useUpdateCockpit } from "@multica/core/cockpit";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { toast } from "sonner";
 import { Presentation } from "lucide-react";
 import { useT } from "../../i18n";
+import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
 import { CockpitShell } from "./cockpit-shell";
 import { CockpitScopeControl } from "./cockpit-scope-control";
 import { CockpitPlanViews } from "./cockpit-plan-views";
@@ -67,6 +68,16 @@ export function CockpitPage() {
     onCommit={(value) => update.mutate({ title: value }, { onError: () => toast.error(t(($) => $.errors.save_failed)) })}
     label={t(($) => $.header.title)} placeholder={t(($) => $.header.title_placeholder)} displayClassName="text-title-sm font-semibold" /> : undefined;
   if (isReport && metadata && today) return <CockpitReport wsId={wsId} scope={scope} asOf={today} returnHref={returnHref} />;
+  // R4: `meeting_focus=1` swaps the register for the full-width meeting
+  // workbench — the panel header and stage tabs are the chrome while it runs.
+  const focusedMeetingId = surface === "meetings" ? navigation.searchParams.get("meeting") : null;
+  if (focusedMeetingId && navigation.searchParams.get("meeting_focus") === "1" && metadata && today) return (
+    <div className="flex h-full min-h-0 flex-col">
+      <CockpitSelectedMeeting key={focusedMeetingId} wsId={wsId} meetingId={focusedMeetingId} scope={scope}
+        onClose={() => navigation.push(cockpitMeetingContextPath(navigation.pathname, null, scope, navigation.searchParams))}
+        onOpenNode={(nodeId) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId }, scope))} />
+    </div>
+  );
   return <CockpitShell surface={surface} scope={scope} title={title} focusedMeeting={focusedMeeting}
     scopeSummary={<span className="block truncate" title={scopeLabel}>{scopeLabel}</span>} pendingChangeCount={pendingChanges.data?.counts.pending} artifactsAvailable={metadata?.capabilities?.artifacts === true}
     actions={metadata && <>{metadata.actor.is_human && <CockpitSavedViewsControl wsId={wsId} userId={metadata.actor.user_id} capture={() => captureCockpitSavedView(wsId, navigation.searchParams)}

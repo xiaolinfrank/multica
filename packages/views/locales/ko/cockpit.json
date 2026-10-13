@@ -113,7 +113,8 @@
     "unstart_hint": "시작 확인을 철회하면 회의가 예정 상태로 돌아가고 함께 기록된 실제 시작 시각도 지워집니다. 실제로 시작한 회의라면 시각 정정이나 종료 확인을 이용하세요.",
     "unschedule": "예정 확인 정정",
     "unschedule_hint": "예정 확인을 철회하면 회의가 미확인 상태로 돌아가 시간이나 계획을 다시 조정할 수 있습니다. 사유는 확인 이력에 남습니다.",
-    "recording_hint": "회의 중: 안건을 골라 요점을 기록하세요. 발생 사실과 종료 확인은 상단에 있습니다."
+    "recording_hint": "회의 중: 안건을 골라 요점을 기록하세요. 발생 사실과 종료 확인은 상단에 있습니다.",
+    "draft_unsaved": "로컬 초안——아직 저장 안 됨"
   },
   "header": {
     "title": "프로젝트 콕핏",
@@ -2354,7 +2355,10 @@
     "recording": "회의 기록",
     "minutes_review": "회의록 확인",
     "followup": "행동 후속",
-    "action_check_materials": "자료 확인",
+    "action_view_gaps": "부족분 확인",
+    "action_enter_workbench": "회의 워크벤치 열기",
+    "enter_focus": "워크벤치를 전체 폭으로 열기",
+    "exit_focus": "사이드 패널로 복귀",
     "action_end_meeting": "회의 종료",
     "action_minutes": "회의록 작업",
     "action_followup": "미완료 행동",

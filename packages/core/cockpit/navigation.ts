@@ -158,9 +158,19 @@ export function cockpitMeetingContextPath(pathname: string, meetingId: string | 
   if (meetingId && source.get("meeting") === meetingId && source.get("agenda")) query.set("agenda", source.get("agenda")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("preparation")) query.set("preparation", source.get("preparation")!);
   if (meetingId && source.get("meeting") === meetingId && source.get("directory_operation")) query.set("directory_operation", source.get("directory_operation")!);
+  if (meetingId && source.get("meeting_focus") === "1") query.set("meeting_focus", "1");
   for (const name of ["meeting_node", "meeting_nodes", "meeting_archive", "from", "to"] as const) {
     const value = source.get(name); if (value) query.set(name, value);
   }
+  return `${pathname}?${query}`;
+}
+
+/** Expand or restore one meeting without changing its selected stage or context. */
+export function cockpitMeetingFocusPath(pathname: string, meetingId: string, scope: CockpitScope,
+  source: { get: (key: string) => string | null }, focused: boolean, view?: CockpitMeetingView): string {
+  const base = cockpitMeetingContextPath(pathname, meetingId, scope, source, view ?? (source.get("meeting_view") as CockpitMeetingView | undefined));
+  const query = new URLSearchParams(base.split("?")[1] ?? "");
+  if (focused) query.set("meeting_focus", "1"); else query.delete("meeting_focus");
   return `${pathname}?${query}`;
 }
 

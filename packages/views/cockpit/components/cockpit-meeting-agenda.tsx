@@ -36,7 +36,7 @@ const purposes: CockpitAgendaPurpose[] = ["planning", "goal_review", "boundary_c
 const isPurpose = (value: string): value is CockpitAgendaPurpose => purposes.some((purpose) => purpose === value);
 const size = (value: string) => new TextEncoder().encode(value).length;
 
-export function CockpitMeetingAgenda({ wsId, meetingId, accountId, inputsAvailable = false, readOnly, templatesAvailable = false, dispositionAvailable = false, directoryPreparationAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed, stage = "preparation" }: { wsId: string; meetingId: string; accountId?: string; inputsAvailable?: boolean; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; directoryPreparationAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void; stage?: "preparation" | "recording" }) {
+export function CockpitMeetingAgenda({ wsId, meetingId, accountId, inputsAvailable = false, readOnly, templatesAvailable = false, dispositionAvailable = false, directoryPreparationAvailable = false, authorizedPreparationId, onPreparationAuthorizationConsumed, stage = "preparation", focused = false }: { wsId: string; meetingId: string; accountId?: string; inputsAvailable?: boolean; readOnly?: boolean; templatesAvailable?: boolean; dispositionAvailable?: boolean; directoryPreparationAvailable?: boolean; authorizedPreparationId?: string | null; onPreparationAuthorizationConsumed?: () => void; stage?: "preparation" | "recording"; /** R4 S07: the full-width workbench lays list / current topic / related out as columns. */ focused?: boolean }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const client = useQueryClient();
   const viewKey = cockpitRelationViewKey(wsId, "agenda", meetingId);
   const view = useCockpitScopeViewStore((state) => state.agendas[viewKey] ?? EMPTY_COCKPIT_AGENDA_CONTEXT);
@@ -60,53 +60,89 @@ export function CockpitMeetingAgenda({ wsId, meetingId, accountId, inputsAvailab
   const resourcesHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "resources");
   const workflowHref = cockpitMeetingContextPath(paths.cockpit(), meetingId, cockpitScope(navigation.searchParams), navigation.searchParams, "minutes_review");
   const firstPage = async () => { await client.invalidateQueries({ queryKey: cockpitAgendaOptions(wsId, meetingId, { q, include_removed: removed, page_size: 25 }).queryKey }); setCursors([""]); };
-  return <section aria-label={t(($) => $.meeting_lifecycle.title)} className="min-w-0 space-y-4">
-    {lifecycle.isPending ? <Spinner /> : lifecycle.isError || !lifecycle.data ? <CockpitFlowError onRetry={() => void lifecycle.refetch()} /> : <>
-      {stage === "recording" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.recording_hint)}</p>}
-      <CockpitMeetingOccurrence wsId={wsId} header={lifecycle.data} refresh={() => void lifecycle.refetch()} readOnly={readOnly} emphasized={stage === "recording"} />
-      {operationId && preparationAvailable ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={cockpitMeetingPreparationPath(paths.cockpit(), meetingId, null, navigation.searchParams)} onClick={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }}>{t(($) => $.meeting_preparation.close)}</AppLink>
-        <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} directoryPreparationAvailable={directoryPreparationAvailable} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
-      </div> : selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
-        <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} wsId={wsId} meetingId={meetingId} agendaId={selectedId} accountId={accountId} inputsAvailable={inputsAvailable} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
-      </div> : <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_lifecycle.agenda)}</h3>
-          {stage === "preparation" && <Dialog open={create} onOpenChange={(next) => { if (next || !dialogBusy.current) setCreate(next); }}><DialogTrigger render={<Button size="sm" disabled={!pendingCreate && (readOnly || !lifecycle.data.can_edit_agenda)} />}>{t(($) => $.meeting_lifecycle.add)}</DialogTrigger>
-            {create && <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.add)}</DialogTitle></DialogHeader>
-              <CockpitAgendaEditor key={`${wsId}:${meetingId}:new`} wsId={wsId} meetingId={meetingId} header={lifecycle.data} readOnly={readOnly} onBusyChange={(busy) => { dialogBusy.current = busy; }} onSaved={(id) => { setCreate(false); navigation.push(href(id)); }} />
-            </DialogContent>}
-          </Dialog>}</div>
-        {stage === "preparation" && <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.search)}<Input value={text} name="meeting-agenda-search" autoComplete="off" onChange={(event) => { useCockpitScopeViewStore.getState().updateAgenda(viewKey, { query: event.target.value }); }} /></label>}
-        {stage === "preparation" && <label className="flex items-center gap-2 text-caption"><input type="checkbox" checked={removed} onChange={(event) => { useCockpitScopeViewStore.getState().updateAgenda(viewKey, { includeRemoved: event.target.checked }); }} />{t(($) => $.meeting_lifecycle.show_removed)}</label>}
-        {query.isPending || changing ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
-          <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
-          <ul ref={restoreList} onScroll={(event) => { if (useCockpitScopeViewStore.getState().sessionGeneration === generation.current) useCockpitScopeViewStore.getState().updateAgenda(viewKey, { scrollTop: event.currentTarget.scrollTop }); }} className={stage === "recording" ? "max-h-[22vh] divide-y divide-border overflow-y-auto overscroll-contain" : "max-h-[45vh] divide-y divide-border overflow-y-auto overscroll-contain"}>{page.items.map((item) => <li key={item.id} className="space-y-1 py-3"><AppLink href={href(item.id)} title={item.title} aria-label={t(($) => $.meeting_lifecycle.open, { title: item.title })} className="line-clamp-2 break-words text-body font-medium hover:underline">{item.title}</AppLink>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 break-words text-caption text-muted-foreground">{item.removed_at && <span>{t(($) => $.meeting_lifecycle.removed)}</span>}{item.node_id && <span>{item.node_code} {item.node_title}</span>}{item.facilitator_name && <span>{item.facilitator_name}</span>}</div>
-          </li>)}</ul>{page.items.length === 0 && <p className="text-caption text-muted-foreground">{q ? t(($) => $.task_flow.no_matches) : t(($) => $.meeting_lifecycle.empty)}</p>}
-        </>}
-        {cursors.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => void firstPage()}>{t(($) => $.meeting_lifecycle.refresh_first)}</Button>}
-      </section>}
-      {stage === "preparation" && preparationAvailable && !operationId && <div className="space-y-2">
-        {templatesAvailable && <CockpitMeetingTemplateApplication wsId={wsId} meetingId={meetingId} resourcesHref={resourcesHref} disabled={Boolean(readOnly) || basis.isError || basis.data?.availability !== "available" || basis.data.apply_template.state !== "allowed"} onCreated={(id, advance) => { setAutoStart(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(paths.cockpit(), meetingId, id, navigation.searchParams)); }} />}
-        {basis.isError && <CockpitFlowError onRetry={() => void basis.refetch()} />}
-        {templatesAvailable && basis.data?.apply_template.state === "blocked" && <CockpitPreparationReasons codes={basis.data.apply_template.reason_codes} targets={basis.data.targets} />}
-        <CockpitPreparationHistory wsId={wsId} meetingId={meetingId} />
-      </div>}
-      <CockpitMeetingMaterialsConfirmation wsId={wsId} header={lifecycle.data} resourcesHref={resourcesHref} workflowHref={workflowHref} readOnly={readOnly} />
+  const frame = focused ? "flex h-full min-h-0 flex-col gap-3 p-4" : "min-w-0 space-y-4";
+  if (lifecycle.isPending) return <section aria-label={t(($) => $.meeting_lifecycle.title)} className={frame}><Spinner /></section>;
+  if (lifecycle.isError || !lifecycle.data) return <section aria-label={t(($) => $.meeting_lifecycle.title)} className={frame}><CockpitFlowError onRetry={() => void lifecycle.refetch()} /></section>;
+  const header = lifecycle.data;
+  const operationBlock = operationId && preparationAvailable ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={cockpitMeetingPreparationPath(paths.cockpit(), meetingId, null, navigation.searchParams)} onClick={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }}>{t(($) => $.meeting_preparation.close)}</AppLink>
+    <CockpitPreparationOperation key={`${wsId}:${meetingId}:${operationId}`} wsId={wsId} meetingId={meetingId} operationId={operationId} directoryPreparationAvailable={directoryPreparationAvailable} autoStart={autoStart === operationId || authorizedPreparationId === operationId} onAutoStartConsumed={() => { setAutoStart(null); onPreparationAuthorizationConsumed?.(); }} readOnly={readOnly} />
+  </div> : null;
+  const readerBlock = selectedId ? <div className="space-y-3"><AppLink className={buttonVariants({ variant: "outline", size: "sm" })} href={href(null)}>{t(($) => $.meeting_lifecycle.close)}</AppLink>
+    <CockpitAgendaReader key={`${wsId}:${meetingId}:${selectedId}`} focused={focused} recording={stage === "recording"} wsId={wsId} meetingId={meetingId} agendaId={selectedId} accountId={accountId} inputsAvailable={inputsAvailable} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} />
+  </div> : null;
+  const listBlock = <section className="space-y-3">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_lifecycle.agenda)}</h3>
+      {stage === "preparation" && <Dialog open={create} onOpenChange={(next) => { if (next || !dialogBusy.current) setCreate(next); }}><DialogTrigger render={<Button size="sm" disabled={!pendingCreate && (readOnly || !header.can_edit_agenda)} />}>{t(($) => $.meeting_lifecycle.add)}</DialogTrigger>
+        {create && <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{t(($) => $.meeting_lifecycle.add)}</DialogTitle></DialogHeader>
+          <CockpitAgendaEditor key={`${wsId}:${meetingId}:new`} wsId={wsId} meetingId={meetingId} header={header} readOnly={readOnly} onBusyChange={(busy) => { dialogBusy.current = busy; }} onSaved={(id) => { setCreate(false); navigation.push(href(id)); }} />
+        </DialogContent>}
+      </Dialog>}</div>
+    {stage === "preparation" && <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.search)}<Input value={text} name="meeting-agenda-search" autoComplete="off" onChange={(event) => { useCockpitScopeViewStore.getState().updateAgenda(viewKey, { query: event.target.value }); }} /></label>}
+    {stage === "preparation" && <label className="flex items-center gap-2 text-caption"><input type="checkbox" checked={removed} onChange={(event) => { useCockpitScopeViewStore.getState().updateAgenda(viewKey, { includeRemoved: event.target.checked }); }} />{t(($) => $.meeting_lifecycle.show_removed)}</label>}
+    {query.isPending || changing ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <>
+      <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
+      <ul ref={restoreList} onScroll={(event) => { if (useCockpitScopeViewStore.getState().sessionGeneration === generation.current) useCockpitScopeViewStore.getState().updateAgenda(viewKey, { scrollTop: event.currentTarget.scrollTop }); }} className={focused ? "divide-y divide-border overscroll-contain" : stage === "recording" ? "max-h-[22vh] divide-y divide-border overflow-y-auto overscroll-contain" : "max-h-[45vh] divide-y divide-border overflow-y-auto overscroll-contain"}>{page.items.map((item) => <li key={item.id} className="space-y-1 py-3"><AppLink href={href(item.id)} title={item.title} aria-label={t(($) => $.meeting_lifecycle.open, { title: item.title })} className="line-clamp-2 break-words text-body font-medium hover:underline">{item.title}</AppLink>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 break-words text-caption text-muted-foreground">{item.removed_at && <span>{t(($) => $.meeting_lifecycle.removed)}</span>}{item.node_id && <span>{item.node_code} {item.node_title}</span>}{item.facilitator_name && <span>{item.facilitator_name}</span>}</div>
+      </li>)}</ul>{page.items.length === 0 && <p className="text-caption text-muted-foreground">{q ? t(($) => $.task_flow.no_matches) : t(($) => $.meeting_lifecycle.empty)}</p>}
     </>}
+    {cursors.length > 1 && <Button type="button" size="sm" variant="outline" onClick={() => void firstPage()}>{t(($) => $.meeting_lifecycle.refresh_first)}</Button>}
+  </section>;
+  const preparationBlock = stage === "preparation" && preparationAvailable && !operationId ? <div className="space-y-2">
+    {templatesAvailable && <CockpitMeetingTemplateApplication wsId={wsId} meetingId={meetingId} resourcesHref={resourcesHref} disabled={Boolean(readOnly) || basis.isError || basis.data?.availability !== "available" || basis.data.apply_template.state !== "allowed"} onCreated={(id, advance) => { setAutoStart(advance ? id : null); navigation.push(cockpitMeetingPreparationPath(paths.cockpit(), meetingId, id, navigation.searchParams)); }} />}
+    {basis.isError && <CockpitFlowError onRetry={() => void basis.refetch()} />}
+    {templatesAvailable && basis.data?.apply_template.state === "blocked" && <CockpitPreparationReasons codes={basis.data.apply_template.reason_codes} targets={basis.data.targets} />}
+    <CockpitPreparationHistory wsId={wsId} meetingId={meetingId} />
+  </div> : null;
+  return <section aria-label={t(($) => $.meeting_lifecycle.title)} className={frame}>
+      {stage === "recording" && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.recording_hint)}</p>}
+      <CockpitMeetingOccurrence wsId={wsId} header={header} refresh={() => void lifecycle.refetch()} readOnly={readOnly} emphasized={stage === "recording"} />
+      {focused ? (
+        /* S07: the workbench is one surface with three roles — the topic list
+           stays put, the current topic records in the middle, its related
+           issues and materials sit on the right. Narrower containers drop the
+           low-frequency context first, then collapse back to list -> topic. */
+        <div className="@container min-h-0 flex-1">
+          <div className="grid h-full min-h-0 grid-cols-1 gap-4 @5xl:grid-cols-[16rem_minmax(0,1fr)] @7xl:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+            <div className={operationId || selectedId ? "hidden min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1 @5xl:flex" : "flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1"}>
+              {listBlock}
+              {preparationBlock}
+            </div>
+            <div className={!operationId && !selectedId ? "hidden min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1 @5xl:flex @7xl:col-span-2" : "flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1"}>
+              {operationBlock ?? readerBlock ?? <p className="rounded-lg border border-dashed border-border p-4 text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.select)}</p>}
+            </div>
+            {selectedId && !operationId && <div className="hidden min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1 @7xl:flex">
+              <CockpitFocusedReferences wsId={wsId} meetingId={meetingId} agendaId={selectedId} resourcesHref={resourcesHref} readOnly={readOnly} canAddPreparation={canAddPreparation} recording={stage === "recording"} />
+            </div>}
+          </div>
+        </div>
+      ) : <>{operationBlock ?? readerBlock ?? listBlock}{preparationBlock}</>}
+      <CockpitMeetingMaterialsConfirmation wsId={wsId} header={header} resourcesHref={resourcesHref} workflowHref={workflowHref} readOnly={readOnly} />
   </section>;
 }
 
-function CockpitAgendaReader({ wsId, meetingId, agendaId, accountId, inputsAvailable, resourcesHref, readOnly, canAddPreparation }: { wsId: string; meetingId: string; agendaId: string; accountId?: string; inputsAvailable?: boolean; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean }) {
+function CockpitAgendaReader({ wsId, meetingId, agendaId, accountId, inputsAvailable, resourcesHref, readOnly, canAddPreparation, focused = false, recording = false }: { wsId: string; meetingId: string; agendaId: string; accountId?: string; inputsAvailable?: boolean; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean; focused?: boolean; recording?: boolean }) {
   const query = useQuery(cockpitAgendaDetailOptions(wsId, meetingId, agendaId));
   if (query.isPending) return <Spinner />;
   if (query.isError || !query.data) return <CockpitFlowError onRetry={() => void query.refetch()} />;
-  return <div className="space-y-4"><CockpitAgendaEditor wsId={wsId} meetingId={meetingId} agenda={query.data} readOnly={readOnly} refresh={() => void query.refetch()} />
+  return <div className="space-y-4"><CockpitAgendaEditor wsId={wsId} meetingId={meetingId} agenda={query.data} readOnly={readOnly} refresh={() => void query.refetch()} mode={recording ? "record" : "edit"} />
     {inputsAvailable && accountId && <CockpitMeetingInputs wsId={wsId} accountId={accountId} meetingId={meetingId} agendaId={agendaId} targetLabel={query.data.title} readOnly={readOnly || Boolean(query.data.removed_at)} />}
-    <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} canAddPreparation={canAddPreparation} />
+    {/* In the workbench the related column takes over at @7xl; the inline copy
+        stays for narrower containers (and is the only copy in panel mode). */}
+    <div className={focused ? "@7xl:hidden" : undefined}>
+      <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} canAddPreparation={canAddPreparation} recording={recording} />
+    </div>
   </div>;
 }
 
-function CockpitAgendaEditor({ wsId, meetingId, agenda, header, readOnly, onSaved, refresh, onBusyChange }: { wsId: string; meetingId: string; agenda?: CockpitAgendaDetail; header?: CockpitMeetingLifecycleHeader; readOnly?: boolean; onSaved?: (id: string) => void; refresh?: () => void; onBusyChange?: (busy: boolean) => void }) {
+/** The workbench's related column reads the same cached topic detail as the center. */
+function CockpitFocusedReferences({ wsId, meetingId, agendaId, resourcesHref, readOnly, canAddPreparation, recording = false }: { wsId: string; meetingId: string; agendaId: string; resourcesHref: string; readOnly?: boolean; canAddPreparation?: boolean; recording?: boolean }) {
+  const query = useQuery(cockpitAgendaDetailOptions(wsId, meetingId, agendaId));
+  if (query.isPending) return <Spinner />;
+  if (query.isError || !query.data) return <CockpitFlowError onRetry={() => void query.refetch()} />;
+  return <CockpitAgendaReferences wsId={wsId} meetingId={meetingId} agenda={query.data} resourcesHref={resourcesHref} readOnly={readOnly || query.data.purposes.some((purpose) => !isPurpose(purpose))} canAddPreparation={canAddPreparation} recording={recording} />;
+}
+
+function CockpitAgendaEditor({ wsId, meetingId, agenda, header, readOnly, onSaved, refresh, onBusyChange, mode = "edit" }: { wsId: string; meetingId: string; agenda?: CockpitAgendaDetail; header?: CockpitMeetingLifecycleHeader; readOnly?: boolean; onSaved?: (id: string) => void; refresh?: () => void; onBusyChange?: (busy: boolean) => void; /** S07: recording keeps the goal readable and the notes editable; preparation machinery steps back. */ mode?: "edit" | "record" }) {
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const key = cockpitMeetingAgendaDraftKey(wsId, meetingId, agenda?.id ?? "new-agenda");
   const initial: CockpitAgendaDraft = { observedRevision: agenda?.revision ?? header?.agenda_revision ?? 0, title: agenda?.title ?? "", purposes: agenda?.purposes.filter(isPurpose) ?? [], desiredOutcome: agenda?.desired_outcome ?? "", notes: agenda?.notes ?? "", facilitatorId: agenda?.facilitator_user_id ?? "", nodeId: agenda?.node_id ?? "" };
   const stored = useCockpitMeetingAgendaDraftStore((state) => state.draft.agendas[key]); const value = stored ?? initial;
@@ -126,21 +162,29 @@ function CockpitAgendaEditor({ wsId, meetingId, agenda, header, readOnly, onSave
     const response = await command.run(command.pending ?? (agenda ? { kind: "agenda_update", agendaId: agenda.id, body } : { kind: "agenda_create", body }));
     if (response) { clearCockpitAgendaDraft(key, value); if (response.stillCurrent() && response.result.receipt.agenda_id) onSaved?.(response.result.receipt.agenda_id); }
   };
+  const record = mode === "record";
+  // In record mode the preparation attributes stay readable facts, not editors.
+  const recordFacts = record ? [
+    value.facilitatorId ? `${t(($) => $.meeting_lifecycle.facilitator)}: ${facilitator.data?.items.find((item) => item.id === value.facilitatorId)?.title ?? ""}` : "",
+    value.nodeId ? `${t(($) => $.meeting_lifecycle.node)}: ${selectedNode.option?.label ?? ""}` : "",
+  ].filter(Boolean).join(" · ") : "";
   return <section className="space-y-4" aria-label={t(($) => $.meeting_lifecycle.agenda)}>
     {agenda?.removed_at && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.removed)}</p>}
     {unknown.map((purpose) => <p key={purpose} role="status" className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.unknown_purpose, { purpose })}</p>)}
-    <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.agenda_title)}<Input value={value.title} disabled={disabled} onChange={(event) => change({ title: event.target.value })} /></label>
-    <fieldset disabled={disabled} className="space-y-2"><legend className="mb-2 text-caption">{t(($) => $.meeting_lifecycle.purposes)}</legend><div className="flex flex-wrap gap-x-4 gap-y-2">{purposes.map((purpose) => <label key={purpose} className="flex items-center gap-2 text-caption"><input type="checkbox" checked={value.purposes.includes(purpose)} onChange={(event) => change({ purposes: event.target.checked ? [...value.purposes, purpose] : value.purposes.filter((item) => item !== purpose) })} />{t(($) => $.meeting_lifecycle[purpose])}</label>)}</div></fieldset>
-    <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.desired_outcome)}<Textarea className="max-h-56 resize-y overflow-y-auto" value={value.desiredOutcome} disabled={disabled} onChange={(event) => change({ desiredOutcome: event.target.value })} /></label>
-    <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><CockpitReviewerSelect wsId={wsId} value={value.facilitatorId} disabled={disabled} onChange={(facilitatorId) => change({ facilitatorId })} label={t(($) => $.meeting_lifecycle.facilitator)} emptyLabel={t(($) => $.common.unset)} missingLabel={t(($) => $.meeting_lifecycle.facilitator_missing)} />
+    {record ? <h4 className="break-words text-title-sm font-semibold">{value.title}</h4> : <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.agenda_title)}<Input value={value.title} disabled={disabled} onChange={(event) => change({ title: event.target.value })} /></label>}
+    {!record && <fieldset disabled={disabled} className="space-y-2"><legend className="mb-2 text-caption">{t(($) => $.meeting_lifecycle.purposes)}</legend><div className="flex flex-wrap gap-x-4 gap-y-2">{purposes.map((purpose) => <label key={purpose} className="flex items-center gap-2 text-caption"><input type="checkbox" checked={value.purposes.includes(purpose)} onChange={(event) => change({ purposes: event.target.checked ? [...value.purposes, purpose] : value.purposes.filter((item) => item !== purpose) })} />{t(($) => $.meeting_lifecycle[purpose])}</label>)}</div></fieldset>}
+    {record && value.purposes.length > 0 && <p className="text-caption text-muted-foreground">{value.purposes.map((purpose) => isPurpose(purpose) ? t(($) => $.meeting_lifecycle[purpose]) : purpose).join(" · ")}</p>}
+    {record ? (value.desiredOutcome ? <p className="whitespace-pre-wrap break-words text-body">{value.desiredOutcome}</p> : null) : <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.desired_outcome)}<Textarea className="max-h-56 resize-y overflow-y-auto" value={value.desiredOutcome} disabled={disabled} onChange={(event) => change({ desiredOutcome: event.target.value })} /></label>}
+    {!record && <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><CockpitReviewerSelect wsId={wsId} value={value.facilitatorId} disabled={disabled} onChange={(facilitatorId) => change({ facilitatorId })} label={t(($) => $.meeting_lifecycle.facilitator)} emptyLabel={t(($) => $.common.unset)} missingLabel={t(($) => $.meeting_lifecycle.facilitator_missing)} />
       {value.facilitatorId && <Button type="button" size="xs" variant="ghost" disabled={disabled} onClick={() => change({ facilitatorId: "" })}>{t(($) => $.meeting_lifecycle.no_facilitator)}</Button>}</div>
       <div className="space-y-2"><p className="text-caption">{t(($) => $.meeting_lifecycle.node)}</p><CockpitNodeIssuePicker value={selectedNode.option} disabled={disabled} onUpdate={(node) => change({ nodeId: node?.node_id ?? "" })} />
         {selectedNode.isError && <CockpitFlowError onRetry={() => void selectedNode.refetch()} />}
         {value.nodeId && <div className="space-y-1 text-caption">{!selectedNode.isPending && !selectedNode.option && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.node_unavailable)}</p>}
           <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: value.nodeId, view: "details" }, EMPTY_COCKPIT_SCOPE)}>{t(($) => $.meeting_lifecycle.repair_node)} {t(($) => $.action_flow.new_tab)}</AppLink>
           <Button size="xs" variant="ghost" disabled={disabled} onClick={() => change({ nodeId: "" })}>{t(($) => $.meeting_lifecycle.clear_node)}</Button></div>}
-      </div></div>
-    <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.node_optional)}</p>
+      </div></div>}
+    {recordFacts && <p className="text-caption text-muted-foreground">{recordFacts}</p>}
+    {!record && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.node_optional)}</p>}
     <label className="block space-y-1 text-caption">{t(($) => $.meeting_lifecycle.notes)}<Textarea className="min-h-40 max-h-[45vh] resize-y overflow-y-auto" value={value.notes} disabled={disabled} onChange={(event) => change({ notes: event.target.value })} /></label><p className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.notes_hint)}</p>
     {changed && !command.pending && <div role="alert" className="space-y-2 rounded-md border border-border p-3 text-caption"><p>{t(($) => $.meeting_lifecycle.changed)}</p>
       {agenda && <details><summary className="cursor-pointer">{t(($) => $.meeting_lifecycle.refresh)}</summary><p className="whitespace-pre-wrap break-words">{agenda.title}</p><p className="whitespace-pre-wrap break-words">{agenda.desired_outcome}</p><p className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words">{agenda.notes}</p></details>}
@@ -148,8 +192,9 @@ function CockpitAgendaEditor({ wsId, meetingId, agenda, header, readOnly, onSave
     {invalid && stored && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_lifecycle.size_error)}</p>}
     <CockpitMeetingCommandRecovery command={command} onConfirmed={() => clearCockpitAgendaDraft(key, value)} onCurrentConfirmed={(result) => { if (result.receipt.agenda_id) onSaved?.(result.receipt.agenda_id); }} />
     {command.error && <p role="alert" className="break-words text-caption text-destructive">{command.error}</p>}
+    {stored && !command.busy && <p role="status" className="text-caption text-muted-foreground">{t(($) => $.meeting_lifecycle.draft_unsaved)}</p>}
     <div className="flex flex-wrap justify-between gap-2"><Button onClick={() => void save()} disabled={command.busy || !command.pending && (!writable || changed || invalid || invalidSelection)} aria-busy={command.busy}>{command.busy && <Spinner />}{command.pending ? t(($) => $.meeting_lifecycle.retry_command) : t(($) => $.meeting_lifecycle.save)}</Button>
-      {agenda && <CockpitAgendaRemove wsId={wsId} meetingId={meetingId} agenda={agenda} readOnly={readOnly} />}</div>
+      {agenda && !record && <CockpitAgendaRemove wsId={wsId} meetingId={meetingId} agenda={agenda} readOnly={readOnly} />}</div>
   </section>;
 }
 

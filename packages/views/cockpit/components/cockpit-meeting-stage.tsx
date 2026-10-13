@@ -14,9 +14,9 @@ import { cockpitMeetingStage, meetingStagesBefore, MEETING_STAGE_ORDER, type Coc
 
 const STAGE_ICON = { preparation: ClipboardList, recording: PenLine, minutes_review: FileText, followup: ListChecks } as const;
 
-export function CockpitMeetingStageTabs({ occurrenceState, workflow, timing }: { occurrenceState: string | undefined; workflow: MeetingStageWorkflow; timing?: MeetingStageTiming }) {
+export function CockpitMeetingStageTabs({ occurrenceState, workflow, timing, now }: { occurrenceState: string | undefined; workflow: MeetingStageWorkflow; timing?: MeetingStageTiming; now?: Date }) {
   const { t } = useT("cockpit");
-  const current = cockpitMeetingStage(occurrenceState, workflow, timing);
+  const current = cockpitMeetingStage(occurrenceState, workflow, timing, now);
   const done = current ? new Set(meetingStagesBefore(current)) : new Set<CockpitMeetingStage>();
   return <>
     {MEETING_STAGE_ORDER.map((stage, index) => {
@@ -33,22 +33,31 @@ export function CockpitMeetingStageTabs({ occurrenceState, workflow, timing }: {
   </>;
 }
 
-/** The single primary action for the meeting's current stage, for the header. */
-export function CockpitMeetingStageAction({ occurrenceState, workflow, timing, onOpenView }: {
+/**
+ * The single primary action for the meeting's current stage, for the header.
+ * S06: while preparing, a meeting whose materials are confirmed offers the
+ * full-width workbench; one still missing them offers the gap view instead.
+ */
+export function CockpitMeetingStageAction({ occurrenceState, workflow, timing, now, materialsReady, onOpenView }: {
   occurrenceState: string | undefined;
   workflow: MeetingStageWorkflow;
   timing?: MeetingStageTiming;
-  onOpenView: (view: "preparation" | "recording" | "minutes_review" | "followup" | "resources") => void;
+  now?: Date;
+  materialsReady?: boolean;
+  onOpenView: (view: "preparation" | "recording" | "minutes_review" | "followup" | "resources", options?: { focused?: boolean }) => void;
 }) {
   const { t } = useT("cockpit");
-  const stage = cockpitMeetingStage(occurrenceState, workflow, timing);
+  const stage = cockpitMeetingStage(occurrenceState, workflow, timing, now);
   if (!stage) return null;
-  const action = stage === "preparation" ? { label: t(($) => $.meeting_stage.action_check_materials), view: "resources" as const }
-    : stage === "recording" ? { label: t(($) => $.meeting_stage.action_end_meeting), view: "recording" as const }
-    : stage === "minutes_review" ? { label: t(($) => $.meeting_stage.action_minutes), view: "minutes_review" as const }
-    : { label: t(($) => $.meeting_stage.action_followup), view: "followup" as const };
+  const action = stage === "preparation"
+    ? materialsReady
+      ? { label: t(($) => $.meeting_stage.action_enter_workbench), view: "recording" as const, focused: true, solid: true }
+      : { label: t(($) => $.meeting_stage.action_view_gaps), view: "resources" as const, focused: false, solid: false }
+    : stage === "recording" ? { label: t(($) => $.meeting_stage.action_end_meeting), view: "recording" as const, focused: false, solid: true }
+    : stage === "minutes_review" ? { label: t(($) => $.meeting_stage.action_minutes), view: "minutes_review" as const, focused: false, solid: false }
+    : { label: t(($) => $.meeting_stage.action_followup), view: "followup" as const, focused: false, solid: false };
   const Icon = STAGE_ICON[stage];
-  return <Button size="sm" variant={stage === "recording" ? "default" : "outline"} className="h-7 shrink-0 gap-1.5 px-2.5 text-caption" onClick={() => onOpenView(action.view)}>
+  return <Button size="sm" variant={action.solid ? "default" : "outline"} className="h-7 shrink-0 gap-1.5 px-2.5 text-caption" onClick={() => onOpenView(action.view, { focused: action.focused })}>
     <Icon className="size-3.5" aria-hidden />
     {action.label}
   </Button>;

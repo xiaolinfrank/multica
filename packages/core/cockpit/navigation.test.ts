@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitMeetingDirectoryPath, cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingAgendaPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitMeetingDirectoryPath, cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingFocusPath, cockpitMeetingAgendaPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
   it("keeps directory plans distinct from preparation instances and prevents cross-meeting carryover", () => {
@@ -56,6 +56,23 @@ describe("cockpit destinations", () => {
     const other = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m2", "agenda-2", opened.searchParams), "https://example.test");
     expect(other.searchParams.has("action")).toBe(false);
     expect(cockpitObjectPath("/acme/cockpit", { kind: "meeting", id: "m1", agendaId: "agenda-1" })).toBe("/acme/cockpit?meeting=m1&agenda=agenda-1&meeting_view=preparation");
+  });
+  it("keeps a full-width meeting focused across stage and topic navigation, then restores its panel", () => {
+    const scope = { projectId: "project", moduleId: "module" };
+    const source = new URLSearchParams("meeting=m1&meeting_view=recording&agenda=a1&meeting_nodes=n1,n2&from=2026-10-01");
+    const focused = new URL(cockpitMeetingFocusPath("/acme/cockpit", "m1", scope, source, true), "https://example.test");
+    expect(focused.searchParams.get("meeting_focus")).toBe("1");
+    expect(focused.searchParams.get("meeting_view")).toBe("recording");
+    expect(focused.searchParams.get("agenda")).toBe("a1");
+    const minutes = new URL(cockpitMeetingContextPath("/acme/cockpit", "m1", scope, focused.searchParams, "minutes_review"), "https://example.test");
+    expect(minutes.searchParams.get("meeting_focus")).toBe("1");
+    const topic = new URL(cockpitMeetingAgendaPath("/acme/cockpit", "m1", "a2", focused.searchParams), "https://example.test");
+    expect(topic.searchParams.get("meeting_focus")).toBe("1");
+    const panel = new URL(cockpitMeetingFocusPath("/acme/cockpit", "m1", scope, focused.searchParams, false), "https://example.test");
+    expect(panel.searchParams.has("meeting_focus")).toBe(false);
+    expect(panel.searchParams.get("meeting_view")).toBe("recording");
+    const closed = new URL(cockpitMeetingContextPath("/acme/cockpit", null, scope, focused.searchParams), "https://example.test");
+    expect(closed.searchParams.has("meeting_focus")).toBe(false);
   });
   it("returns to the original acceptance scope after opening an externally owned artifact", () => {
     const origin = { projectId: "target-project", moduleId: "target-module" };

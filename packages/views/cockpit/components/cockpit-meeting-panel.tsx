@@ -15,7 +15,7 @@ import type {
   CockpitMeetingPatch,
 } from "@multica/core/types";
 import {
-  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitMeetingContextPath, cockpitScope,
+  cockpitMeetingWorkflowOptions, cockpitDestination, cockpitMeetingContextPath, cockpitMeetingFocusPath, cockpitScope,
   cockpitWorkflowSummaryPollInterval,
   type CockpitMeetingVocabularySource,
   cockpitMeetingPeopleOptions,
@@ -24,7 +24,7 @@ import {
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
-import { Check, ExternalLink, ScanSearch, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, Maximize2, Minimize2, ScanSearch, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
   CockpitField,
@@ -151,9 +151,22 @@ export function CockpitMeetingPanel({
     void workflowQuery.refetch();
   };
   const stageTiming = { meet_date: meeting.meet_date ?? null, start_time: meeting.start_time ?? null, end_time: meeting.end_time ?? null };
-  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data, stageTiming);
+  // The stage is a live projection of the clock, not a stored state — keep it
+  // advancing while the meeting stays open so the surface follows the window.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data, stageTiming, now);
   const section = destination.meetingId === meeting.id && destination.meetingView && destination.meetingView !== "agenda" && destination.meetingView !== "workflow" ? destination.meetingView : stageDefault;
-  const openSection = (value: "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
+  // R4: `meeting_focus=1` is the full-width workbench — the page shell replaces
+  // the register with this panel, and the agenda surfaces go three-column.
+  const focused = destination.meetingId === meeting.id && navigation.searchParams.get("meeting_focus") === "1";
+  const scope = cockpitScope(navigation.searchParams);
+  const openSection = (value: "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details", options?: { focused?: boolean }) => navigation.push(options?.focused === undefined
+    ? cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, value)
+    : cockpitMeetingFocusPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, options.focused, value));
   // Each stage view mounts its working surface on first visit; the meeting
   // keeps state through the stores, not through duplicated early mounts.
   const [visitedViews, setVisitedViews] = useState<ReadonlySet<string>>(() => new Set([section]));
@@ -201,7 +214,9 @@ export function CockpitMeetingPanel({
   }, [workflowQuery.data, meeting.id, issueLinks]);
 
   return (
-    <aside className="cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0">
+    <aside className={focused
+      ? "cockpit-panel-enter flex w-full min-w-0 flex-1 flex-col bg-card"
+      : "cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0"}>
       <header className="flex items-start gap-2 border-b border-border p-3">
         <div className="min-w-0 flex-1">
           <EditableText
@@ -223,7 +238,11 @@ export function CockpitMeetingPanel({
             />
           </div>
         </div>
-        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} onOpenView={openSection} />
+        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} now={now} materialsReady={lifecycleQuery.data?.materials?.ready === true} onOpenView={openSection} />
+        <Button variant="ghost" size="icon-sm" aria-label={focused ? t(($) => $.meeting_stage.exit_focus) : t(($) => $.meeting_stage.enter_focus)}
+          onClick={() => navigation.push(cockpitMeetingFocusPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, !focused))}>
+          {focused ? <Minimize2 className="size-4" aria-hidden /> : <Maximize2 className="size-4" aria-hidden />}
+        </Button>
         {meetingActions ?? (!readOnly && <Button variant="ghost" size="icon-sm" disabled={workflowEnabled || workflowUnknown} aria-label={t(($) => $.meeting.delete, { title: meeting.title })} onClick={onDelete}><Trash2 className="size-4" /></Button>)}
         <button
           ref={closeButton}
@@ -265,17 +284,17 @@ export function CockpitMeetingPanel({
         navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
         <TabsList aria-label={t(($) => $.meeting_stage.strip)} className="h-auto w-full shrink-0 gap-1 rounded-none border-b p-2">
-          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} />}
+          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} now={now} />}
           {!lifecycleAvailable && <TabsTrigger value="preparation" className="h-9 flex-1 px-3 text-body">{t(($) => $.meeting_stage.preparation)}</TabsTrigger>}
           <TabsTrigger value="resources" className="ml-auto h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_resources)}</TabsTrigger>
           <TabsTrigger value="details" className="h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_details)}</TabsTrigger>
         </TabsList>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <TabsContent value="preparation" keepMounted>
-            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
+        <div className={focused && (section === "preparation" || section === "recording") ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto p-4"}>
+          <TabsContent value="preparation" keepMounted className={focused ? "h-full" : undefined}>
+            {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} focused={focused} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
           </TabsContent>
-          <TabsContent value="recording" keepMounted>
-            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} stage="recording" wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
+          <TabsContent value="recording" keepMounted className={focused ? "h-full" : undefined}>
+            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} stage="recording" focused={focused} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
           </TabsContent>
           <TabsContent value="minutes_review" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}

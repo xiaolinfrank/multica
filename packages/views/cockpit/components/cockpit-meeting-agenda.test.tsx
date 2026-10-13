@@ -107,4 +107,35 @@ describe("bounded meeting agenda workbench", () => {
     current = { ...current, purposes: ["future-purpose"], can_edit: true }; navigation.searchParams.set("agenda", "agenda-1"); render(shell(makeClient()));
     expect(await screen.findByRole("textbox", { name: "Discussion notes" })).toBeDisabled(); expect(screen.getByRole("button", { name: "Save agenda item" })).toBeDisabled(); expect(screen.getByText("Unrecognized purpose: future-purpose")).toBeVisible();
   });
+
+  it("keeps the topic list beside the current topic on the recording workbench without its preparation machinery", async () => {
+    navigation.searchParams = new URLSearchParams("meeting=meeting-1&meeting_view=recording&meeting_focus=1&agenda=agenda-1");
+    render(<QueryClientProvider client={makeClient()}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}><CockpitMeetingAgenda wsId="ws-1" meetingId="meeting-1" stage="recording" focused /></I18nProvider></QueryClientProvider>);
+    await screen.findByRole("textbox", { name: "Discussion notes" });
+    expect(await screen.findByRole("link", { name: "Open agenda: Agenda item 1" })).toBeVisible();
+    // Related context mounts twice: the inline copy for containers below @7xl
+    // and the dedicated column — container queries decide which displays.
+    expect(screen.getAllByRole("region", { name: "Preparation & materials" })).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Back to agenda" })).toBeVisible();
+    expect(screen.getByText(enCockpit.meeting_lifecycle.recording_hint)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add agenda item" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Search agenda" })).toBeNull();
+    // The record surface keeps the goal readable and the notes editable; the
+    // preparation editors and machinery step back.
+    expect(screen.getByRole("heading", { level: 4 })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Agenda title" })).toBeNull();
+    expect(screen.queryByText("Discussion purposes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove agenda item" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create preparation issue" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Discussion notes" }), { target: { value: "Facts captured mid-session" } });
+    expect(screen.getByText(enCockpit.meeting_lifecycle.draft_unsaved)).toBeVisible();
+  });
+
+  it("names the empty workbench center until a topic is selected", async () => {
+    navigation.searchParams = new URLSearchParams("meeting=meeting-1&meeting_view=recording&meeting_focus=1");
+    render(<QueryClientProvider client={makeClient()}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}><CockpitMeetingAgenda wsId="ws-1" meetingId="meeting-1" stage="recording" focused /></I18nProvider></QueryClientProvider>);
+    await screen.findByRole("link", { name: "Open agenda: Agenda item 1" });
+    expect(screen.getByText(enCockpit.meeting_lifecycle.select)).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Discussion notes" })).toBeNull();
+  });
 });

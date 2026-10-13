@@ -113,7 +113,8 @@
     "unstart_hint": "撤销开始确认：会议回到已排期状态，随之记录的实际开始时间一并清除。若会议确实已开始，请改用更正时间或确认结束。",
     "unschedule": "更正安排确认",
     "unschedule_hint": "撤销安排确认：会议回到未确认状态，可重新调整时间或安排。原因保留在确认历史中。",
-    "recording_hint": "会议进行中：选择议题记录要点；发生事实与结束确认保持在顶部。"
+    "recording_hint": "会议进行中：选择议题记录要点；发生事实与结束确认保持在顶部。",
+    "draft_unsaved": "本地草稿——尚未保存"
   },
   "header": {
     "title": "项目驾驶舱",
@@ -2354,7 +2355,10 @@
     "recording": "会议记录",
     "minutes_review": "纪要确认",
     "followup": "行动跟进",
-    "action_check_materials": "检查材料",
+    "action_view_gaps": "查看缺口",
+    "action_enter_workbench": "进入会议工作台",
+    "enter_focus": "展开全幅工作台",
+    "exit_focus": "收起为侧栏",
     "action_end_meeting": "结束会议",
     "action_minutes": "纪要任务",
     "action_followup": "未完成行动",
