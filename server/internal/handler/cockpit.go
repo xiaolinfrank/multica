@@ -2881,6 +2881,10 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			Actions:     m.Actions,
 			NasDir:      m.NasDir,
 			Detected:    m.Detected,
+			// Snapshots never carried occurrence facts; a restored meeting is
+			// human data, so it lands scheduled (the detected flag still asks
+			// for its folder-guess check).
+			OccurrenceState: "scheduled",
 		})
 		if err != nil {
 			slog.Warn("cockpit import meeting failed", append(logger.RequestAttrs(r), "error", err)...)

@@ -150,7 +150,8 @@ export function CockpitMeetingPanel({
     nasPoll.current.deadline = Date.now() + 5 * 60_000;
     void workflowQuery.refetch();
   };
-  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data);
+  const stageTiming = { meet_date: meeting.meet_date ?? null, start_time: meeting.start_time ?? null, end_time: meeting.end_time ?? null };
+  const stageDefault = meetingStageDefaultView(lifecycleQuery.data?.occurrence.state, workflowQuery.data, stageTiming);
   const section = destination.meetingId === meeting.id && destination.meetingView && destination.meetingView !== "agenda" && destination.meetingView !== "workflow" ? destination.meetingView : stageDefault;
   const openSection = (value: "preparation" | "recording" | "minutes_review" | "followup" | "resources" | "details") => navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
   // Each stage view mounts its working surface on first visit; the meeting
@@ -222,7 +223,7 @@ export function CockpitMeetingPanel({
             />
           </div>
         </div>
-        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} onOpenView={openSection} />
+        <CockpitMeetingStageAction occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} onOpenView={openSection} />
         {meetingActions ?? (!readOnly && <Button variant="ghost" size="icon-sm" disabled={workflowEnabled || workflowUnknown} aria-label={t(($) => $.meeting.delete, { title: meeting.title })} onClick={onDelete}><Trash2 className="size-4" /></Button>)}
         <button
           ref={closeButton}
@@ -264,7 +265,7 @@ export function CockpitMeetingPanel({
         navigation.push(cockpitMeetingContextPath(paths.cockpit(), meeting.id, cockpitScope(navigation.searchParams), navigation.searchParams, value));
       }} className="min-h-0 flex-1 gap-0">
         <TabsList aria-label={t(($) => $.meeting_stage.strip)} className="h-auto w-full shrink-0 gap-1 rounded-none border-b p-2">
-          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} />}
+          {lifecycleAvailable && <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state} workflow={workflowQuery.data} timing={stageTiming} />}
           {!lifecycleAvailable && <TabsTrigger value="preparation" className="h-9 flex-1 px-3 text-body">{t(($) => $.meeting_stage.preparation)}</TabsTrigger>}
           <TabsTrigger value="resources" className="ml-auto h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_resources)}</TabsTrigger>
           <TabsTrigger value="details" className="h-9 px-3 text-caption data-active:bg-accent data-active:text-foreground">{t(($) => $.meeting_stage.tab_details)}</TabsTrigger>
@@ -274,7 +275,7 @@ export function CockpitMeetingPanel({
             {lifecycleAvailable ? agendaOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} /> : <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>}
           </TabsContent>
           <TabsContent value="recording" keepMounted>
-            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
+            {lifecycleAvailable && recordingOpened && <CockpitMeetingAgenda key={`${wsId}:${meeting.id}:rec`} stage="recording" wsId={wsId} meetingId={meeting.id} accountId={currentUserId} inputsAvailable={inputsAvailable} readOnly={readOnly} templatesAvailable={templatesAvailable} dispositionAvailable={dispositionAvailable} directoryPreparationAvailable={directoryPreparationAvailable} authorizedPreparationId={authorizedPreparationId} onPreparationAuthorizationConsumed={onPreparationAuthorizationConsumed} />}
           </TabsContent>
           <TabsContent value="minutes_review" keepMounted>
             <CockpitMeetingWorkflowPanel wsId={wsId} meetingId={meeting.id} currentUserId={currentUserId}

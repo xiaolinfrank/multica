@@ -16,7 +16,7 @@ function header(wsId = "ws-1", agendaRevision = 1): CockpitMeetingLifecycleHeade
     generated_at: "2026-10-11T00:00:00Z", occurrence: { state: "unconfirmed", started_confirmed_at: null, started_confirmed_by: null,
       ended_at: null, ended_by: null, ended_source: null, actual_started_at: null, actual_ended_at: null },
     materials: null, workflow_enabled: false, agenda_total: agendaRevision - 1,
-    can_schedule: true, can_start: true, can_end: true, can_correct_times: false, can_edit_agenda: true, can_confirm_materials: false, can_reopen: false, can_unstart: false, can_unschedule: false, blocked_reasons: [] };
+    can_schedule: true, can_end: true, can_correct_times: false, can_edit_agenda: true, can_confirm_materials: false, can_reopen: false, can_unschedule: false, blocked_reasons: [] };
 }
 function receipt(): CockpitLifecycleCommandResult {
   return { workspace_id: "ws-1", meeting_id: "meeting-1", command_key: "019f06d9-3020-7000-8000-000000000003", action: "agenda_create", replayed: true,

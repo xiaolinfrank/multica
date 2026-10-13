@@ -69,7 +69,12 @@ func (h *Handler) createCockpitMeetingRecord(ctx context.Context, p db.CreateCoc
 			return out, errCockpitMeetingDirectoryRecorded
 		}
 	}
-	if strings.TrimSpace(p.Code) == "" && p.MeetDate.Valid {
+		// R4 collapse: creating a meeting IS the schedule confirmation. Only
+	// NAS-scanned rows arrive unconfirmed, waiting for a human check.
+	if p.OccurrenceState == "" {
+		p.OccurrenceState = "scheduled"
+	}
+if strings.TrimSpace(p.Code) == "" && p.MeetDate.Valid {
 		p.Code, err = service.ReadCockpitMeetingNextCode(ctx, q, p.WorkspaceID, p.MeetDate.Time)
 		if err != nil {
 			return out, err

@@ -121,7 +121,7 @@ INSERT INTO cockpit_meeting (
     attendees, meet_no, link, note,
     code, kind, status, parties, organizer, location,
     start_time, end_time, minutes, decisions, actions, nas_dir, detected,
-    track
+    track, occurrence_state
 ) VALUES (
     $1::uuid,
     $2::uuid,
@@ -145,35 +145,37 @@ INSERT INTO cockpit_meeting (
     $20::text,
     $21::text,
     $22::bool,
-    $23::text
+    $23::text,
+    $24::text
 )
 RETURNING id, workspace_id, cockpit_id, meet_date, time_range, title, attendees, meet_no, link, note, created_at, updated_at, code, kind, status, parties, organizer, location, start_time, end_time, minutes, decisions, actions, nas_dir, detected, track, lifecycle_revision, agenda_revision, occurrence_state, started_confirmed_at, started_confirmed_by, ended_at, ended_by, ended_source, actual_started_at, actual_ended_at, lifecycle_updated_at, lifecycle_updated_by, cancelled_at, cancelled_by, cancelled_reason, archived_at, archived_by, archived_reason, nas_dir_revision, minutes_reviewer_id, minutes_focus_issue_id, minutes_current_version_id, minutes_published_version_id, minutes_revision, minutes_materials_ready, minutes_materials_confirmed_at, minutes_materials_confirmed_by, minutes_configured_by
 `
 
 type CreateCockpitMeetingParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	CockpitID   pgtype.UUID `json:"cockpit_id"`
-	MeetDate    pgtype.Date `json:"meet_date"`
-	TimeRange   string      `json:"time_range"`
-	Title       string      `json:"title"`
-	Attendees   string      `json:"attendees"`
-	MeetNo      string      `json:"meet_no"`
-	Link        string      `json:"link"`
-	Note        string      `json:"note"`
-	Code        string      `json:"code"`
-	Kind        string      `json:"kind"`
-	Status      string      `json:"status"`
-	Parties     string      `json:"parties"`
-	Organizer   string      `json:"organizer"`
-	Location    string      `json:"location"`
-	StartTime   pgtype.Time `json:"start_time"`
-	EndTime     pgtype.Time `json:"end_time"`
-	Minutes     string      `json:"minutes"`
-	Decisions   string      `json:"decisions"`
-	Actions     string      `json:"actions"`
-	NasDir      string      `json:"nas_dir"`
-	Detected    bool        `json:"detected"`
-	Track       string      `json:"track"`
+	WorkspaceID     pgtype.UUID `json:"workspace_id"`
+	CockpitID       pgtype.UUID `json:"cockpit_id"`
+	MeetDate        pgtype.Date `json:"meet_date"`
+	TimeRange       string      `json:"time_range"`
+	Title           string      `json:"title"`
+	Attendees       string      `json:"attendees"`
+	MeetNo          string      `json:"meet_no"`
+	Link            string      `json:"link"`
+	Note            string      `json:"note"`
+	Code            string      `json:"code"`
+	Kind            string      `json:"kind"`
+	Status          string      `json:"status"`
+	Parties         string      `json:"parties"`
+	Organizer       string      `json:"organizer"`
+	Location        string      `json:"location"`
+	StartTime       pgtype.Time `json:"start_time"`
+	EndTime         pgtype.Time `json:"end_time"`
+	Minutes         string      `json:"minutes"`
+	Decisions       string      `json:"decisions"`
+	Actions         string      `json:"actions"`
+	NasDir          string      `json:"nas_dir"`
+	Detected        bool        `json:"detected"`
+	Track           string      `json:"track"`
+	OccurrenceState string      `json:"occurrence_state"`
 }
 
 func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMeetingParams) (CockpitMeeting, error) {
@@ -201,6 +203,7 @@ func (q *Queries) CreateCockpitMeeting(ctx context.Context, arg CreateCockpitMee
 		arg.NasDir,
 		arg.Detected,
 		arg.Track,
+		arg.OccurrenceState,
 	)
 	var i CockpitMeeting
 	err := row.Scan(

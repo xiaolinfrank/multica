@@ -26,7 +26,7 @@ func TestCockpitMeetingLifecycleHTTPPreservesLegacyWorkflowAndScope(t *testing.T
 	ws, m := lifecycleHTTPFixture(t)
 	var h service.CockpitMeetingLifecycleHeader
 	callLifecycle(t, testHandler.GetCockpitMeetingLifecycle, "GET", ws, m.ID, "", "", nil).Want(200).JSON(&h)
-	if h.WorkflowEnabled || h.Occurrence.State != "unconfirmed" || !h.CanEnd {
+	if h.WorkflowEnabled || h.Occurrence.State != "scheduled" || !h.CanEnd {
 		t.Fatalf("unconfigured lifecycle: %+v", h)
 	}
 	var w CockpitMeetingWorkflowResponse

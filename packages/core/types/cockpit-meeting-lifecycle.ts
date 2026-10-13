@@ -2,7 +2,7 @@ import type { CockpitDirectoryCommandReceipt } from "./cockpit-meeting-directory
 import type { CockpitTask } from "./cockpit";
 import type { CockpitMeetingArchiveView, CockpitPreparationCommandReceipt } from "./cockpit-meeting-preparation";
 
-export type CockpitOccurrenceTransition = "schedule" | "start" | "end" | "correct_times" | "reopen" | "unstart" | "unschedule";
+export type CockpitOccurrenceTransition = "schedule" | "end" | "correct_times" | "reopen" | "unschedule";
 export type CockpitAgendaPurpose = "planning" | "goal_review" | "boundary_confirmation" | "question_clarification" | "solution_discussion" | "direction_decision";
 export type CockpitLifecycleAction = CockpitOccurrenceTransition | "materials" | "agenda_create" | "agenda_update" | "agenda_remove" | "reference_attach" | "reference_remove" | "preparation_issue_create" | "reinstate" | "archive" | "unarchive";
 export interface CockpitLifecycleCommandInput { command_key: string; expected_revision: number }
@@ -73,11 +73,9 @@ export interface CockpitMeetingLifecycleHeader {
   workflow_enabled: boolean;
   agenda_total: number;
   can_schedule: boolean;
-  can_start: boolean;
   can_end: boolean;
   can_correct_times: boolean;
   can_reopen: boolean;
-  can_unstart: boolean;
   can_unschedule: boolean;
   can_edit_agenda: boolean;
   can_confirm_materials: boolean;

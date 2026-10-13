@@ -2140,6 +2140,7 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			Kind:        strings.TrimSpace(item.Kind),
 			NasDir:      path,
 			Detected:    true,
+			OccurrenceState: "unconfirmed",
 		}, true, pgtype.UUID{}, &cockpitCreationCommand{WorkspaceID: cc.workspaceID, ActorID: cc.member.UserID, Kind: "meeting"})
 		if errors.Is(err, errCockpitMeetingDirectoryRecorded) {
 			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "already in the register"})

@@ -51,7 +51,7 @@ describe("meeting occurrence and material confirmation", () => {
     const dialog = within(screen.getByRole("dialog")); expect(dialog.getByLabelText("Actual start (optional)")).toHaveValue(""); expect(dialog.getByLabelText("Actual end (optional)")).toHaveValue("");
     fireEvent.click(dialog.getByRole("button", { name: "Confirm" })); await screen.findByText("Connection lost");
     const body = vi.mocked(api.recordCockpitOccurrence).mock.calls[0]![2]; expect(body).toMatchObject({ transition: "end", expected_revision: 1, actual_started_at: null, actual_ended_at: null });
-    first.unmount(); const after = lifecycleFixture({ lifecycle_revision: 2, can_end: false, can_start: false, can_schedule: false, occurrence: { ...header.occurrence, state: "ended", ended_at: "2026-10-11T02:00:00Z", ended_source: "human_confirmation" } });
+    first.unmount(); const after = lifecycleFixture({ lifecycle_revision: 2, can_end: false, can_schedule: false, occurrence: { ...header.occurrence, state: "ended", ended_at: "2026-10-11T02:00:00Z", ended_source: "human_confirmation" } });
     vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, body.command_key, "end", { occurrence: after.occurrence }));
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={after} refresh={vi.fn()} />)); fireEvent.click(screen.getByRole("button", { name: "Retry the same request" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Retry the same request" }));
@@ -62,7 +62,7 @@ describe("meeting occurrence and material confirmation", () => {
     const plain = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={lifecycleFixture()} refresh={vi.fn()} />));
     expect(plain.queryByRole("button", { name: "Correct end confirmation" })).toBeNull();
     plain.unmount();
-    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, can_reopen: true, occurrence: { ...lifecycleFixture().occurrence, state: "ended", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", ended_at: "2026-10-11T02:00:00Z", ended_by: "user-1", ended_source: "human_confirmation", actual_started_at: "2026-10-11T01:00:00Z", actual_ended_at: "2026-10-11T02:00:00Z" } });
+    const before = lifecycleFixture({ can_end: false, can_schedule: false, can_reopen: true, occurrence: { ...lifecycleFixture().occurrence, state: "ended", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", ended_at: "2026-10-11T02:00:00Z", ended_by: "user-1", ended_source: "human_confirmation", actual_started_at: "2026-10-11T01:00:00Z", actual_ended_at: "2026-10-11T02:00:00Z" } });
     const after = lifecycleFixture({ lifecycle_revision: 2, can_end: true, occurrence: { ...lifecycleFixture().occurrence, state: "scheduled", actual_started_at: "2026-10-11T01:00:00Z" } });
     vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, "reopen-1", "reopen", { reason: "The meeting continues tomorrow.", occurrence: after.occurrence, previous_occurrence: before.occurrence }));
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={before} refresh={vi.fn()} />, client(), reopenCockpitCopy));
@@ -79,33 +79,16 @@ describe("meeting occurrence and material confirmation", () => {
     expect("actual_started_at" in body).toBe(false);
     expect("actual_ended_at" in body).toBe(false);
   });
-  it("withdraws a mistaken start through unstart with a reason and no time fields", async () => {
-    const before = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, can_unstart: true, occurrence: { ...lifecycleFixture().occurrence, state: "in_progress", started_confirmed_at: "2026-10-11T01:00:00Z", started_confirmed_by: "user-1", actual_started_at: "2026-10-11T01:00:00Z" } });
-    const after = lifecycleFixture({ lifecycle_revision: 2, can_start: true, occurrence: { ...lifecycleFixture().occurrence, state: "scheduled" } });
-    vi.mocked(api.recordCockpitOccurrence).mockResolvedValueOnce(lifecycleResultFixture(after, "unstart-1", "unstart", { reason: "Pressed by accident.", occurrence: after.occurrence, previous_occurrence: before.occurrence }));
-    render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={before} refresh={vi.fn()} />));
-    fireEvent.click(screen.getByRole("button", { name: "Correct start confirmation" }));
-    const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.queryByLabelText("Actual start (optional)")).toBeNull();
-    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
-    expect(dialog.getByRole("button", { name: "Confirm" })).toBeDisabled();
-    fireEvent.change(dialog.getByLabelText(enCockpit.meeting_lifecycle.reason), { target: { value: "Pressed by accident." } });
-    await waitFor(() => expect(dialog.getByRole("button", { name: "Confirm" })).toBeEnabled());
-    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(api.recordCockpitOccurrence).toHaveBeenCalled());
-    const body = vi.mocked(api.recordCockpitOccurrence).mock.calls.at(-1)?.[2] ?? {};
-    expect(body).toMatchObject({ transition: "unstart", expected_revision: 1, reason: "Pressed by accident." });
-    expect("actual_started_at" in body).toBe(false);
-  });
   it("does not silently rebase an open occurrence confirmation and keeps entered times after a concurrent change", async () => {
     const header = lifecycleFixture(); const cache = client(); const view = render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />, cache));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm meeting started" })); fireEvent.change(screen.getByLabelText("Actual start (optional)"), { target: { value: "2026-01-01T10:00" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" })); fireEvent.click(screen.getByRole("button", { name: "Confirm meeting started" })); expect(screen.getByLabelText("Actual start (optional)")).toHaveValue("2026-01-01T10:00");
+    fireEvent.click(screen.getByText("Actual times & confirmation history")); fireEvent.click(screen.getAllByRole("button", { name: "Correct actual times" }).at(-1)!);
+    fireEvent.change(screen.getByLabelText("Actual start (optional)"), { target: { value: "2026-01-01T10:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" })); fireEvent.click(screen.getAllByRole("button", { name: "Correct actual times" }).at(-1)!); expect(screen.getByLabelText("Actual start (optional)")).toHaveValue("2026-01-01T10:00");
     view.rerender(shell(<CockpitMeetingOccurrence wsId="ws-1" header={{ ...header, lifecycle_revision: 2 }} refresh={vi.fn()} />, cache));
     expect(screen.getByLabelText("Actual start (optional)")).toHaveValue("2026-01-01T10:00"); expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled(); expect(screen.getByText(enCockpit.meeting_lifecycle.changed)).toBeVisible(); expect(api.recordCockpitOccurrence).not.toHaveBeenCalled();
   });
   it("shows legacy confirmation as unknown actual time and fetches history details only after a named record is opened", async () => {
-    const header = lifecycleFixture({ can_end: false, can_start: false, can_schedule: false, occurrence: { ...lifecycleFixture().occurrence, state: "ended", ended_at: "2025-01-01T10:00:00Z", ended_source: "legacy_confirmation" } });
+    const header = lifecycleFixture({ can_end: false, can_schedule: false, occurrence: { ...lifecycleFixture().occurrence, state: "ended", ended_at: "2025-01-01T10:00:00Z", ended_source: "legacy_confirmation" } });
     vi.mocked(api.getCockpitLifecycleCommands).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", page_size: 25, total: 1, next_cursor: null, items: [{ command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, agenda_id: null, reference_id: null, issue_id: null }] });
     vi.mocked(api.getCockpitLifecycleCommand).mockResolvedValue({ workspace_id: "ws-1", meeting_id: "meeting-1", command_key: "command-1", action: "correct_times", actor_id: "member-1", actor_name: "Reviewer", created_at: "2026-01-01T12:00:00Z", revision: 2, agenda_id: null, reference_id: null, issue_id: null, receipt: lifecycleResultFixture(header, "command-1", "correct_times", { reason: "Correct the meeting record", previous_occurrence: header.occurrence, occurrence: header.occurrence }).receipt });
     render(shell(<CockpitMeetingOccurrence wsId="ws-1" header={header} refresh={vi.fn()} />)); expect(api.getCockpitLifecycleCommands).not.toHaveBeenCalled();

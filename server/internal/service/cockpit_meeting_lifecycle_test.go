@@ -55,7 +55,7 @@ func TestCockpitLifecycleRecordsFactsWithoutWorkPackageOrExecution(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if h.Occurrence.State != "unconfirmed" || h.WorkflowEnabled || h.Materials != nil {
+	if h.Occurrence.State != "scheduled" || h.WorkflowEnabled || h.Materials != nil {
 		t.Fatalf("legacy free text became fact: %+v", h)
 	}
 	in := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "end"}
@@ -524,7 +524,7 @@ func TestCockpitLifecycleReopen(t *testing.T) {
 	if o.ActualStartedAt == nil || previous.State != "ended" || previous.EndedAt == nil || previous.ActualStartedAt == nil || previous.ActualEndedAt == nil {
 		t.Fatalf("reopen dropped the recorded history: %+v", previous)
 	}
-	if reopened.Current.CanCorrectTimes || !reopened.Current.CanEnd {
+	if !reopened.Current.CanCorrectTimes || !reopened.Current.CanEnd || reopened.Current.CanReopen {
 		t.Fatalf("reopen left stale capabilities: %+v", reopened.Current)
 	}
 	// Both the original confirmation and the reopen stay in the command ledger.
@@ -561,7 +561,7 @@ func TestCockpitLifecycleReopen(t *testing.T) {
 		t.Fatalf("cancel after reopen: %+v %v", final, e)
 	}
 }
-func TestCockpitLifecycleUnstartUnschedule(t *testing.T) {
+func TestCockpitLifecycleUnschedule(t *testing.T) {
 	f := lifecycleFixture(t)
 	ctx := context.Background()
 	p := lifecycleRead(f)
@@ -569,70 +569,27 @@ func TestCockpitLifecycleUnstartUnschedule(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	// Both reverses refuse wrong states and blank reasons before anything moves.
-	unstart := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "unstart", Reason: "The start was recorded by mistake."}
-	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, unstart); !errors.Is(e, ErrCockpitWorkflowConflict) {
-		t.Fatalf("unconfirmed unstart: %v", e)
-	}
-	scheduled, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "schedule"})
-	if e != nil {
-		t.Fatal(e)
-	}
-	unschedule := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(scheduled.Current.LifecycleRevision), Transition: "unschedule", Reason: "The schedule still needs work."}
+	// A blank reason is refused before anything moves.
+	unschedule := CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "unschedule", Reason: "The schedule still needs work."}
 	blank := unschedule
 	blank.Reason = "   "
 	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, blank); !errors.Is(e, ErrCockpitWorkflowInput) {
 		t.Fatalf("reason-less unschedule: %v", e)
 	}
-	// A start carrying its actual time is undone together with that time.
-	started, _ := json.Marshal(time.Now().UTC().Add(-30 * time.Minute).Format(time.RFC3339Nano))
-	running, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(scheduled.Current.LifecycleRevision), Transition: "start", ActualStartedAt: started})
-	if e != nil {
-		t.Fatal(e)
+	// Creation now confirms the schedule itself; the blank-reason refusal ran
+	// against the fresh scheduled row directly.
+	scheduled := h
+	if scheduled.Occurrence.State != "scheduled" {
+		t.Fatalf("created meeting is not scheduled: %+v", scheduled.Occurrence)
 	}
-	if running.Current.Occurrence.State != "in_progress" || running.Current.Occurrence.ActualStartedAt == nil || !running.Current.CanUnstart || running.Current.CanUnschedule {
-		t.Fatalf("started meeting lost its reverse capabilities: %+v", running.Current)
+	if !scheduled.CanUnschedule {
+		t.Fatalf("scheduled meeting lost its reverse: %+v", scheduled)
 	}
-	unstart.CockpitLifecycleCommandInput = lifecycleInput(running.Current.LifecycleRevision)
-	blank = unstart
-	blank.Reason = "  "
-	if _, e = f.issues.ChangeCockpitMeetingOccurrence(ctx, p, blank); !errors.Is(e, ErrCockpitWorkflowInput) {
-		t.Fatalf("reason-less unstart: %v", e)
-	}
-	back, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, unstart)
-	if e != nil {
-		t.Fatal(e)
-	}
-	o, previous := back.Receipt.Occurrence, back.Receipt.PreviousOccurrence
-	if back.Current.Occurrence.State != "scheduled" || o == nil || previous == nil {
-		t.Fatalf("unstart lost its occurrence facts: %+v", back)
-	}
-	if o.StartedConfirmedAt != nil || o.StartedConfirmedBy != nil || o.ActualStartedAt != nil {
-		t.Fatalf("unstart kept a started fact: %+v", o)
-	}
-	if previous.State != "in_progress" || previous.StartedConfirmedAt == nil || previous.ActualStartedAt == nil {
-		t.Fatalf("unstart dropped the recorded history: %+v", previous)
-	}
-	if !back.Current.CanStart || !back.Current.CanUnschedule {
-		t.Fatalf("unstart left stale capabilities: %+v", back.Current)
-	}
-	// The receipt replays idempotently and both commands stay in the ledger.
-	replay, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, unstart)
-	if e != nil || !replay.Replayed || replay.Receipt.Revision != back.Receipt.Revision {
-		t.Fatalf("unstart replay: %+v %v", replay, e)
-	}
-	key, _ := util.ParseUUID(unstart.CommandKey)
-	detail, e := f.issues.GetCockpitMeetingLifecycleCommand(ctx, p, key)
-	if e != nil || detail.Action != "unstart" || detail.Receipt.Reason != unstart.Reason || detail.Receipt.PreviousOccurrence.ActualStartedAt == nil {
-		t.Fatalf("unstart ledger detail: %+v %v", detail, e)
-	}
-	// Unscheduling then lands on unconfirmed with the schedule path open again.
-	unschedule.CockpitLifecycleCommandInput = lifecycleInput(back.Current.LifecycleRevision)
 	undone, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, unschedule)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if undone.Current.Occurrence.State != "unconfirmed" || !undone.Current.CanSchedule || !undone.Current.CanStart || undone.Current.CanUnschedule {
+	if undone.Current.Occurrence.State != "unconfirmed" || !undone.Current.CanSchedule || !undone.Current.CanEnd {
 		t.Fatalf("unschedule lost its capabilities: %+v", undone.Current)
 	}
 	if undone.Receipt.PreviousOccurrence == nil || undone.Receipt.PreviousOccurrence.State != "scheduled" {
@@ -647,8 +604,22 @@ func TestCockpitLifecycleUnstartUnschedule(t *testing.T) {
 	if e != nil || rescheduled.Current.Occurrence.State != "scheduled" {
 		t.Fatalf("schedule after unschedule: %+v %v", rescheduled, e)
 	}
+	// R4 collapse: the start confirmation is gone; the measured start time goes
+	// through correct_times while the meeting is still scheduled. The measured
+	// end still waits for the confirmed end.
+	started, _ := json.Marshal(time.Now().UTC().Add(-30 * time.Minute).Format(time.RFC3339Nano))
+	corrected, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(rescheduled.Current.LifecycleRevision), Transition: "correct_times", ActualStartedAt: started, Reason: "Backfilled the measured start."})
+	if e != nil || corrected.Current.Occurrence.ActualStartedAt == nil || corrected.Current.Occurrence.State != "scheduled" {
+		t.Fatalf("correct_times from scheduled: %+v %v", corrected, e)
+	}
+	// The ledger keeps both the withdrawal and the re-confirmation.
+	key, _ := util.ParseUUID(unschedule.CommandKey)
+	detail, e := f.issues.GetCockpitMeetingLifecycleCommand(ctx, p, key)
+	if e != nil || detail.Action != "unschedule" || detail.Receipt.Reason != unschedule.Reason {
+		t.Fatalf("unschedule ledger detail: %+v %v", detail, e)
+	}
 }
-func TestCockpitInProgressCancellation(t *testing.T) {
+func TestCockpitScheduledCancellation(t *testing.T) {
 	f := lifecycleFixture(t)
 	ctx := context.Background()
 	p := lifecycleRead(f)
@@ -656,26 +627,23 @@ func TestCockpitInProgressCancellation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	scheduled, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(h.LifecycleRevision), Transition: "schedule"})
-	if e != nil {
-		t.Fatal(e)
+	scheduled := h
+	if scheduled.Occurrence.State != "scheduled" {
+		t.Fatalf("created meeting is not scheduled: %+v", scheduled.Occurrence)
 	}
-	running, e := f.issues.ChangeCockpitMeetingOccurrence(ctx, p, CockpitOccurrenceInput{CockpitLifecycleCommandInput: lifecycleInput(scheduled.Current.LifecycleRevision), Transition: "start"})
-	if e != nil || running.Current.Occurrence.State != "in_progress" {
-		t.Fatalf("start before cancel: %+v %v", running.Current, e)
-	}
-	// R3: a meeting confirmed started still cancels — mid-meeting life counts.
+	// R4: a meeting inside its window is still "just scheduled" — no start
+	// confirmation stands between the register and cancelling it.
 	input := CockpitCancellationPreviewInput{Reason: "The meeting dissolved halfway."}
 	plan, e := f.issues.PreviewCockpitMeetingCancellation(ctx, p, input)
 	if e != nil || !plan.CanConfirm || plan.Intent != "cancel" {
-		t.Fatalf("in-progress meeting cannot cancel: %+v %v", plan, e)
+		t.Fatalf("scheduled meeting cannot cancel: %+v %v", plan, e)
 	}
 	if _, e = f.issues.CancelCockpitMeeting(ctx, p, CockpitCancellationInput{CockpitLifecycleCommandInput: lifecycleInput(plan.LifecycleRevision), CockpitCancellationPreviewInput: input, ContextToken: plan.ContextToken}); e != nil {
 		t.Fatal(e)
 	}
 	final, e := f.issues.GetCockpitMeetingLifecycle(ctx, p)
-	if e != nil || final.Occurrence.State != "cancelled" || final.Occurrence.CancelledAt == nil || final.CanStart || final.CanUnstart {
-		t.Fatalf("in-progress cancellation: %+v %v", final, e)
+	if e != nil || final.Occurrence.State != "cancelled" || final.Occurrence.CancelledAt == nil || final.CanEnd {
+		t.Fatalf("scheduled cancellation: %+v %v", final, e)
 	}
 	// An ended meeting still routes through reopen first.
 	revived, e := f.issues.ChangeCockpitMeetingDisposition(ctx, p, CockpitMeetingDispositionInput{CockpitLifecycleCommandInput: lifecycleInput(final.LifecycleRevision), Transition: "reinstate", Reason: "Back on the calendar."})
@@ -700,3 +668,4 @@ func TestCockpitInProgressCancellation(t *testing.T) {
 		t.Fatalf("ended cancel missing its reopen-first reason: %+v", blocked.BlockedReasons)
 	}
 }
+

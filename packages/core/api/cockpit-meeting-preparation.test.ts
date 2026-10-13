@@ -99,8 +99,8 @@ function occurrence(patch: Partial<CockpitOccurrenceView> = {}): CockpitOccurren
 }
 function lifecycle(patch: Partial<CockpitMeetingLifecycleHeader> = {}): CockpitMeetingLifecycleHeader {
   return { workspace_id: WS, meeting_id: MEETING, lifecycle_revision: 4, agenda_revision: 8, generated_at: TIME, occurrence: occurrence(),
-    materials: null, workflow_enabled: false, agenda_total: 1, can_schedule: false, can_start: true, can_end: true, can_correct_times: false,
-    can_edit_agenda: true, can_confirm_materials: false, can_reopen: false, can_unstart: false, can_unschedule: false, blocked_reasons: [], archive: { archived_at: null, archived_by: null, reason: "" }, ...patch };
+    materials: null, workflow_enabled: false, agenda_total: 1, can_schedule: false, can_end: true, can_correct_times: false,
+    can_edit_agenda: true, can_confirm_materials: false, can_reopen: false, can_unschedule: false, blocked_reasons: [], archive: { archived_at: null, archived_by: null, reason: "" }, ...patch };
 }
 function envelope(patch: Partial<CockpitLifecycleReceipt> = {}): CockpitLifecycleReceipt {
   return { revision: 4, agenda_revision: 8, agenda_id: null, reference_id: null, issue_id: null, request_hash: HASH, reason: "",

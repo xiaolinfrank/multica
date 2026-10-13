@@ -328,7 +328,7 @@ INSERT INTO cockpit_meeting (
     attendees, meet_no, link, note,
     code, kind, status, parties, organizer, location,
     start_time, end_time, minutes, decisions, actions, nas_dir, detected,
-    track
+    track, occurrence_state
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -352,7 +352,8 @@ INSERT INTO cockpit_meeting (
     sqlc.arg('actions')::text,
     sqlc.arg('nas_dir')::text,
     sqlc.arg('detected')::bool,
-    sqlc.arg('track')::text
+    sqlc.arg('track')::text,
+    sqlc.arg('occurrence_state')::text
 )
 RETURNING *;
 

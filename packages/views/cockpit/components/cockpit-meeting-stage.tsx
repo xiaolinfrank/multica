@@ -10,13 +10,13 @@ import { Button } from "@multica/ui/components/ui/button";
 import { TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { Check, ClipboardList, FileText, ListChecks, PenLine } from "lucide-react";
 import { useT } from "../../i18n";
-import { cockpitMeetingStage, meetingStagesBefore, MEETING_STAGE_ORDER, type CockpitMeetingStage, type MeetingStageWorkflow } from "./meeting-stage";
+import { cockpitMeetingStage, meetingStagesBefore, MEETING_STAGE_ORDER, type CockpitMeetingStage, type MeetingStageWorkflow, type MeetingStageTiming } from "./meeting-stage";
 
 const STAGE_ICON = { preparation: ClipboardList, recording: PenLine, minutes_review: FileText, followup: ListChecks } as const;
 
-export function CockpitMeetingStageTabs({ occurrenceState, workflow }: { occurrenceState: string | undefined; workflow: MeetingStageWorkflow }) {
+export function CockpitMeetingStageTabs({ occurrenceState, workflow, timing }: { occurrenceState: string | undefined; workflow: MeetingStageWorkflow; timing?: MeetingStageTiming }) {
   const { t } = useT("cockpit");
-  const current = cockpitMeetingStage(occurrenceState, workflow);
+  const current = cockpitMeetingStage(occurrenceState, workflow, timing);
   const done = current ? new Set(meetingStagesBefore(current)) : new Set<CockpitMeetingStage>();
   return <>
     {MEETING_STAGE_ORDER.map((stage, index) => {
@@ -34,13 +34,14 @@ export function CockpitMeetingStageTabs({ occurrenceState, workflow }: { occurre
 }
 
 /** The single primary action for the meeting's current stage, for the header. */
-export function CockpitMeetingStageAction({ occurrenceState, workflow, onOpenView }: {
+export function CockpitMeetingStageAction({ occurrenceState, workflow, timing, onOpenView }: {
   occurrenceState: string | undefined;
   workflow: MeetingStageWorkflow;
+  timing?: MeetingStageTiming;
   onOpenView: (view: "preparation" | "recording" | "minutes_review" | "followup" | "resources") => void;
 }) {
   const { t } = useT("cockpit");
-  const stage = cockpitMeetingStage(occurrenceState, workflow);
+  const stage = cockpitMeetingStage(occurrenceState, workflow, timing);
   if (!stage) return null;
   const action = stage === "preparation" ? { label: t(($) => $.meeting_stage.action_check_materials), view: "resources" as const }
     : stage === "recording" ? { label: t(($) => $.meeting_stage.action_end_meeting), view: "recording" as const }
