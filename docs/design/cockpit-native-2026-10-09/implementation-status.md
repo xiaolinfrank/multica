@@ -448,3 +448,4 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 - 生产未动。剩 R4 第二刀（三栏工作台/全幅布局）、R5（呈现层+词汇）、R6（决议对象）。
 - **R4 统一导航版（1a2d54bc6 + b1a25eac3 + 3661bf59c，2026-10-13 用户反馈后重做）**：第一刀的「阶段条+平行 tabs」两层级被否决（点击无反馈/映射隐式/选中无高亮）——改为**阶段分段即 tab**（一套导航）：四阶段分段（序号圆圈，已完成变 ✓，选中 primary 高亮）+ 右侧「资料/信息」辅助段；主动作移至标题行；`meeting_view` 扩展四阶段值、旧 agenda/workflow 拼法读侧归一；发生事实徽标不再携带 view（按阶段落位）。顺带修复两个被暴露的服务端缺口（minutes_revision 缓存戳被误当配置证据；未配置 summary 的 nil slice null 数组）。agent 3 双包全绿 + 浏览器全场景验收（见 r4-workbench-ia.md）。生产未动。
 - **R4 收敛（22d10c973，迁移 9149，2026-10-13）**：三确认收敛为一确认——start/in_progress 删除（时间窗投影替代，unstart 随删）；创建即 scheduled（NAS 扫描行独占 unconfirmed）；correct_times 放宽到 scheduled；recording 视图 emphasized 差异化。agent 3 双包全绿+浏览器验收（创建即已安排、时间窗自动落会议记录、扫描路径按钮保留）。
+- **R4 视图拆分（d85ab2b0d）**：准备保留完整编辑/模板/历史；会议记录收敛为 emphasized 发生事实+结束确认+紧凑议题选择，隐藏所有准备工具。agent 3 浏览器正反双视图断言通过，测试会议已删。另修 deleted meeting 404 不再显示「无法加载项目驾驶舱」（1bbdcf381），改为对象已删除+返回台账；用户报错即验收测试会议已删但 URL 残留触发。
