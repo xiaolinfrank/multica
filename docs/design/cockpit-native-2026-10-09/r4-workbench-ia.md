@@ -56,3 +56,20 @@
   1. lifecycle 命令 bump minutes_revision 只是缓存戳，不能作为「纪要已配置」的证据（此前 `Revision > 1` 判定让任何动过生命周期的会议 enabled=true、又因无纪要任务被客户端校验拒绝，显示「无法加载」）；配置证据改为 `minutes_configured_by` 或任一指针。
   2. 未配置会议的 summary 早退分支 nil slice 序列化成 `null` 数组，客户端 schema 拒收；改为显式空数组。
 - 截图：[统一导航·准备态](./implementation/r4-unified-preparation.png)、[统一导航·已结束](./implementation/r4-unified-ended.png)。
+## 收敛（R4 collapse，2026-10-13 用户三问后）
+
+用户问：三个确认（安排/开始/结束）是否各有必要？是否值得维护成本？回答收敛为一确认：
+
+| 确认 | 判定 | 依据 |
+| --- | --- | --- |
+| 确认结束（end） | **保留**，唯一强确认 | 纪要结论的事实门槛；R2/R3 已驯服为可逆 |
+| 确认开始（start） | **删除**（迁移 9149） | 无人会前点按钮；in_progress 无消费者；「进行中」= 时间窗投影（meet_date/start_time/end_time 实时算，原则 3）；unstart 随之失去对象一并删除 |
+| 确认安排（schedule） | **收窄** | 人工创建即 scheduled（列默认值+导入路径钉死）；仅 NAS 扫描行保持 unconfirmed 待人工核对，schedule/unschedule 服务该路径 |
+
+- 新建即已安排：创建动作本身就是安排确认（创建可逆=删除/取消）。
+- 实际时间一律走 correct_times（前置放宽到 scheduled）；实际结束仍以确认结束为前提。
+- 快照恢复的会议落 scheduled（快照从不携带发生事实），detected 布尔继续管文件夹猜测核对。
+- **线性流程**：创建（已安排）→ 开会（可补记实际时间）→ 确认结束 → 纪要 → 行动。整个生命周期一个对话框。
+- **视图差异化**：recording 视图的发生事实区 emphasized（primary 边框+底色+全宽结束按钮）——「你在会中」由表面自己说，不靠存储状态。
+
+验收（agent 3，2026-10-13）：双包 TestCockpit\* 全绿（迁移 9149 后）；API 创建即 scheduled（can_schedule=false/can_end=true）；时间窗内会议自动落「会议记录」阶段且发生事实区 emphasized、准备段 ✓；unconfirmed（扫描语义）会议显示「确认会议安排+确认会议已结束」、无开始/更正开始按钮；测试会议已清理。本机：views 单 worker 全量 18 失败=基线；core 5=基线。
