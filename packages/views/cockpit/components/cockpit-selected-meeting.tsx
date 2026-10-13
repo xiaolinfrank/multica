@@ -65,7 +65,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const labels = new Map((nodePage?.items ?? []).map((link) => [link.node_id, `${codes.get(link.node_id) ?? link.code} ${link.name}`.trim()]));
   if (!detail) return <aside className="w-[min(46rem,65vw)] max-w-full space-y-4 border-l bg-card p-4 max-xl:w-full">
     <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={t(($) => $.panel.close)}><X className="size-4" /></Button>
-    {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} /> : <Spinner />}
+    {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} onClose={close} /> : <Spinner />}
   </aside>;
   const readOnly = !detail.actor.is_human || !detail.scope_match || query.isError;
   const canAddPreparation = !preparationAvailable || !basis.isError && basis.data?.availability === "available" && basis.data.can_add_preparation;

@@ -603,7 +603,8 @@
   },
   "errors": {
     "save_failed": "Could not save that change",
-    "load_failed": "Could not load the cockpit"
+    "load_failed": "Could not load the cockpit",
+    "not_found_hint": "This meeting no longer exists — it was deleted or the link crossed workspaces."
   },
   "table": {
     "tasks_hint": "{{rows}} rows · edit any cell in place; changes sync to everyone live",

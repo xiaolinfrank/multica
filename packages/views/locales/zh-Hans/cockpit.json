@@ -603,7 +603,8 @@
   },
   "errors": {
     "save_failed": "这次修改没有保存成功",
-    "load_failed": "无法加载项目驾驶舱"
+    "load_failed": "无法加载项目驾驶舱",
+    "not_found_hint": "会议不存在或已被删除（也可能是链接来自另一个工作区）。"
   },
   "table": {
     "tasks_hint": "共 {{rows}} 行 · 点单元格即可就地修改，改动实时同步给所有人",
