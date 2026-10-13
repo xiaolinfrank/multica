@@ -511,6 +511,81 @@ func TestCockpitNodeIssueLinksAcceptIdentifiersAndMultiSelect(t *testing.T) {
 	}
 }
 
+func TestCockpitAmountKeepsFenPrecision(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit fen precision")
+	// 29,100.55 元 = 2.910055 万 — 分 must survive the write/read round trip.
+	node := createNode(t, wsID, map[string]any{"code": "F-1", "budget_amount": 2.910055})
+
+	var payment CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "尾款", "pay_date": "2026-12-15", "amount": 2.910055,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&payment)
+	if payment.Amount != 2.910055 {
+		t.Errorf("amount = %v, want 2.910055 (分 lost in rounding)", payment.Amount)
+	}
+
+	board := getBoard(t, wsID)
+	if len(board.Nodes) != 1 || board.Nodes[0].BudgetAmount == nil || *board.Nodes[0].BudgetAmount != 2.910055 {
+		t.Fatalf("node budget = %+v, want 2.910055", board.Nodes[0].BudgetAmount)
+	}
+	if len(board.Payments) != 1 || board.Payments[0].Amount != 2.910055 {
+		t.Fatalf("board payment = %+v, want 2.910055", board.Payments)
+	}
+
+	// Below 分 the column still has to round the way a person would:
+	// half a fen rounds away from zero, not to even.
+	var p2 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "零头", "amount": 0.0000004,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p2)
+	if p2.Amount != 0 {
+		t.Errorf("0.4 fen = %v, want 0", p2.Amount)
+	}
+	var p3 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "零头2", "amount": 0.0000005,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p3)
+	if p3.Amount != 0.000001 {
+		t.Errorf("0.5 fen = %v, want 0.000001 (half away from zero)", p3.Amount)
+	}
+
+	// The exact-half wire text must round by decimal, not by float64: through
+	// a double, 0.0001245 * 1e6 lands just under the half and would round
+	// down to 1.24 元. The wire decodes as pgtype.Numeric, so Postgres sees
+	// the literal and rounds the way a person would.
+	var p4 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "半数", "amount": 0.0001245,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p4)
+	if p4.Amount != 0.000125 {
+		t.Errorf("exact half 0.0001245 = %v, want 0.000125 (decimal rounding)", p4.Amount)
+	}
+}
+
 func TestCockpitPaymentsMilestonesAndMeetings(t *testing.T) {
 	wsID := cockpitFixture(t, "Cockpit collections")
 	node := createNode(t, wsID, map[string]any{"code": "P-1"})

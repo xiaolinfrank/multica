@@ -219,7 +219,9 @@ function countPeople(value: string): number {
 
 /** Board amounts carry the programme's own unit, so the unit rides along. */
 function wan(value: number): string {
-  return `${Number.isInteger(value) ? String(value) : value.toFixed(2)}${AMOUNT_UNIT}`;
+  // 万元 with up to 分 (6 decimals); trailing zeros would fake a precision
+  // the number does not have.
+  return `${Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)))}${AMOUNT_UNIT}`;
 }
 
 /** Marks a row that has a deadline but no start date. */

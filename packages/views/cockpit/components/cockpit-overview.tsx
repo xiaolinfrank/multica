@@ -174,7 +174,9 @@ function moduleCardInteraction(
 }
 
 function formatAmount(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  // 万元 with up to 分 (6 decimals); trailing zeros would fake a precision
+  // the number does not have.
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 }
 
 /** Money on this board is counted in 万 (ten-thousand yuan); the figure keeps

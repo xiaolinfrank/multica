@@ -146,8 +146,9 @@ already been held.
   code (dotted parents such as `01.03` continue dotted as `01.03.06`, others
   keep the `PARENT-NN` shape), and the number steps past the rows currently
   under the direction as well as every spent code.
-- Amounts keep four decimal places server-side and travel as plain JSON
-  numbers, so a value read back may carry more precision than it was sent with.
+- Amounts are tracked in 万元 and keep six decimal places server-side
+  (0.000001 万 = 0.01 元, so 分 survives), travelling as plain JSON numbers,
+  so a value read back may carry more precision than it was sent with.
 
 ## Versions
 
