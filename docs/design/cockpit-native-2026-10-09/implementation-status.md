@@ -446,3 +446,4 @@ agent 3 完整 handler 2640 个父用例通过，1 个既有外部联网用例�
 - **R3b（c3f1f0b3d）**：`crypto.randomUUID` HTTP 非 secure context 不可用——38 处直调改走 core 既有 `createSafeId()` 回退。agent 3 浏览器实测：unstart 对话框填写→提交→投影实时回落全链路走通（此前同操作 TypeError 静默失败）。生产 HTTPS 与 dev HTTP 均可用。
 - **R4 第一刀（371fc38f8 + 370c42a12）**：阶段条（准备→会议记录→纪要确认→行动跟进，纯投影不落库）+ 每阶段一个主动作 + 阶段感知默认落位（ended 落纪要 tab）+ 「工作流」tab 更名「纪要」（四语）+ 历史记录默认折叠。agent 3 浏览器验证：unconfirmed 会议（准备高亮/检查材料/落议题与准备）与 ended 会议（纪要确认高亮/纪要任务/落纪要 tab）双场景通过；TDZ 引入-发现-修复闭环（nasPoll ref 声明顺序）。
 - 生产未动。剩 R4 第二刀（三栏工作台/全幅布局）、R5（呈现层+词汇）、R6（决议对象）。
+- **R4 统一导航版（1a2d54bc6 + b1a25eac3 + 3661bf59c，2026-10-13 用户反馈后重做）**：第一刀的「阶段条+平行 tabs」两层级被否决（点击无反馈/映射隐式/选中无高亮）——改为**阶段分段即 tab**（一套导航）：四阶段分段（序号圆圈，已完成变 ✓，选中 primary 高亮）+ 右侧「资料/信息」辅助段；主动作移至标题行；`meeting_view` 扩展四阶段值、旧 agenda/workflow 拼法读侧归一；发生事实徽标不再携带 view（按阶段落位）。顺带修复两个被暴露的服务端缺口（minutes_revision 缓存戳被误当配置证据；未配置 summary 的 nil slice null 数组）。agent 3 双包全绿 + 浏览器全场景验收（见 r4-workbench-ia.md）。生产未动。

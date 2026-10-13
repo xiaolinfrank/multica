@@ -44,7 +44,15 @@
 - 全幅工作台入口（避免窄侧栏内再开窄抽屉）
 - S06 准备区主动作「查看缺口」/「进入会议工作台」随材料齐备切换
 
-## 验收
+## 验收（agent 3，2026-10-13）
 
-- 本机：投影函数 5/5；navigation 19/19；lifecycle/agenda/issue-links/preparation-request/cards/meetings 定向全绿（meets「names the meeting」为基线预存在）；views 全量单 worker 18 失败 = 基线逐一对账一致；typecheck 干净。
-- agent 3：浏览器验证统一导航（分段点击、高亮、落位、辅助段、主动作）。
+- 本机：投影函数 5/5；navigation 19/19；lifecycle/agenda/issue-links/preparation-request/cards/meetings 定向全绿（「names the meeting」为基线预存在）；views 全量单 worker 18 失败 = 基线逐一对账一致；typecheck 干净。core 全量失败 5 个 = 基线一致；service 仅既证 collation；handler `TestCockpit*` 全绿。
+- agent 3 双包 `TestCockpit*` 全绿（C collation）；浏览器全场景：
+  - 未排期会议无 view 打开 → 落「准备」+ 主动作「检查材料」（标题行）；
+  - 点「纪要确认」→ URL `minutes_review` + 分段高亮 + 工作面即时切换；
+  - ended 会议无 view 打开 → 落「纪要确认」+ 纪要工作面（纪要任务/就绪与执行），已完成阶段（准备/会议记录）序号变 ✓；
+  - 未配置纪要的会议在纪要视图 → setup 引导（评审人/新建纪要任务/启用），不再显示加载失败。
+- 过程中修复两个被暴露的服务端缺口（`b1a25eac3` + `3661bf59c`）：
+  1. lifecycle 命令 bump minutes_revision 只是缓存戳，不能作为「纪要已配置」的证据（此前 `Revision > 1` 判定让任何动过生命周期的会议 enabled=true、又因无纪要任务被客户端校验拒绝，显示「无法加载」）；配置证据改为 `minutes_configured_by` 或任一指针。
+  2. 未配置会议的 summary 早退分支 nil slice 序列化成 `null` 数组，客户端 schema 拒收；改为显式空数组。
+- 截图：[统一导航·准备态](./implementation/r4-unified-preparation.png)、[统一导航·已结束](./implementation/r4-unified-ended.png)。
