@@ -40,6 +40,7 @@ import {
   cockpitOverallProgress,
   cockpitStoredDirectionCode,
   cockpitSummaryCollapseIds,
+  splitCockpitVendors,
   cockpitTasksCsv,
   flattenCockpitTree,
   groupMeetingIssues,
@@ -373,7 +374,13 @@ export function CockpitPage() {
     [nodes],
   );
   const ownerSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.owner)), [nodes]);
-  const vendorSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.vendor)), [nodes]);
+  // Vendor suggestions come apart into single suppliers — offering a legacy
+  // "联通、深国创中心" as one pick would recreate the very strings the
+  // multi-select picker exists to normalise away.
+  const vendorSuggestions = useMemo(
+    () => suggestionsFor(nodes.flatMap((n) => splitCockpitVendors(n.vendor))),
+    [nodes],
+  );
 
   const meetings = board?.meetings ?? EMPTY_MEETINGS;
   const meetingIssues = board?.meeting_issues ?? EMPTY_MEETING_ISSUES;

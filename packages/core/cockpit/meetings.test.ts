@@ -30,6 +30,8 @@ import {
   sortCockpitMeetings,
   splitCockpitMeetings,
   splitCockpitMeetingParties,
+  joinCockpitVendors,
+  splitCockpitVendors,
 } from "./model";
 
 function meeting(over: Partial<CockpitMeeting> & { id: string }): CockpitMeeting {
@@ -151,6 +153,28 @@ describe("the name the platform proposes", () => {
     expect(splitCockpitMeetingParties("复星医药、华大基因")).toEqual(["复星医药", "华大基因"]);
     expect(splitCockpitMeetingParties("A × B / C")).toEqual(["A", "B", "C"]);
     expect(splitCockpitMeetingParties("  ")).toEqual([]);
+  });
+
+  it("splits vendors into single suppliers, legacy separators included", () => {
+    expect(splitCockpitVendors("中国联合网络通信有限公司深圳市分公司")).toEqual([
+      "中国联合网络通信有限公司深圳市分公司",
+    ]);
+    expect(splitCockpitVendors("联通、深国创中心")).toEqual(["联通", "深国创中心"]);
+    expect(splitCockpitVendors("联通/华为")).toEqual(["联通", "华为"]);
+    expect(splitCockpitVendors("深圳数据交易所以及第三方数据合规团队")).toEqual([
+      "深圳数据交易所",
+      "第三方数据合规团队",
+    ]);
+    // 全称里的括号内容不许被拆开
+    expect(splitCockpitVendors("明略科技（北京）有限公司")).toEqual(["明略科技（北京）有限公司"]);
+    // 括号里的"以及"是名字的一部分，不当作分隔词改写
+    expect(splitCockpitVendors("某集团（含甲以及乙业务）")).toEqual(["某集团（含甲以及乙业务）"]);
+    expect(splitCockpitVendors("")).toEqual([]);
+  });
+
+  it("joins vendors back with the one canonical separator", () => {
+    expect(joinCockpitVendors(["联通", "深国创中心", "联通"])).toBe("联通、深国创中心");
+    expect(joinCockpitVendors([])).toBe("");
   });
 });
 

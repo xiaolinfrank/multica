@@ -2460,6 +2460,45 @@ export function splitCockpitMeetingPeople(people: string): string[] {
   return splitOutsideBrackets(people, PEOPLE_SEPARATORS);
 }
 
+const VENDOR_SEPARATORS = /[、,，;；/]/;
+
+/**
+ * One vendor per value. The board pre-dates the multi-select picker, so the
+ * legacy strings mix "、" with "/" and the occasional written-out "以及";
+ * all of them come apart here, and edits go back as one canonical
+ * "、"-joined list. The written-out separator is replaced only outside
+ * brackets, so a parenthetical that happens to contain the word ("某集团
+ * （含甲以及乙业务）") is displayed and written back byte-for-byte.
+ */
+export function splitCockpitVendors(vendor: string): string[] {
+  return splitOutsideBrackets(vendorAndWordOutsideBrackets(vendor), VENDOR_SEPARATORS);
+}
+
+/** "以及" → "、" at bracket depth 0, leaving bracketed text untouched. */
+function vendorAndWordOutsideBrackets(vendor: string): string {
+  let depth = 0;
+  let out = "";
+  // charAt returns "" past the end (never undefined), and "以及"/the bracket
+  // sets are all BMP, so UTF-16 indexing is safe here.
+  for (let i = 0; i < vendor.length; i += 1) {
+    const char = vendor.charAt(i);
+    if (depth === 0 && vendor.startsWith("以及", i)) {
+      out += "、";
+      i += 1;
+      continue;
+    }
+    if (BRACKETS.has(char)) depth += 1;
+    else if (CLOSERS.has(char) && depth > 0) depth -= 1;
+    out += char;
+  }
+  return out;
+}
+
+/** How a multi-vendor field is written back: one canonical separator. */
+export function joinCockpitVendors(values: string[]): string {
+  return joinCockpitMeetingValues(values);
+}
+
 /** How a multi-value meeting field is written back: one canonical separator. */
 export function joinCockpitMeetingValues(values: string[]): string {
   return dedupeCockpitValues(values).join("、");

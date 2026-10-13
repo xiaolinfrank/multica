@@ -25,12 +25,13 @@ import {
   flattenCockpitTree,
   groupIssueLinksByNode,
   groupPaymentsByNode,
+  splitCockpitVendors,
   type CockpitCheckField,
   type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
-import { EditableDate, EditableNumber, EditableSuggest, EditableText } from "./cockpit-fields";
+import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
 
 /** Which grid is showing. Both read the same rows; they differ in the columns. */
@@ -346,9 +347,10 @@ export function CockpitTable({
                       />
                     </Td>
                     <Td>
-                      <EditableSuggest
+                      <EditableTokens
                         value={node.vendor}
                         onCommit={(vendor) => onPatchNode(node.id, { vendor })}
+                        split={splitCockpitVendors}
                         suggestions={vendorSuggestions}
                         label={t(($) => $.node.vendor)}
                         placeholder={emptyLabel}
@@ -580,9 +582,10 @@ export function CockpitTable({
                     <IssueCell links={linksByNode.get(node.id) ?? []} />
                   </Td>
                   <Td>
-                    <EditableSuggest
+                    <EditableTokens
                       value={node.vendor}
                       onCommit={(vendor) => onPatchNode(node.id, { vendor })}
+                      split={splitCockpitVendors}
                       suggestions={vendorSuggestions}
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}

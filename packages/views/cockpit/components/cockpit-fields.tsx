@@ -629,6 +629,9 @@ export function EditableTokens({
     !filtered.some((option) => option === query.trim())
       ? query.trim()
       : "";
+  // The typed line may itself carry the field's own separators — pasting
+  // "甲、乙" must land as two values, not one value that reads as two.
+  const addableItems = useMemo(() => (addable ? split(addable) : []), [addable, split]);
 
   useEffect(() => {
     setHighlighted((h) => Math.min(h, filtered.length - 1));
@@ -728,7 +731,7 @@ export function EditableTokens({
               e.preventDefault();
               const option = filtered[highlighted];
               if (option != null) toggle(option);
-              else if (addable) toggle(addable);
+              else if (addableItems.length > 0) addableItems.forEach(toggle);
               // Enter on an empty box is how the keyboard says "done": the
               // popup stays open while there is anything left to add.
               else if (!query.trim()) {
@@ -754,13 +757,13 @@ export function EditableTokens({
         />
         {(filtered.length > 0 || addable) && (
           <ul role="listbox" aria-multiselectable aria-label={label} className="max-h-64 overflow-y-auto">
-            {addable && (
+            {addableItems.length > 0 && (
               <li>
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    toggle(addable);
+                    addableItems.forEach(toggle);
                     setQuery("");
                     setHighlighted(-1);
                   }}

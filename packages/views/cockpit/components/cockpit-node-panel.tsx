@@ -11,7 +11,7 @@ import type {
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import { useEffect, useRef, useState } from "react";
-import { cockpitMeetingSpan } from "@multica/core/cockpit";
+import { cockpitMeetingSpan, splitCockpitVendors } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -34,6 +34,7 @@ import {
   EditableSuggest,
   EditableText,
   EditableTextArea,
+  EditableTokens,
   ProgressField,
 } from "./cockpit-fields";
 import { CockpitIssueLinks } from "./cockpit-issue-links";
@@ -306,9 +307,10 @@ export function CockpitNodePanel({
 
             <div className="grid grid-cols-2 gap-3">
               <CockpitField label={t(($) => $.node.vendor)}>
-                <EditableSuggest
+                <EditableTokens
                   value={node.vendor}
                   onCommit={(vendor) => onPatch({ vendor })}
+                  split={splitCockpitVendors}
                   suggestions={vendorSuggestions}
                   label={t(($) => $.node.vendor)}
                   placeholder={unset}
