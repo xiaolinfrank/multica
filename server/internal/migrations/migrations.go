@@ -33,7 +33,12 @@ func ResolveDir() (string, error) {
 				seen[dir] = true
 				info, err := os.Stat(dir)
 				if err == nil && info.IsDir() {
-					return dir, nil
+					// A same-named package directory (internal/migrations) is
+					// not the migration directory; only SQL counts.
+					sql, gerr := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+					if gerr == nil && len(sql) > 0 {
+						return dir, nil
+					}
 				}
 			}
 			base = filepath.Join(base, "..")
