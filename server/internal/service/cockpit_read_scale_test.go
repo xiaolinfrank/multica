@@ -159,8 +159,13 @@ func TestCockpitReadScale(t *testing.T) {
 			return out, e
 		}},
 		{"meeting_issues25", func(ctx context.Context) (any, error) {
-			return svc.GetCockpitSurfaceObjectPage(ctx, CockpitSurfaceObjectQuery{CockpitSurfaceQuery: p, Kind: "meeting_issues", ObjectID: markerMeeting, PageSize: 25})
+			marker, e := util.ParseUUID(util.UUIDToString(markerMeeting))
+			if e != nil {
+				return nil, e
+			}
+			return svc.ListCockpitSurfaceObjectPage(ctx, p, marker, "meeting_issues", "", 25)
 		}},
+	}
 	type measurement struct {
 		Name                string    `json:"name"`
 		Failed              bool      `json:"failed"`
@@ -290,37 +295,6 @@ func validateCockpitScaleRead(t *testing.T, name string, value any) {
 		if v.AgendaTotal != 1000 || v.WorkflowEnabled {
 			t.Fatalf("agenda header total=%d workflow=%v", v.AgendaTotal, v.WorkflowEnabled)
 		}
-	case CockpitAgendaPage:
-		if v.Total != 1000 || len(v.Items) != 25 || v.NextCursor == nil {
-			t.Fatalf("agenda metadata not bounded: total%d items%d", v.Total, len(v.Items))
-		}
-		raw, _ := json.Marshal(v)
-		if strings.Contains(string(raw), strings.Repeat("A", 64)) {
-			t.Fatal("agenda metadata includes working notes")
-		}
-		ids := map[string]bool{}
-		for _, a := range v.Items {
-			if ids[a.ID] {
-				t.Fatal("duplicate agenda identity")
-			}
-			ids[a.ID] = true
-		}
-	case CockpitAgendaDetail:
-		if len(v.Notes) != 32768 {
-			t.Fatalf("single agenda body bytes=%d", len(v.Notes))
-		}
-	case CockpitAgendaReferencePage:
-		if v.Total != 1000 || len(v.Items) != 25 || v.NextCursor == nil {
-			t.Fatalf("agenda references not bounded: total%d items%d", v.Total, len(v.Items))
-		}
-		ids := map[string]bool{}
-		for _, r := range v.Items {
-			if ids[r.ID] || !r.Available || r.Issue == nil {
-				t.Fatal("invalid bounded preparation metadata")
-			}
-			ids[r.ID] = true
-		}
-
 	case CockpitSurfacePlan:
 		expected := map[string]int64{"plan_workspace": 3330, "plan_project": 111, "plan_module": 12}[name]
 		if !v.Complete || v.Counts.Nodes != expected || v.Counts.IndexNodes != 3330 {

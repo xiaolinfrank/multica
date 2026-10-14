@@ -31,6 +31,7 @@ import {
   cockpitScope,
   cockpitOverallProgress,
   cockpitSummaryCollapseIds,
+  splitCockpitVendors,
   flattenCockpitTree,
   useCreateCockpitMeeting,
   useDeleteCockpitMilestone,
@@ -282,7 +283,13 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     [nodes],
   );
   const ownerSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.owner)), [nodes]);
-  const vendorSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.vendor)), [nodes]);
+  // Vendor suggestions come apart into single suppliers — offering a legacy
+  // "联通、深国创中心" as one pick would recreate the very strings the
+  // multi-select picker exists to normalise away.
+  const vendorSuggestions = useMemo(
+    () => suggestionsFor(nodes.flatMap((n) => splitCockpitVendors(n.vendor))),
+    [nodes],
+  );
 
   const fail = useCallback(
     (error: unknown) => {

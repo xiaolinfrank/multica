@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -243,16 +242,34 @@ func numericToFloat(n pgtype.Numeric) float64 {
 	return 0
 }
 
-// floatToNumeric converts a wire amount to NUMERIC(14,4) by scaling to the
-// column's own exponent. Going through big.Int rather than a decimal string
-// keeps the rounding decision here — banker-free, half-away-from-zero, the way
-// a person reading the board would round it.
+// numericPtrValue dereferences a wire-level numeric pointer; absent stays
+// SQL NULL.
+func numericPtrValue(n *pgtype.Numeric) pgtype.Numeric {
+	if n == nil {
+		return pgtype.Numeric{Valid: false}
+	}
+	return *n
+}
+
+// numericPtrOrZero keeps an omitted wire amount at the column's own zero
+// rather than NULL — a payment row always carries an amount.
+func numericPtrOrZero(n *pgtype.Numeric) pgtype.Numeric {
+	if v := numericPtrValue(n); v.Valid {
+		return v
+	}
+	return pgtype.Numeric{Int: big.NewInt(0), Exp: -6, Valid: true}
+}
+
+// floatToNumeric converts a float-path amount (import documents, the changes
+// text flow) to NUMERIC(14,6). The interactive wire requests take
+// pgtype.Numeric directly so their decimal text reaches Postgres unrounded;
+// these two paths still carry float64s and accept their half-ulp rounding.
 func floatToNumeric(f float64) pgtype.Numeric {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return pgtype.Numeric{Valid: false}
 	}
-	scaled := math.Round(f * 10000)
-	return pgtype.Numeric{Int: big.NewInt(int64(scaled)), Exp: -4, Valid: true}
+	scaled := math.Round(f * 1000000)
+	return pgtype.Numeric{Int: big.NewInt(int64(scaled)), Exp: -6, Valid: true}
 }
 
 func floatPtrToNumeric(f *float64) pgtype.Numeric {
@@ -1007,7 +1024,7 @@ type CockpitNodeRequest struct {
 	CurrentProgress *string  `json:"current_progress"`
 	Vendor          *string  `json:"vendor"`
 	BudgetCategory  *string  `json:"budget_category"`
-	BudgetAmount    *float64 `json:"budget_amount"`
+	BudgetAmount    *pgtype.Numeric `json:"budget_amount"`
 	ExecStatus      *string  `json:"exec_status"`
 	Contract        *string  `json:"contract"`
 	Source          *string  `json:"source"`
@@ -1051,28 +1068,6 @@ func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, c
 		return db.CockpitNode{}, false
 	}
 	return parent, true
-}
-
-// nextCockpitChildCode picks the first PARENT-NN number the board has
-// never handed out. Codes with a non-numeric tail (hand-edited rows) keep
-// their ledger entry but do not join the count: 02.02-1 and 02.02-01 are
-// distinct codes, both stay spent, and neither is re-issued.
-func nextCockpitChildCode(parentCode string, used []string) string {
-	prefix := parentCode + "-"
-	max := 0
-	for _, code := range used {
-		if !strings.HasPrefix(code, prefix) {
-			continue
-		}
-		n, err := strconv.Atoi(code[len(prefix):])
-		if err != nil || n <= 0 {
-			continue
-		}
-		if n > max {
-			max = n
-		}
-	}
-	return prefix + fmt.Sprintf("%02d", max+1)
 }
 
 // GetCockpitNextNodeCode answers what code the next execution task under a
@@ -1244,7 +1239,7 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		CurrentProgress: textOrEmpty(req.CurrentProgress),
 		Vendor:          textOrEmpty(req.Vendor),
 		BudgetCategory:  textOrEmpty(req.BudgetCategory),
-		BudgetAmount:    floatPtrToNumeric(req.BudgetAmount),
+		BudgetAmount:    numericPtrValue(req.BudgetAmount),
 		ExecStatus:      textOrEmpty(req.ExecStatus),
 		Contract:        textOrEmpty(req.Contract),
 		Source:          textOrEmpty(req.Source),
@@ -1390,7 +1385,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		if req.BudgetAmount == nil {
 			params.ClearBudgetAmount = true
 		} else {
-			params.BudgetAmount = floatToNumeric(*req.BudgetAmount)
+			params.BudgetAmount = *req.BudgetAmount
 		}
 	}
 
@@ -1681,10 +1676,10 @@ func (h *Handler) DeleteCockpitNodeIssue(w http.ResponseWriter, r *http.Request)
 // ---------------------------------------------------------------------------
 
 type CockpitPaymentRequest struct {
-	Label    *string  `json:"label"`
-	PayDate  *string  `json:"pay_date"`
-	Amount   *float64 `json:"amount"`
-	Position *float64 `json:"position"`
+	Label    *string          `json:"label"`
+	PayDate  *string          `json:"pay_date"`
+	Amount   *pgtype.Numeric  `json:"amount"`
+	Position *float64         `json:"position"`
 }
 
 func (h *Handler) CreateCockpitPayment(w http.ResponseWriter, r *http.Request) {
@@ -1712,7 +1707,7 @@ func (h *Handler) CreateCockpitPayment(w http.ResponseWriter, r *http.Request) {
 		NodeID:      node.ID,
 		Label:       textOrEmpty(req.Label),
 		PayDate:     payDate,
-		Amount:      floatToNumeric(floatOrZero(req.Amount)),
+		Amount:      numericPtrOrZero(req.Amount),
 		Position:    floatOrZero(req.Position),
 	})
 	if err != nil {
@@ -1755,7 +1750,7 @@ func (h *Handler) UpdateCockpitPayment(w http.ResponseWriter, r *http.Request) {
 		Position:     optionalFloat(req.Position),
 	}
 	if req.Amount != nil {
-		params.Amount = floatToNumeric(*req.Amount)
+		params.Amount = *req.Amount
 	}
 
 	payment, err := h.Queries.UpdateCockpitPayment(r.Context(), params)

@@ -577,6 +577,128 @@ describe("buildIssueExportMarkdown", () => {
       "- [big.bin](http://example.com/api/attachments/a-3/download) (5 MB) — not included (download failed; requires platform access)",
     );
   });
+
+  describe("unreferenced attachment flagging", () => {
+    const MARK =
+      "**unreferenced**: bound to the task but not linked from the description or any comment";
+
+    function makeCommentEntry(
+      content: string,
+      overrides: Partial<TimelineEntry> = {},
+    ): TimelineEntry {
+      return {
+        type: "comment",
+        id: "c-1",
+        actor_type: "member",
+        actor_id: "u-1",
+        created_at: "2025-01-03T00:00:00Z",
+        content,
+        ...overrides,
+      };
+    }
+
+    it("flags an issue-bound attachment nothing links to", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+        }),
+      );
+      expect(md).toContain(
+        `- [report.pdf](attachments/report.pdf) (1.5 KB) — included in this export · ${MARK}`,
+      );
+    });
+
+    it("flags an unreferenced attachment whose bytes failed to pack", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          attachments: [makeExportedAttachment()],
+        }),
+      );
+      expect(md).toContain(
+        `- [report.pdf](http://example.com/api/attachments/a-1/download) (1.5 KB) — not included (download failed; requires platform access) · ${MARK}`,
+      );
+    });
+
+    it("does not flag an attachment the description links", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          issue: makeIssue({
+            description: "see ![img](/api/attachments/a-1/download)",
+          }),
+          attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+        }),
+      );
+      expect(md).not.toContain("unreferenced");
+    });
+
+    it("does not flag an attachment a live comment body links", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          timeline: [
+            makeCommentEntry("here is the file: !file[report.pdf](/api/attachments/a-1/download)"),
+          ],
+          attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+        }),
+      );
+      expect(md).not.toContain("unreferenced");
+    });
+
+    it("flags an attachment referenced only by a deleted comment", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          timeline: [
+            makeCommentEntry("!file[report.pdf](/api/attachments/a-1/download)", {
+              deleted_at: "2025-01-04T00:00:00Z",
+            }),
+          ],
+          attachments: [makeExportedAttachment({ packedName: "attachments/report.pdf" })],
+        }),
+      );
+      expect(md).toContain(MARK);
+    });
+
+    it("does not flag comment- or chat-owned attachments even without a body link", () => {
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          attachments: [
+            makeExportedAttachment({
+              attachment: makeAttachment({ id: "a-1", filename: "comment.pdf", comment_id: "c-1" }),
+              packedName: "attachments/comment.pdf",
+            }),
+            makeExportedAttachment({
+              attachment: makeAttachment({ id: "a-2", filename: "chat.pdf", chat_message_id: "m-1" }),
+              absoluteUrl: "http://example.com/api/attachments/a-2/download",
+            }),
+          ],
+        }),
+      );
+      expect(md).not.toContain("unreferenced");
+    });
+
+    it("flags unreferenced inputs but never deliverable lines (MUL-7649 split)", () => {
+      const deliverable = makeAttachment({
+        id: "a-1",
+        filename: "report.md",
+        content_type: "text/markdown",
+        comment_id: "c-1",
+      });
+      const orphanInput = makeAttachment({ id: "a-3", filename: "stray.pdf" });
+      const md = buildIssueExportMarkdown(
+        makeInput({
+          attachments: [
+            makeExportedAttachment({ attachment: deliverable, packedName: "attachments/report.md" }),
+            makeExportedAttachment({ attachment: orphanInput, packedName: "attachments/stray.pdf" }),
+          ],
+          deliverables: [{ key: "k", versions: [deliverable], latest: deliverable }],
+        }),
+      );
+      const deliverables = md.slice(md.indexOf("## Deliverables"), md.indexOf("## Inputs"));
+      expect(deliverables).not.toContain("unreferenced");
+      expect(md).toContain(
+        `- [stray.pdf](attachments/stray.pdf) (1.5 KB) — included in this export · ${MARK}`,
+      );
+    });
+  });
 });
 
 describe("agent workspace files section", () => {

@@ -27,12 +27,13 @@ import {
   computeCockpitFinanceRows,
   flattenCockpitTree,
   groupPaymentsByNode,
+  splitCockpitVendors,
   type CockpitCheckField,
   type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
-import { EditableDate, EditableNumber, EditableSuggest, EditableText } from "./cockpit-fields";
+import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
 
 /** Which grid is showing. Both read the same rows; they differ in the columns. */
@@ -69,7 +70,9 @@ function matches(node: CockpitNode, query: string, displayCode: string): boolean
 }
 
 export function formatAmount(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  // 万元 with up to 分 (6 decimals); trailing zeros would fake a precision
+  // the number does not have.
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 }
 
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -353,9 +356,10 @@ export function CockpitTable({
                       />
                     </Td>
                     <Td>
-                      <EditableSuggest
+                      <EditableTokens
                         value={node.vendor}
                         onCommit={(vendor) => onPatchNode(node.id, { vendor })}
+                        split={splitCockpitVendors}
                         suggestions={vendorSuggestions}
                         label={t(($) => $.node.vendor)}
                         placeholder={emptyLabel}
@@ -593,9 +597,10 @@ export function CockpitTable({
                     <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
                   </Td>
                   <Td>
-                    <EditableSuggest
+                    <EditableTokens
                       value={node.vendor}
                       onCommit={(vendor) => onPatchNode(node.id, { vendor })}
+                      split={splitCockpitVendors}
                       suggestions={vendorSuggestions}
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}

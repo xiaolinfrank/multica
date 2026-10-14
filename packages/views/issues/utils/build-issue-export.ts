@@ -1,4 +1,5 @@
 import type { DeliverableFile } from "@multica/core/attachments/deliverables";
+import { contentReferencesAttachment } from "@multica/core/types";
 import type {
   AgentTask,
   Attachment,
@@ -220,6 +221,38 @@ export function rewriteAttachmentUrls(
 }
 
 /**
+ * Issue-bound attachments nothing points at: not linked from the description
+ * or any comment body, and not owned by a comment or chat message. Attachment
+ * bindings are never released (no unlink path), so deleting a reference — or
+ * abandoning a composer draft after the upload already bound the file —
+ * strands the row silently. Such files render nowhere in the UI (the
+ * description shows no standalone cards), so the export is the first place a
+ * reader meets them: the document must flag them as unreferenced instead of
+ * presenting them as task inputs on equal footing with the brief.
+ */
+export function collectUnreferencedAttachmentIds(
+  issue: Issue,
+  timeline: TimelineEntry[],
+  attachments: ExportedAttachment[],
+): Set<string> {
+  const description = issue.description ?? "";
+  const commentBodies = timeline
+    .filter((e) => e.type === "comment" && !e.deleted_at)
+    .map((e) => e.content ?? "");
+  const out = new Set<string>();
+  for (const { attachment } of attachments) {
+    // Owned by a comment or chat message: rendered with that entry's card.
+    if (attachment.comment_id || attachment.chat_message_id || attachment.chat_session_id) {
+      continue;
+    }
+    if (contentReferencesAttachment(description, attachment)) continue;
+    if (commentBodies.some((body) => contentReferencesAttachment(body, attachment))) continue;
+    out.add(attachment.id);
+  }
+  return out;
+}
+
+/**
  * Decodes one custom-property value the way the sidebar renders it
  * (select/multi_select ids → option names, actor refs → names), but keeps
  * raw values for ids that no longer resolve — an export must not silently
@@ -263,11 +296,18 @@ export function decodePropertyValue(
   }
 }
 
-function attachmentLine({ attachment, packedName, absoluteUrl }: ExportedAttachment): string {
+function attachmentLine(
+  { attachment, packedName, absoluteUrl }: ExportedAttachment,
+  unreferenced = false,
+): string {
   const href = packedName ?? absoluteUrl;
-  const note = packedName
+  let note = packedName
     ? "included in this export"
     : "not included (download failed; requires platform access)";
+  if (unreferenced) {
+    note +=
+      " · **unreferenced**: bound to the task but not linked from the description or any comment";
+  }
   return `- [${attachment.filename}](${href}) (${formatBytes(attachment.size_bytes)}) — ${note}`;
 }
 
@@ -480,6 +520,11 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
   const { issue } = input;
   const labels = issue.labels?.map((label) => label.name).join(", ");
   const urlMap = buildAttachmentUrlMap(input.attachments);
+  const unreferencedIds = collectUnreferencedAttachmentIds(
+    issue,
+    input.timeline,
+    input.attachments,
+  );
   const out: string[] = [];
 
   out.push("---");
@@ -646,13 +691,22 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
     }
     const inputs = input.attachments.filter((a) => !deliverableIds.has(a.attachment.id));
     if (inputs.length > 0) {
-      out.push("## Inputs", "", inputs.map(attachmentLine).join("\n"), "");
+      out.push(
+        "## Inputs",
+        "",
+        inputs
+          .map((a) => attachmentLine(a, unreferencedIds.has(a.attachment.id)))
+          .join("\n"),
+        "",
+      );
     }
   } else if (input.attachments.length > 0) {
     out.push(
       "## Attachments",
       "",
-      input.attachments.map(attachmentLine).join("\n"),
+      input.attachments
+        .map((a) => attachmentLine(a, unreferencedIds.has(a.attachment.id)))
+        .join("\n"),
       "",
     );
   }

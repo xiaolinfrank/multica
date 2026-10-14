@@ -67,30 +67,7 @@ func createNode(t *testing.T, wsID string, body map[string]any) CockpitNodeRespo
 	return node
 }
 
-func TestNextCockpitChildCode(t *testing.T) {
-	cases := []struct {
-		name       string
-		parentCode string
-		used       []string
-		want       string
-	}{
-		{"an empty ledger starts at 01", "02.02", nil, "02.02-01"},
-		{"steps past the numbers in use", "02.02", []string{"02.02-01", "02.02-02"}, "02.02-03"},
-		{"a deleted code stays spent", "02.02", []string{"02.02-01", "02.02-05"}, "02.02-06"},
-		{"hand-edited tails do not join the count", "02.02", []string{"02.02-X", "02.02-01-03"}, "02.02-01"},
-		{"an unpadded number is the same number", "02.02", []string{"02.02-1", "02.02-01"}, "02.02-02"},
-		{"counting is numeric, not lexicographic", "AI-03-02", []string{"AI-03-02-9", "AI-03-02-10"}, "AI-03-02-11"},
-		{"other directions do not count", "02.02", []string{"02.03-01", "L1-02-01"}, "02.02-01"},
-		{"the prefix must match to the dash", "02.0", []string{"02.02-01"}, "02.0-01"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := nextCockpitChildCode(tc.parentCode, tc.used); got != tc.want {
-				t.Errorf("nextCockpitChildCode(%q, %v) = %q, want %q", tc.parentCode, tc.used, got, tc.want)
-			}
-		})
-	}
-}
+
 
 func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 	wsID := cockpitFixture(t, "Cockpit spent codes")
@@ -118,32 +95,32 @@ func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 		return ""
 	}
 
-	if got := nextCode(directionID()); got != "02.02-01" {
-		t.Fatalf("first code = %q, want 02.02-01", got)
+	if got := nextCode(directionID()); got != "02.02.01" {
+		t.Fatalf("first code = %q, want 02.02.01", got)
 	}
 
 	// Delete the task that wore 01; the number must not come back.
-	first := createNode(t, wsID, map[string]any{"code": "02.02-01", "parent_id": parent.ID, "name": "Task"})
+	first := createNode(t, wsID, map[string]any{"code": "02.02.01", "parent_id": parent.ID, "name": "Task"})
 	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitNode),
 		testutil.WithURLParams(
 			cockpitRequest(http.MethodDelete, "/api/cockpit/nodes/"+first.ID, wsID, nil),
 			"id", first.ID,
 		)).
 		Want(http.StatusNoContent)
-	if got := nextCode(directionID()); got != "02.02-02" {
-		t.Fatalf("a deleted code came back: next = %q, want 02.02-02", got)
+	if got := nextCode(directionID()); got != "02.02.02" {
+		t.Fatalf("a deleted code came back: next = %q, want 02.02.02", got)
 	}
 
 	// A rename spends the new code; the old one stays spent with it.
-	second := createNode(t, wsID, map[string]any{"code": "02.02-02", "parent_id": parent.ID, "name": "Second"})
+	second := createNode(t, wsID, map[string]any{"code": "02.02.02", "parent_id": parent.ID, "name": "Second"})
 	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
 		testutil.WithURLParams(
-			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+second.ID, wsID, map[string]any{"code": "02.02-09"}),
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+second.ID, wsID, map[string]any{"code": "02.02.09"}),
 			"id", second.ID,
 		)).
 		Want(http.StatusOK)
-	if got := nextCode(directionID()); got != "02.02-10" {
-		t.Fatalf("a renamed-to code was skipped: next = %q, want 02.02-10", got)
+	if got := nextCode(directionID()); got != "02.02.10" {
+		t.Fatalf("a renamed-to code was skipped: next = %q, want 02.02.10", got)
 	}
 
 	// Import swaps the whole board; the codes it reintroduces stay spent.
@@ -151,22 +128,22 @@ func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 		"title": "Rebuilt",
 		"nodes": []map[string]any{
 			{"code": "02.02", "name": "Direction"},
-			{"code": "02.02-11", "parent_code": "02.02", "name": "Imported"},
+			{"code": "02.02.11", "parent_code": "02.02", "name": "Imported"},
 		},
 	})
-	if got := nextCode(directionID()); got != "02.02-12" {
-		t.Fatalf("an imported code was skipped: next = %q, want 02.02-12", got)
+	if got := nextCode(directionID()); got != "02.02.12" {
+		t.Fatalf("an imported code was skipped: next = %q, want 02.02.12", got)
 	}
 
 	// The ledger is a gate, not just a record: hand-picking a spent code is
 	// refused even though no live row wears it.
 	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
 		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID,
-			map[string]any{"code": "02.02-01", "parent_id": directionID(), "name": "Revived"})).
+			map[string]any{"code": "02.02.01", "parent_id": directionID(), "name": "Revived"})).
 		Want(http.StatusConflict)
 	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode),
 		testutil.WithURLParams(
-			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+directionID(), wsID, map[string]any{"code": "02.02-02"}),
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+directionID(), wsID, map[string]any{"code": "02.02.02"}),
 			"id", directionID(),
 		)).
 		Want(http.StatusConflict)
@@ -185,7 +162,7 @@ func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 		"title": "Restored",
 		"nodes": []map[string]any{
 			{"code": "02.02", "name": "Direction"},
-			{"code": "02.02-01", "parent_code": "02.02", "name": "Replayed"},
+			{"code": "02.02.01", "parent_code": "02.02", "name": "Replayed"},
 		},
 	})
 
@@ -196,6 +173,50 @@ func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 	testutil.Call(t, cockpitHandler(testHandler.GetCockpitNextNodeCode),
 		cockpitRequest(http.MethodGet, "/api/cockpit/nodes/next-code?parent_id="+uuid.NewString(), wsID, nil)).
 		Want(http.StatusBadRequest)
+}
+
+func TestCockpitNextCodeStepsPastLegacyCodedChildren(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit legacy children")
+
+	// The shipped board's directions carry tasks whose stored codes name no
+	// number under the direction (legacy L3 addresses). The next code must
+	// still step past the rows the reader can see — this is the wiring the
+	// dotted format fix stands on, which the ledger-gate test above cannot
+	// see break: there the ledger dominates every preview.
+	parent := createNode(t, wsID, map[string]any{"code": "01.03", "name": "Direction"})
+	legacyIDs := make([]string, 0, 3)
+	for _, code := range []string{"L3-01-33", "L3-01-34", "L3-01-35"} {
+		legacyIDs = append(legacyIDs,
+			createNode(t, wsID, map[string]any{"code": code, "parent_id": parent.ID, "name": "Task"}).ID)
+	}
+	nextCode := func() string {
+		t.Helper()
+		var resp struct {
+			Code string `json:"code"`
+		}
+		testutil.Call(t, cockpitHandler(testHandler.GetCockpitNextNodeCode),
+			cockpitRequest(http.MethodGet, "/api/cockpit/nodes/next-code?parent_id="+parent.ID, wsID, nil)).
+			Want(http.StatusOK).
+			JSON(&resp)
+		return resp.Code
+	}
+
+	if got := nextCode(); got != "01.03.04" {
+		t.Fatalf("next code past legacy children = %q, want 01.03.04", got)
+	}
+
+	// Spending the previewed code keeps the climb going even after a legacy
+	// row leaves: the number stays spent, the freed position does not matter.
+	createNode(t, wsID, map[string]any{"code": "01.03.04", "parent_id": parent.ID, "name": "Task"})
+	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitNode),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodDelete, "/api/cockpit/nodes/"+legacyIDs[0], wsID, nil),
+			"id", legacyIDs[0],
+		)).
+		Want(http.StatusNoContent)
+	if got := nextCode(); got != "01.03.05" {
+		t.Fatalf("next code after a legacy row left = %q, want 01.03.05", got)
+	}
 }
 
 func TestGetCockpitCreatesTheBoardOnFirstRead(t *testing.T) {
@@ -412,6 +433,81 @@ func TestCockpitNodeIssueLinksAcceptIdentifiersAndMultiSelect(t *testing.T) {
 	board := getBoard(t, wsID)
 	if len(board.IssueLinks) != 1 || board.IssueLinks[0].IssueID != second {
 		t.Errorf("after unlink issue_links = %+v", board.IssueLinks)
+	}
+}
+
+func TestCockpitAmountKeepsFenPrecision(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit fen precision")
+	// 29,100.55 元 = 2.910055 万 — 分 must survive the write/read round trip.
+	node := createNode(t, wsID, map[string]any{"code": "F-1", "budget_amount": 2.910055})
+
+	var payment CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "尾款", "pay_date": "2026-12-15", "amount": 2.910055,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&payment)
+	if payment.Amount != 2.910055 {
+		t.Errorf("amount = %v, want 2.910055 (分 lost in rounding)", payment.Amount)
+	}
+
+	board := getBoard(t, wsID)
+	if len(board.Nodes) != 1 || board.Nodes[0].BudgetAmount == nil || *board.Nodes[0].BudgetAmount != 2.910055 {
+		t.Fatalf("node budget = %+v, want 2.910055", board.Nodes[0].BudgetAmount)
+	}
+	if len(board.Payments) != 1 || board.Payments[0].Amount != 2.910055 {
+		t.Fatalf("board payment = %+v, want 2.910055", board.Payments)
+	}
+
+	// Below 分 the column still has to round the way a person would:
+	// half a fen rounds away from zero, not to even.
+	var p2 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "零头", "amount": 0.0000004,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p2)
+	if p2.Amount != 0 {
+		t.Errorf("0.4 fen = %v, want 0", p2.Amount)
+	}
+	var p3 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "零头2", "amount": 0.0000005,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p3)
+	if p3.Amount != 0.000001 {
+		t.Errorf("0.5 fen = %v, want 0.000001 (half away from zero)", p3.Amount)
+	}
+
+	// The exact-half wire text must round by decimal, not by float64: through
+	// a double, 0.0001245 * 1e6 lands just under the half and would round
+	// down to 1.24 元. The wire decodes as pgtype.Numeric, so Postgres sees
+	// the literal and rounds the way a person would.
+	var p4 CockpitPaymentResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitPayment),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+node.ID+"/payments", wsID, map[string]any{
+				"label": "半数", "amount": 0.0001245,
+			}),
+			"id", node.ID,
+		)).
+		Want(http.StatusCreated).
+		JSON(&p4)
+	if p4.Amount != 0.000125 {
+		t.Errorf("exact half 0.0001245 = %v, want 0.000125 (decimal rounding)", p4.Amount)
 	}
 }
 

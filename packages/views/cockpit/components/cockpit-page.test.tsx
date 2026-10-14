@@ -266,7 +266,7 @@ describe("CockpitPage", () => {
     resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
     readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.listCockpitDirectory).mockResolvedValue({ entries: [] });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
@@ -631,7 +631,7 @@ describe("CockpitPage detail tables", () => {
     resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
     readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     vi.mocked(api.listCockpitSnapshots).mockResolvedValue([]);
     vi.mocked(api.listCockpitChanges).mockResolvedValue([]);
@@ -712,7 +712,7 @@ describe("CockpitPage versions", () => {
     resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params.size ? navSearch.params : "view=operations"}`);
     readCockpitFixture.mockResolvedValue(structuredClone(board));
     vi.mocked(api.getCockpitMeetingWorkflowSummary).mockImplementation(async (_wsId, meetingId) => workflowSummary({ ...EMPTY_COCKPIT_MEETING_WORKFLOW, meeting_id: meetingId }));
-    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02-01" });
+    vi.mocked(api.getCockpitNextNodeCode).mockResolvedValue({ code: "01.02.01" });
     vi.mocked(api.searchIssues).mockResolvedValue({ issues: [] });
     snapshots = [
       {
