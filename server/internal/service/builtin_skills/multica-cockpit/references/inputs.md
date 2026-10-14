@@ -10,14 +10,18 @@ multica cockpit input list --page-size 25 --query report
 multica cockpit input show INPUT_UUID
 multica cockpit input versions INPUT_UUID --page-size 25
 multica cockpit input version INPUT_UUID VERSION_UUID
+multica cockpit input transfers INPUT_UUID VERSION_UUID --page-size 25
 multica cockpit input attachments ISSUE_UUID --page-size 25
 multica cockpit input manifest ISSUE_UUID
 multica cockpit input manifest-versions ISSUE_UUID --page-size 25
+multica cockpit input manifest-version ISSUE_UUID MANIFEST_VERSION_UUID
 multica cockpit input manifest-items ISSUE_UUID MANIFEST_VERSION_UUID --page-size 25
 multica cockpit input run-manifest TASK_UUID
 ```
 
 Every growing list returns one page, its exact total, and an optional `next_cursor`. Continue with `--cursor` and the same scope, prefix and page size. Input catalog filters include `--project-id`, `--origin-issue-id`, `--archive active|archived|all`, `--source-kind`, and repeated `--id UUID` (at most 100). Do not infer an empty collection from an error.
+
+`input edit INPUT_UUID --request-file edit.json` replaces the header's `title` and `description` using its observed `expected_revision`. `input archive INPUT_UUID --request-file archive.json` sets `archived` true or false with the same revision; an archived material leaves the default catalog without touching its fixed versions or recorded manifests. `input transfers` pages one version's transfer records; `input manifest-version` reads one exact saved manifest.
 
 A task token can register materials within its own authorized Issue and read the exact fixed inputs selected for its Run. It cannot browse arbitrary collaboration directories, edit human manifests. A terminal task token may retain permitted historical reads; it cannot start a new transfer. Runtime credentials do not become human credentials.
 

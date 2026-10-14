@@ -72,7 +72,8 @@ not an approval endpoint. Read current object state and revision before a write;
 an overview may become stale. `version_number` gives provenance, not authority to
 approve a newer version. Unresolved history is not truncated by the meeting window.
 
-Web/desktop open work overview at the cockpit root. `?view=operations` preserves
+The cockpit root opens the chat home; `?tab=work` (legacy `?tab=overview`) opens
+this overview. `?view=operations` preserves
 the original business overview; `?tab=gantt|meetings|changes|finance` selects an
 existing area. `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an
 action in its meeting. A meeting target takes precedence over a conflicting node.

@@ -16,11 +16,8 @@ multica cockpit plan --project-id <project-uuid> --output json
 multica cockpit node get <stored-code-or-uuid> --output json
 ```
 
-The cockpit is one shared board per workspace; writes broadcast to open clients.
-Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed).
-The existing overview, execution plan, meeting register, artifacts and governance remain separate tabs.
-A new cockpit chat retains its initial project/module scope in its first visible message; `*` means all.
-Scope is context, not authorization. Changing the scope starts a new compose, not a silent retargeting of an existing conversation.
+The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); the existing overview, execution plan, meeting register, artifacts and governance remain separate tabs.
+A new cockpit chat retains its initial project/module scope in its first visible message (`*` means all); scope is context, not authorization — changing it starts a new compose, not a silent retargeting of an existing conversation.
 
 Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.
 Simple reads and explicitly requested ordinary field edits can be completed in chat; multi-step preparation, minutes writing and repository work belong on an Issue.
@@ -36,8 +33,7 @@ Agents may submit minutes for their own issue, but cannot approve or publish the
 - **Milestone** — a committed date with its acceptance `condition`; optionally pinned to a node.
 - **Meeting** — the register entry: when, which parties, what was decided, plus the task it opened and the folder holding its material.
 
-**Node addresses** use the stored code or UUID; focused task and relationship commands require UUIDs.
-The UI's dotted row number is a projection and can differ from the stored code. Resolve the real ID/code from the scoped plan before writing.
+**Node addresses** use the stored code or UUID; focused task and relationship commands require UUIDs. The UI's dotted row number is a projection and can differ from the stored code — resolve the real ID/code from the scoped plan before writing.
 `node next-code <parent-uuid>` previews the next stored code; it does not reserve it. Never invent or reuse spent codes.
 
 **Node status/category are free text**: match existing values such as `进行中`; workflow decisions use fixed vocabulary.
@@ -99,10 +95,10 @@ multica cockpit milestone add --name "高质量数据集验收" --plan-date 2026
 multica cockpit meeting add --title "20260908-01 工作组周例会" --code 20260908-01 --date 2026-09-08 --start 10:00 --end 11:00 --parties "复星医药、华大基因"
 ```
 
-Each kind also has `list`, `update <id> --flag value` and `remove <id>`. A
-milestone with an `actual_date` reads as done whatever its status label says;
-meeting associations now have focused CLI commands — see [meeting tasks](references/meeting-tasks.md).
-Folder preparation/recovery uses `meeting directory`, not an invented shell copy operation.
+Each kind has `update <id> --flag value` and `remove <id>`; milestones and meetings also have `list`.
+A payment has no `list` — read it from its node (`node get` or the scoped `plan`). A milestone with an
+`actual_date` reads as done whatever its status label says; meeting associations now have focused CLI
+commands — see [meeting tasks](references/meeting-tasks.md). Folder preparation/recovery uses `meeting directory`, not an invented shell copy.
 
 ## Meeting minutes workflow
 
@@ -111,36 +107,22 @@ multica cockpit meeting workflow summary <meeting-id>
 multica cockpit meeting workflow submit <meeting-id> --revision <observed-revision> --submission-key <uuid> --content-file ./minutes.md --compact
 ```
 
-The meeting panel has three stages: preparation → recording → minutes confirmation.
-Preparation offers one ordinary task creation action; recording offers one ordinary minutes task creation action.
-Both reuse platform Issue creation (backlog, without auto-start), not a special meeting-task form.
-There is no agenda tab, standalone directory tab, template application or separate follow-up stage.
-Linked issues/execution tasks and metadata remain visible outside the stage tabs.
-
-Read [meeting tasks](references/meeting-tasks.md), [meeting records and occurrence](references/meeting-lifecycle.md), the shared directory and workflow state before drafting evidence-grounded minutes.
-Use [meeting disposition](references/meeting-preparation.md) for explicit cancellation effects, impact and archive recovery. Preparation and minutes use linked Issues and the meeting’s shared directory. These commands do not grant permission to start an agent or provision NAS directories. For authorized directory preparation and recovery, use [meeting directories](references/meeting-directory.md).
-Submit using the minutes issue's task credential; retain the submission UUID/file for retries.
-Missing evidence is a blocker to report, not permission to invent outcomes.
-Submitting creates a fixed version and human Review Issue; completing/reassigning it is not approval.
-Enable/adoption, formal review and publication require authorized humans.
-Submission and ordinary minutes-issue execution are not gated on confirming meeting end, materials readiness or a release ceremony.
-Legacy fact/release commands remain for installed clients and recorded history; they are not steps in the current UI or prerequisites to submission.
-A human manager may `workflow reassign-reviewer` with a reason and idempotency key:
-it preserves fixed evidence and records responsibility. Machine credentials cannot transfer it.
-See [history](references/history.md) for bounded reads/receipts and `references/cockpit.md` for command permissions.
-Authorized humans can `workflow export-nas` or `retry-nas`; export needs a configured root.
-See `references/nas-export.md` for fixed copies, receipts and operation retries; failures never undo approval.
+The meeting panel has three stages — preparation → recording → minutes confirmation — each offering one ordinary task creation action that reuses platform Issue creation (backlog, without auto-start); there is no agenda tab, standalone directory tab, template application or separate follow-up stage.
+Read [meeting tasks](references/meeting-tasks.md) and [meeting records and occurrence](references/meeting-lifecycle.md) before drafting evidence-grounded minutes: missing evidence is a blocker to report, not permission to invent outcomes.
+Submit using the minutes issue's task credential, retaining the submission UUID/file for retries; submitting creates a fixed version and human Review Issue — completing or reassigning it is not approval.
+Enable/adoption, formal review and publication require authorized humans; submission and ordinary minutes-issue execution are not gated on confirming meeting end, materials readiness or a release ceremony.
+Use [meeting disposition](references/meeting-preparation.md) for cancellation effects and archive recovery, and [meeting directories](references/meeting-directory.md) for authorized directory preparation; these commands never start an agent or provision a directory.
+See [history](references/history.md) for bounded reads/receipts, [nas-export.md](references/nas-export.md) for fixed NAS copies and retries, and `references/cockpit.md` for command permissions.
 
 ## Versions
 
-Allowed imports/restores save the displaced board first. Once history exists,
-ordinary edits can leave an `auto` checkpoint after five minutes. Bound nodes or
-meeting work packages block whole-board replacement to preserve stable history.
+Imports and restores save the displaced board first; once history exists, ordinary edits can leave an `auto` checkpoint after five minutes. Bound nodes or meeting work packages block whole-board replacement to preserve stable history.
 
 ```bash
 multica cockpit version list                 # newest first, with ids
 multica cockpit version save --label "评审前"
 multica cockpit version restore <snapshot-id>   # owner/admin; saves the current board first
+multica cockpit version delete <snapshot-id>    # owner/admin; removes one version from history
 ```
 
 ## Board-level fields
@@ -157,9 +139,7 @@ unless asked: an empty card derives from the tasks and stays correct on its own.
 ## Import
 
 `multica cockpit import <file.json>` **replaces the board** and requires owner/admin.
-Use it for an authored plan, not a few field edits. It is refused on protected boards.
-Parents use `parent_code`; document order is irrelevant. Unresolvable issue references
-are reported on stderr and skipped. See the reference for the import shape.
+Use it for an authored plan, not a few field edits; it is refused on protected boards. Parents use `parent_code`; document order is irrelevant; unresolvable issue references are reported on stderr and skipped. See the reference for the import shape.
 
 ## Boundaries
 
