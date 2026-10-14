@@ -21,6 +21,7 @@ import { canAssignAgent } from "../../issues/components/pickers/assignee-picker"
 import { api, dispatchReasonCode } from "@multica/core/api";
 import {
   isAgentRuntimeBound,
+  orderChatAgentsBySeat,
   pinAgentByName,
   useAgentPresenceDetail,
   useCustomizeConversationStartersHref,
@@ -242,11 +243,13 @@ export function ChatWindow() {
   const currentMember = members.find((m) => m.user_id === user?.id);
   const memberRole = currentMember?.role;
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
-  const availableAgents = pinAgentByName(
-    agents.filter(
-      (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+  const availableAgents = orderChatAgentsBySeat(
+    pinAgentByName(
+      agents.filter(
+        (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+      ),
+      pinnedAgentName,
     ),
-    pinnedAgentName,
   );
 
   // The agent bound to the OPEN session, resolved from the full agent list
@@ -1081,9 +1084,11 @@ export function AgentDropdown({
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
   const filteredMine = mine.filter((agent) => matches(agent.name));
-  const filteredOthers = pinAgentByName(
-    others.filter((agent) => matches(agent.name)),
-    pinnedAgentName,
+  const filteredOthers = orderChatAgentsBySeat(
+    pinAgentByName(
+      others.filter((agent) => matches(agent.name)),
+      pinnedAgentName,
+    ),
   );
 
   const handlePick = (agent: Agent) => {

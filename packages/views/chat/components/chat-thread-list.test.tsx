@@ -29,6 +29,7 @@ vi.mock("@multica/core/hooks", () => ({
 }));
 
 vi.mock("@multica/core/agents", () => ({
+  orderChatAgentsBySeat: (agents: unknown[]) => [...(agents as unknown[])],
   useWorkspacePresenceMap: () => ({ byAgent: new Map() }),
 }));
 

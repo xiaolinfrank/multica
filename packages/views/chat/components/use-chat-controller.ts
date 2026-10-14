@@ -16,6 +16,7 @@ import { canAssignAgent } from "../../issues/components/pickers/assignee-picker"
 import { api, dispatchReasonCode } from "@multica/core/api";
 import {
   isAgentRuntimeBound as hasAgentRuntime,
+  orderChatAgentsBySeat,
   pinAgentByName,
   useAgentPresenceDetail,
   useCustomizeConversationStartersHref,
@@ -334,11 +335,13 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
   const currentMember = members.find((m) => m.user_id === user?.id);
   const memberRole = currentMember?.role;
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
-  const availableAgents = pinAgentByName(
-    agents.filter(
-      (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+  const availableAgents = orderChatAgentsBySeat(
+    pinAgentByName(
+      agents.filter(
+        (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+      ),
+      pinnedAgentName,
     ),
-    pinnedAgentName,
   );
   // `availableAgents` is only trustworthy once BOTH queries above succeeded:
   // the permission filter reads the member role, so agents-without-members

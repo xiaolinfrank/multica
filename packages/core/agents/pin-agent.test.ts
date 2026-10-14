@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pinAgentByName } from "./pin-agent";
+import { orderChatAgentsBySeat, pinAgentByName } from "./pin-agent";
 
 const agents = [
   { id: "a1", name: "通用智能体 1" },
@@ -38,5 +38,52 @@ describe("pinAgentByName", () => {
   it("tolerates elements without a name", () => {
     const mixed = [{ id: "x" }, { id: "host", name: "通用智能体（主）" }];
     expect(pinAgentByName(mixed, "通用智能体（主）").map((a) => a.id)).toEqual(["host", "x"]);
+  });
+});
+
+describe("orderChatAgentsBySeat", () => {
+  const seat = (id: string, name: string, systemKey?: string) => ({
+    id,
+    name,
+    system_key: systemKey ?? null,
+  });
+
+  it("puts Mika first, the host generic agent second, and keeps the rest in order", () => {
+    const agents = [
+      seat("g3", "通用智能体 3"),
+      seat("lit", "文献调研员"),
+      seat("host", "通用智能体（主）"),
+      seat("mika", "Mika", "mika"),
+      seat("g1", "通用智能体 1"),
+    ];
+    expect(orderChatAgentsBySeat(agents).map((a) => a.id)).toEqual([
+      "mika",
+      "host",
+      "g3",
+      "lit",
+      "g1",
+    ]);
+  });
+
+  it("keeps Mika behind a pinned agent only when the pin runs first — the chat order always leads with Mika", () => {
+    const agents = [
+      seat("g3", "通用智能体 3"),
+      seat("host", "通用智能体（主）"),
+      seat("mika", "Mika", "mika"),
+    ];
+    const pinnedFirst = orderChatAgentsBySeat(pinAgentByName(agents, "通用智能体（主）"));
+    expect(pinnedFirst.map((a) => a.id)).toEqual(["mika", "host", "g3"]);
+  });
+
+  it("is a stable no-op-shaped sort when neither seat is present", () => {
+    const agents = [seat("a", "Alpha"), seat("b", "Beta")];
+    expect(orderChatAgentsBySeat(agents).map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("never mutates the input array", () => {
+    const agents = [seat("b", "Beta"), seat("mika", "Mika", "mika")];
+    const before = agents.map((a) => a.id);
+    orderChatAgentsBySeat(agents);
+    expect(agents.map((a) => a.id)).toEqual(before);
   });
 });
