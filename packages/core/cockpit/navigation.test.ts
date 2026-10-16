@@ -105,16 +105,20 @@ describe("unified cockpit destinations", () => {
     expect(closed.searchParams.get("tab")).toBe("meetings"); expect(closed.searchParams.get("from")).toBe("2026-10-01"); expect(closed.searchParams.get("module")).toBe("module"); expect(closed.searchParams.has("meeting")).toBe(false); expect(closed.searchParams.has("action")).toBe(false);
   });
 
-it("makes chat the cockpit home while explicit overviews and object deep links keep their meaning", () => {
-  expect(cockpitShellDestination(new URLSearchParams())).toMatchObject({ surface: "chat" });
-  expect(cockpitShellDestination(new URLSearchParams("tab=work"))).toMatchObject({ surface: "work" });
+it("opens the work overview at the cockpit home without changing explicit tabs or object deep links", () => {
+  expect(cockpitShellDestination(new URLSearchParams())).toMatchObject({ surface: "work" });
+  expect(cockpitShellDestination(new URLSearchParams("project=p1&module=m1"))).toMatchObject({ surface: "work" });
+  expect(cockpitShellDestination(new URLSearchParams("tab=chat"))).toMatchObject({ surface: "chat" });
+  expect(cockpitShellDestination(new URLSearchParams("session=s1"))).toMatchObject({ surface: "chat" });
+  expect(cockpitShellDestination(new URLSearchParams("tab=work&session=s1"))).toMatchObject({ surface: "work" });
   expect(cockpitShellDestination(new URLSearchParams("tab=overview"))).toMatchObject({ surface: "work" });
   expect(cockpitShellDestination(new URLSearchParams("session=s1&meeting=m1"))).toMatchObject({ surface: "meetings" });
-  expect(cockpitSurfacePath("/acme/cockpit", "chat", { projectId: "p1", moduleId: "m1" })).toBe("/acme/cockpit?project=p1&module=m1");
+  expect(cockpitSurfacePath("/acme/cockpit", "chat", { projectId: "p1", moduleId: "m1" })).toBe("/acme/cockpit?tab=chat&project=p1&module=m1");
   expect(cockpitSurfacePath("/acme/cockpit", "work")).toBe("/acme/cockpit?tab=work");
 });
 it("starts a fresh chat when the cockpit scope changes without losing a same-scope session", () => {
   const search = new URLSearchParams("project=p1&module=m1&session=s1");
   expect(cockpitScopedPath("/acme/cockpit", search, { projectId: "p1", moduleId: "m1" })).toContain("session=s1");
   expect(cockpitScopedPath("/acme/cockpit", search, { projectId: "p1", moduleId: "m2" })).not.toContain("session=");
+  expect(cockpitScopedPath("/acme/cockpit", search, { projectId: "p1", moduleId: "m2" })).toContain("tab=chat");
 });

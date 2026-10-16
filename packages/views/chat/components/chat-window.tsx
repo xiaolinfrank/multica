@@ -21,6 +21,7 @@ import { canAssignAgent } from "../../issues/components/pickers/assignee-picker"
 import { api, dispatchReasonCode } from "@multica/core/api";
 import {
   isAgentRuntimeBound,
+  groupChatAgentsBySeat,
   orderChatAgentsBySeat,
   pinAgentByName,
   useAgentPresenceDetail,
@@ -1068,28 +1069,17 @@ export function AgentDropdown({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
-  // Split into the user's own agents and everyone else so the menu groups
-  // them — matches the old AgentSelector layout.
-  const { mine, others } = useMemo(() => {
-    const mine: Agent[] = [];
-    const others: Agent[] = [];
-    for (const a of agents) {
-      if (a.owner_id === userId) mine.push(a);
-      else others.push(a);
-    }
-    return { mine, others };
-  }, [agents, userId]);
+  const { preferred, mine, others } = useMemo(
+    () => groupChatAgentsBySeat(pinAgentByName(agents, pinnedAgentName), userId),
+    [agents, pinnedAgentName, userId],
+  );
 
   const query = filter.trim().toLowerCase();
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
+  const filteredPreferred = preferred.filter((agent) => matches(agent.name));
   const filteredMine = mine.filter((agent) => matches(agent.name));
-  const filteredOthers = orderChatAgentsBySeat(
-    pinAgentByName(
-      others.filter((agent) => matches(agent.name)),
-      pinnedAgentName,
-    ),
-  );
+  const filteredOthers = others.filter((agent) => matches(agent.name));
 
   const handlePick = (agent: Agent) => {
     onSelect(agent);
@@ -1130,10 +1120,18 @@ export function AgentDropdown({
         </>
       }
     >
-      {filteredMine.length === 0 && filteredOthers.length === 0 ? (
+      {filteredPreferred.length === 0 && filteredMine.length === 0 && filteredOthers.length === 0 ? (
         <PickerEmpty />
       ) : (
         <>
+          {filteredPreferred.map((agent) => (
+            <AgentPickerItem
+              key={agent.id}
+              agent={agent}
+              isCurrent={agent.id === activeAgent.id}
+              onSelect={handlePick}
+            />
+          ))}
           {filteredMine.length > 0 && (
             <PickerSection label={t(($) => $.window.my_agents)}>
               {filteredMine.map((agent) => (

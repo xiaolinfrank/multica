@@ -10,8 +10,8 @@ vi.mock("@tanstack/react-virtual", () => ({
     return { getVirtualItems: () => items, getTotalSize: () => options.count * size, measureElement: () => undefined };
   },
 }));
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CockpitBoard, CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -105,8 +105,69 @@ describe("CockpitTable execution rows", () => {
     expect(badge.title).toContain("Suggested additions: 9:");
   });
 
+  it("keeps six-decimal monetary precision and a visible unit in the ledger totals", () => {
+    const { container } = show({ mode: "finance", board: {
+      cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
+        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
+      nodes: [node({ id: "paid", code: "01", budget_amount: 50.068608, exec_status: "paid" }), node({ id: "planned", code: "02", budget_amount: 1.000001 })],
+      payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
+    } });
+    const totals = container.querySelector(".cockpit-ledger-totals")!;
+    expect(totals).toHaveTextContent("51.068609");
+    expect(totals).toHaveTextContent("50.068608");
+    expect(totals.querySelectorAll(".cockpit-currency-unit")).toHaveLength(2);
+    expect(totals).toHaveTextContent(enCockpit.finance.amount_unit);
+    expect(screen.getByText(enCockpit.finance.actual_basis)).toBeVisible();
+  });
+
   it("does not fall back to unrelated roots when a selected branch is missing", () => {
     show({ rootIds: new Set(["removed-root"]) });
     expect(screen.getAllByRole("row")).toHaveLength(1);
+  });
+});
+
+const motion = vi.hoisted(() => ({ reduced: false }));
+vi.mock("motion/react", () => ({ useReducedMotion: () => motion.reduced }));
+vi.mock("./use-cockpit-scroll-memory", () => ({ useCockpitScrollMemory: () => {} }));
+
+describe("CockpitTable narrow containers and motion", () => {
+  let width = 320;
+  let resize: () => void;
+  beforeEach(() => {
+    width = 320; motion.reduced = false;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(read: () => void) { resize = read; }
+      observe() {} disconnect() {}
+    });
+  });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it("lets names and all business columns scroll while retaining the code address", () => {
+    const { onSelect } = show();
+    const headers = screen.getAllByRole("columnheader");
+    const row = screen.getAllByRole("row")[1]!;
+    expect(headers).toHaveLength(21);
+    expect(headers[1]!.style.left).toBe("");
+    expect((row.children[0] as HTMLElement).style.width).toBe("100px");
+    expect((row.children[1] as HTMLElement).style.left).toBe("");
+    expect(screen.getByRole("columnheader", { name: "Deliverable" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Budget" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open 03.01.01" }));
+    expect(onSelect).toHaveBeenCalledWith("leaf");
+    width = 1440;
+    act(() => resize());
+    expect(headers[1]!.style.left).toBe("100px");
+    expect((row.children[1] as HTMLElement).style.left).toBe("100px");
+    expect(screen.getAllByRole("columnheader")).toHaveLength(21);
+  });
+
+  it.each([false, true])("locates search results with reduced motion=%s without changing the action", (reduced) => {
+    motion.reduced = reduced;
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const { onSelect } = show({ query: "diagnostic needle" });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search the board" }), { key: "Enter" });
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("leaf");
   });
 });

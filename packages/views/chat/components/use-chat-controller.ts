@@ -206,7 +206,7 @@ const CHAT_VIRTUOSO_INITIAL_FIRST_ITEM_INDEX = 1_000_000;
  * currently on screen — which gates auto-mark-read so a background overlay
  * doesn't silently clear unread state the user hasn't actually seen.
  */
-export function useChatController(opts?: { isActive?: boolean; defaultAgentSystemKey?: string }) {
+export function useChatController(opts?: { isActive?: boolean; defaultAgentSystemKey?: string; fixedAgentSystemKey?: string }) {
   const isActive = opts?.isActive ?? true;
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
@@ -223,8 +223,18 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
   const { data: members = [], isSuccess: membersLoaded } = useQuery(
     memberListOptions(wsId),
   );
-  const { data: sessions = [], isSuccess: sessionsLoaded } = useQuery(
+  const { data: allSessions = [], isSuccess: allSessionsLoaded } = useQuery(
     chatSessionsOptions(wsId),
+  );
+  const fixedAgentSystemKey = opts?.fixedAgentSystemKey;
+  const sessions = fixedAgentSystemKey
+    ? allSessions.filter((session) => agents.some(
+      (agent) => agent.id === session.agent_id && agent.system_key === fixedAgentSystemKey,
+    ))
+    : allSessions;
+  const sessionsLoaded = allSessionsLoaded && (!fixedAgentSystemKey || agentsLoaded);
+  const foreignSession = !!fixedAgentSystemKey && sessionsLoaded && allSessions.some(
+    (session) => session.id === activeSessionId && !sessions.some((allowed) => allowed.id === session.id),
   );
   const { data: projects = [], isSuccess: projectsLoaded } = useQuery(
     projectListOptions(wsId),
@@ -338,7 +348,8 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
   const availableAgents = orderChatAgentsBySeat(
     pinAgentByName(
       agents.filter(
-        (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
+        (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole) &&
+          (!fixedAgentSystemKey || a.system_key === fixedAgentSystemKey),
       ),
       pinnedAgentName,
     ),
@@ -445,7 +456,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
       // be treated as an existing session — fall through and create a fresh one
       // so the message lands somewhere instead of POSTing into a 404.
       if (
-        activeSessionId &&
+        activeSessionId && !foreignSession &&
         (!sessionsLoaded ||
           sessions.some((s) => s.id === activeSessionId) ||
           hasInFlightPendingTask(qc, activeSessionId))
@@ -477,6 +488,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
       createSession,
       sessions,
       sessionsLoaded,
+      foreignSession,
       qc,
     ],
   );
@@ -489,13 +501,13 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
   // rendering an editable empty chat whose send would POST into a nonexistent
   // session. Lives in the shared controller so every surface self-heals.
   useEffect(() => {
-    if (getCurrentWsId() !== wsId) return;
+    if (getCurrentWsId() !== wsId || !isActive) return;
     if (!activeSessionId || !sessionsLoaded) return;
     if (sessions.some((s) => s.id === activeSessionId)) return;
-    if (hasInFlightPendingTask(qc, activeSessionId)) return;
+    if (!foreignSession && hasInFlightPendingTask(qc, activeSessionId)) return;
     uiLogger.info("clearing dangling activeSessionId", { sessionId: activeSessionId });
     setActiveSession(null);
-  }, [wsId, activeSessionId, sessionsLoaded, sessions, qc, setActiveSession]);
+  }, [wsId, isActive, activeSessionId, sessionsLoaded, sessions, foreignSession, qc, setActiveSession]);
 
   // Upload transport moved into the coordinated-upload engine inside ChatInput
   // (MUL-5181 L2); surfaces only forward whether the affordance exists.

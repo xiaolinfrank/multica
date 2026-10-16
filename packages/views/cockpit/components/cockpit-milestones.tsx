@@ -11,6 +11,7 @@ import { Flag, Plus } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
+import { CockpitViewHeading } from "./cockpit-view-heading";
 import { CockpitMilestoneCard } from "./cockpit-overview";
 
 export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope, query, rootIds, today, goalDate, onCreate, onPatch, onDelete, readOnly }: {
@@ -37,27 +38,27 @@ export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope
   useCockpitScrollMemory(scroll, JSON.stringify([cockpitScopeViewKey(wsId, scope), "cockpit-milestones.tsx"]), rows.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const virtual = useVirtualizer({ count: rows.length, getScrollElement: () => scroll.current, estimateSize: () => 80, overscan: 5,
     getItemKey: (index) => rows[index]!.id, initialRect: { width: 900, height: 480 } });
-  return <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelectedId(null); }}><section className="flex min-h-0 flex-1 flex-col" aria-label={t(($) => $.plan_views.milestones)}>
-    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-card/70 px-5 py-4"><Flag className="size-4 text-muted-foreground" aria-hidden />
-      <h2 className="text-title-sm font-medium">{t(($) => $.plan_views.milestones)}</h2>
-      <p className="text-caption text-muted-foreground">{t(($) => $.plan_views.milestone_basis)}</p>
-      {!readOnly && <Button type="button" variant="outline" size="sm" onClick={onCreate} className="ml-auto"><Plus className="size-3.5" />{t(($) => $.overview.add_milestone)}</Button>}
-    </div>
+  return <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelectedId(null); }}><section className="cockpit-milestone-roadmap flex min-h-0 flex-1 flex-col" aria-label={t(($) => $.plan_views.milestones)}>
+    <CockpitViewHeading title={t(($) => $.plan_views.milestones)} icon={Flag} description={t(($) => $.plan_views.milestone_basis)}>
+      <div className="cockpit-roadmap-summary"><span>{t(($) => $.overview.milestone_count, { total: rows.length, done: rows.filter(isCockpitMilestoneDone).length })}</span>
+        <progress max={Math.max(rows.length, 1)} value={rows.filter(isCockpitMilestoneDone).length} aria-label={t(($) => $.plan_views.milestones)} /></div>
+      {!readOnly && <Button type="button" variant="outline" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.overview.add_milestone)}</Button>}
+    </CockpitViewHeading>
     <div ref={scroll} className="min-h-0 flex-1 overflow-auto">
       <div role="table" aria-rowcount={rows.length + 1} className="min-w-[700px]">
-        <div role="row" className="sticky top-0 z-10 grid grid-cols-[minmax(240px,2fr)_130px_130px_minmax(160px,1fr)] gap-4 border-b border-border bg-card px-5 py-3 text-caption font-medium text-muted-foreground">
+        <div role="row" className="cockpit-matrix-columns sticky top-0 z-10 grid grid-cols-[minmax(240px,2fr)_130px_130px_minmax(160px,1fr)] gap-4 border-b border-border bg-card px-5 py-3 text-caption font-medium text-muted-foreground">
           <span role="columnheader">{t(($) => $.milestone.name)}</span><span role="columnheader">{t(($) => $.overview.milestone_plan_date)}</span>
           <span role="columnheader">{t(($) => $.overview.milestone_done_date)}</span><span role="columnheader">{t(($) => $.plan_views.item)}</span>
         </div>
         <div role="rowgroup" className="relative" style={{ height: virtual.getTotalSize() }}>
           {virtual.getVirtualItems().map((row) => { const milestone = rows[row.index]!; const node = milestone.node_id ? nodeById.get(milestone.node_id) : undefined;
             return <div key={row.key} ref={virtual.measureElement} data-index={row.index} role="row" aria-rowindex={row.index + 2}
-              className="absolute left-0 top-0 grid min-h-20 w-full grid-cols-[minmax(240px,2fr)_130px_130px_minmax(160px,1fr)] items-start gap-4 border-b border-border/60 px-5 py-4 text-body hover:bg-card/70"
+              data-done={isCockpitMilestoneDone(milestone) || undefined} className="cockpit-milestone-row absolute left-0 top-0 grid min-h-20 w-full grid-cols-[minmax(240px,2fr)_130px_130px_minmax(160px,1fr)] items-start gap-4 border-b border-border/60 px-5 py-4 text-body hover:bg-card/70"
               style={{ transform: `translateY(${row.start}px)` }}>
-              <div role="cell" className="min-w-0"><DialogTrigger render={<Button type="button" variant="ghost" size="sm" className="-ml-2 h-auto min-h-8 max-w-full justify-start whitespace-normal text-left" />} onClick={() => setSelectedId(milestone.id)}>
+              <div role="cell" className="cockpit-milestone-identity min-w-0"><span className="cockpit-roadmap-dot" aria-hidden /><DialogTrigger render={<Button type="button" variant="ghost" size="sm" className="-ml-2 h-auto min-h-8 max-w-full justify-start whitespace-normal text-left" />} onClick={() => setSelectedId(milestone.id)}>
                 <span className="line-clamp-2 break-words" title={milestone.name}>{milestone.name || t(($) => $.milestone.new)}</span></DialogTrigger>
                 <p className="text-micro text-muted-foreground">{isCockpitMilestoneDone(milestone) ? t(($) => $.plan_views.milestone_recorded) : milestone.status || t(($) => $.common.unset)}</p></div>
-              <span role="cell" className="pt-1 text-caption tabular-nums">{milestone.plan_date || "—"}</span>
+              <span role="cell" className="cockpit-roadmap-date pt-1 text-caption tabular-nums">{milestone.plan_date || "—"}</span>
               <span role="cell" className="pt-1 text-caption tabular-nums">{milestone.actual_date || "—"}</span>
               <div role="cell" className="min-w-0 pt-1 text-caption">{node ? <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, planView: "milestones" }, scope)} className="line-clamp-2 break-words hover:underline" title={node.name}>
                 <span className="mr-1 font-mono text-muted-foreground">{displayCodes.get(node.id) ?? node.code}</span>{node.name}</AppLink> : "—"}</div>
@@ -67,7 +68,7 @@ export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope
       </div>
       {rows.length === 0 && <p className="px-5 py-8 text-caption text-muted-foreground">{t(($) => $.empty.no_milestones)}</p>}
     </div>
-    <DialogContent><DialogHeader><DialogTitle>{t(($) => $.plan_views.milestones)}</DialogTitle></DialogHeader>
+    <DialogContent className="cockpit-skin cockpit-milestone-dialog"><DialogHeader><DialogTitle>{t(($) => $.plan_views.milestones)}</DialogTitle></DialogHeader>
         {selected && <ol><CockpitMilestoneCard milestone={selected} node={selectedNode} nodeCode={selectedNode ? displayCodes.get(selectedNode.id) ?? selectedNode.code : ""}
           countdownFrom={null} today={today} fallbackDate={goalDate} onPatch={(patch) => onPatch(selected.id, patch)} onDelete={() => onDelete(selected.id)} readOnly={readOnly} /></ol>}
     </DialogContent>

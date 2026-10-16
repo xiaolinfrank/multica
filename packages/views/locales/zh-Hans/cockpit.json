@@ -522,6 +522,7 @@
     "delete": "删除该期"
   },
   "finance": {
+    "amount_unit": "万元",
     "budget": "预算合计",
     "payment": "付款",
     "payment_count": "{{count}} 笔付款",
@@ -1187,7 +1188,7 @@
     "plan_prompt": "请帮我调整当前项目的执行计划。先用 multica-cockpit 读取现有计划，再确认需要修改的日期、责任人或进度。",
     "meeting_label": "准备一场会议",
     "meeting_prompt": "请帮我准备当前项目的一场会议。先用 multica-cockpit 查看会议台账和相关任务，再梳理缺少的材料和下一步。",
-    "context": "项目驾驶舱上下文（范围 ID，不代表授权）：project={{project}}；module={{module}}。* 表示全部。读取驾驶舱时使用此范围；写入前确认具体对象。"
+    "context": "项目驾驶舱上下文（范围 ID，不代表授权）：`project={{project}}`；`module={{module}}`。`*` 表示全部。读取驾驶舱时使用此范围；写入前确认具体对象。"
   },
   "shell": {
     "chat": "聊天",
@@ -1714,7 +1715,6 @@
     "preview_again": "重新预览",
     "preview_changed": "会议事实已变化，请重新预览后再确认。",
     "confirm_effects": "仅执行已选择的变更。新任务保持待办，不启动执行。",
-    "apply": "确认并应用",
     "open_existing": "打开已有应用记录",
     "preview": "核对将执行的变更",
     "selected_total": "已选择 {{count}} 项",

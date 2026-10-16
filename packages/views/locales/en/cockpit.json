@@ -522,6 +522,7 @@
     "delete": "Delete instalment"
   },
   "finance": {
+    "amount_unit": "10k CNY",
     "budget": "Budget total",
     "payment": "Instalment",
     "payment_count": "{{count}} instalments",
@@ -1187,7 +1188,7 @@
     "plan_prompt": "Help me adjust this project’s execution plan. Use multica-cockpit to read the current plan first, then ask which dates, owners or progress values to change.",
     "meeting_label": "Prepare a meeting",
     "meeting_prompt": "Help me prepare a meeting for this project. Read the meeting register and related tasks with multica-cockpit, then identify missing materials and the next step.",
-    "context": "Project cockpit context (scope IDs, not authorization): project={{project}}; module={{module}}. * means all. Use this scope for cockpit reads; confirm the exact target before writing."
+    "context": "Project cockpit context (scope IDs, not authorization): `project={{project}}`; `module={{module}}`. `*` means all. Use this scope for cockpit reads; confirm the exact target before writing."
   },
   "shell": {
     "chat": "Chat",
@@ -1714,7 +1715,6 @@
     "preview_again": "Preview again",
     "preview_changed": "Meeting facts have changed. Preview again before confirming.",
     "confirm_effects": "Apply only these selected changes. New issues remain in backlog and no execution starts.",
-    "apply": "Apply selected changes",
     "open_existing": "Open the existing application",
     "preview": "Review the planned changes",
     "selected_total": "{{count}} selected items",

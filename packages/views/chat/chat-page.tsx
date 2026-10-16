@@ -60,9 +60,10 @@ export function ChatPage() {
   return <ChatPageSurface />;
 }
 
-export function ChatPageSurface({ routeHref, defaultAgentSystemKey, defaultProjectId = null, title, conversationStarters, initialContext }: {
+export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSystemKey, defaultProjectId = null, title, conversationStarters, initialContext }: {
   routeHref?: string;
   defaultAgentSystemKey?: string;
+  fixedAgentSystemKey?: string;
   defaultProjectId?: string | null;
   title?: string;
   conversationStarters?: AgentConversationStarter[];
@@ -88,6 +89,7 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, defaultProje
   const c = useChatController({
     isActive: isCurrentChatRoute && getCurrentSlug() === workspaceSlug,
     defaultAgentSystemKey,
+    fixedAgentSystemKey,
   });
   const { data: quickActionsPending = null } = useQuery(
     chatQuickActionsPendingOptions(c.activeSessionId ?? ""),

@@ -78,9 +78,9 @@ function BannerClock({ locale }: { locale: string }) {
     ? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
     : "—";
   return (
-    <span className="flex items-baseline gap-1.5">
-      <span className="text-display-sm font-semibold tracking-tight tabular-nums">{clock}</span>
-      <span className="text-micro opacity-90">
+    <span className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5">
+      <span className="text-body font-medium tabular-nums">{clock}</span>
+      <span className="text-caption text-muted-foreground">
         {now ? now.toLocaleDateString(locale, { weekday: "long" }) : "—"}
       </span>
     </span>
@@ -99,8 +99,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <header className="mb-3 flex items-baseline gap-2">
+    <section className="cockpit-business-section cockpit-card p-4 lg:p-6">
+      <header className="mb-5 flex flex-wrap items-baseline gap-2">
         <h2 className="text-title-sm font-semibold">{title}</h2>
         {hint && <span className="text-caption text-muted-foreground">{hint}</span>}
         <span className="flex-1" />
@@ -462,37 +462,30 @@ export function CockpitOverview({
   const joinLead = (parts: (string | null)[]): string => parts.filter(Boolean).join(" · ");
 
   return (
-    <div className="cockpit-stagger flex flex-col gap-4 p-4">
-      {/* Annual objective — the board's masthead banner: corner label, the
-          goal itself in a frosted glass strip at the centre, and the live
-          clock pinned top-right. Nothing else; the banner is one glance. */}
-      <section className="cockpit-banner flex min-h-[148px] flex-col px-6 py-5 text-white sm:px-12 sm:py-6 lg:px-24">
-        {/* Chip and clock share one in-flow row; the glass centres itself in
-            whatever height remains. Nothing is absolutely positioned, so a
-            wrapped goal can never collide with the clock at any width. */}
-        <div className="cockpit-banner-row flex w-full items-start justify-between gap-3">
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-micro font-bold tracking-widest whitespace-nowrap">
+    <div className="cockpit-business-overview flex flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+      <section className="cockpit-banner flex flex-col p-4 lg:p-6">
+        <div className="flex w-full flex-wrap items-start justify-between gap-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-caption font-medium whitespace-nowrap">
             <Goal className="size-3" aria-hidden />
             {t(($) => $.overview.mvp_label)}
           </span>
           <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-            <span className="text-micro font-bold tracking-widest opacity-85">
+            <span className="text-micro text-muted-foreground">
               {t(($) => $.overview.clock)}
             </span>
             <BannerClock locale={locale} />
           </div>
         </div>
-        <div className="flex w-full flex-1 items-center justify-center py-2">
-          <div className="cockpit-banner-glass">
-            <EditableText
-              value={board.cockpit.goal_title}
-              onCommit={(goal_title) => onPatchBoard({ goal_title })}
-              label={t(($) => $.overview.annual_goal)}
-              placeholder={t(($) => $.overview.annual_goal_placeholder)}
-              disabled={readOnly}
-              displayClassName="cockpit-banner-title text-display-sm font-extrabold tracking-tight text-white hover:bg-white/15"
-            />
-          </div>
+        <div className="cockpit-banner-goal">
+          <EditableText
+            value={board.cockpit.goal_title}
+            onCommit={(goal_title) => onPatchBoard({ goal_title })}
+            label={t(($) => $.overview.annual_goal)}
+            placeholder={t(($) => $.overview.annual_goal_placeholder)}
+            disabled={readOnly}
+            className="w-full"
+            displayClassName="cockpit-banner-title text-display-sm font-semibold tracking-tight"
+          />
         </div>
       </section>
 
@@ -712,7 +705,7 @@ export function CockpitOverview({
           ].map((cell) => (
             <div
               key={cell.key}
-              className="cockpit-card p-3"
+              className="cockpit-finance-readout cockpit-card p-3"
               title={cell.title ?? undefined}
             >
               <dt className="text-caption text-muted-foreground">{cell.label}</dt>
@@ -781,7 +774,7 @@ export function CockpitOverview({
                 return (
                   <div
                     key={month.month}
-                    className="flex min-w-32 flex-1 flex-col rounded-md border border-border bg-card p-2.5"
+                    className="cockpit-month-instrument flex min-w-32 flex-1 flex-col rounded-md border border-border bg-card p-2.5"
                   >
                     <div className="text-micro text-muted-foreground tabular-nums">
                       {monthLabel(month.month, locale)}
@@ -978,7 +971,7 @@ function ModuleBigCard({
     : undefined;
   return (
     <article
-      className={cn("cockpit-card p-4", interaction && "cockpit-card-interactive cursor-pointer")}
+      className={cn("cockpit-module-card cockpit-card p-4", interaction && "cockpit-card-interactive cursor-pointer")}
       style={{ borderTopColor: color, borderTopWidth: 4, "--module-ink": color } as React.CSSProperties}
       {...interaction}
     >
@@ -1091,7 +1084,7 @@ function ModuleSmallCard({
     : undefined;
   return (
     <article
-      className={cn("cockpit-card p-3", interaction && "cockpit-card-interactive cursor-pointer")}
+      className={cn("cockpit-module-card cockpit-card p-3", interaction && "cockpit-card-interactive cursor-pointer")}
       style={{ borderLeftColor: color, borderLeftWidth: 3, "--module-ink": color } as React.CSSProperties}
       {...interaction}
     >
@@ -1192,7 +1185,7 @@ export function CockpitMilestoneCard({
         style={done ? undefined : { borderColor: color }}
         aria-hidden
       />
-      <div className="cockpit-ms-card relative mt-2 w-full rounded-lg border p-3 transition-shadow hover:shadow-md">
+      <div className="cockpit-ms-card relative mt-2 w-full rounded-lg border p-3">
         <span
           className="inline-block rounded-sm px-1.5 py-px text-micro font-medium text-white"
           style={{ backgroundColor: color }}

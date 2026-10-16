@@ -40,6 +40,7 @@ Use UUID `project_id` and optional `module_id`; a module requires its actual
 parent project. Invalid or foreign scopes return an error rather than broadening
 to the workspace. Responses echo workspace and scope. Copy opaque cursors only
 with the original actor, scope, filters and page size.
+Cockpit chat renders scope literals such as `project=*` and `module=*` as inline code; `*` means all within the current workspace, not authorization to write.
 
 | GET endpoint | Purpose |
 | --- | --- |

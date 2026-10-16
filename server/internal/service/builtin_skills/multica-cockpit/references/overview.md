@@ -72,7 +72,12 @@ not an approval endpoint. Read current object state and revision before a write;
 an overview may become stale. `version_number` gives provenance, not authority to
 approve a newer version. Unresolved history is not truncated by the meeting window.
 
-The cockpit root opens the chat home; `?tab=work` (legacy `?tab=overview`) opens
+The cockpit root opens this work overview by default; the menu order is unchanged.
+`?tab=chat` explicitly opens Mika-only chat: new conversations target the built-in
+`system_key=mika` agent directly without an agent picker; platform chat remains
+multi-agent. Explicit chat session links remain chat links, while object targets
+retain precedence. Project selection supplies durable project context through the daemon.
+The work surface uses the same workspace/project/module scope; `?tab=work` (legacy `?tab=overview`) also opens
 this overview. `?view=operations` preserves
 the original business overview; `?tab=gantt|meetings|changes|finance` selects an
 existing area. `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an

@@ -34,8 +34,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@multica/ui/components/ui/select";
-import { Eye, Crosshair, Undo2, X } from "lucide-react";
+import { Eye, Crosshair, Undo2, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
@@ -43,6 +44,7 @@ import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { CockpitChangeReview } from "./cockpit-change-review";
 import { CockpitPlanQuality } from "./cockpit-plan-quality";
 import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
+import { SegmentedToggle } from "../../common/segmented-toggle";
 
 /** The proposable fields, in the order a reviewer scans them. Mirrors the
  * server's field table in cockpit_changes.go; tree-shape fields are absent
@@ -193,6 +195,7 @@ function ChangeRow({
     });
   };
 
+
   const code =
     change.node_code !== "" ? (
       <button
@@ -210,14 +213,13 @@ function ChangeRow({
     );
 
   return (
-    <li className="rounded-lg border border-border bg-card p-3">
-      <div className="flex min-w-0 items-center gap-2 text-caption">
-        {code}
-        <span className="min-w-0 truncate font-medium">{change.node_name}</span>
-        <span aria-hidden className="text-faint-foreground">
-          ·
-        </span>
-        <span className="shrink-0">{fieldLabel(t, change.field)}</span>
+    <li className="cockpit-review-card min-w-0 rounded-xl border border-border bg-card p-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-caption">
+        <div className="cockpit-review-identity flex w-full min-w-0 items-start gap-2">
+          {code}
+          <h3 className="min-w-0 flex-1 break-words text-body font-semibold [overflow-wrap:anywhere]">{change.node_name}</h3>
+        </div>
+        <span className="max-w-full break-words [overflow-wrap:anywhere]">{fieldLabel(t, change.field)}</span>
         <span className="rounded-full border border-border px-1.5 py-0.5 text-micro">
           {t(($) => $.changes[changeType(change)])}
         </span>
@@ -228,30 +230,31 @@ function ChangeRow({
             ? t(($) => $.changes.source_agent)
             : t(($) => $.changes.source_manual)}
         </span>
-        <span className="ml-auto shrink-0 text-micro text-faint-foreground">
+
+        <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
           {change.created_by_label || t(($) => $.changes.by_unknown)} ·{" "}
           {timeAgo(change.created_at)}
         </span>
       </div>
-      <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
-        <span className="min-w-0 truncate text-muted-foreground line-through decoration-faint-foreground/70">
-          {valueLabel(t, change.old_value)}
-        </span>
-        <span aria-hidden className="text-faint-foreground">
-          →
-        </span>
-        <span className="min-w-0 truncate font-medium">{valueLabel(t, change.new_value)}</span>
-      </div>
+      <dl className="mt-3 grid min-w-0 gap-3 @min-[32rem]/governance:grid-cols-2">
+        <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
+          <dt className="mb-1 text-caption text-muted-foreground">{t(($) => $.governance.proposed_from)}</dt>
+          <dd className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body text-muted-foreground [overflow-wrap:anywhere]">{valueLabel(t, change.old_value)}</dd>
+        </div>
+        <div className="min-w-0 rounded-lg border border-border bg-background p-3">
+          <dt className="mb-1 text-caption text-muted-foreground">{t(($) => $.governance.proposed_to)}</dt>
+          <dd className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body font-semibold [overflow-wrap:anywhere]">{valueLabel(t, change.new_value)}</dd>
+        </div>
+      </dl>
       {change.reason !== "" && (
-        <p className="mt-1 line-clamp-2 break-words text-caption text-muted-foreground">{change.reason}</p>
+        <p className="mt-3 line-clamp-2 break-words text-caption text-muted-foreground">{change.reason}</p>
       )}
       {(change.old_value.length > 120 || change.new_value.length > 120 || change.reason.length > 200) && <details className="mt-2 text-caption"><summary className="cursor-pointer text-primary">{t(($) => $.governance.read_change)}</summary><div className="mt-2 max-h-80 space-y-3 overflow-auto rounded bg-muted p-3"><pre className="whitespace-pre-wrap break-words">{change.old_value}</pre><p>↓</p><pre className="whitespace-pre-wrap break-words">{change.new_value}</pre>{change.reason && <p className="whitespace-pre-wrap break-words">{change.reason}</p>}</div></details>}
       {!CHANGE_FIELDS.some((field) => field === change.field) && <p className="mt-2 text-caption text-muted-foreground">{t(($) => $.governance.unsupported_field)}</p>}
-      <div className="mt-2 flex items-center justify-end gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 px-2 text-caption"
           disabled={busy}
           onClick={() => decide(withdraw, t(($) => $.changes.withdraw_done))}
         >
@@ -261,7 +264,7 @@ function ChangeRow({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 px-2 text-caption text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           disabled={busy}
           onClick={() => decide(reject, t(($) => $.changes.reject_done))}
         >
@@ -270,7 +273,6 @@ function ChangeRow({
         </Button>
         <Button
           size="sm"
-          className="h-7 gap-1 px-2.5 text-caption"
           disabled={busy}
           onClick={() => onReview(change.id)}
         >
@@ -286,7 +288,7 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
   return (
-    <li className="flex min-w-0 flex-wrap items-center gap-2 px-2 py-1.5 text-caption">
+    <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-caption">
       <span
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-micro ${decidedBadgeClass(change.status)}`}
       >
@@ -295,11 +297,11 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
       <span className="shrink-0 font-mono text-micro text-muted-foreground">
         {change.node_code || t(($) => $.changes.node_gone)}
       </span>
-      <span className="min-w-0 truncate">
+      <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
         {fieldLabel(t, change.field)}: {valueLabel(t, change.old_value)} →{" "}
         {valueLabel(t, change.new_value)}
       </span>
-      <span className="ml-auto shrink-0 text-micro text-faint-foreground">
+      <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
         {change.decided_by_label || t(($) => $.changes.by_unknown)} ·{" "}
         {timeAgo(change.decided_at ?? change.updated_at)}
       </span>
@@ -348,13 +350,13 @@ function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scop
 
   return (
     <form
-      className="rounded-lg border border-border bg-card p-3"
+      className="cockpit-proposal-form min-w-0 rounded-xl border border-border bg-card p-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (canSubmit) submit();
       }}
     >
-      <p className="text-caption font-medium">{t(($) => $.changes.form_title)}</p>
+      <p className="text-title-sm font-semibold">{t(($) => $.changes.form_title)}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <CockpitNodeChoicePicker wsId={wsId} scope={scope} eligible={false} label={t(($) => $.changes.form_node)}
           value={selected.data ? `${buildCockpitDisplayCodesFromIndex(selected.data.node_index).get(selected.data.node.id) ?? selected.data.node.code} ${selected.data.node.name}` : nodeRef} disabled={readOnly || file.isPending} onSelect={(node) => update({ nodeId: node.id })} />
@@ -364,7 +366,7 @@ function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scop
           disabled={readOnly || file.isPending}
           onValueChange={(v) => { if (CHANGE_FIELDS.some((key) => key === v)) update({ field: v ?? "status" }); }}
         >
-          <SelectTrigger className="h-8 w-44 text-caption" aria-label={t(($) => $.changes.form_field)}>
+          <SelectTrigger className="w-44 max-w-full" aria-label={t(($) => $.changes.form_field)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -381,7 +383,7 @@ function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scop
           onChange={(e) => update({ value: e.target.value })}
           placeholder={t(($) => $.changes.form_value)}
           aria-label={t(($) => $.changes.form_value)}
-          className="h-8 w-52 text-caption"
+          className="w-52 max-w-full"
         />
         {field === "budget_amount" && <p className="text-caption text-muted-foreground">{t(($) => $.governance.budget_precision)}</p>}
         <Input
@@ -390,15 +392,15 @@ function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scop
           onChange={(e) => update({ reason: e.target.value })}
           placeholder={t(($) => $.changes.form_reason)}
           aria-label={t(($) => $.changes.form_reason)}
-          className="h-8 min-w-40 flex-1 text-caption"
+          className="min-w-0 flex-1 basis-48"
         />
-        <Button type="submit" size="sm" className="h-8 px-3 text-caption" disabled={!canSubmit}>
+        <Button type="submit" size="sm" disabled={!canSubmit}>
           {file.isPending ? <Spinner className="size-3.5" /> : null}
           {t(($) => $.changes.form_submit)}
         </Button>
       </div>
       {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}{error && <p role="alert" className="mt-2 text-caption text-destructive">{error}</p>}
-      <p className="mt-2 text-micro text-faint-foreground">{t(($) => $.changes.form_hint)}</p>
+      <p className="mt-3 text-caption text-muted-foreground">{t(($) => $.changes.form_hint)}</p>
     </form>
   );
 }
@@ -423,26 +425,36 @@ export function CockpitChanges({ wsId, scope, onOpenTask, readOnly }: { wsId: st
   const onError = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   const beginDecision = () => { if (readOnly || batchLock.current) return false; batchLock.current = true; setBatchBusy(true); return true; };
   const endDecision = () => { batchLock.current = false; setBatchBusy(false); };
-  return <section className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6" aria-label={t(($) => $.shell.governance)}>
-    <FileChangeForm wsId={wsId} scope={scope} readOnly={readOnly} onError={onError} />
-    <div><Button type="button" variant="outline" size="sm" aria-expanded={showQuality} onClick={() => setShowQuality(!showQuality)}>{t(($) => $.governance.quality)}</Button></div>
-    {showQuality && <CockpitPlanQuality wsId={wsId} scope={scope} onOpenTask={onOpenTask} />}
-    <div className="flex flex-wrap items-center gap-3"><Input className="max-w-80" name="cockpit-change-search" autoComplete="off" spellCheck={false} value={text} aria-label={t(($) => $.governance.search)} placeholder={t(($) => $.governance.search)} onChange={(event) => setText(event.target.value)} />
-      <div role="group" aria-label={t(($) => $.governance.status)} className="flex gap-1">{(["pending", "decided", "all"] as const).map((value) => <Button key={value} type="button" variant={status === value ? "secondary" : "ghost"} size="sm" aria-pressed={status === value} onClick={() => setStatus(value)}>{value === "pending" ? t(($) => $.governance.pending) : value === "decided" ? t(($) => $.governance.decided) : t(($) => $.assignee_picker.all)}</Button>)}</div>
+  return <section className="cockpit-governance @container/governance mx-auto flex min-h-0 min-w-0 w-full max-w-[1480px] flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6" aria-label={t(($) => $.shell.governance)}>
+    <header className="cockpit-governance-heading">
+      <div className="flex min-w-0 items-center gap-4"><span className="cockpit-page-symbol" aria-hidden><ShieldCheck className="size-6" /></span><h2 className="text-display-sm font-semibold tracking-tight">{t(($) => $.shell.governance)}</h2></div>
+      {page && <div className="cockpit-governance-counts">
+        <Button type="button" variant="ghost" aria-pressed={status === "pending"} onClick={() => setStatus("pending")} className="cockpit-governance-count h-auto"><span className="text-display-sm font-semibold tabular-nums">{page.counts.pending}</span><span className="text-caption">{t(($) => $.governance.pending)}</span></Button>
+        <Button type="button" variant="ghost" aria-pressed={status === "decided"} onClick={() => setStatus("decided")} className="cockpit-governance-count h-auto"><span className="text-display-sm font-semibold tabular-nums">{page.counts.decided}</span><span className="text-caption">{t(($) => $.governance.decided)}</span></Button>
+      </div>}
+    </header>
+    <div className="cockpit-governance-layout"><div className="cockpit-review-queue flex min-w-0 flex-col gap-4">
+    <div className="flex min-w-0 flex-wrap items-center gap-3"><Input className="min-w-0 flex-1 basis-48 sm:max-w-80" name="cockpit-change-search" autoComplete="off" spellCheck={false} value={text} aria-label={t(($) => $.governance.search)} placeholder={t(($) => $.governance.search)} onChange={(event) => setText(event.target.value)} />
+      <div role="group" aria-label={t(($) => $.governance.status)} className="max-w-full overflow-x-auto"><SegmentedToggle value={status} options={(["pending", "decided", "all"] as const).map((value) => [value, value === "pending" ? t(($) => $.governance.pending) : value === "decided" ? t(($) => $.governance.decided) : t(($) => $.assignee_picker.all)] as const)} onChange={setStatus}
+        buttonClassName="min-h-8 whitespace-nowrap rounded-md px-3 py-1.5 text-caption focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
     </div>
-    {page && <p className="text-caption text-muted-foreground">{t(($) => $.changes.queue_title, { n: page.counts.pending })} · {t(($) => $.changes.history_title, { n: page.counts.decided })}</p>}
-    {page && <p className="flex flex-wrap gap-3 text-micro text-muted-foreground">{t(($) => $.governance.page_counts)}: {(["type_add", "type_modify", "type_clear"] as const).map((type) => <span key={type}>{t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}</span>)}</p>}
+    {page && <p className="flex flex-wrap gap-x-4 gap-y-1 text-caption tabular-nums text-muted-foreground">{t(($) => $.governance.page_counts)}: {(["type_add", "type_modify", "type_clear"] as const).map((type) => <span key={type}>{t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}</span>)}</p>}
     {page ? <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching || searching || batchBusy}
       onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
       : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
     {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending || searching ? <Spinner />
       : page && <><Button type="button" className="self-end" size="sm" disabled={readOnly || batchBusy || query.isFetching || !pending.length} onClick={() => setReviewIds([...pending].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id)).map((change) => change.id))}>{t(($) => $.governance.review_page)}</Button>
         {rows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-caption text-muted-foreground">{q ? t(($) => $.task_flow.no_matches) : t(($) => $.changes.queue_empty)}</p>
-          : <ul ref={listRef} className="max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain">{rows.map((change) => change.status === "pending"
+          : <ul ref={listRef} className="min-w-0 max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain">{rows.map((change) => change.status === "pending"
             ? <ChangeRow key={change.id} wsId={wsId} change={change} readOnly={readOnly} batchBusy={batchBusy || query.isFetching} beginDecision={beginDecision} endDecision={endDecision} onOpenTask={onOpenTask} onError={onError} onReview={(id) => setReviewIds([id])} />
             : <DecidedRow key={change.id} change={change} />)}</ul>}
       </>}
+    </div><aside className="cockpit-proposal-rail min-w-0 space-y-4">
+    <FileChangeForm wsId={wsId} scope={scope} readOnly={readOnly} onError={onError} />
+    <div><Button type="button" variant="outline" size="sm" aria-expanded={showQuality} onClick={() => setShowQuality(!showQuality)}>{t(($) => $.governance.quality)}</Button></div>
+    {showQuality && <CockpitPlanQuality wsId={wsId} scope={scope} onOpenTask={onOpenTask} />}
+    </aside></div>
     {reviewIds && <CockpitChangeReview key={JSON.stringify([wsId, viewKey, reviewIds])} contextKey={viewKey} wsId={wsId} scope={scope} ids={reviewIds} readOnly={readOnly} canApplyField={(field) => CHANGE_FIELDS.some((key) => key === field)} fieldLabel={(field) => fieldLabel(t, field)} beginDecision={beginDecision} endDecision={endDecision} onClose={() => setReviewIds(null)} />}
-    <p className="flex items-center gap-1.5 text-micro text-faint-foreground"><Crosshair className="size-3" aria-hidden />{t(($) => $.changes.locate_hint)}</p>
+    <p className="flex items-center gap-1.5 text-caption text-muted-foreground"><Crosshair className="size-3" aria-hidden />{t(($) => $.changes.locate_hint)}</p>
   </section>;
 }

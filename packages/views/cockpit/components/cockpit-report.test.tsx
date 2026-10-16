@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +33,13 @@ describe("read-only project report", () => {
   });
   it("exposes printing only through a provided capability and surfaces a real capability failure", async () => {
     const print = vi.fn<NonNullable<CockpitReportProps["onPrint"]>>().mockRejectedValue(new Error("Print capability unavailable")); setup(print); await screen.findByText("01.01.01 Release verification"); await userEvent.click(screen.getByRole("button", { name: "Print this report" }));
-    await waitFor(() => expect(print).toHaveBeenCalledOnce()); expect(print.mock.calls[0]?.[0]).toBeInstanceOf(HTMLElement); expect(await screen.findByText("Print capability unavailable")).toBeVisible();
+    await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    const paper = print.mock.calls[0]?.[0];
+    expect(paper).toBeInstanceOf(HTMLElement);
+    expect(within(paper!).getByText("01.01.01 Release verification")).toBeVisible();
+    expect(within(paper!).getByText(enCockpit.report.exclusions)).toBeVisible();
+    expect(within(paper!).queryByRole("button", { name: "Refresh report" })).toBeNull();
+    expect(await screen.findByText("Print capability unavailable")).toBeVisible();
   });
 });
 

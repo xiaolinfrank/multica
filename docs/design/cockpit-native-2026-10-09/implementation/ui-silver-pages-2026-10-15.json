@@ -1,0 +1,271 @@
+{
+  "date": "2026-10-15",
+  "branch": "codex/cockpit-native-foundation",
+  "direction": "沿用用户认可的银白仪表台，扩展其他页面，不更换总览/展柜主题",
+  "surfaces": {
+    "plan": "统一视图标题与层级；责任矩阵强化任务、责任人及协作者；里程碑路线与完成记录；财务双读数及明确金额单位，保留六位小数和表格虚拟化；经营概览模块与月度读数",
+    "meetings": "三阶段主体、关联工作区与宽屏事实侧栏；事实字段按侧栏容器断点，窄屏纵向恢复；保留现有阶段与确认规则",
+    "artifacts": "正文/版本主栏与历史/责任/引用侧栏，固定版本内容纸面与审阅区，保留版本钉选、来源、能力与失败恢复",
+    "governance": "原提议值、当前值、待应用值的对照层级；保留409后重新审阅与确认",
+    "report": "封面、范围与日期元数据、目标及摘要读数、正文双栏和打印样式；仍为只读数据与独立打印内容"
+  },
+  "collaboration": {
+    "source": "multica-77",
+    "included": [
+      "packages/core/cockpit/navigation.ts",
+      "packages/core/cockpit/navigation.test.ts"
+    ],
+    "behavior": "裸入口总览，聊天显式tab=chat，菜单顺序不变，保留对象/会话深链",
+    "backend_skill_note": "另一会话的builtin说明保留在工作树中，本轮未重建后端"
+  },
+  "validation": {
+    "runtime_host": "fosun_agent_3 / 10.35.182.2",
+    "candidate": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-pages-20261015-ARL9lt/site",
+    "core_unit": {
+      "files": 1,
+      "passed": 19,
+      "log": "ui-pages-core-tests.log"
+    },
+    "view_unit": {
+      "files": 26,
+      "passed": 204,
+      "failed": 0,
+      "skipped": 0,
+      "log": "ui-pages-tests.log"
+    },
+    "browser": {
+      "tests": 2,
+      "passed": 2,
+      "log": "ui-browser.log",
+      "screenshots": 84,
+      "fixture_agent_runs": 0,
+      "matrix": [
+        "六工作区×1440/768/320×浅深色",
+        "五个其他计划视图×1440/320×浅深色",
+        "成果固定版本阅读与审阅可达",
+        "报告浅深色及打印媒体",
+        "1440/768/320节点及会议工作台",
+        "会议三阶段实际点击",
+        "窄屏金额不拆行",
+        "宽屏事实侧栏单列",
+        "长标题、键盘、减少动态效果",
+        "治理分页、409冲突及重新确认应用"
+      ],
+      "screenshot_directory": "/Users/fosun_main_agent/var/multica/.playwright-mcp/cockpit-pages-delivery-MYHZGw"
+    },
+    "static": [
+      "views typecheck",
+      "desktop typecheck:web",
+      "定向ESLint",
+      "git diff --check"
+    ],
+    "manual_pmo": {
+      "read_only": true,
+      "surfaces": [
+        "裸入口默认总览",
+        "财务",
+        "责任矩阵",
+        "报告",
+        "真实会议工作台"
+      ],
+      "fact_grid_columns": "258px",
+      "uncaught_page_errors": 0,
+      "images": [
+        ".playwright-mcp/cockpit-pages-pmo-finance.png",
+        ".playwright-mcp/cockpit-pages-pmo-responsibility.png",
+        ".playwright-mcp/cockpit-pages-pmo-report.png",
+        ".playwright-mcp/cockpit-pages-pmo-meeting.png"
+      ]
+    },
+    "regressions_fixed": [
+      "财务窄屏金额被拆行：紧凑双行读数与可聚焦溢出数字",
+      "成果标题被状态徽标挤压：窄屏状态另行",
+      "会议侧栏继承主面板col-span产生隐式网格列：列定义与跨列均使用meeting-facts容器",
+      "深色源报告打印变量优先级：纸面强制浅色且保持文本可读"
+    ],
+    "baseline_note": "artifact-runtime的即时getByRole(option)在改版前实现也失败；改为等待真实异步选项findByRole，最终同一断言与流程通过。诊断定向运行有10个未选用测试，最终完整26文件没有跳过。",
+    "not_run": [
+      "全量前端",
+      "Go后端",
+      "mobile",
+      "desktop运行时",
+      "真实PNG/PDF下载",
+      "真实智能体smoke"
+    ]
+  },
+  "delivery": {
+    "preview_url": "http://10.35.182.2:13003/pmo-showcase/cockpit",
+    "build_id": "5Db5CO18x7Ldk40bU8IeJ",
+    "preview_pid": 48491,
+    "previous_preview_pid": 43779,
+    "rollback_candidate": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-silver-20261014-PeF7eM/site",
+    "resident_13000_changed": true,
+    "resident_web_pid": 51013,
+    "api_pid": 13143,
+    "api_started_at": "2026-10-14T11:10:13Z",
+    "pmo_business_data_changed_by_this_task": false,
+    "canonical_mika_unchanged": true,
+    "production_changed": false,
+    "committed": false,
+    "pushed": false,
+    "preview_limitation": "13003仍不在API WebSocket来源白名单，实时推送不可用；未放宽配置。",
+    "resident_url": "http://10.35.182.2:13000/pmo-showcase/cockpit",
+    "resident_build_id": "5Db5CO18x7Ldk40bU8IeJ",
+    "resident_realtime_verified": true
+  },
+  "synced_files_sha256": {
+    "e2e/cockpit-governance.spec.ts": "cdebc790f7e37359ecd05efb95632400e17560fe0f56221d1f8665192bdf018c",
+    "e2e/cockpit-ui-layout.spec.ts": "dc3b820ea3ff3fc4080e58d81476a17b7f83b71c9d1c58efd43b684105dd069c",
+    "e2e/fixtures.ts": "fc18f528fa3c4a6357294090ef643665715370976670203c2289d536a3795a73",
+    "packages/core/cockpit/navigation.test.ts": "5c984209f160bc1f443c3d00e8409e96017489e542772e36cc37a307eff1d8c1",
+    "packages/core/cockpit/navigation.ts": "70e2a1b4d3761fa8d22f2313dd31fec8d58d1d99c0aa909f9d9ca1487b4e2b8f",
+    "packages/ui/styles/cockpit.css": "6d391185f9ca8c399590cb814bbb6e3a6baed1632c15f44b05c9ae863a716165",
+    "packages/views/cockpit/components/cockpit-artifact-detail.tsx": "896f78fdd4c3e0274a88e19700a8e43b7f2e4dc84fd71ce072258feae4e4fa7d",
+    "packages/views/cockpit/components/cockpit-artifact-runtime.test.tsx": "2afdf0f36dddacc9dd97e2c58bb34051dc3482c935ce414f7b104504d6d40ed9",
+    "packages/views/cockpit/components/cockpit-artifacts.test.tsx": "bb25e92b5a8078666cb094a022b89b59a06c4325cc91d42de2a9e538c9023bae",
+    "packages/views/cockpit/components/cockpit-artifacts.tsx": "5f3912f787d3ff934fe27fd26bcde81316f5c5aaefeab68084612f0a538d6453",
+    "packages/views/cockpit/components/cockpit-change-review.tsx": "d947d7ca33a755aba9851e38f604834f1298689c940906de6d4f0ca821952613",
+    "packages/views/cockpit/components/cockpit-changes.test.tsx": "af8cdc62972da308889575b6135326963ff93f6024acee372897a3477ef67ed1",
+    "packages/views/cockpit/components/cockpit-changes.tsx": "11bf77c59c5922d8cc555c8f457cb35ab3a98b3da7a5edad85f3b8c1bcdc146b",
+    "packages/views/cockpit/components/cockpit-entry.test.tsx": "d283bcd0da777087b0fdeeb585b1ac13a53d0432844b5ab592f62055d502c198",
+    "packages/views/cockpit/components/cockpit-entry.tsx": "0019fd47cb4a55934d6737417360232d2fccec2fc09aab3f110f27a3cc5a6401",
+    "packages/views/cockpit/components/cockpit-gantt.test.tsx": "18d373257ceba314a84722ab4edf814cd98e2f6c9d1de69a818bd5b3900acc0e",
+    "packages/views/cockpit/components/cockpit-gantt.tsx": "e2a174221eb56d2938ab879bab95d78f16b8664c812a60033e690ee68875b824",
+    "packages/views/cockpit/components/cockpit-layout.test.ts": "370c9bc4b8825872c4d6b520f8d89ee7dffa3603e12df25a94afb6c5c5dbbc96",
+    "packages/views/cockpit/components/cockpit-layout.ts": "0e56c839a401cac5687e01aff22da54c39e80c68cb710b68c515a02433728a60",
+    "packages/views/cockpit/components/cockpit-meeting-cards.test.tsx": "f56d9ddb741bb9a9a03b195d1334b064d7f1e27fc1f087a1fdccc0101bc9c8ce",
+    "packages/views/cockpit/components/cockpit-meeting-cards.tsx": "3b7f5197401146d3dc983b6846827bb70a63a4df73f4b6b0a877394377a6f16e",
+    "packages/views/cockpit/components/cockpit-meeting-panel.tsx": "72f1eb7b075abb4820d8762a1b4dfac6822e10f22dbf5eaacf3af3d5020ddb31",
+    "packages/views/cockpit/components/cockpit-meeting-stage.test.tsx": "53f7351ef77125d4e814ae5f30e917af33d6d04f69522425eb8e729e28849b12",
+    "packages/views/cockpit/components/cockpit-meeting-stage.tsx": "30969bef286f0591582429f1c81adbac9aed0b353c2dac92f8dd34e05825d07d",
+    "packages/views/cockpit/components/cockpit-meeting-timeline.test.tsx": "608c881fa0cc72b940bf6a1b98727705212692e510e9922f46abe397a7aaab5d",
+    "packages/views/cockpit/components/cockpit-meeting-timeline.tsx": "079ccc3538d39840b2135573efbdec1de9e6c8ac4bf38c1b984caca167ba05ec",
+    "packages/views/cockpit/components/cockpit-meetings.test.tsx": "eae8f5ba569fc5e700b15900d6afaa0ec7edbb5297292b44af21204beff8f154",
+    "packages/views/cockpit/components/cockpit-meetings.tsx": "053fc4b84aeea50f19260103943ea87367e52dbe895348ede9284a08f62bd3fa",
+    "packages/views/cockpit/components/cockpit-milestones.tsx": "515ea790e6440856723efb3332746f2d6975ab8e812b7f5b6fee93148b23abb5",
+    "packages/views/cockpit/components/cockpit-node-panel.tsx": "b63742e12fcfb7ea0eefec7d1374ccb8aa4efaca6eb4280ab4bf15134393d49b",
+    "packages/views/cockpit/components/cockpit-overview.test.tsx": "5bb1b3e662716e0609ed37203018bcd58113cdd3628f50ad39163b3db07614a0",
+    "packages/views/cockpit/components/cockpit-overview.tsx": "5f4af4e3324a661678352b92c32fc4eb273c9f4a500cc3958e19b54641cf295d",
+    "packages/views/cockpit/components/cockpit-page.test.tsx": "33b40c3d687635663c241e0c576aedc47de7203e6e9205d3147477ebbab0df8b",
+    "packages/views/cockpit/components/cockpit-page.tsx": "238c0df26d332e77a236bbeaafd2850bb06b58ed3cedfc8aad02d5ddda0763d2",
+    "packages/views/cockpit/components/cockpit-plan-views.tsx": "ace15ef682819ddfe0c4569f730b0d69ecda12dd24951e22af92ca2d444fe1b4",
+    "packages/views/cockpit/components/cockpit-report.test.tsx": "0343f7180f12cb1d90f87d786ff33e2d03fd8105b7faef5af9e6e3e52162ae7e",
+    "packages/views/cockpit/components/cockpit-report.tsx": "12ff03b68a223a1f4f67fb57cc8978b38721c767715f4e10adbfef40172c5918",
+    "packages/views/cockpit/components/cockpit-responsibilities.tsx": "549d991a538aceda3467de225a07fd4e0e18c9339fe64fed00d6d3ff65f99edd",
+    "packages/views/cockpit/components/cockpit-selected-meeting.tsx": "4dcbcaebb2156da3efa4712b33b8261b03ae3db61f4d7ed54d07dbdfd965c6c3",
+    "packages/views/cockpit/components/cockpit-selected-node.tsx": "f05b9f6284c18c2becdfd3e7065bd052cf90521abc98afc09592cfecf57704fc",
+    "packages/views/cockpit/components/cockpit-shell.tsx": "8d6a52aa2f1285474121aad711e22bd82374657b7b5441a869bc73dc8d557e83",
+    "packages/views/cockpit/components/cockpit-status-orbit.test.tsx": "ddb3d1f79c82ae365bb6451327fedb9439f3f67810b00e34fc1da63987f4980b",
+    "packages/views/cockpit/components/cockpit-status-orbit.tsx": "363c0af0ef62cada8b5f16e757726454231f206b81b212d3886ecf732f3d4f19",
+    "packages/views/cockpit/components/cockpit-table.test.tsx": "b8f220f0af355b59ba7b58e480702ed853a4a1c29a82fe78a992895599f6341e",
+    "packages/views/cockpit/components/cockpit-table.tsx": "731dde73c91bc9816e389d69a00b29548ef4781650cfa5f8cb897c41f7467272",
+    "packages/views/cockpit/components/cockpit-view-heading.tsx": "0206f952ab3b6f2eb83ca6fb610a1c729356c51c80dfdb994f3d6180f780caf4",
+    "packages/views/cockpit/components/cockpit-work-overview.test.tsx": "8460b285edcf45739a76d9aff1cf49f884f541181c5d5f6682d7d47b0a38da31",
+    "packages/views/cockpit/components/cockpit-work-overview.tsx": "9239633644b4fe15010809bbfa3dda07d70e832f6db0abc627491eababa20cdb",
+    "packages/views/locales/en/cockpit.json": "7e2bf7921a226f7264e4e58f38995f143df3a5cbd66504ba4df11193e0dbeb28",
+    "packages/views/locales/ja/cockpit.json": "0204813f2a8604ed8b56440a61145cc57bc790ff8b16dc53eacc482f355e14ee",
+    "packages/views/locales/ko/cockpit.json": "1827a1fd46f39f377f116ca6d868bb5037e59f15feb4fa8408d831188d678f12",
+    "packages/views/locales/zh-Hans/cockpit.json": "7506bfb43bbf717196240fc1210395f5f61a7c6dc78a92ad74d3294803c7c281"
+  },
+  "deployment_preflight": {
+    "authorization": "本会话用户明确要求：切换13000",
+    "target": "fosun_agent_3 开发 web 13000",
+    "runtime_source_files_compared": 1876,
+    "unexpected_source_differences": 0,
+    "known_exception": "live 中旧错路径 cockpit/components/chat-page.tsx 保留，不同步/删除该文件",
+    "release_files": 32,
+    "baseline_websocket_http_status": 101,
+    "previous_web_pid": 29818,
+    "previous_build_id": "jCiB5coPRvnAstcYfH-_L",
+    "candidate_build_id": "5Db5CO18x7Ldk40bU8IeJ",
+    "api_pid": 13143,
+    "cutover_completed": true,
+    "independent_review": {
+      "workflow": "wf_a8462b54-f85",
+      "blocking_findings": 0,
+      "mode": "read-only"
+    }
+  },
+  "live_deployment": {
+    "host": "fosun-agent-3deMac-mini.local",
+    "time": "20261015-005459",
+    "release": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-pages-20261015-ARL9lt/site",
+    "new_build_id": "5Db5CO18x7Ldk40bU8IeJ",
+    "previous_build_id": "jCiB5coPRvnAstcYfH-_L",
+    "old_web_pid": 29818,
+    "new_web_pid": 51013,
+    "switch_seconds": 0.88,
+    "api_before": {
+      "status": "ok",
+      "pid": 13143,
+      "commit": "b9b1fce14",
+      "started_at": "2026-10-14T11:10:13Z"
+    },
+    "api_after": {
+      "status": "ok",
+      "pid": 13143,
+      "commit": "b9b1fce14",
+      "started_at": "2026-10-14T11:10:13Z"
+    },
+    "environment_unchanged": true,
+    "mika_source_unchanged": true,
+    "source_files": [
+      "packages/core/cockpit/navigation.ts",
+      "packages/ui/styles/cockpit.css",
+      "packages/views/cockpit/components/cockpit-artifact-detail.tsx",
+      "packages/views/cockpit/components/cockpit-artifacts.tsx",
+      "packages/views/cockpit/components/cockpit-change-review.tsx",
+      "packages/views/cockpit/components/cockpit-changes.tsx",
+      "packages/views/cockpit/components/cockpit-entry.tsx",
+      "packages/views/cockpit/components/cockpit-gantt.tsx",
+      "packages/views/cockpit/components/cockpit-layout.ts",
+      "packages/views/cockpit/components/cockpit-meeting-cards.tsx",
+      "packages/views/cockpit/components/cockpit-meeting-panel.tsx",
+      "packages/views/cockpit/components/cockpit-meeting-stage.tsx",
+      "packages/views/cockpit/components/cockpit-meeting-timeline.tsx",
+      "packages/views/cockpit/components/cockpit-meetings.tsx",
+      "packages/views/cockpit/components/cockpit-milestones.tsx",
+      "packages/views/cockpit/components/cockpit-node-panel.tsx",
+      "packages/views/cockpit/components/cockpit-overview.tsx",
+      "packages/views/cockpit/components/cockpit-page.tsx",
+      "packages/views/cockpit/components/cockpit-plan-views.tsx",
+      "packages/views/cockpit/components/cockpit-report.tsx",
+      "packages/views/cockpit/components/cockpit-responsibilities.tsx",
+      "packages/views/cockpit/components/cockpit-selected-meeting.tsx",
+      "packages/views/cockpit/components/cockpit-selected-node.tsx",
+      "packages/views/cockpit/components/cockpit-shell.tsx",
+      "packages/views/cockpit/components/cockpit-status-orbit.tsx",
+      "packages/views/cockpit/components/cockpit-table.tsx",
+      "packages/views/cockpit/components/cockpit-view-heading.tsx",
+      "packages/views/cockpit/components/cockpit-work-overview.tsx",
+      "packages/views/locales/en/cockpit.json",
+      "packages/views/locales/ja/cockpit.json",
+      "packages/views/locales/ko/cockpit.json",
+      "packages/views/locales/zh-Hans/cockpit.json"
+    ],
+    "source_backup": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-pages-20261015-ARL9lt/rollback-live-20261015-005459",
+    "artifact_backup": "/Users/fosun_agent_3/var/multica-dev/apps/web/.next.before-silver-20261015-005459",
+    "production_changed": false,
+    "browser_verification": {
+      "url": "http://10.35.182.2:13000/pmo-showcase/cockpit",
+      "default_surface": "总览",
+      "chat_href": "/pmo-showcase/cockpit?tab=chat",
+      "verified": [
+        "默认总览",
+        "甘特",
+        "财务",
+        "产出物",
+        "Mika聊天入口（未发送消息）"
+      ],
+      "websocket_handshakes": [
+        101,
+        101,
+        101,
+        101
+      ],
+      "page_errors": [],
+      "console_errors": [],
+      "screenshot": ".playwright-mcp/cockpit-live-silver-overview.png"
+    }
+  }
+}

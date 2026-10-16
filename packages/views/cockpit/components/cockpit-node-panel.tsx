@@ -173,11 +173,11 @@ export function CockpitNodePanel({
   const paymentsEditable = taskDetails && !readOnly;
 
   return (
-    <aside className={cn("cockpit-panel-enter flex max-w-full shrink-0 flex-col border-l border-border bg-card",
-      (taskWorkspace || referenceWorkspace) ? "w-[min(54rem,70vw)] max-xl:w-full max-xl:border-l-0" : "w-96 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl")}>
-      <header className="flex items-start gap-2 border-b border-border p-3">
+    <aside className={cn("cockpit-workbench cockpit-panel-enter @container/node-panel flex min-w-0 max-w-full shrink-0 flex-col border-l border-border bg-card @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0",
+      (taskWorkspace || referenceWorkspace) ? "w-[54rem]" : "w-96")}>
+      <header tabIndex={0} className="cockpit-workbench-header flex max-h-[30%] shrink-0 items-start gap-2 overflow-y-auto border-b border-border p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {parent && (
               <span className="truncate font-mono text-micro text-muted-foreground">
                 {parent.code}
@@ -211,7 +211,7 @@ export function CockpitNodePanel({
               label={t(($) => $.node.name)}
               placeholder={t(($) => $.node.name_placeholder)}
               disabled={readOnly}
-              displayClassName="text-title-sm font-semibold"
+              displayClassName="max-w-full whitespace-normal break-words text-title-sm font-semibold [overflow-wrap:anywhere]"
             />
           </div>
         </div>
@@ -221,7 +221,7 @@ export function CockpitNodePanel({
           onClick={onClose}
           disabled={deleting}
           aria-label={t(($) => $.panel.close)}
-          className="rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="sticky top-0 z-10 flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" />
         </button>
@@ -230,18 +230,18 @@ export function CockpitNodePanel({
       {notice && <div className="shrink-0 border-b border-border p-3">{notice}</div>}
       {((section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace)) && <p role="status" className="px-4 py-3 text-caption text-muted-foreground">{t(($) => $.feature_availability.unavailable)}</p>}
       <Tabs value={!taskWorkspace || (section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace) ? "details" : section} onValueChange={(value) => { if (value === "tasks" || value === "artifacts" || value === "acceptance" || value === "details") onSectionChange(value); }} className="min-h-0 flex-1 gap-0">
-        {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 border-b px-3 py-1">
-          <TabsTrigger value="tasks">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger>
-          {artifactWorkspace && <TabsTrigger value="artifacts">{t(($) => $.shell.artifacts)}</TabsTrigger>}
-          {acceptanceWorkspace && <TabsTrigger value="acceptance">{t(($) => $.acceptance.title)}</TabsTrigger>}
-          <TabsTrigger value="details">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
+        {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 flex-wrap border-b border-border px-4 py-1 group-data-horizontal/tabs:h-auto">
+          <TabsTrigger value="tasks" className="h-9">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger>
+          {artifactWorkspace && <TabsTrigger value="artifacts" className="h-9">{t(($) => $.shell.artifacts)}</TabsTrigger>}
+          {acceptanceWorkspace && <TabsTrigger value="acceptance" className="h-9">{t(($) => $.acceptance.title)}</TabsTrigger>}
+          <TabsTrigger value="details" className="h-9">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
         </TabsList>}
         {taskWorkspace && <TabsContent value="tasks" keepMounted className="min-h-0 overflow-y-auto p-4">{taskWorkspace}</TabsContent>}
         {artifactWorkspace && <TabsContent value="artifacts" className="flex min-h-0 flex-1 flex-col overflow-hidden [&[hidden]]:hidden">{artifactWorkspace}</TabsContent>}
         {acceptanceWorkspace && <TabsContent value="acceptance" className="min-h-0 overflow-y-auto p-4">{acceptanceWorkspace}</TabsContent>}
-        <TabsContent value="details" className="min-h-0 overflow-y-auto p-3">
+        <TabsContent value="details" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain p-4">
         {binding && <div className="mb-4">{binding}</div>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
           <CockpitField label={t(($) => $.node.owner)}>
             <EditableSuggest
               value={node.owner}
@@ -282,7 +282,7 @@ export function CockpitNodePanel({
               disabled={readOnly}
             />
           </CockpitField>
-          <CockpitField label={t(($) => $.node.progress)} className="col-span-2">
+          <CockpitField label={t(($) => $.node.progress)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
             {/* A branch's progress is the weighted roll-up of its leaves, so
                 editing it here would be overwritten by the next read. */}
             <ProgressField
@@ -294,7 +294,7 @@ export function CockpitNodePanel({
             {isBranch && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>}
           </CockpitField>
           {taskDetails && (
-            <CockpitField label={t(($) => $.node.collaborators)} className="col-span-2">
+            <CockpitField label={t(($) => $.node.collaborators)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
             <EditableText
               value={node.collaborators}
               onCommit={(collaborators) => onPatch({ collaborators })}
@@ -343,7 +343,7 @@ export function CockpitNodePanel({
           <>
             <Separator className="my-4" />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
               <CockpitField label={t(($) => $.node.vendor)}>
                 <EditableTokens
                   value={node.vendor}
@@ -391,7 +391,7 @@ export function CockpitNodePanel({
                   }
                 />
               </CockpitField>
-              <CockpitField label={t(($) => $.node.contract)} className="col-span-2">
+              <CockpitField label={t(($) => $.node.contract)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
                 <EditableText
                   value={node.contract}
                   onCommit={(contract) => onPatch({ contract })}
@@ -408,7 +408,7 @@ export function CockpitNodePanel({
         {(taskDetails || payments.length > 0 || paymentPaging) && (
             <div className="mt-3">
               {paymentPaging}
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
                   {t(($) => $.node.payments)}
                 </span>
@@ -430,7 +430,7 @@ export function CockpitNodePanel({
               ) : (
                 <ul className="mt-1 flex flex-col gap-1">
                   {payments.map((payment) => (
-                    <li key={payment.id} className="group/pay flex items-center gap-2">
+                    <li key={payment.id} className="group/pay flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border p-2">
                       <EditableText
                         value={payment.label}
                         onCommit={(label) => onPatchPayment(payment.id, { label })}
@@ -530,7 +530,7 @@ export function CockpitNodePanel({
       </Tabs>
 
       {!readOnly && (
-        <footer className="border-t border-border p-3">
+        <footer className="shrink-0 border-t border-border px-4 py-3">
           <AlertDialog open={confirmOpen} onOpenChange={(open) => {
             if (deletingRef.current) return;
             setConfirmOpen(open);

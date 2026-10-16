@@ -27,6 +27,7 @@ func TestPrepareClaudeSkillSettings(t *testing.T) {
 		t.Fatalf("read settings: %v", err)
 	}
 	var got struct {
+		Env            map[string]string `json:"env"`
 		SkillOverrides map[string]string `json:"skillOverrides"`
 		Permissions    struct {
 			Deny []string `json:"deny"`
@@ -34,6 +35,9 @@ func TestPrepareClaudeSkillSettings(t *testing.T) {
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("decode settings: %v", err)
+	}
+	if got.Env["ENABLE_TOOL_SEARCH"] != "false" {
+		t.Fatalf("tool discovery = %q, want direct schemas", got.Env["ENABLE_TOOL_SEARCH"])
 	}
 	if got.SkillOverrides["review"] != "off" {
 		t.Fatalf("ordinary skill override = %q, want off", got.SkillOverrides["review"])

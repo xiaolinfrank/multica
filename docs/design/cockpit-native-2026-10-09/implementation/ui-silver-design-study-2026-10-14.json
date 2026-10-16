@@ -1,0 +1,40 @@
+{
+  "direction": "银白工业仪表台，呼应医药 PMO 的证据、执行和审阅语境",
+  "palette": {
+    "canvas": "#edf0f2",
+    "paper": "#ffffff",
+    "ink": "#22272c",
+    "muted": "#67727b",
+    "metal": "#b7c0c8",
+    "signal": "沿用现有业务状态色，不用装饰色冒充风险"
+  },
+  "typography": "沿用平台 CJK/Inter 字体；局部 display 角色提高到 48–52px，数值 48–64px；正文保持可读，不更改全局 token",
+  "composition": "顶部压缩成轻量上下文与白色导航；总览用开放三段式构图：标题/目标 — 立体状态仪表 — 状态明细；下方待办为主、信号读数为辅。卷宗使用真实标题封面，会议使用日期牌，治理为审阅队列。",
+  "critique": "放弃蓝色大横幅、装饰序号和一律描边投影卡片；不复制商业模板，不用假趋势和不相关三维物件。立体仪表必须反映真实分布，动效响应用户操作。",
+  "references": [
+    {
+      "url": "https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md",
+      "lesson": "主题驱动、字体和构图先行、唯一视觉焦点、避免模板卡片和无意义序号；只作研究，不安装执行"
+    },
+    {
+      "url": "https://github.com/vercel-labs/web-interface-guidelines",
+      "lesson": "焦点可见、减少动态效果、内容溢出、真实链接与语义状态"
+    },
+    {
+      "url": "https://overview.tremor.so/support",
+      "lesson": "状态分布与数据表的层级；不把该常规后台当美术目标"
+    },
+    {
+      "url": "https://github.com/tremorlabs/template-overview",
+      "license_note": "GitHub 元数据与 README 商业许可说明不一致；仅研究，不复制源码"
+    },
+    {
+      "url": "https://github.com/MengTo/threeui",
+      "lesson": "材质光照、视觉焦点、离屏停绘；本轮不引入 WebGL 或拷贝素材"
+    },
+    {
+      "url": "https://v.douyin.com/tJV7g2qLrVs/",
+      "lesson": "银白工业与医疗仪表图文：放大主体、弱化框线、强弱字号对照"
+    }
+  ]
+}

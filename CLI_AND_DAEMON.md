@@ -374,6 +374,8 @@ Agent-specific overrides:
 
 If a previously generated `~/.multica/hooks` wrapper is first on `PATH` and calls the same command name again, the daemon skips that hooks directory during built-in agent discovery and records the real binary path behind it. If your interactive shell still recurses when you run `claude`, `codex`, or `hermes` manually, remove the hooks entry from your shell startup file or replace the wrapper body with an absolute `exec /path/to/real-binary "$@"`.
 
+Claude 托管进程默认通过任务级 `--settings` 设置 `ENABLE_TOOL_SEARCH=false`，直接发送工具定义，不依赖兼容模型端点支持延迟发现。已有技能禁用策略文件包含同一默认值；宿主的全局 Claude/代理配置、MCP 选择和权限规则不变。没有托管技能策略时，显式 `ExtraArgs` / `CustomArgs` 中的 `--settings` 仍可覆盖默认设置。`claude initialized` 日志记录 CLI 上报的工具名及 `bash_tool=available|missing|unknown`；注册成功不等于模型已经执行工具，验收仍需检查实际调用和结果。
+
 The daemon launches Qoder and Qoder CN as `qodercli --yolo --acp` and `qoderclicn --yolo --acp`, respectively, matching their ACP “bypass permissions” mode so tool runs do not block on interactive approval in headless runs.
 The daemon launches Qwen Code as `qwen -p <prompt> --output-format stream-json`. It writes the task brief to `QWEN.md`; when an agent has managed `mcp_config`, the daemon writes a 0600 per-run JSON file and passes it through `--mcp-config <path>`, then removes it after the process exits. A null config preserves Qwen Code native MCP settings.
 

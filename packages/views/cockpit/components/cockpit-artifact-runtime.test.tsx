@@ -147,7 +147,7 @@ describe("artifact runtime workflow", () => {
     const submit = await screen.findByRole("button", { name: "Submit review" }); expect(submit).toBeDisabled();
     expect(screen.getByText(enCockpit.artifact_runtime.content_missing)).toBeVisible();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("combobox", { name: enCockpit.workflow.decision })); await user.click(screen.getByRole("option", { name: "Changes requested" }));
+    await user.click(screen.getByRole("combobox", { name: enCockpit.workflow.decision })); await user.click(await screen.findByRole("option", { name: "Changes requested" }));
     await waitFor(() => expect(screen.getByRole("combobox", { name: enCockpit.workflow.decision })).toHaveTextContent("Changes requested"));
     expect(submit).toBeDisabled(); fireEvent.change(screen.getByRole("textbox", { name: enCockpit.workflow.feedback }), { target: { value: "Please upload a verifiable replacement." } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit review" })).toBeEnabled());

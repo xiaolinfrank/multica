@@ -20,24 +20,34 @@ export function pinAgentByName<T extends { name?: string | null }>(
   return next;
 }
 
-/**
- * Chat seat order (BayClaw fork): the built-in Chief of Staff (system_key
- * "mika") opens the new-session agent list, the host-node generic agent
- * (通用智能体（主）) follows, and everything else keeps its original order.
- * Stable sort, never mutates the input. Composes with pinAgentByName: run
- * the pin first, then this — a pinned agent lands in second seat, behind
- * Mika, in deployments that set DEFAULT_ISSUE_ASSIGNNEE_NODE.
- */
-export function orderChatAgentsBySeat<
-  T extends { name?: string | null; system_key?: string | null },
->(agents: readonly T[]): T[] {
-  const seat = (a: T): number => {
-    if (a.system_key === "mika") return 0;
-    if (a.name != null && a.name.endsWith("（主）")) return 1;
-    return 2;
-  };
+type ChatSeatAgent = { name?: string | null; system_key?: string | null };
+
+function chatAgentSeat(agent: ChatSeatAgent): number {
+  if (agent.system_key === "mika") return 0;
+  if (agent.name === "通用智能体（主）" || agent.name === "通用智能体") return 1;
+  return 2;
+}
+
+/** Mika leads chat pickers, followed by the generic agent; other agents keep their order. */
+export function orderChatAgentsBySeat<T extends ChatSeatAgent>(agents: readonly T[]): T[] {
   return agents
-    .map((agent, index) => ({ agent, index, seat: seat(agent) }))
+    .map((agent, index) => ({ agent, index, seat: chatAgentSeat(agent) }))
     .sort((x, y) => x.seat - y.seat || x.index - y.index)
     .map((entry) => entry.agent);
+}
+
+/** The first two seats precede ownership groups, even when the viewer owns other agents. */
+export function groupChatAgentsBySeat<T extends ChatSeatAgent & { owner_id?: string | null }>(
+  agents: readonly T[],
+  userId: string | undefined,
+): { preferred: T[]; mine: T[]; others: T[] } {
+  const preferred: T[] = [];
+  const mine: T[] = [];
+  const others: T[] = [];
+  for (const agent of orderChatAgentsBySeat(agents)) {
+    if (chatAgentSeat(agent) < 2) preferred.push(agent);
+    else if (agent.owner_id === userId) mine.push(agent);
+    else others.push(agent);
+  }
+  return { preferred, mine, others };
 }

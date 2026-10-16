@@ -64,6 +64,24 @@ function renderPicker(onStart = vi.fn()) {
 }
 
 describe("NewChatButton", () => {
+  it.each(["user-1", "user-2"])("keeps Mika and the generic agent ahead of owned agents when Mika belongs to %s", async (ownerId) => {
+    const mika = makeAgent({ id: "mika", name: "Chief of Staff", owner_id: ownerId, system_key: "mika" });
+    const generic = makeAgent({ id: "generic", name: "通用智能体（主）", owner_id: "user-2" });
+    const onStart = vi.fn();
+    render(
+      <I18nProvider locale="en" resources={TEST_RESOURCES}>
+        <NewChatButton agents={[...agents, generic, mika]} userId="user-1" onStart={onStart} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: NEW_CHAT_LABEL }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Chief of Staff", "通用智能体（主）", "Alpha", "张三", "Beta", "Gamma",
+    ]);
+    fireEvent.click(within(dialog).getByText("Chief of Staff"));
+    expect(onStart).toHaveBeenCalledWith(mika);
+  });
+
   it("opens the agent picker below the ⊕ trigger", async () => {
     renderPicker();
 

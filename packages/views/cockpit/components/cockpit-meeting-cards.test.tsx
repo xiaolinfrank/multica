@@ -23,3 +23,13 @@ describe("future meeting occurrence states", () => {
     expect(screen.getByRole("link", { name: "Record meeting occurrence · Unrecognized state: future-state" })).toBeVisible(); expect(screen.queryByText("Ended")).toBeNull(); expect(screen.queryByText("Started")).toBeNull();
   });
 });
+
+
+it("marks only the selected meeting link as current while preserving register filter context", () => {
+  render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitMeetingCards scope={{ projectId: "project-1", moduleId: null }} selectedId="meeting-1" items={[meeting({}), meeting({ id: "meeting-2", title: "Planning review" })]} /></I18nProvider>);
+  const current = screen.getByRole("link", { name: "Open Delivery review" });
+  expect(current).toHaveAttribute("aria-current", "true");
+  expect(screen.getByRole("link", { name: "Open Planning review" })).not.toHaveAttribute("aria-current");
+  const target = new URL(current.getAttribute("href")!, "https://example.test");
+  expect(Object.fromEntries(target.searchParams)).toMatchObject({ meeting: "meeting-1", project: "project-1", from: "2026-10-01", to: "2026-10-31" });
+});

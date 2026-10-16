@@ -328,6 +328,7 @@ func TestBuildClaudeArgsInheritsMCPByDefault(t *testing.T) {
 		"--verbose",
 		"--permission-mode", "bypassPermissions",
 		"--disallowedTools", "AskUserQuestion",
+		"--settings", `{"env":{"ENABLE_TOOL_SEARCH":"false"}}`,
 	}
 
 	if len(args) != len(expected) {
@@ -1301,6 +1302,21 @@ func TestBuildClaudeArgsExtraArgsBeforeCustomArgsAndFiltersBoth(t *testing.T) {
 	}
 	if extraIdx == -1 || customIdx == -1 || extraIdx > customIdx {
 		t.Fatalf("expected extra args before custom args, got %v", args)
+	}
+}
+
+func TestBuildClaudeArgsPreservesExplicitSettingsOverride(t *testing.T) {
+	t.Parallel()
+	customSettings := `{"env":{"ENABLE_TOOL_SEARCH":"true"},"model":"test-model"}`
+	args := buildClaudeArgs(ExecOptions{CustomArgs: []string{"--settings", customSettings}}, slog.Default())
+	var settings []string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--settings" {
+			settings = append(settings, args[i+1])
+		}
+	}
+	if len(settings) != 2 || settings[1] != customSettings {
+		t.Fatalf("explicit settings must remain after defaults: %v", args)
 	}
 }
 

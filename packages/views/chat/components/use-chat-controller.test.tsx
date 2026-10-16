@@ -173,7 +173,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     ...actual,
     useQuery: (options: { queryKey?: unknown[] }) => {
       const key = options.queryKey ?? [];
-      if (key.includes("agents")) return { data: h.agents };
+      if (key.includes("agents")) return { data: h.agents, isSuccess: true };
       if (key.includes("members")) {
         return { data: [{ user_id: "user-1", role: "admin" }] };
       }
@@ -1257,5 +1257,49 @@ describe("cockpit default agent selection", () => {
     h.agents = [agentA, { ...agentB, system_key: "mika" }]; h.store.selectedAgentId = agentA.id;
     const { result } = renderHook(() => useChatController({ defaultAgentSystemKey: "mika" }));
     expect(result.current.activeAgent?.id).toBe(agentA.id);
+  });
+});
+
+// A hosted surface may restrict both fresh chats and history to one system agent.
+describe("fixed system agent chat surface", () => {
+  const mika = { ...agentB, name: "Renamed chief", system_key: "mika" };
+  beforeEach(() => {
+    h.store.activeSessionId = null;
+    h.store.selectedAgentId = agentA.id;
+    h.store.selectedProjectId = null;
+    h.sessions = [];
+    h.agents = [agentA, mika];
+    h.projects = [];
+    h.pendingTask = null;
+    invokableAgentIds.current = null;
+    h.queryClient.getQueryData.mockReturnValue(undefined);
+  });
+  it("only offers Mika despite a persisted generic agent selection", () => {
+    const { result } = renderHook(() => useChatController({ fixedAgentSystemKey: "mika" }));
+    expect(result.current.availableAgents.map((agent) => agent.id)).toEqual([mika.id]);
+    expect(result.current.activeAgent?.id).toBe(mika.id);
+    act(() => result.current.handleStartNewChat(result.current.availableAgents[0]!));
+    expect(h.store.selectedAgentId).toBe(mika.id);
+  });
+  it("only lists Mika history, without deleting other conversations", () => {
+    h.sessions = [sA, sB];
+    const { result } = renderHook(() => useChatController({ fixedAgentSystemKey: "mika" }));
+    expect(result.current.sessions.map((session) => session.id)).toEqual([sB.id]);
+    expect(h.sessions).toEqual([sA, sB]);
+  });
+  it("leaves a foreign session and sends to a fresh Mika session", async () => {
+    h.store.activeSessionId = sA.id;
+    h.sessions = [sA, sB];
+    const { result } = renderHook(() => useChatController({ fixedAgentSystemKey: "mika" }));
+    expect(h.store.activeSessionId).toBeNull();
+    expect(result.current.activeAgent?.id).toBe(mika.id);
+    await act(async () => { await result.current.handleSend("PMO summary"); });
+    expect(h.createSessionMutate).toHaveBeenCalledWith(expect.objectContaining({ agent_id: mika.id }));
+  });
+  it("does not replace an inaccessible Mika with a generic agent", () => {
+    invokableAgentIds.current = [agentA.id];
+    const { result } = renderHook(() => useChatController({ fixedAgentSystemKey: "mika" }));
+    expect(result.current.availableAgents).toEqual([]);
+    expect(result.current.activeAgent).toBeNull();
   });
 });

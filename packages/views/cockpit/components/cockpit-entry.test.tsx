@@ -1,4 +1,5 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@multica/core/api";
@@ -82,6 +83,53 @@ describe("unified cockpit shell", () => {
     expect(screen.getByRole("link", { name: "Responsibilities" })).toBeVisible();
   });
 
+  it("keeps section links and plan views in separate named navigation landmarks with scoped destinations", () => {
+    route.params = new URLSearchParams("tab=plan&plan_view=finance&project=p1&module=m1");
+    setup();
+    const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
+    const views = screen.getByRole("navigation", { name: enCockpit.plan_views.navigation });
+    expect(sections).not.toContainElement(views);
+    expect(within(sections).getAllByRole("link")).toHaveLength(6);
+    expect(within(views).getAllByRole("link")).toHaveLength(6);
+    expect(within(sections).getByRole("link", { current: "page" })).toHaveAccessibleName("Execution plan");
+    expect(within(views).getByRole("link", { current: "page" })).toHaveAccessibleName("Budget & payments");
+    const gantt = within(views).getByRole("link", { name: "Gantt" });
+    expect(gantt).toHaveAttribute("href", "/acme/cockpit?tab=plan&plan_view=gantt&project=p1&module=m1");
+    gantt.focus();
+    expect(gantt).toHaveFocus();
+    expect(screen.getAllByRole("button", { name: "Project scope" })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: enCockpit.shell.workspace_view })).toBeVisible();
+    expect(screen.getByRole("link", { name: enCockpit.report.title })).toHaveAttribute("href", "/acme/cockpit?tab=plan&plan_view=finance&project=p1&module=m1&report=1");
+  });
+
+  it("reveals current navigation destinations and keeps keyboard focus moving between links", async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      route.params = new URLSearchParams("tab=governance&project=p1&module=m1");
+      const { rerender } = setup();
+      const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
+      const governance = within(sections).getByRole("link", { current: "page" });
+      expect(scrollIntoView.mock.contexts).toContain(governance);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+      const links = within(sections).getAllByRole("link");
+      links[0]!.focus();
+      await userEvent.setup().tab();
+      expect(links[1]).toHaveFocus();
+
+      scrollIntoView.mockClear();
+      route.params = new URLSearchParams("tab=plan&plan_view=finance&project=p1&module=m1");
+      rerender(<CockpitPage />);
+      const plan = within(screen.getByRole("navigation", { name: enCockpit.shell.navigation })).getByRole("link", { current: "page" });
+      const finance = within(screen.getByRole("navigation", { name: enCockpit.plan_views.navigation })).getByRole("link", { current: "page" });
+      expect(scrollIntoView.mock.contexts).toContain(plan);
+      expect(scrollIntoView.mock.contexts).toContain(finance);
+      expect(finance).toHaveAttribute("href", "/acme/cockpit?tab=plan&plan_view=finance&project=p1&module=m1");
+      expect(screen.getByRole("button", { name: enCockpit.saved_views.title })).toBeInTheDocument();
+    } finally {
+      scrollIntoView.mockRestore();
+    }
+  });
+
   it("opens fixed artifact versions without mounting another surface or guessing its body", () => {
     route.params = new URLSearchParams("tab=artifacts&artifact=a1&artifact_version=v1");
     setup(); expect(screen.getByRole("region", { name: "Artifact reader" })).toHaveTextContent("a1:v1");
@@ -109,10 +157,21 @@ describe("unified cockpit shell", () => {
   });
 });
 
- it("opens Mika chat at the cockpit home without downloading the board and keeps overview available", () => {
-   route.params = new URLSearchParams("project=p1&module=m1"); setup();
+ it("opens explicit Mika chat without downloading the board and keeps overview available", () => {
+   route.params = new URLSearchParams("tab=chat&project=p1&module=m1"); setup();
    expect(screen.getByRole("region", { name: "Cockpit chat" })).toHaveTextContent('"projectId":"p1","moduleId":"m1"');
    expect(board).not.toHaveBeenCalled();
    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("aria-current", "page");
    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/acme/cockpit?tab=work&project=p1&module=m1");
+ });
+
+ it("opens the bare cockpit at overview and keeps Chat first with an explicit destination", () => {
+   route.params = new URLSearchParams("project=p1&module=m1"); setup();
+   expect(screen.getByRole("region", { name: "Work overview" })).toBeVisible();
+   expect(screen.queryByRole("region", { name: "Cockpit chat" })).toBeNull();
+   expect(board).not.toHaveBeenCalled();
+   const links = within(screen.getByRole("navigation", { name: enCockpit.shell.navigation })).getAllByRole("link");
+   expect(links[0]).toHaveTextContent("Chat");
+   expect(links[0]).toHaveAttribute("href", "/acme/cockpit?tab=chat&project=p1&module=m1");
+   expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
  });

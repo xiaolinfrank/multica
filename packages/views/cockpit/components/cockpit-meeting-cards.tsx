@@ -1,13 +1,13 @@
 "use client";
 
-import { cockpitMeetingSpan, cockpitMeetingContextPath, type CockpitScope } from "@multica/core/cockpit";
+import { cockpitMeetingSpan, cockpitMeetingContextPath, parseDay, type CockpitScope } from "@multica/core/cockpit";
 import type { CockpitMeetingCard } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { cn } from "@multica/ui/lib/utils";
 import { ArrowUpRight, CalendarDays, FolderOpen, Link2 } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
 import { useMeetingOccurrenceLabel } from "./use-meeting-occurrence-label";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 
 export function useMeetingStageLabel() {
   const { t } = useT("cockpit");
@@ -27,18 +27,20 @@ export function CockpitMeetingCards({ items, scope, selectedId }: {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
+  const locale = useLocale();
   const stageLabel = useMeetingStageLabel(); const occurrenceLabel = useMeetingOccurrenceLabel();
-  return <ul className="divide-y divide-border/65">{items.map((meeting) => <li key={meeting.id}>
-    <div className={cn("group grid min-w-0 gap-3 rounded-xl px-4 py-4 transition-colors hover:bg-accent/55 sm:grid-cols-[minmax(0,1fr)_auto]", selectedId === meeting.id && "bg-accent")}>
+  return <ul className="cockpit-agenda-cards @container/meeting-cards">{items.map((meeting) => <li key={meeting.id}>
+    <div className={cn("cockpit-agenda-card group grid min-w-0 gap-3 border-l-2 border-transparent px-4 py-4 transition-colors @min-[36rem]/meeting-cards:grid-cols-[minmax(0,1fr)_auto]", selectedId === meeting.id ? "border-l-brand bg-accent hover:bg-accent" : "hover:bg-muted")}>
     <AppLink href={cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams)} newTabTitle={meeting.title}
       aria-current={selectedId === meeting.id ? "true" : undefined} aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-      className="grid min-w-0 gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[120px_minmax(0,1fr)]">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground sm:block sm:space-y-1">
+      className="grid min-w-0 gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @min-[36rem]/meeting-cards:grid-cols-[120px_minmax(0,1fr)]">
+      <div className="cockpit-agenda-date flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground @min-[36rem]/meeting-cards:block @min-[36rem]/meeting-cards:space-y-1">
+        {meeting.meet_date && <span className="cockpit-date-plate" aria-hidden><strong>{parseDay(meeting.meet_date)?.getDate()}</strong><span>{parseDay(meeting.meet_date)?.toLocaleDateString(locale, { month: "short" })}</span></span>}
         <p className="inline-flex items-center gap-1.5 font-medium text-foreground"><CalendarDays className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />{meeting.meet_date ?? t(($) => $.meetings.undated_section)}</p>
         <p className="min-w-0 break-words tabular-nums">{cockpitMeetingSpan(meeting) || t(($) => $.meeting.all_day)}</p>
         <p className="min-w-0 break-words font-mono text-micro" title={meeting.code}>{meeting.code}</p>
       </div>
-      <div className="min-w-0 space-y-2"><h3 className="line-clamp-2 break-words text-body font-medium group-hover:underline" title={meeting.title}>{meeting.title || t(($) => $.issue_meetings.untitled)}</h3>
+      <div className="min-w-0 space-y-2"><h3 className="line-clamp-2 break-words text-body font-semibold group-hover:underline" title={meeting.title}>{meeting.title || t(($) => $.issue_meetings.untitled)}</h3>
         <p className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-caption text-muted-foreground [overflow-wrap:anywhere]">
           {meeting.kind && <span>{meeting.kind}</span>}
           {meeting.parties && <span className="line-clamp-1 max-w-full" title={meeting.parties}>{meeting.parties}</span>}
@@ -50,10 +52,10 @@ export function CockpitMeetingCards({ items, scope, selectedId }: {
         </div>
       </div>
     </AppLink>
-      <div className="flex max-w-full flex-wrap items-start justify-between gap-2 sm:max-w-52 sm:flex-col sm:items-end">
+      <div className="flex max-w-full flex-wrap items-start justify-between gap-2 @min-[36rem]/meeting-cards:max-w-48 @min-[36rem]/meeting-cards:flex-col @min-[36rem]/meeting-cards:items-end">
         {typeof meeting.occurrence_state === "string" && <AppLink href={cockpitMeetingContextPath(paths.cockpit(), meeting.id, scope, navigation.searchParams, undefined)} className="max-w-full break-words rounded-md bg-muted px-2 py-1 text-caption hover:underline" aria-label={`${t(($) => $.meeting_lifecycle.record_occurrence)} · ${occurrenceLabel(meeting.occurrence_state)}`}>{occurrenceLabel(meeting.occurrence_state)}</AppLink>}
         {meeting.archived_at && <span className="rounded-md bg-muted px-2 py-1 text-caption">{t(($) => $.meeting_disposition.archived)}</span>}
-        {meeting.workflow_enabled && <span className="rounded-md bg-brand/8 px-2 py-1 text-caption text-brand">{stageLabel(meeting.workflow_stage)}</span>}
+        {meeting.workflow_enabled && <span className="rounded-md bg-muted px-2 py-1 text-caption text-foreground">{stageLabel(meeting.workflow_stage)}</span>}
         {meeting.status && <span className="line-clamp-2 max-w-full break-words text-caption text-muted-foreground" title={meeting.status}>{typeof meeting.occurrence_state === "string" ? t(($) => $.meeting_lifecycle.custom_status_value, { status: meeting.status }) : meeting.status}</span>}
         <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </div>

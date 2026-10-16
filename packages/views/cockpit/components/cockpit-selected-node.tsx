@@ -52,7 +52,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const [removingPayment, setRemovingPayment] = useState<{ id: string; label: string } | null>(null); const deletionLock = useRef(false); const [deleteError, setDeleteError] = useState("");
   const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   const readonly = !detail?.actor.is_human || detail.scope_match === false || query.isError;
-  if (!detail) return <aside className="flex w-[min(54rem,70vw)] max-w-full shrink-0 flex-col border-l border-border bg-card p-4 max-xl:w-full">
+  if (!detail) return <aside className="flex min-w-0 w-[54rem] max-w-full shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-4 @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
     <Button type="button" variant="ghost" size="icon-sm" className="mb-3 ml-auto" aria-label={t(($) => $.panel.close)} onClick={close}><X /></Button>
     {query.isPending ? <div role="status" className="flex gap-2 text-caption"><Spinner />{t(($) => $.workflow.loading)}</div>
       : <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} />}

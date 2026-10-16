@@ -17,7 +17,7 @@ import { cockpitPlanFixture } from "./cockpit-read-test-fixture";
 import { CockpitChanges } from "./cockpit-changes";
 vi.mock("@multica/core/api", () => ({ api: { listCockpitChangePage: vi.fn(), getCockpitChangePreview: vi.fn(), applyReviewedCockpitChange: vi.fn(), rejectCockpitChange: vi.fn(), withdrawCockpitChange: vi.fn(), createCockpitChange: vi.fn(), getCockpitNodeIndex: vi.fn(), getCockpitPlan: vi.fn() } }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 const task: CockpitNode = {
   id: "task", cockpit_id: "cp", code: "historic-18", parent_id: null, name: "Review task",
@@ -30,7 +30,7 @@ function change(id: string): CockpitPendingChange {
   return { id, cockpit_id: "cp", node_id: task.id, node_code: task.code, node_name: task.name,
     field: "owner", old_value: "Li", new_value: "Wu", source: "manual", reason: "",
     status: "pending", created_by_type: "user", created_by_label: "Reviewer", decided_by_type: "",
-    decided_by_label: "", decided_at: null, created_at: "2026-09-18T08:00:00Z", updated_at: "2026-09-18T08:00:00Z" };
+    decided_by_label: "", decided_at: null, created_at: "2026-09-18T08:00:00Z", updated_at: "2026-09-18T08:00:00Z", source_task_id: "", source_issue: null, decision_note: "" };
 }
 
 let changes: CockpitPendingChange[];
@@ -51,6 +51,21 @@ beforeEach(() => {
   vi.mocked(api.applyReviewedCockpitChange).mockImplementation(async (_ws, preview) => applied(preview));
 });
 describe("bounded governance queue decisions", () => {
+  it("exposes one pressed status filter and switches the scoped queue without deciding a proposal", async () => {
+    changes = [change("pending"), { ...change("decided"), status: "applied" }];
+    show();
+    await screen.findByText("Modified value 1");
+    const filters = within(screen.getByRole("group", { name: enCockpit.governance.status }));
+    expect(filters.getByRole("button", { name: enCockpit.governance.pending, pressed: true })).toBeVisible();
+    fireEvent.click(filters.getByRole("button", { name: enCockpit.governance.decided, pressed: false }));
+    expect(await screen.findByText(enCockpit.changes.status_applied)).toBeVisible();
+    expect(filters.getByRole("button", { name: enCockpit.governance.decided, pressed: true })).toBeVisible();
+    expect(filters.getAllByRole("button", { pressed: true })).toHaveLength(1);
+    expect(api.listCockpitChangePage).toHaveBeenLastCalledWith("ws", { projectId: null, moduleId: null }, expect.objectContaining({ status: "decided", page_size: 25 }), expect.anything());
+    expect(api.applyReviewedCockpitChange).not.toHaveBeenCalled();
+    expect(api.rejectCockpitChange).not.toHaveBeenCalled();
+    expect(api.withdrawCockpitChange).not.toHaveBeenCalled();
+  });
   it("cancels a reviewed-page confirmation without writing or eagerly fetching the plan", async () => {
     show(); const { user, dialog } = await reviewPage(); await user.click(within(dialog).getByRole("button", { name: "Cancel" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(api.applyReviewedCockpitChange).not.toHaveBeenCalled(); expect(api.getCockpitPlan).not.toHaveBeenCalled(); expect(vi.mocked(api.listCockpitChangePage).mock.calls[0]?.[2]).toMatchObject({ status: "pending", page_size: 25 });

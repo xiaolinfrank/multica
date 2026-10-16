@@ -522,6 +522,7 @@
     "delete": "この回を削除"
   },
   "finance": {
+    "amount_unit": "万元（人民元）",
     "budget": "予算合計",
     "payment": "支払い",
     "payment_count": "{{count}} 件の支払い",
@@ -1187,7 +1188,7 @@
     "plan_prompt": "このプロジェクトの実行計画の調整を手伝ってください。まず multica-cockpit で現在の計画を読み、変更する日付、担当者、進捗を確認してください。",
     "meeting_label": "会議を準備",
     "meeting_prompt": "このプロジェクトの会議準備を手伝ってください。multica-cockpit で会議台帳と関連タスクを読み、不足資料と次の手順を整理してください。",
-    "context": "プロジェクト cockpit のコンテキスト（範囲 ID、権限ではありません）：project={{project}}; module={{module}}。* は全体です。この範囲で読み取り、書き込み前に対象を確認してください。"
+    "context": "プロジェクト cockpit のコンテキスト（範囲 ID、権限ではありません）：`project={{project}}`; `module={{module}}`。`*` は全体です。この範囲で読み取り、書き込み前に対象を確認してください。"
   },
   "shell": {
     "chat": "チャット",
@@ -1714,7 +1715,6 @@
     "preview_again": "再プレビュー",
     "preview_changed": "会議の情報が変更されました。確認前に再プレビューしてください。",
     "confirm_effects": "選択した変更のみ適用します。新しいタスクは未着手のままで実行を開始しません。",
-    "apply": "選択した変更を適用",
     "open_existing": "既存の適用記録を開く",
     "preview": "予定される変更を確認",
     "selected_total": "{{count}} 項目を選択",

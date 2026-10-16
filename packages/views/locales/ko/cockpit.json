@@ -522,6 +522,7 @@
     "delete": "이 회차 삭제"
   },
   "finance": {
+    "amount_unit": "만 위안",
     "budget": "예산 합계",
     "payment": "지급",
     "payment_count": "지급 {{count}}건",
@@ -1187,7 +1188,7 @@
     "plan_prompt": "이 프로젝트의 실행 계획 조정을 도와주세요. 먼저 multica-cockpit으로 현재 계획을 읽고 변경할 날짜, 담당자 또는 진행률을 확인해 주세요.",
     "meeting_label": "회의 준비",
     "meeting_prompt": "이 프로젝트의 회의 준비를 도와주세요. multica-cockpit으로 회의 기록과 관련 작업을 읽고 부족한 자료와 다음 단계를 정리해 주세요.",
-    "context": "프로젝트 cockpit 컨텍스트(범위 ID이며 권한이 아님): project={{project}}; module={{module}}. *는 전체입니다. 이 범위로 읽고 쓰기 전에 정확한 대상을 확인하세요."
+    "context": "프로젝트 cockpit 컨텍스트(범위 ID이며 권한이 아님): `project={{project}}`; `module={{module}}`. `*`는 전체입니다. 이 범위로 읽고 쓰기 전에 정확한 대상을 확인하세요."
   },
   "shell": {
     "chat": "채팅",
@@ -1714,7 +1715,6 @@
     "preview_again": "다시 미리보기",
     "preview_changed": "회의 정보가 변경되었습니다. 확인하기 전에 다시 미리 보세요.",
     "confirm_effects": "선택한 변경만 적용합니다. 새 작업은 대기 상태로 유지되며 실행하지 않습니다.",
-    "apply": "선택한 변경 적용",
     "open_existing": "기존 적용 기록 열기",
     "preview": "실행할 변경 확인",
     "selected_total": "{{count}}개 항목 선택",

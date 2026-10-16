@@ -61,7 +61,7 @@ export function CockpitPage() {
   const reportHref = `${navigation.pathname}?${reportParams}`;
   const pendingChanges = useQuery({ ...cockpitChangePageOptions(wsId, scope, { status: "pending", page_size: 1 }), enabled: Boolean(metadata && !isReport) });
   const artifactId = navigation.searchParams.get("artifact");
-  const focusedMeeting = surface === "meetings" && Boolean(navigation.searchParams.get("meeting") && metadata);
+  const focusedWorkbench = Boolean(metadata && ((surface === "meetings" && navigation.searchParams.get("meeting")) || (surface === "plan" && navigation.searchParams.get("node"))));
   const projectLabel = scope.projectId ? metadata?.scope.project_title || scope.projectId : t(($) => $.shell.all_projects);
   const moduleLabel = scope.moduleId ? metadata?.scope.module_title || scope.moduleId : "";
   const scopeLabel = [projectLabel, moduleLabel].filter(Boolean).join(" / ");
@@ -69,7 +69,7 @@ export function CockpitPage() {
     onCommit={(value) => update.mutate({ title: value }, { onError: () => toast.error(t(($) => $.errors.save_failed)) })}
     label={t(($) => $.header.title)} placeholder={t(($) => $.header.title_placeholder)} displayClassName="text-title-sm font-semibold" /> : undefined;
   if (isReport && metadata && today) return <><CockpitInputInspector wsId={wsId} accountId={metadata.actor.user_id} /><CockpitReport wsId={wsId} scope={scope} asOf={today} returnHref={returnHref} /></>;
-  return <><CockpitInputInspector wsId={wsId} accountId={metadata?.actor.user_id ?? ""} /><CockpitShell surface={surface} scope={scope} title={title} focusedMeeting={focusedMeeting}
+  return <><CockpitInputInspector wsId={wsId} accountId={metadata?.actor.user_id ?? ""} /><CockpitShell surface={surface} scope={scope} title={title} focusedWorkbench={focusedWorkbench}
     scopeSummary={<span className="block truncate" title={scopeLabel}>{scopeLabel}</span>} pendingChangeCount={pendingChanges.data?.counts.pending} artifactsAvailable={metadata?.capabilities?.artifacts === true}
     actions={metadata && <>{metadata.actor.is_human && surface !== "chat" && <CockpitSavedViewsControl wsId={wsId} userId={metadata.actor.user_id} capture={() => captureCockpitSavedView(wsId, navigation.searchParams)}
       onApply={(definition) => { applyCockpitSavedView(wsId, definition); navigation.push(cockpitSavedViewPath(navigation.pathname, definition)); }} />}
@@ -81,7 +81,7 @@ export function CockpitPage() {
       : !metadata ? <div role="alert" className="space-y-4 p-6"><p className="text-body">{t(($) => $.shell.invalid_scope)}</p><div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => void context.refetch()}>{t(($) => $.binding.retry)}</Button>
         <AppLink href={cockpitSurfacePath(navigation.pathname, surface)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.shell.clear_scope)}</AppLink></div></div>
-        : surface === "chat" ? <CockpitChat scope={scope} />
+        : surface === "chat" ? <div className="cockpit-chat-studio flex min-h-0 min-w-0 flex-1 flex-col"><CockpitChat scope={scope} /></div>
           : surface === "work" ? <CockpitWorkOverview key={wsId} wsId={wsId} today={today} scope={scope} />
           : surface === "artifacts" ? metadata.capabilities?.artifacts !== true ? <div role="status" className="space-y-3 p-6 text-caption"><p>{t(($) => $.feature_availability.unavailable)}</p><AppLink href={cockpitSurfacePath(navigation.pathname, "plan", scope)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.shell.plan)}</AppLink></div> : artifactId ? <CockpitArtifactDetail key={artifactId} wsId={wsId} artifactId={artifactId} versionId={navigation.searchParams.get("artifact_version")} scope={scope} currentUserId={metadata.actor.user_id} readOnly={!metadata.actor.is_human || context.isError} />
             : <CockpitArtifacts wsId={wsId} scope={scope} nodeId={navigation.searchParams.get("artifact_node") ?? undefined} />

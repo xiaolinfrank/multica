@@ -221,8 +221,8 @@ export function CockpitMeetingPanel({
   }, [workflowQuery.data, meeting.id, issueLinks]);
 
   return (
-    <aside className="cockpit-panel-enter flex w-[min(46rem,65vw)] max-w-full shrink-0 flex-col border-l border-border bg-card max-xl:w-full max-xl:border-l-0">
-      <header className="flex items-start gap-2 border-b border-border p-3">
+    <aside className="cockpit-workbench cockpit-panel-enter @container/meeting-panel flex min-w-0 w-[46rem] max-w-full shrink-0 flex-col border-l border-border bg-card @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
+      <header tabIndex={0} className="cockpit-workbench-header flex max-h-[30%] shrink-0 items-start gap-2 overflow-y-auto border-b border-border p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         <div className="min-w-0 flex-1">
           <EditableText
             value={meeting.code}
@@ -239,7 +239,7 @@ export function CockpitMeetingPanel({
               label={t(($) => $.meeting.title)}
               placeholder={t(($) => $.meeting.title_placeholder)}
               disabled={readOnly}
-              displayClassName="text-title-sm font-semibold"
+              displayClassName="max-w-full whitespace-normal break-words text-title-sm font-semibold [overflow-wrap:anywhere]"
             />
           </div>
         </div>
@@ -250,7 +250,7 @@ export function CockpitMeetingPanel({
           type="button"
           onClick={onClose}
           aria-label={t(($) => $.panel.close)}
-          className="rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="sticky top-0 z-10 flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" />
         </button>
@@ -262,7 +262,7 @@ export function CockpitMeetingPanel({
           scan must not do. */}
       {notice && <div className="border-b p-3">{notice}</div>}
       {meeting.detected && (
-        <div className="flex items-start gap-2 border-b border-border bg-warning-subtle px-3 py-2">
+        <div className="flex flex-wrap items-start gap-2 border-b border-border bg-warning-subtle px-4 py-3">
           <ScanSearch className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <p className="min-w-0 flex-1 text-caption text-muted-foreground">
             {t(($) => $.meeting.detected_hint)}
@@ -271,7 +271,6 @@ export function CockpitMeetingPanel({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 shrink-0 gap-1 px-1.5 text-caption"
               onClick={() => onPatch({ detected: false })}
             >
               <Check className="size-3" />
@@ -281,17 +280,17 @@ export function CockpitMeetingPanel({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-5 p-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="cockpit-meeting-body-grid p-4"><div className="cockpit-meeting-main min-w-0 space-y-5">
           {/* Top region: the highlighted stage card. The timeline selects
               the working surface; the checkmarks read off the meeting's
               confirmed facts. */}
-          <section aria-label={t(($) => $.meeting_stage.strip)} className="rounded-xl border border-primary/30 bg-primary/5 p-3 shadow-sm">
+          <section aria-label={t(($) => $.meeting_stage.strip)} className="cockpit-meeting-stage-workspace min-w-0 rounded-xl border border-border bg-background p-3">
             <Tabs value={stage} onValueChange={openStage} className="gap-0">
-              <TabsList className="relative h-auto w-full justify-center gap-2 bg-transparent p-0">
+              <TabsList className="cockpit-stage-navigation relative grid h-auto w-full grid-cols-3 gap-1 rounded-lg bg-muted p-1 group-data-horizontal/tabs:h-auto">
                 <CockpitMeetingStageTabs occurrenceState={lifecycleQuery.data?.occurrence.state ?? meeting.occurrence_state} workflow={workflowQuery.data} timing={stageTiming} now={now} />
               </TabsList>
-              <div className="mt-3 border-t border-primary/15 pt-3">
+              <div className="cockpit-stage-content mt-4 min-w-0 border-t border-border pt-4">
                 <TabsContent value="preparation" keepMounted>
                   {preparationOpened && <CockpitMeetingPreparation key={`${wsId}:${meeting.id}`} wsId={wsId} currentUserId={currentUserId} meeting={meeting}
                     defaultPlacement={defaultPlacement} defaultAssigneeType={defaultAssigneeType} defaultAssigneeId={defaultAssigneeId} readOnly={readOnly} />}
@@ -313,7 +312,7 @@ export function CockpitMeetingPanel({
 
           {/* Middle region: every issue and execution task the meeting
               carries, whatever stage opened it. */}
-          <section aria-label={t(($) => $.meeting.issues)} className="space-y-3">
+          <section aria-label={t(($) => $.meeting.issues)} className="cockpit-meeting-links space-y-3">
             <h3 className="text-title-sm font-medium">{t(($) => $.meeting.issues)}</h3>
             {issuePageReady && issueLinks.length === 0 ? (
               <p className="text-caption text-muted-foreground">{t(($) => $.meeting.no_issues)}</p>
@@ -367,13 +366,14 @@ export function CockpitMeetingPanel({
             )}
           </section>
 
+          </div>
           {/* Bottom region: the long fact area — directory, schedule,
               people, and the maintenance corners. */}
-          <section aria-label={t(($) => $.meeting_stage.tab_details)} className="space-y-3">
+          <section aria-label={t(($) => $.meeting_stage.tab_details)} className="cockpit-meeting-facts @container/meeting-facts min-w-0 space-y-3">
             <h3 className="text-title-sm font-medium">{t(($) => $.meeting_stage.tab_details)}</h3>
             <CockpitPathField value={meeting.nas_dir} label={t(($) => $.meeting.folder)} empty={t(($) => $.meeting.no_folder)} readOnly={readOnly} onCommit={onSaveDirectory} />
             {lifecycleAvailable && lifecycleQuery.data ? <CockpitMeetingOccurrence wsId={wsId} header={lifecycleQuery.data} refresh={reloadWorkflow} readOnly={readOnly} /> : null}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="cockpit-meeting-fact-fields grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/meeting-facts:grid-cols-2">
               <CockpitField label={t(($) => $.meeting.date)}>
                 <EditableDate
                   value={meeting.meet_date}
@@ -447,7 +447,7 @@ export function CockpitMeetingPanel({
                   disabled={readOnly}
                 />
               </CockpitField>
-              <CockpitField label={t(($) => $.meeting.parties)} className="col-span-2">
+              <CockpitField label={t(($) => $.meeting.parties)} className="min-w-0 @min-[28rem]/meeting-facts:col-span-2">
                 <EditableTokens
                   value={meeting.parties}
                   onCommit={(parties) => onPatch({ parties })}
@@ -458,7 +458,7 @@ export function CockpitMeetingPanel({
                   disabled={readOnly}
                 />
               </CockpitField>
-              <CockpitField label={t(($) => $.meeting.organizer)} className="col-span-2">
+              <CockpitField label={t(($) => $.meeting.organizer)} className="min-w-0 @min-[28rem]/meeting-facts:col-span-2">
                 <EditableSuggest
                   value={meeting.organizer}
                   onCommit={(organizer) => onPatch({ organizer })}
@@ -480,7 +480,7 @@ export function CockpitMeetingPanel({
                 <CockpitMemberNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
                 <CockpitContactNamePicker wsId={wsId} label={t(($) => $.meeting.organizer)} disabled={readOnly} onSelect={(organizer) => onPatch({ organizer })} />
               </CockpitField>
-              <CockpitField label={t(($) => $.meeting.attendees)} className="col-span-2">
+              <CockpitField label={t(($) => $.meeting.attendees)} className="min-w-0 @min-[28rem]/meeting-facts:col-span-2">
                 <CockpitAttendeeField
                   value={meeting.attendees}
                   onCommit={(attendees) => onPatch({ attendees })}

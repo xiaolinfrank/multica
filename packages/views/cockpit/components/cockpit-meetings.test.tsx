@@ -11,6 +11,7 @@ import enCommon from "../../locales/en/common.json";
 // the server applies one rule to both and a rule is stated once.
 import enProjects from "../../locales/en/projects.json";
 import type { CockpitBoard, CockpitMeeting, CockpitDirectoryEntry } from "@multica/core/types";
+import { CockpitMeetings } from "./cockpit-meetings";
 
 // The register's wiring: the tab renders the board's meetings, the four views
 // are reachable, selecting one opens its panel, and filing one shows the name
@@ -1045,5 +1046,32 @@ describe("the timeline", () => {
     expect(pct()).toBeLessThan(zoomed);
     fireEvent.click(reset);
     expect(pct()).toBe(100);
+  });
+});
+
+
+describe("meeting toolbar secondary actions", () => {
+  it.each([false, true])("keeps supplied actions available with readOnly=%s while gating meeting writes", async (readOnly) => {
+    const onCreate = vi.fn(), onScan = vi.fn(), onVersions = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
+      <CockpitMeetings wsId="ws-1" scope={{ projectId: null, moduleId: null }} today={todayString()} selectedId={null} onSelect={vi.fn()} onCreate={onCreate} onScan={onScan} readOnly={readOnly}
+        toolbarActions={<button type="button" onClick={onVersions}>Version history</button>} />
+    </I18nProvider></QueryClientProvider>);
+    const register = screen.getByRole("region", { name: "Meetings" });
+    fireEvent.click(within(register).getByRole("button", { name: "Version history" }));
+    expect(onVersions).toHaveBeenCalledOnce();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onScan).not.toHaveBeenCalled();
+    await within(register).findByRole("link", { name: "Open Working group weekly" });
+    if (readOnly) {
+      expect(within(register).queryByRole("button", { name: "New meeting" })).toBeNull();
+      expect(within(register).queryByRole("button", { name: "Read from the share" })).toBeNull();
+    } else {
+      fireEvent.click(within(register).getByRole("button", { name: "New meeting" }));
+      fireEvent.click(within(register).getByRole("button", { name: "Read from the share" }));
+      expect(onCreate).toHaveBeenCalledOnce();
+      expect(onScan).toHaveBeenCalledOnce();
+    }
   });
 });

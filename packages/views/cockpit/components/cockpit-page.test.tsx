@@ -316,6 +316,20 @@ describe("CockpitPage", () => {
     expect(api.getCockpitMeetingDetail).toHaveBeenCalledWith("ws-1", "meet-1", { projectId: null, moduleId: null }, expect.any(AbortSignal));
   });
 
+  it("keeps one register create action and version history inside the meeting surface", async () => {
+    navSearch.params = new URLSearchParams("tab=meetings");
+    resetCockpitTestNavigation(`/ws/cockpit?${navSearch.params}`);
+    renderPage();
+    await screen.findByLabelText("Open Working group weekly");
+    const register = screen.getByRole("region", { name: enCockpit.shell.meetings });
+    const create = within(register).getByRole("button", { name: enCockpit.meeting.new });
+    expect(screen.getAllByRole("button", { name: enCockpit.meeting.new })).toHaveLength(1);
+    expect(within(register).getByRole("button", { name: enCockpit.versions.button })).toBeInTheDocument();
+    fireEvent.click(create);
+    expect(await screen.findByRole("dialog", { name: enCockpit.meetings.create_title })).toBeInTheDocument();
+    expect(api.createCockpitMeeting).not.toHaveBeenCalled();
+  });
+
   it("lands on the folded gantt row from the ?node= deep link", async () => {
     // The graph's execution nodes land here: gantt tab with the row actually
     // revealed — first paint folds every branch with children, so selecting
@@ -448,7 +462,7 @@ describe("CockpitPage", () => {
         source: "manual", reason: "", status: "pending",
         created_by_type: "member", created_by_label: "Li",
         decided_by_type: "", decided_by_label: "", decided_at: null,
-        created_at: "", updated_at: "",
+        created_at: "", updated_at: "", source_task_id: "", source_issue: null, decision_note: "",
       }
     ] });
     renderPage();
@@ -607,6 +621,8 @@ describe("CockpitPage", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
     expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
+    expect(screen.queryByText(enCockpit.plan_structure.empty)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add plan item" })).toBeEnabled();
   });
 
   // Parent binding, observed code, retry identity and late receipts have their
@@ -855,7 +871,7 @@ describe("CockpitPage versions", () => {
         decided_by_label: "",
         decided_at: null,
         created_at: "2026-09-08T02:00:00Z",
-        updated_at: "2026-09-08T02:00:00Z",
+        updated_at: "2026-09-08T02:00:00Z", source_task_id: "", source_issue: null, decision_note: "",
       },
     ];
 
@@ -895,7 +911,7 @@ describe("CockpitPage versions", () => {
         decided_by_label: "",
         decided_at: null,
         created_at: "2026-09-08T02:00:00Z",
-        updated_at: "2026-09-08T02:00:00Z",
+        updated_at: "2026-09-08T02:00:00Z", source_task_id: "", source_issue: null, decision_note: "",
       },
     ];
     vi.mocked(api.applyReviewedCockpitChange).mockResolvedValue({
@@ -917,7 +933,7 @@ describe("CockpitPage versions", () => {
         decided_by_label: "Owner",
         decided_at: "2026-09-08T03:00:00Z",
         created_at: "2026-09-08T02:00:00Z",
-        updated_at: "2026-09-08T03:00:00Z",
+        updated_at: "2026-09-08T03:00:00Z", source_task_id: "", source_issue: null, decision_note: "",
       },
       node: { ...board.nodes[1]!, progress: 80 },
     });

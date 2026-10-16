@@ -58,6 +58,27 @@ describe("work overview read model", () => {
     expect(screen.getByRole("link", { name: /Release review/ })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1");
   });
 
+  it("keeps the compact snapshot's count basis separate from human review authority", async () => {
+    const result = workOverview();
+    result.actor.is_human = false;
+    result.attention.items = [overviewAttention(1, {
+      kind: "workflow", reason: "review_pending", next_action: "review_minutes", can_act: true,
+      target: { ...overviewAttention(1).target, kind: "meeting", id: "meeting-1", meeting_id: "meeting-1" },
+    })];
+    vi.mocked(api.getCockpitWorkOverview).mockResolvedValue(result);
+    setup();
+    await screen.findByText("Open item 1");
+    const snapshot = within(screen.getByRole("region", { name: "Execution snapshot" }));
+    expect(snapshot.getByText("8")).toBeVisible();
+    expect(snapshot.getByText("10")).toBeVisible();
+    expect(snapshot.getByText(enCockpit.work_overview.acceptance_basis)).toBeVisible();
+    expect(queue().getByText(enCockpit.work_overview.queue_basis)).toBeVisible();
+    expect(queue().getByRole("heading", { name: "Next actions" })).toBeVisible();
+    expect(queue().getByRole("button", { name: enCockpit.work_overview.mine })).toHaveAttribute("aria-pressed", "true");
+    expect(queue().getByRole("link", { name: "View details" })).toHaveAttribute("href", "/ws/cockpit?meeting=meeting-1");
+    expect(queue().queryByRole("link", { name: enCockpit.work_overview.review_minutes })).toBeNull();
+  });
+
   it("continues the preview with size 8, starts the complete queue at 25 without its cursor, and resets scope for Team", async () => {
     setup(); await screen.findByText("Open item 1");
     fireEvent.click(queue().getByRole("button", { name: "Next page" }));

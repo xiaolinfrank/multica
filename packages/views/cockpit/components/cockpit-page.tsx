@@ -74,7 +74,6 @@ import {
   Crosshair,
   Download,
   Layers,
-  Plus,
   Search,
 } from "lucide-react";
 import { useNavigation } from "../../navigation";
@@ -561,15 +560,22 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   const roots = tree.map((entry) => entry.node);
   const isBoardView = tab === "gantt" || tab === "finance";
+  const versionActions = cockpit && <CockpitVersions wsId={wsId} canRestore={canRestore}
+    hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
+    hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
+    hasMeetingPreparation={context.data?.has_meeting_preparation === true}
+    hasDirectoryHistory={context.data?.has_directory_history === true}
+    hasInputReferences={context.data?.has_input_references === true} inputReferenceMeetings={context.data?.input_reference_meetings ?? []} inputReferenceMeetingsTotal={context.data?.input_reference_meetings_total ?? 0} onRefreshInputReferences={() => void context.refetch()}
+    meetingsHref={cockpitScopedPath(navigation.pathname, new URLSearchParams(context.data?.has_directory_history === true ? "tab=meetings&meeting_archive=all" : "tab=meetings"), { projectId: null, moduleId: null })}
+    hasStableBindings={context.data?.has_stable_bindings !== false} />;
 
   return (
-    <div className="cockpit-skin flex h-full min-h-0 flex-col">
-      <header className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2", (tab === "meetings" ? Boolean(selectedMeetingId) : showTaskWorkspace) && "max-xl:hidden")}>
-        <span className="flex-1" />
+    <div className="cockpit-skin flex h-full min-h-0 min-w-0 flex-col">
+      {tab !== "meetings" && <header className={cn("cockpit-plan-toolbar flex min-w-0 shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3", showTaskWorkspace && "@max-[80rem]/cockpit-shell:hidden")}>
 
         {isBoardView && (
-          <>
-            <div className="relative">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:flex-none">
               <Search
                 className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
                 aria-hidden
@@ -579,7 +585,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t(($) => $.toolbar.search_placeholder)}
                 aria-label={t(($) => $.toolbar.search)}
-                className="h-7 w-56 pl-7 text-caption"
+                className="h-8 w-full pl-7 text-caption sm:w-64"
               />
             </div>
 
@@ -626,23 +632,14 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-          </>
-        )}
-
-        {tab === "gantt" && planView === "gantt" && (
-          <Button variant="ghost" size="icon-sm" aria-expanded={toolsOpen}
-            aria-controls="cockpit-secondary-toolbar"
-            aria-label={toolsOpen ? t(($) => $.toolbar.collapse_controls) : t(($) => $.toolbar.expand_controls)}
-            onClick={() => setToolsOpen((open) => !open)}>
-            {toolsOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
-          </Button>
+          </div>
         )}
 
         {/* The two headline figures stay out of the collapsible toolbar: they
             are the board's state, not a control, and the shipped board keeps
             them visible however the controls are folded. */}
         {tab === "gantt" && planView === "gantt" && (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             <ProgressChip
               label={t(($) => $.toolbar.overall_progress)}
               value={overall.overall}
@@ -661,6 +658,42 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             )}
           </div>
         )}
+
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+          {tab === "gantt" && planView === "gantt" && (
+            <Button variant="ghost" size="icon-sm" aria-expanded={toolsOpen}
+              aria-controls="cockpit-secondary-toolbar"
+              aria-label={toolsOpen ? t(($) => $.toolbar.collapse_controls) : t(($) => $.toolbar.expand_controls)}
+              onClick={() => setToolsOpen((open) => !open)}>
+              {toolsOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
+            </Button>
+          )}
+
+          {board && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
+          {versionActions}
+
+          {tab === "gantt" && planView === "gantt" && board && <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
+                  <Download className="size-3.5" />
+                  {t(($) => $.toolbar.export)}
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("png")}>
+                {t(($) => $.toolbar.export_png)}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("pdf")}>
+                {t(($) => $.toolbar.export_pdf)}
+              </DropdownMenuItem>
+
+            </DropdownMenuContent>
+          </DropdownMenu>}
+
+          {tab !== "changes" && <CockpitPlanStructureCreate wsId={wsId} scope={scope} defaultKind={scope.moduleId && nodes.some((node) => node.module_id === scope.moduleId) ? "task" : scope.projectId && nodes.some((node) => node.project_id === scope.projectId && !node.module_id) ? "module" : "project"} disabled={context.data?.actor.is_human !== true || planQuery.isError} onCreated={openTask} />}
+        </div>
 
         {tab === "gantt" && planView === "gantt" && toolsOpen && (
           <div id="cockpit-secondary-toolbar" className="order-last flex w-full flex-wrap items-center gap-2">
@@ -733,57 +766,15 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             </Button>
           </div>
         )}
+      </header>}
 
-        {board && tab !== "meetings" && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
-        {cockpit && <CockpitVersions wsId={wsId} canRestore={canRestore}
-          hasMeetingWorkflows={context.data?.has_meeting_workflows === true}
-          hasMeetingLifecycle={context.data?.has_meeting_lifecycle === true}
-          hasMeetingPreparation={context.data?.has_meeting_preparation === true}
-          hasDirectoryHistory={context.data?.has_directory_history === true}
-          hasInputReferences={context.data?.has_input_references === true} inputReferenceMeetings={context.data?.input_reference_meetings ?? []} inputReferenceMeetingsTotal={context.data?.input_reference_meetings_total ?? 0} onRefreshInputReferences={() => void context.refetch()}
-          meetingsHref={cockpitScopedPath(navigation.pathname, new URLSearchParams(context.data?.has_directory_history === true ? "tab=meetings&meeting_archive=all" : "tab=meetings"), { projectId: null, moduleId: null })}
-          hasStableBindings={context.data?.has_stable_bindings !== false} />}
-
-        {tab === "gantt" && planView === "gantt" && board && <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
-                <Download className="size-3.5" />
-                {t(($) => $.toolbar.export)}
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("png")}>
-              {t(($) => $.toolbar.export_png)}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={tab !== "gantt" || exporting} onClick={() => void exportChart("pdf")}>
-              {t(($) => $.toolbar.export_pdf)}
-            </DropdownMenuItem>
-
-          </DropdownMenuContent>
-        </DropdownMenu>}
-
-        {/* The register's primary action is a meeting, not a work item —
-            offering "add node" while showing meetings would file the wrong
-            thing in one click. */}
-        {tab === "meetings" ? (
-          <Button size="sm" className="h-7 gap-1 px-2" disabled={context.data?.actor.is_human !== true} onClick={() => setCreatingMeeting(true)}>
-            <Plus className="size-3.5" />
-            {t(($) => $.meeting.new)}
-          </Button>
-        ) : tab !== "changes" ? (
-          <CockpitPlanStructureCreate wsId={wsId} scope={scope} defaultKind={scope.moduleId && nodes.some((node) => node.module_id === scope.moduleId) ? "task" : scope.projectId && nodes.some((node) => node.project_id === scope.projectId && !node.module_id) ? "module" : "project"} disabled={context.data?.actor.is_human !== true || planQuery.isError} onCreated={openTask} />
-        ) : null}
-      </header>
-
-      <div className="relative flex min-h-0 flex-1">
+      <div className="@container/cockpit relative flex min-h-0 min-w-0 flex-1">
         {/* Keyed on the tab so each switch replays the short entrance on the
             fresh body — the chrome stays put, the content arrives. */}
-        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", tab === "meetings" && selectedMeetingId && "max-xl:hidden",
-          tab !== "meetings" && showTaskWorkspace && "max-xl:hidden")}>
+        <div key={tab} className={cn("cockpit-tab-enter flex min-w-0 flex-1 flex-col overflow-hidden", (tab === "gantt" || tab === "finance") && "cockpit-plan-stage", tab === "meetings" && selectedMeetingId && "@max-[80rem]/cockpit:hidden",
+          tab !== "meetings" && showTaskWorkspace && "@max-[80rem]/cockpit:hidden")}>
           {tab !== "meetings" && tab !== "changes" && planQuery.isError && <CockpitReadFailure error={planQuery.error} wsId={wsId} scope={scope} resource="plan" busy={planQuery.isFetching} onRetry={() => void planQuery.refetch()} />}
-          {tab !== "meetings" && tab !== "changes" && planQuery.isSuccess && !planQuery.isError && (!board || board.nodes.length === 0) && <p className="p-8 text-body text-muted-foreground">{t(($) => $.plan_structure.empty)}</p>}
+          {tab !== "meetings" && tab !== "changes" && planQuery.isSuccess && !planQuery.isError && (!board || (board.nodes.length === 0 && tab === "overview")) && <p className="p-8 text-body text-muted-foreground">{t(($) => $.plan_structure.empty)}</p>}
           {tab !== "meetings" && tab !== "changes" && planQuery.isPending && <div className="space-y-3 p-4"><Skeleton className="h-20" /><Skeleton className="h-64" /></div>}
           {tab === "overview" && board && (
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -855,6 +846,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               onSelect={openMeeting}
               onCreate={() => setCreatingMeeting(true)}
               onScan={() => setScanningMeetings(true)}
+              toolbarActions={versionActions}
               dispositionAvailable={context.data?.capabilities?.meeting_disposition === true}
               readOnly={context.data?.actor.is_human !== true}
             />

@@ -106,6 +106,7 @@ const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
+const controllerOptions = vi.hoisted(() => ({ current: undefined as unknown }));
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSeedAgent = vi.hoisted(() => vi.fn());
 const mockSeedProject = vi.hoisted(() => vi.fn());
@@ -136,7 +137,7 @@ vi.mock("@multica/core/chat", () => ({
 vi.mock("./components/use-chat-controller", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
-    useChatController: () => ({
+    useChatController: (options: unknown) => (controllerOptions.current = options, {
       wsId: "ws-1",
       user: { id: "user-1" },
       agents: availableAgentsRef.current,
@@ -502,7 +503,11 @@ describe("ChatPage responsive layout", () => {
 });
 
 describe("cockpit-hosted ChatPage", () => {
-  const props = { routeHref: "/acme/cockpit?project=p1&module=m1", defaultAgentSystemKey: "mika", defaultProjectId: "p1", initialContext: "project=p1; module=m1" };
+  const props = { routeHref: "/acme/cockpit?project=p1&module=m1", defaultAgentSystemKey: "mika", fixedAgentSystemKey: "mika", defaultProjectId: "p1", initialContext: "project=p1; module=m1" };
+  it("passes the fixed Mika restriction to the shared controller", () => {
+    renderPage("project=p1&module=m1", { pathname: "/acme/cockpit", pageProps: props });
+    expect(controllerOptions.current).toEqual(expect.objectContaining({ fixedAgentSystemKey: "mika" }));
+  });
   it("seeds a fresh scoped Mika compose once under StrictMode, with visible context on the first message", () => {
     renderPage("project=p1&module=m1", { strict: true, pathname: "/acme/cockpit", pageProps: props });
     expect(mockSeedAgent).toHaveBeenCalledTimes(1);

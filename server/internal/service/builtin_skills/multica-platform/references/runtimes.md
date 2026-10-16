@@ -156,6 +156,8 @@ Check in this order:
 7. If repo checkout failed, classify it after checking whether repo context was
    present in the task/project context.
 
+Claude 托管任务默认直接提供工具定义（任务级 `ENABLE_TOOL_SEARCH=false`），避免兼容端点的延迟发现问题；不修改宿主全局配置或工具权限。若 agent 声称没有执行工具，请由宿主操作员核对 daemon 的 `claude initialized` 日志：`bash_tool=available` 仅代表 CLI 已注册 Bash，`missing` 表示已报告清单中缺少 Bash，`unknown` 表示未获得有效清单。再核对实际 `Bash` 调用及工具结果，不能仅凭 agent 的文字判断或自动放宽权限。
+
 ## Repos
 
 The runtime brief lists repos available to this task. Treat that list as the

@@ -9,7 +9,10 @@
 // chart and drifted from it. Here they are the same rows, one source, edited
 // where they are read.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Table2, Wallet } from "lucide-react";
+import { CockpitViewHeading } from "./cockpit-view-heading";
+import { useReducedMotion } from "motion/react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useNavigation } from "../../navigation";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
@@ -35,6 +38,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
 import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
+import { cockpitTableLayout } from "./cockpit-layout";
 
 /** Which grid is showing. Both read the same rows; they differ in the columns. */
 export type CockpitTableMode = "tasks" | "finance";
@@ -75,10 +79,11 @@ export function formatAmount(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+function Th({ children, className, style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <th
       scope="col"
+      style={style}
       className={cn(
         "sticky top-0 z-10 border-b border-border bg-background px-2 py-1.5 text-left text-caption font-medium whitespace-nowrap text-muted-foreground",
         className,
@@ -89,8 +94,8 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
   );
 }
 
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("border-b border-border/50 px-2 py-1 align-top", className)}>{children}</td>;
+function Td({ children, className, style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+  return <td style={style} className={cn("border-b border-border/50 px-2 py-1 align-top", className)}>{children}</td>;
 }
 
 /** Read-only cell for a value the board derives rather than stores. */
@@ -166,9 +171,21 @@ export function CockpitTable({
 }: CockpitTableProps) {
   const { t } = useT("cockpit");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const reduceMotion = useReducedMotion() === true;
+  const { codeWidth, nameWidth, pinName } = cockpitTableLayout(viewportWidth);
+  const hasNodes = board.nodes.length > 0;
 
   const tableRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const read = () => setViewportWidth(element.clientWidth);
+    const observer = new ResizeObserver(read);
+    observer.observe(element); read();
+    return () => observer.disconnect();
+  }, [hasNodes, mode]);
   const wsId = useWorkspaceId(); const navigation = useNavigation();
   useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), mode]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
@@ -217,12 +234,12 @@ export function CockpitTable({
       const first = tableRef.current?.querySelector<HTMLTableRowElement>("tbody tr[data-node-id]");
       if (!first) return;
       event.preventDefault();
-      first.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      first.scrollIntoView?.({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
       onSelect(first.dataset.nodeId!);
     };
     document.addEventListener("keydown", locate);
     return () => document.removeEventListener("keydown", locate);
-  }, [query, searchLabel, onSelect, mode]);
+  }, [query, searchLabel, onSelect, mode, reduceMotion]);
 
   const emptyLabel = t(($) => $.common.unset);
 
@@ -245,16 +262,15 @@ export function CockpitTable({
     const totalBudget = financeRows.reduce((sum, row) => sum + row.budget, 0);
     const totalActual = financeRows.reduce((sum, row) => sum + (row.actualAmount ?? 0), 0);
     return (
-      <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
-        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
-          {t(($) => $.table.finance_hint, {
-            rows: financeRows.length,
-            budget: formatAmount(totalBudget),
-            actual: formatAmount(totalActual),
-          })}
-          {query.trim() && <> · {t(($) => $.table.search_matches, { count: financeRows.length })}</>}
-        </p>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
+        <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
+          <span className="text-caption text-muted-foreground" role="status">{query.trim() ? t(($) => $.table.search_matches, { count: financeRows.length }) : t(($) => $.finance.line_count, { n: financeRows.length })}</span>
+        </CockpitViewHeading>
+        <dl className="cockpit-ledger-totals">
+          <div><dt>{t(($) => $.finance.budget)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalBudget)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+          <div><dt>{t(($) => $.finance.actual)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalActual)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+        </dl>
+        <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
           <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
             <thead>
               <tr>
@@ -416,16 +432,14 @@ export function CockpitTable({
   }
 
   return (
-    <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
-      <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
-        {query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}
-      </p>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+    <div ref={tableRef} className="cockpit-plan-table flex min-h-0 min-w-0 flex-1 flex-col">
+      <CockpitViewHeading title={t(($) => $.plan_views.table)} icon={Table2} description={<p role="status">{query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}</p>} />
+      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
         <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
           <thead>
             <tr>
-              <Th className="left-0 z-30 w-[100px] min-w-[100px]">{t(($) => $.node.code)}</Th>
-              <Th className="left-[100px] z-30 min-w-[260px]">{t(($) => $.node.name)}</Th>
+              <Th className="left-0 z-30" style={{ width: codeWidth, minWidth: codeWidth }}>{t(($) => $.node.code)}</Th>
+              <Th className={cn(pinName && "z-30")} style={{ left: pinName ? codeWidth : undefined, minWidth: nameWidth }}>{t(($) => $.node.name)}</Th>
               <Th>{"L1"}</Th>
               <Th>{"L2"}</Th>
               <Th>{t(($) => $.node.owner)}</Th>
@@ -465,7 +479,7 @@ export function CockpitTable({
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   className={rowClass(node.id)}
                 >
-                  <Td className={cn("sticky left-0 z-10 w-[100px] min-w-[100px] max-w-[100px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
+                  <Td style={{ width: codeWidth, minWidth: codeWidth, maxWidth: codeWidth }} className={cn("sticky left-0 z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <span
                       className="flex items-center gap-1 whitespace-nowrap"
                       title={node.code}
@@ -484,7 +498,7 @@ export function CockpitTable({
                       </button>
                     </span>
                   </Td>
-                  <Td className={cn("sticky left-[100px] z-10 w-[260px] min-w-[260px] max-w-[260px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
+                  <Td style={{ left: pinName ? codeWidth : undefined, width: nameWidth, minWidth: nameWidth, maxWidth: nameWidth }} className={cn(pinName && "sticky z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <EditableText
                       value={node.name}
                       onCommit={(name) => onPatchNode(node.id, { name })}

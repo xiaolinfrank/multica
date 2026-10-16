@@ -696,13 +696,22 @@ export class TestApiClient {
     const result = await response.json();
     if (result.results?.length !== changes.length || result.results.some((row: { status: string }) => row.status !== "queued")) throw new Error("Proposal fixture did not queue every change");
   }
-  async patchOwnedCockpitNode(nodeId: string, patch: { progress?: number; owner?: string; name?: string; code?: string }) {
+  async patchOwnedCockpitNode(nodeId: string, patch: { progress?: number; owner?: string; name?: string; code?: string; budget_amount?: number; exec_status?: string; collaborators?: string }) {
     if (!this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Node mutation requires fixture ownership");
     const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}`, { method: "PATCH", body: JSON.stringify(patch) });
     if (!response.ok) throw new Error(`Node fixture patch failed: ${response.status} ${await response.text()}`);
     const node = await response.json(); if (node.id !== nodeId) throw new Error("Node fixture patch identity mismatch");
     return node;
   }
+  async createOwnedCockpitMilestone(nodeId: string, name: string, planDate: string, actualDate: string | null = null) {
+    if (!this.workspaceId || !this.createdWorkspaceIds.includes(this.workspaceId) || !this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Milestone fixture requires this client's workspace and node");
+    const response = await this.authedFetch("/api/cockpit/milestones", { method: "POST", body: JSON.stringify({ node_id: nodeId, name, plan_date: planDate, actual_date: actualDate, status: "" }) });
+    if (!response.ok) throw new Error(`Milestone fixture failed: ${response.status} ${await response.text()}`);
+    const milestone = await response.json();
+    if (!milestone.id || milestone.node_id !== nodeId || milestone.name !== name) throw new Error("Milestone fixture identity mismatch");
+    return milestone;
+  }
+
   async getOwnedCockpitNode(nodeId: string) {
     if (!this.createdCockpitNodeIds.includes(nodeId)) throw new Error("Node read requires fixture ownership");
     const response = await this.authedFetch(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}`);

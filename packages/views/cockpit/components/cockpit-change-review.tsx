@@ -50,18 +50,18 @@ function ChangeReviewSession({ wsId, scope, contextKey, ids, canApplyField, fiel
     if (lock.current) return; setError(""); setStale(false); setConfirmedOverwrite(false);
     preview.mutate(requestedIds.filter((id) => !done.includes(id)));
   };
-  return <Dialog open onOpenChange={(open) => { if (!open && !lock.current) onClose(); }}><DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl" showCloseButton={!working}>
+  return <Dialog open onOpenChange={(open) => { if (!open && !lock.current) onClose(); }}><DialogContent className="cockpit-skin cockpit-review-dialog @container/change-review flex max-h-[85vh] flex-col overflow-hidden sm:max-w-5xl" showCloseButton={!working}>
     <DialogHeader><DialogTitle>{t(($) => $.governance.review_title)}</DialogTitle></DialogHeader>
     {preview.isPending ? <div role="status" className="flex items-center gap-2 text-caption"><Spinner />{t(($) => $.governance.loading_preview)}</div>
       : preview.isError ? <div role="alert" className="space-y-2 text-caption text-destructive"><p>{t(($) => $.errors.load_failed)}</p><Button type="button" variant="outline" size="sm" onClick={refresh}>{t(($) => $.binding.retry)}</Button></div>
-        : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">{observations.map((item) => <section key={item.change.id} className="space-y-3 rounded-xl border border-border p-4">
-          <h3 className="break-words text-body font-medium">{item.change.node_name} / {fieldLabel(item.change.field)}</h3>
+        : <div className="cockpit-review-observations min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">{observations.map((item) => <section key={item.change.id} className="cockpit-review-observation min-w-0 space-y-3 rounded-xl border border-border bg-card p-4">
+          <h3 className="break-words text-body font-semibold">{item.change.node_name} / {fieldLabel(item.change.field)}</h3>
           <p className="text-caption text-muted-foreground break-words">{t(($) => $.governance.current_scope)}: {item.context.project_title || item.context.project_id || t(($) => $.binding.none)}{item.context.module_id ? ` / ${item.context.module_title || item.context.module_id}` : ""}</p>
           {outsideScope(item) && <div role="alert" className="space-y-1 text-caption"><p>{t(($) => $.governance.outside_scope)}</p><AppLink href={cockpitSurfacePath(navigation.pathname, "governance", { projectId: item.context.project_id, moduleId: item.context.module_id }, "changes")} className="text-primary underline">{t(($) => $.governance.open_current_scope)}</AppLink></div>}
           {done.includes(item.change.id) ? <p className="text-caption text-success">{t(($) => $.changes.status_applied)}</p> : <>
             {(item.change.status !== "pending" || !canApplyField(item.change.field)) && <p className="text-caption text-muted-foreground">{t(($) => $.governance.preview_unavailable)}</p>}
             {item.conflict && <p className="text-caption text-warning-foreground">{t(($) => $.governance.conflict)}</p>}
-            <dl className="grid min-w-0 gap-3 sm:grid-cols-3">{[{ label: t(($) => $.governance.proposed_from), value: item.change.old_value }, { label: t(($) => $.governance.current_value), value: item.current_value }, { label: t(($) => $.governance.proposed_to), value: item.change.new_value }].map((field) => <div key={field.label} className="min-w-0"><dt className="mb-1 text-caption text-muted-foreground">{field.label}</dt><dd><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/60 p-3 text-caption">{field.value || t(($) => $.changes.clear_value)}</pre></dd></div>)}</dl>
+            <dl className="cockpit-review-comparison grid min-w-0 gap-3 @min-[38rem]/change-review:grid-cols-3">{[{ label: t(($) => $.governance.proposed_from), value: item.change.old_value }, { label: t(($) => $.governance.current_value), value: item.current_value }, { label: t(($) => $.governance.proposed_to), value: item.change.new_value }].map((field, index) => <div key={field.label} data-comparison={index === 2 ? "proposed" : index === 1 ? "current" : "original"} className="min-w-0 rounded-lg border border-border bg-muted p-3"><dt className="mb-2 text-caption font-medium text-muted-foreground">{field.label}</dt><dd><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-sans text-body [overflow-wrap:anywhere]">{field.value || t(($) => $.changes.clear_value)}</pre></dd></div>)}</dl>
             {item.change.reason && <p className="whitespace-pre-wrap break-words text-caption text-muted-foreground">{item.change.reason}</p>}
           </>}
         </section>)}</div>}
@@ -70,7 +70,7 @@ function ChangeReviewSession({ wsId, scope, contextKey, ids, canApplyField, fiel
     {hasConflict && !unavailable && <label className="flex items-start gap-2 text-caption"><Checkbox checked={confirmedOverwrite} disabled={working} onCheckedChange={(value) => setConfirmedOverwrite(value === true)} />{t(($) => $.governance.confirm_overwrite)}</label>}
     {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
     {stale && <p className="text-caption text-muted-foreground">{t(($) => $.governance.preview_stale)}</p>}
-    <DialogFooter className="shrink-0"><DialogClose render={<Button type="button" variant="outline" disabled={working} />}>{t(($) => $.binding.cancel)}</DialogClose>
+    <DialogFooter className="shrink-0 border-t border-border pt-4"><DialogClose render={<Button type="button" variant="outline" disabled={working} />}>{t(($) => $.binding.cancel)}</DialogClose>
       {(stale || error) && <Button type="button" variant="outline" disabled={working || preview.isPending} onClick={refresh}>{t(($) => $.governance.refresh_preview)}</Button>}
       <Button type="button" disabled={readOnly || working || preview.isPending || preview.isError || stale || unavailable || !remaining.length || (hasConflict && !confirmedOverwrite)} onClick={() => void confirm()}>{working && <Spinner />}{t(($) => $.governance.confirm_reviewed)}</Button>
     </DialogFooter>

@@ -9,7 +9,7 @@ export function CockpitChat({ scope }: { scope: CockpitScope }) {
   const { t } = useT("cockpit");
   const { pathname } = useNavigation();
   return <ChatPageSurface routeHref={cockpitSurfacePath(pathname, "chat", scope)}
-    defaultAgentSystemKey="mika" defaultProjectId={scope.projectId} title={t(($) => $.shell.chat)}
+    defaultAgentSystemKey="mika" fixedAgentSystemKey="mika" defaultProjectId={scope.projectId} title={t(($) => $.shell.chat)}
     initialContext={t(($) => $.chat.context, { project: scope.projectId ?? "*", module: scope.moduleId ?? "*" })}
     conversationStarters={[
       { label: t(($) => $.chat.overview_label), prompt: t(($) => $.chat.overview_prompt) },

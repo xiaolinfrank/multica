@@ -33,6 +33,8 @@ export function cockpitScope(search: { get: (name: string) => string | null }): 
 export function cockpitScopedPath(pathname: string, search: URLSearchParams, scope: CockpitScope): string {
   const query = new URLSearchParams(search);
   if (query.get("project") !== scope.projectId || query.get("module") !== scope.moduleId) {
+    if (!query.has("tab") && (query.has("session") || query.has("agent"))
+      && !query.has("node") && !query.has("meeting") && !query.has("artifact")) query.set("tab", "chat");
     query.delete("session"); query.delete("agent");
   }
   if (scope.projectId) query.set("project", scope.projectId); else query.delete("project");
@@ -44,7 +46,7 @@ export function cockpitScopedPath(pathname: string, search: URLSearchParams, sco
 export function cockpitSurfacePath(pathname: string, surface: CockpitSurface, scope: CockpitScope = EMPTY_COCKPIT_SCOPE,
   view?: CockpitPlanView | CockpitGovernanceView | CockpitArtifactView): string {
   const query = new URLSearchParams();
-  if (surface !== "chat") query.set("tab", surface);
+  query.set("tab", surface);
   if (view && surface === "plan") query.set("plan_view", view);
   if (view && surface === "governance") query.set("governance_view", view);
   if (view && surface === "artifacts") query.set("artifact_view", view);
@@ -59,7 +61,8 @@ export function cockpitShellDestination(search: { get: (name: string) => string 
   const surface: CockpitSurface = search.get("artifact") ? "artifacts" : search.get("meeting") ? "meetings" : search.get("node") ? "plan"
     : search.get("view") === "operations" || tab === "gantt" || tab === "finance" || tab === "plan" ? "plan"
       : tab === "changes" || tab === "governance" ? "governance"
-        : tab === "meetings" || tab === "artifacts" ? tab : tab === "work" || tab === "overview" ? "work" : "chat";
+        : tab === "meetings" || tab === "artifacts" ? tab : tab === "work" || tab === "overview" ? "work"
+          : tab === "chat" || search.get("session") || search.get("agent") ? "chat" : "work";
   const planView: CockpitPlanView = search.get("view") === "operations" ? "operations" : tab === "finance" ? "finance"
     : plan === "table" || plan === "responsibility" || plan === "milestones" || plan === "finance" || plan === "operations" ? plan : "gantt";
   return { surface, planView,

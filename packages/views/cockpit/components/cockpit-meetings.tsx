@@ -15,6 +15,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, ScanSearch } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
+import { SegmentedToggle } from "../../common/segmented-toggle";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { CockpitMeetingCards } from "./cockpit-meeting-cards";
 import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
@@ -35,10 +36,11 @@ export interface CockpitMeetingsProps {
   readOnly?: boolean;
   templatesAvailable?: boolean;
   dispositionAvailable?: boolean;
+  toolbarActions?: React.ReactNode;
 }
 
 /** Server-filtered metadata pages. Calendar counts cover the window, never just the first metadata page. */
-export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, dispositionAvailable = false }: CockpitMeetingsProps) {
+export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, dispositionAvailable = false, toolbarActions }: CockpitMeetingsProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
   const navigation = useNavigation();
@@ -119,44 +121,51 @@ export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCr
       : !readOnly && <Button type="button" variant="outline" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button>}
   </div>;
 
-  return <section aria-label={t(($) => $.shell.meetings)} className="flex min-h-0 min-w-0 flex-1 flex-col">
-    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-card/60 px-4 py-3">
-      <div role="group" aria-label={t(($) => $.meetings.view)} className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-        {VIEWS.map((value) => <Button key={value} type="button" variant={view === value ? "secondary" : "ghost"} size="sm" aria-pressed={view === value}
-          onClick={() => update({ view: value })}>{viewLabels[value]}</Button>)}
+  return <section aria-label={t(($) => $.shell.meetings)} className="cockpit-meeting-workspace flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="cockpit-filter-strip flex flex-wrap items-center gap-3 px-4 py-3">
+      <div role="group" aria-label={t(($) => $.meetings.view)} className="min-w-0 max-w-full overflow-x-auto">
+        <SegmentedToggle value={view} options={VIEWS.map((value) => [value, viewLabels[value]] as const)} onChange={(value) => update({ view: value })}
+          buttonClassName="min-h-8 whitespace-nowrap rounded-md px-3 py-1.5 text-caption focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
       </div>
       {dispositionAvailable && <Select value={state.archive} items={(["active", "archived", "all"] as const).map((value) => ({ value, label: t(($) => $.meeting_disposition[`filter_${value}`]) }))} onValueChange={(archive) => { if (archive === "active" || archive === "archived" || archive === "all") changeArchive(archive); }}><SelectTrigger aria-label={t(($) => $.meeting_disposition.archive_filter)}><SelectValue /></SelectTrigger><SelectContent>{(["active", "archived", "all"] as const).map((value) => <SelectItem key={value} value={value}>{t(($) => $.meeting_disposition[`filter_${value}`])}</SelectItem>)}</SelectContent></Select>}
       <CockpitMeetingFilterBar filter={filter} onChange={changeFilter} meetings={page?.items ?? data?.items ?? []} today={today} />
-      {!readOnly && <div className="ml-auto flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={onScan}><ScanSearch className="size-3.5" />{t(($) => $.meetings.scan)}</Button>
-        <Button type="button" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button></div>}
+      {(toolbarActions || !readOnly) && <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
+        {toolbarActions}
+        {!readOnly && <><Button type="button" variant="outline" size="sm" onClick={onScan}><ScanSearch className="size-3.5" />{t(($) => $.meetings.scan)}</Button>
+          <Button type="button" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button></>}
+      </div>}
     </div>
     {(relatedNodeId || relatedNodeIds.length > 0) && <div className="border-b border-border bg-muted/40 px-4 py-2 text-caption"><span>{t(($) => $.meeting_center.related_work_item)}</span> <AppLink href={cockpitSurfacePath(navigation.pathname, "meetings", scope)} className="text-primary hover:underline">{t(($) => $.meeting_center.back_to_register)}</AppLink></div>}
     {data && <CockpitMeetingFilterChips filter={filter} onChange={changeFilter} shown={calendar ? data.total : data.items.length} total={data.total} />}
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
-      <div className="mx-auto flex h-full min-h-0 max-w-[1480px] flex-col gap-4">
-        {calendar && <div className="flex flex-wrap items-center gap-2"><CalendarDays className="size-4 text-muted-foreground" aria-hidden />
-          <h2 className="mr-auto text-title-sm font-medium">{period}</h2><Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.previous)} onClick={() => shift(-1)}><ChevronLeft /></Button>
+    <div className="@container/meeting-register min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
+      <div className={cn("mx-auto flex min-h-0 max-w-[1480px] flex-col gap-4", calendar ? "min-h-full" : "h-full")}>
+        <div className="cockpit-agenda-heading flex flex-wrap items-center gap-3"><span className="cockpit-page-symbol" aria-hidden><CalendarDays className="size-6" /></span>
+          <div className="mr-auto min-w-0"><h2 className="text-display-sm font-semibold tracking-tight">{calendar ? period : t(($) => $.shell.meetings)}</h2>{data && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.meetings.count, { n: data.total })}</p>}</div>{calendar && <><Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.previous)} onClick={() => shift(-1)}><ChevronLeft /></Button>
           <Button type="button" variant="outline" size="sm" onClick={() => update({ anchorDay: today, selectedDay: today })}>{t(($) => $.meetings.today)}</Button>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.next)} onClick={() => shift(1)}><ChevronRight /></Button></div>}
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.next)} onClick={() => shift(1)}><ChevronRight /></Button></>}</div>
         {disjointDates ? empty : register.isError && !data ? error(() => void register.refetch()) : register.isPending || searching ? loading : <>
           {register.isError && data && <div role="alert" className="rounded-lg bg-warning-subtle p-3 text-caption">{t(($) => $.work_overview.refresh_failed)}<Button type="button" variant="ghost" size="sm" onClick={() => void register.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
-          {calendar && <div className="shrink-0 overflow-x-auto rounded-xl border border-border bg-card"><div className="grid min-w-[560px] grid-cols-7 gap-px bg-border/65">
+          <div className={cn("min-h-0 gap-4", calendar ? "grid items-start @min-[64rem]/meeting-register:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : "flex flex-1 flex-col")}>
+          {calendar && <div className="cockpit-calendar min-w-0 overflow-x-auto"><div className="grid min-w-[560px] grid-cols-7 gap-px bg-border">
             {days.slice(0, 7).map((date) => <div key={`head-${date}`} className="bg-card py-2 text-center text-caption text-muted-foreground">{dayName.format(new Date(`${date}T00:00:00Z`))}</div>)}
             {days.map((date) => <Button key={date} type="button" variant="ghost" aria-label={t(($) => $.meeting_center.open_day, { date, count: dayCounts.get(date) ?? 0 })} aria-pressed={selectedDay === date}
-              onClick={() => update({ selectedDay: date })} className={cn("h-auto min-h-20 flex-col items-start justify-start gap-2 rounded-none p-3 text-left", date === selectedDay ? "bg-accent hover:bg-accent" : "bg-card hover:bg-muted", view === "month" && !date.startsWith(month) && "text-muted-foreground")}>
+              onClick={() => update({ selectedDay: date })} className={cn("cockpit-calendar-day h-auto min-h-20 min-w-0 flex-col items-start justify-start gap-2 rounded-none p-2 text-left", date === selectedDay ? "bg-accent ring-1 ring-inset ring-brand hover:bg-accent" : "bg-card hover:bg-muted", view === "month" && !date.startsWith(month) && "text-muted-foreground")}>
               <span className={cn("text-caption tabular-nums", date === today && "rounded bg-brand px-1.5 text-brand-foreground")}>{date.slice(8)}</span>
-              {(dayCounts.get(date) ?? 0) > 0 && <span className="rounded bg-brand/10 px-1.5 py-0.5 text-micro text-brand">{t(($) => $.meetings.count, { n: dayCounts.get(date) ?? 0 })}</span>}
+              {(dayCounts.get(date) ?? 0) > 0 && <span className="max-w-full whitespace-normal break-words rounded bg-brand/10 px-1.5 py-0.5 text-micro text-brand">{t(($) => $.meetings.count, { n: dayCounts.get(date) ?? 0 })}</span>}
             </Button>)}
           </div></div>}
-          {calendar && !selectedDay ? <p className="text-caption text-muted-foreground">{t(($) => $.meeting_center.choose_day)}</p> : <>
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-3", !calendar && "flex-1")}>
+          {calendar && !selectedDay ? <p className="rounded-xl border border-dashed border-border bg-card p-4 text-caption text-muted-foreground">{t(($) => $.meeting_center.choose_day)}</p> : <>
             {selectedDay && <h3 className="text-title-sm font-medium">{selectedDay}</h3>}
             <div className="shrink-0">{pager}</div>
             {pageQuery.isError && !page ? error(() => void pageQuery.refetch()) : pageQuery.isPending ? loading : page && <>
               {pageQuery.isError && <p role="alert" className="text-caption text-destructive">{t(($) => $.work_overview.refresh_failed)}</p>}
               {page.items.length === 0 ? empty : view === "timeline" ? <><p className="text-caption text-muted-foreground">{t(($) => $.meeting_center.page_timeline)}</p><div className="min-h-[480px] flex-1"><CockpitMeetingTimeline meetings={page.items} today={today} selectedId={selectedId} onSelect={onSelect} /></div></>
-                : <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card"><CockpitMeetingCards items={page.items} scope={scope} selectedId={selectedId} /></div>}
+                : <div ref={listRef} className={cn("cockpit-agenda-list min-h-0 overflow-y-auto overscroll-contain", calendar ? "max-h-[40rem]" : "flex-1")}><CockpitMeetingCards items={page.items} scope={scope} selectedId={selectedId} /></div>}
             </>}
           </>}
+          </div>
+          </div>
         </>}
       </div>
     </div>

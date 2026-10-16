@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-14",
+  "branch": "codex/cockpit-native-foundation",
+  "design": "Orbital / 银灰画布、深墨导航、电蓝仪表",
+  "request": "完整、有鲜明视觉语言的驾驶舱内部重设计，不以间距边框微调代替视觉交付",
+  "scope": [
+    "驾驶舱壳体与六个工作区",
+    "执行计划六子视图的统一导航及画布",
+    "节点与会议详情工作台",
+    "仅包裹 Mika 聊天，不修改共享聊天实现"
+  ],
+  "reference_translation": [
+    "第2条滑动高亮块：Motion 共享布局高亮；保留 URL、AppLink 和 aria-current",
+    "第3条银灰工作台及仪表：总览改成非对称主视觉、真实状态环与信号卡",
+    "第4条白色立体材质：文档展柜、叠纸图形、局部投影及悬停反馈",
+    "第5条深色导航与第6条明度分层：仅在驾驶舱内部建立深墨导航、银灰底和实体卡片",
+    "不复制非商业参考仓库代码，不把视频素材作为产品分发资源，不编造图表数据"
+  ],
+  "source_files_sha256": {
+    "e2e/cockpit-ui-layout.spec.ts": "2cf21730e700eed3c9afebddbe4285ca9bcb22a17d6fc15eaac6ccde586ac77d",
+    "packages/ui/styles/cockpit.css": "984c999e44f9eb27131e631d69ff673c80b21ae2909148e7bbf9da581f779b14",
+    "packages/views/cockpit/components/cockpit-artifacts.tsx": "d3e35122b752cb70ad1f93403ba9663b1c77d490e38af0b0c2d9b82692e83a5e",
+    "packages/views/cockpit/components/cockpit-changes.tsx": "11bf77c59c5922d8cc555c8f457cb35ab3a98b3da7a5edad85f3b8c1bcdc146b",
+    "packages/views/cockpit/components/cockpit-entry.tsx": "0019fd47cb4a55934d6737417360232d2fccec2fc09aab3f110f27a3cc5a6401",
+    "packages/views/cockpit/components/cockpit-gantt.tsx": "b1fb198db9f639757ebdae3587c2d483685f83d1d5c901c0a4e77c71b30b9f1e",
+    "packages/views/cockpit/components/cockpit-meeting-cards.tsx": "d22c113cbfe0bcb1b66418f441b7fcd4b34ad0cf53234bb0d8697f2d23493582",
+    "packages/views/cockpit/components/cockpit-meeting-panel.tsx": "3a8dab561ceccfd01c5e8257be697da98cf2f20126fc4faaaa4d180d1a1df268",
+    "packages/views/cockpit/components/cockpit-meeting-stage.tsx": "30969bef286f0591582429f1c81adbac9aed0b353c2dac92f8dd34e05825d07d",
+    "packages/views/cockpit/components/cockpit-meetings.tsx": "053fc4b84aeea50f19260103943ea87367e52dbe895348ede9284a08f62bd3fa",
+    "packages/views/cockpit/components/cockpit-node-panel.tsx": "b63742e12fcfb7ea0eefec7d1374ccb8aa4efaca6eb4280ab4bf15134393d49b",
+    "packages/views/cockpit/components/cockpit-page.tsx": "238c0df26d332e77a236bbeaafd2850bb06b58ed3cedfc8aad02d5ddda0763d2",
+    "packages/views/cockpit/components/cockpit-plan-views.tsx": "ace15ef682819ddfe0c4569f730b0d69ecda12dd24951e22af92ca2d444fe1b4",
+    "packages/views/cockpit/components/cockpit-shell.tsx": "67213befffbc9e1221bab64daa46beb24feb1befd1eb6783cc67fd0d3c0a01bd",
+    "packages/views/cockpit/components/cockpit-status-orbit.test.tsx": "b37ec88ea06e2712816df274e4cf99ea24869dff37cd4e8625d598843452f238",
+    "packages/views/cockpit/components/cockpit-status-orbit.tsx": "000672fd6d7d93ebfcf3356b3b972ac80cb6bda553b166904f208160bbcf4df8",
+    "packages/views/cockpit/components/cockpit-work-overview.tsx": "4e47a7a3107227f811d74fe57014c94aeac57e168bbba9b913686d0deee44e6f"
+  },
+  "validation": {
+    "runtime_host": "fosun_agent_3 / 10.35.182.2",
+    "candidate": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-orbital-20261014-S5u7Kj/site",
+    "build_id": "xXfUBjRgIvMaJPGZpsW7a",
+    "unit": {
+      "files": 22,
+      "passed": 185,
+      "failed": 0,
+      "skipped": 0,
+      "log": "ui-redesign-tests-final.log"
+    },
+    "browser": {
+      "tests": 2,
+      "passed": 2,
+      "layout_log": "ui-browser.log",
+      "governance_log": "ui-redesign-governance.log",
+      "matrix": [
+        "六页签 × 1440/768/320 × 浅色/深色",
+        "六种计划视图",
+        "会议月/周与日期选择",
+        "普通动效与 reduced-motion",
+        "键盘导航",
+        "长标题工作台",
+        "紧凑甘特名称编辑不跨行",
+        "审阅页窄屏标题宽度",
+        "治理分页、409冲突、再次确认后应用"
+      ],
+      "layout_uncaught_page_errors": 0,
+      "fixture_agent_runs": 0,
+      "screenshots": 52,
+      "screenshot_directory": "/Users/fosun_main_agent/var/multica/.playwright-mcp/cockpit-orbital-final-emiYmJ"
+    },
+    "static": {
+      "shared_views_typecheck": "passed on coordinating Mac",
+      "desktop_renderer_typecheck": "passed on coordinating Mac using typecheck:web",
+      "targeted_eslint": "passed",
+      "git_diff_check": "passed"
+    },
+    "manual_pmo": {
+      "read_only": true,
+      "surfaces": [
+        "总览",
+        "产出物"
+      ],
+      "moving_pill_distinct_positions": 16,
+      "nav_white_text_contrast": {
+        "light": 6.19,
+        "dark": 4.61
+      },
+      "images": [
+        ".playwright-mcp/cockpit-orbital-pmo-overview.png",
+        ".playwright-mcp/cockpit-orbital-pmo-artifacts.png"
+      ]
+    },
+    "iteration_notes": [
+      "修正新单测误写英文标签，使用现有译文作为断言",
+      "桌面检查改用仓库 typecheck:web 脚本（--composite false）",
+      "Fumadocs bin 字段为字符串，按实际包声明调用",
+      "治理首次 E2E 未加载远端开发 .env 导致测试库不存在；加载现有开发环境后通过",
+      "截图发现桌面导航裁切及窄屏审阅标题过窄，修复并补浏览器断言"
+    ],
+    "not_run": [
+      "全量前端测试",
+      "Go 后端测试",
+      "mobile 测试",
+      "desktop 运行时验收",
+      "真实智能体 smoke",
+      "真实 PNG/PDF 下载验收"
+    ]
+  },
+  "delivery": {
+    "implementation_complete": true,
+    "preview_running": true,
+    "preview_url": "http://10.35.182.2:13002/pmo-showcase/cockpit?tab=work",
+    "preview_pid": 39309,
+    "preview_limitation": "13002 不在现有开发 API WebSocket 来源白名单，页面读取与视觉导航可用，实时推送握手返回403；未放宽白名单或修改后端配置。常驻13000切换需单独确认。",
+    "resident_web_13000_replaced": false,
+    "resident_web_pid": 29818,
+    "api_pid": 13143,
+    "api_started_at": "2026-10-14T11:10:13Z",
+    "canonical_mika_matches_live": true,
+    "pmo_business_data_modified_by_this_task": false,
+    "api_restarted": false,
+    "daemon_restarted": false,
+    "production_changed": false,
+    "committed": false,
+    "pushed": false
+  }
+}
