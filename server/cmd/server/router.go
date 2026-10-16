@@ -452,6 +452,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		LLMDisableThinking:           opts.LLMDisableThinking,
 	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, store, cfSigner, analyticsClient, signupConfig, daemonHub)
+	if configFile := strings.TrimSpace(os.Getenv("MULTICA_STAR_OIDC_CONFIG")); configFile != "" {
+		h.StarLoginConfigured = true
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		star, err := auth.LoadStarOIDC(ctx, configFile, signupConfig.AppURL)
+		cancel()
+		if err != nil {
+			slog.Error("star OIDC sign-in unavailable; verify private provider configuration")
+		} else {
+			h.StarOIDC = star
+		}
+	}
+
 	h.Fleet = fleet.New(fleet.LoadDevices())
 	invitationRateLimits := handler.DefaultInvitationRateLimits()
 	invitationRateLimits.Actor.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_ACTOR_10M", invitationRateLimits.Actor.Limit)
@@ -1525,6 +1537,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Post("/auth/send-code", h.SendCode)
 	r.With(authVerifyRL).Post("/auth/verify-code", h.VerifyCode)
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
+	r.With(authRL).Get("/auth/star/start", h.StarSignIn)
+	r.With(authVerifyRL).Get("/auth/star/callback", h.StarCallback)
 	r.Post("/auth/logout", h.Logout)
 
 	// Public API

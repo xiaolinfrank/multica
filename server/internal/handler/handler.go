@@ -304,6 +304,8 @@ type Handler struct {
 	CloudRuntime                 cloudRuntimeProxy
 	// Test-only HTTP override; nil uses the default client in production.
 	googleOAuthHTTPClient *http.Client
+	StarOIDC              *auth.StarOIDC
+	StarLoginConfigured   bool
 	// Lark integration. All three are nil when the Lark master key
 	// (MULTICA_LARK_SECRET_KEY) is unset; the corresponding HTTP
 	// handlers return 403 in that case so a misconfigured self-host
@@ -671,8 +673,8 @@ func writeEditConflict(w http.ResponseWriter, resourceType string, resourceID pg
 // For unvalidated user input at request boundaries, use parseUUIDOrBadRequest
 // (writes 400) — never feed raw chi.URLParam / request-body strings into
 // parseUUID directly when the call writes to the database.
-func parseUUID(s string) pgtype.UUID                { return util.MustParseUUID(s) }
-func uuidToString(u pgtype.UUID) string             { return util.UUIDToString(u) }
+func parseUUID(s string) pgtype.UUID    { return util.MustParseUUID(s) }
+func uuidToString(u pgtype.UUID) string { return util.UUIDToString(u) }
 func uuidToStringPtr(u pgtype.UUID) *string {
 	if !u.Valid {
 		return nil

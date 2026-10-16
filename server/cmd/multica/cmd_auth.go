@@ -280,8 +280,7 @@ func runAuthLoginBrowser(cmd *cobra.Command) error {
 			http.Error(w, "invalid state parameter", http.StatusBadRequest)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(callbackSuccessHTML))
+		writeCallbackSuccess(w)
 		jwtCh <- token
 	})
 
@@ -506,10 +505,20 @@ func runAuthStatus(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// Keep the native handoff, but do not leave its bearer token in the visible URL
+// or permit a browser to cache/referrer-share the completion document.
+func writeCallbackSuccess(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	_, _ = w.Write([]byte(callbackSuccessHTML))
+}
+
 const callbackSuccessHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>history.replaceState(null,"",location.pathname)</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Multica — Authenticated</title>
 <style>

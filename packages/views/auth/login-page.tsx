@@ -57,6 +57,9 @@ interface LoginPageProps {
   onTokenObtained?: () => void;
   /** Override Google login handler (e.g. desktop opens browser externally). When provided, renders the Google button even if `google` config is omitted. */
   onGoogleLogin?: () => void;
+  /** The shell opens the configured star account flow, retaining its return destination. */
+  onStarLogin?: () => void;
+  starError?: string;
   /** Slot rendered at the bottom of the sign-in card, below the
    *  Google button. The web shell uses it for a "Prefer the desktop
    *  app?" prompt; desktop omits it (a download prompt inside the app
@@ -81,13 +84,18 @@ export function redirectToCliCallback(url: string, token: string, state: string)
 export function validateCliCallback(cliCallback: string): boolean {
   try {
     const cbUrl = new URL(cliCallback);
-    if (cbUrl.protocol !== "http:") return false;
+    if (cbUrl.protocol !== "http:" || cbUrl.username || cbUrl.password || cbUrl.hash) return false;
     const h = cbUrl.hostname;
     if (h === "localhost" || h === "127.0.0.1") return true;
-    // Allow RFC 1918 private IPs: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
-    if (/^10\./.test(h)) return true;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
-    if (/^192\.168\./.test(h)) return true;
+    // A private-looking DNS name is not a private address. Parse all four
+    // octets instead of trusting a hostname prefix before handing off a token.
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(h)) return false;
+    const octets = h.split(".").map(Number);
+    if (octets.some((part) => part > 255)) return false;
+    const [first = -1, second = -1] = octets;
+    if (first === 10) return true;
+    if (first === 172 && second >= 16 && second <= 31) return true;
+    if (first === 192 && second === 168) return true;
     return false;
   } catch {
     return false;
@@ -105,6 +113,8 @@ export function LoginPage({
   cliCallback,
   onTokenObtained,
   onGoogleLogin,
+  onStarLogin,
+  starError,
   extra,
 }: LoginPageProps) {
   const { t } = useT("auth");
@@ -114,6 +124,7 @@ export function LoginPage({
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showOtherLogin, setShowOtherLogin] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [existingUser, setExistingUser] = useState<User | null>(null);
   // Tracks how the existing session was detected so handleCliAuthorize
@@ -417,6 +428,33 @@ export function LoginPage({
   // Email step
   // -------------------------------------------------------------------------
 
+  if (onStarLogin && !showOtherLogin) {
+    return (
+      <div className="flex min-h-svh items-center justify-center">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="text-center">
+            {logo && <div className="mx-auto mb-4">{logo}</div>}
+            <CardTitle className="text-display-sm">{t(($) => $.signin.title)}</CardTitle>
+            <CardDescription>{t(($) => $.signin.star_description)}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {sessionExpired && <Alert><AlertDescription>{t(($) => $.errors.session_expired)}</AlertDescription></Alert>}
+            {starError && <Alert><AlertDescription>{starError}</AlertDescription></Alert>}
+            <Button type="button" className="w-full" size="lg" onClick={onStarLogin}>
+              {t(($) => $.signin.star)}
+            </Button>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+            <Button type="button" variant="ghost" className="w-full" onClick={() => setShowOtherLogin(true)}>
+              {t(($) => $.signin.other_methods)}
+            </Button>
+            {extra && <div className="w-full text-center">{extra}</div>}
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-svh items-center justify-center">
       <Card className="w-full max-w-sm">
@@ -467,6 +505,11 @@ export function LoginPage({
               ? t(($) => $.signin.sending)
               : t(($) => $.signin.continue)}
           </Button>
+          {onStarLogin && (
+            <Button type="button" variant="outline" className="w-full" size="lg" disabled={loading} onClick={onStarLogin}>
+              {t(($) => $.signin.star)}
+            </Button>
+          )}
           {(google || onGoogleLogin) && (
             <Button
               type="button"

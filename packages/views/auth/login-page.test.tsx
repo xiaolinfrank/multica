@@ -97,6 +97,22 @@ function getOTPInput() {
 // ---------------------------------------------------------------------------
 
 describe("LoginPage", () => {
+  it("makes star login primary while retaining native methods on request", async () => {
+    renderWithI18n(<LoginPage onSuccess={vi.fn()} onStarLogin={vi.fn()} />);
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Other sign-in options" }));
+    expect(screen.getByRole("textbox", { name: "Email" })).toBeInTheDocument();
+  });
+
+  it("uses the configured star account flow without creating a parallel credential form", async () => {
+    const start = vi.fn();
+    renderWithI18n(<LoginPage onSuccess={vi.fn()} onStarLogin={start} />);
+    await userEvent.click(screen.getByRole("button", { name: "Continue with 星舵" }));
+    expect(start).toHaveBeenCalledOnce();
+    expect(mockApiVerifyCode).not.toHaveBeenCalled();
+    expect(mockApiIssueCliToken).not.toHaveBeenCalled();
+  });
+
   const onSuccess = vi.fn();
 
   beforeEach(() => {
@@ -734,6 +750,12 @@ describe("LoginPage", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateCliCallback", () => {
+  it("rejects private-looking public DNS names and URL credentials", () => {
+    for (const url of ["http://10.attacker.example/callback", "http://192.168.attacker.example/callback", "http://172.16.attacker.example/callback", "http://user:pass@127.0.0.1:9876/callback", "http://127.0.0.1:9876/callback#token"]) {
+      expect(validateCliCallback(url)).toBe(false);
+    }
+  });
+
   it("accepts http://localhost", () => {
     expect(validateCliCallback("http://localhost:9876/callback")).toBe(true);
   });

@@ -1,3 +1,4 @@
+import { useConfigStore } from "@multica/core/config";
 import { LoginPage } from "@multica/views/auth";
 import { DragStrip } from "@multica/views/platform";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
@@ -14,6 +15,7 @@ function requireRuntimeAppUrl(): string {
 
 export function DesktopLoginPage() {
   const webUrl = requireRuntimeAppUrl();
+  const starLoginEnabled = useConfigStore((state) => state.starLoginEnabled);
   const handleGoogleLogin = () => {
     // Open web login page in the default browser with platform=desktop flag.
     // The web callback will redirect back via multica:// deep link with the token.
@@ -32,6 +34,9 @@ export function DesktopLoginPage() {
           // Initial workspace navigation happens in routes.tsx via IndexRedirect.
         }}
         onGoogleLogin={handleGoogleLogin}
+        onStarLogin={starLoginEnabled ? () => {
+          window.desktopAPI.openExternal(`${webUrl}/auth/star/start?${new URLSearchParams({ next: "/login?platform=desktop" })}`);
+        } : undefined}
       />
     </div>
   );

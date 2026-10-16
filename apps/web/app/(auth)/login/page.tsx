@@ -60,6 +60,7 @@ function LoginPageContent() {
   const qc = useQueryClient();
   const { t } = useT("auth");
   const googleClientId = useConfigStore((state) => state.googleClientId);
+  const starLoginEnabled = useConfigStore((state) => state.starLoginEnabled);
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const searchParams = useSearchParams();
@@ -217,6 +218,13 @@ function LoginPageContent() {
   return (
     <LoginPage
       onSuccess={handleSuccess}
+      starError={searchParams.get("star_error") === "unlinked" ? t(($) => $.errors.star_account_unlinked) : undefined}
+      onStarLogin={starLoginEnabled ? () => {
+        const cleanParams = new URLSearchParams(searchParams.toString());
+        cleanParams.delete("star_error");
+        const next = `/login${cleanParams.size ? `?${cleanParams.toString()}` : ""}`;
+        window.location.assign(`/auth/star/start?${new URLSearchParams({ next })}`);
+      } : undefined}
       google={
         googleClientId
           ? {

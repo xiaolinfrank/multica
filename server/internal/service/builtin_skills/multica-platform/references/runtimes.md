@@ -24,6 +24,18 @@ The chain is:
 
 ## CLI
 
+### Star sign-in on a local user's CLI
+
+When the deployment enables Star (星舵) sign-in, an ordinary local user's
+`multica login` opens the existing browser consent page. Select Star sign-in,
+then authorize the CLI as the intended native Multica account. Use a separate
+named profile for each deployment and verify the selected workspace before
+writes. Do not copy identity-provider tokens into CLI configuration or prompts.
+The browser session and CLI PAT keep their native independent lifetimes;
+browser logout does not revoke a CLI PAT. This changes no daemon task identity
+rules below: a daemon-managed task must use its injected credential, not log in
+with a personal account.
+
 ```bash
 multica runtime list --output json
 multica runtime usage <runtime-id> --output json

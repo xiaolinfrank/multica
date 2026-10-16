@@ -2772,3 +2772,11 @@ describe("AgentActivityBucketListSchema duration", () => {
     expect(parsed[0]?.duration_count).toBeUndefined();
   });
 });
+
+describe("AppConfigSchema star sign-in capability", () => {
+  it("defaults absent or malformed values to disabled", () => {
+    expect(AppConfigSchema.parse({}).star_login_enabled).toBe(false);
+    expect(AppConfigSchema.parse({ star_login_enabled: "yes" }).star_login_enabled).toBe(false);
+    expect(AppConfigSchema.parse({ star_login_enabled: true }).star_login_enabled).toBe(true);
+  });
+});
