@@ -640,7 +640,7 @@ LIMIT 1;
 -- name: CreateCockpitPendingChange :one
 INSERT INTO cockpit_pending_change (
     workspace_id, cockpit_id, node_id, field, old_value, new_value,
-    source, reason, created_by_type, created_by_label
+    source, reason, created_by_type, created_by_label, source_task_id
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -651,7 +651,8 @@ INSERT INTO cockpit_pending_change (
     sqlc.arg('source')::text,
     sqlc.arg('reason')::text,
     sqlc.arg('created_by_type')::text,
-    sqlc.arg('created_by_label')::text
+    sqlc.arg('created_by_label')::text,
+    sqlc.narg('source_task_id')::uuid
 )
 RETURNING *;
 
@@ -659,9 +660,15 @@ RETURNING *;
 -- The queue's whole history, open first. LEFT JOIN because a change can
 -- outlive its node between the moment cleanup runs and the moment a reader
 -- looks — a row naming no node renders as "node gone" instead of vanishing.
-SELECT c.*, n.code AS node_code, n.name AS node_name
+-- The source joins attribute a proposal to the task that filed it (and the
+-- issue that task runs on) so a reviewer can open the originating context;
+-- both are LEFT JOINs: proposals filed by hand have no source task.
+SELECT c.*, n.code AS node_code, n.name AS node_name,
+       st.issue_id AS source_issue_id, si.number AS source_issue_number, si.title AS source_issue_title
 FROM cockpit_pending_change c
 LEFT JOIN cockpit_node n ON n.id = c.node_id
+LEFT JOIN agent_task_queue st ON st.id = c.source_task_id
+LEFT JOIN issue si ON si.id = st.issue_id
 WHERE c.cockpit_id = sqlc.arg('cockpit_id')::uuid
 ORDER BY (c.status = 'pending') DESC, c.created_at DESC, c.id DESC
 LIMIT 500;
@@ -681,11 +688,13 @@ WHERE node_id = sqlc.arg('node_id')::uuid
 -- name: UpdateCockpitPendingChangeProposal :one
 -- A re-ingest for a field that already has an open proposal replaces the
 -- proposal: latest intent wins, the queue never shows two competing values
--- for the same field.
+-- for the same field. The source task is re-stamped with that latest intent,
+-- so the row always names the task a reviewer should hold accountable.
 UPDATE cockpit_pending_change SET
     old_value = sqlc.arg('old_value')::text,
     new_value = sqlc.arg('new_value')::text,
     reason     = sqlc.arg('reason')::text,
+    source_task_id = sqlc.narg('source_task_id')::uuid,
     updated_at = now()
 WHERE id = sqlc.arg('id')::uuid AND status = 'pending'
 RETURNING *;

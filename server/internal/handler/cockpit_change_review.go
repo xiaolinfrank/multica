@@ -163,7 +163,9 @@ func (h *Handler) GetCockpitChangePreview(w http.ResponseWriter, r *http.Request
 		return
 	}
 	value := cockpitNodeFieldValue(node, change.Field)
-	out := CockpitChangeReviewPreview{WorkspaceID: uuidToString(cc.workspaceID), Change: pendingChangeToResponse(change, node.Code, node.Name), CurrentValue: value, Conflict: value != change.OldValue, ReviewToken: cockpitChangeReviewToken(change, node, context), Context: context.Scope}
+	changeResp := pendingChangeToResponse(change, node.Code, node.Name)
+	changeResp.SourceIssue = h.cockpitChangeSourceIssue(r.Context(), change.SourceTaskID, h.getIssuePrefix(r.Context(), cc.workspaceID))
+	out := CockpitChangeReviewPreview{WorkspaceID: uuidToString(cc.workspaceID), Change: changeResp, CurrentValue: value, Conflict: value != change.OldValue, ReviewToken: cockpitChangeReviewToken(change, node, context), Context: context.Scope}
 	if err = tx.Commit(r.Context()); err != nil {
 		writeError(w, 500, "failed to read review preview")
 		return

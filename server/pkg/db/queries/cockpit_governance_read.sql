@@ -11,8 +11,11 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
  FROM cockpit_node n JOIN tree t ON n.parent_id=t.id CROSS JOIN args x WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
 ), scoped AS MATERIALIZED (
- SELECT c.*,COALESCE(n.code,'') AS node_code,COALESCE(n.name,'') AS node_name,(c.status='pending')::int AS cursor_priority
+ SELECT c.*,COALESCE(n.code,'') AS node_code,COALESCE(n.name,'') AS node_name,(c.status='pending')::int AS cursor_priority,
+ st.issue_id AS source_issue_id,si.number AS source_issue_number,si.title AS source_issue_title
  FROM cockpit_pending_change c CROSS JOIN args x LEFT JOIN cockpit_node n ON n.id=c.node_id AND n.workspace_id=x.ws
+ LEFT JOIN agent_task_queue st ON st.id=c.source_task_id
+ LEFT JOIN issue si ON si.id=st.issue_id
  LEFT JOIN tree t ON t.id=n.id
  WHERE c.workspace_id=x.ws AND c.cockpit_id=(SELECT id FROM cockpit WHERE workspace_id=x.ws)
  AND (x.project IS NULL OR t.valid AND t.project=x.project)

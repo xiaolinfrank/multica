@@ -631,7 +631,7 @@ func (q *Queries) CreateCockpitPayment(ctx context.Context, arg CreateCockpitPay
 const createCockpitPendingChange = `-- name: CreateCockpitPendingChange :one
 INSERT INTO cockpit_pending_change (
     workspace_id, cockpit_id, node_id, field, old_value, new_value,
-    source, reason, created_by_type, created_by_label
+    source, reason, created_by_type, created_by_label, source_task_id
 ) VALUES (
     $1::uuid,
     $2::uuid,
@@ -642,7 +642,8 @@ INSERT INTO cockpit_pending_change (
     $7::text,
     $8::text,
     $9::text,
-    $10::text
+    $10::text,
+    $11::uuid
 )
 RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
@@ -658,6 +659,7 @@ type CreateCockpitPendingChangeParams struct {
 	Reason         string      `json:"reason"`
 	CreatedByType  string      `json:"created_by_type"`
 	CreatedByLabel string      `json:"created_by_label"`
+	SourceTaskID   pgtype.UUID `json:"source_task_id"`
 }
 
 func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCockpitPendingChangeParams) (CockpitPendingChange, error) {
@@ -672,6 +674,7 @@ func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCock
 		arg.Reason,
 		arg.CreatedByType,
 		arg.CreatedByLabel,
+		arg.SourceTaskID,
 	)
 	var i CockpitPendingChange
 	err := row.Scan(
@@ -2060,41 +2063,50 @@ func (q *Queries) ListCockpitPayments(ctx context.Context, cockpitID pgtype.UUID
 }
 
 const listCockpitPendingChanges = `-- name: ListCockpitPendingChanges :many
-SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, n.code AS node_code, n.name AS node_name
+SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, n.code AS node_code, n.name AS node_name,
+       st.issue_id AS source_issue_id, si.number AS source_issue_number, si.title AS source_issue_title
 FROM cockpit_pending_change c
 LEFT JOIN cockpit_node n ON n.id = c.node_id
+LEFT JOIN agent_task_queue st ON st.id = c.source_task_id
+LEFT JOIN issue si ON si.id = st.issue_id
 WHERE c.cockpit_id = $1::uuid
 ORDER BY (c.status = 'pending') DESC, c.created_at DESC, c.id DESC
 LIMIT 500
 `
 
 type ListCockpitPendingChangesRow struct {
-	ID             pgtype.UUID        `json:"id"`
-	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
-	CockpitID      pgtype.UUID        `json:"cockpit_id"`
-	NodeID         pgtype.UUID        `json:"node_id"`
-	Field          string             `json:"field"`
-	OldValue       string             `json:"old_value"`
-	NewValue       string             `json:"new_value"`
-	Source         string             `json:"source"`
-	Reason         string             `json:"reason"`
-	Status         string             `json:"status"`
-	CreatedByType  string             `json:"created_by_type"`
-	CreatedByLabel string             `json:"created_by_label"`
-	DecidedByType  string             `json:"decided_by_type"`
-	DecidedByLabel string             `json:"decided_by_label"`
-	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
-	DecisionNote   string             `json:"decision_note"`
-	NodeCode       pgtype.Text        `json:"node_code"`
-	NodeName       pgtype.Text        `json:"node_name"`
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	CockpitID         pgtype.UUID        `json:"cockpit_id"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	Field             string             `json:"field"`
+	OldValue          string             `json:"old_value"`
+	NewValue          string             `json:"new_value"`
+	Source            string             `json:"source"`
+	Reason            string             `json:"reason"`
+	Status            string             `json:"status"`
+	CreatedByType     string             `json:"created_by_type"`
+	CreatedByLabel    string             `json:"created_by_label"`
+	DecidedByType     string             `json:"decided_by_type"`
+	DecidedByLabel    string             `json:"decided_by_label"`
+	DecidedAt         pgtype.Timestamptz `json:"decided_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	SourceTaskID      pgtype.UUID        `json:"source_task_id"`
+	DecisionNote      string             `json:"decision_note"`
+	NodeCode          pgtype.Text        `json:"node_code"`
+	NodeName          pgtype.Text        `json:"node_name"`
+	SourceIssueID     pgtype.UUID        `json:"source_issue_id"`
+	SourceIssueNumber pgtype.Int4        `json:"source_issue_number"`
+	SourceIssueTitle  pgtype.Text        `json:"source_issue_title"`
 }
 
 // The queue's whole history, open first. LEFT JOIN because a change can
 // outlive its node between the moment cleanup runs and the moment a reader
 // looks — a row naming no node renders as "node gone" instead of vanishing.
+// The source joins attribute a proposal to the task that filed it (and the
+// issue that task runs on) so a reviewer can open the originating context;
+// both are LEFT JOINs: proposals filed by hand have no source task.
 func (q *Queries) ListCockpitPendingChanges(ctx context.Context, cockpitID pgtype.UUID) ([]ListCockpitPendingChangesRow, error) {
 	rows, err := q.db.Query(ctx, listCockpitPendingChanges, cockpitID)
 	if err != nil {
@@ -2126,6 +2138,9 @@ func (q *Queries) ListCockpitPendingChanges(ctx context.Context, cockpitID pgtyp
 			&i.DecisionNote,
 			&i.NodeCode,
 			&i.NodeName,
+			&i.SourceIssueID,
+			&i.SourceIssueNumber,
+			&i.SourceIssueTitle,
 		); err != nil {
 			return nil, err
 		}
@@ -2808,26 +2823,30 @@ UPDATE cockpit_pending_change SET
     old_value = $1::text,
     new_value = $2::text,
     reason     = $3::text,
+    source_task_id = $4::uuid,
     updated_at = now()
-WHERE id = $4::uuid AND status = 'pending'
+WHERE id = $5::uuid AND status = 'pending'
 RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
 
 type UpdateCockpitPendingChangeProposalParams struct {
-	OldValue string      `json:"old_value"`
-	NewValue string      `json:"new_value"`
-	Reason   string      `json:"reason"`
-	ID       pgtype.UUID `json:"id"`
+	OldValue     string      `json:"old_value"`
+	NewValue     string      `json:"new_value"`
+	Reason       string      `json:"reason"`
+	SourceTaskID pgtype.UUID `json:"source_task_id"`
+	ID           pgtype.UUID `json:"id"`
 }
 
 // A re-ingest for a field that already has an open proposal replaces the
 // proposal: latest intent wins, the queue never shows two competing values
-// for the same field.
+// for the same field. The source task is re-stamped with that latest intent,
+// so the row always names the task a reviewer should hold accountable.
 func (q *Queries) UpdateCockpitPendingChangeProposal(ctx context.Context, arg UpdateCockpitPendingChangeProposalParams) (CockpitPendingChange, error) {
 	row := q.db.QueryRow(ctx, updateCockpitPendingChangeProposal,
 		arg.OldValue,
 		arg.NewValue,
 		arg.Reason,
+		arg.SourceTaskID,
 		arg.ID,
 	)
 	var i CockpitPendingChange

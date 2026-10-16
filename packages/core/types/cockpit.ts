@@ -836,6 +836,12 @@ export interface CockpitPendingChange {
   decided_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The agent task that filed the proposal ("" when filed by hand). */
+  source_task_id: string;
+  /** The issue the source task runs on; null for hand-filed proposals. */
+  source_issue: { id: string; ref: string; title: string } | null;
+  /** Human decision note or the system reason for an automatic withdrawal. */
+  decision_note: string;
 }
 
 /** One judgement from a batch ingest, per proposal. Machine-readable so an

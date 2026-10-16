@@ -2393,6 +2393,17 @@ export const CockpitPendingChangeSchema = z.object({
   decided_at: z.string().nullable().default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
+  source_task_id: z.string().default(""),
+  source_issue: z
+    .object({
+      id: z.string().default(""),
+      ref: z.string().default(""),
+      title: z.string().default(""),
+    })
+    .loose()
+    .nullable()
+    .default(null),
+  decision_note: z.string().default(""),
 }).loose();
 
 export const CockpitPendingChangeListSchema = z.array(CockpitPendingChangeSchema).default([]);
@@ -2467,6 +2478,9 @@ export const EMPTY_COCKPIT_PENDING_CHANGE: CockpitPendingChange = {
   decided_at: null,
   created_at: "",
   updated_at: "",
+  source_task_id: "",
+  source_issue: null,
+  decision_note: "",
 };
 
 export const EMPTY_COCKPIT_INGEST: CockpitIngestOutcome = {

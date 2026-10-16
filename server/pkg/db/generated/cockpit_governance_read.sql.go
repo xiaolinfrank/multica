@@ -24,17 +24,20 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
  FROM cockpit_node n JOIN tree t ON n.parent_id=t.id CROSS JOIN args x WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
 ), scoped AS MATERIALIZED (
- SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note,COALESCE(n.code,'') AS node_code,COALESCE(n.name,'') AS node_name,(c.status='pending')::int AS cursor_priority
+ SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note,COALESCE(n.code,'') AS node_code,COALESCE(n.name,'') AS node_name,(c.status='pending')::int AS cursor_priority,
+ st.issue_id AS source_issue_id,si.number AS source_issue_number,si.title AS source_issue_title
  FROM cockpit_pending_change c CROSS JOIN args x LEFT JOIN cockpit_node n ON n.id=c.node_id AND n.workspace_id=x.ws
+ LEFT JOIN agent_task_queue st ON st.id=c.source_task_id
+ LEFT JOIN issue si ON si.id=st.issue_id
  LEFT JOIN tree t ON t.id=n.id
  WHERE c.workspace_id=x.ws AND c.cockpit_id=(SELECT id FROM cockpit WHERE workspace_id=x.ws)
  AND (x.project IS NULL OR t.valid AND t.project=x.project)
  AND (x.module IS NULL OR t.valid AND t.module=x.module AND EXISTS(SELECT 1 FROM module m WHERE m.workspace_id=x.ws AND m.id=t.module AND m.project_id=t.project))
  AND (x.query='' OR strpos(lower(concat_ws(' ',n.code,n.name,c.field,c.old_value,c.new_value,c.reason,c.created_by_label)),lower(x.query))>0)
 ), filtered AS MATERIALIZED (
- SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, c.node_code, c.node_name, c.cursor_priority FROM scoped c,args x WHERE x.status='all' OR c.status=x.status OR x.status='decided' AND c.status<>'pending'
+ SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, c.node_code, c.node_name, c.cursor_priority, c.source_issue_id, c.source_issue_number, c.source_issue_title FROM scoped c,args x WHERE x.status='all' OR c.status=x.status OR x.status='decided' AND c.status<>'pending'
 ), page AS (
- SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, c.node_code, c.node_name, c.cursor_priority FROM filtered c WHERE $6::uuid IS NULL
+ SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, c.node_code, c.node_name, c.cursor_priority, c.source_issue_id, c.source_issue_number, c.source_issue_title FROM filtered c WHERE $6::uuid IS NULL
  OR (c.cursor_priority,c.created_at,c.id)<($7::int,$8::timestamptz,$6::uuid)
  ORDER BY c.cursor_priority DESC,c.created_at DESC,c.id DESC LIMIT $9::int+1
 )

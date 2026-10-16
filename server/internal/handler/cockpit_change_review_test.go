@@ -118,6 +118,48 @@ func TestCockpitChangeReviewRejectsMovedAncestorContext(t *testing.T) {
 	}
 }
 
+// TestCockpitChangeReviewTokenBindsReasonSourceAndNote locks the token's
+// whole-row semantics after migration 995 added source_task_id and
+// decision_note: the hash covers them on purpose — a reviewer's confirmation
+// must bind to the reason and origin they actually saw, so any later change
+// to those columns (a re-ingest with a fresh reason, a source re-stamp, a
+// system decision note) forces a fresh review instead of letting a stale
+// confirmation write.
+func TestCockpitChangeReviewTokenBindsReasonSourceAndNote(t *testing.T) {
+	ws := cockpitFixture(t, "Review token binds proposal")
+	node := createNode(t, ws, map[string]any{"code": "L3-TK-1", "progress": 10})
+	ingestChanges(t, ws, []map[string]any{{"node": node.ID, "field": "progress", "new_value": "60", "reason": "原始理由"}})
+	id := changeID(t, ws)
+	original := previewCockpitChange(t, ws, id)
+
+	// The same value re-ingested with a new reason is the latest intent; it
+	// must not be writable under the confirmation shown against the old one.
+	dbfx.Exec(t, "UPDATE cockpit_pending_change SET reason = '改后的理由', updated_at = now() WHERE id = $1", id)
+	reasoned := previewCockpitChange(t, ws, id)
+	if reasoned.ReviewToken == original.ReviewToken {
+		t.Fatal("reason change did not invalidate the review token")
+	}
+	applyReviewedChange(t, ws, original, 409)
+	applyReviewedChange(t, ws, reasoned, 200)
+
+	// And the same for the attribution columns added in 995: a source
+	// re-stamp or a later decision note can never ride a token minted
+	// before they existed.
+	ingestChanges(t, ws, []map[string]any{{"node": node.ID, "field": "progress", "new_value": "70", "reason": "又一次"}})
+	id = changeID(t, ws)
+	second := previewCockpitChange(t, ws, id)
+	dbfx.Exec(t, "UPDATE cockpit_pending_change SET source_task_id = gen_random_uuid(), updated_at = now() WHERE id = $1", id)
+	restamped := previewCockpitChange(t, ws, id)
+	if restamped.ReviewToken == second.ReviewToken {
+		t.Fatal("source re-stamp did not invalidate the review token")
+	}
+	applyReviewedChange(t, ws, second, 409)
+	dbfx.Exec(t, "UPDATE cockpit_pending_change SET decision_note = 'system: node deleted', updated_at = now() WHERE id = $1", id)
+	if noted := previewCockpitChange(t, ws, id); noted.ReviewToken == restamped.ReviewToken {
+		t.Fatal("decision note change did not invalidate the review token")
+	}
+}
+
 func TestCockpitReviewDoesNotSilentlyRoundBudget(t *testing.T) {
 	ws := cockpitFixture(t, "Reviewed numeric precision")
 	node := createNode(t, ws, map[string]any{"code": "L1-01", "budget_amount": 1})

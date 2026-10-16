@@ -134,7 +134,52 @@ func (s *IssueService) ListCockpitChangePage(ctx context.Context, p CockpitGover
 	if err != nil {
 		return out, err
 	}
+	out.Items, err = s.composeChangeSourceRefs(ctx, p.WorkspaceID, out.Items)
+	if err != nil {
+		return out, err
+	}
 	return out, tx.Commit(ctx)
+}
+
+// composeChangeSourceRefs folds the raw source columns the page SQL joined in
+// (source_issue_id / _number / _title) into the wire source_issue shape, with
+// the human-readable reference composed from the workspace prefix. Items with
+// no source task — filed by hand, or written before attribution existed —
+// simply lose the intermediate keys.
+func (s *IssueService) composeChangeSourceRefs(ctx context.Context, workspaceID pgtype.UUID, items []json.RawMessage) ([]json.RawMessage, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ws, err := s.Queries.GetWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]json.RawMessage, 0, len(items))
+	for _, item := range items {
+		var m map[string]any
+		if err := json.Unmarshal(item, &m); err != nil {
+			return nil, err
+		}
+		rawID := m["source_issue_id"]
+		delete(m, "source_issue_id")
+		number, _ := m["source_issue_number"].(float64)
+		delete(m, "source_issue_number")
+		title, _ := m["source_issue_title"].(string)
+		delete(m, "source_issue_title")
+		if rawID != nil {
+			m["source_issue"] = map[string]any{
+				"id":    rawID,
+				"ref":   IssueIdentifier(ws.IssuePrefix, int32(number)),
+				"title": title,
+			}
+		}
+		clean, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, clean)
+	}
+	return out, nil
 }
 func (s *IssueService) ListCockpitSnapshotPage(ctx context.Context, p CockpitGovernanceQuery) (CockpitSnapshotPage, error) {
 	var out CockpitSnapshotPage

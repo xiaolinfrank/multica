@@ -2501,6 +2501,33 @@ describe("Cockpit pending change schemas", () => {
     expect((parsed[0] as unknown as { future_field?: string }).future_field).toBe("keep me");
   });
 
+  it("fills attribution defaults for servers that predate them", () => {
+    const parsed = CockpitPendingChangeListSchema.parse([
+      { id: "c-old", field: "progress", new_value: "80" },
+      {
+        id: "c-new",
+        field: "end_date",
+        new_value: "2026-11-30",
+        source_task_id: "3d1f2a80-1111-4222-8333-944455556666",
+        source_issue: { id: "i1", ref: "TES-1", title: "会议纪要核对" },
+        decision_note: "系统撤回：节点已删除",
+      },
+    ]);
+    expect(parsed[0]?.source_task_id).toBe("");
+    expect(parsed[0]?.source_issue).toBeNull();
+    expect(parsed[0]?.decision_note).toBe("");
+    expect(parsed[1]?.source_issue?.ref).toBe("TES-1");
+    expect(parsed[1]?.decision_note).toBe("系统撤回：节点已删除");
+  });
+
+  it("treats a malformed source_issue as drift, not absence", () => {
+    expect(
+      CockpitPendingChangeListSchema.safeParse([
+        { id: "c3", field: "progress", new_value: "80", source_issue: { ref: 42 } },
+      ]).success,
+    ).toBe(false);
+  });
+
   it("serves the empty queue when the response is malformed", () => {
     // Wrong-typed fields are drift, not absence: the schema rejects and the
     // fallback answers, so a desktop build on a newer backend renders an

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -70,6 +71,110 @@ func decideChange(t *testing.T, wsID, id, verb string, want int) CockpitPendingC
 		Want(want).
 		JSON(&out)
 	return out
+}
+
+// TestCockpitChangesAttributeTheSourceTask locks the attribution contract: a
+// proposal filed under a task identity remembers the task, the queue and the
+// review preview name the issue that task runs on, a hand-filed proposal has
+// no source, and a re-ingest re-stamps the source with the latest intent.
+func TestCockpitChangesAttributeTheSourceTask(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit change attribution")
+	node := createNode(t, wsID, map[string]any{"code": "L3-AT-1", "name": "归因验证", "status": "未开始"})
+
+	// Filed by hand: no source at all.
+	ingestChanges(t, wsID, []map[string]any{{"node": node.ID, "field": "status", "new_value": "进行中", "reason": "人工登记"}})
+	hand := listChanges(t, wsID)[0]
+	if hand.SourceTaskID != "" || hand.SourceIssue != nil {
+		t.Fatalf("hand-filed proposal carried a source: %+v", hand)
+	}
+
+	// Filed from a task: the queue names the task's issue.
+	runtimeID := dbfx.Runtime(t, "attr-runtime")
+	agentID := dbfx.Agent(t, "归因智能体", runtimeID, testutil.Cols{"workspace_id": wsID, "visibility": "workspace"})
+	issueID := dbfx.Issue(t, "会议纪要核对", testutil.Cols{"workspace_id": wsID})
+	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": runtimeID})
+
+	req := cockpitRequest(http.MethodPost, "/api/cockpit/changes/ingest", wsID,
+		map[string]any{"changes": []map[string]any{{"node": node.ID, "field": "progress", "new_value": "40", "reason": "纪要确认 40%"}}})
+	req.Header.Set("X-Task-ID", taskID)
+	var ingestOut CockpitIngestResponse
+	testutil.Call(t, cockpitHandler(testHandler.IngestCockpitChanges), req).Want(http.StatusOK).JSON(&ingestOut)
+	if ingestOut.Results[0].Status != "queued" {
+		t.Fatalf("ingest from task = %s/%s", ingestOut.Results[0].Status, ingestOut.Results[0].Reason)
+	}
+
+	var attributed CockpitPendingChangeResponse
+	for _, row := range listChanges(t, wsID) {
+		if row.Field == "progress" {
+			attributed = row
+		}
+	}
+	if attributed.SourceTaskID != taskID {
+		t.Errorf("source task = %q, want %q", attributed.SourceTaskID, taskID)
+	}
+	if attributed.SourceIssue == nil || attributed.SourceIssue.Ref != "TES-1" || attributed.SourceIssue.Title != "会议纪要核对" || attributed.SourceIssue.ID != issueID {
+		t.Errorf("source issue = %+v, want TES-1 会议纪要核对 (%s)", attributed.SourceIssue, issueID)
+	}
+
+	// The review preview carries the same context for the reviewing human.
+	var preview CockpitChangeReviewPreview
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitChangePreview),
+		testutil.WithURLParams(cockpitRequest(http.MethodGet, "/api/cockpit/changes/"+attributed.ID+"/preview", wsID, nil), "changeId", attributed.ID)).
+		Want(http.StatusOK).
+		JSON(&preview)
+	if preview.Change.SourceIssue == nil || preview.Change.SourceIssue.Ref != "TES-1" {
+		t.Errorf("preview source issue = %+v", preview.Change.SourceIssue)
+	}
+
+	// The paged queue folds the raw join columns into the same wire shape.
+	var page struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	testutil.Call(t, cockpitHandler(testHandler.ListCockpitChangePage),
+		cockpitRequest(http.MethodGet, "/api/cockpit/changes/page?status=all&page_size=50", wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&page)
+	found := false
+	for _, item := range page.Items {
+		var m map[string]any
+		if err := json.Unmarshal(item, &m); err != nil {
+			t.Fatalf("page item is not an object: %v", err)
+		}
+		if _, leaked := m["source_issue_id"]; leaked {
+			t.Errorf("raw source_issue_id leaked into the page item: %s", item)
+		}
+		if m["field"] == "progress" {
+			found = true
+			source, ok := m["source_issue"].(map[string]any)
+			if !ok || source["ref"] != "TES-1" || source["title"] != "会议纪要核对" || source["id"] != issueID {
+				t.Errorf("page source_issue = %v", m["source_issue"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("progress proposal missing from the paged queue")
+	}
+
+	// A re-ingest is the latest intent: its source task replaces the stamp.
+	runtimeID2 := dbfx.Runtime(t, "attr-runtime-2")
+	agentID2 := dbfx.Agent(t, "归因智能体二", runtimeID2, testutil.Cols{"workspace_id": wsID, "visibility": "workspace"})
+	issueID2 := dbfx.Issue(t, "供应商台账核对", testutil.Cols{"workspace_id": wsID})
+	taskID2 := dbfx.Task(t, agentID2, testutil.Cols{"issue_id": issueID2, "runtime_id": runtimeID2})
+	req2 := cockpitRequest(http.MethodPost, "/api/cockpit/changes/ingest", wsID,
+		map[string]any{"changes": []map[string]any{{"node": node.ID, "field": "progress", "new_value": "55", "reason": "第二任务更新证据"}}})
+	req2.Header.Set("X-Task-ID", taskID2)
+	var reingest CockpitIngestResponse
+	testutil.Call(t, cockpitHandler(testHandler.IngestCockpitChanges), req2).Want(http.StatusOK).JSON(&reingest)
+	if reingest.Results[0].Status != "updated" {
+		t.Fatalf("re-ingest = %s/%s, want updated", reingest.Results[0].Status, reingest.Results[0].Reason)
+	}
+	for _, row := range listChanges(t, wsID) {
+		if row.Field == "progress" {
+			if row.SourceTaskID != taskID2 || row.SourceIssue == nil || row.SourceIssue.Ref != "TES-2" {
+				t.Errorf("re-ingest did not re-stamp the source: %+v", row.SourceIssue)
+			}
+		}
+	}
 }
 
 func TestCockpitNormalizeChangeValue(t *testing.T) {
