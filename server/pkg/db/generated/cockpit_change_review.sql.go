@@ -12,7 +12,7 @@ import (
 )
 
 const lockCockpitChangeForReview = `-- name: LockCockpitChangeForReview :one
-SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at FROM cockpit_pending_change WHERE workspace_id=$1::uuid AND id=$2::uuid FOR UPDATE
+SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note FROM cockpit_pending_change WHERE workspace_id=$1::uuid AND id=$2::uuid FOR UPDATE
 `
 
 type LockCockpitChangeForReviewParams struct {
@@ -41,6 +41,8 @@ func (q *Queries) LockCockpitChangeForReview(ctx context.Context, arg LockCockpi
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }

@@ -1610,6 +1610,8 @@ type CockpitPendingChange struct {
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
+	DecisionNote   string             `json:"decision_note"`
 }
 
 type CockpitReviewerHandoff struct {

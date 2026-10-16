@@ -644,7 +644,7 @@ INSERT INTO cockpit_pending_change (
     $9::text,
     $10::text
 )
-RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
 
 type CreateCockpitPendingChangeParams struct {
@@ -692,6 +692,8 @@ func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCock
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -762,7 +764,7 @@ UPDATE cockpit_pending_change SET
 WHERE id = $5::uuid
   AND workspace_id = $6::uuid
   AND status = 'pending'
-RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
 
 type DecideCockpitPendingChangeParams struct {
@@ -805,6 +807,8 @@ func (q *Queries) DecideCockpitPendingChange(ctx context.Context, arg DecideCock
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -1418,7 +1422,7 @@ func (q *Queries) GetCockpitNodeByCode(ctx context.Context, arg GetCockpitNodeBy
 }
 
 const getCockpitPendingChange = `-- name: GetCockpitPendingChange :one
-SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at FROM cockpit_pending_change
+SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note FROM cockpit_pending_change
 WHERE id = $1::uuid
   AND workspace_id = $2::uuid
 `
@@ -1449,6 +1453,8 @@ func (q *Queries) GetCockpitPendingChange(ctx context.Context, arg GetCockpitPen
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -1532,7 +1538,7 @@ func (q *Queries) GetModuleForCockpitBinding(ctx context.Context, arg GetModuleF
 }
 
 const getOpenCockpitPendingChangeByNodeField = `-- name: GetOpenCockpitPendingChangeByNodeField :one
-SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at FROM cockpit_pending_change
+SELECT id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note FROM cockpit_pending_change
 WHERE node_id = $1::uuid
   AND field = $2::text
   AND status = 'pending'
@@ -1565,6 +1571,8 @@ func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, ar
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -2052,7 +2060,7 @@ func (q *Queries) ListCockpitPayments(ctx context.Context, cockpitID pgtype.UUID
 }
 
 const listCockpitPendingChanges = `-- name: ListCockpitPendingChanges :many
-SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, n.code AS node_code, n.name AS node_name
+SELECT c.id, c.workspace_id, c.cockpit_id, c.node_id, c.field, c.old_value, c.new_value, c.source, c.reason, c.status, c.created_by_type, c.created_by_label, c.decided_by_type, c.decided_by_label, c.decided_at, c.created_at, c.updated_at, c.source_task_id, c.decision_note, n.code AS node_code, n.name AS node_name
 FROM cockpit_pending_change c
 LEFT JOIN cockpit_node n ON n.id = c.node_id
 WHERE c.cockpit_id = $1::uuid
@@ -2078,6 +2086,8 @@ type ListCockpitPendingChangesRow struct {
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
+	DecisionNote   string             `json:"decision_note"`
 	NodeCode       pgtype.Text        `json:"node_code"`
 	NodeName       pgtype.Text        `json:"node_name"`
 }
@@ -2112,6 +2122,8 @@ func (q *Queries) ListCockpitPendingChanges(ctx context.Context, cockpitID pgtyp
 			&i.DecidedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourceTaskID,
+			&i.DecisionNote,
 			&i.NodeCode,
 			&i.NodeName,
 		); err != nil {
@@ -2798,7 +2810,7 @@ UPDATE cockpit_pending_change SET
     reason     = $3::text,
     updated_at = now()
 WHERE id = $4::uuid AND status = 'pending'
-RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at
+RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
 
 type UpdateCockpitPendingChangeProposalParams struct {
@@ -2837,6 +2849,8 @@ func (q *Queries) UpdateCockpitPendingChangeProposal(ctx context.Context, arg Up
 		&i.DecidedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceTaskID,
+		&i.DecisionNote,
 	)
 	return i, err
 }
