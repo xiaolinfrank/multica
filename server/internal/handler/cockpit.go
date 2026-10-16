@@ -1518,11 +1518,12 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
-	if err := qtx.DeleteCockpitChangesByNode(ctx, db.DeleteCockpitChangesByNodeParams{
-		NodeID:      node.ID,
-		WorkspaceID: cc.workspaceID,
+	if _, err := qtx.SystemWithdrawCockpitPendingChangesByNode(ctx, db.SystemWithdrawCockpitPendingChangesByNodeParams{
+		NodeID:       node.ID,
+		WorkspaceID:  cc.workspaceID,
+		DecisionNote: "node deleted",
 	}); err != nil {
-		slog.Warn("DeleteCockpitChangesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		slog.Warn("SystemWithdrawCockpitPendingChangesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
@@ -1543,6 +1544,9 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.publishCockpit(r, cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
+	// Pending proposals against the node were system-withdrawn in the same
+	// transaction; open queues refresh on the same event.
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2510,6 +2514,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, impErr.status, impErr.msg)
 		return
 	}
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -2651,9 +2656,19 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		func() error {
 			return qtx.DeleteCockpitMeetingNodesByCockpit(ctx, board.ID)
 		},
-		// Pending changes and their history name node ids that are about to
-		// stop existing; the review queue restarts empty with the new board.
-		func() error { return qtx.DeleteCockpitChangesByCockpit(ctx, board.ID) },
+		// Pending proposals name node ids that are about to stop existing;
+		// they are closed as system withdrawals (decided history is kept).
+		func() error {
+			note := "board replaced by import"
+			if trigger == "restore" {
+				note = "board restored from snapshot"
+			}
+			_, err := qtx.SystemWithdrawCockpitPendingChangesByCockpit(ctx, db.SystemWithdrawCockpitPendingChangesByCockpitParams{
+				CockpitID:    board.ID,
+				DecisionNote: note,
+			})
+			return err
+		},
 		func() error { return qtx.DeleteCockpitNodes(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMilestones(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMeetings(ctx, board.ID) },
@@ -3444,6 +3459,7 @@ func (h *Handler) RestoreCockpitSnapshot(w http.ResponseWriter, r *http.Request)
 		writeError(w, impErr.status, impErr.msg)
 		return
 	}
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	writeJSON(w, http.StatusOK, resp)
 }
 

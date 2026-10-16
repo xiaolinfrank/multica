@@ -2,8 +2,10 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -912,6 +914,7 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 		OldValue:       current,
 		DecidedByType:  actorType,
 		DecidedByLabel: actorLabel,
+		DecisionNote:   "",
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -932,6 +935,9 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 	nodeResp := cockpitNodeToResponse(updated)
 	h.publishCockpit(r, cc, "node", "updated", nodeResp)
 	h.publishCockpit(r, cc, "changes", "applied", pendingChangeToResponse(decided, node.Code, node.Name))
+	// Close the loop with the task that asked (best-effort; see
+	// IssueService.NoteCockpitChangeDecision).
+	h.IssueService.NoteCockpitChangeDecision(ctx, decided)
 	writeJSON(w, http.StatusOK, CockpitChangeApplyResponse{
 		Change: pendingChangeToResponse(decided, node.Code, node.Name),
 		Node:   nodeResp,
@@ -942,7 +948,7 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 // Reject (a reviewer said no) and withdraw (the proposer took it back) are
 // the same write with a different word — the queue treats both as "open no
 // more", and neither ever edits a field.
-func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, status string) {
+func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, status, note string) {
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -979,6 +985,7 @@ func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, st
 		OldValue:       change.OldValue,
 		DecidedByType:  actorType,
 		DecidedByLabel: actorLabel,
+		DecisionNote:   note,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -998,7 +1005,20 @@ func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, st
 		resp.NodeCode, resp.NodeName = node.Code, node.Name
 	}
 	h.publishCockpit(r, cc, "changes", status, resp)
+	if status == "applied" || status == "rejected" {
+		// Close the loop with the task that asked: a decision no one reads
+		// is the same silence as no decision. Best-effort — the decision
+		// stands whether or not the note lands.
+		h.IssueService.NoteCockpitChangeDecision(ctx, decided)
+	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// CockpitChangeDecisionNoteRequest is the optional human note recorded with a
+// rejection and handed back to the proposer. Absent or empty bodies stay
+// valid: a one-click rejection is a complete decision.
+type CockpitChangeDecisionNoteRequest struct {
+	Note string `json:"note"`
 }
 
 func (h *Handler) RejectCockpitChange(w http.ResponseWriter, r *http.Request) {
@@ -1006,9 +1026,43 @@ func (h *Handler) RejectCockpitChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "plan change decisions require a human actor")
 		return
 	}
-	h.decideCockpitChange(w, r, "rejected")
+	note := ""
+	if r.Body != nil {
+		// The note is optional: an empty body is a complete one-click
+		// rejection, not a malformed one.
+		var req CockpitChangeDecisionNoteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		note = strings.TrimSpace(req.Note)
+	}
+	if len(note) > 500 {
+		writeError(w, http.StatusBadRequest, "note exceeds the 500 character limit")
+		return
+	}
+	h.decideCockpitChange(w, r, "rejected", note)
 }
 
 func (h *Handler) WithdrawCockpitChange(w http.ResponseWriter, r *http.Request) {
-	h.decideCockpitChange(w, r, "withdrawn")
+	// An agent may take back only what its own task filed; a stray or
+	// compromised worker must not be able to vacuum someone else's queue.
+	// Humans keep the existing freedom to withdraw any open proposal.
+	if isMachineCredentialActor(r) {
+		task, ok := h.taskFromRequestHeader(r)
+		cc, ccOK := h.requireCockpitReference(w, r)
+		if !ccOK {
+			return
+		}
+		id, idOK := parseUUIDOrBadRequest(w, chi.URLParam(r, "changeId"), "change id")
+		if !ok || !idOK {
+			return
+		}
+		change, err := h.Queries.GetCockpitPendingChange(r.Context(), db.GetCockpitPendingChangeParams{ID: id, WorkspaceID: cc.workspaceID})
+		if err != nil || !change.SourceTaskID.Valid || change.SourceTaskID != task.ID {
+			writeError(w, http.StatusForbidden, "agents may only withdraw proposals their own task filed")
+			return
+		}
+	}
+	h.decideCockpitChange(w, r, "withdrawn", "")
 }

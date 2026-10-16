@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -274,6 +275,181 @@ func TestCockpitNodeDirectEditsRequireHuman(t *testing.T) {
 	if writerType != "agent" {
 		t.Errorf("updated_by_type = %q, want agent", writerType)
 	}
+}
+
+// TestCockpitImportKeepsChangeHistory locks the second half of the history
+// contract: a whole-board import closes pending proposals as system
+// withdrawals (noting the import) and leaves decided rows untouched.
+func TestCockpitImportKeepsChangeHistory(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit import keeps history")
+	node := createNode(t, wsID, map[string]any{"code": "L1-07", "name": "导入保留", "status": "未开始"})
+	ingestChanges(t, wsID, []map[string]any{{"node": node.ID, "field": "status", "new_value": "进行中"}})
+	openID := changeID(t, wsID)
+	decideChange(t, wsID, openID, "reject", http.StatusOK)
+	ingestChanges(t, wsID, []map[string]any{{"node": node.ID, "field": "progress", "new_value": "70", "reason": "导入前"}})
+
+	var importResp CockpitImportResponse
+	testutil.Call(t, cockpitHandler(testHandler.ImportCockpit),
+		cockpitRequest(http.MethodPost, "/api/cockpit/import", wsID, map[string]any{
+			"nodes": []map[string]any{{"code": "L1-07", "name": "导入保留", "status": "未开始"}},
+		})).
+		Want(http.StatusOK).
+		JSON(&importResp)
+
+	rows := listChanges(t, wsID)
+	if len(rows) != 2 {
+		t.Fatalf("queue holds %d rows after import, want the full history: %+v", len(rows), rows)
+	}
+	byStatus := map[string]CockpitPendingChangeResponse{}
+	for _, row := range rows {
+		byStatus[row.Status] = row
+	}
+	pending := byStatus["withdrawn"]
+	if pending.DecidedByType != "system" || pending.DecisionNote != "board replaced by import" {
+		t.Errorf("import-withdrawn proposal = %+v", pending)
+	}
+	rejected := byStatus["rejected"]
+	if rejected.DecisionNote != "" || rejected.DecidedByType != "member" {
+		t.Errorf("decided history after import = %+v, want it untouched", rejected)
+	}
+
+	// The replaced board starts with a free (node, field) slot: a fresh
+	// proposal for the same code stacks as new history, never as a conflict.
+	ingestChanges(t, wsID, []map[string]any{{"node": "L1-07", "field": "progress", "new_value": "80", "reason": "导入后"}})
+	if got := listChanges(t, wsID); len(got) != 3 {
+		t.Fatalf("queue holds %d rows after re-proposal, want 3", len(got))
+	}
+}
+
+// TestCockpitChangeDecisionReceipts lock the loop-closing contract: apply and
+// reject both leave a system comment on the source task's issue, the rejection
+// note travels with the rejection, and proposals without a source stay silent.
+func TestCockpitChangeDecisionReceipts(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit decision receipts")
+	node := createNode(t, wsID, map[string]any{"code": "L3-RC-1", "progress": 10})
+
+	runtimeID := dbfx.Runtime(t, "receipt-runtime")
+	agentID := dbfx.Agent(t, "回执智能体", runtimeID, testutil.Cols{"workspace_id": wsID, "visibility": "workspace"})
+	issueID := dbfx.Issue(t, "驾驶舱核对任务", testutil.Cols{"workspace_id": wsID})
+	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": runtimeID})
+
+	comments := func() []string {
+		t.Helper()
+		rows, err := testPool.Query(context.Background(), `SELECT content FROM comment WHERE issue_id = $1 AND author_type = 'system' ORDER BY created_at`, issueID)
+		if err != nil {
+			t.Fatalf("query system comments: %v", err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var c string
+			if err := rows.Scan(&c); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, c)
+		}
+		return out
+	}
+
+	// Apply: the source task hears the acceptance.
+	file := func(newValue string) string {
+		t.Helper()
+		req := cockpitRequest(http.MethodPost, "/api/cockpit/changes/ingest", wsID,
+			map[string]any{"changes": []map[string]any{{"node": node.ID, "field": "progress", "new_value": newValue, "reason": "证据更新"}}})
+		req.Header.Set("X-Task-ID", taskID)
+		testutil.Call(t, cockpitHandler(testHandler.IngestCockpitChanges), req).Want(http.StatusOK)
+		return changeID(t, wsID)
+	}
+
+	applied := previewCockpitChange(t, wsID, file("40"))
+	var accept CockpitChangeApplyResponse
+	applyReviewedChange(t, wsID, applied, 200).JSON(&accept)
+	if got := comments(); len(got) != 1 || !strings.Contains(got[0], "Plan update accepted") {
+		t.Fatalf("accept receipt = %v", got)
+	}
+
+	// Reject with a note: the reason reaches the task that asked.
+	rejected := file("90")
+	var rejectedResp CockpitPendingChangeResponse
+	testutil.Call(t, cockpitHandler(testHandler.RejectCockpitChange),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/changes/"+rejected+"/reject", wsID, map[string]any{"note": "证据不足，请补充纪要来源"}),
+			"changeId", rejected,
+		)).
+		Want(http.StatusOK).
+		JSON(&rejectedResp)
+	if rejectedResp.DecisionNote != "证据不足，请补充纪要来源" {
+		t.Errorf("decision note = %q", rejectedResp.DecisionNote)
+	}
+	got := comments()
+	if len(got) != 2 || !strings.Contains(got[1], "Plan update rejected") || !strings.Contains(got[1], "证据不足") {
+		t.Fatalf("reject receipt = %v", got)
+	}
+
+	// A hand-filed proposal has no source task: deciding it is silent.
+	ingestChanges(t, wsID, []map[string]any{{"node": node.ID, "field": "status", "new_value": "进行中"}})
+	handID := changeID(t, wsID)
+	decideChange(t, wsID, handID, "reject", http.StatusOK)
+	if got := comments(); len(got) != 2 {
+		t.Errorf("hand-filed decision produced receipts: %v", got)
+	}
+
+	// An oversized note is a client error, not a truncated receipt.
+	file("95")
+	oversized := changeID(t, wsID)
+	testutil.Call(t, cockpitHandler(testHandler.RejectCockpitChange),
+		testutil.WithURLParams(
+			cockpitRequest(http.MethodPost, "/api/cockpit/changes/"+oversized+"/reject", wsID, map[string]any{"note": strings.Repeat("字", 501)}),
+			"changeId", oversized,
+		)).
+		Want(http.StatusBadRequest)
+}
+
+// TestCockpitMachineWithdrawOwnsItsSource closes the last open write: a
+// machine credential may withdraw only what its own task filed, while humans
+// keep the existing freedom.
+func TestCockpitMachineWithdrawOwnsItsSource(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit machine withdraw gate")
+	node := createNode(t, wsID, map[string]any{"code": "L3-WD-1"})
+
+	runtimeID := dbfx.Runtime(t, "wd-runtime")
+	agentID := dbfx.Agent(t, "撤回智能体", runtimeID, testutil.Cols{"workspace_id": wsID, "visibility": "workspace"})
+	issueID := dbfx.Issue(t, "撤回任务一", testutil.Cols{"workspace_id": wsID})
+	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": runtimeID})
+	issueID2 := dbfx.Issue(t, "撤回任务二", testutil.Cols{"workspace_id": wsID})
+	taskID2 := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID2, "runtime_id": runtimeID})
+
+	fileFrom := func(task string) string {
+		t.Helper()
+		req := cockpitRequest(http.MethodPost, "/api/cockpit/changes/ingest", wsID,
+			map[string]any{"changes": []map[string]any{{"node": node.ID, "field": "progress", "new_value": "30", "reason": "证据"}}})
+		req.Header.Set("X-Task-ID", task)
+		testutil.Call(t, cockpitHandler(testHandler.IngestCockpitChanges), req).Want(http.StatusOK)
+		rows := listChanges(t, wsID)
+		return rows[0].ID
+	}
+
+	mine := fileFrom(taskID)
+
+	// Another task's machine cannot vacuum this one.
+	req := testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/api/cockpit/changes/"+mine+"/withdraw", wsID, nil),
+		"changeId", mine)
+	req.Header.Set("X-Actor-Source", "task_token")
+	req.Header.Set("X-Task-ID", taskID2)
+	testutil.Call(t, cockpitHandler(testHandler.WithdrawCockpitChange), req).Want(http.StatusForbidden)
+
+	// Its own task can.
+	req = testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/api/cockpit/changes/"+mine+"/withdraw", wsID, nil),
+		"changeId", mine)
+	req.Header.Set("X-Actor-Source", "task_token")
+	req.Header.Set("X-Task-ID", taskID)
+	testutil.Call(t, cockpitHandler(testHandler.WithdrawCockpitChange), req).Want(http.StatusOK)
+
+	// And a human still withdraws anything open.
+	other := fileFrom(taskID2)
+	decideChange(t, wsID, other, "withdraw", http.StatusOK)
 }
 
 func TestCockpitNormalizeChangeValue(t *testing.T) {
@@ -594,11 +770,22 @@ func TestCockpitSingleChangeEndpoint(t *testing.T) {
 		Want(http.StatusNotFound)
 }
 
-func TestCockpitNodeDeleteClearsChanges(t *testing.T) {
-	wsID := cockpitFixture(t, "Cockpit node delete clears changes")
+// TestCockpitNodeDeleteWithdrawsOpenChanges locks the "every governance
+// request is saved" contract: deleting a node closes its still-pending
+// proposals as system withdrawals (with the reason recorded) and keeps the
+// decided history — nothing about the queue is hard-deleted with the node.
+func TestCockpitNodeDeleteWithdrawsOpenChanges(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit node delete keeps change history")
 	node := createNode(t, wsID, map[string]any{"code": "L1-05", "name": "删除清队", "status": "未开始"})
 	ingestChanges(t, wsID, []map[string]any{
 		{"node": node.ID, "field": "status", "new_value": "进行中"},
+	})
+	openID := changeID(t, wsID)
+	decideChange(t, wsID, openID, "reject", http.StatusOK)
+
+	// A second open proposal, decided by the deletion itself.
+	ingestChanges(t, wsID, []map[string]any{
+		{"node": node.ID, "field": "progress", "new_value": "60", "reason": "待删"},
 	})
 
 	testutil.Call(t, cockpitHandler(testHandler.DeleteCockpitNode),
@@ -608,7 +795,20 @@ func TestCockpitNodeDeleteClearsChanges(t *testing.T) {
 		)).
 		Want(http.StatusNoContent)
 
-	if rows := listChanges(t, wsID); len(rows) != 0 {
-		t.Errorf("deleted node left %d change rows behind", len(rows))
+	rows := listChanges(t, wsID)
+	if len(rows) != 2 {
+		t.Fatalf("queue holds %d rows after node deletion, want the full history: %+v", len(rows), rows)
+	}
+	byField := map[string]CockpitPendingChangeResponse{}
+	for _, row := range rows {
+		byField[row.Field] = row
+	}
+	pending := byField["progress"]
+	if pending.Status != "withdrawn" || pending.DecidedByType != "system" || pending.DecisionNote != "node deleted" {
+		t.Errorf("open proposal after deletion = %+v, want system withdrawal with the reason", pending)
+	}
+	rejected := byField["status"]
+	if rejected.Status != "rejected" || rejected.DecidedByType != "member" || rejected.DecisionNote != "" {
+		t.Errorf("decided history after deletion = %+v, want the human decision untouched", rejected)
 	}
 }

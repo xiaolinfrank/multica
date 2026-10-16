@@ -708,6 +708,7 @@ UPDATE cockpit_pending_change SET
     old_value        = sqlc.arg('old_value')::text,
     decided_by_type  = sqlc.arg('decided_by_type')::text,
     decided_by_label = sqlc.arg('decided_by_label')::text,
+    decision_note    = sqlc.arg('decision_note')::text,
     decided_at       = now(),
     updated_at       = now()
 WHERE id = sqlc.arg('id')::uuid
@@ -715,19 +716,38 @@ WHERE id = sqlc.arg('id')::uuid
   AND status = 'pending'
 RETURNING *;
 
--- name: DeleteCockpitChangesByNode :exec
--- Node deletion. The node's proposals and decided history go with it: there
--- is no foreign key to cascade them (repository rule), and a queue row about
--- a row that no longer exists is not history, it is litter.
-DELETE FROM cockpit_pending_change
+-- name: SystemWithdrawCockpitPendingChangesByNode :many
+-- Node deletion. Still-pending proposals are closed as a system withdrawal —
+-- the node they target is gone, so a reviewer can never act on them — while
+-- decided history is kept: "every governance request is saved" is the
+-- product contract, and the note says why the row stopped being actionable.
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = sqlc.arg('decision_note')::text,
+    decided_at = now(),
+    updated_at = now()
 WHERE node_id = sqlc.arg('node_id')::uuid
-  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+  AND workspace_id = sqlc.arg('workspace_id')::uuid
+  AND status = 'pending'
+RETURNING id;
 
--- name: DeleteCockpitChangesByCockpit :exec
--- Import/restore only: the board is being replaced wholesale, so its change
--- history refers to nodes that are about to stop existing.
-DELETE FROM cockpit_pending_change
-WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
+-- name: SystemWithdrawCockpitPendingChangesByCockpit :many
+-- Import/restore only: the board is being replaced wholesale, so pending
+-- proposals name nodes that are about to stop existing. They are closed as a
+-- system withdrawal (the note records which replacement did it); decided
+-- history outlives the board it reviewed and stays queryable.
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = sqlc.arg('decision_note')::text,
+    decided_at = now(),
+    updated_at = now()
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+  AND status = 'pending'
+RETURNING id;
 
 -- name: LockCockpitForWorkspaceChanges :one
 -- Serializes tree bindings, tree replacement and referenced resource deletion.

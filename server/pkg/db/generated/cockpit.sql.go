@@ -762,10 +762,11 @@ UPDATE cockpit_pending_change SET
     old_value        = $2::text,
     decided_by_type  = $3::text,
     decided_by_label = $4::text,
+    decision_note    = $5::text,
     decided_at       = now(),
     updated_at       = now()
-WHERE id = $5::uuid
-  AND workspace_id = $6::uuid
+WHERE id = $6::uuid
+  AND workspace_id = $7::uuid
   AND status = 'pending'
 RETURNING id, workspace_id, cockpit_id, node_id, field, old_value, new_value, source, reason, status, created_by_type, created_by_label, decided_by_type, decided_by_label, decided_at, created_at, updated_at, source_task_id, decision_note
 `
@@ -775,6 +776,7 @@ type DecideCockpitPendingChangeParams struct {
 	OldValue       string      `json:"old_value"`
 	DecidedByType  string      `json:"decided_by_type"`
 	DecidedByLabel string      `json:"decided_by_label"`
+	DecisionNote   string      `json:"decision_note"`
 	ID             pgtype.UUID `json:"id"`
 	WorkspaceID    pgtype.UUID `json:"workspace_id"`
 }
@@ -788,6 +790,7 @@ func (q *Queries) DecideCockpitPendingChange(ctx context.Context, arg DecideCock
 		arg.OldValue,
 		arg.DecidedByType,
 		arg.DecidedByLabel,
+		arg.DecisionNote,
 		arg.ID,
 		arg.WorkspaceID,
 	)
@@ -814,37 +817,6 @@ func (q *Queries) DecideCockpitPendingChange(ctx context.Context, arg DecideCock
 		&i.DecisionNote,
 	)
 	return i, err
-}
-
-const deleteCockpitChangesByCockpit = `-- name: DeleteCockpitChangesByCockpit :exec
-DELETE FROM cockpit_pending_change
-WHERE cockpit_id = $1::uuid
-`
-
-// Import/restore only: the board is being replaced wholesale, so its change
-// history refers to nodes that are about to stop existing.
-func (q *Queries) DeleteCockpitChangesByCockpit(ctx context.Context, cockpitID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteCockpitChangesByCockpit, cockpitID)
-	return err
-}
-
-const deleteCockpitChangesByNode = `-- name: DeleteCockpitChangesByNode :exec
-DELETE FROM cockpit_pending_change
-WHERE node_id = $1::uuid
-  AND workspace_id = $2::uuid
-`
-
-type DeleteCockpitChangesByNodeParams struct {
-	NodeID      pgtype.UUID `json:"node_id"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-}
-
-// Node deletion. The node's proposals and decided history go with it: there
-// is no foreign key to cascade them (repository rule), and a queue row about
-// a row that no longer exists is not history, it is litter.
-func (q *Queries) DeleteCockpitChangesByNode(ctx context.Context, arg DeleteCockpitChangesByNodeParams) error {
-	_, err := q.db.Exec(ctx, deleteCockpitChangesByNode, arg.NodeID, arg.WorkspaceID)
-	return err
 }
 
 const deleteCockpitDirectoryEntry = `-- name: DeleteCockpitDirectoryEntry :exec
@@ -2294,6 +2266,92 @@ func (q *Queries) RecordCockpitUsedCode(ctx context.Context, arg RecordCockpitUs
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const systemWithdrawCockpitPendingChangesByCockpit = `-- name: SystemWithdrawCockpitPendingChangesByCockpit :many
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = $1::text,
+    decided_at = now(),
+    updated_at = now()
+WHERE cockpit_id = $2::uuid
+  AND status = 'pending'
+RETURNING id
+`
+
+type SystemWithdrawCockpitPendingChangesByCockpitParams struct {
+	DecisionNote string      `json:"decision_note"`
+	CockpitID    pgtype.UUID `json:"cockpit_id"`
+}
+
+// Import/restore only: the board is being replaced wholesale, so pending
+// proposals name nodes that are about to stop existing. They are closed as a
+// system withdrawal (the note records which replacement did it); decided
+// history outlives the board it reviewed and stays queryable.
+func (q *Queries) SystemWithdrawCockpitPendingChangesByCockpit(ctx context.Context, arg SystemWithdrawCockpitPendingChangesByCockpitParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, systemWithdrawCockpitPendingChangesByCockpit, arg.DecisionNote, arg.CockpitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const systemWithdrawCockpitPendingChangesByNode = `-- name: SystemWithdrawCockpitPendingChangesByNode :many
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = $1::text,
+    decided_at = now(),
+    updated_at = now()
+WHERE node_id = $2::uuid
+  AND workspace_id = $3::uuid
+  AND status = 'pending'
+RETURNING id
+`
+
+type SystemWithdrawCockpitPendingChangesByNodeParams struct {
+	DecisionNote string      `json:"decision_note"`
+	NodeID       pgtype.UUID `json:"node_id"`
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+}
+
+// Node deletion. Still-pending proposals are closed as a system withdrawal —
+// the node they target is gone, so a reviewer can never act on them — while
+// decided history is kept: "every governance request is saved" is the
+// product contract, and the note says why the row stopped being actionable.
+func (q *Queries) SystemWithdrawCockpitPendingChangesByNode(ctx context.Context, arg SystemWithdrawCockpitPendingChangesByNodeParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, systemWithdrawCockpitPendingChangesByNode, arg.DecisionNote, arg.NodeID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateCockpit = `-- name: UpdateCockpit :one
