@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strconv"
@@ -13,7 +15,7 @@ import (
 
 func newCockpitChangeCommand() *cobra.Command {
 	root := &cobra.Command{Use: "change", Short: "Read and propose plan changes; human decisions stay in the cockpit"}
-	for _, action := range []string{"list", "propose", "preview", "withdraw"} {
+	for _, action := range []string{"list", "propose", "ingest", "preview", "withdraw"} {
 		count, use := 0, action
 		if action == "preview" || action == "withdraw" {
 			count, use = 1, action+" <change-id>"
@@ -21,6 +23,8 @@ func newCockpitChangeCommand() *cobra.Command {
 		cmd := &cobra.Command{Use: use, Args: exactArgs(count), Short: action + " plan changes",
 			RunE: func(cmd *cobra.Command, args []string) error { return runCockpitChange(cmd, args, action) }}
 		switch action {
+		case "ingest":
+			cmd.Flags().String("file", "", `JSON proposals: an array of {"node","field","new_value","reason"} or an object with a "changes" array; "-" or omitting reads stdin`)
 		case "list":
 			addCockpitSurfaceFlags(cmd, true, true)
 			cmd.Flags().String("status", "pending", "pending, decided or all")
@@ -70,6 +74,36 @@ func runCockpitChange(cmd *cobra.Command, args []string, action string) error {
 			value, _ := cmd.Flags().GetString(flag)
 			body[field] = value
 		}
+	case "ingest":
+		path, _ := cmd.Flags().GetString("file")
+		raw, err := readCockpitIngestFile(cmd, path)
+		if err != nil {
+			return err
+		}
+		var doc struct {
+			Changes []map[string]any `json:"changes"`
+		}
+		trimmed := []byte{}
+		for _, b := range raw {
+			if b != ' ' && b != '\t' && b != '\r' && b != '\n' {
+				trimmed = append(trimmed, b)
+			}
+		}
+		if len(trimmed) > 0 && trimmed[0] == '[' {
+			if err := json.Unmarshal(raw, &doc.Changes); err != nil {
+				return fmt.Errorf("ingest: proposals are not a JSON array: %w", err)
+			}
+		} else if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("ingest: file is neither a proposal array nor an object with a changes array: %w", err)
+		}
+		if len(doc.Changes) == 0 {
+			return fmt.Errorf("ingest: no proposals found")
+		}
+		if len(doc.Changes) > 500 {
+			return fmt.Errorf("ingest: at most 500 proposals per request, got %d", len(doc.Changes))
+		}
+		endpoint += "/ingest"
+		body["changes"] = doc.Changes
 	case "preview", "withdraw":
 		id, err := cockpitWorkflowUUID(args[0], "change-id")
 		if err != nil {
@@ -93,4 +127,22 @@ func runCockpitChange(cmd *cobra.Command, args []string, action string) error {
 		return fmt.Errorf("%s plan change: %w", action, err)
 	}
 	return cli.PrintJSON(os.Stdout, result)
+}
+
+// readCockpitIngestFile reads the proposals document from a path, or from
+// stdin when the path is empty or "-": agents pipe a report's observations
+// straight into the funnel.
+func readCockpitIngestFile(cmd *cobra.Command, path string) ([]byte, error) {
+	if path != "" && path != "-" {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("ingest: read %s: %w", path, err)
+		}
+		return raw, nil
+	}
+	raw, err := io.ReadAll(cmd.InOrStdin())
+	if err != nil {
+		return nil, fmt.Errorf("ingest: read stdin: %w", err)
+	}
+	return raw, nil
 }

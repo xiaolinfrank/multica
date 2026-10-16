@@ -48,20 +48,39 @@ Pass the chat's actual `--project-id` and `--module-id` on supported reads; a mo
 Do not repeatedly fetch the complete workspace board when a bounded read suffices.
 Use [overview queues](references/overview.md) and focused task/action pages for growing collections; avoid repeatedly downloading the board.
 
-## Editing nodes
+## Reporting board drift
 
-Only the flags you pass are written. Everything else is left alone.
+Direct field edits (`node update`) are a human prerogative: a machine
+credential is refused, because a plan the programme runs on must not move on
+an agent's word alone. What you observe goes through the governance queue
+instead — every proposal lands in the cockpit's 治理 tab, a person checks it
+against the evidence (including the task it came from), and only their
+decision moves the board.
 
 ```bash
-multica cockpit node update L3-01-08 \
-  --progress 60 --status 进行中 --current-progress "承接方已选定，合同起草中"
+multica cockpit change propose --node L3-01-08 --field progress --value 60 \
+  --reason "会议纪要 2026-10-15 确认 60%；板载 40%"
 
-multica cockpit node update L3-01-08 --end-date 2026-10-15    # move a date
-multica cockpit node update L3-01-08 --end-date ""            # withdraw it
-multica cockpit node update L3-01-08 --clear-budget           # remove the budget line
+multica cockpit change list --status pending        # what the queue still holds
+multica cockpit change preview <change-id>          # old / current / proposed
+multica cockpit change withdraw <change-id>         # take back your own open proposal
+multica cockpit change ingest --file drift.json     # batch write-back from a report run
 ```
 
-An empty string clears a date; `--clear-budget` clears the budget. Omitted fields stay unchanged.
+`--reason` is required from a task credential: say what disagrees with the
+board and why the update is necessary — an inconsistency you would not act on
+is not a proposal. An explicitly empty `--value ""` proposes clearing the
+field; omitting flags never happens here, a proposal names one field. `ingest`
+accepts a JSON array of `{"node","field","new_value","reason"}` (or an object
+with a `changes` array), at most 500 proposals, each judged on its own: a
+`no_change` or `duplicate` answer means nothing was filed — do not re-send it,
+and never loop a rejected row hoping for a different verdict. Decisions come
+back as a system comment on this task's issue; if the queue is silent, re-read
+it (or the issue) instead of assuming acceptance. Withdraw only what your own
+task filed.
+
+Structure that does not exist yet is created, not proposed — `node create`
+stays available for real new work:
 
 ```bash
 multica cockpit node create --code L3-02-11 --parent 02.03 \

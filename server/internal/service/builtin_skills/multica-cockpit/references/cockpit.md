@@ -386,10 +386,14 @@ applies it. This is how an agent should report board drift it observed: never
 PATCH the node directly on the programme's behalf — file the change and let
 the programme decide.
 
-A proposal body is `{node, field, new_value, reason?}`, where `node` accepts
+A proposal body is `{node, field, new_value, reason}`, where `node` accepts
 a UUID or a `code` like every other route, and `new_value` is text (numbers
 and dates canonicalised server-side; an empty string is a real edit meaning
 "clear the field", except for `progress` which must be a number 0-100).
+`reason` is required from a task credential — what is inconsistent and why
+the update is necessary — and optional for humans; either way it is capped
+at 2000 characters, and the same cap family guards the 500-character note a
+rejection may carry.
 Proposable fields: `name`, `owner`, `collaborators`, `status`, `progress`,
 `start_date`, `end_date`, `current_progress`, `deliverable`, `dependencies`,
 `note`, `vendor`, `budget_category`, `budget_amount`, `exec_status`,
@@ -410,11 +414,19 @@ Batch ingest answers one result per proposal, machine-readable:
 `skipped`, `rejected`. The `source` a queued change carries (`manual` or
 `agent`) is derived from the authenticated caller, never from the body.
 
-Apply/reject require a human actor. Decisions are one-way: all decisions answer 409 on a change
+Apply/reject require a human actor, and direct node PATCHes refuse machine
+credentials outright (403, pointing here): the queue is the only write path
+for what an agent observes. An agent may withdraw only proposals its own
+task filed. Decisions are one-way: all decisions answer 409 on a change
 that is no longer open. Apply re-reads the live column it overwrites and
 records that as `old_value`, so the history stays true even when the board
-moved between filing and deciding. Deleting a node clears its change rows;
-an import clears the whole queue with the board it replaces.
+moved between filing and deciding. Applied and rejected decisions leave a
+system comment on the source task's issue, rejection note included, so the
+requesting run learns its outcome without polling. Every request is kept:
+deleting a node or replacing the board by import/restore closes still-open
+proposals as system withdrawals (the note records why) and leaves decided
+history queryable; nothing about the queue is hard-deleted except with the
+workspace itself.
 
 ## Realtime
 
