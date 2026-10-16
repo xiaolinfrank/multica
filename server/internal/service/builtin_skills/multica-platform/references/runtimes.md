@@ -27,14 +27,27 @@ The chain is:
 ### Star sign-in on a local user's CLI
 
 When the deployment enables Star (星舵) sign-in, an ordinary local user's
-`multica login` opens the existing browser consent page. Select Star sign-in,
-then authorize the CLI as the intended native Multica account. Use a separate
+`multica login` opens the existing browser consent page. Use the configured
+native account method or optional Star OIDC sign-in, then authorize the CLI as
+the intended native Multica account. A private local deployment may use an
+assigned personal login code: it is reusable, and the login page sends no email
+for that account. Never put the code in skills, prompts or CLI configuration.
+Use a separate
 named profile for each deployment and verify the selected workspace before
 writes. Do not copy identity-provider tokens into CLI configuration or prompts.
 The browser session and CLI PAT keep their native independent lifetimes;
 browser logout does not revoke a CLI PAT. This changes no daemon task identity
 rules below: a daemon-managed task must use its injected credential, not log in
 with a personal account.
+
+For a single-owner OpenClaw deployment, its operator can supply a launcher that
+passes explicit `--profile`, `--server-url` and `--workspace-id` flags to the
+native CLI. There is no `MULTICA_PROFILE` environment fallback. Verify the
+selected identity with `user profile get --output json` and the selected
+workspace before work; do not fall back to another instance's host profile.
+The `/auth/openclaw` web entry is for the configured human owner only, not a
+machine-credential exchange. It uses OpenClaw's native owner device pairing;
+Multica PATs cannot be used as Gateway tokens.
 
 ```bash
 multica runtime list --output json
