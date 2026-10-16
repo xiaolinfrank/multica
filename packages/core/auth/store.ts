@@ -39,7 +39,7 @@ export interface AuthState {
   expired: boolean;
 
   retryAuthentication: () => void;
-  sendCode: (email: string) => Promise<void>;
+  sendCode: (email: string) => Promise<{ delivery: "email" | "personal" }>;
   verifyCode: (email: string, code: string) => Promise<User>;
   loginWithGoogle: (code: string, redirectUri: string) => Promise<User>;
   loginWithToken: (token: string) => Promise<User>;
@@ -69,7 +69,7 @@ export function createAuthStore(options: AuthStoreOptions) {
     },
 
     sendCode: async (email: string) => {
-      await api.sendCode(email);
+      return api.sendCode(email);
     },
 
     verifyCode: async (email: string, code: string) => {

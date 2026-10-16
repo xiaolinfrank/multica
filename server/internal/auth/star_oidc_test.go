@@ -19,7 +19,7 @@ import (
 )
 
 func TestStarOIDCCodeFlow(t *testing.T) {
-	for _, mode := range []string{"ok", "issuer", "audience", "expired", "nonce", "signature", "missing-id-token", "unlinked", "pkce", "state", "cookie", "flow-expired", "duplicate-code", "replay"} {
+	for _, mode := range []string{"ok", "native", "issuer", "audience", "expired", "nonce", "signature", "missing-id-token", "unlinked", "pkce", "state", "cookie", "flow-expired", "duplicate-code", "replay"} {
 		t.Run(mode, func(t *testing.T) {
 			key, err := rsa.GenerateKey(rand.Reader, 2048)
 			if err != nil {
@@ -81,7 +81,12 @@ func TestStarOIDCCodeFlow(t *testing.T) {
 				t.Fatal(err)
 			}
 			next := "/login?cli_callback=http%3A%2F%2F127.0.0.1%3A4567%2Fcallback&cli_state=original"
-			target, cookie, err := s.Begin(next)
+			destination := ""
+			if mode == "native" {
+				destination = "openclaw"
+				s.dashboard = &StarLocalDashboard{}
+			}
+			target, cookie, err := s.Begin(next, destination)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,6 +98,7 @@ func TestStarOIDCCodeFlow(t *testing.T) {
 				t.Fatal("missing native OAuth protections")
 			}
 			callback := url.Values{"state": {q.Get("state")}, "code": {"single-use-code"}}
+			callback.Set("destination", "untrusted-callback-input")
 			switch mode {
 			case "state":
 				callback.Set("state", "forged")
@@ -107,16 +113,19 @@ func TestStarOIDCCodeFlow(t *testing.T) {
 			}
 			req := httptest.NewRequest("GET", "http://127.0.0.1:13000/auth/star/callback?"+callback.Encode(), nil)
 			req.AddCookie(cookie)
-			id, path, err := s.Finish(context.Background(), req)
-			if mode == "ok" || mode == "replay" {
-				if err != nil || id != "11111111-1111-4111-8111-111111111111" || path != next {
+			identity, err := s.Finish(context.Background(), req)
+			if mode == "ok" || mode == "native" || mode == "replay" {
+				if err != nil || identity.UserID != "11111111-1111-4111-8111-111111111111" || identity.Subject != "star-subject" || identity.Next != next {
 					t.Fatalf("sign-in failed: %v", err)
+				}
+				if identity.Destination != destination {
+					t.Fatal("callback input changed the sealed sign-in destination")
 				}
 			} else if err == nil {
 				t.Fatal("invalid sign-in accepted")
 			}
 			if mode == "replay" {
-				if _, _, err = s.Finish(context.Background(), req); err == nil {
+				if _, err = s.Finish(context.Background(), req); err == nil {
 					t.Fatal("authorization code replay accepted")
 				}
 			}

@@ -61,6 +61,7 @@ function LoginPageContent() {
   const { t } = useT("auth");
   const googleClientId = useConfigStore((state) => state.googleClientId);
   const starLoginEnabled = useConfigStore((state) => state.starLoginEnabled);
+  const localDashboardEnabled = useConfigStore((state) => state.localDashboardEnabled);
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const searchParams = useSearchParams();
@@ -218,6 +219,7 @@ function LoginPageContent() {
   return (
     <LoginPage
       onSuccess={handleSuccess}
+      signInTitle={localDashboardEnabled ? t(($) => $.local_dashboard.signin_title) : undefined}
       starError={searchParams.get("star_error") === "unlinked" ? t(($) => $.errors.star_account_unlinked) : undefined}
       onStarLogin={starLoginEnabled ? () => {
         const cleanParams = new URLSearchParams(searchParams.toString());

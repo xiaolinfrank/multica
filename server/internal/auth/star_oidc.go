@@ -26,13 +26,14 @@ import (
 // Subjects must be explicitly linked to existing users. Email and role claims
 // never create an account, join a workspace, or grant a role.
 type StarOIDC struct {
-	oauth    oauth2.Config
-	verifier *oidc.IDTokenVerifier
-	box      *secretbox.Box
-	users    map[string]string
-	secure   bool
-	client   *http.Client
-	now      func() time.Time
+	oauth     oauth2.Config
+	verifier  *oidc.IDTokenVerifier
+	box       *secretbox.Box
+	users     map[string]string
+	secure    bool
+	client    *http.Client
+	now       func() time.Time
+	dashboard *StarLocalDashboard
 }
 
 type StarOIDCConfig struct {
@@ -43,7 +44,8 @@ type StarOIDCConfig struct {
 	CookieKey    string            `json:"cookieKey"`
 	Subjects     map[string]string `json:"subjects"`
 	// Explicit opt-in for an identity provider and callback confined to loopback.
-	AllowLoopbackHTTP bool `json:"allowLoopbackHttp"`
+	AllowLoopbackHTTP bool                      `json:"allowLoopbackHttp"`
+	LocalDashboard    *StarLocalDashboardConfig `json:"localDashboard,omitempty"`
 }
 
 const starCookie = "multica_star_login"
@@ -53,11 +55,20 @@ var ErrStarLogin = errors.New("star sign-in could not be verified")
 var ErrStarUnlinked = errors.New("star account is not linked to a Multica user")
 
 type starFlow struct {
-	State    string `json:"s"`
-	Nonce    string `json:"n"`
-	Verifier string `json:"v"`
-	Next     string `json:"p"`
-	Expires  int64  `json:"e"`
+	State       string `json:"s"`
+	Nonce       string `json:"n"`
+	Verifier    string `json:"v"`
+	Next        string `json:"p"`
+	Expires     int64  `json:"e"`
+	Destination string `json:"d,omitempty"`
+}
+
+// StarSignInResult carries only the identity established by this OIDC exchange.
+type StarSignInResult struct {
+	UserID      string
+	Subject     string
+	Next        string
+	Destination string
 }
 
 func starURL(raw string, allowLocal bool) (*url.URL, error) {
@@ -96,6 +107,10 @@ func NewStarOIDC(ctx context.Context, c StarOIDCConfig) (*StarOIDC, error) {
 		}
 		users[subject] = id
 	}
+	dashboard, err := newStarLocalDashboard(c.LocalDashboard, c.RedirectURI, users)
+	if err != nil {
+		return nil, err
+	}
 	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	ctx = oidc.ClientContext(ctx, client)
 	provider, err := oidc.NewProvider(ctx, c.Issuer)
@@ -114,7 +129,7 @@ func NewStarOIDC(ctx context.Context, c StarOIDCConfig) (*StarOIDC, error) {
 			return nil, err
 		}
 	}
-	return &StarOIDC{oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, RedirectURL: c.RedirectURI, Endpoint: endpoint, Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), box: box, users: users, secure: redirect.Scheme == "https", client: client, now: time.Now}, nil
+	return &StarOIDC{oauth: oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, RedirectURL: c.RedirectURI, Endpoint: endpoint, Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}, verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}), box: box, users: users, secure: redirect.Scheme == "https", client: client, now: time.Now, dashboard: dashboard}, nil
 }
 
 func starRandom() (string, error) {
@@ -138,7 +153,10 @@ func starNext(raw string) string {
 	return u.String()
 }
 
-func (s *StarOIDC) Begin(next string) (string, *http.Cookie, error) {
+func (s *StarOIDC) Begin(next, destination string) (string, *http.Cookie, error) {
+	if destination != "" && (destination != "openclaw" || s.dashboard == nil) {
+		return "", nil, ErrStarLogin
+	}
 	state, err := starRandom()
 	if err != nil {
 		return "", nil, err
@@ -147,7 +165,7 @@ func (s *StarOIDC) Begin(next string) (string, *http.Cookie, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	flow := starFlow{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), Next: starNext(next), Expires: s.now().Add(starFlowTTL).Unix()}
+	flow := starFlow{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), Next: starNext(next), Expires: s.now().Add(starFlowTTL).Unix(), Destination: destination}
 	raw, err := json.Marshal(flow)
 	if err != nil {
 		return "", nil, err
@@ -166,45 +184,45 @@ func (s *StarOIDC) cookie(value string, maxAge int) *http.Cookie {
 }
 func (s *StarOIDC) ClearCookie() *http.Cookie { return s.cookie("", -1) }
 
-func (s *StarOIDC) Finish(ctx context.Context, r *http.Request) (userID, next string, err error) {
+func (s *StarOIDC) Finish(ctx context.Context, r *http.Request) (StarSignInResult, error) {
 	cookie, e := r.Cookie(starCookie)
 	if e != nil || len(cookie.Value) > 8192 {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	sealed, e := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if e != nil {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	raw, e := s.box.Open(sealed)
 	if e != nil {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	var flow starFlow
-	if json.Unmarshal(raw, &flow) != nil || flow.Expires <= s.now().Unix() || flow.Expires > s.now().Add(starFlowTTL).Unix()+5 || flow.State == "" || flow.Nonce == "" || flow.Verifier == "" {
-		return "", "", ErrStarLogin
+	if json.Unmarshal(raw, &flow) != nil || flow.Expires <= s.now().Unix() || flow.Expires > s.now().Add(starFlowTTL).Unix()+5 || flow.State == "" || flow.Nonce == "" || flow.Verifier == "" || (flow.Destination != "" && flow.Destination != "openclaw") {
+		return StarSignInResult{}, ErrStarLogin
 	}
 	q := r.URL.Query()
 	if q.Get("error") != "" || q.Get("code") == "" || len(q["code"]) != 1 || len(q["state"]) != 1 || subtle.ConstantTimeCompare([]byte(flow.State), []byte(q.Get("state"))) != 1 {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	ctx = oidc.ClientContext(ctx, s.client)
 	token, e := s.oauth.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(flow.Verifier))
 	if e != nil {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	idToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	verified, e := s.verifier.Verify(ctx, idToken)
 	if e != nil || subtle.ConstantTimeCompare([]byte(verified.Nonce), []byte(flow.Nonce)) != 1 {
-		return "", "", ErrStarLogin
+		return StarSignInResult{}, ErrStarLogin
 	}
 	id, ok := s.users[verified.Subject]
 	if !ok {
-		return "", "", ErrStarUnlinked
+		return StarSignInResult{}, ErrStarUnlinked
 	}
-	return id, starNext(flow.Next), nil
+	return StarSignInResult{UserID: id, Subject: verified.Subject, Next: starNext(flow.Next), Destination: flow.Destination}, nil
 }
 
 // LoadStarOIDC uses an operator-owned private file, never request parameters.

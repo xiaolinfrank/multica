@@ -1,9 +1,70 @@
-# Star account sign-in for BayClaw
+# Star account sign-in and native local dashboard
 
-This optional integration makes a standard OIDC provider the Star (星舵) account
-entry point. It does not make BayClaw or OpenClaw an identity issuer. Existing
-Multica users, workspace membership, roles, browser sessions, CLI consent and
-personal access tokens remain the authority for Multica access.
+A local Mac deployment can use the native Multica account service and OpenClaw's
+native owner pairing handoff. Existing users, workspace membership, roles,
+browser sessions, CLI consent and personal access tokens remain the authority
+for Multica access. An optional standard OIDC client is also available for an
+external identity authority; neither BayClaw nor OpenClaw becomes an identity issuer.
+
+## Single-owner Mac with a new independent account
+
+For a local-only deployment with a new account, the fork's native account
+service is sufficient. No external OIDC service is required. Keep a separate
+Multica database and OpenClaw state/workspace; do not link or import users,
+workspaces, memories or credentials from another BayClaw instance.
+
+The existing `MULTICA_PERSONAL_CODES` mechanism accepts per-email six-digit
+assigned codes in a private non-production deployment (`APP_ENV=local`). These
+codes are reusable, not expiring email OTPs. Do not change the native production
+guard: `APP_ENV=production` intentionally ignores personal/dev codes. Set a strong
+unique `JWT_SECRET`, restrict `ALLOWED_EMAILS`, leave the global
+`MULTICA_DEV_VERIFICATION_CODE` unset, and bind the API and web server to loopback.
+Private codes belong only in an owner-readable environment file. They are never
+public configuration or frontend defaults.
+
+For a personal-code account, `/auth/send-code` now returns `delivery: personal`
+without creating an email OTP or invoking the mailer. The shared login page asks
+for the assigned code and does not offer resend. Leave SMTP and Resend transports
+unconfigured when no emails are permitted. Native `/auth/verify-code` still owns
+account creation and sign-in, with the existing signup allowlist, rate limits,
+JWT and cookie policies.
+
+After creating the new native user, an operator can enable the local OpenClaw
+launcher using a private `0600` JSON file and `MULTICA_LOCAL_DASHBOARD_CONFIG`:
+
+```json
+{
+  "ownerUserId": "11111111-1111-4111-8111-111111111111",
+  "command": ["/absolute/path/to/node", "/absolute/path/to/openclaw.mjs"],
+  "stateDir": "/absolute/path/to/this-instance/openclaw-state",
+  "origin": "http://127.0.0.1:29991"
+}
+```
+
+Replace the example UUID with the user actually created in this new database.
+Open `/auth/openclaw` on the local web server. It uses the ordinary account
+session, then invokes the fixed native `openclaw dashboard --json` command only
+for that exact owner. Task/cloud machine credentials and nonlocal requests are
+rejected. The response accepts only the expected loopback `browserUrl`, a
+single-use ten-minute owner bootstrap; it never falls back to the legacy shared
+`url` token. There is no custom device-token store or rewritten Gateway auth.
+
+The native handoff grants a durable **administrator device credential** in the
+configured OpenClaw instance. Use it only for its single designated human owner,
+not for arbitrary project members. Device permissions and revocation remain
+OpenClaw's responsibility. A browser session logout does not revoke this device
+credential or an already authorized Multica PAT.
+
+Use a dedicated native CLI profile for this instance. Give the OpenClaw process
+a workspace-specific launcher that supplies the native CLI's explicit
+`--profile`, `--server-url` and `--workspace-id` flags; the CLI has no
+`MULTICA_PROFILE` environment fallback. Do not let an agent silently fall through
+to the host's unrelated default profile. Complete the normal CLI browser consent
+flow for the new account. The same credential then serves cockpit, project and
+file commands. Third-party skills retain their own native grants.
+
+The optional OIDC client below remains available for deployments with an external
+identity authority. It is not needed for this local personal-code path.
 
 ## Configure the relying party
 
@@ -110,9 +171,9 @@ the Star entry and leaves existing native accounts/data untouched. Already
 issued native sessions/PATs remain valid according to native policy; revoke
 them explicitly if rollback is intended to terminate access.
 
-## OpenClaw boundary
+## Networked OIDC proxy boundary
 
-OpenClaw must use its own supported trusted-proxy/device authorization. Do not
+For networked OIDC proxy deployments, OpenClaw must use its own supported trusted-proxy/device authorization. The local launcher above uses its native owner bootstrap instead and needs no HTTPS certificate or proxy. Do not
 share a Multica PAT or Star ID token as a Gateway token. Use a maintained OIDC
 proxy, overwrite identity headers, restrict the allowed subject before all
 upstream routes, and map identity scopes in native configuration. Default to

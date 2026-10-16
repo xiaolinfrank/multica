@@ -27,3 +27,17 @@ func TestStarSignInUnavailableDoesNotIssueSession(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalDashboardRefusesMachineCredentialBeforeAnyLaunch(t *testing.T) {
+	for _, actor := range []string{"task_token", "cloud_pat"} {
+		h := &Handler{}
+		r := httptest.NewRequest(http.MethodPost, "/api/local-dashboard", nil)
+		r.RemoteAddr = "127.0.0.1:1234"
+		r.Header.Set("X-Actor-Source", actor)
+		w := httptest.NewRecorder()
+		h.OpenLocalDashboard(w, r)
+		if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" {
+			t.Fatal("machine credential reached local owner flow")
+		}
+	}
+}

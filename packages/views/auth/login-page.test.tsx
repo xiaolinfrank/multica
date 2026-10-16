@@ -97,6 +97,16 @@ function getOTPInput() {
 // ---------------------------------------------------------------------------
 
 describe("LoginPage", () => {
+  it("shows assigned-code instructions without claiming an email or offering resend", async () => {
+    mockSendCode.mockResolvedValueOnce({ delivery: "personal" });
+    renderWithI18n(<LoginPage onSuccess={vi.fn()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Email" }), "local@example.invalid");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Enter your assigned code")).toBeInTheDocument();
+    expect(screen.getByText(/No email was sent/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resend code" })).not.toBeInTheDocument();
+  });
+
   it("makes star login primary while retaining native methods on request", async () => {
     renderWithI18n(<LoginPage onSuccess={vi.fn()} onStarLogin={vi.fn()} />);
     expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();

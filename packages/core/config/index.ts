@@ -10,6 +10,7 @@ interface ConfigState {
   allowSignup: boolean;
   googleClientId: string;
   starLoginEnabled: boolean;
+  localDashboardEnabled: boolean;
   daemonServerUrl: string;
   daemonAppUrl: string;
   // Self-host gate (#3433): when true, every "Create workspace" affordance
@@ -67,6 +68,7 @@ interface ConfigState {
     allowSignup: boolean;
     googleClientId?: string;
     starLoginEnabled?: boolean;
+    localDashboardEnabled?: boolean;
     workspaceCreationDisabled?: boolean;
     vcsIntegrationAvailable?: boolean;
   }) => void;
@@ -91,6 +93,7 @@ export const configStore = createStore<ConfigState>((set) => ({
   allowSignup: true,
   googleClientId: "",
   starLoginEnabled: false,
+  localDashboardEnabled: false,
   daemonServerUrl: "",
   daemonAppUrl: "",
   workspaceCreationDisabled: false,
@@ -108,9 +111,10 @@ export const configStore = createStore<ConfigState>((set) => ({
     allowSignup,
     googleClientId = "",
     starLoginEnabled = false,
+    localDashboardEnabled = false,
     workspaceCreationDisabled = false,
     vcsIntegrationAvailable = false,
-  }) => set({ allowSignup, googleClientId, starLoginEnabled: starLoginEnabled === true, workspaceCreationDisabled, vcsIntegrationAvailable }),
+  }) => set({ allowSignup, googleClientId, starLoginEnabled: starLoginEnabled === true, localDashboardEnabled: localDashboardEnabled === true, workspaceCreationDisabled, vcsIntegrationAvailable }),
   setDaemonConfig: ({ daemonServerUrl = "", daemonAppUrl = "" }) =>
     set({ daemonServerUrl, daemonAppUrl }),
   setFeatureFlags: (flags = {}) => set({ featureFlags: { ...flags } }),

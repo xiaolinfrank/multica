@@ -465,6 +465,14 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	}
 
 	h.Fleet = fleet.New(fleet.LoadDevices())
+	if configFile := strings.TrimSpace(os.Getenv("MULTICA_LOCAL_DASHBOARD_CONFIG")); configFile != "" {
+		local, err := auth.LoadStarLocalDashboard(configFile, signupConfig.AppURL)
+		if err != nil {
+			slog.Error("local dashboard unavailable; verify private owner configuration")
+		} else {
+			h.LocalDashboard = local
+		}
+	}
 	invitationRateLimits := handler.DefaultInvitationRateLimits()
 	invitationRateLimits.Actor.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_ACTOR_10M", invitationRateLimits.Actor.Limit)
 	invitationRateLimits.Workspace.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_WORKSPACE_24H", invitationRateLimits.Workspace.Limit)
@@ -1953,6 +1961,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			r.Post("/current/renew", h.RenewCurrentPersonalAccessToken)
 			r.Delete("/{id}", h.RevokePersonalAccessToken)
 		})
+		r.With(handler.RequireHumanActor).Post("/api/local-dashboard", h.OpenLocalDashboard)
 
 		// Cloud Billing proxy. Same upstream service / port as
 		// cloud-runtime — multica-cloud's Fleet and Billing share

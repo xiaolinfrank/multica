@@ -60,6 +60,7 @@ interface LoginPageProps {
   /** The shell opens the configured star account flow, retaining its return destination. */
   onStarLogin?: () => void;
   starError?: string;
+  signInTitle?: string;
   /** Slot rendered at the bottom of the sign-in card, below the
    *  Google button. The web shell uses it for a "Prefer the desktop
    *  app?" prompt; desktop omits it (a download prompt inside the app
@@ -115,6 +116,7 @@ export function LoginPage({
   onGoogleLogin,
   onStarLogin,
   starError,
+  signInTitle,
   extra,
 }: LoginPageProps) {
   const { t } = useT("auth");
@@ -125,6 +127,7 @@ export function LoginPage({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showOtherLogin, setShowOtherLogin] = useState(false);
+  const [codeDelivery, setCodeDelivery] = useState<"email" | "personal">("email");
   const [cooldown, setCooldown] = useState(0);
   const [existingUser, setExistingUser] = useState<User | null>(null);
   // Tracks how the existing session was detected so handleCliAuthorize
@@ -194,7 +197,8 @@ export function LoginPage({
       setLoading(true);
       setError("");
       try {
-        await useAuthStore.getState().sendCode(email);
+        const delivery = await useAuthStore.getState().sendCode(email);
+        setCodeDelivery(delivery?.delivery ?? "email");
         setStep("code");
         setCode("");
         setCooldown(60);
@@ -363,10 +367,10 @@ export function LoginPage({
           <CardHeader className="text-center">
             {logo && <div className="mx-auto mb-4">{logo}</div>}
             <CardTitle className="text-display-sm">
-              {t(($) => $.verify.title)}
+              {codeDelivery === "personal" ? t(($) => $.verify.personal_title) : t(($) => $.verify.title)}
             </CardTitle>
             <CardDescription>
-              {t(($) => $.verify.description, { email })}
+              {codeDelivery === "personal" ? t(($) => $.verify.personal_description, { email }) : t(($) => $.verify.description, { email })}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
@@ -392,7 +396,7 @@ export function LoginPage({
             {error && (
               <p className="text-body text-destructive">{error}</p>
             )}
-            <div className="flex items-center gap-2 text-body text-muted-foreground">
+            {codeDelivery !== "personal" && <div className="flex items-center gap-2 text-body text-muted-foreground">
               <button
                 type="button"
                 onClick={handleResend}
@@ -403,7 +407,7 @@ export function LoginPage({
                   ? t(($) => $.verify.resend_cooldown, { seconds: cooldown })
                   : t(($) => $.verify.resend)}
               </button>
-            </div>
+            </div>}
           </CardContent>
           <CardFooter>
             <Button
@@ -434,7 +438,7 @@ export function LoginPage({
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">
             {logo && <div className="mx-auto mb-4">{logo}</div>}
-            <CardTitle className="text-display-sm">{t(($) => $.signin.title)}</CardTitle>
+            <CardTitle className="text-display-sm">{signInTitle ?? t(($) => $.signin.title)}</CardTitle>
             <CardDescription>{t(($) => $.signin.star_description)}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -461,7 +465,7 @@ export function LoginPage({
         <CardHeader className="text-center">
           {logo && <div className="mx-auto mb-4">{logo}</div>}
           <CardTitle className="text-display-sm">
-            {t(($) => $.signin.title)}
+            {signInTitle ?? t(($) => $.signin.title)}
           </CardTitle>
           <CardDescription>
             {t(($) => $.signin.description)}

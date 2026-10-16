@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AppConfigSchema,
+  LoginCodeDeliverySchema,
+  LocalDashboardHandoffSchema,
   WecomInstallationSchema,
   ListWecomInstallationsResponseSchema,
   RedeemWecomBindingTokenResponseSchema,
@@ -2778,5 +2780,16 @@ describe("AppConfigSchema star sign-in capability", () => {
     expect(AppConfigSchema.parse({}).star_login_enabled).toBe(false);
     expect(AppConfigSchema.parse({ star_login_enabled: "yes" }).star_login_enabled).toBe(false);
     expect(AppConfigSchema.parse({ star_login_enabled: true }).star_login_enabled).toBe(true);
+  });
+});
+
+
+describe("native local account responses", () => {
+  it("preserves personal delivery and defaults older responses to email", () => {
+    expect(LoginCodeDeliverySchema.parse({ delivery: "personal" }).delivery).toBe("personal");
+    expect(LoginCodeDeliverySchema.parse({}).delivery).toBe("email");
+    expect(LoginCodeDeliverySchema.parse({ delivery: 1 }).delivery).toBe("email");
+    expect(LocalDashboardHandoffSchema.parse({ browser_url: 1 }).browser_url).toBe("");
+    expect(AppConfigSchema.parse({ local_dashboard_enabled: "yes" }).local_dashboard_enabled).toBe(false);
   });
 });

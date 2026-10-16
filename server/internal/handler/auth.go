@@ -460,6 +460,13 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Personal codes are already provisioned by this private deployment. Never
+	// send an unrelated email OTP for an account using that native mechanism.
+	if personalVerificationCodeForEmail(email) != "" {
+		writeJSON(w, http.StatusOK, map[string]string{"message": "Use your assigned login code", "delivery": "personal"})
+		return
+	}
+
 	// Rate limit: max 1 code per 60 seconds per email. The cooldown exists
 	// to stop email spam, so it is skipped while the fixed dev verification
 	// code is active — that mode sends no email at all, and the cooldown
