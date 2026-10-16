@@ -2520,6 +2520,13 @@ describe("Cockpit pending change schemas", () => {
     expect(parsed[1]?.decision_note).toBe("系统撤回：节点已删除");
   });
 
+  it("normalises a null source_task_id the way old rows serialized it", () => {
+    const parsed = CockpitPendingChangeListSchema.parse([
+      { id: "c-null", field: "progress", new_value: "80", source_task_id: null },
+    ]);
+    expect(parsed[0]?.source_task_id).toBe("");
+  });
+
   it("treats a malformed source_issue as drift, not absence", () => {
     expect(
       CockpitPendingChangeListSchema.safeParse([

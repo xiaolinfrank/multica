@@ -145,6 +145,12 @@ func TestCockpitChangesAttributeTheSourceTask(t *testing.T) {
 		if _, leaked := m["source_issue_id"]; leaked {
 			t.Errorf("raw source_issue_id leaked into the page item: %s", item)
 		}
+		if m["source_task_id"] == nil {
+			t.Errorf("page item carries SQL null for source_task_id: %s", item)
+		}
+		if m["field"] == "progress" && m["source_task_id"] != taskID {
+			t.Errorf("page source_task_id = %v, want %s", m["source_task_id"], taskID)
+		}
 		if m["field"] == "progress" {
 			found = true
 			source, ok := m["source_issue"].(map[string]any)

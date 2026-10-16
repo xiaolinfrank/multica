@@ -160,6 +160,12 @@ func (s *IssueService) composeChangeSourceRefs(ctx context.Context, workspaceID 
 		if err := json.Unmarshal(item, &m); err != nil {
 			return nil, err
 		}
+		// The raw row carries SQL NULL for hand-filed proposals; every other
+		// read path emits "" for "no source", so the page normalises to the
+		// same wire shape instead of letting null trip strict clients.
+		if m["source_task_id"] == nil {
+			m["source_task_id"] = ""
+		}
 		rawID := m["source_issue_id"]
 		delete(m, "source_issue_id")
 		number, _ := m["source_issue_number"].(float64)

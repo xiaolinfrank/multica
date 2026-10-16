@@ -2393,7 +2393,11 @@ export const CockpitPendingChangeSchema = z.object({
   decided_at: z.string().nullable().default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
-  source_task_id: z.string().default(""),
+  source_task_id: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? "")
+    .default(""),
   source_issue: z
     .object({
       id: z.string().default(""),
