@@ -478,6 +478,11 @@ func (h *Handler) ingestCockpitChange(
 	req CockpitChangeRequest,
 	actorType, actorLabel string,
 	sourceTaskID pgtype.UUID,
+	// requireReason is set for the task-credential path: an agent filing a
+	// proposal must say what is inconsistent and why the update is
+	// necessary — an unexplained diff is exactly what this queue exists to
+	// prevent. Humans stay optional.
+	requireReason bool,
 ) (db.CockpitPendingChange, string, string, error) {
 	field := strings.TrimSpace(req.Field)
 	if _, ok := cockpitChangeFields[field]; !ok {
@@ -501,7 +506,9 @@ func (h *Handler) ingestCockpitChange(
 
 	// A proposal that states the present is noise for a reviewer, and an
 	// ingest that re-sends the same observation (agents re-running a report)
-	// must be a no-op, not a queue refill.
+	// must be a no-op, not a queue refill. The no_change judgement comes
+	// first on purpose: a redundant observation is not a proposal, and it
+	// must not be failed for missing one.
 	current := cockpitNodeFieldValue(node, field)
 	if value == current {
 		return db.CockpitPendingChange{}, "skipped", "no_change", nil
@@ -510,6 +517,12 @@ func (h *Handler) ingestCockpitChange(
 	reason := ""
 	if req.Reason != nil {
 		reason = strings.TrimSpace(*req.Reason)
+	}
+	if len(reason) > 2000 {
+		return db.CockpitPendingChange{}, "rejected", "invalid_reason", nil
+	}
+	if requireReason && reason == "" {
+		return db.CockpitPendingChange{}, "rejected", "reason_required", nil
 	}
 	params := db.CreateCockpitPendingChangeParams{
 		WorkspaceID:    cc.workspaceID,
@@ -649,7 +662,7 @@ func (h *Handler) CreateCockpitChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "failed to lock cockpit changes")
 		return
 	}
-	change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, req, actorType, actorLabel, h.commentSourceTaskID(r))
+	change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, req, actorType, actorLabel, h.commentSourceTaskID(r), r.Header.Get("X-Actor-Source") == "task_token")
 	if err != nil {
 		slog.Warn("ingestCockpitChange failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to file cockpit change")
@@ -666,6 +679,10 @@ func (h *Handler) CreateCockpitChange(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "cockpit node not found")
 		case "invalid_value":
 			writeError(w, http.StatusBadRequest, "invalid new_value for field "+req.Field)
+		case "reason_required":
+			writeError(w, http.StatusBadRequest, "agent proposals require a reason: what is inconsistent, and why the update is necessary")
+		case "invalid_reason":
+			writeError(w, http.StatusBadRequest, "reason exceeds the 2000 character limit")
 		default:
 			writeError(w, http.StatusBadRequest, "unknown or non-proposable field "+req.Field)
 		}
@@ -727,8 +744,9 @@ func (h *Handler) IngestCockpitChanges(w http.ResponseWriter, r *http.Request) {
 	results := make([]CockpitIngestItem, 0, len(req.Changes))
 	queued := false
 	sourceTaskID := h.commentSourceTaskID(r)
+	requireReason := r.Header.Get("X-Actor-Source") == "task_token"
 	for _, item := range req.Changes {
-		change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, item, actorType, actorLabel, sourceTaskID)
+		change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, item, actorType, actorLabel, sourceTaskID, requireReason)
 		if err != nil {
 			slog.Warn("ingestCockpitChange failed", append(logger.RequestAttrs(r), "error", err)...)
 			writeError(w, http.StatusInternalServerError, "failed to file cockpit changes")

@@ -1217,6 +1217,7 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "this code has been used before and stays spent")
 		return
 	}
+	actorType, _ := h.cockpitActor(r, cc)
 	node, err := qtx.CreateCockpitNode(r.Context(), db.CreateCockpitNodeParams{
 		WorkspaceID:     cc.workspaceID,
 		CockpitID:       cc.cockpit.ID,
@@ -1243,7 +1244,7 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		ExecStatus:      textOrEmpty(req.ExecStatus),
 		Contract:        textOrEmpty(req.Contract),
 		Source:          textOrEmpty(req.Source),
-		UpdatedByType:   "member",
+		UpdatedByType:   actorType,
 		UpdatedByID:     cc.member.UserID,
 	})
 	if err != nil {
@@ -1281,6 +1282,14 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
+	// Direct plan edits are a human prerogative: an agent that sees the board
+	// drift files a proposal (POST /api/cockpit/changes) and a person applies
+	// it after review. A machine credential that could PATCH nodes directly
+	// would bypass the governance queue entirely.
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "direct plan edits require a human actor; propose the change via POST /api/cockpit/changes so it can be reviewed")
+		return
+	}
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -1322,6 +1331,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorType, _ := h.cockpitActor(r, cc)
 	params := db.UpdateCockpitNodeParams{
 		ID:              current.ID,
 		WorkspaceID:     cc.workspaceID,
@@ -1345,7 +1355,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		ExecStatus:      optionalText(req.ExecStatus),
 		Contract:        optionalText(req.Contract),
 		Source:          optionalText(req.Source),
-		UpdatedByType:   "member",
+		UpdatedByType:   actorType,
 		UpdatedByID:     cc.member.UserID,
 	}
 
@@ -2509,6 +2519,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 // run is allowed to destroy the board. Empty trigger skips the snapshot: it is
 // used by paths that have already frozen the board themselves.
 func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req CockpitImportRequest, trigger string) (CockpitImportResponse, *cockpitImportError) {
+	actorType, _ := h.cockpitActor(r, cc)
 	ctx := r.Context()
 	board := cc.cockpit
 
@@ -2708,7 +2719,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			ExecStatus:      n.ExecStatus,
 			Contract:        n.Contract,
 			Source:          n.Source,
-			UpdatedByType:   "member",
+			UpdatedByType:   actorType,
 			UpdatedByID:     cc.member.UserID,
 		})
 		if err != nil {
@@ -2750,7 +2761,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 				ID:            nodeID,
 				WorkspaceID:   cc.workspaceID,
 				ParentID:      parentID,
-				UpdatedByType: "member",
+				UpdatedByType: actorType,
 				UpdatedByID:   cc.member.UserID,
 			}); err != nil {
 				slog.Warn("cockpit import parent failed", append(logger.RequestAttrs(r), "error", err)...)

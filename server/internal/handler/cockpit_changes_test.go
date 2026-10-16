@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/multica-ai/multica/server/internal/testutil"
@@ -174,6 +175,104 @@ func TestCockpitChangesAttributeTheSourceTask(t *testing.T) {
 				t.Errorf("re-ingest did not re-stamp the source: %+v", row.SourceIssue)
 			}
 		}
+	}
+}
+
+// TestCockpitAgentProposalsRequireAReason locks the necessity gate: a
+// task-credential ingest without a reason is rejected per row (one bad row
+// never poisons the batch), humans stay optional, and a redundant
+// observation is judged no_change before any reason requirement applies.
+func TestCockpitAgentProposalsRequireAReason(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit reason gate")
+	node := createNode(t, wsID, map[string]any{"code": "L3-RS-1", "progress": 10})
+
+	ingestWith := func(source string, changes []map[string]any) CockpitIngestResponse {
+		t.Helper()
+		req := cockpitRequest(http.MethodPost, "/api/cockpit/changes/ingest", wsID, map[string]any{"changes": changes})
+		if source != "" {
+			req.Header.Set("X-Actor-Source", source)
+		}
+		var out CockpitIngestResponse
+		testutil.Call(t, cockpitHandler(testHandler.IngestCockpitChanges), req).Want(http.StatusOK).JSON(&out)
+		return out
+	}
+
+	out := ingestWith("task_token", []map[string]any{
+		{"node": node.ID, "field": "status", "new_value": "进行中"},
+		{"node": node.ID, "field": "progress", "new_value": "40", "reason": "纪要确认 40%"},
+	})
+	if out.Results[0].Status != "rejected" || out.Results[0].Reason != "reason_required" {
+		t.Errorf("unreasoned agent proposal = %s/%s, want rejected/reason_required", out.Results[0].Status, out.Results[0].Reason)
+	}
+	if out.Results[1].Status != "queued" {
+		t.Errorf("reasoned agent proposal = %s/%s, want queued", out.Results[1].Status, out.Results[1].Reason)
+	}
+
+	// Humans stay optional; a redundant observation is not failed for a
+	// missing reason — it is not a proposal at all.
+	out = ingestWith("", []map[string]any{
+		{"node": node.ID, "field": "progress", "new_value": "10"},
+		{"node": node.ID, "field": "status", "new_value": "未开始"},
+	})
+	if out.Results[0].Status != "skipped" || out.Results[0].Reason != "no_change" {
+		t.Errorf("human redundant observation = %s/%s, want skipped/no_change", out.Results[0].Status, out.Results[0].Reason)
+	}
+	if out.Results[1].Status != "queued" {
+		t.Errorf("human unreasoned proposal = %s/%s, want queued", out.Results[1].Status, out.Results[1].Reason)
+	}
+
+	// Oversized reasons are rejected, never silently truncated.
+	out = ingestWith("task_token", []map[string]any{{"node": node.ID, "field": "deliverable", "new_value": "报告", "reason": strings.Repeat("证", 2001)}})
+	if out.Results[0].Status != "rejected" || out.Results[0].Reason != "invalid_reason" {
+		t.Errorf("oversized reason = %s/%s, want rejected/invalid_reason", out.Results[0].Status, out.Results[0].Reason)
+	}
+
+	// The single-proposal endpoint surfaces the same gate as a 400.
+	req := cockpitRequest(http.MethodPost, "/api/cockpit/changes", wsID,
+		map[string]any{"node": node.ID, "field": "note", "new_value": "补充说明"})
+	req.Header.Set("X-Actor-Source", "task_token")
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitChange), req).Want(http.StatusBadRequest)
+}
+
+// TestCockpitNodeDirectEditsRequireHuman locks the write path around the
+// governance queue: machine credentials can no longer PATCH plan nodes
+// directly (they propose, a human applies), and the node's audit column
+// records the real actor instead of a hardcoded "member".
+func TestCockpitNodeDirectEditsRequireHuman(t *testing.T) {
+	wsID := cockpitFixture(t, "Cockpit direct edit gate")
+	node := createNode(t, wsID, map[string]any{"code": "L3-GT-1", "name": "闸门验证"})
+
+	patch := func(source string) *testutil.Response {
+		t.Helper()
+		req := testutil.WithURLParams(
+			cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+node.ID, wsID, map[string]any{"name": "改名"}),
+			"id", node.ID)
+		if source != "" {
+			req.Header.Set("X-Actor-Source", source)
+		}
+		return testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode), req)
+	}
+	for _, source := range []string{"task_token", "cloud_pat"} {
+		patch(source).Want(http.StatusForbidden)
+	}
+	patch("").Want(http.StatusOK)
+	if board := getBoard(t, wsID); board.Nodes[0].Name != "改名" {
+		t.Fatalf("human patch did not apply: %+v", board.Nodes[0])
+	}
+
+	// The audit column tells the truth about who wrote: an agent-created
+	// node stamps "agent", not the old hardcoded "member".
+	runtimeID := dbfx.Runtime(t, "gate-runtime")
+	agentID := dbfx.Agent(t, "建点智能体", runtimeID, testutil.Cols{"workspace_id": wsID, "visibility": "workspace"})
+	req := cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID,
+		map[string]any{"code": "L3-GT-2", "name": "agent 创建"})
+	req.Header.Set("X-Actor-Source", "task_token")
+	req.Header.Set("X-Agent-ID", agentID)
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode), req).Want(http.StatusCreated)
+	var writerType string
+	dbfx.QueryRow(t, `SELECT updated_by_type FROM cockpit_node WHERE workspace_id = $1 AND code = 'L3-GT-2'`, wsID).Scan(&writerType)
+	if writerType != "agent" {
+		t.Errorf("updated_by_type = %q, want agent", writerType)
 	}
 }
 
