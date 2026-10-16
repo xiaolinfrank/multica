@@ -3534,9 +3534,12 @@ export class ApiClient {
     );
   }
 
-  async rejectCockpitChange(id: string): Promise<CockpitPendingChange> {
+  async rejectCockpitChange(id: string, note = ""): Promise<CockpitPendingChange> {
     const raw = await this.fetch<unknown>(`/api/cockpit/changes/${encodeURIComponent(id)}/reject`, {
       method: "POST",
+      // The note is optional; an absent body stays a valid one-click
+      // rejection for older servers.
+      ...(note !== "" ? { body: JSON.stringify({ note }) } : {}),
     });
     return parseWithFallback(raw, CockpitPendingChangeSchema, EMPTY_COCKPIT_PENDING_CHANGE, {
       endpoint: "POST /api/cockpit/changes/:id/reject",

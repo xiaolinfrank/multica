@@ -25,8 +25,10 @@ import {
   useWithdrawCockpitChange,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Textarea } from "@multica/ui/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -36,7 +38,8 @@ import {
 } from "@multica/ui/components/ui/select";
 import { Eye, Crosshair, Undo2, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-
+import { useWorkspacePaths } from "@multica/core/paths";
+import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
@@ -175,6 +178,9 @@ function ChangeRow({
   const timeAgo = useTimeAgo();
   const reject = useRejectCockpitChange(wsId);
   const withdraw = useWithdrawCockpitChange(wsId);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const paths = useWorkspacePaths();
   const busy = readOnly || !CHANGE_FIELDS.some((field) => field === change.field) || batchBusy || reject.isPending || withdraw.isPending;
 
   // Structural on purpose: the three decision hooks return different result
@@ -195,6 +201,17 @@ function ChangeRow({
     });
   };
 
+  // Rejection is a one-way door with a receipt attached, so it earns one
+  // confirmation step — and the optional reason travels to the task that
+  // filed the proposal.
+  const confirmReject = () => {
+    if (busy || !beginDecision()) return;
+    const note = rejectNote.trim();
+    reject.mutate({ id: change.id, note: note === "" ? undefined : note }, {
+      onSuccess: () => { endDecision(); setRejectOpen(false); setRejectNote(""); toast.success(t(($) => $.changes.reject_done)); },
+      onError: (error) => { endDecision(); onError(error); },
+    });
+  };
 
   const code =
     change.node_code !== "" ? (
@@ -230,7 +247,17 @@ function ChangeRow({
             ? t(($) => $.changes.source_agent)
             : t(($) => $.changes.source_manual)}
         </span>
-
+        {change.source_issue && (
+          <AppLink
+            href={paths.issueDetail(change.source_issue.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title={`${change.source_issue.ref} ${change.source_issue.title}`}
+          >
+            {change.source_issue.ref}
+          </AppLink>
+        )}
         <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
           {change.created_by_label || t(($) => $.changes.by_unknown)} ·{" "}
           {timeAgo(change.created_at)}
@@ -266,7 +293,7 @@ function ChangeRow({
           size="sm"
           className="text-destructive hover:text-destructive"
           disabled={busy}
-          onClick={() => decide(reject, t(($) => $.changes.reject_done))}
+          onClick={() => setRejectOpen(true)}
         >
           <X className="size-3.5" aria-hidden />
           {t(($) => $.changes.reject)}
@@ -280,6 +307,37 @@ function ChangeRow({
           {t(($) => $.governance.review_single)}
         </Button>
       </div>
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t(($) => $.governance.reject_title, { name: change.node_name })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-caption text-muted-foreground">
+            {fieldLabel(t, change.field)}: {valueLabel(t, change.old_value)} → {valueLabel(t, change.new_value)}
+          </p>
+          <Textarea
+            value={rejectNote}
+            onChange={(event) => setRejectNote(event.target.value)}
+            placeholder={t(($) => $.governance.reject_note_placeholder)}
+            maxLength={500}
+            rows={3}
+            disabled={reject.isPending}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={reject.isPending} />}>{t(($) => $.binding.cancel)}</DialogClose>
+            <Button
+              type="button"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              disabled={busy}
+              onClick={confirmReject}
+            >
+              {reject.isPending && <Spinner />}
+              {t(($) => $.changes.reject)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
@@ -287,6 +345,12 @@ function ChangeRow({
 function DecidedRow({ change }: { change: CockpitPendingChange }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
+  const paths = useWorkspacePaths();
+  // System withdrawals (node deleted, board replaced) carry no human name;
+  // rendering the raw "system" string would read like a missing translation.
+  const decider = change.decided_by_type === "system"
+    ? t(($) => $.changes.by_system)
+    : change.decided_by_label || t(($) => $.changes.by_unknown);
   return (
     <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-caption">
       <span
@@ -301,9 +365,24 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
         {fieldLabel(t, change.field)}: {valueLabel(t, change.old_value)} →{" "}
         {valueLabel(t, change.new_value)}
       </span>
+      {change.source_issue && (
+        <AppLink
+          href={paths.issueDetail(change.source_issue.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          title={change.source_issue.title}
+        >
+          {change.source_issue.ref}
+        </AppLink>
+      )}
+      {change.decision_note !== "" && (
+        <span className="w-full break-words text-caption text-muted-foreground [overflow-wrap:anywhere]">
+          {change.decision_note}
+        </span>
+      )}
       <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
-        {change.decided_by_label || t(($) => $.changes.by_unknown)} ·{" "}
-        {timeAgo(change.decided_at ?? change.updated_at)}
+        {decider} · {timeAgo(change.decided_at ?? change.updated_at)}
       </span>
     </li>
   );

@@ -102,3 +102,50 @@ describe("bounded governance queue decisions", () => {
     expect(await screen.findByText("Decision failed")).toBeVisible(); expect(api.applyReviewedCockpitChange).toHaveBeenCalledExactlyOnceWith("ws", observation(change("first"))); expect(dialog).toBeVisible();
   });
 });
+
+
+it("labels the proposal values independently and still requires a review before applying", async () => {
+  changes = [{ ...change("first"), old_value: "Li\nConfirmed owner", new_value: "Wu\nProposed owner" }];
+  show();
+  const row = (await screen.findByText("Review task")).closest("li")!;
+  const labels = within(row).getAllByRole("term");
+  expect(labels[0]).toHaveTextContent(enCockpit.governance.proposed_from);
+  expect(labels[1]).toHaveTextContent(enCockpit.governance.proposed_to);
+  const values = within(row).getAllByRole("definition");
+  expect(values[0]).toHaveTextContent("Li Confirmed owner");
+  expect(values[1]).toHaveTextContent("Wu Proposed owner");
+  await userEvent.click(within(row).getByRole("button", { name: enCockpit.governance.review_single }));
+  await screen.findByRole("dialog");
+  expect(api.getCockpitChangePreview).toHaveBeenCalledWith("ws", "first");
+  expect(api.applyReviewedCockpitChange).not.toHaveBeenCalled();
+});
+
+describe("attribution and decision notes", () => {
+  it("links each proposal to the task that filed it", async () => {
+    changes = [{ ...change("attr"), source_task_id: "task-1", source_issue: { id: "issue-1", ref: "TES-1", title: "会议纪要核对" } }];
+    show();
+    expect(await screen.findByRole("link", { name: "TES-1" })).toHaveAttribute("href", "/ws/issues/issue-1");
+  });
+
+  it("renders system withdrawals with the system label and the recorded reason", async () => {
+    changes = [{ ...change("sweep"), status: "withdrawn", decided_by_type: "system", decided_by_label: "system", decision_note: "node deleted" }];
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: enCockpit.governance.decided }));
+    // The decider sits in a span shared with the timestamp, so match as a
+    // substring rather than a whole-element exact text.
+    expect(await screen.findByText(enCockpit.changes.by_system, { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("node deleted")).toBeInTheDocument();
+  });
+
+  it("rejects from the row with an optional reason that reaches the server", async () => {
+    changes = [change("victim")];
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: enCockpit.changes.reject }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByPlaceholderText(enCockpit.governance.reject_note_placeholder), "needs evidence");
+    vi.mocked(api.rejectCockpitChange).mockResolvedValue({ ...change("victim"), status: "rejected", decision_note: "needs evidence" });
+    await user.click(within(dialog).getByRole("button", { name: enCockpit.changes.reject }));
+    await waitFor(() => expect(vi.mocked(api.rejectCockpitChange)).toHaveBeenCalledWith("victim", "needs evidence"));
+  });
+});

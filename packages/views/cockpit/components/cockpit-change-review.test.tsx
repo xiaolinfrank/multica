@@ -10,7 +10,8 @@ import type { CockpitChangePreview } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitChangeReview } from "./cockpit-change-review";
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("tab=governance") }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@multica/core/api", () => ({ api: { getCockpitChangePreview: vi.fn(), applyReviewedCockpitChange: vi.fn() } }));
+vi.mock("@multica/core/api", () => ({ api: { getCockpitChangePreview: vi.fn(), applyReviewedCockpitChange: vi.fn(), rejectCockpitChange: vi.fn() } }));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 function observation(id: string, current = "35"): CockpitChangePreview { return { workspace_id: "ws-1", context: { project_id: "project-a", project_title: "Project A", module_id: "module-a", module_title: "Module A" }, current_value: current, conflict: true, review_token: `token-${id}-${current}`, change: { id, cockpit_id: "board", node_id: "node", node_code: "01.01", node_name: "Review task", field: "progress", old_value: "10", new_value: "60", source: "manual", reason: "Confirmed delivery scope", status: "pending", created_by_type: "member", created_by_label: "Owner", decided_by_type: "", decided_by_label: "", decided_at: null, created_at: "2026-10-10T00:00:00Z", updated_at: "2026-10-10T00:00:00Z", source_task_id: "", source_issue: null, decision_note: "" } }; }
 function result(preview: CockpitChangePreview) { return { node: CockpitNodeSchema.parse({ id: "node", progress: 60 }), change: { ...preview.change, old_value: preview.current_value, status: "applied" } }; }
 function setup(ids = ["first"], supported = true) { const close = vi.fn(); const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>{children}</I18nProvider></QueryClientProvider>;
@@ -60,3 +61,28 @@ describe("fixed change review observations", () => {
     expect(screen.getByRole("link", { name: enCockpit.governance.open_current_scope })).toHaveAttribute("href", "/ws/cockpit?tab=governance&governance_view=changes&project=project-b&module=module-b");
     expect(api.applyReviewedCockpitChange).not.toHaveBeenCalled();
   });
+
+describe("review context and decision vocabulary", () => {
+  it("names the decision Approve and links the task that filed the proposal", async () => {
+    const base = observation("src");
+    vi.mocked(api.getCockpitChangePreview).mockResolvedValue({ ...base, change: { ...base.change, source: "agent", created_by_label: "Data Analyst", source_issue: { id: "issue-9", ref: "TES-9", title: "Minutes check" } } });
+    setup(["src"]);
+    expect(await screen.findByRole("link", { name: "TES-9" })).toHaveAttribute("href", "/ws/issues/issue-9");
+    expect(screen.getByText(enCockpit.governance.source_task)).toBeInTheDocument();
+    // conflict previews keep Approve gated behind the overwrite consent, as
+    // the dedicated concurrency tests pin down — presence is what this case owes.
+    expect(screen.getByRole("button", { name: enCockpit.governance.confirm_reviewed })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: enCockpit.governance.reject_item })).toBeInTheDocument();
+  });
+
+  it("rejects one item inline with a note that reaches the server", async () => {
+    setup(["only"]);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: enCockpit.governance.reject_item }));
+    await user.type(screen.getByPlaceholderText(enCockpit.governance.reject_note_placeholder), "needs evidence");
+    vi.mocked(api.rejectCockpitChange).mockResolvedValue({ ...observation("only").change, status: "rejected", decision_note: "needs evidence" });
+    await user.click(screen.getByRole("button", { name: enCockpit.governance.reject_item }));
+    await waitFor(() => expect(vi.mocked(api.rejectCockpitChange)).toHaveBeenCalledWith("only", "needs evidence"));
+    expect(await screen.findByText(enCockpit.changes.status_rejected)).toBeInTheDocument();
+  });
+});

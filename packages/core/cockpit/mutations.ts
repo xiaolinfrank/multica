@@ -132,7 +132,7 @@ export function useRejectCockpitChange(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
-    mutationFn: (id: string) => api.rejectCockpitChange(id),
+    mutationFn: ({ id, note }: { id: string; note?: string }) => api.rejectCockpitChange(id, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
     },
