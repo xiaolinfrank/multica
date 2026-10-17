@@ -538,3 +538,14 @@ func TestValidateLoginTokenPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestCallbackSuccessDoesNotRetainBearerURL(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeCallbackSuccess(w)
+	if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatal("callback may retain credentials")
+	}
+	if !strings.Contains(w.Body.String(), `history.replaceState(null,"",location.pathname)`) {
+		t.Fatal("callback URL not scrubbed")
+	}
+}

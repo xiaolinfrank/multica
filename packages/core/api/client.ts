@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { LoginCodeDeliverySchema, LocalDashboardHandoffSchema } from "./schemas";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
 import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSchema, PausedWakeupSchema, SystemWakeupSchema, WakeupRunSchema, WorkspaceSystemWakeupSchema } from "./schemas";
@@ -1079,11 +1080,17 @@ export class ApiClient {
   }
 
   // Auth
-  async sendCode(email: string): Promise<void> {
-    await this.fetch("/auth/send-code", {
+  async sendCode(email: string): Promise<{ delivery: "email" | "personal" }> {
+    const raw = await this.fetch<unknown>("/auth/send-code", {
       method: "POST",
       body: JSON.stringify({ email }),
     });
+    return parseWithFallback(raw, LoginCodeDeliverySchema, { delivery: "email" }, { endpoint: "auth/send-code" });
+  }
+
+  async openLocalDashboard(): Promise<{ browser_url: string }> {
+    const raw = await this.fetch<unknown>("/api/local-dashboard", { method: "POST", body: "{}" });
+    return parseWithFallback(raw, LocalDashboardHandoffSchema, { browser_url: "" }, { endpoint: "local-dashboard" });
   }
 
   async verifyCode(email: string, code: string): Promise<LoginResponse> {

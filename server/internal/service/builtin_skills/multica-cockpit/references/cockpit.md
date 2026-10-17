@@ -5,6 +5,19 @@ broadcasts, and the shape of an import document.
 
 ## API
 
+The cockpit uses the current native Multica CLI identity and workspace. A
+deployment with Star (星舵) sign-in still uses native browser consent and a
+Multica PAT for a local user's CLI; there is no separate cockpit credential.
+Verify the deployment profile and workspace before reading or writing. Keep
+daemon-injected task credentials intact. Browser logout does not revoke a PAT;
+use native token revocation when access must end.
+
+On a private local instance, an assigned native login code can replace email
+delivery during browser sign-in. The code is not a cockpit secret and must not
+be embedded in this skill. Use the instance's explicit CLI profile, server and
+workspace; a successful cockpit read must belong to that same workspace. Other
+providers called by a skill still require their own native grants.
+
 Every route is workspace-scoped through the `X-Workspace-ID` header.
 
 | Method | Path | What it does |

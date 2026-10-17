@@ -452,7 +452,27 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		LLMDisableThinking:           opts.LLMDisableThinking,
 	}
 	h := handler.New(queries, pool, hub, bus, emailSvc, store, cfSigner, analyticsClient, signupConfig, daemonHub)
+	if configFile := strings.TrimSpace(os.Getenv("MULTICA_STAR_OIDC_CONFIG")); configFile != "" {
+		h.StarLoginConfigured = true
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		star, err := auth.LoadStarOIDC(ctx, configFile, signupConfig.AppURL)
+		cancel()
+		if err != nil {
+			slog.Error("star OIDC sign-in unavailable; verify private provider configuration")
+		} else {
+			h.StarOIDC = star
+		}
+	}
+
 	h.Fleet = fleet.New(fleet.LoadDevices())
+	if configFile := strings.TrimSpace(os.Getenv("MULTICA_LOCAL_DASHBOARD_CONFIG")); configFile != "" {
+		local, err := auth.LoadStarLocalDashboard(configFile, signupConfig.AppURL)
+		if err != nil {
+			slog.Error("local dashboard unavailable; verify private owner configuration")
+		} else {
+			h.LocalDashboard = local
+		}
+	}
 	invitationRateLimits := handler.DefaultInvitationRateLimits()
 	invitationRateLimits.Actor.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_ACTOR_10M", invitationRateLimits.Actor.Limit)
 	invitationRateLimits.Workspace.Limit = envNonNegativeInt("RATE_LIMIT_INVITATION_WORKSPACE_24H", invitationRateLimits.Workspace.Limit)
@@ -1525,6 +1545,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Post("/auth/send-code", h.SendCode)
 	r.With(authVerifyRL).Post("/auth/verify-code", h.VerifyCode)
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
+	r.With(authRL).Get("/auth/star/start", h.StarSignIn)
+	r.With(authVerifyRL).Get("/auth/star/callback", h.StarCallback)
 	r.Post("/auth/logout", h.Logout)
 
 	// Public API
@@ -1939,6 +1961,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			r.Post("/current/renew", h.RenewCurrentPersonalAccessToken)
 			r.Delete("/{id}", h.RevokePersonalAccessToken)
 		})
+		r.With(handler.RequireHumanActor).Post("/api/local-dashboard", h.OpenLocalDashboard)
 
 		// Cloud Billing proxy. Same upstream service / port as
 		// cloud-runtime — multica-cloud's Fleet and Billing share
