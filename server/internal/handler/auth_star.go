@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/multica-ai/multica/server/internal/auth"
 )
 
@@ -28,7 +29,26 @@ func (h *Handler) OpenLocalDashboard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "local dashboard is unavailable")
 		return
 	}
-	link, err := h.LocalDashboard.OpenForUser(r.Context(), userID)
+	var link string
+	var err error
+	if singleOwnerMode() {
+		if !h.localRequest(w, r) {
+			return
+		}
+		var ownerID string
+		err = h.DB.QueryRow(r.Context(), "SELECT user_id::text FROM single_owner_account WHERE singleton=1").Scan(&ownerID)
+		if err != nil {
+			status := http.StatusServiceUnavailable
+			if errors.Is(err, pgx.ErrNoRows) {
+				status = http.StatusForbidden
+			}
+			writeError(w, status, "local dashboard owner is unavailable")
+			return
+		}
+		link, err = h.LocalDashboard.OpenForSingleOwner(r.Context(), userID, ownerID)
+	} else {
+		link, err = h.LocalDashboard.OpenForUser(r.Context(), userID)
+	}
 	if err != nil {
 		status := http.StatusServiceUnavailable
 		if errors.Is(err, auth.ErrStarDashboardOwner) {

@@ -467,7 +467,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	h.Fleet = fleet.New(fleet.LoadDevices())
 	if configFile := strings.TrimSpace(os.Getenv("MULTICA_LOCAL_DASHBOARD_CONFIG")); configFile != "" {
-		local, err := auth.LoadStarLocalDashboard(configFile, signupConfig.AppURL)
+		loadLocalDashboard := auth.LoadStarLocalDashboard
+		if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+			loadLocalDashboard = auth.LoadSingleOwnerLocalDashboard
+		}
+		local, err := loadLocalDashboard(configFile, signupConfig.AppURL)
 		if err != nil {
 			slog.Error("local dashboard unavailable; verify private owner configuration")
 		} else {
