@@ -1,4 +1,4 @@
-package main
+package builtinartifact
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/service"
 )
 
-func exportBuiltinSkills(args []string, out io.Writer, revision string) (bool, error) {
+func Export(args []string, out io.Writer, revision string) (bool, error) {
 	if len(args) == 0 || args[0] != "--builtin-skills-manifest" {
 		return false, nil
 	}
