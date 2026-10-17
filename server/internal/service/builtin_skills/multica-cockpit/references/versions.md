@@ -21,4 +21,3 @@ multica cockpit update --summary-overall "本周完成 …"
 The three summary cards (`--summary-overall`, `--summary-next`,
 `--summary-support`) override the board's automatic roll-up. Leave them empty
 unless asked: an empty card derives from the tasks and stays correct on its own.
-
