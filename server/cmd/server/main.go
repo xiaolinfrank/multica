@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -306,6 +307,12 @@ func jwtSecretBootError(jwtSecret, appEnv string) error {
 		return nil
 	}
 	return auth.ValidateJWTSecret(jwtSecret)
+}
+
+// A proxy-only deployment can keep the backend on loopback. Empty preserves
+// the existing all-interface bind for independently deployed API clients.
+func mainHTTPAddress(port string) string {
+	return net.JoinHostPort(strings.TrimSpace(os.Getenv("MULTICA_BIND_HOST")), port)
 }
 
 // newMainHTTPServer builds the public HTTP server with the production timeout
@@ -722,7 +729,7 @@ func main() {
 	// the scheduler's Run goroutine starts so the field write is race-free.
 	heartbeatScheduler.RecoveryNotifier = h
 
-	srv := newMainHTTPServer(":"+port, r)
+	srv := newMainHTTPServer(mainHTTPAddress(port), r)
 	profilingServer := profiling.NewServer()
 	maintenanceServer, maintenanceErr := maintenance.NewServer(os.Getenv("MAINTENANCE_PORT"), maintenance.NewService(pool, maintenance.StatusCategory{}))
 	if maintenanceErr != nil {

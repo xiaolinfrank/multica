@@ -263,6 +263,8 @@ describe("runtimeRewriteDestination", () => {
 
   it("does not rewrite frontend auth callback pages", () => {
     expect(runtimeRewriteDestination("/auth/callback", {})).toBeUndefined();
+    expect(runtimeRewriteDestination("/auth/openclaw", { REMOTE_API_URL: "http://backend:8080" })).toBeUndefined();
+    expect(runtimeRewriteDestination("/auth/openclaw/", { REMOTE_API_URL: "http://backend:8080" })).toBeUndefined();
     expect(
       runtimeRewriteDestination("/auth/hg-sso/callback", {}),
     ).toBeUndefined();
