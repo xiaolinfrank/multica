@@ -463,6 +463,8 @@ var concurrentIndexCleanups = map[string]string{
 	"945_cockpit_directory_pkey_index":                          "cockpit_directory_pkey_uidx",
 	"954_cockpit_node_project_binding_index":                    "cockpit_node_project_binding_unique",
 	"955_cockpit_node_module_binding_index":                     "cockpit_node_module_binding_unique",
+	"9152_cockpit_node_project_binding_index":                   "cockpit_node_project_binding_unique",
+	"9153_cockpit_node_module_binding_index":                    "cockpit_node_module_binding_unique",
 	"438_agent_runtime_online_last_seen_index":                  "idx_agent_runtime_online_last_seen",
 	"439_agent_runtime_offline_last_seen_index":                 "idx_agent_runtime_offline_last_seen",
 	"440_github_pr_head_sha_index":                              "idx_github_pull_request_head_sha",
@@ -596,6 +598,10 @@ func refuseChannelChatRouteHistoryRollbackWith(ctx context.Context, query rowQue
 }
 
 var upMigrationConditions = map[string]migrationCondition{
+	// The binding columns moved from 953 to 9151 when main claimed 953.
+	// Keep frozen ledger stems; build pending indexes only after those columns.
+	"954_cockpit_node_project_binding_index": skipMigration("superseded by 9152 after binding columns in 9151"),
+	"955_cockpit_node_module_binding_index":  skipMigration("superseded by 9153 after binding columns in 9151"),
 	// Preserve applied history; pending 469 is superseded by the bounded expand
 	// migration. SaaS backfills separately; self-host converges in 491.
 	"469_issue_status_lifecycle_categories": skipMigration("superseded by 478 expansion and 491 convergence (MUL-7365)"),
