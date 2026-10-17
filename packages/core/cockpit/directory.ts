@@ -23,7 +23,7 @@ export interface CockpitDirectoryGroup {
  *  "") have no group; they show under the picker's other-people bucket. */
 export function cockpitDirectoryParties(entries: readonly CockpitDirectoryEntry[]): string[] {
   return dedupeCockpitValues(entries.map((entry) => entry.party)).sort((a, b) =>
-    a.localeCompare(b),
+    a.localeCompare(b,"zh-CN"),
   );
 }
 
@@ -31,7 +31,7 @@ export function cockpitDirectoryParties(entries: readonly CockpitDirectoryEntry[
  *  suggestions so a contact is offered before their first meeting. */
 export function cockpitDirectoryNames(entries: readonly CockpitDirectoryEntry[]): string[] {
   return dedupeCockpitValues(entries.map((entry) => entry.name)).sort((a, b) =>
-    a.localeCompare(b),
+    a.localeCompare(b,"zh-CN"),
   );
 }
 
@@ -41,7 +41,7 @@ export function cockpitDirectoryUnaffiliated(
 ): CockpitDirectoryEntry[] {
   return entries
     .filter((entry) => entry.party === "")
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name,"zh-CN"));
 }
 
 /**
@@ -62,12 +62,12 @@ export function cockpitDirectoryGroups(
     byParty.set(entry.party, list);
   }
   for (const list of byParty.values()) {
-    list.sort((a, b) => a.name.localeCompare(b.name));
+    list.sort((a, b) => a.name.localeCompare(b.name,"zh-CN"));
   }
   const picked = dedupeCockpitValues(selectedParties).filter((party) => byParty.has(party));
   const rest = [...byParty.keys()]
     .filter((party) => !picked.includes(party))
-    .sort((a, b) => a.localeCompare(b));
+    .sort((a, b) => a.localeCompare(b,"zh-CN"));
   return [...picked, ...rest].map((party) => ({ party, entries: byParty.get(party)! }));
 }
 

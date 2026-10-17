@@ -264,6 +264,10 @@ func (h *Handler) writeProjectWriteError(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		localProjectBindingMu.Lock()
+		defer localProjectBindingMu.Unlock()
+	}
 	var req CreateProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -380,6 +384,18 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if singleOwnerMode() {
+		path, _, err := localProjectDirectory(req.Title, collabPath)
+		if err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
+		collabPath = pgtype.Text{String: path, Valid: true}
+		if err := h.unusedLocalProjectPath(r.Context(), path, ""); err != nil {
+			writeError(w, 409, err.Error())
+			return
+		}
+	}
 	createParams := db.CreateProjectParams{
 		WorkspaceID: wsUUID,
 		Title:       req.Title,
@@ -483,6 +499,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		localProjectBindingMu.Lock()
+		defer localProjectBindingMu.Unlock()
+	}
 	id := chi.URLParam(r, "id")
 	workspaceID := h.resolveWorkspaceID(r)
 	idUUID, ok := parseUUIDOrBadRequest(w, id, "project id")
@@ -604,6 +624,22 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		collabPath, valid := collabPathFromRequest(w, req.CollabPath)
 		if !valid {
 			return
+		}
+		if singleOwnerMode() {
+			if !collabPath.Valid {
+				writeError(w, 400, "choose a persistent local project directory")
+				return
+			}
+			if _, _, err := localProjectDirectory(prevProject.Title, collabPath); err != nil {
+				writeError(w, 400, err.Error())
+				return
+			}
+		}
+		if singleOwnerMode() {
+			if err := h.unusedLocalProjectPath(r.Context(), collabPath.String, id); err != nil {
+				writeError(w, 409, err.Error())
+				return
+			}
 		}
 		params.CollabPath = collabPath
 	}

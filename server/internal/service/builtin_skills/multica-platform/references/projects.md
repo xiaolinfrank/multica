@@ -44,10 +44,7 @@ Common resource types:
 
 ## Modules
 
-A module subdivides one project: Project → Module → Issue. Modules are a
-grouping layer only — they carry a title, an optional description, and a
-stable order; they have no resources, dates, status, or collaboration-space
-path of their own. An issue belongs to at most one module, always a module of
+A module subdivides one project: Project → Module → Issue. Modules carry a title, description, order and a stable relative delivery folder (`directory_name`). They have no independent resources or absolute collaboration root. An issue belongs to at most one module, always a module of
 its own project.
 
 ```json
@@ -89,7 +86,7 @@ Modules are managed from the CLI with `multica module`, documented under
 ## Collaboration space
 
 `collab_path` — 人机协作空间路径 — binds a **project** to a directory on the
-shared NAS where people and agents exchange finished work. It is the team's
+configured local or shared directory where people and agents exchange finished work. It is the team's
 drop point, not a runtime path: a task's working directory exists only on the
 machine running that task, while this directory is mounted on the daemon hosts
 and is where a person goes to read what an agent produced.
@@ -102,16 +99,23 @@ Inside it, the layout is derived rather than configured:
     └── 01.01回顾性队列数据集（JIA）       ← one task's deliverables
 ```
 
-Only the project carries the field — `project.collab_path`, `string | null` on
-the API. **A module has no path of its own, deliberately.** A module always
-lives inside its project, on the platform and on disk alike: its folder sits
-directly under the project's directory, named after the module, so the location
-already follows from data the platform holds. A second stored path would add a
-value that can drift out of sync with the folder it names, add a setting
-someone has to fill in correctly, and make re-cutting a project's module set a
-multi-place edit. There is no `module.collab_path` on any module endpoint, and
-no `--collab-path` on any `multica module` command — if you are looking for
-one, join the project's path with the module's title instead.
+Only the project carries the absolute `collab_path`. A module's nullable
+`directory_name` is one safe relative folder within that project, not another
+absolute root. New modules receive a readable unique binding. Safe unique
+legacy title folders retain their names; ambiguous or unsafe legacy names need
+an explicit binding. A title edit does not change the bound folder or move files.
+
+Use `multica module update <id> --directory-name "<relative-folder>"` to bind
+or explicitly rename a folder reference. This changes metadata only; review and
+move actual files separately. No slash, backslash, colon, control character,
+`.` or `..` is accepted, and names cannot collide within one project.
+The claim and `.multica/project/resources.json` carry `module_directory`.
+An unresolved binding must be reported rather than replaced with a guessed path.
+
+In the opt-in single-owner macOS deployment, all project paths use the internal
+disk. Missing `collab_path` on project creation gets a directory under the
+instance's configured projects home. Internal task scratch and Git checkouts
+remain under the daemon workspaces root; they are distinct from these files.
 
 Validation (HTTP 400 on failure): the value is trimmed, must be absolute, at
 most 1024 characters, and must not contain control characters. Absolute means
@@ -131,9 +135,9 @@ A task whose project has one is told about it. The brief's `## Project Context`
 gains a `### Collaboration Space` subsection naming the project directory and,
 when the task has a module, saying that this task's work belongs in the folder
 named after that module inside it. `.multica/project/resources.json` carries
-`project_collab_path` plus the module identity (`module_id`, `module_title`,
-`module_description`) for tooling that would rather read JSON than prose — the
-module's directory is `project_collab_path` joined with `module_title`.
+`project_collab_path` plus module identity (`module_id`, `module_title`,
+`module_description`) and `module_directory` for tooling that would rather read JSON than prose — the
+module's directory is `project_collab_path` joined with its stable `module_directory`.
 
 ### Delivering into it
 
@@ -152,8 +156,7 @@ deliverables. The collaboration space is the exception, and the only one:
   actually open it.
 - Keep scratch work in your working directory — notes, intermediate output,
   checkouts. Only what is being handed over goes to the share.
-- If the *project* directory does not exist, the share is not mounted on this
-  machine. Say that in your comment and leave the file in the working
+- If the *project* directory does not exist, report the observed path or permission problem. Say that in your comment and leave the file in the working
   directory. Do not pick a nearby path that does exist: a deliverable written
   somewhere else is a deliverable nobody finds. (A missing module folder is
   not that case — that one you create.)

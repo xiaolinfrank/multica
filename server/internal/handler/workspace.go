@@ -211,7 +211,7 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	// workspace owners — may create additional workspaces. The frontend
 	// hides every "Create workspace" affordance via /api/config, but the
 	// 403 here is the only authoritative check.
-	if h.cfg.DisableWorkspaceCreation {
+	if h.cfg.DisableWorkspaceCreation || singleOwnerMode() {
 		writeError(w, http.StatusForbidden, "workspace creation is disabled for this instance")
 		return
 	}

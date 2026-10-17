@@ -1,4 +1,6 @@
 "use client";
+import { useConfigStore } from "@multica/core/config";
+import { LocalAccountPage } from "./local-account-page";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -107,7 +109,7 @@ export function validateCliCallback(cliCallback: string): boolean {
 // Component
 // ---------------------------------------------------------------------------
 
-export function LoginPage({
+function EmailLoginPage({
   logo,
   onSuccess,
   google,
@@ -549,4 +551,9 @@ export function LoginPage({
       </Card>
     </div>
   );
+}
+
+export function LoginPage(props: LoginPageProps) {
+ const local = useConfigStore((s) => s.singleOwner);
+ return local ? <LocalAccountPage {...props} /> : <EmailLoginPage {...props} />;
 }

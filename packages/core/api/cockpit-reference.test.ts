@@ -10,7 +10,7 @@ function reply(body: unknown) {
 afterEach(() => vi.unstubAllGlobals());
 describe("bounded reference append acknowledgements", () => {
   it("confirms compact purpose edits without accepting a legacy whole-set or mismatched purpose receipt", async () => {
-    const receipt = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: ["preparation", "review"], required_roles: [] } };
+    const receipt = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: ["preparation", "review"], required_roles: [], has_agenda_reference: false } };
     const { client, fetchMock } = reply(receipt);
     await expect(client.setCockpitMeetingIssueRolesCompact("ws", "meeting", "issue", ["review", "preparation"])).resolves.toEqual(receipt.link);
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/roles?response=compact");
@@ -24,13 +24,13 @@ describe("bounded reference append acknowledgements", () => {
     const first = reply(node);
     await expect(first.client.appendCockpitNodeIssue("ws", "node", "issue")).resolves.toEqual(node.link);
     expect(first.fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST", headers: { "X-Workspace-ID": "ws" }, body: JSON.stringify({ issue_id: "issue" }) });
-    const meeting = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: ["minutes"], required_roles: ["minutes"] } };
+    const meeting = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: ["minutes"], required_roles: ["minutes"], has_agenda_reference: false } };
     await expect(reply(meeting).client.appendCockpitMeetingIssue("ws", "meeting", "issue")).resolves.toEqual(meeting.link);
     const meetingNode = { workspace_id: "ws", meeting_id: "meeting", link: { meeting_id: "meeting", node_id: "node", position: 8 } };
     await expect(reply(meetingNode).client.appendCockpitMeetingNode("ws", "meeting", "node")).resolves.toEqual(meetingNode.link);
   });
   it("rejects old whole-set responses, other scopes and defaulted relationship facts", async () => {
-    const valid = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: [], required_roles: [] } };
+    const valid = { workspace_id: "ws", meeting_id: "meeting", link: { ...facts, meeting_id: "meeting", role: "", roles: [], required_roles: [], has_agenda_reference: false } };
     for (const body of [{ meeting_id: "meeting", links: [valid.link] }, { ...valid, workspace_id: "other" }, { ...valid, meeting_id: "other" },
       { ...valid, link: { ...valid.link, issue_id: "other" } }, { ...valid, link: { ...valid.link, roles: undefined } }]) {
       await expect(reply(body).client.appendCockpitMeetingIssue("ws", "meeting", "issue")).rejects.toBeInstanceOf(CockpitUnconfirmedWriteError);

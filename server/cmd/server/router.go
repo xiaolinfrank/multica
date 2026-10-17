@@ -1394,7 +1394,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// constructors return nil when rdb is nil — every consumer handles that
 	// as "no cache, always hit DB".
 	patCache := auth.NewPATCache(rdb)
+	if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+		patCache = nil
+	}
 	daemonTokenCache := auth.NewDaemonTokenCache(rdb)
+	if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+		daemonTokenCache = nil
+	}
 	h.PATCache = patCache
 	h.DaemonTokenCache = daemonTokenCache
 	h.MembershipCache = auth.NewMembershipCache(rdb)
@@ -1432,6 +1438,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	// Global middleware
 	r.Use(chimw.RequestID)
+	r.Use(middleware.LocalMaintenance)
 	r.Use(middleware.ClientMetadata)
 	r.Use(middleware.RequestLogger)
 	if opts.HTTPMetrics != nil {
@@ -1522,7 +1529,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.Get("/api/cockpit/artifact-files/{versionId}/download", h.DownloadCockpitArtifactSignedFile)
 	r.Get("/api/cockpit/input-files/{versionId}/download", h.DownloadCockpitInputSignedFile)
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.InputClaimAuth(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner), middleware.DaemonAuth(queries, patCache, daemonTokenCache, cloudPATVerifier)))
+		r.Use(middleware.InputClaimAuth(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession), middleware.DaemonAuth(queries, patCache, daemonTokenCache, cloudPATVerifier)))
 		r.Get("/api/tasks/{taskId}/input-manifest", h.GetCockpitRunInputManifest)
 		r.Post("/api/tasks/{taskId}/input-preparation", h.RecordCockpitRunInputPreparation)
 		r.Get("/api/cockpit/issues/{issueId}/input-manifest/versions/{manifestVersionId}/items", h.ListCockpitInputManifestItems)
@@ -1558,6 +1565,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Get("/auth/star/start", h.StarSignIn)
 	r.With(authVerifyRL).Get("/auth/star/callback", h.StarCallback)
 	r.Post("/auth/logout", h.Logout)
+	r.Get("/auth/local/status", h.LocalAccountStatus)
+	r.Post("/auth/local/setup", h.SetupLocalAccount)
+	r.Post("/auth/local/login", h.LoginLocalAccount)
+	r.Post("/auth/local/recover", h.RecoverLocalAccount)
 
 	// Public API
 	r.Get("/api/config", h.GetConfig)
@@ -1679,7 +1690,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// signed-in user's session and the installation header. Keeping it outside
 	// /v1 prevents the Public API from accepting session cookies.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner))
+		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession))
 		r.Route(pluginBridgePrefix, func(r chi.Router) {
 			registerPluginActionRoutes(r, h)
 			// ui / manual only. `event` is dispatched by the host off the event
@@ -1689,7 +1700,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner))
+		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession))
 		r.Use(middleware.RefreshCloudFrontCookies(cfSigner))
 
 		// Plugin Action API. Called by the HOST PAGE on the signed-in user's

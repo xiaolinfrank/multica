@@ -2256,14 +2256,15 @@ type Member struct {
 }
 
 type Module struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
-	Position    float64            `json:"position"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	ProjectID     pgtype.UUID        `json:"project_id"`
+	Title         string             `json:"title"`
+	Description   pgtype.Text        `json:"description"`
+	Position      float64            `json:"position"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	DirectoryName pgtype.Text        `json:"directory_name"`
 }
 
 type NotificationPreference struct {
@@ -2491,6 +2492,19 @@ type SeatCapacityOutbox struct {
 	DeadLetteredAt pgtype.Timestamptz `json:"dead_lettered_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SingleOwnerAccount struct {
+	Singleton         int16              `json:"singleton"`
+	UserID            pgtype.UUID        `json:"user_id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	LoginName         string             `json:"login_name"`
+	PasswordHash      string             `json:"password_hash"`
+	RecoveryHash      string             `json:"recovery_hash"`
+	CredentialVersion string             `json:"credential_version"`
+	FailedAttempts    int32              `json:"failed_attempts"`
+	BlockedUntil      pgtype.Timestamptz `json:"blocked_until"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
 type Skill struct {

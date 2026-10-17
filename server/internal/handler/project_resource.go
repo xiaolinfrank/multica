@@ -283,6 +283,11 @@ func validateLocalDirectoryRef(ref json.RawMessage) (json.RawMessage, error) {
 	if !isAbsoluteLocalPath(payload.LocalPath) {
 		return nil, errors.New("local_directory: local_path must be an absolute path")
 	}
+	if singleOwnerMode() {
+		if err := allowedLocalProjectPath(payload.LocalPath); err != nil {
+			return nil, err
+		}
+	}
 	payload.DaemonID = strings.TrimSpace(payload.DaemonID)
 	if payload.DaemonID == "" {
 		return nil, errors.New("local_directory: daemon_id is required")
@@ -1031,9 +1036,10 @@ func (h *Handler) resolveClaimProjectContext(ctx context.Context, projectID, wor
 // issue carries one: chat, autopilot and quick-create tasks reference a project
 // directly and have no module to inherit.
 type claimModuleContext struct {
-	ModuleID    string
-	Title       string
-	Description string
+	DirectoryName string
+	ModuleID      string
+	Title         string
+	Description   string
 }
 
 // applyTo copies the resolved module context onto a claim response. Like
@@ -1042,6 +1048,9 @@ type claimModuleContext struct {
 func (c claimModuleContext) applyTo(resp *AgentTaskResponse) {
 	resp.ModuleID = c.ModuleID
 	resp.ModuleTitle = c.Title
+	if c.ModuleID != "" {
+		resp.ModuleDirectory = &c.DirectoryName
+	}
 	resp.ModuleDescription = c.Description
 }
 
@@ -1077,9 +1086,10 @@ func (h *Handler) resolveClaimModuleContext(ctx context.Context, moduleID, proje
 		return claimModuleContext{}, nil
 	}
 	return claimModuleContext{
-		ModuleID:    uuidToString(module.ID),
-		Title:       module.Title,
-		Description: module.Description.String,
+		ModuleID:      uuidToString(module.ID),
+		Title:         module.Title,
+		DirectoryName: module.DirectoryName.String,
+		Description:   module.Description.String,
 	}, nil
 }
 

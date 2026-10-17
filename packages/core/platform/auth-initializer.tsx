@@ -71,6 +71,7 @@ export function AuthInitializer({
           googleClientId: cfg.google_client_id,
           starLoginEnabled: cfg.star_login_enabled,
           localDashboardEnabled: cfg.local_dashboard_enabled,
+          singleOwner: cfg.single_owner,
           // Old servers omit this field — treat that as "creation allowed"
           // (the managed-cloud default) rather than blocking the UI.
           workspaceCreationDisabled: cfg.workspace_creation_disabled === true,

@@ -65,7 +65,7 @@ import {
   CockpitAcceptanceRequestPageSchema, CockpitAcceptanceRequestDetailSchema, CockpitArtifactSourceAttachmentPageSchema, CockpitArtifactDownloadLinkSchema,
 } from "./cockpit-artifact-schemas";
 
-import { LoginCodeDeliverySchema, LocalDashboardHandoffSchema } from "./schemas";
+import { LocalAccountStatusSchema, LocalAccountSessionSchema, LoginCodeDeliverySchema, LocalDashboardHandoffSchema } from "./schemas";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
 import type { WorkspaceWakeupPage, WorkspaceWakeupFilters } from "../types/issue-wakeup";
 import { WorkspaceWakeupPageSchema, IssueWakeupSchema, IssueWakeupSummaryRowSchema, PausedWakeupSchema, SystemWakeupSchema, WakeupRunSchema, WorkspaceSystemWakeupSchema } from "./schemas";
@@ -1373,6 +1373,12 @@ export class ApiClient {
   }
 
   // Auth
+  async localAccountStatus(): Promise<{ single_owner: true; initialized: boolean; adopting: boolean; display_name?: string }> {
+    return LocalAccountStatusSchema.parse(await this.fetch<unknown>("/auth/local/status"));
+  }
+  async localAccount(action: "setup" | "login" | "recover", input: { login_name?: string; display_name?: string; password: string; recovery_code?: string }, setupToken = ""): Promise<LoginResponse & { recovery_code?: string }> {
+    return LocalAccountSessionSchema.parse(await this.fetch<unknown>(`/auth/local/${action}`, { method: "POST", headers: { "X-Setup-Token": setupToken }, body: JSON.stringify(input) }));
+  }
   async sendCode(email: string): Promise<{ delivery: "email" | "personal" }> {
     const raw = await this.fetch<unknown>("/auth/send-code", {
       method: "POST",
