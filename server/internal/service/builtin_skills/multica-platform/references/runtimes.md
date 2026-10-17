@@ -49,6 +49,14 @@ The `/auth/openclaw` web entry is for the configured human owner only, not a
 machine-credential exchange. It uses OpenClaw's native owner device pairing;
 Multica PATs cannot be used as Gateway tokens.
 
+In explicit `MULTICA_SINGLE_OWNER=true` deployments, the private launcher may
+set `singleOwner: true` before an owner exists. After local account setup, the
+existing native human session can open `/api/local-dashboard` immediately;
+CLI consent and a CLI PAT are not prerequisites. Every launch resolves the
+current `single_owner_account` owner and still enforces local origin, human
+identity, session revocation and the one-time native Gateway bootstrap.
+Ordinary multi-user and Star OIDC launchers still require their configured owner.
+
 ```bash
 multica runtime list --output json
 multica runtime usage <runtime-id> --output json

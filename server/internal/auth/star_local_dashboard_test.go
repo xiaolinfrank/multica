@@ -92,6 +92,91 @@ func TestStarLocalDashboardNativeUserOwnsLaunchWithoutOIDC(t *testing.T) {
 	}
 }
 
+func TestSingleOwnerDashboardRequiresExplicitConfigAndProcessMode(t *testing.T) {
+	const owner = "11111111-1111-4111-8111-111111111111"
+	const other = "22222222-2222-4222-8222-222222222222"
+	cfg := StarLocalDashboardConfig{SingleOwner: true, Command: []string{"/test/fake-cli"}, StateDir: t.TempDir(), Origin: "http://127.0.0.1:29989"}
+	path := filepath.Join(t.TempDir(), "dashboard.json")
+	writeConfig := func() {
+		t.Helper()
+		raw, err := json.Marshal(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeConfig()
+	t.Setenv("MULTICA_SINGLE_OWNER", "false")
+	if _, err := LoadSingleOwnerLocalDashboard(path, "http://localhost:13125"); err == nil {
+		t.Fatal("single-owner loader accepted disabled process mode")
+	}
+	t.Setenv("MULTICA_SINGLE_OWNER", "true")
+	if _, err := LoadStarLocalDashboard(path, "http://localhost:13125"); err == nil {
+		t.Fatal("multi-user loader accepted an unbound single-owner config")
+	}
+	if _, err := newStarLocalDashboard(&cfg, "http://localhost:13125/auth/star/callback", map[string]string{"owner": owner}); err == nil {
+		t.Fatal("OIDC launcher accepted single-owner config")
+	}
+	d, err := LoadSingleOwnerLocalDashboard(path, "http://localhost:13125")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	d.run = func(context.Context) ([]byte, error) { calls++; return json.Marshal(starTestHandoff(time.Now())) }
+	if _, err := d.OpenForUser(context.Background(), owner); err != ErrStarDashboardOwner {
+		t.Fatal("generic path accepted an unbound launcher")
+	}
+	for _, ids := range [][2]string{{owner, ""}, {owner, "invalid"}, {other, owner}} {
+		if _, err := d.OpenForSingleOwner(context.Background(), ids[0], ids[1]); err != ErrStarDashboardOwner {
+			t.Fatal("missing or foreign native singleton accepted")
+		}
+	}
+	if calls != 0 {
+		t.Fatal("denied launch reached the CLI")
+	}
+	if _, err := d.OpenForSingleOwner(context.Background(), owner, owner); err != nil || calls != 1 || d.config.OwnerUserID != "" {
+		t.Fatal("first owner could not launch without changing shared config", err)
+	}
+	t.Setenv("MULTICA_SINGLE_OWNER", "false")
+	if _, err := d.OpenForSingleOwner(context.Background(), owner, owner); err != ErrStarDashboardOwner || calls != 1 {
+		t.Fatal("launch remained enabled after leaving single-owner mode")
+	}
+	t.Setenv("MULTICA_SINGLE_OWNER", "true")
+	cfg.SingleOwner = false
+	writeConfig()
+	if _, err := LoadStarLocalDashboard(path, "http://localhost:13125"); err == nil {
+		t.Fatal("multi-user loader accepted empty owner without a single-owner flag")
+	}
+	if _, err := LoadSingleOwnerLocalDashboard(path, "http://localhost:13125"); err == nil {
+		t.Fatal("missing explicit single-owner flag accepted with no owner")
+	}
+	cfg.SingleOwner, cfg.OwnerUserID = true, other
+	writeConfig()
+	d, err = LoadSingleOwnerLocalDashboard(path, "http://localhost:13125")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.run = func(context.Context) ([]byte, error) {
+		t.Fatal("mismatched configured owner reached CLI")
+		return nil, nil
+	}
+	if _, err := d.OpenForSingleOwner(context.Background(), owner, owner); err != ErrStarDashboardOwner {
+		t.Fatal("explicit configured owner was ignored")
+	}
+}
+
+func TestStarLocalRequestRefusesForeignHost(t *testing.T) {
+	for _, host := range []string{"attacker.example", "127.0.0.1.attacker.example", "10.0.0.1:13125", "localhost@attacker.example", "localhost/path", ""} {
+		r := httptest.NewRequest("POST", "http://localhost/api/local-dashboard", nil)
+		r.RemoteAddr, r.Host = "127.0.0.1:1234", host
+		if IsStarLocalRequest(r) {
+			t.Fatal("foreign or malformed HTTP host accepted", host)
+		}
+	}
+}
+
 func TestStarLocalRequestRefusesRemoteAndForwardedClients(t *testing.T) {
 	for _, tc := range []struct {
 		peer, forwarded string
