@@ -55,7 +55,7 @@ empty lanes; other primaries ignore it.
 
 A module stores no collaboration space of its own; only its project carries
 `collab_path` (人机协作空间路径). When this issue has a module, the claim and
-the brief hand the agent the project's path plus the module's title, and
-deliverable files go in the folder named after that module inside it — see
+the brief provide the project's path plus stable `module_directory`. Files go
+in that bound relative folder; title edits do not rename it — see
 [projects.md](projects.md#collaboration-space).
 

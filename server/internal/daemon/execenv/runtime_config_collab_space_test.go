@@ -82,8 +82,8 @@ func TestCollaborationSpaceNamesProjectPathAndModuleFolder(t *testing.T) {
 		// directory — and the copy says to create it, because a fresh module
 		// has no directory yet and an agent that finds none must not fall back
 		// to the project root.
-		collabFolderStart + ", `" + collabModuleTitle + "/`, inside that directory.",
-		"Create it if it is not there yet.",
+		"Use the bound module folder `" + collabModuleTitle + "/` inside the project directory.",
+		"Create it if missing, after checking containment and ownership.",
 		// The exception has to live next to the invariant it carves out of,
 		// not only in Project Context: an agent about to hand a file over
 		// recalls the rule, not the section three headings earlier.
@@ -117,6 +117,27 @@ func TestCollaborationSpaceNamesProjectPathAndModuleFolder(t *testing.T) {
 	// The exception belongs to the Output section's invariant, which comes after.
 	if invariant, exception := strings.Index(out, "**Runtime-local paths are never deliverables.**"), strings.Index(out, collabExceptionStart); invariant < 0 || exception < invariant {
 		t.Errorf("delivery exception at %d does not follow the invariant at %d", exception, invariant)
+	}
+}
+
+func TestCollaborationSpaceUsesStableBindingAndRejectsTraversal(t *testing.T) {
+	ctx := collabModuleContext()
+	ctx.ProjectCollabPath = collabProjectPath
+	folder := "稳定目录--1234abcd"
+	ctx.ModuleDirectory = &folder
+	out := buildMetaSkillContent("claude", ctx)
+	if !strings.Contains(out, "`"+folder+"/`") {
+		t.Fatal("bound module directory was omitted")
+	}
+	ctx.ModuleTitle = "改名后的模块"
+	if !strings.Contains(buildMetaSkillContent("claude", ctx), "`"+folder+"/`") {
+		t.Fatal("title edits changed the folder binding")
+	}
+	invalid := "../escape"
+	ctx.ModuleDirectory = &invalid
+	out = buildMetaSkillContent("claude", ctx)
+	if strings.Contains(out, "../escape/") || !strings.Contains(out, "binding is unresolved or unsafe") {
+		t.Fatal("unsafe module binding was rendered as a destination")
 	}
 }
 

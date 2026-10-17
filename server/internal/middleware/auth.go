@@ -56,7 +56,7 @@ func rejectTemporarilyDisabledUser(w http.ResponseWriter, r *http.Request, userI
 // local DB. When nil (Fleet URL unset) mcn_ tokens are rejected at the
 // prefix branch — we don't fall through to the mul_ / JWT paths, since
 // an mcn_ string is by construction not a valid mul_ PAT or JWT.
-func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATVerifier, cfSigner *auth.CloudFrontSigner) func(http.Handler) http.Handler {
+func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATVerifier, cfSigner *auth.CloudFrontSigner, sessionValidators ...func(context.Context, jwt.MapClaims) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Reauthentication never inherits a task identity from an outer context.
@@ -279,6 +279,12 @@ func Auth(queries *db.Queries, patCache *auth.PATCache, cloudPAT *auth.CloudPATV
 				slog.Warn("auth: invalid claims", "path", r.URL.Path)
 				http.Error(w, `{"error":"invalid claims"}`, http.StatusUnauthorized)
 				return
+			}
+			for _, validate := range sessionValidators {
+				if !validate(r.Context(), claims) {
+					writeError(w, http.StatusUnauthorized, "session was revoked; sign in again")
+					return
+				}
 			}
 			email, _ := claims["email"].(string)
 			if rejectTemporarilyDisabledUser(w, r, sub, email, "jwt") {

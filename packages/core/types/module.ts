@@ -7,6 +7,7 @@ export interface Module {
   workspace_id: string;
   project_id: string;
   title: string;
+  directory_name?: string | null;
   description: string | null;
   position: number;
   // No collaboration-space path of its own: a module always lives inside its

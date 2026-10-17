@@ -27,6 +27,7 @@ type AppConfig struct {
 	GoogleClientID        string `json:"google_client_id,omitempty"`
 	StarLoginEnabled      bool   `json:"star_login_enabled,omitempty"`
 	LocalDashboardEnabled bool   `json:"local_dashboard_enabled,omitempty"`
+	SingleOwner           bool   `json:"single_owner,omitempty"`
 	// WorkspaceCreationDisabled mirrors the server-side
 	// DISABLE_WORKSPACE_CREATION env var so the UI can hide every
 	// "Create workspace" affordance on self-hosted instances. Omitted
@@ -151,6 +152,7 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		GoogleClientID:                     os.Getenv("GOOGLE_CLIENT_ID"),
 		StarLoginEnabled:                   h.StarLoginConfigured,
 		LocalDashboardEnabled:              h.LocalDashboard != nil,
+		SingleOwner:                        singleOwnerMode(),
 		WorkspaceCreationDisabled:          os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 	}
 	if h.Storage != nil {

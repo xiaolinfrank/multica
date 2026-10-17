@@ -775,6 +775,7 @@ export interface AppConfigResponse {
   google_client_id?: string;
   star_login_enabled?: boolean;
   local_dashboard_enabled?: boolean;
+  single_owner?: boolean;
   posthog_key?: string;
   posthog_host?: string;
   analytics_environment?: string;
@@ -1075,6 +1076,7 @@ export const AppConfigSchema = z.object({
   google_client_id: OptionalStringSchema,
   star_login_enabled: BooleanWithDefaultSchema(false),
   local_dashboard_enabled: BooleanWithDefaultSchema(false),
+  single_owner: BooleanWithDefaultSchema(false),
   posthog_key: OptionalStringSchema,
   posthog_host: OptionalStringSchema,
   analytics_environment: OptionalStringSchema,
@@ -1100,6 +1102,7 @@ export const EMPTY_APP_CONFIG: AppConfigResponse = {
   google_client_id: "",
   star_login_enabled: false,
   local_dashboard_enabled: false,
+  single_owner: false,
   daemon_server_url: "",
   daemon_app_url: "",
   workspace_creation_disabled: false,
@@ -1528,6 +1531,7 @@ export const ModuleSchema = z.object({
   workspace_id: z.string(),
   project_id: z.string(),
   title: z.string(),
+  directory_name: z.string().nullable().optional(),
   description: z.string().nullable(),
   position: z.number(),
   created_at: z.string(),
@@ -4923,3 +4927,6 @@ export const RuntimeProfileSchema = z
     runtime_type: profile.runtime_type || profile.protocol_family,
   }));
 export const RuntimeProfileListSchema = z.array(RuntimeProfileSchema);
+
+export const LocalAccountStatusSchema = z.object({ single_owner: z.literal(true), initialized: z.boolean(), adopting: BooleanWithDefaultSchema(false), display_name: z.string().optional() });
+export const LocalAccountSessionSchema = z.object({ token: z.string().min(1), user: UserSchema, recovery_code: z.string().length(64).optional() });

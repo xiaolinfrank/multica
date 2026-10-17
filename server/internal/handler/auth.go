@@ -271,14 +271,25 @@ func (h *Handler) issueJWT(user db.User) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"sub":   uuidToString(user.ID),
 		"email": user.Email,
 		"name":  user.Name,
 		"sid":   sid,
 		"exp":   time.Now().Add(auth.AuthTokenTTL()).Unix(),
 		"iat":   time.Now().Unix(),
-	})
+	}
+	if singleOwnerMode() {
+		var version string
+		if h.DB == nil {
+			return "", errors.New("local owner storage unavailable")
+		}
+		if err := h.DB.QueryRow(context.Background(), "SELECT credential_version FROM single_owner_account WHERE user_id=$1", user.ID).Scan(&version); err != nil {
+			return "", err
+		}
+		claims["local_owner_version"] = version
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(auth.JWTSecret())
 }
 
@@ -287,6 +298,9 @@ func (h *Handler) issueJWT(user db.User) (string, error) {
 // event fires on that edge, covering both the verification-code and Google
 // OAuth entry points.
 func (h *Handler) findOrCreateUser(ctx context.Context, email string) (user db.User, isNew bool, err error) {
+	if singleOwnerMode() {
+		return db.User{}, false, ErrSignupProhibited
+	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
 		return db.User{}, false, auth.ErrTemporarilyDisabledUser
 	}
@@ -404,6 +418,10 @@ func contains(slice []string, s string) bool {
 }
 
 func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		writeError(w, http.StatusForbidden, "use this instance's local account")
+		return
+	}
 	var req SendCodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -509,6 +527,10 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		writeError(w, http.StatusForbidden, "use this instance's local account")
+		return
+	}
 	var req VerifyCodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")

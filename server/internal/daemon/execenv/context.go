@@ -247,6 +247,7 @@ type projectResourceFile struct {
 	// named after the module.
 	ProjectCollabPath string                  `json:"project_collab_path,omitempty"`
 	ModuleID          string                  `json:"module_id,omitempty"`
+	ModuleDirectory   *string                 `json:"module_directory,omitempty"`
 	ModuleTitle       string                  `json:"module_title,omitempty"`
 	ModuleDescription string                  `json:"module_description,omitempty"`
 	Resources         []ProjectResourceForEnv `json:"resources"`
@@ -300,6 +301,7 @@ func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *side
 		ProjectCollabPath:  ctx.ProjectCollabPath,
 		ModuleID:           ctx.ModuleID,
 		ModuleTitle:        ctx.ModuleTitle,
+		ModuleDirectory:    ctx.ModuleDirectory,
 		ModuleDescription:  ctx.ModuleDescription,
 		Resources:          resources,
 	}

@@ -437,6 +437,7 @@ type AgentTaskResponse struct {
 	// project subdivision. Issue claims only: chat, autopilot and quick-create
 	// carry a project reference but never a module.
 	ModuleID          string                `json:"module_id,omitempty"`
+	ModuleDirectory   *string               `json:"module_directory,omitempty"`
 	ModuleTitle       string                `json:"module_title,omitempty"`
 	ModuleDescription string                `json:"module_description,omitempty"`
 	ProjectResources  []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project

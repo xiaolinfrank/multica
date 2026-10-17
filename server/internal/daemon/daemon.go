@@ -7812,6 +7812,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		ProjectCollabPath:                task.ProjectCollabPath,
 		ModuleID:                         task.ModuleID,
 		ModuleTitle:                      task.ModuleTitle,
+		ModuleDirectory:                  task.ModuleDirectory,
 		ModuleDescription:                task.ModuleDescription,
 		ProjectResources:                 convertProjectResourcesForEnv(task.ProjectResources),
 		ChatSessionID:                    task.ChatSessionID,

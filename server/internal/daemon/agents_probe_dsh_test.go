@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -40,6 +41,13 @@ func dshProbeFixture(t *testing.T, body string, manifest bool) string {
 	script := "#!/bin/sh\ncase \"$*\" in\n  *--probe*) " + body + " ;;\n  *) printf '%s\\n' '0.1.2-rc.1' ;;\nesac\n"
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	// Discovery probes the version before the profile; include that prerequisite
+	// so the profile deadline does not measure cold executable admission on macOS.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, path, "--version").Output(); err != nil || strings.TrimSpace(string(out)) != "0.1.2-rc.1" {
+		t.Fatalf("fake dsh version prerequisite failed: %v", err)
 	}
 	return path
 }

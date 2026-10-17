@@ -1488,7 +1488,7 @@ func (q *Queries) GetLatestCockpitSnapshot(ctx context.Context, cockpitID pgtype
 }
 
 const getModuleForCockpitBinding = `-- name: GetModuleForCockpitBinding :one
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module WHERE id = $1 AND workspace_id = $2 FOR SHARE
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name FROM module WHERE id = $1 AND workspace_id = $2 FOR SHARE
 `
 
 type GetModuleForCockpitBindingParams struct {
@@ -1508,6 +1508,7 @@ func (q *Queries) GetModuleForCockpitBinding(ctx context.Context, arg GetModuleF
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DirectoryName,
 	)
 	return i, err
 }
