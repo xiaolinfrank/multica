@@ -201,3 +201,12 @@ Workspace repos and project resources are not the same thing:
 Do not add a project resource just because `repo checkout` failed. First
 determine whether the user asked for durable project context or just a task
 checkout.
+# Built-in skill delivery
+
+Platform and cockpit contracts are delivered to ordinary workers and Mika.
+The onboarding procedure is delivered only to Mika, identified by the product
+system key; its activation still requires the actual product onboarding kickoff.
+An external personal assistant may receive the platform and cockpit contracts
+through its own host adapter. Its personal memory and owner-only methods do not
+become worker instructions. Product releases retain content hashes and role
+scopes for each built-in skill; workspace-authored notes remain separate.

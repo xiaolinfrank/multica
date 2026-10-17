@@ -11,7 +11,7 @@ allowed-tools: Bash(multica *)
 
 ```bash
 multica cockpit context --output json
-multica cockpit overview --as-of 2026-10-14 --output json # use the viewer's actual date
+multica cockpit overview --as-of 2026-10-14 # use the viewer's actual date
 multica cockpit plan --project-id <project-uuid> --output json
 multica cockpit node get <stored-code-or-uuid> --output json
 ```
@@ -133,27 +133,8 @@ Enable/adoption, formal review and publication require authorized humans; submis
 Use [meeting disposition](references/meeting-preparation.md) for cancellation effects and archive recovery, and [meeting directories](references/meeting-directory.md) for authorized directory preparation; these commands never start an agent or provision a directory.
 See [history](references/history.md) for bounded reads/receipts, [nas-export.md](references/nas-export.md) for fixed NAS copies and retries, and `references/cockpit.md` for command permissions.
 
-## Versions
-
-Imports and restores save the displaced board first; once history exists, ordinary edits can leave an `auto` checkpoint after five minutes. Bound nodes or meeting work packages block whole-board replacement to preserve stable history.
-
-```bash
-multica cockpit version list                 # newest first, with ids
-multica cockpit version save --label "评审前"
-multica cockpit version restore <snapshot-id>   # owner/admin; saves the current board first
-multica cockpit version delete <snapshot-id>    # owner/admin; removes one version from history
-```
-
-## Board-level fields
-
-```bash
-multica cockpit update --goal-title "端到端技术贯通 Demo" --goal-date 2026-12-31
-multica cockpit update --summary-overall "本周完成 …"
-```
-
-The three summary cards (`--summary-overall`, `--summary-next`,
-`--summary-support`) override the board's automatic roll-up. Leave them empty
-unless asked: an empty card derives from the tasks and stays correct on its own.
+Versions, recovery checkpoints and optional board summary cards are described in
+[the cockpit command reference](references/versions.md).
 
 ## Import
 
