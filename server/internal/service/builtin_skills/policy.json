@@ -1,0 +1,8 @@
+{
+  "format": "multica-builtin-skill-policy-v1",
+  "skills": [
+    {"name": "multica-platform", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-cockpit", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-onboarding", "roles": ["mika"], "activation": "product-mika-kickoff-only"}
+  ]
+}
