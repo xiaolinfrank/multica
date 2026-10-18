@@ -603,6 +603,9 @@ func (c *APIClient) UploadFileToIssue(ctx context.Context, fileData []byte, file
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode upload response: %w", err)
 	}
+	if result.ID == "" {
+		return nil, fmt.Errorf("upload response missing attachment id")
+	}
 	return &result, nil
 }
 
