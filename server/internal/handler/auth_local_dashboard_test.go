@@ -18,6 +18,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/testutil"
+	"github.com/multica-ai/multica/server/internal/workspacecontext"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -106,6 +107,11 @@ func TestLocalDashboardFirstSetupNeedsNoCLIPATAndRevokesRecoveredSession(t *test
 	}
 	if got := fixture.Count(t, "SELECT count(*) FROM personal_access_token"); got != 0 {
 		t.Fatal("local setup unexpectedly required or created a CLI PAT")
+	}
+	var workspaceContext string
+	fixture.QueryRow(t, "SELECT context FROM workspace WHERE slug='personal'").Scan(&workspaceContext)
+	if workspaceContext != workspacecontext.V1 {
+		t.Fatal("new local owner workspace is missing the default collaboration context")
 	}
 	protected := middleware.Auth(h.Queries, nil, nil, nil, h.ValidateLocalSession)(RequireHumanActor(http.HandlerFunc(h.OpenLocalDashboard)))
 	requestWithToken := func(token string) *http.Request {

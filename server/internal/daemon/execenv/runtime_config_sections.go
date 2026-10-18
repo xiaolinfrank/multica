@@ -536,13 +536,11 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 	}
 }
 
-// writeCollaborationSpace emits the project's shared-storage directory
+// writeCollaborationSpace emits the project's persistent collaboration directory
 // ("人机协作空间路径") and where inside it this task's work belongs.
 //
-// Only the PROJECT stores a path. A module's folder sits inside it under the
-// module's own name, so the location is derivable and a second stored value
-// would only be something that can drift from the folder it names. That also
-// keeps re-cutting the module set a one-place edit.
+// Only the PROJECT stores an absolute root. A module has a stable relative
+// directory binding, which must not follow display-title changes.
 //
 // This is the one filesystem path in the brief an agent is allowed to deliver
 // to, which is why it states the contrast with the working directory in full:
@@ -551,9 +549,8 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 // space the team set up for it.
 //
 // The daemon does not check that the directory exists. The value is resolved on
-// whichever host runs the task, so a missing mount is a host problem the agent
-// must report rather than route around — silently writing the file somewhere
-// else is what loses the deliverable.
+// whichever host runs the task. Missing paths need an observed diagnosis;
+// local internal-disk deployments do not imply a shared-storage mount.
 func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 	project := strings.TrimSpace(ctx.ProjectCollabPath)
 	if project == "" {
@@ -562,17 +559,24 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	b.WriteString("### Collaboration Space\n\n")
 	b.WriteString("Persistent project files accessible on this execution host. Keep task scratch in the task working directory.\n\n")
 	fmt.Fprintf(b, "- Project directory: `%s`\n\n", project)
-	module := strings.TrimSpace(ctx.ModuleTitle)
+	module := ""
 	if ctx.ModuleDirectory != nil {
 		module = *ctx.ModuleDirectory
 	}
-	if module != "" && localpaths.ValidFolder(module) {
+	if ctx.ModuleID != "" && localpaths.ValidFolder(module) {
 		fmt.Fprintf(b, "Use the bound module folder `%s/` inside the project directory. The binding remains stable when the display title changes. Create it if missing, after checking containment and ownership.\n\n", module)
 	}
 	if ctx.ModuleID != "" && !localpaths.ValidFolder(module) {
 		b.WriteString("Module directory binding is unresolved or unsafe. Ask the owner to bind one safe relative folder; do not guess or write a substitute module directory.\n\n")
 	}
-	b.WriteString("Deliverable files (reports, datasets, decks, exports) go there, in a further subdirectory when the task warrants one. Working notes, scratch files and checkouts stay in your working directory.\n\n")
+	if ctx.ModuleID == "" {
+		b.WriteString("This task has no module. Use a task or deliverable subdirectory directly below the project directory; do not invent a module folder.\n\n")
+	} else {
+		b.WriteString("Use a task or deliverable subdirectory below the bound module folder. An unresolved module binding blocks persistent delivery until the owner resolves it.\n\n")
+	}
+	b.WriteString("Deliverable files (reports, datasets, decks, exports) must go in that task or deliverable subdirectory, never flat in the project or module root. Working notes, scratch files and checkouts stay in your working directory.\n\n")
+	b.WriteString("The collaboration copy is additional archival storage. Deliver through the mechanism permitted by `## Output`; issue files still need `--attachment <path>`. Follow user upload authorization, including waiting for confirmation on large files when requested. Preparing or archiving a file does not authorize an upload.\n\n")
+	b.WriteString("Report absolute paths only as plain text where `## Output` permits them, never as clickable links or file URLs.\n\n")
 	// Whether the agent may NAME the path it wrote is a property of the
 	// surface, not of the collaboration space, and `## Output` is what decides
 	// it. Quick-create in particular forbids any commentary beyond one
@@ -588,7 +592,7 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	default:
 		b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
 	}
-	b.WriteString("If the configured directory is unavailable, report the observed path or permission problem where this surface permits it. Keep the result in the task workdir and do not claim durable delivery. Never substitute a nearby directory.\n\n")
+	b.WriteString("Before creating a missing project directory, verify the exact configured binding is on this host's writable internal disk, with safe containment and ownership. Only then create the missing bound directory and its module/task subdirectories. A missing path does not imply an unmounted NAS. If the binding is unconfigured, inaccessible, or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
 }
 
 // writeInstructionPrecedence emits the "Agent Identity wins over the issue

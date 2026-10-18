@@ -86,17 +86,17 @@ Modules are managed from the CLI with `multica module`, documented under
 ## Collaboration space
 
 `collab_path` — 人机协作空间路径 — binds a **project** to a directory on the
-configured local or shared directory where people and agents exchange finished work. It is the team's
-drop point, not a runtime path: a task's working directory exists only on the
-machine running that task, while this directory is mounted on the daemon hosts
-and is where a person goes to read what an agent produced.
+execution host where people and agents exchange finished work. The standard
+single-owner macOS deployment uses its internal disk; shared storage is an
+explicit alternative, not a prerequisite. A task workdir is private scratch
+on the executing machine and does not replace this persistent project root.
 
 Inside it, the layout is derived rather than configured:
 
 ```text
-/Volumes/人机协作空间/AI医药联合创新平台   ← the project's collab_path
-└── 01高质量数据集                        ← a module, named after its title
-    └── 01.01回顾性队列数据集（JIA）       ← one task's deliverables
+<project collab_path>/                  ← the unique project root
+└── <module directory_name>/             ← stable relative module binding
+    └── <task or deliverable directory>/ ← required task/result layer
 ```
 
 Only the project carries the absolute `collab_path`. A module's nullable
@@ -122,10 +122,9 @@ most 1024 characters, and must not contain control characters. Absolute means
 POSIX (`/Volumes/...`), UNC (`\\nas\share\...`), or a Windows drive
 (`Z:/...`, `Z:\...`) — daemons run on macOS, Linux and Windows, so no single
 separator is assumed. A blank value stores NULL. The server never stats the
-path: it is resolved on whichever daemon host claims the task, so a host that
-has not mounted the share fails at the agent rather than at write time, and a
-path that is correct on every other host is never rejected on that host's
-behalf.
+path: it is resolved on whichever daemon host claims the task, so availability
+and permissions must be checked on that host.
+A missing path alone does not establish that a NAS is unmounted.
 
 Presence semantics on update: a key absent from the request body keeps the
 stored value, and the key present with `null` or `""` clears it to NULL.
@@ -133,33 +132,38 @@ stored value, and the key present with `null` or `""` clears it to NULL.
 
 A task whose project has one is told about it. The brief's `## Project Context`
 gains a `### Collaboration Space` subsection naming the project directory and,
-when the task has a module, saying that this task's work belongs in the folder
-named after that module inside it. `.multica/project/resources.json` carries
+when the task has a module, naming the stable bound module folder inside it.
+A changed title never changes that binding. `.multica/project/resources.json` carries
 `project_collab_path` plus module identity (`module_id`, `module_title`,
 `module_description`) and `module_directory` for tooling that would rather read JSON than prose — the
 module's directory is `project_collab_path` joined with its stable `module_directory`.
 
 ### Delivering into it
 
-The standing rule in every brief is that runtime-local paths are never
-deliverables. The collaboration space is the exception, and the only one:
+- Always write finished files in a task or deliverable subdirectory below the
+  bound module folder. A task with no module uses a task/result subdirectory
+  directly below the project root; do not invent a module. Never put files flat
+  in the project or module root. Preserve `directory_name` after title edits;
+  an unresolved or unsafe binding needs owner action, not a title-based guess.
+- The collaboration copy is additional archival storage. Follow `## Output`
+  for delivery; issue files still require `--attachment <path>`. Respect user
+  authorization, including waiting for confirmation before large uploads when
+  requested. Saving a file does not authorize its upload.
+- Report the full path only where `## Output` permits it, as plain text, never
+  a clickable link or a `file://` URL. Quick-create and other constrained output
+  surfaces must not gain extra path commentary.
+- Keep process files, notes and checkouts in the private task workdir.
+- Before creating a missing project root, verify that the exact configured
+  binding is on this host's writable internal disk and check ownership and
+  containment. Only then create that bound root and its module/task children.
+  If the root is unconfigured, inaccessible or lacks permission, report the
+  actual problem, keep the result in workdir and do not claim persistent
+  delivery. Do not infer an unmounted NAS, silently remount storage, change the
+  binding or substitute a nearby directory.
 
-- Write the finished file into the collaboration-space directory: under the
-  folder named after this task's module when it has one, in a further
-  subdirectory when the work warrants one. Create the module's folder if it is
-  not there yet. This is in addition to the surface's own delivery mechanism,
-  not instead of it: an issue comment still carries the file with
-  `--attachment <path>`.
-- Name that path in your comment as **plain text**. Never a clickable link,
-  never a `file://` URL. The rule against linking filesystem paths is
-  unchanged; what is different about this directory is that the reader can
-  actually open it.
-- Keep scratch work in your working directory — notes, intermediate output,
-  checkouts. Only what is being handed over goes to the share.
-- If the *project* directory does not exist, report the observed path or permission problem. Say that in your comment and leave the file in the working
-  directory. Do not pick a nearby path that does exist: a deliverable written
-  somewhere else is a deliverable nobody finds. (A missing module folder is
-  not that case — that one you create.)
+New workspaces receive the versioned collaboration context automatically.
+Upgrades fill only empty workspace context; non-empty user
+context remains unchanged. The context is editable workspace data thereafter.
 
 ## CLI
 
@@ -168,11 +172,11 @@ multica project list --output json
 multica project get <project-id> --output json
 multica project create --title "<title>" --repo <github-url> --output json
 multica project create --title "<title>" --start-date 2026-03-01 --due-date 2026-03-31 --output json
-multica project create --title "<title>" --collab-path "/Volumes/人机协作空间/<项目>" --output json
+multica project create --title "<title>" --collab-path "<absolute-local-project-directory>" --output json
 multica project update <project-id> --title "<title>" --output json
 multica project update <project-id> --due-date 2026-04-15 --output json
 multica project update <project-id> --start-date "" --output json   # clear the start date
-multica project update <project-id> --collab-path "/Volumes/人机协作空间/<项目>" --output json
+multica project update <project-id> --collab-path "<absolute-local-project-directory>" --output json
 multica project update <project-id> --collab-path "" --output json  # clear the collaboration space
 multica project status <project-id> in_progress --output json
 multica project resource list <project-id> --output json

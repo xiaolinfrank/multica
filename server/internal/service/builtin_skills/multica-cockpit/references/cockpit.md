@@ -299,8 +299,9 @@ provision. `meeting_node_id` is the archive sub-item — a node on this board's
 tree, one level below the module ("06.06.03 会议纪要与素材"): its folder holds
 the material and its `code` opens the meeting task's title. The folder chain
 below the project's collaboration space is created if it is missing, one level
-at a time; the collaboration space itself never is, because an unmounted share
-must fail rather than be rebuilt as local directories.
+at a time. This endpoint requires an existing root; a missing path does not imply an unmounted NAS.
+For local internal-disk storage, verify exact binding, ownership, permissions and containment before preparing the root, then retry; never substitute another root.
+The meeting directory is the task/result layer; its persistent copy does not replace Issue attachments or `## Output` rules.
 
 `GET .../meetings/scan` reads the archive folder and reports each sub-folder
 with the meeting already recording it (`meeting_id`, empty when none) and what

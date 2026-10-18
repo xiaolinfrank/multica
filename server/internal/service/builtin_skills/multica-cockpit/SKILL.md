@@ -1,6 +1,6 @@
 ---
 name: multica-cockpit
-description: "Use when reading or editing the workspace's project cockpit — the project cockpit chat, scoped execution plans, dates, owners, progress, payment records, meetings, linked issues, fixed minutes, human review and NAS copies."
+description: "Use when reading or editing the workspace's project cockpit — the project cockpit chat, scoped execution plans, dates, owners, progress, payment records, meetings, linked issues, fixed minutes, human review and persistent collaboration copies."
 user-invocable: false
 allowed-tools: Bash(multica *)
 ---
@@ -22,7 +22,7 @@ A new cockpit chat retains its initial project/module scope in its first visible
 Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.
 Simple reads and explicitly requested ordinary field edits can be completed in chat; multi-step preparation, minutes writing and repository work belong on an Issue.
 Do not promise a write happened until its server receipt is confirmed. Never use another profile or a human token to bypass a machine permission denial.
-Agents may submit minutes for their own issue, but cannot approve or publish them.
+Agents may submit minutes for their own issue, but cannot approve or publish them. Persistent files follow `collab_path` → stable `directory_name` → required task/result subdirectory (no module: task/result directly below the project). Read [artifact delivery](references/artifacts.md) for path checks, attachments, `## Output` and upload authorization before delivering files.
 
 ## Core model
 
